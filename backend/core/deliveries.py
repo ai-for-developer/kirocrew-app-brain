@@ -262,10 +262,12 @@ def mr_ask(who: str, what: str, did: Any, *, approval: bool, owner: str | None =
 
 
 def wait_head(text: str) -> str:
-    """What a ``waits`` sentence says the requirement waits on, without how to take the step: the part before its
-    first 「：」 (「等 carol 批准设计：读完再在会话里自己打那一行」 → 「等 carol 批准设计」), and without the answers an MR
-    question takes (「等产品在 MR 上验收 D-3（approve / reject）」 → 「等产品在 MR 上验收 D-3」)."""
-    return text.split("：", 1)[0].replace("（%s）" % APPROVE_REJECT, "")
+    """A ``waits`` sentence said to someone other than the one who acts: a 「等…」 sentence without how that one takes the
+    step (「等 carol 批准设计：读完再在会话里自己打那一行」 → 「等 carol 批准设计」), any other whole (its reason and what to
+    do: 「D-1 的回答签名服务不签：看运行机页的拒签原因」), and never the answers an MR question takes
+    (「等产品在 MR 上验收 D-3（approve / reject）」 → 「等产品在 MR 上验收 D-3」)."""
+    text = text.replace("（%s）" % APPROVE_REJECT, "")
+    return text.split("：", 1)[0] if text.startswith("等") else text
 
 
 # the bridge holds the answer while park.json at the tip still waits (who it waits on, the line)
@@ -454,18 +456,43 @@ def runner_takes(f: dict[str, Any] | None, row: dict[str, Any] | None, runner_ro
     return not (runner_row["state"] in ended and row["state"] in ended)
 
 
+def path_base(spec: str) -> str:
+    """The folder (or file) an expected path is about, brain-kit's rule (common.path_base): a glob (*, ?, [) is the
+    folder before its first wildcard ('' at the top: the whole repo), since Lean's globs match below it; brain split
+    writes each unit's Paths as globs."""
+    s = str(spec or "").strip().replace("\\", "/")
+    while s.startswith("./"):
+        s = s[2:]
+    cut = min([s.find(c) for c in "*?[" if c in s] or [-1])
+    if cut >= 0:
+        s = s[:cut]
+        s = s[:s.rfind("/")] if "/" in s else ""
+    return s.strip("/")
+
+
+def _covers(x: str, y: str) -> bool:
+    """Could one file be under both bases (brain-kit's paths_overlap)?"""
+    return not x or not y or x == y or x.startswith(y + "/") or y.startswith(x + "/")
+
+
+def _paths_of(r: dict[str, Any]) -> str | None:
+    """The repo a row's expected paths are in: a runner row's is its home, unknown (None) when this machine does not
+    list that project."""
+    return r.get("home") if r["repo"] == "runner" else r["repo"]
+
+
 def overlap_pairs(rows: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any], list[str]]]:
-    """(row, row, the paths they share) for each two open requirements of one repo whose expected paths overlap (the
-    same path, or one inside the other), as the bridge warns; each pair once, in the rows' order."""
-    live = [r for r in rows if r["state"] in OPEN_STATES and r["expected_paths"]]
+    """(row, row, the first one's paths they share, as written) for each two open requirements of one repo whose
+    expected paths could hold the same file (path_base), as the bridge warns; each pair once, in the rows' order."""
+    live = [r for r in rows if r["state"] in OPEN_STATES and r["expected_paths"] and _paths_of(r)]
     out = []
     for i, a in enumerate(live):
-        mine = [p.rstrip("/") for p in a["expected_paths"] if p]
+        mine = [(p.rstrip("/"), path_base(p)) for p in a["expected_paths"] if p]
         for b in live[i + 1:]:
-            if a["repo"] != b["repo"] or a["key"] == b["key"]:
+            if _paths_of(a) != _paths_of(b) or a["key"] == b["key"]:
                 continue
-            theirs = [p.rstrip("/") for p in b["expected_paths"] if p]
-            both = sorted({x for x in mine for t in theirs if x == t or x.startswith(t + "/") or t.startswith(x + "/")})
+            theirs = [path_base(p) for p in b["expected_paths"] if p]
+            both = sorted({said for said, x in mine for y in theirs if _covers(x, y)})
             if both:
                 out.append((a, b, both))
     return out

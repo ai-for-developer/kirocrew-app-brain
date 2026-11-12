@@ -2,10 +2,11 @@
 from the overview's rows (deliveries.base_row and classify) with the limits in 设置 (settings.LIMITS). Pure: the
 service calls it once per overview, and the preview world with the same rows.
 
-What is stuck is one table, STUCK_RULES, the worst kind first: a wait on a person past its timeout (超时), someone
-else's run on their own machine without new progress (很久没动), two open requirements that change the same directory
-(目录撞车), verify failing round after round (verify 失败). Time counts in working hours: Monday to Friday, 09:00 to
-18:00 local time (work_hours_between).
+What is stuck is one table, STUCK_RULES, the worst kind first: a human gate (an approval, an answer, the acceptance)
+waiting past its timeout (超时), someone else's run on their own machine with nothing new pushed (很久没动), two open
+requirements that change the same directory (目录撞车), one check failing verify round after round (verify 失败). Time
+counts in working hours: Monday to Friday, 09:00 to 18:00 local time (work_hours_between). The rules read what every
+machine sees alike: a gate waits on whoever it waits on, on this machine or a teammate's.
 """
 
 from __future__ import annotations
@@ -17,7 +18,6 @@ from . import deliveries
 from .settings import LIMITS
 
 WORKDAY = (clock(9), clock(18))
-PERSON = ("you", "people", "product", "builder")      # the waits.who that is a person (ui/src/types.ts WaitWho)
 COUNTED = tuple(s for s in deliveries.OPEN_STATES if s != "unclaimed")    # 在做: what someone has open
 
 
@@ -53,20 +53,23 @@ class Hit(NamedTuple):
     other: Optional[str] = None
 
 
+def _waits_on_parts(r: dict[str, Any]) -> bool:
+    """A big requirement split into small ones, while they are built: its small ones are the work, not it."""
+    f = r["family"] or {}
+    return f.get("role") == "parent" and f.get("family_state") == "in_progress"
+
+
 def _open(r: dict[str, Any]) -> bool:
     """Someone has it and it is not done: what 在做 counts."""
-    return r["state"] in COUNTED and bool(r["owner"])
+    return r["state"] in COUNTED and bool(r["owner"]) and not _waits_on_parts(r)
 
 
 def overdue(rows: list[dict[str, Any]], ctx: Ctx) -> Iterator[Hit]:
-    """A wait on a person (an approval, an answer, the acceptance, 开工, a reply …) for wait_timeout_h or longer. On
-    someone's machine (local, claimed) a wait with no step to take is the work, or what it depends on, moving there:
-    that is stale's, or the dependency's own row's."""
+    """A human gate (a Lean approval, a question to answer, the acceptance) waiting wait_timeout_h or longer. The
+    person's own next steps (开工, a reply, a hand-over to redo) are 轮到你's on their machine, not a timeout."""
     for r in rows:
         w = r["waits"]
-        if not _open(r) or w["who"] not in PERSON or w["since"] is None:
-            continue
-        if w["do"] == "none" and r["state"] in ("local", "claimed"):
+        if not _open(r) or w["do"] not in deliveries.GATES or w["since"] is None:
             continue
         h = work_hours_between(w["since"], ctx.now)
         if h >= ctx.limits["wait_timeout_h"]:
@@ -74,16 +77,17 @@ def overdue(rows: list[dict[str, Any]], ctx: Ctx) -> Iterator[Hit]:
 
 
 def stale(rows: list[dict[str, Any]], ctx: Ctx) -> Iterator[Hit]:
-    """Someone else's run on their own machine with no new progress for stale_after_h or longer: classify says it waits
-    on them since its run branch's tip, the last progress they pushed."""
+    """Someone else's run on their own machine (classify's 「bob 在自己的机器上做」: it waits on them, with no step to
+    take and nowhere to take one) with nothing new pushed for stale_after_h or longer: its since is the run branch's
+    tip, the last progress they pushed."""
     for r in rows:
         w = r["waits"]
-        if not _open(r) or r["state"] != "local" or r["owner"] == ctx.me or (w["who"], w["do"]) != ("people", "none") \
-                or w["since"] is None:
+        if not _open(r) or r["state"] != "local" or r["owner"] == ctx.me or w["since"] is None \
+                or (w["who"], w["do"], w["where"]) != ("people", "none", None):
             continue
         h = work_hours_between(w["since"], ctx.now)
         if h >= ctx.limits["stale_after_h"]:
-            yield Hit(h, r, "%s，%s没有新进度：问问 %s 卡在哪" % (deliveries.wait_head(w["text"]), hours(h), r["owner"]),
+            yield Hit(h, r, "%s，%s没有推上新进度：问问 %s 卡在哪" % (deliveries.wait_head(w["text"]), hours(h), r["owner"]),
                       since=w["since"])
 
 
@@ -96,12 +100,12 @@ def overlap(rows: list[dict[str, Any]], ctx: Ctx) -> Iterator[Hit]:
 
 
 def verify_streak(rows: list[dict[str, Any]], ctx: Ctx) -> Iterator[Hit]:
-    """A run whose verify failed verify_fail_limit times or more in a row since it last passed: the AI should stop
-    fixing and ask a person."""
+    """A run where one check failed verify verify_fail_limit times or more in a row (lean_view.verify_fails): the AI
+    should stop fixing and ask a person."""
     for r in rows:
         n = r["verify_fails"]
         if _open(r) and n >= ctx.limits["verify_fail_limit"]:
-            yield Hit(n, r, "verify 连续失败 %d 次，该停下来问人了" % n)
+            yield Hit(n, r, "同一项检查 verify 连续失败 %d 次，该停下来问人了" % n)
 
 
 # kind -> the rule that finds it, the worst kind first: 全队卡点 lists and counts them in this order

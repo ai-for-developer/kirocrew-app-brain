@@ -290,13 +290,21 @@ def review_current(review_at: float | None, exists: bool, evs: list[dict[str, An
 
 
 def verify_fails(evs: list[dict[str, Any]]) -> int:
-    """The `lean verify` runs that failed in a row since the last one that passed (0 when the last one passed or none
-    ran): how many rounds the AI has been fixing the same red checks."""
-    n = 0
+    """How many `lean verify` runs in a row one check has failed since it last passed, the most of the checks the
+    last run ran (0 when none ran): how many rounds the AI has spent on the same red check. Each check is its command
+    (VERIFY's results); a record without them counts as one check, passed or not by its ok."""
+    streak: dict[str, int] = {}
+    now: list[str] = []
     for e in evs:
-        if e.get("event") == "VERIFY":
-            n = 0 if _data(e).get("ok") else n + 1
-    return n
+        if e.get("event") != "VERIFY":
+            continue
+        d = _data(e)
+        results = [r for r in d.get("results") or [] if isinstance(r, dict)] or \
+            [{"cmd": "", "exit": 0 if d.get("ok") else 1}]
+        now = [str(r.get("cmd") or "") for r in results]
+        for cmd, r in zip(now, results):
+            streak[cmd] = 0 if r.get("exit") == 0 else streak.get(cmd, 0) + 1
+    return max((streak[c] for c in now), default=0)
 
 
 def idle_step(rows: list[dict[str, Any]], *, review_ok: bool, default_branch: str) -> str:
