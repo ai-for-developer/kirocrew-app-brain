@@ -29,7 +29,7 @@ import { paths, useAction, usePoll } from '../api'
 import { lines, splitPaths } from '../format'
 import { KEY_RE, type NewEntry } from '../nav'
 import type { Tone } from '../styles'
-import { CLASS_LABEL, type CheckRow, type Classification, type CrewChecks, type IntakeBody, type IntakeCheck, type IntakeNext, type MeNameResult, type StartBody, type StartResult } from '../types'
+import { CLASS_LABEL, type CheckRow, type Classification, type CrewChecks, type IntakeBody, type IntakeCheck, type IntakeNext, type MeNameResult, type Overview, type StartBody, type StartResult } from '../types'
 import { CheckRows, Flow, Icon, ImportCta, MeLine, PendingRepo, PushBox, RoleIcon, brainkitProblem, repoLabel, type FlowStep } from '../ui'
 import { ACT, CLASS_NAME, FAMILY_ACT } from '../vocab'
 import { BIG_HINT } from './Family'
@@ -110,6 +110,7 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
 
   const next = usePoll<IntakeNext>(repo ? paths.intakeNext(repo) : null, 0)
   const crew = usePoll<CrewChecks>(paths.crew(), 0)
+  const overview = usePoll<Overview>(paths.overview('all'), 0)
   const [crewOk, setCrewOk] = useState('')
 
   const [title, setTitle] = useState(entry.title ?? '')
@@ -240,6 +241,10 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
       : { icon: 'runner', title: '交给运行机', text: bigOn ? '小需求都合并以后' : '团队仓库：交接以后它接着做' },
   ]
   const stepOf = (i: number) => flow[i].state
+
+  const you = overview.data?.roster.people.find((p) => p.you)
+  const openBesides = you ? you.open - (claimed && you.keys.includes(claimed) ? 1 : 0) : 0
+  const wip = you && openBesides >= you.limit && !ok ? `你手上已经有 ${openBesides} 个在做（上限 ${you.limit}）。可以先把一个交出去，再开新的。` : ''
 
   if (props.status && repos.length === 0) {
     const waiting = props.status.repos.filter((r) => r.pending)
@@ -484,6 +489,7 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
               <PushBox path={picked.path} branch={info.push.branch} remoteUrl={info.push.remote_url} target={info.push.branch} onDone={() => next.reload()} />
             </div>
           )}
+          {wip && <p className="nr-wip" role="note" data-testid="wip-hint"><RoleIcon role="person" size={16} />{wip}</p>}
           <div className="nr-go-row">
             <button type="button" className="br-btn is-primary nr-go-btn" disabled={!canStart} onClick={() => void runStart()}>
               <RoleIcon role="deploy" size={20} />{start.busy ? '正在开工…' : ACT.start}
@@ -796,6 +802,9 @@ const NR_CSS = `
 .nr-toggle.is-disabled { opacity: .55; cursor: not-allowed; }
 .nr-toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .nr-push { padding: 10px 14px; border-radius: 12px; border: 1px solid var(--kit-wait); background: color-mix(in srgb, var(--kt-approve) 6%, var(--card)); }
+.nr-wip { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 9px 12px; border-radius: 10px; color: var(--text);
+  border: 1px dashed color-mix(in srgb, var(--kt-warn) 50%, var(--border)); background: color-mix(in srgb, var(--kt-warn) 6%, transparent); }
+.nr-wip .kt-role-icon { flex: none; margin-top: 2px; color: var(--kt-warn); }
 .nr-go-row { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
 .nr-go-btn { font-size: 1.14em; padding: 12px 34px; border-radius: 14px; font-weight: 800; }
 .nr-go-btn:not(:disabled) { box-shadow: 0 10px 30px -12px var(--accent); }
