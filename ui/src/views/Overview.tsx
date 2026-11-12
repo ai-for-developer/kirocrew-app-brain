@@ -2,9 +2,10 @@
  * 交付总览: the sample's CTO 视图 for brain-kit — one sentence and three numbers (how many requirements handed to the
  * runner ran unattended end to end, how many times a person stepped in at the judgment points and outside them,
  * credits per requirement) and who settled the decisions, each with its small SVG chart (cto/charts.tsx); 轮到你 (what
- * waits on the person, with its one step); the weekly merges; 需求流动 (cto/Flow.tsx: the kanban of what is in
- * progress); the 交付清单 (every requirement, a big requirement's small ones folded under it); brain-kit's eval batch
- * (its big requirements split into small ones among its rows). Every card and row opens the requirement's board
+ * waits on the person, with its one step) and beside it 全队卡点 (what is stuck across the team, the backend's roster);
+ * the weekly merges; 需求流动 (cto/Flow.tsx: the kanban of what is in progress); the 交付清单 (every
+ * requirement, a big requirement's small ones folded under it); brain-kit's eval batch (its big requirements split
+ * into small ones among its rows). Every card and row opens the requirement's board
  * (需求看板). Polls GET /overview (Overview.cto has the numbers, from brainkit.evaluate). The repo pills and the
  * ledger's state filter are in the URL; a big number, a legend entry, a week, a column, a lane or 「+N 个」 filters the
  * ledger once more (a LedgerPick, with its ✕) and scrolls to it.
@@ -23,9 +24,9 @@ import { HOW, HOW_LABEL, HOW_VAR, MiniCredits, MiniPeople, MiniUnattended, MiniW
 import { COL_NAME, Flow, LANE_NAME, StepButton, blockText, blockersOf, colOf, familyProgress, homeOf, laneOf, stepOf, waitedText, type Col, type Lane } from '../cto/Flow'
 import { ago, fmtCredits, spaced } from '../format'
 import type { OverviewEntry, View } from '../nav'
-import type { CtoNumbers, CtoRun, EvalFamily, EvalMetric, EvalView, Funnel, Overview, RefreshResult, ReqFamily, ReqState, RepoInfo, Requirement } from '../types'
+import type { CtoNumbers, CtoRun, EvalFamily, EvalMetric, EvalView, Funnel, Overview, RefreshResult, ReqFamily, ReqState, RepoInfo, Requirement, Roster, StuckKind } from '../types'
 import { STATE_LABEL } from '../types'
-import { ACT, DECIDED_BY, leanProgress, waitName } from '../vocab'
+import { ACT, DECIDED_BY, STUCK_NAME, leanProgress, waitName } from '../vocab'
 import { EmptyHero, Icon, ImportCta, LoadState, MrLink, PendingRepo, STATE_TONE, StateChip } from '../ui'
 import type { ViewProps } from './props'
 
@@ -70,6 +71,11 @@ export const OV_CSS = `
 .br-ov .br-linecopy { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .br-ov .br-linecopy code { white-space: nowrap; }
 .br-ov .br-linecopy code { padding: 1px 8px; border-radius: 6px; border: 1px dashed color-mix(in srgb, var(--kt-approve) 60%, var(--border)); color: var(--text-strong); font-weight: 700; user-select: all; }
+.br-ov .cto-duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--kit-gap-block); align-items: start; }
+.br-ov .cto-duo.is-one { grid-template-columns: minmax(0, 1fr); }
+.br-ov .br-stuck li { background: color-mix(in srgb, var(--kt-bad) 6%, var(--cto-cell)); }
+.br-ov .br-stuck li[data-kind="overlap"] { background: color-mix(in srgb, var(--kt-warn) 7%, var(--cto-cell)); }
+.br-ov .br-stuck li .br-chip { padding: 0 8px; }
 
 .br-ov .cto-lane { justify-content: flex-start; padding: 8px 10px; }
 .br-ov .cto-lane .br-lane-name { white-space: nowrap; font-weight: 650; }
@@ -158,6 +164,7 @@ export const OV_CSS = `
   .br-ov .br-ledger .br-acts { flex-direction: column; align-items: stretch; }
 }
 @container brov (max-width: 900px) {
+  .br-ov .cto-duo { grid-template-columns: minmax(0, 1fr); }
   .br-ov .br-kanban { grid-template-columns: minmax(0, 1fr) !important; }
   .br-ov .br-merged-cell, .br-ov .br-kcell-off { grid-row: auto !important; }
   .br-ov .br-kcell-off { writing-mode: horizontal-tb; padding: 6px; }
@@ -389,8 +396,11 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
 
       {data && c && !empty && (
         <>
-          {yours.length > 0 && <YourTurn rows={yours} at={data.at} repoName={manyRepos ? repoName : () => undefined} onGo={go} onOpen={(r) => toBoard(r)}
-            onAll={() => filterTo(cellPick(undefined, 'you'))} />}
+          <div className={`cto-duo${yours.length > 0 ? '' : ' is-one'}`} data-testid="ov-duo">
+            {yours.length > 0 && <YourTurn rows={yours} at={data.at} repoName={manyRepos ? repoName : () => undefined} onGo={go} onOpen={(r) => toBoard(r)}
+              onAll={() => filterTo(cellPick(undefined, 'you'))} />}
+            <TeamStuck roster={data.roster} rows={data.rows} repoName={manyRepos ? repoName : () => undefined} onOpen={toBoard} onAll={() => filterTo(stuckPick(data.roster))} />
+          </div>
 
           <section className="cto-cards" data-testid="ov-cards">
             <UnattendedCard c={c} localOnly={localOnly} computing={computing} pick={pick} onPick={filterTo} onKey={(r) => (r.repo ? toBoard(r) : openKey(r.key))} />
@@ -515,6 +525,12 @@ function cellPick(col?: Col, lane?: Lane): LedgerPick {
   }
 }
 
+/** 全队卡点's 「还有 N 件」 as a ledger filter: every requirement it lists, an overlap's other one too. */
+function stuckPick(roster: Roster): LedgerPick {
+  const ids = new Set(roster.stuck.flatMap((s) => [idOf(s), ...(s.other_key ? [idOf({ repo: s.repo, key: s.other_key })] : [])]))
+  return { id: 'stuck', label: '全队卡点', keep: (r) => ids.has(idOf(r)) }
+}
+
 /** The week a requirement was merged in, as the backend buckets 每周合并 (deliveries.cto_numbers / _week): its run's
  * merge, else a merged row's last activity; the Monday of that week (UTC), YYYY-MM-DD. */
 function weekOf(r: Requirement, run: CtoRun | undefined): string | null {
@@ -586,6 +602,47 @@ function YourTurn({ rows, at, repoName, onGo, onOpen, onAll }: {
         })}
       </ul>
       {rows.length > SHOWN && <button type="button" className="br-link" style={{ justifySelf: 'start' }} onClick={onAll}>还有 {rows.length - SHOWN} 件：在交付清单里看全部</button>}
+    </section>
+  )
+}
+
+/** 全队卡点: what is stuck across the team, the worst first, as the backend's roster says it, in 轮到你's look. Each key
+ * opens that requirement's 需求看板, an overlap's other key too. */
+function TeamStuck({ roster, rows, repoName, onOpen, onAll }: {
+  roster: Roster; rows: Requirement[]; repoName: (id: string) => string | undefined; onOpen: (r: { repo: string; key: string }) => void; onAll: () => void
+}) {
+  const SHOWN = 5
+  const kinds = (Object.keys(roster.counts) as StuckKind[]).filter((k) => roster.counts[k] > 0)
+  const red = roster.stuck.some((s) => s.kind !== 'overlap')
+  const { wait_timeout_h: wait, stale_after_h: stale, verify_fail_limit: fails } = roster.limits
+  const key = (repo: string, k: string) => <button type="button" className="br-link br-key" onClick={() => onOpen({ repo, key: k })} title="打开它的需求看板">{k}</button>
+  return (
+    <section className={`cto-card br-yours br-stuck${red ? ' is-bad' : kinds.length ? ' is-warn' : ' is-ok'}`} aria-label="全队卡点" data-testid="team-stuck">
+      <div className="cto-chart-head">
+        <h3>全队卡点</h3>
+        <span className="cto-dim" data-testid="stuck-counts">{kinds.length ? kinds.map((k) => `${STUCK_NAME[k]} ${roster.counts[k]}`).join(' · ') : '没有卡住的需求'}</span>
+      </div>
+      {roster.stuck.length === 0 ? (
+        <p className="cto-was" data-testid="stuck-none">等人超过 {wait} 个工作小时的、别人做着 {stale} 个工作小时没有新进度的、两个需求要改同一个目录的、verify 连续 {fails} 次没过的，都会列在这里。</p>
+      ) : (
+        <ul>
+          {roster.stuck.slice(0, SHOWN).map((s) => {
+            const row = rows.find((r) => r.repo === s.repo && r.key === s.key)
+            const name = row ? repoName(homeOf(row)) : undefined
+            const at = s.other_key ? s.text.indexOf(s.other_key) : -1
+            return (
+              <li key={`${s.kind}:${idOf(s)}:${s.other_key ?? ''}`} data-key={s.key} data-kind={s.kind}>
+                <span className={`br-chip tone-${s.kind === 'overlap' ? 'warn' : 'bad'}`}>{STUCK_NAME[s.kind]}</span>
+                {key(s.repo, s.key)}
+                {row && <span className="br-yt-title">{row.title}</span>}
+                {name && <span className="cto-was">{name}</span>}
+                <span>{s.other_key && at >= 0 ? <>{s.text.slice(0, at)}{key(s.repo, s.other_key)}{s.text.slice(at + s.other_key.length)}</> : s.text}</span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {roster.stuck.length > SHOWN && <button type="button" className="br-link" style={{ justifySelf: 'start' }} onClick={onAll}>还有 {roster.stuck.length - SHOWN} 件：在交付清单里看全部</button>}
     </section>
   )
 }
