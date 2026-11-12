@@ -16,8 +16,9 @@
  *              what happened to it), 请你确认 by file name, brain-kit's own words folded under 细节.
  *   3 开工      the session options, 「开工」 (POST /intake/start), big, with why it is off next to it: KiroCrew cannot
  *              open the session (a ✗ above), the default branch not on origin yet (推送 right there), the form, a check
- *              of exactly what the form says now. The answer: a success card (branch, worktree) saying what happens in
- *              the session, with 打开会话, 需求看板, 需求详情; a failure says why in words and what to do.
+ *              of exactly what the form says now. Above it, one line when you already have as many open as the limit
+ *              (GET /overview's roster): it never turns 开工 off. The answer: a success card (branch, worktree) saying
+ *              what happens in the session, with 打开会话, 需求看板, 需求详情; a failure says why in words and what to do.
  *
  * KiroCrew's failing or doubtful checks are listed above the form with their fix buttons: /status has them at once,
  * GET /crew checks again. Without a usable repo there is no form: 导入仓库, or the way forward of a repo on its way;

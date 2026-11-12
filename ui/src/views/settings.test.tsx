@@ -351,8 +351,8 @@ describe('设置', () => {
   // a box's name is its sentence, with a space where its number is
   const WIP = '每人同时在做的需求，最多 个'
   const WAIT = '等人批准、回答或验收，超过 个工作小时算超时'
-  const STALE = '别人在自己机器上做的需求， 个工作小时没有新进度算很久没动'
-  const VERIFY = 'verify 连续失败 次，就该停下来问人'
+  const STALE = '别人在自己机器上做的需求， 个工作小时没有推上新进度算很久没动'
+  const VERIFY = '同一项检查 verify 连续失败 次，就该停下来问人'
   const limitsCard = () => screen.findByRole('group', { name: '全队视图' })
 
   test('全队视图: four lines, each a sentence around its number, whole numbers in the backend’s bounds, after the work directory and before team mode', async () => {

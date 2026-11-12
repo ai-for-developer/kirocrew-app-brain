@@ -3,7 +3,8 @@
  * what its optional parts do), 你是谁 (a token is only said to be there, never shown), the team runner's status; each
  * repo with its state (said by its reason), path and settings, 「移出列表」 (the app's list only: no file changes, after
  * a confirm) and 「导入仓库」 (how a repo gets in); KiroCrew's checks with their fix buttons — and the settings form in
- * its own card: where brain-kit is, where worktrees go, team mode (only a checkbox until it is on; POST /settings,
+ * its own card: where brain-kit is, where worktrees go, 全队视图's four limits (a sentence each around its number),
+ * team mode (only a checkbox until it is on; POST /settings,
  * which keeps the repo list as it is). Without a usable brain-kit, its place is asked first, at the top, with why and
  * where to get one.
  */
@@ -37,8 +38,8 @@ const TEAM_FIELDS: [Exclude<keyof Settings['team'], 'enabled' | 'dev_same_user'>
 const LIMIT_LINES: { key: keyof TeamLimits; before: string; after: string; max: number }[] = [
   { key: 'wip_limit', before: '每人同时在做的需求，最多', after: '个', max: 20 },
   { key: 'wait_timeout_h', before: '等人批准、回答或验收，超过', after: '个工作小时算超时', max: 200 },
-  { key: 'stale_after_h', before: '别人在自己机器上做的需求，', after: '个工作小时没有新进度算很久没动', max: 400 },
-  { key: 'verify_fail_limit', before: 'verify 连续失败', after: '次，就该停下来问人', max: 20 },
+  { key: 'stale_after_h', before: '别人在自己机器上做的需求，', after: '个工作小时没有推上新进度算很久没动', max: 400 },
+  { key: 'verify_fail_limit', before: '同一项检查 verify 连续失败', after: '次，就该停下来问人', max: 20 },
 ]
 
 /** A repo's state in one word, by its reason (RepoInfo.error is the backend's sentence). */
