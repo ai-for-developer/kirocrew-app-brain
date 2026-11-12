@@ -60,7 +60,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
     },
     {
       "repo": "r1",
@@ -129,7 +130,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
     },
     {
       "repo": "r1",
@@ -196,7 +198,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
     },
     {
       "repo": "r1",
@@ -258,7 +261,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
     },
     {
       "repo": "r1",
@@ -312,7 +316,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
     },
     {
       "repo": "r1",
@@ -373,7 +378,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
     }
   ],
   "overlaps": [

@@ -180,6 +180,9 @@ export interface Requirement {
   session_url?: string | null
   /** a big requirement split into small ones (brain split), one of those, or one opened as a big one: null otherwise */
   family: ReqFamily | null
+  /** when this machine last pushed its run branch at a Lean checkpoint (epoch seconds); null: not from here. The
+   * backend always sends it */
+  progress_pushed_at?: number | null
 }
 
 // ---------------------------------------------------------------- 大需求拆成小需求 (brain-kit's split, phase 1)
@@ -403,14 +406,42 @@ export interface RepoInfo {
   me: RepoMe | null
   /** it has an origin: requirements may be handed over, 从远端取最新 works. The backend always sends it */
   remote?: boolean
+  /** how it keeps up with the team (a loaded repo; null otherwise). The backend always sends it */
+  sync?: RepoSync | null
+}
+
+/** A repo's last fetch (every few minutes by itself, or 「从远端取最新」), in repo.fetch()'s words. */
+export interface FetchState {
+  at: number
+  ok: boolean
+  /** what happened and what to do, in plain Chinese */
+  text: string
+  /** git's own words and the command for the terminal (细节) */
+  raw: string
+}
+
+/** progress.py: the person's own run branches pushed at Lean's checkpoints, origin fetched every few minutes. */
+export interface RepoSync {
+  /** settings.auto_push for it (on unless turned off); null: done only on this machine (no remote, or no GitLab), so
+   * it has no push setting */
+  auto_push: boolean | null
+  /** why its pushes cannot happen now ('' when they can): this machine is the team runner, or the app cannot tell the
+   * person's name in it */
+  push_why: string
+  /** the line to type for push_why ('' when there is none) */
+  push_cmd: string
+  /** null before the first fetch */
+  fetch: FetchState | null
 }
 
 /**
- * Who brain-kit says the person is in a repo, by its own rule: a GitLab token (GitLab's username), $BRAIN_USER or git
- * config brain.user, else the login name in a repo without GitLab (a brain-kit that falls back to it). Never a token.
+ * Who brain-kit says the person is in a repo, by its own rule: a GitLab token (GitLab's username, asked by the backend),
+ * $BRAIN_USER or git config brain.user, else the login name in a repo without GitLab (a brain-kit that falls back to
+ * it). Never a token.
  */
 export interface RepoMe {
-  /** the name brain-kit goes by there; null: GitLab's (with a token), or brain-kit would not know */
+  /** the name brain-kit goes by there; null: the app cannot tell (no requirement with an owner is the person's there):
+   * GitLab has not said yet (source token, nothing asked), or brain-kit would not know */
   name: string | null
   source: 'token' | 'env' | 'git' | 'login' | 'none'
   /** kit.json gitlab.base ('' without GitLab) */
@@ -738,6 +769,10 @@ export interface Settings {
   repos: string[]
   /** where the app puts each requirement's worktree (under ~/workplace or ~/workspace) */
   work_root: string
+  /** every repo with a remote is fetched this often by itself, in minutes, 0 to 120 (0: only on 「从远端取最新」) */
+  fetch_every_min: number
+  /** {repo path: false} for a repo whose run branches are not pushed at Lean's checkpoints (on when left out) */
+  auto_push: Record<string, boolean>
   team: {
     enabled: boolean
     /** brain-kit's bridge.json, with "signer": {"type": "spool", "spool_dir", "allowed_signers"} and no signing_key */
@@ -1223,6 +1258,8 @@ export type TodoKind = 'lean_approval' | 'question' | 'clarify' | 'acceptance' |
   /** write_back: merged, its Brain proposals not written back yet (回写 Brain) */
   | 'write_back'
   | 'child_start' | 'parent_release' | 'closed_leftover'
+  /** push_failed: the person's progress at a Lean checkpoint that origin refused (todo and raw say what and why) */
+  | 'push_failed'
 export interface TodoItem {
   kind: TodoKind
   repo: string
@@ -1244,10 +1281,10 @@ export interface TodoItem {
   since: number | null
   /** lean_approval: the document to read before approving (the approval's path), shown as 要读的 */
   path?: string | null
-  /** handoff_rejected: what to do, each reason's own 做什么 in words ('' otherwise). The backend always sends it */
+  /** handoff_rejected / push_failed: what to do, in words ('' otherwise). The backend always sends it */
   todo?: string
-  /** handoff_rejected / handoff_unlabelled: the bridge's words as it wrote them, and how to do it by hand (做法), for
-   * 细节 ('' otherwise). The backend always sends it */
+  /** handoff_rejected / handoff_unlabelled: the bridge's words as it wrote them; push_failed: git's; and how to do it
+   * by hand (做法), for 细节 ('' otherwise). The backend always sends it */
   raw?: string
 }
 export interface Todo { items: TodoItem[]; team: boolean }
@@ -1497,8 +1534,8 @@ export interface ReqBoard {
   /** something is at work right now (a session busy, the runner running): the board glows */
   live: boolean
   /** the owner (the sample's orchestrator slot) */
-  /** *me*: the one reading is the owner; *you*: the board calls the owner 你 (they are, or nobody known reads it on their
-   * machine): the page says 你 and offers 开工 only then (an older backend did not say) */
+  /** *me*: the one reading is the owner; *you*: the board calls the owner 你 (they are, or nobody has it; a reader the
+   * app cannot tell is not someone's 你): the page says 你 and offers 开工 only then (an older backend did not say) */
   person: { status: ActorStatus; doing: string; owner: string | null; me: boolean; you?: boolean }
   actors: Actor[]
   /** the way's edges (from, to) */

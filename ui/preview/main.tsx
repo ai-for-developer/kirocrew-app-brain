@@ -498,7 +498,7 @@ function importRoutes() {
     const base = (listed?.kit ?? c.form)?.gitlab_base ?? ''
     const name = named.get(path)
     const me = W.status.me.token && base && W.me_token ? { ...W.me_token, gitlab: base }
-      : name && c.me ? { ...c.me, name, source: 'git' as const, text: `${name}（你在这个仓库的名字）`, ask: false, label: '', why: '', suggest: '' }
+      : name && c.me ? { ...c.me, name, source: 'git' as const, text: `${name}（git 设置里的 brain.user）`, ask: false, label: '', why: '', suggest: '' }
         : listed?.me ?? null
     if (!me || me.ask) return c
     return { ...c, me, checks: c.checks.map((x) => (x.id === 'me' ? { ...x, level: 'OK' as const, why: me.text, todo: '' } : x)) }
@@ -641,7 +641,7 @@ function importRoutes() {
       const b = body as { path: string; name: string }
       const name = String(b.name || '').trim().toLowerCase()
       if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(name)) throw new StubApiError(400, { error: '名字只能用小写字母、数字和 . _ -（字母或数字开头，最多 64 个）', code: 'invalid_name' })
-      const me = { name, source: 'git' as const, gitlab: '', text: `${name}（你在这个仓库的名字）`, ask: false, label: '', why: '', suggest: '', error: '' }
+      const me = { name, source: 'git' as const, gitlab: '', text: `${name}（git 设置里的 brain.user）`, ask: false, label: '', why: '', suggest: '', error: '' }
       named.set(b.path, name)
       repos = repos.map((r) => (r.path === b.path && r.me ? { ...r, me: { ...me, gitlab: r.me.gitlab } } : r))
       return { ok: true, text: `你在这个仓库的名字设成了 ${name}`, raw: `git config brain.user ${name}`, me, status: status() }

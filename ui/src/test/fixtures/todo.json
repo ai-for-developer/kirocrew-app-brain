@@ -233,6 +233,27 @@
       "raw": "",
       "kind": "reply",
       "text": "构建测试做完了，下一步是发布：先开一个新会话做审查（这个会话写了代码，不能自己审）"
+    },
+    {
+      "repo": "r1",
+      "key": "PAY-1",
+      "title": "退款原因统计",
+      "line": null,
+      "approval": null,
+      "mr_url": null,
+      "question": null,
+      "session": {
+        "slot": "brain-PAY-1-3d8e",
+        "title": "PAY-1 退款原因统计",
+        "url": "/chat?sid=brain-PAY-1-3d8e"
+      },
+      "since": 1794144000,
+      "review": true,
+      "path": null,
+      "todo": "在这个需求的工作目录里把远端的提交取下来合进来（细节里有命令），下一个关卡 app 会接着推；app 不会强推。",
+      "raw": "To gitlab.example.com:shop/shop-pay.git\n ! [rejected]        4c087c83b2b9d3f1e0a7c6b5d4e3f2a1b0c9d8e7 -> ai/alice/PAY-1-refund-stats (fetch first)\nerror: failed to push some refs to 'gitlab.example.com:shop/shop-pay.git'\nhint: Updates were rejected because the remote contains work that you do not\nhint: have locally. This is usually caused by another repository pushing to\nhint: the same ref.\n\n做法：git -C /Users/alice/workplace/brain-app/shop-pay/refund-stats pull --no-rebase origin ai/alice/PAY-1-refund-stats",
+      "kind": "push_failed",
+      "text": "推进度没成功：远端的这个分支上有这台机器没有的提交（你在别处推过，或者有人推到了你的分支上）"
     }
   ],
   "team": false

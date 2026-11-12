@@ -23,6 +23,8 @@ The world (times relative to 2026-11-08 14:00 UTC, the fixtures' `at`; the previ
   shop-order (r3, GitLab shop/shop-order): ORD-1 … ORD-9 merged over ten weeks (most unattended), ORD-10 running now.
   shop-tools (r4, no GitLab: local only): TOOL-1, the AI at work on this machine; its hook adapter is the old one
       (a ! reminder: it matters only once a requirement is handed to the runner).
+  和队友同步 (progress.py): PAY-1's push at its last checkpoint was refused (someone pushed to its branch); shop-pay
+      fetched 3 minutes ago, shop-order's last fetch could not reach GitLab.
 
 Run it after changing board.py, detail.py or the fixtures it reads: `python3 scripts/preview_world.py`.
 """
@@ -60,6 +62,7 @@ brainview = importlib.import_module("_brainapp_backend.core.brainview")
 intake = importlib.import_module("_brainapp_backend.core.intake")
 crewcheck = importlib.import_module("_brainapp_backend.core.crewcheck")
 repo_mod = importlib.import_module("_brainapp_backend.core.repo")
+progress = importlib.import_module("_brainapp_backend.core.progress")
 store = importlib.import_module("_brainapp_backend.core.store")
 BRAINKIT = Path(os.environ.get("BRAIN_TEST_BRAINKIT") or Path.home() / "warren_ws" / "brain-kit")
 
@@ -564,7 +567,34 @@ def merged(r: Req, t: float, h: str, did: str, how: str = "merge commit") -> Non
 
 # the 待办 fixture's items, in this order (ui/src/views/todo.test.tsx reads them by place)
 TODO_KINDS = ("lean_approval", "clarify", "question", "acceptance", "handoff_rejected", "handoff_unlabelled", "crew", "start",
-              "reply")
+              "reply", "push_failed")
+
+
+def pushed_over(row: dict) -> dict:
+    """PAY-1's last checkpoint, refused by origin: someone pushed to its branch from elsewhere (git's words as git
+    says them, the rest as progress.py makes them)."""
+    sha = "4c087c83b2b9d3f1e0a7c6b5d4e3f2a1b0c9d8e7"
+    said = ("To gitlab.example.com:shop/shop-pay.git\n ! [rejected]        %s -> %s (fetch first)\n"
+            "error: failed to push some refs to 'gitlab.example.com:shop/shop-pay.git'\n"
+            "hint: Updates were rejected because the remote contains work that you do not\n"
+            "hint: have locally. This is usually caused by another repository pushing to\n"
+            "hint: the same ref." % (sha, row["branch"]))
+    return progress.refusal(1, said, row["worktree"], row["branch"], sha, T0 - 40 * 60)
+
+
+def repo_sync(r: dict, local: set) -> dict:
+    """/status's RepoSync as progress.repo_view says it: alice is known in every repo; shop-pay fetched 3 minutes ago,
+    shop-order's last fetch could not reach GitLab."""
+    ctx = progress.Ctx(me=ME, prefix="ai", default_branch="main", team_repo=r["id"] not in local, auto_push=True,
+                       runner=False)
+    fetch = None
+    if r["id"] == "r1":
+        fetch = {"at": T0 - 180, "ok": True, "text": "已经从远端取到最新。", "raw": ""}
+    elif r["id"] == "r3":
+        raw = "fatal: unable to access 'https://gitlab.example.com/shop/shop-order.git/': Could not resolve host: gitlab.example.com"
+        text, cmd = repo_mod.fetch_failed(128, raw)
+        fetch = {"at": T0 - 600, "ok": False, "text": text, "raw": raw + ("\n\n做法：" + cmd.format(path=r["path"]) if cmd else "")}
+    return progress.repo_view(r["path"], ctx, fetch)
 STAGES: dict[str, list] = {}   # each requirement's Lean stages as lean_view reads them (the 需求详情 the preview makes)
 
 
@@ -815,6 +845,7 @@ def main() -> None:
     status["crew"]["fix"] = {"agent": True, "engine": False}
     for r_ in ov["rows"] + [det["row"]]:
         r_.setdefault("home", None)                                     # deliveries.base_row: a runner row's only
+        r_.setdefault("progress_pushed_at", None)                       # service._row: this machine's last push
     rows = {r["key"]: r for r in ov["rows"]}
     for q in ov["eval"]["queue"]:      # deliveries.evaluate: each reason in words, what to do by brain-kit's rule
         rules = [next((r for t, r in (("验收被", "acceptance_rejected"), ("判断点之外", "outside_judgment"),
@@ -1252,7 +1283,8 @@ def main() -> None:
     facts = {"PAY-3": p3.facts(p3_park), "PAY-1": p1.facts(), "PAY-7": p7.facts()}
     entries = [{"row": r_, "facts": facts.get(r_["key"], {}), "own": r_["owner"] == ME, "has_session": r_["key"] in sessions,
                 "can_post": False, "mr": None,
-                "session": {k: sessions[r_["key"]][k] for k in ("slot", "title", "url")} if r_["key"] in sessions else None}
+                "session": {k: sessions[r_["key"]][k] for k in ("slot", "title", "url")} if r_["key"] in sessions else None,
+                "push_error": pushed_over(r_) if (r_["repo"], r_["key"]) == ("r1", "PAY-1") else None}
                for r_ in all_rows if r_["state"] != "closed" and (r_["state"] != "merged" or r_["waits"]["who"] == "you")]
     crew_fail = problems.agent_missing()
     world_todo = {"ok": todo.build(entries, team=False, crew_rows=[]), "crewfail": todo.build(entries, team=False, crew_rows=[crew_fail])}
@@ -1363,21 +1395,20 @@ def main() -> None:
                                     if r_.get("fix") != "kit"] + tool_kit
     world_status["crew"]["fix"] = {"agent": any(r_.get("fix") == "agent" for r_ in world_status["crew"]["rows"]),
                                    "engine": any(r_.get("fix") == "engine" for r_ in world_status["crew"]["rows"])}
-    # 你是谁 as identity.of says it on this machine, which has a GitLab token (status.me.token): a GitLab repo goes by
-    # GitLab's name and nothing is asked; a repo without GitLab by the login name
     token = bool(world_status["me"]["token"])
     for r_ in world_status["repos"]:
         base = (r_.get("kit") or {}).get("gitlab_base") or ""
         if r_.get("me") and base:
-            r_["me"] = identity.of(r_["path"], base, token=token) if token else r_["me"]
+            r_["me"] = identity.of(r_["path"], base, identity.Said(ME)) if token else r_["me"]
     world_status["me"] = service.me_line(world_status["repos"], token, "")
     world_status["counts"]["todo"] = len(world_todo["ok"]["items"])
     for r_ in world_status["repos"]:
         r_["remote"] = r_["id"] not in local and r_["id"] != "r2"
+        r_["sync"] = repo_sync(r_, local) if r_["ok"] else None
     world = {"note": "made by scripts/preview_world.py: do not edit by hand", "at": T0, "status": world_status, "overview": world_ov,
              "overviews": overviews, "overviews_team": overviews_team, "todo": world_todo, "reflects": reflects,
              "crew_missing": crew_fail, "crew_not_ready": crewcheck.not_ready([crew_fail]),
-             "me_token": identity.of("", GL, token=True), "boards": boards, "details": details, "stages": STAGES,
+             "me_token": identity.of("", GL, identity.Said(ME)), "boards": boards, "details": details, "stages": STAGES,
              "phases": {k: lean_view.phases(v) for k, v in STAGES.items()},
              "brains": brains, "intake_gates": intake_gates()}
     (ROOT / "ui" / "preview" / "world.json").write_text(json.dumps(world, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")

@@ -16,7 +16,9 @@ the step it takes:
   branch, close the MR (eval counts it closed either way: the user's decision, 2026-11-10);
 - 大需求拆成小需求 (brain-kit 0d52e97): a small requirement the person claimed whose dependencies have all merged
   into the big one's branch (child_start: 开工 now), and a big requirement of theirs whose small ones have all merged
-  (parent_release: review and release it). Each is listed instead of the row's plain step (start, reply).
+  (parent_release: review and release it). Each is listed instead of the row's plain step (start, reply);
+- a push of the person's progress at a Lean checkpoint that git refused (push_failed, progress.py): what happened,
+  what to do, git's words; whoever's turn the row is, until origin has the branch's tip.
 """
 
 from __future__ import annotations
@@ -49,8 +51,8 @@ def closed_leftover(row: dict[str, Any], f: dict[str, Any], mr: dict[str, Any] |
 
 
 def build(entries: list[dict[str, Any]], *, team: bool, crew_rows: list[dict[str, str]]) -> dict[str, Any]:
-    """*entries*: [{row, facts, session, mr, own, has_session, can_post}] for each requirement (person mode) or
-    [{row, decisions, mr_url}] (team mode)."""
+    """*entries*: [{row, facts, session, mr, own, has_session, can_post, push_error}] for each requirement (person
+    mode) or [{row, decisions, mr_url}] (team mode)."""
     items: list[dict[str, Any]] = []
     for e in entries:
         row = e["row"]
@@ -81,6 +83,10 @@ def build(entries: list[dict[str, Any]], *, team: bool, crew_rows: list[dict[str
         lo = closed_leftover(row, f, e.get("mr"))     # a closed row waits on nobody: what it left behind is still yours
         if lo and e.get("own"):
             items.append({**base, "kind": "closed_leftover", "text": lo})
+        err = e.get("push_error")
+        if err:
+            items.append({**base, "kind": "push_failed", "text": err["text"], "todo": err["todo"], "raw": err["raw"],
+                          "since": err["at"]})
         if w.get("who") != "you":
             continue
         listed = len(items)

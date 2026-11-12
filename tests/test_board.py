@@ -470,11 +470,10 @@ def test_a_claim_not_started_says_since_when_and_to_start_it():
     assert b["person"]["you"] is True
     b = snapshot(facts([], run=False, owner="carol"), row_of("claimed", "people", "已认领，还没开工"), me="alice")
     assert b["accept"]["step"]["text"] == "carol 认领的，等 carol 开工"
-    # BOARD-11: the board calls carol by her name, so the page offers alice no 开工 and says no 你; nobody known reading
-    # it on this machine is taken for its person, as every line of the board says
+    # BOARD-11: the board calls carol by her name, so the page offers alice no 开工 and says no 你
     assert b["person"]["you"] is False
-    b = snapshot(facts([], run=False, owner="carol"), row_of("claimed", "you", "已认领，还没开工"), me=None)
-    assert b["person"]["you"] is True and b["accept"]["step"]["text"].startswith("认领了，还没开工")
+    b = snapshot(facts([], run=False, owner="carol"), row_of("claimed", "people", "等 carol 开工"), me=None)
+    assert b["person"]["you"] is False and b["accept"]["step"]["text"] == "carol 认领的，等 carol 开工"
 
 
 def test_each_commit_on_the_conveyor_carries_the_files_it_changed(tmp_path):

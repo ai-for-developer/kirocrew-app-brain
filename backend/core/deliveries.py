@@ -99,6 +99,7 @@ def base_row(repo_id: str, f: dict[str, Any], *, local_only: bool = False) -> di
         "local_only": bool(local_only),
         "session_url": None,     # its brain-dev session on this machine (KiroCrew's chat URL), filled in by the service
         "family": None,      # a 大需求 or one of its 小需求 (family.families), filled in by the service
+        "progress_pushed_at": None,     # when this machine last pushed its run branch at a checkpoint (progress.py)
     }
 
 
@@ -126,17 +127,21 @@ def _merged(put: Any, f: dict[str, Any], *, now: float | None, reflected: bool, 
     return put("merged", "nobody", "none", text, since=at)
 
 
+def owns(me: str | None, owner: str | None) -> bool:
+    return not owner or owner == me
+
+
 def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | None, slot: dict[str, Any] | None,
              cfg: dict[str, Any], bot_commits: int = 0, at_handover: bool = False, me: str | None = None,
              reflected: bool = False, now: float | None = None) -> None:
     """Fill in state, state_label and waits (person mode). *at_handover*: the branch tip is the hand-over commit
     `brain handoff` made (its parent is run.json's handoff.local_head). *me*: who this machine's person is (None: not
-    known, every requirement counts as theirs); someone else's requirement waits for them, not for "you". *reflected*:
-    its Brain proposals were written back already (a brain/<KEY>-reflect-<n> branch)."""
+    known); someone else's requirement waits for them, not for "you".
+    *reflected*: its Brain proposals were written back already (a brain/<KEY>-reflect-<n> branch)."""
     run, park, claim = f.get("run"), f.get("park"), f.get("claim") or {}
     pending = [a for a in f.get("approvals") or [] if a["state"] == "pending" and a.get("line")]
     owner = f.get("owner") or claim.get("owner")
-    mine = not me or not owner or me == owner
+    mine = owns(me, owner)
     you = "you" if mine else "people"
     them = "你" if mine else str(owner)
 
