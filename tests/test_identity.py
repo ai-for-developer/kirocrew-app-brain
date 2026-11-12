@@ -26,7 +26,8 @@ identity = mod("identity")
 problems = mod("problems")
 bk = mod("bk")
 
-GITLAB = {"gitlab": {"base": "https://gitlab.example.com", "project": "grp/pay"}}
+GL = "https://gitlab.example.com"
+GITLAB = {"gitlab": {"base": GL, "project": "grp/pay"}}
 OLD_ME = '''    if not who:
         raise BrainError("who are you? set GITLAB_TOKEN (preferred) or `git config brain.user <gitlab-username>`")
 '''
@@ -207,21 +208,29 @@ def test_with_gitlab_and_no_token_both_brainkits_ask_for_the_gitlab_username(tmp
         bk.unload()
 
 
-def test_with_a_token_gitlab_says_who_and_a_set_name_wins_otherwise(tmp_path, home, login, monkeypatch):
+def test_gitlabs_name_for_the_token_wins_and_a_name_set_here_answers_until_gitlab_says(tmp_path, home, login,
+                                                                                        monkeypatch):
     repo = project(tmp_path, kit=GITLAB)
-    monkeypatch.setenv("GITLAB_TOKEN", "fake-" + "0" * 20)
-    assert identity.of(str(repo), "https://gitlab.example.com", token=True) == dict(
-        identity.of(str(repo), "https://gitlab.example.com", token=True), source="token", ask=False, name=None)
-    monkeypatch.delenv("GITLAB_TOKEN")
     sh("git", "-C", repo, "config", "brain.user", "Dave")
-    got = identity.of(str(repo), "https://gitlab.example.com", token=False)
-    assert (got["name"], got["source"], got["ask"]) == ("dave", "git", False)
-    sh("git", "-C", repo, "config", "brain.user", "Bad Name")
-    bad = identity.of(str(repo), "", token=False)
-    assert bad["ask"] and bad["name"] is None and "Bad Name" in bad["error"] and bad["why"] == identity.WHY_LOCAL
     monkeypatch.setenv("BRAIN_USER", "erin")
-    env = identity.of(str(repo), "https://gitlab.example.com", token=False)
-    assert (env["name"], env["source"]) == ("erin", "env")
+    said = identity.of(str(repo), GL, identity.Asked(name="alice"))
+    assert (said["name"], said["source"], said["ask"]) == ("alice", "token", False), "brain-kit's cli._me: GitLab first"
+    line = mod("service").me_line([{"me": said}], True, "erin")
+    assert line["user"] == "alice" and said["text"] in line["how"], "the machine's 你是谁 goes by the repo's rule"
+    asking = identity.of(str(repo), GL, identity.Asked())
+    assert (asking["name"], asking["source"]) == ("erin", "env") and identity.ASKING in asking["text"]
+    monkeypatch.delenv("BRAIN_USER")
+    got = identity.of(str(repo), GL)
+    assert (got["name"], got["source"], got["ask"]) == ("dave", "git", False) and "brain.user" in got["text"]
+    assert identity.of(str(repo), "", identity.Asked(name="alice"))["name"] == "dave", "no GitLab here: no token's name"
+    sh("git", "-C", repo, "config", "brain.user", "Bad Name")
+    bad = identity.of(str(repo), "")
+    assert bad["ask"] and bad["name"] is None and "Bad Name" in bad["error"] and bad["why"] == identity.WHY_LOCAL
+    sh("git", "-C", repo, "config", "--unset", "brain.user")
+    waiting = identity.of(str(repo), GL, identity.Asked())
+    assert (waiting["name"], waiting["source"], waiting["ask"]) == (None, "token", False), "GitLab will say: no input"
+    refused = identity.of(str(repo), GL, identity.Asked(error=identity.REFUSED))
+    assert refused["ask"] and refused["label"] == identity.LABEL_GITLAB and identity.REFUSED in refused["why"]
 
 
 def test_the_name_route_takes_brainkits_names_only_runs_no_shell_and_stores_no_token(tmp_path, home, login):
@@ -279,8 +288,6 @@ def test_who_are_you_in_plain_chinese_with_the_input_as_the_fix():
 
 # ---- GitLab says who the token is ----------------------------------------------------------------------------------- #
 
-GL = "https://gitlab.example.com"
-
 
 class WhoAmI:
     """A GitLab that knows one token: GET /api/v4/user with it answers *username*, anything else 404. Calls are kept;
@@ -296,7 +303,9 @@ class WhoAmI:
             self.go.wait(10)
         if self.down:
             raise bk.m("common").BrainError("cannot reach gitlab.example.com: timed out")
-        if method == "GET" and url == GL + "/api/v4/user" and headers.get("PRIVATE-TOKEN") == self.token:
+        if method == "GET" and url == GL + "/api/v4/user":
+            if headers.get("PRIVATE-TOKEN") != self.token:
+                return 401, b'{"message": "401 Unauthorized"}'
             return 200, json.dumps({"id": 7, "username": self.username, "name": "Alice A"}).encode()
         return 404, b'{"message": "404 Not Found"}'
 
@@ -369,7 +378,7 @@ def test_a_token_only_persons_rows_and_todo_are_their_own_only(teammates, monkey
     assert rows["PAY-1"]["owner"] == "alice" and rows["PAY-1"]["waits"]["who"] != "people", rows["PAY-1"]["waits"]
     assert (rows["PAY-2"]["waits"]["who"], rows["PAY-2"]["waits"]["text"]) == ("people", "bob 在自己的机器上做")
     assert (rows["PAY-3"]["waits"]["who"], rows["PAY-3"]["waits"]["text"]) == ("people", "等 bob 开工")
-    assert {i["key"] for i in todo["items"]} <= {"PAY-1"}, todo["items"]
+    assert {i["key"] for i in todo["items"] if i["kind"] != "crew"} <= {"PAY-1"}, todo["items"]
 
 
 def test_a_token_only_persons_checkpoint_goes_to_origin(teammates, monkeypatch):
@@ -434,3 +443,43 @@ def test_with_gitlab_slow_or_down_the_name_set_here_answers_and_nothing_waits(tm
     else:
         assert later["repos"][0]["me"]["name"] == "dave" and len(gl.calls) == 1, "a failure is not asked again at once"
     assert tok not in json.dumps([first, later], ensure_ascii=False) and tok not in caplog.text
+
+
+def wait_for(ok, wait=5.0):
+    end = time.monotonic() + wait
+    while not ok() and time.monotonic() < end:
+        time.sleep(0.02)
+    return ok()
+
+
+def test_gitlab_is_asked_once_per_token_again_after_a_while_and_a_refused_token_is_said(home, monkeypatch):
+    """identity.Who: one ask per (GitLab, token) while its answer is fresh, the last answer standing while the next ask
+    runs; another token is asked about at once; GitLab's refusal is kept RETRY_S."""
+    bk.load(str(BRAINKIT))
+    try:
+        t = [0.0]
+        tok = a_token(monkeypatch)
+        gl = WhoAmI(tok)
+        who = identity.Who(gl, clock=lambda: t[0])
+        assert who.asked("") is None, "no GitLab: nothing to ask"
+        assert who.asked(GL) == identity.Asked(), "not answered yet"
+        assert wait_for(lambda: who.asked(GL) == identity.Asked(name="alice"))
+        for _ in range(5):
+            who.asked(GL + "/")
+        assert len(gl.calls) == 1, gl.calls
+        t[0] = identity.ASK_AGAIN_S
+        gl.username = "alice.w"
+        assert who.asked(GL).name == "alice", "the last answer stands while GitLab is asked again"
+        assert wait_for(lambda: who.asked(GL).name == "alice.w") and len(gl.calls) == 2
+        monkeypatch.setenv("GITLAB_TOKEN", "tok" + secrets.token_hex(16))
+        assert wait_for(lambda: who.asked(GL) == identity.Asked(error=identity.REFUSED)) and len(gl.calls) == 3
+        t[0] += identity.RETRY_S - 1
+        who.asked(GL)
+        assert len(gl.calls) == 3, "a refusal is not asked about again at once"
+        t[0] += 1
+        who.asked(GL)
+        assert wait_for(lambda: len(gl.calls) == 4)
+        monkeypatch.delenv("GITLAB_TOKEN")
+        assert who.asked(GL) is None and len(gl.calls) == 4, "no token: GitLab is not asked"
+    finally:
+        bk.unload()

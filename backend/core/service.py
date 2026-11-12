@@ -66,12 +66,12 @@ def scrub_tree(obj: Any, scrub: Callable[[str], str], key: str = "") -> Any:
 
 
 def me_line(repos: list[dict[str, Any]], token: bool, env: str) -> dict[str, Any]:
-    """/status's machine-wide 你是谁: $BRAIN_USER (*env*), else the name of the first repo that has one (each repo's is
-    in its row: identity.of), and whether a GitLab token is there."""
+    """/status's machine-wide 你是谁: the name of the first repo that has one (each repo's is in its row, by brain-kit's
+    rule: identity.of), else $BRAIN_USER (*env*), and whether a GitLab token is there."""
     first = next((x["me"] for x in repos if x["me"] and x["me"]["name"]), None)
-    how = "GitLab 令牌（%s）" % ("有" if token else "没有") + (
-        "；这台机器的环境变量里设的 %s" % env if env else "；%s" % first["text"] if first else "")
-    return {"user": env or (first["name"] if first else None), "token": token, "how": how}
+    said = first["text"] if first else "%s（%s）" % (env, identity.FROM["env"]) if env else ""
+    return {"user": first["name"] if first else env or None, "token": token,
+            "how": "GitLab 令牌（%s）" % ("有" if token else "没有") + ("；" + said if said else "")}
 
 
 class Service:
@@ -108,7 +108,7 @@ class Service:
         self._trace: dict[tuple, tuple] = {}
         self.desc = mrdesc_view.DescCache()     # each requirement's 变更说明, by the commits it is made from
         self._subj: dict[tuple, tuple] = {}     # the board's commit subjects and changed files, by the commits asked for
-        self._me: str | None = None
+        self.who = identity.Who(transport, log=self.log)   # GitLab's name for the token, asked in the background
         self.families = family.Families()      # brain-kit's listing per repo (大需求 and their 小需求), made in the background
         self.sync = progress.Sync(self.data_dir, self.log)     # pushes at Lean's checkpoints, fetches every few minutes
         self._big_file = self.data_dir / "big.json"
@@ -186,6 +186,8 @@ class Service:
                 self.repos[rid] = Repo(rid, path, cfg)
             except Exception as exc:  # noqa: BLE001
                 self.repo_errors[rid] = (path, str(exc).split("\n", 1)[0][:300])
+        for r in self.repos.values():   # GitLab's answer about the token is there before the first page asks
+            self.who.asked(self._gitlab_of(r)[0])
         self._eval.clear()
         self._trace.clear()
         self.crew = self.crew_sync()
@@ -364,23 +366,14 @@ class Service:
             raise AppError("没有这个仓库", "no_repo", 404)
         return self.repos[rid]
 
-    def me(self) -> str | None:
-        """Who this machine says the person is: $BRAIN_USER, else the name brain-kit goes by in a repo (never a token)."""
-        who = os.environ.get("BRAIN_USER", "").strip().lower()
-        if not who:
-            for r in self.repos.values():
-                who = self.me_in(r) or ""
-                if who:
-                    break
-        return who or None
-
     def me_in(self, repo: Repo) -> str | None:
-        """The name brain-kit goes by in *repo* (identity.of): $BRAIN_USER, git config brain.user, or the login name in
-        a repo without GitLab when brain-kit falls back to it. GitLab's username (with a token) is not asked for."""
-        return identity.of(repo.path, self._gitlab_of(repo)[0], token=False)["name"]
+        """The name brain-kit goes by in *repo* (identity.Who): GitLab's username for the token, $BRAIN_USER, git config
+        brain.user, or the login name in a repo without GitLab when brain-kit falls back to it. None: the app cannot
+        tell, and none of the repo's requirements with an owner are the person's."""
+        return self._me_view(repo)["name"]
 
-    def _me_view(self, repo: Repo, token: bool) -> dict[str, Any]:
-        return identity.of(repo.path, self._gitlab_of(repo)[0], token=token)
+    def _me_view(self, repo: Repo) -> dict[str, Any]:
+        return self.who.of(repo.path, self._gitlab_of(repo)[0])
 
     def _sessions_snapshot(self) -> dict[str, Any]:
         """{scope: [session rows]} and credits per scope, read on the event loop."""
@@ -409,10 +402,7 @@ class Service:
         return str(g.get("base") or ""), str(g.get("project") or "")
 
     def _token_present(self) -> bool:
-        try:
-            return bool(bk.m("rest").read_token())
-        except Exception:  # noqa: BLE001 - a token file others can read is refused, as brain-kit does
-            return False
+        return bool(identity.token())
 
     # ---- 交付总览 ------------------------------------------------------------------------------------- #
 
@@ -1083,7 +1073,7 @@ class Service:
         if not out["ok"]:
             out["problem"] = out.get("problem") or problems.who_row(out["output"], repo=repo.path)
             if (out["problem"] or {}).get("fix") == "me":
-                out["me"] = await asyncio.to_thread(self._me_view, repo, await asyncio.to_thread(self._token_present))
+                out["me"] = await asyncio.to_thread(self._me_view, repo)
             return out
         scope = scope_of(repo.id, out["key"])
         await asyncio.to_thread(self.store.append, scope, "app", "在 app 里开工",
@@ -1345,7 +1335,7 @@ class Service:
         todo = await self.todo()
         token = await asyncio.to_thread(self._token_present)
         loaded = {x["id"]: self.repos[x["id"]] for x in repos if x["ok"] and x["id"] in self.repos}
-        mes = await asyncio.to_thread(lambda: {rid: self._me_view(r, token) for rid, r in loaded.items()})
+        mes = await asyncio.to_thread(lambda: {rid: self._me_view(r) for rid, r in loaded.items()})
         syncs = await asyncio.to_thread(lambda: {rid: scrub_tree(self.sync.repo_view(r, self._push_ctx(r)), self.scrub)
                                                  for rid, r in loaded.items()})
         for x in repos:
@@ -1400,7 +1390,7 @@ class Service:
         """检查: read only (see importer.inspect)."""
         token = await asyncio.to_thread(self._token_present)
         got = await asyncio.to_thread(importer.inspect, body.get("path"), listed=list(self.settings["repos"]),
-                                      records=self.imports, token=token, team_of=runner_repo_at)
+                                      records=self.imports, token=token, who=self.who, team_of=runner_repo_at)
         return scrub_tree(got, self.scrub)
 
     def _start_job(self, kind: str, target: str, steps: tuple, work: Callable[[Callable[..., None]], Any],
@@ -1494,12 +1484,11 @@ class Service:
             raise AppError(str(exc), "invalid_name")
         rid = importer.listed_id(top, list(self.settings["repos"]))
         repo = self.repos.get(rid or "")
-        token = await asyncio.to_thread(self._token_present)
         if repo is not None:
-            me = await asyncio.to_thread(self._me_view, repo, token)
+            me = await asyncio.to_thread(self._me_view, repo)
         else:
             base = await asyncio.to_thread(lambda: ((installer._kit_of(top) or {}).get("gitlab") or {}).get("base") or "")
-            me = await asyncio.to_thread(lambda: identity.of(top, base, token=token))
+            me = await asyncio.to_thread(self.who.of, top, base)
         self.log.info("brain: git config brain.user set in %s", top)
         return {"ok": True, "text": "你在这个仓库的名字设成了 %s" % name, "raw": "git config brain.user %s" % name,
                 "me": me, "status": await self.status()}

@@ -37,10 +37,10 @@
     },
     "pending": null,
     "me": {
-     "name": null,
+     "name": "alice",
      "source": "token",
      "gitlab": "https://gitlab.example.com",
-     "text": "GitLab 令牌认你：用你在 GitLab 上的用户名",
+     "text": "alice（GitLab 按你的令牌认出来的）",
      "ask": false,
      "label": "",
      "why": "",
@@ -87,10 +87,10 @@
      "gitlab_project": "shop/shop-order"
     },
     "me": {
-     "name": null,
+     "name": "alice",
      "source": "token",
      "gitlab": "https://gitlab.example.com",
-     "text": "GitLab 令牌认你：用你在 GitLab 上的用户名",
+     "text": "alice（GitLab 按你的令牌认出来的）",
      "ask": false,
      "label": "",
      "why": "",
@@ -180,7 +180,7 @@
   "me": {
    "user": "alice",
    "token": true,
-   "how": "GitLab 令牌（有）；alice（这台机器的登录名：这个仓库不用 GitLab）"
+   "how": "GitLab 令牌（有）；alice（GitLab 按你的令牌认出来的）"
   },
   "team": {
    "enabled": false,
@@ -23262,10 +23262,10 @@
  },
  "crew_not_ready": "KiroCrew 里还没有 brain-dev。在「设置」的 KiroCrew 里点「装上 brain-dev」：装上 brain-kit 带的那一份；没有它，Lean 的拦截在 KiroCrew 里不会跑",
  "me_token": {
-  "name": null,
+  "name": "alice",
   "source": "token",
   "gitlab": "https://gitlab.example.com",
-  "text": "GitLab 令牌认你：用你在 GitLab 上的用户名",
+  "text": "alice（GitLab 按你的令牌认出来的）",
   "ask": false,
   "label": "",
   "why": "",

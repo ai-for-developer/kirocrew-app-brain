@@ -37,7 +37,7 @@
         "name": "alice",
         "source": "git",
         "gitlab": "https://gitlab.example.com",
-        "text": "alice（你在这个仓库的名字）",
+        "text": "alice（git 设置里的 brain.user）",
         "ask": false,
         "label": "",
         "why": "",
@@ -106,7 +106,7 @@
   "me": {
     "user": "alice",
     "token": true,
-    "how": "GitLab 令牌（有）；alice（你在这个仓库的名字）"
+    "how": "GitLab 令牌（有）；alice（git 设置里的 brain.user）"
   },
   "team": {
     "enabled": false,
