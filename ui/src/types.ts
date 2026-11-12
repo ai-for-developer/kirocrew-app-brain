@@ -433,11 +433,13 @@ export interface RepoSync {
 }
 
 /**
- * Who brain-kit says the person is in a repo, by its own rule: a GitLab token (GitLab's username), $BRAIN_USER or git
- * config brain.user, else the login name in a repo without GitLab (a brain-kit that falls back to it). Never a token.
+ * Who brain-kit says the person is in a repo, by its own rule: a GitLab token (GitLab's username, asked by the backend),
+ * $BRAIN_USER or git config brain.user, else the login name in a repo without GitLab (a brain-kit that falls back to
+ * it). Never a token.
  */
 export interface RepoMe {
-  /** the name brain-kit goes by there; null: GitLab's (with a token), or brain-kit would not know */
+  /** the name brain-kit goes by there; null: the app cannot tell (no requirement with an owner is the person's there):
+   * GitLab has not said yet (source token, nothing asked), or brain-kit would not know */
   name: string | null
   source: 'token' | 'env' | 'git' | 'login' | 'none'
   /** kit.json gitlab.base ('' without GitLab) */
@@ -1510,8 +1512,8 @@ export interface ReqBoard {
   /** something is at work right now (a session busy, the runner running): the board glows */
   live: boolean
   /** the owner (the sample's orchestrator slot) */
-  /** *me*: the one reading is the owner; *you*: the board calls the owner 你 (they are, or nobody known reads it on their
-   * machine): the page says 你 and offers 开工 only then (an older backend did not say) */
+  /** *me*: the one reading is the owner; *you*: the board calls the owner 你 (they are, or nobody has it; a reader the
+   * app cannot tell is not someone's 你): the page says 你 and offers 开工 only then (an older backend did not say) */
   person: { status: ActorStatus; doing: string; owner: string | null; me: boolean; you?: boolean }
   actors: Actor[]
   /** the way's edges (from, to) */
