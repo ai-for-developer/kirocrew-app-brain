@@ -289,6 +289,16 @@ def review_current(review_at: float | None, exists: bool, evs: list[dict[str, An
     return review_at is None or not verified or review_at > max(verified)
 
 
+def verify_fails(evs: list[dict[str, Any]]) -> int:
+    """The `lean verify` runs that failed in a row since the last one that passed (0 when the last one passed or none
+    ran): how many rounds the AI has been fixing the same red checks."""
+    n = 0
+    for e in evs:
+        if e.get("event") == "VERIFY":
+            n = 0 if _data(e).get("ok") else n + 1
+    return n
+
+
 def idle_step(rows: list[dict[str, Any]], *, review_ok: bool, default_branch: str) -> str:
     """What the person tells an idle local session, from Lean's state: the stage it stopped in, or the next one (the
     release starts with a review in a new session: the one that wrote the code cannot review it)."""

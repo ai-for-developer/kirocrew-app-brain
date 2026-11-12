@@ -233,7 +233,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-3-7f3a",
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r1",
@@ -302,7 +303,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r1",
@@ -369,7 +371,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r1",
@@ -431,7 +434,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-7-2b9f",
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r1",
@@ -485,7 +489,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r1",
@@ -546,7 +551,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-2-1c4e",
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r1",
@@ -600,7 +606,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r1",
@@ -662,7 +669,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r1",
@@ -720,7 +728,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-1-3d8e",
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r1",
@@ -852,7 +861,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r1",
@@ -938,7 +948,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r1",
@@ -1033,7 +1044,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r1",
@@ -1136,7 +1148,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r3",
@@ -1195,7 +1208,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r3",
@@ -1254,7 +1268,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r3",
@@ -1313,7 +1328,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r3",
@@ -1372,7 +1388,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r3",
@@ -1429,7 +1446,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r3",
@@ -1488,7 +1506,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r3",
@@ -1547,7 +1566,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r3",
@@ -1606,7 +1626,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r3",
@@ -1665,7 +1686,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r3",
@@ -1727,7 +1749,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    {
     "repo": "r4",
@@ -1785,7 +1808,8 @@
     "local_only": true,
     "session_url": "/chat?sid=brain-TOOL-1-5a2c",
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    }
   ],
   "overlaps": [
@@ -2426,7 +2450,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -2495,7 +2520,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -2562,7 +2588,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -2624,7 +2651,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -2678,7 +2706,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -2739,7 +2768,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -2793,7 +2823,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -2855,7 +2886,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -2913,7 +2945,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -3045,7 +3078,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -3131,7 +3165,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -3226,7 +3261,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -3329,7 +3365,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -3388,7 +3425,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -3447,7 +3485,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -3506,7 +3545,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -3565,7 +3605,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -3622,7 +3663,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -3681,7 +3723,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -3740,7 +3783,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -3799,7 +3843,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -3858,7 +3903,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -3920,7 +3966,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r4",
@@ -3978,7 +4025,8 @@
       "local_only": true,
       "session_url": "/chat?sid=brain-TOOL-1-5a2c",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      }
     ],
     "overlaps": [
@@ -4617,7 +4665,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -4686,7 +4735,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -4753,7 +4803,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -4815,7 +4866,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -4869,7 +4921,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -4930,7 +4983,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -4984,7 +5038,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -5046,7 +5101,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -5104,7 +5160,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -5236,7 +5293,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -5322,7 +5380,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -5417,7 +5476,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -5520,7 +5580,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      }
     ],
     "overlaps": [
@@ -6215,7 +6276,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -6274,7 +6336,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -6333,7 +6396,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -6392,7 +6456,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -6449,7 +6514,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -6508,7 +6574,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -6567,7 +6634,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -6626,7 +6694,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -6685,7 +6754,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -6747,7 +6817,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      }
     ],
     "overlaps": [],
@@ -7227,7 +7298,8 @@
       "local_only": true,
       "session_url": "/chat?sid=brain-TOOL-1-5a2c",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      }
     ],
     "overlaps": [],
@@ -7486,6 +7558,7 @@
        "skipped_phases": []
       },
       "stage": null,
+      "verify_fails": 0,
       "waits": {
        "who": "bridge",
        "text": "签名服务在签接手合同",
@@ -7548,6 +7621,7 @@
        ]
       },
       "stage": "做完 2 · 跳过 3 · 在做：功能设计 · 构思整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "product",
        "text": "等产品在 MR 上回答 D-2（设计）",
@@ -7613,6 +7687,7 @@
        ]
       },
       "stage": "做完 4 · 跳过 7 · 在做：发布 · 构思、运维两段整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "product",
        "text": "等产品在 MR 上验收 D-3（approve / reject）",
@@ -7677,6 +7752,7 @@
        ]
       },
       "stage": "做完 2 · 跳过 6 · 在做：代码生成 · 构思整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "people",
        "text": "D-1 的回答签名服务不签：看运行机页的拒签原因",
@@ -8007,7 +8083,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -8076,7 +8153,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -8143,7 +8221,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -8205,7 +8284,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -8259,7 +8339,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -8320,7 +8401,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -8374,7 +8456,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -8436,7 +8519,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -8494,7 +8578,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -8626,7 +8711,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -8712,7 +8798,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -8807,7 +8894,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -8910,7 +8998,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -8969,7 +9058,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -9028,7 +9118,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -9087,7 +9178,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -9146,7 +9238,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -9203,7 +9296,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -9262,7 +9356,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -9321,7 +9416,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -9380,7 +9476,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -9439,7 +9536,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -9501,7 +9599,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r4",
@@ -9559,7 +9658,8 @@
       "local_only": true,
       "session_url": "/chat?sid=brain-TOOL-1-5a2c",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      }
     ],
     "overlaps": [
@@ -9817,7 +9917,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -9886,7 +9987,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -9953,7 +10055,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -10015,7 +10118,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -10069,7 +10173,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -10130,7 +10235,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -10184,7 +10290,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -10246,7 +10353,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -10304,7 +10412,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -10436,7 +10545,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -10522,7 +10632,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -10617,7 +10728,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -10720,7 +10832,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      }
     ],
     "overlaps": [
@@ -11148,7 +11261,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -11207,7 +11321,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -11266,7 +11381,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -11325,7 +11441,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -11382,7 +11499,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -11441,7 +11559,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -11500,7 +11619,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -11559,7 +11679,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -11618,7 +11739,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -11680,7 +11802,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      }
     ],
     "overlaps": [],
@@ -11911,7 +12034,8 @@
       "local_only": true,
       "session_url": "/chat?sid=brain-TOOL-1-5a2c",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      }
     ],
     "overlaps": [],
@@ -12115,6 +12239,7 @@
        "skipped_phases": []
       },
       "stage": null,
+      "verify_fails": 0,
       "waits": {
        "who": "bridge",
        "text": "签名服务在签接手合同",
@@ -12177,6 +12302,7 @@
        ]
       },
       "stage": "做完 2 · 跳过 3 · 在做：功能设计 · 构思整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "product",
        "text": "等产品在 MR 上回答 D-2（设计）",
@@ -12242,6 +12368,7 @@
        ]
       },
       "stage": "做完 4 · 跳过 7 · 在做：发布 · 构思、运维两段整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "product",
        "text": "等产品在 MR 上验收 D-3（approve / reject）",
@@ -12306,6 +12433,7 @@
        ]
       },
       "stage": "做完 2 · 跳过 6 · 在做：代码生成 · 构思整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "people",
        "text": "D-1 的回答签名服务不签：看运行机页的拒签原因",
@@ -12573,7 +12701,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -12635,7 +12764,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -12689,7 +12819,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -12750,7 +12881,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -12804,7 +12936,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -12866,7 +12999,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -12924,7 +13058,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -13056,7 +13191,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -13142,7 +13278,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -13237,7 +13374,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -13340,7 +13478,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -13399,7 +13538,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -13458,7 +13598,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -13517,7 +13658,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -13576,7 +13718,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -13633,7 +13776,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -13692,7 +13836,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -13751,7 +13896,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -13810,7 +13956,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -13869,7 +14016,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r4",
@@ -13927,7 +14075,8 @@
       "local_only": true,
       "session_url": "/chat?sid=brain-TOOL-1-5a2c",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "runner",
@@ -13958,6 +14107,7 @@
        "skipped_phases": []
       },
       "stage": null,
+      "verify_fails": 0,
       "waits": {
        "who": "bridge",
        "text": "签名服务在签接手合同",
@@ -14020,6 +14170,7 @@
        ]
       },
       "stage": "做完 2 · 跳过 3 · 在做：功能设计 · 构思整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "product",
        "text": "等产品在 MR 上回答 D-2（设计）",
@@ -14085,6 +14236,7 @@
        ]
       },
       "stage": "做完 4 · 跳过 7 · 在做：发布 · 构思、运维两段整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "product",
        "text": "等产品在 MR 上验收 D-3（approve / reject）",
@@ -14149,6 +14301,7 @@
        ]
       },
       "stage": "做完 2 · 跳过 6 · 在做：代码生成 · 构思整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "people",
        "text": "D-1 的回答签名服务不签：看运行机页的拒签原因",
@@ -14817,7 +14970,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -14879,7 +15033,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -14933,7 +15088,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -14994,7 +15150,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -15048,7 +15205,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -15110,7 +15268,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -15168,7 +15327,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -15300,7 +15460,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -15386,7 +15547,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -15481,7 +15643,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -15584,7 +15747,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "runner",
@@ -15615,6 +15779,7 @@
        "skipped_phases": []
       },
       "stage": null,
+      "verify_fails": 0,
       "waits": {
        "who": "bridge",
        "text": "签名服务在签接手合同",
@@ -15677,6 +15842,7 @@
        ]
       },
       "stage": "做完 2 · 跳过 3 · 在做：功能设计 · 构思整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "product",
        "text": "等产品在 MR 上回答 D-2（设计）",
@@ -15742,6 +15908,7 @@
        ]
       },
       "stage": "做完 4 · 跳过 7 · 在做：发布 · 构思、运维两段整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "product",
        "text": "等产品在 MR 上验收 D-3（approve / reject）",
@@ -16468,7 +16635,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -16527,7 +16695,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -16586,7 +16755,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -16645,7 +16815,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -16702,7 +16873,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -16761,7 +16933,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -16820,7 +16993,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -16879,7 +17053,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -16938,7 +17113,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "runner",
@@ -16971,6 +17147,7 @@
        ]
       },
       "stage": "做完 2 · 跳过 6 · 在做：代码生成 · 构思整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "people",
        "text": "D-1 的回答签名服务不签：看运行机页的拒签原因",
@@ -17480,7 +17657,8 @@
       "local_only": true,
       "session_url": "/chat?sid=brain-TOOL-1-5a2c",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      }
     ],
     "overlaps": [],
@@ -17739,6 +17917,7 @@
        "skipped_phases": []
       },
       "stage": null,
+      "verify_fails": 0,
       "waits": {
        "who": "bridge",
        "text": "签名服务在签接手合同",
@@ -17801,6 +17980,7 @@
        ]
       },
       "stage": "做完 2 · 跳过 3 · 在做：功能设计 · 构思整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "product",
        "text": "等产品在 MR 上回答 D-2（设计）",
@@ -17866,6 +18046,7 @@
        ]
       },
       "stage": "做完 4 · 跳过 7 · 在做：发布 · 构思、运维两段整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "product",
        "text": "等产品在 MR 上验收 D-3（approve / reject）",
@@ -17930,6 +18111,7 @@
        ]
       },
       "stage": "做完 2 · 跳过 6 · 在做：代码生成 · 构思整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "people",
        "text": "D-1 的回答签名服务不签：看运行机页的拒签原因",
@@ -18260,7 +18442,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -18322,7 +18505,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -18376,7 +18560,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -18437,7 +18622,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -18491,7 +18677,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -18553,7 +18740,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -18611,7 +18799,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -18743,7 +18932,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -18829,7 +19019,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -18924,7 +19115,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -19027,7 +19219,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -19086,7 +19279,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -19145,7 +19339,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -19204,7 +19399,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -19263,7 +19459,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -19320,7 +19517,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -19379,7 +19577,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -19438,7 +19637,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -19497,7 +19697,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -19556,7 +19757,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r4",
@@ -19614,7 +19816,8 @@
       "local_only": true,
       "session_url": "/chat?sid=brain-TOOL-1-5a2c",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "runner",
@@ -19645,6 +19848,7 @@
        "skipped_phases": []
       },
       "stage": null,
+      "verify_fails": 0,
       "waits": {
        "who": "bridge",
        "text": "签名服务在签接手合同",
@@ -19707,6 +19911,7 @@
        ]
       },
       "stage": "做完 2 · 跳过 3 · 在做：功能设计 · 构思整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "product",
        "text": "等产品在 MR 上回答 D-2（设计）",
@@ -19772,6 +19977,7 @@
        ]
       },
       "stage": "做完 4 · 跳过 7 · 在做：发布 · 构思、运维两段整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "product",
        "text": "等产品在 MR 上验收 D-3（approve / reject）",
@@ -19836,6 +20042,7 @@
        ]
       },
       "stage": "做完 2 · 跳过 6 · 在做：代码生成 · 构思整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "people",
        "text": "D-1 的回答签名服务不签：看运行机页的拒签原因",
@@ -20123,7 +20330,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -20185,7 +20393,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -20239,7 +20448,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -20300,7 +20510,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -20354,7 +20565,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -20416,7 +20628,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -20474,7 +20687,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -20606,7 +20820,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -20692,7 +20907,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -20787,7 +21003,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r1",
@@ -20890,7 +21107,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "runner",
@@ -20921,6 +21139,7 @@
        "skipped_phases": []
       },
       "stage": null,
+      "verify_fails": 0,
       "waits": {
        "who": "bridge",
        "text": "签名服务在签接手合同",
@@ -20983,6 +21202,7 @@
        ]
       },
       "stage": "做完 2 · 跳过 3 · 在做：功能设计 · 构思整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "product",
        "text": "等产品在 MR 上回答 D-2（设计）",
@@ -21048,6 +21268,7 @@
        ]
       },
       "stage": "做完 4 · 跳过 7 · 在做：发布 · 构思、运维两段整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "product",
        "text": "等产品在 MR 上验收 D-3（approve / reject）",
@@ -21507,7 +21728,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -21566,7 +21788,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -21625,7 +21848,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -21684,7 +21908,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -21741,7 +21966,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -21800,7 +22026,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -21859,7 +22086,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -21918,7 +22146,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "r3",
@@ -21977,7 +22206,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      },
      {
       "repo": "runner",
@@ -22010,6 +22240,7 @@
        ]
       },
       "stage": "做完 2 · 跳过 6 · 在做：代码生成 · 构思整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "people",
        "text": "D-1 的回答签名服务不签：看运行机页的拒签原因",
@@ -22270,7 +22501,8 @@
       "local_only": true,
       "session_url": "/chat?sid=brain-TOOL-1-5a2c",
       "family": null,
-      "home": null
+      "home": null,
+      "verify_fails": 0
      }
     ],
     "overlaps": [],
@@ -22474,6 +22706,7 @@
        "skipped_phases": []
       },
       "stage": null,
+      "verify_fails": 0,
       "waits": {
        "who": "bridge",
        "text": "签名服务在签接手合同",
@@ -22536,6 +22769,7 @@
        ]
       },
       "stage": "做完 2 · 跳过 3 · 在做：功能设计 · 构思整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "product",
        "text": "等产品在 MR 上回答 D-2（设计）",
@@ -22601,6 +22835,7 @@
        ]
       },
       "stage": "做完 4 · 跳过 7 · 在做：发布 · 构思、运维两段整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "product",
        "text": "等产品在 MR 上验收 D-3（approve / reject）",
@@ -22665,6 +22900,7 @@
        ]
       },
       "stage": "做完 2 · 跳过 6 · 在做：代码生成 · 构思整段不需要",
+      "verify_fails": 0,
       "waits": {
        "who": "people",
        "text": "D-1 的回答签名服务不签：看运行机页的拒签原因",
@@ -23711,7 +23947,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-2-1c4e",
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/alice/PAY-2-refund-id",
    "base": "main",
@@ -26040,7 +26277,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-3-7f3a",
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/alice/PAY-3-refund-export",
    "base": "main",
@@ -27815,7 +28053,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/carol/PAY-4-merchant-split",
    "base": "main",
@@ -29174,7 +29413,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/alice/PAY-5-callback-retry",
    "base": "main",
@@ -31005,7 +31245,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-7-2b9f",
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/alice/PAY-7-refund-reason",
    "base": "main",
@@ -32317,7 +32558,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": null,
    "base": "main",
@@ -32736,7 +32978,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": null,
    "base": "main",
@@ -33163,7 +33406,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/alice/PAY-10-refund-confirm",
    "base": "main",
@@ -34414,7 +34658,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-1-3d8e",
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/alice/PAY-1-refund-stats",
    "base": "main",
@@ -35768,7 +36013,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/alice/PAY-11-big",
    "base": "main",
@@ -37058,7 +37304,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/alice/PAY-12-api",
    "base": "main",
@@ -37836,7 +38083,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/bob/PAY-13-web",
    "base": "main",
@@ -38453,7 +38701,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": null,
    "base": "main",
@@ -38870,7 +39119,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/erin/ORD-1-order-1",
    "base": "main",
@@ -40761,7 +41011,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/dave/ORD-2-order-2",
    "base": "main",
@@ -42753,7 +43004,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/erin/ORD-3-order-3",
    "base": "main",
@@ -44788,7 +45040,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/dave/ORD-4-order-4",
    "base": "main",
@@ -46701,7 +46954,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/erin/ORD-5-order-5",
    "base": "main",
@@ -48049,7 +48303,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/dave/ORD-6-order-6",
    "base": "main",
@@ -50133,7 +50388,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/erin/ORD-7-order-7",
    "base": "main",
@@ -52037,7 +52293,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/dave/ORD-8-order-8",
    "base": "main",
@@ -54116,7 +54373,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/erin/ORD-9-order-9",
    "base": "main",
@@ -56123,7 +56381,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/erin/ORD-10-wecom-push",
    "base": "main",
@@ -57412,7 +57671,8 @@
     "local_only": true,
     "session_url": "/chat?sid=brain-TOOL-1-5a2c",
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "branch": "ai/alice/TOOL-1-price-import",
    "base": "main",
@@ -58158,6 +58418,7 @@
      "skipped_phases": []
     },
     "stage": null,
+    "verify_fails": 0,
     "waits": {
      "who": "bridge",
      "text": "签名服务在签接手合同",
@@ -58588,6 +58849,7 @@
      ]
     },
     "stage": "做完 2 · 跳过 3 · 在做：功能设计 · 构思整段不需要",
+    "verify_fails": 0,
     "waits": {
      "who": "product",
      "text": "等产品在 MR 上回答 D-2（设计）",
@@ -59955,6 +60217,7 @@
      ]
     },
     "stage": "做完 4 · 跳过 7 · 在做：发布 · 构思、运维两段整段不需要",
+    "verify_fails": 0,
     "waits": {
      "who": "product",
      "text": "等产品在 MR 上验收 D-3（approve / reject）",
@@ -61785,6 +62048,7 @@
      ]
     },
     "stage": "全部做完（跳过 7） · 构思、运维两段整段不需要",
+    "verify_fails": 0,
     "waits": {
      "who": "nobody",
      "text": "MR 已合并，运行结束",
@@ -64154,6 +64418,7 @@
      ]
     },
     "stage": "做完 2 · 跳过 6 · 在做：代码生成 · 构思整段不需要",
+    "verify_fails": 0,
     "waits": {
      "who": "people",
      "text": "D-1 的回答签名服务不签：看运行机页的拒签原因",
@@ -65557,7 +65822,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-3-7f3a",
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "本机的工作目录",
    "run": {
@@ -66416,7 +66682,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-2-1c4e",
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -67265,7 +67532,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "分支 （没在这台机器上检出）",
    "run": {
@@ -67934,7 +68202,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "这台机器的工作区 /Users/alice/workplace/brain-app/PAY-5-callback-retry",
    "run": {
@@ -68676,7 +68945,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-7-2b9f",
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "这台机器的工作区 /Users/alice/workplace/brain-app/PAY-7-refund-reason",
    "run": {
@@ -69291,7 +69561,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "这台机器的工作区 None",
    "run": null,
@@ -69690,7 +69961,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "这台机器的工作区 None",
    "run": null,
@@ -70097,7 +70369,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "分支 （没在这台机器上检出）",
    "run": {
@@ -70696,7 +70969,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-1-3d8e",
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "这台机器的工作区 /Users/alice/workplace/brain-app/shop-pay/refund-stats",
    "run": {
@@ -71386,7 +71660,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "这台机器的工作区 /Users/alice/workplace/brain-app/shop-pay/big",
    "run": {
@@ -71992,7 +72267,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "这台机器的工作区 None",
    "run": {
@@ -72499,7 +72775,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "这台机器的工作区 None",
    "run": {
@@ -72990,7 +73267,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "这台机器的工作区 None",
    "run": null,
@@ -73394,7 +73672,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -74088,7 +74367,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -74798,7 +75078,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -75519,7 +75800,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -76211,7 +76493,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -76813,7 +77096,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -77539,7 +77823,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -78236,7 +78521,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -78972,7 +79258,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -79688,7 +79975,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "分支 （没在这台机器上检出）",
    "run": {
@@ -80287,7 +80575,8 @@
     "local_only": true,
     "session_url": "/chat?sid=brain-TOOL-1-5a2c",
     "family": null,
-    "home": null
+    "home": null,
+    "verify_fails": 0
    },
    "where_label": "这台机器的工作区 /Users/alice/workplace/brain-app/shop-tools/price-import",
    "run": {
@@ -80748,6 +81037,7 @@
      "skipped_phases": []
     },
     "stage": null,
+    "verify_fails": 0,
     "waits": {
      "who": "bridge",
      "text": "签名服务在签接手合同",
@@ -81150,6 +81440,7 @@
      ]
     },
     "stage": "做完 2 · 跳过 3 · 在做：功能设计 · 构思整段不需要",
+    "verify_fails": 0,
     "waits": {
      "who": "product",
      "text": "等产品在 MR 上回答 D-2（设计）",
@@ -81817,6 +82108,7 @@
      ]
     },
     "stage": "做完 4 · 跳过 7 · 在做：发布 · 构思、运维两段整段不需要",
+    "verify_fails": 0,
     "waits": {
      "who": "product",
      "text": "等产品在 MR 上验收 D-3（approve / reject）",
@@ -82553,6 +82845,7 @@
      ]
     },
     "stage": "全部做完（跳过 7） · 构思、运维两段整段不需要",
+    "verify_fails": 0,
     "waits": {
      "who": "nobody",
      "text": "MR 已合并，运行结束",
@@ -83421,6 +83714,7 @@
      ]
     },
     "stage": "做完 2 · 跳过 6 · 在做：代码生成 · 构思整段不需要",
+    "verify_fails": 0,
     "waits": {
      "who": "people",
      "text": "D-1 的回答签名服务不签：看运行机页的拒签原因",

@@ -152,6 +152,8 @@ export interface Requirement {
   /** the current Lean stage as text, as the backend writes it: 「9/11 代码生成」 (started), 「3/11 用户故事（下一步）」
    * (todo), 「11/11 发布（做完）」 (done or skipped); null when Lean recorded no stage */
   stage: string | null
+  /** Lean's verify runs that failed in a row since the last one that passed (0: the last passed, or none ran) */
+  verify_fails: number
   waits: Waits
   /** the first line of its 变更说明 (brain mr-desc's 一句话, from runs/<KEY>/MR.md or the run's records at the commit
    * the row is read at); null before it has a run, while it is being made, or when brain-kit cannot make one */

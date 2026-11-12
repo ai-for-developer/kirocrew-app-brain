@@ -90,7 +90,8 @@ def base_row(repo_id: str, f: dict[str, Any], *, local_only: bool = False) -> di
         "home": None,        # a runner row: the listed repo (r1 …) of its GitLab project, filled in by the service
         "source": str(claim.get("source") or "product"), "state": "claimed", "state_label": STATE_LABEL["claimed"],
         "where": f.get("where") or "claim", "branch": f.get("branch"), "intent": run.get("intent"),
-        "lean": lean, "stage": lean_view.stage_text(lean), "waits": waits("nobody", "none", ""),
+        "lean": lean, "stage": lean_view.stage_text(lean), "verify_fails": lean_view.verify_fails(f.get("events") or []),
+        "waits": waits("nobody", "none", ""),
         "summary": None,     # the first line of its 变更说明 (mrdesc_view), filled in by the service
         "credits": None,
         "updated_at": None, "mr": None, "worktree": f.get("worktree"), "run_ids": [], "sessions": 0,

@@ -578,7 +578,8 @@ def classified(r: Req, row: dict, *, park: dict | None = None, mr: dict | None =
     f = facts or r.facts(park)
     got = deliveries.base_row(r.repo, f, local_only=local_only)
     deliveries.classify(got, f, mr=mr, slot=slot, cfg=CFG, me=ME, reflected=reflected, now=T0, at_handover=at_handover)
-    row.update({k: got[k] for k in ("state", "state_label", "lean", "stage", "waits", "local_only", "where", "worktree")})
+    row.update({k: got[k] for k in ("state", "state_label", "lean", "stage", "verify_fails", "waits", "local_only", "where",
+                                    "worktree")})
     # the head says where it is, the facts list its checkout: never 「这台机器没检出」 above a 工作目录 on this machine
     assert not (row["where"] == "branch" and row["worktree"]), r.key
     row.setdefault("family", None)     # service._row: family.families' (none for a requirement outside a family)
