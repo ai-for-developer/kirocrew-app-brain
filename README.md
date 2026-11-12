@@ -295,7 +295,7 @@ shown folded): `backend/core/problems.py`.
   every 15 s. It also fetches each repo with a remote every `fetch_every_min` minutes with `repo.fetch()`
   (「从远端取最新」's own). A repo has one git over the network at a time, its fetches and its pushes: the loop skips a
   repo still fetching (a push due then goes the next round), and the button waits for that fetch. A failure is logged
-  once until a fetch works again. With a GitLab token and no `git config brain.user`,
+  once until a fetch works again. git's words from a push or a fetch keep no `user:token@` from a URL. With a GitLab token and no `git config brain.user`,
   the app cannot tell the person's name in a repo (it does not ask GitLab), so it pushes nothing there, and 设置 says
   so with the line to type.
 

@@ -50,7 +50,7 @@ def scope_of(rid: str, key: str) -> str:
 
 SCRUB_KEYS = ("text", "why", "question", "label", "detail", "status", "next", "open_questions", "output", "reasons",
               "findings", "review", "blocking", "error", "session_error", "notes", "warnings", "problems", "summary",
-              "first", "todo", "raw", "doing", "facts", "title", "name", "checks")
+              "first", "todo", "raw", "doing", "facts", "title", "name", "checks", "push_why", "push_cmd")
 
 
 def scrub_tree(obj: Any, scrub: Callable[[str], str], key: str = "") -> Any:
@@ -1346,7 +1346,8 @@ class Service:
         token = await asyncio.to_thread(self._token_present)
         loaded = {x["id"]: self.repos[x["id"]] for x in repos if x["ok"] and x["id"] in self.repos}
         mes = await asyncio.to_thread(lambda: {rid: self._me_view(r, token) for rid, r in loaded.items()})
-        syncs = await asyncio.to_thread(lambda: {rid: self.sync.repo_view(r, self._push_ctx(r)) for rid, r in loaded.items()})
+        syncs = await asyncio.to_thread(lambda: {rid: scrub_tree(self.sync.repo_view(r, self._push_ctx(r)), self.scrub)
+                                                 for rid, r in loaded.items()})
         for x in repos:
             x["me"] = mes.get(x["id"])
             x["sync"] = syncs.get(x["id"])

@@ -297,9 +297,10 @@ class Fetches:
         try:
             with self._guard:
                 self._started[repo.path] = self.clock()
-            got = repo.fetch()
+            got = dict(repo.fetch())
         finally:
             lock.release()
+        got["raw"] = importer.hide_credentials(str(got.get("raw") or ""))   # a remote URL may carry user:token@
         last = {"at": self.now(), "ok": bool(got.get("ok")), "text": str(got.get("text") or ""),
                 "raw": str(got.get("raw") or "")}
         with self._guard:

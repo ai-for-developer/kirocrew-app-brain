@@ -206,6 +206,16 @@ def test_a_failed_fetch_is_said_once_until_it_works_again(caplog):
     assert f.last(repo.path)["ok"] is False and f.last(repo.path)["text"] == down["text"]
 
 
+def test_a_fetch_says_git_words_without_a_password_from_the_remote_url():
+    said = "fatal: Authentication failed for 'https://alice:glpat-0123456789abcdefghij@gitlab.example.com/shop/pay.git/'"
+    repo = SlowRepo([{"ok": False, "text": "从远端取最新没成功：远端不让读", "raw": said}])
+    repo.go.set()
+    f = progress.Fetches(logging.getLogger("brain-test"), clock=lambda: 0.0)
+    got = f.fetch(repo, True)
+    for raw in (got["raw"], f.last(repo.path)["raw"]):      # the button's answer, and what 设置 shows
+        assert "glpat" not in raw and "https://[已隐去]@gitlab.example.com/shop/pay.git/" in raw, raw
+
+
 # ---- the pushes, with real git ----------------------------------------------------------------------------------- #
 
 @needs_brainkit
