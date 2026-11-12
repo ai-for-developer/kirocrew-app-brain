@@ -394,6 +394,32 @@ def test_a_token_only_persons_checkpoint_goes_to_origin(teammates, monkeypatch):
     assert sync["push_why"] == "" and sync["push_cmd"] == ""
 
 
+def test_a_token_only_person_is_you_on_the_team_view_and_their_checkpoint_goes_up(teammates, monkeypatch):
+    """GitLab's name for the token is the team view's 你: alice's lane comes first with what she has open against the
+    limit 开需求 reminds her of, bob's run and claim are his lane and not hers, and her own run branch goes up at a
+    checkpoint."""
+    w = teammates
+    svc = make_service(w.app, [w.repo], transport=WhoAmI(a_token(monkeypatch)))
+
+    async def go():
+        await status_until(svc, named("alice"))
+        await svc.save_settings({"wip_limit": 1})
+        view = await svc.overview("all")
+        tip = checkpoint(w.wt, "stage", "skip", "reverse-engineering", "--reason", "greenfield")
+        tick(svc)
+        return view, tip
+
+    view, tip = started(svc, go)
+    people = view["roster"]["people"]
+    assert [(p["owner"], p["you"]) for p in people] == [("alice", True), ("bob", False)], people
+    assert (people[0]["keys"], people[0]["open"], people[0]["limit"]) == ([w.mine], 1, 1)
+    assert sorted(people[1]["keys"]) == sorted([w.theirs, w.claimed])
+    rows = rows_of(view)
+    assert rows[w.mine]["waits"]["who"] != "people", rows[w.mine]["waits"]
+    assert [rows[k]["waits"]["who"] for k in (w.theirs, w.claimed)] == ["people", "people"]
+    assert on_origin(w.origin) == tip, "her own run branch went up at the checkpoint"
+
+
 def test_with_no_token_and_no_name_a_teammates_requirement_is_not_yours_and_settings_asks(teammates):
     w = teammates
     gl = WhoAmI("no-token-here")
