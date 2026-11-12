@@ -22,8 +22,11 @@ const BRIDGE_HINT = 'bridge.json：带 "signer": {"type": "spool", "spool_dir", 
 
 /** The form: everything but the repos (导入仓库 adds them, 移出列表 removes them; the backend keeps a key left out). */
 type Form = Omit<Settings, 'repos'>
-const formOf = (s: Settings): Form => ({ brainkit: s.brainkit, work_root: s.work_root, team: { ...s.team } })
-const settingsOf = (f: Form): Form => ({ brainkit: f.brainkit.trim(), work_root: f.work_root.trim(), team: { ...f.team } })
+const formOf = (s: Settings): Form => ({
+  brainkit: s.brainkit, work_root: s.work_root, team: { ...s.team },
+  wip_limit: s.wip_limit, wait_timeout_h: s.wait_timeout_h, stale_after_h: s.stale_after_h, verify_fail_limit: s.verify_fail_limit,
+})
+const settingsOf = (f: Form): Form => ({ ...f, brainkit: f.brainkit.trim(), work_root: f.work_root.trim(), team: { ...f.team } })
 
 /** the team runner's two config files (brain-kit's bridge.json and runnerd.json): the field's label, what is typed */
 const TEAM_FIELDS: [Exclude<keyof Settings['team'], 'enabled' | 'dev_same_user'>, string, string][] = [

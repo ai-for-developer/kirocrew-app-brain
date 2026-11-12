@@ -733,7 +733,7 @@ export interface RemoveResult { ok: boolean; text: string; status: Status }
 
 /** POST /settings takes any part of it: a key left out keeps its value (the 设置 form sends no repos: 导入仓库 adds
  * them, 移出列表 removes them). */
-export interface Settings {
+export interface Settings extends TeamLimits {
   /** brain-kit checkout this app imports (read-only to the app) */
   brainkit: string
   /** project repos (brain-kit installed, or on its way) shown on this machine */
@@ -753,6 +753,19 @@ export interface Settings {
 // ---------------------------------------------------------------- GET /overview?repo=<id>|all
 
 export interface Overlap { keys: string[]; paths: string[] }
+
+/** 交付总览's team view limits, kept in 设置 (backend/core/settings.py LIMITS). Working hours are Monday to Friday, 09:00 to
+ * 18:00, this machine's time. */
+export interface TeamLimits {
+  /** requirements a person has open at once: 按人看 marks a person at it red, 开需求 reminds them (it never stops them) */
+  wip_limit: number
+  /** working hours a wait on a person may last before it is 超时 */
+  wait_timeout_h: number
+  /** working hours someone else's run on their own machine may go without new progress before it is 很久没动 */
+  stale_after_h: number
+  /** failed verify runs in a row after which the AI should stop and ask a person */
+  verify_fail_limit: number
+}
 
 export interface EvalMetric {
   id: string

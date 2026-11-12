@@ -10,6 +10,10 @@
                      signer (signer/) holds the key; brain-kit's SpoolSigner talks to it and verifies every signature
     runnerd_config   brain-kit's runnerd.json (empty: runnerd runs elsewhere)
     dev_same_user    local trial only: the signer runs as the same OS user (it could sign whatever the app asks)
+  wip_limit, wait_timeout_h, stale_after_h, verify_fail_limit
+                     交付总览's team view (roster.py): requirements a person has open at once (开需求 reminds them, it
+                     never stops them), working hours a wait on a person may last, working hours someone else's run may
+                     go without new progress, failed verify runs in a row before the AI should stop and ask (LIMITS)
 Settings of an older version (team.signer_spool, team.allowed_signers) are dropped on reading: they are in
 bridge.json's signer block now.
 """
@@ -28,11 +32,17 @@ from .constants import WORK_ROOT
 MAX_REPOS = 20
 TEAM_FIELD = {"bridge_config": "桥的配置文件", "runnerd_config": "运行机的配置文件"}     # 设置's labels
 AGAIN = "：刷新页面再存一次"
+# the team view's limits: (default, smallest, largest, what 设置 calls it)
+LIMITS = {"wip_limit": (3, 1, 20, "每人同时在做的需求上限"),
+          "wait_timeout_h": (4, 1, 200, "等人超过几个工作小时算超时"),
+          "stale_after_h": (8, 1, 400, "几个工作小时没有新进度算很久没动"),
+          "verify_fail_limit": (3, 1, 20, "verify 连续失败几次该停下来问人")}
 
 
 def defaults() -> dict[str, Any]:
     return {"brainkit": bk.default_path(), "repos": [], "work_root": str(WORK_ROOT),
-            "team": {"enabled": False, "bridge_config": "", "runnerd_config": "", "dev_same_user": False}}
+            "team": {"enabled": False, "bridge_config": "", "runnerd_config": "", "dev_same_user": False},
+            **{k: v[0] for k, v in LIMITS.items()}}
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -100,6 +110,13 @@ def check(data: Any) -> tuple[dict[str, Any], list[str]]:
             probs.append("「每个需求的工作目录」要在 ~/workplace 或 ~/workspace 下面（KiroCrew 只让 AI 在那里干活）")
         elif p:
             out["work_root"] = p
+    for k, (_, lo, hi, name) in LIMITS.items():
+        if k in data:
+            v = data[k]
+            if isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi:
+                out[k] = v
+            else:
+                probs.append("「%s」要写 %d 到 %d 的整数" % (name, lo, hi))
     team = data.get("team")
     if team is not None:
         if not isinstance(team, dict):
