@@ -84,19 +84,6 @@ def _stage_label(d: dict[str, Any]) -> str:
     return "%s（%s）" % (label, d["unit"]) if d.get("unit") else label
 
 
-def _cmd_name(cmd: Any) -> str:
-    """The check's short name: its program (pytest, npm test → npm, python -m pytest → pytest)."""
-    words = [w for w in re.split(r"\s+", str(cmd or "").strip()) if w and not re.match(r"^[A-Z_]+=", w)]
-    if not words:
-        return "检查"
-    if len(words) >= 3 and words[0].startswith("python") and words[1] == "-m":
-        return words[2][:16]
-    name = words[0].rsplit("/", 1)[-1]
-    if name in ("npm", "pnpm", "yarn", "npx") and len(words) > 1:
-        return ("%s %s" % (name, words[2] if words[1] == "run" and len(words) > 2 else words[1]))[:16]
-    return name[:16]
-
-
 class _Fold:
     """The actors' state, folded from the events in time order (each change kept: the replay reads it)."""
 
@@ -317,12 +304,12 @@ def events_of(f: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any]
                 detail=True)
         elif ev == "VERIFY":
             res = [r for r in d.get("results") or [] if isinstance(r, dict)] if isinstance(d.get("results"), list) else []
-            bad = [_cmd_name(r.get("cmd")) for r in res if r.get("exit") not in (0, None)]
+            bad = [stages.check_name(r.get("cmd")) for r in res if r.get("exit") not in (0, None)]
             ok = bool(d.get("ok"))
             text = ("自动检查通过（%d 项）" % len(res) if res else "自动检查通过") if ok else \
                 "自动检查没过：%s" % ("、".join(bad[:3]) or "有检查失败")
             add(at, "verify", "branch", "checks", text, ok=ok,
-                results=[[_cmd_name(r.get("cmd")), r.get("exit") in (0, None)] for r in res][:40])
+                results=[[stages.check_name(r.get("cmd")), r.get("exit") in (0, None)] for r in res][:40])
     # the trace: commits, the hand-over and the bridge, questions, the merge
     commits = ((t or {}).get("actions") or {}).get("commits") or []
     hand_sha = None
