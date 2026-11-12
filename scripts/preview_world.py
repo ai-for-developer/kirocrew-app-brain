@@ -1196,12 +1196,63 @@ def main() -> None:
     board_later(r, row, local_only=True, kit_rows=tool_kit, credits=4.9, sessions=[tool_sess],
                                    mr_desc={"available": True, "text": "", "first": None, "source": None, "path": None, "ref": None, "error": "还没有提交：做完第一步以后才有变更说明"})
 
+    # ---------------------------------------------------------------- teammates' runs, read from the branches they pushed
+    # The world's clock is Sunday 22:00, so working hours count up to Friday 18:00 (roster.work_hours_between).
+    team_rows = []
+
+    def theirs(r: Req, paths: list[str], summary: str) -> None:
+        """*r* on its owner's machine, read here from the run branch they pushed: no session or worktree on this one."""
+        f = r.facts()
+        f.update(where="branch")
+        row = copy.deepcopy(tmpl)
+        row.update(repo=r.repo, key=r.key, title=r.title, owner=r.owner, branch=r.branch, intent=r.intent, credits=None,
+                   sessions=0, updated_at=deliveries.updated_at(f, None), summary=summary, mr=None, run_ids=[],
+                   open_questions=[], overlap=[], expected_paths=paths, worktree=None)
+        team_rows.append(classified(r, row, facts=f))
+        board_later(r, row, facts=f, mr_desc=mrdesc(r, summary))
+
+    fri = T0 - 2 * D - 13 * H           # Friday 09:00
+    # PAY-15: carol's run has waited for its DESIGN approval since Friday noon: 6 working hours, past the timeout
+    p15 = Req("r1", "PAY-15", "退款差异对账表", "carol", "refund-diff", "261106-refund-diff", project="shop/shop-pay")
+    p15.claim_at, p15.start_at = fri + 10 * M, fri + 20 * M
+    p15.skip_phase(p15.start_at + 20, "ideation", NOT_REQUESTED)
+    p15.stage(p15.start_at + 2 * M, "reverse-engineering", "skipped", note="新报表，代码已经读过")
+    p15.stage(p15.start_at + 3 * M, "requirements", "started")
+    h = p15.request(p15.start_at + 31 * M, "REQUIREMENTS")
+    p15.approve(p15.start_at + 52 * M, "REQUIREMENTS", h)
+    p15.stage(p15.start_at + 53 * M, "requirements", "done", note="需求写好了，5 条验收标准")
+    p15.stage(p15.start_at + 54 * M, "user-stories", "skipped", note="小需求")
+    p15.stage(p15.start_at + 55 * M, "application-design", "started")
+    p15.request(fri + 3 * H, "DESIGN")
+    p15.commit(fri + 3 * H + 2 * M, "person", "PAY-15：差异报表的设计，请批准", files=2, records=True)
+    theirs(p15, ["src/reconcile/"], "按天对比退款单和银行流水，列出对不上的那几笔。")
+    # ORD-11: dave has pushed nothing new since Thursday 15:00: 12 working hours without progress
+    o11 = Req("r3", "ORD-11", "订单评价晒图", "dave", "review-photos", "261105-review-photos", project="shop/shop-order")
+    o11.claim_at = fri - D + 20 * M
+    t = standard(o11, fri - D + 30 * M)
+    o11.stage(t, "code-generation", "started", unit="review-ui")
+    o11.commit(fri - D + 4 * H + 10 * M, "person", "ORD-11：晒图上传和压缩", files=4)
+    o11.commit(fri - D + 6 * H, "person", "ORD-11：评价页加图片墙", files=3)
+    theirs(o11, ["web/review/"], "评价里能传 9 张图，评价页按时间排成图片墙。")
+    # ORD-12: erin's run failed verify three times in a row on Friday afternoon, and it is still fixing
+    o12 = Req("r3", "ORD-12", "订单导出加水印", "erin", "export-watermark", "261106-export-watermark", project="shop/shop-order")
+    o12.claim_at = fri + 5 * M
+    t = standard(o12, fri + 15 * M)
+    o12.stage(t, "code-generation", "started", unit="watermark")
+    o12.commit(t + 40 * M, "person", "ORD-12：导出的 PDF 加水印", files=3)
+    o12.stage(t + 45 * M, "code-generation", "done", unit="watermark", note="代码写完")
+    o12.stage(t + 50 * M, "build-and-test", "started")
+    for i, fix in enumerate(("修水印压住表头的问题", "换一种字体渲染水印", "调低水印的透明度")):
+        o12.verify(fri + (5 + i) * H, [("pytest -q", 1), ("ruff check .", 0)])
+        o12.commit(fri + (5 + i) * H + 20 * M, "person", "ORD-12：%s" % fix, files=2)
+    theirs(o12, ["src/export/watermark/"], "导出的订单 PDF 每页加上公司水印。")
+
     # ---------------------------------------------------------------- the overview of the world, and its numbers
     for x in runs:          # brain-kit 0d52e97's batch facts of each run (none known for these: older batches)
         for k, v in (("state", None), ("state_label", ""), ("stuck", None), ("delivery", None), ("delivery_label", ""),
                      ("parent", None)):
             x.setdefault(k, v)
-    all_rows = list(rows.values()) + extra_rows + fam_rows + order_rows + tool_rows
+    all_rows = list(rows.values()) + extra_rows + fam_rows + order_rows + tool_rows + team_rows
     parts = [("r1", {"runs": [x for x in runs if x["repo"] == "r1"], "unattended": None, "judgment": None, "kinds": [], "ref": "origin/main"}),
              ("r3", {"runs": [x for x in runs if x["repo"] == "r3"], "unattended": None, "judgment": None, "kinds": [], "ref": "origin/main"})]
     judged = [x for x in runs if x["how"] in ("unattended", "people")]
