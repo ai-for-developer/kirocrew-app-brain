@@ -370,6 +370,9 @@ export function Flow({ rows, roster, at, hl, onNew, repoName, localOnly = false,
           <LaneRow key={spec.id} spec={spec} first={i === 0} span={lanes.length} cols={cols.map(([c]) => c)} cell={cell} at={at} hl={hl}
             repoName={many ? repoName : () => undefined} merged={i === 0 ? merged : null} localOnly={localOnly} late={late} h={h} />
         ))}
+        {lanes.length === 0 && (
+          <div className="br-kband" data-testid="flow-no-people">此刻没有人手上有在做的需求：开需求认领一个，它就在认领人的那一行。</div>
+        )}
         {localOnly && (
           <div className="br-kband" data-testid="flow-runner-off">
             <span className="br-lane-name"><RoleIcon role="runner" size={15} />运行机在跑</span>

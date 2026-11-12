@@ -1285,6 +1285,19 @@ describe('交付总览: 全队卡点和按人看', () => {
     expect(cellOf('PAY-3').dataset.lane).toBe('you')
   })
 
+  test('按人 with nobody holding anything open says so and what to do, instead of an empty board', async () => {
+    const user = userEvent.setup()
+    const ov = fx.overview()
+    ov.rows = ov.rows.filter((r) => r.state === 'merged')
+    ov.roster = { ...ov.roster, people: [], stuck: [], counts: { overdue: 0, stale: 0, overlap: 0, verify_fails: 0 } }
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
+    render(<OverviewView entry={{}} {...props()} />)
+    const flow = await screen.findByTestId('flow')
+    await user.click(within(flow).getByRole('button', { name: '按人' }))
+    expect(flow.querySelectorAll('.cto-lane')).toHaveLength(0)
+    expect(within(flow).getByTestId('flow-no-people')).toHaveTextContent('此刻没有人手上有在做的需求：开需求认领一个，它就在认领人的那一行。')
+  })
+
   test('a card past a timeout or a limit has the red mark in both views, its ledger row too; an overlap is no mark', async () => {
     const user = userEvent.setup()
     installFixtureRoutes({ [`GET ${API}/overview*`]: () => stuckWorld() })
