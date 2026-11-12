@@ -470,8 +470,7 @@ def test_a_claim_not_started_says_since_when_and_to_start_it():
     assert b["person"]["you"] is True
     b = snapshot(facts([], run=False, owner="carol"), row_of("claimed", "people", "已认领，还没开工"), me="alice")
     assert b["accept"]["step"]["text"] == "carol 认领的，等 carol 开工"
-    # BOARD-11: the board calls carol by her name, so the page offers alice no 开工 and says no 你; nor to a reader the
-    # app cannot tell (deliveries.owns): carol's claim is not theirs either
+    # BOARD-11: the board calls carol by her name, so the page offers alice no 开工 and says no 你
     assert b["person"]["you"] is False
     b = snapshot(facts([], run=False, owner="carol"), row_of("claimed", "people", "等 carol 开工"), me=None)
     assert b["person"]["you"] is False and b["accept"]["step"]["text"] == "carol 认领的，等 carol 开工"

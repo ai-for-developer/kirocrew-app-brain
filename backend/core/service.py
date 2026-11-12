@@ -66,8 +66,6 @@ def scrub_tree(obj: Any, scrub: Callable[[str], str], key: str = "") -> Any:
 
 
 def me_line(repos: list[dict[str, Any]], token: bool, env: str) -> dict[str, Any]:
-    """/status's machine-wide 你是谁: the name of the first repo that has one (each repo's is in its row, by brain-kit's
-    rule: identity.of), else $BRAIN_USER (*env*), and whether a GitLab token is there."""
     first = next((x["me"] for x in repos if x["me"] and x["me"]["name"]), None)
     said = first["text"] if first else "%s（%s）" % (env, identity.FROM["env"]) if env else ""
     return {"user": first["name"] if first else env or None, "token": token,
@@ -108,7 +106,7 @@ class Service:
         self._trace: dict[tuple, tuple] = {}
         self.desc = mrdesc_view.DescCache()     # each requirement's 变更说明, by the commits it is made from
         self._subj: dict[tuple, tuple] = {}     # the board's commit subjects and changed files, by the commits asked for
-        self.who = identity.Who(transport, log=self.log)   # GitLab's name for the token, asked in the background
+        self.who = identity.Who(transport, log=self.log)
         self.families = family.Families()      # brain-kit's listing per repo (大需求 and their 小需求), made in the background
         self.sync = progress.Sync(self.data_dir, self.log)     # pushes at Lean's checkpoints, fetches every few minutes
         self._big_file = self.data_dir / "big.json"
@@ -186,8 +184,8 @@ class Service:
                 self.repos[rid] = Repo(rid, path, cfg)
             except Exception as exc:  # noqa: BLE001
                 self.repo_errors[rid] = (path, str(exc).split("\n", 1)[0][:300])
-        for r in self.repos.values():   # GitLab's answer about the token is there before the first page asks
-            self.who.asked(self._gitlab_of(r)[0])
+        for r in self.repos.values():   # start asking now: the first page then usually finds GitLab's answer
+            self.who.want(self._gitlab_of(r)[0])
         self._eval.clear()
         self._trace.clear()
         self.crew = self.crew_sync()
@@ -367,9 +365,6 @@ class Service:
         return self.repos[rid]
 
     def me_in(self, repo: Repo) -> str | None:
-        """The name brain-kit goes by in *repo* (identity.Who): GitLab's username for the token, $BRAIN_USER, git config
-        brain.user, or the login name in a repo without GitLab when brain-kit falls back to it. None: the app cannot
-        tell, and none of the repo's requirements with an owner are the person's."""
         return self._me_view(repo)["name"]
 
     def _me_view(self, repo: Repo) -> dict[str, Any]:

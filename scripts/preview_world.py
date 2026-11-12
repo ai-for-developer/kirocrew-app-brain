@@ -1366,13 +1366,11 @@ def main() -> None:
                                     if r_.get("fix") != "kit"] + tool_kit
     world_status["crew"]["fix"] = {"agent": any(r_.get("fix") == "agent" for r_ in world_status["crew"]["rows"]),
                                    "engine": any(r_.get("fix") == "engine" for r_ in world_status["crew"]["rows"])}
-    # 你是谁 as identity.of says it on this machine, which has a GitLab token (status.me.token) that GitLab says is
-    # alice's: a GitLab repo goes by that name and nothing is asked; a repo without GitLab by the login name
     token = bool(world_status["me"]["token"])
     for r_ in world_status["repos"]:
         base = (r_.get("kit") or {}).get("gitlab_base") or ""
         if r_.get("me") and base:
-            r_["me"] = identity.of(r_["path"], base, identity.Asked(name=ME)) if token else r_["me"]
+            r_["me"] = identity.of(r_["path"], base, identity.Said(ME)) if token else r_["me"]
     world_status["me"] = service.me_line(world_status["repos"], token, "")
     world_status["counts"]["todo"] = len(world_todo["ok"]["items"])
     for r_ in world_status["repos"]:
@@ -1381,7 +1379,7 @@ def main() -> None:
     world = {"note": "made by scripts/preview_world.py: do not edit by hand", "at": T0, "status": world_status, "overview": world_ov,
              "overviews": overviews, "overviews_team": overviews_team, "todo": world_todo, "reflects": reflects,
              "crew_missing": crew_fail, "crew_not_ready": crewcheck.not_ready([crew_fail]),
-             "me_token": identity.of("", GL, identity.Asked(name=ME)), "boards": boards, "details": details, "stages": STAGES,
+             "me_token": identity.of("", GL, identity.Said(ME)), "boards": boards, "details": details, "stages": STAGES,
              "brains": brains, "intake_gates": intake_gates()}
     (ROOT / "ui" / "preview" / "world.json").write_text(json.dumps(world, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     # the contract fixtures the UI tests read: the overview's numbers for its own rows, one live board and one merged

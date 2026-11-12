@@ -178,8 +178,7 @@ def _park_for(parks: list[dict[str, Any]], at: float | None, *, kind: Any = None
 
 
 def _you(me: str | None, owner: str | None) -> str:
-    """Who the requirement's person is to the one reading the board: 你, or their name (UI问题清单 BOARD-11; owns: a
-    reader the app cannot tell is nobody's 你)."""
+    """Who the requirement's person is to the one reading the board: 你, or their name (UI问题清单 BOARD-11)."""
     return "你" if owns(me, owner) else " %s " % owner
 
 
@@ -1010,9 +1009,8 @@ def _facts(fo: _Fold, f: dict[str, Any], evs: list[dict[str, Any]], row: dict[st
 
 def _person(row: dict[str, Any], me: str | None, f: dict[str, Any], you: str = "你") -> dict[str, Any]:
     """The owner's node: it asks for the person only when the requirement waits on them (waits.who `you`); a question
-    for the product or someone else is said, not flashed at the owner (BOARD-5). `you`: the board calls the owner 你
-    (_you: the one reading is the owner, or nobody has it), so the page offers them 开工 and says 你 where everything
-    else on it does (BOARD-11)."""
+    for the product or someone else is said, not flashed at the owner (BOARD-5). `you`: the board calls the owner 你,
+    so the page offers them 开工 and says 你 where everything else on it does (BOARD-11)."""
     waits = row.get("waits") or {}
     owner = f.get("owner")
     st = row.get("state")

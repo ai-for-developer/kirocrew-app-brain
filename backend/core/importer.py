@@ -851,9 +851,8 @@ def bounded(fn: Callable[[], Any], timeout: float, default: Any) -> Any:
 
 def inspect(raw: Any, *, listed: list[str], records: Records, who: identity.Who, token: bool = False,
             team_of: Callable[[str, dict[str, Any]], bool] | None = None) -> dict[str, Any]:
-    """Every check of the 检查 step (blocking: call it in a thread). Writes nothing. *who*: the service's 你是谁.
-    *team_of(top, cfg)*: the repo is handed to the team runner (its runner-only KiroCrew checks FAIL; a reminder
-    otherwise); None: not known."""
+    """Every check of the 检查 step (blocking: call it in a thread). Writes nothing. *team_of(top, cfg)*: the repo is
+    handed to the team runner (its runner-only KiroCrew checks FAIL; a reminder otherwise); None: not known."""
     out = blank_inspect(raw)
     checks = out["checks"]
     try:

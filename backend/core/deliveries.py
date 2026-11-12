@@ -128,8 +128,6 @@ def _merged(put: Any, f: dict[str, Any], *, now: float | None, reflected: bool, 
 
 
 def owns(me: str | None, owner: str | None) -> bool:
-    """The requirement is the reading person's: nobody has it, or it is theirs. When the app cannot tell who the person
-    is (*me* None), someone's requirement is not theirs."""
     return not owner or owner == me
 
 
@@ -138,7 +136,7 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
              reflected: bool = False, now: float | None = None) -> None:
     """Fill in state, state_label and waits (person mode). *at_handover*: the branch tip is the hand-over commit
     `brain handoff` made (its parent is run.json's handoff.local_head). *me*: who this machine's person is (None: not
-    known, so only a requirement nobody has is theirs: owns); someone else's requirement waits for them, not for "you".
+    known); someone else's requirement waits for them, not for "you".
     *reflected*: its Brain proposals were written back already (a brain/<KEY>-reflect-<n> branch)."""
     run, park, claim = f.get("run"), f.get("park"), f.get("claim") or {}
     pending = [a for a in f.get("approvals") or [] if a["state"] == "pending" and a.get("line")]
