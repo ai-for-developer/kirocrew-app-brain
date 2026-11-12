@@ -127,17 +127,67 @@ def _data(e: dict[str, Any]) -> dict[str, Any]:
     return d if isinstance(d, dict) else {}
 
 
-def _ideation_in_use(evs: list[dict[str, Any]]) -> bool:
-    """Lean's rule (aidlc_lean.py Project.ideation_in_use): an Ideation stage has a start or done record newer than the
-    last phase skip of Ideation (with no phase skip: any start or done record)."""
-    used = skip = -1
-    for k, e in enumerate(evs):
-        d = _data(e)
-        if e.get("event") == "PHASE_SKIPPED" and d.get("phase") == "ideation":
-            skip = k
-        elif e.get("event") in ("STAGE_STARTED", "STAGE_COMPLETED") and d.get("stage") in IDEATION:
-            used = k
-    return used > skip
+class _Decided:
+    """stages()' fold, one record at a time (steps() reads the stages after each): each stage's (and unit's) deciding
+    record, kept both with Ideation's phase skips and without them, since a later Ideation start or done makes them
+    no longer count."""
+
+    def __init__(self) -> None:
+        self.all: dict[tuple, dict[str, Any]] = {}
+        self.no_ideation_skip: dict[tuple, dict[str, Any]] = {}
+        self.used = self.skip = -1
+        self.n = 0
+
+    def add(self, e: dict[str, Any]) -> None:
+        ev, d = e.get("event"), _data(e)
+        if ev == "PHASE_SKIPPED" and d.get("phase") == "ideation":
+            self.skip = self.n
+        elif ev in ("STAGE_STARTED", "STAGE_COMPLETED") and d.get("stage") in IDEATION:
+            self.used = self.n
+        self.n += 1
+        if ev in STAGE_STATE:
+            key = (str(d.get("stage") or ""), str(d.get("unit") or ""))
+            self.all[key] = self.no_ideation_skip[key] = e
+        elif ev == "PHASE_SKIPPED" and isinstance(d.get("stages"), list):
+            for sid in d["stages"]:
+                self.all[(str(sid), "")] = e
+                if d.get("phase") != "ideation":
+                    self.no_ideation_skip[(str(sid), "")] = e
+
+    def rows(self) -> list[dict[str, Any]]:
+        in_use = self.used > self.skip       # Lean's Project.ideation_in_use
+        by_stage: dict[str, dict[str, dict[str, Any]]] = {}
+        for (sid, u), e in (self.no_ideation_skip if in_use else self.all).items():
+            by_stage.setdefault(sid, {})[u] = e
+        out = []
+        for s in LEAN:
+            rows = by_stage.get(s.id, {})
+            units = sorted((u, DECIDES[e["event"]]) for u, e in rows.items() if u)
+            states = [DECIDES[e["event"]] for e in rows.values()]
+            if not states:
+                state = "optional" if s.optional and not (s.phase == "ideation" and in_use) else "todo"
+            elif "started" in states:
+                state = "started"
+            elif all(x == "skipped" for x in states):
+                state = "skipped"
+            else:
+                state = "done"
+            latest = max(rows.values(), key=lambda e: e.get("ts") or "") if rows else None
+            d = _data(latest) if latest else {}
+            note = d.get("note") if latest and latest.get("event") == "STAGE_COMPLETED" else \
+                d.get("reason") if latest and latest.get("event") in ("STAGE_SKIPPED", "PHASE_SKIPPED") else None
+            out.append({"id": s.id, "n": s.n, "label": s.label, "phase": s.phase, "state": state,
+                        "units": [{"unit": u, "state": x} for u, x in units] if s.per_unit else [],
+                        "note": say_note(str(note)[:300]) if isinstance(note, str) else None,
+                        "at": latest.get("_at") if latest else None})
+        # a stage on the way that Lean went past without a word (a later stage Lean always asks for is recorded) was
+        # not on this intent's way: skipped. An optional stage recorded early (Operations before the release) passes
+        # nothing.
+        end = max((i for i, (s, r) in enumerate(zip(LEAN, out)) if not s.optional and r["state"] != "todo"), default=0)
+        for r in out[:end]:
+            if r["state"] == "todo":
+                r.update(state="skipped", note=PASSED_OVER)
+        return out
 
 
 def stages(evs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -145,43 +195,10 @@ def stages(evs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     (Lean never asks for it and nothing recorded it: it is not on this intent's way). A stage's state is its own last
     record's, or that of a later PHASE_SKIPPED naming it (Lean's stage_event); once Ideation is in use again, its
     phase skips no longer count. A per-unit stage has each unit's state."""
-    in_use = _ideation_in_use(evs)
-    last: dict[tuple, dict[str, Any]] = {}
+    decided = _Decided()
     for e in evs:
-        ev, d = e.get("event"), _data(e)
-        if ev in STAGE_STATE:
-            last[(str(d.get("stage") or ""), str(d.get("unit") or ""))] = e
-        elif ev == "PHASE_SKIPPED" and isinstance(d.get("stages"), list) and not (d.get("phase") == "ideation" and in_use):
-            for sid in d["stages"]:
-                last[(str(sid), "")] = e
-    out = []
-    for s in LEAN:
-        rows = {u: e for (sid, u), e in last.items() if sid == s.id}
-        units = sorted((u, DECIDES[e["event"]]) for u, e in rows.items() if u)
-        states = [DECIDES[e["event"]] for e in rows.values()]
-        if not states:
-            state = "optional" if s.optional and not (s.phase == "ideation" and in_use) else "todo"
-        elif "started" in states:
-            state = "started"
-        elif all(x == "skipped" for x in states):
-            state = "skipped"
-        else:
-            state = "done"
-        latest = max(rows.values(), key=lambda e: e.get("ts") or "") if rows else None
-        d = _data(latest) if latest else {}
-        note = d.get("note") if latest and latest.get("event") == "STAGE_COMPLETED" else \
-            d.get("reason") if latest and latest.get("event") in ("STAGE_SKIPPED", "PHASE_SKIPPED") else None
-        out.append({"id": s.id, "n": s.n, "label": s.label, "phase": s.phase, "state": state,
-                    "units": [{"unit": u, "state": x} for u, x in units] if s.per_unit else [],
-                    "note": say_note(str(note)[:300]) if isinstance(note, str) else None,
-                    "at": latest.get("_at") if latest else None})
-    # a stage on the way that Lean went past without a word (a later stage Lean always asks for is recorded) was not
-    # on this intent's way: skipped. An optional stage recorded early (Operations before the release) passes nothing.
-    end = max((i for i, (s, r) in enumerate(zip(LEAN, out)) if not s.optional and r["state"] != "todo"), default=0)
-    for r in out[:end]:
-        if r["state"] == "todo":
-            r.update(state="skipped", note=PASSED_OVER)
-    return out
+        decided.add(e)
+    return decided.rows()
 
 
 def phases(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -257,11 +274,11 @@ def steps(evs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Lean's progress (summary) after each stage record that changed it, oldest first, the first one (at 0) before
     any: what 回放 shows at a moment. The last one is the progress now."""
     out = [{"at": 0, "lean": summary(stages([]))}]
-    seen = []
+    decided = _Decided()
     for e in evs:
         if e.get("event") in DECIDES:
-            seen.append(e)
-            lean = summary(stages(seen))
+            decided.add(e)
+            lean = summary(decided.rows())
             if lean != out[-1]["lean"] and isinstance(e.get("_at"), (int, float)):
                 out.append({"at": e["_at"], "lean": lean})
     return out

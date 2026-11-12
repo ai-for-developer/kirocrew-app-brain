@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from typing import Any, Callable
 
-from . import lean_view, problems, stages
+from . import lean_view, problems, runs, stages
 from .deliveries import ASK_NAME, ASK_WHO, CAT_LABEL, CAT_ORDER, KIND_LABEL, category, park_waiting
 
 # (key, title, sub, icon): the actors in the order of the way
@@ -180,6 +180,20 @@ def _first(*xs: Any) -> float | None:
     return None
 
 
+def decided_by(humans: list[dict[str, Any]], kind: str, at: float | None, local: bool, you: str) -> str:
+    """Who approved or sent back: on this machine's run the person typed the line in their session (*you*); on the
+    runner's, whoever answered on the MR (their user name when brain-kit read it, never a pseudonym)."""
+    if local:
+        return you
+    h = min((h for h in humans if h.get("what") in (kind, "acceptance") and _epoch(h.get("at")) is not None
+             and at is not None and abs(_epoch(h.get("at")) - at) < 3600), default=None,
+            key=lambda h: abs(_epoch(h.get("at")) - at))
+    who = str((h or {}).get("who") or "")
+    if re.match(r"^[a-z0-9][a-z0-9._-]*$", who):
+        return " %s " % who
+    return "产品在 MR 上" if kind == "RELEASE" else "有人在 MR 上"   # the acceptance is asked of the product
+
+
 def missing_sources(raw: list[Any], *, local_only: bool, handed: bool) -> list[str]:
     """brainkit.trace's `missing`, in plain Chinese, without the sources this requirement has no use for: a repo done
     only here has no runner, bridge, signer or GitLab CI; before the hand-over the runner's half has nothing yet."""
@@ -234,17 +248,7 @@ def events_of(f: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any]
     humans = [h for h in (t or {}).get("humans") or [] if isinstance(h, dict)]
 
     def approver(kind: str, at: float | None, s: str) -> str:
-        """Who approved: on this machine's run the person typed the line in their session; on the runner's, whoever
-        answered on the MR (their user name when brain-kit read it, never a pseudonym)."""
-        if s == "local":
-            return you
-        h = min((h for h in humans if h.get("what") in (kind, "acceptance") and _epoch(h.get("at")) is not None
-                 and at is not None and abs(_epoch(h.get("at")) - at) < 3600), default=None,
-                key=lambda h: abs(_epoch(h.get("at")) - at))
-        who = str((h or {}).get("who") or "")
-        if re.match(r"^[a-z0-9][a-z0-9._-]*$", who):
-            return " %s " % who
-        return "产品在 MR 上" if kind == "RELEASE" else "有人在 MR 上"   # the acceptance is asked of the product
+        return decided_by(humans, kind, at, s == "local", you)
 
     # Lean's ledger
     evs = [e for e in f.get("events") or [] if isinstance(e, dict)]
@@ -265,16 +269,18 @@ def events_of(f: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any]
                     else "%s在会话里回话了" % you, turn=True)
             continue
         if ev == "STAGE_STARTED":
-            add(at, "stage", s, s, "开始「%s」" % _stage_label(d), detail=True, stage=d.get("stage"), state="started")
+            add(at, "stage", s, s, "开始「%s」" % _stage_label(d), detail=True, stage=d.get("stage"), state="started",
+                _rec=e)
         elif ev == "STAGE_COMPLETED":
-            add(at, "stage", s, s, "做完「%s」" % _stage_label(d), detail=True, stage=d.get("stage"), state="done")
+            add(at, "stage", s, s, "做完「%s」" % _stage_label(d), detail=True, stage=d.get("stage"), state="done",
+                _rec=e)
         elif ev == "STAGE_SKIPPED":
             add(at, "stage", s, s, "跳过「%s」%s" % (_stage_label(d), "：%s" % _clip(d.get("reason"), 60) if d.get("reason") else ""),
-                detail=True, stage=d.get("stage"), state="skipped")
+                detail=True, stage=d.get("stage"), state="skipped", _rec=e)
         elif ev == "PHASE_SKIPPED":
             why = lean_view.say_note(d.get("reason"))
             add(at, "stage", s, s, "跳过「%s」整段%s" % (lean_view.phase_name(d.get("phase")), "：%s" % _clip(why, 60) if why else ""),
-                detail=True, state="skipped")
+                detail=True, state="skipped", _rec=e)
         elif ev in ("APPROVAL_REQUESTED", "APPROVED", "REJECTED", "APPROVAL_REFUSED"):
             kind = str(d.get("kind") or "")
             gates = GATES_OF.get(kind)
@@ -287,21 +293,21 @@ def events_of(f: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any]
                 who, asker = (_who(you), you) if s == "local" else _asked(you, _park_for(
                     parks, at, lean=("REQUIREMENTS", "DESIGN") if kind == "INCEPTION" else (kind,)).get("ask"), lean=kind)
                 add(at, "request", s, gates[0], "请%s批准%s" % (you, name) if s == "local" else
-                    "请%s在 MR 上批准%s" % (asker, name), gates=list(gates), lean=kind, wait_who=who, asker=asker)
+                    "请%s在 MR 上批准%s" % (asker, name), gates=list(gates), lean=kind, wait_who=who, asker=asker, _rec=e)
             elif ev == "APPROVED":
                 add(at, "approve", "person", gates[0], "%s批准了%s" % (approver(kind, at, s), name), gates=list(gates),
-                    lean=kind, who=approver(kind, at, s))
+                    lean=kind, who=approver(kind, at, s), _rec=e)
             elif ev == "REJECTED":
                 add(at, "reject", "person", gates[0], "%s退回了%s" % (approver(kind, at, s), name), gates=list(gates),
-                    lean=kind, who=approver(kind, at, s))
+                    lean=kind, who=approver(kind, at, s), _rec=e)
             else:
                 why = lean_view.refused_why(d.get("check"))
                 add(at, "refused", gates[0], gates[0], "%s（%s）%s" % (lean_view.REFUSED, name, "：%s" % why if why else ""),
-                    gates=list(gates), lean=kind)
+                    gates=list(gates), lean=kind, _rec=e)
         elif ev == "BLOCKED":
             what = "写 %s" % _clip(d.get("path"), 50) if d.get("path") else "一次%s" % lean_view.BLOCK_TOOL.get(str(d.get("tool") or ""), "工具调用")
             add(at, "blocked", s, s, "Lean 拦下了%s：%s" % (what, lean_view.block_rule(d.get("gate"))),
-                detail=True)
+                detail=True, _rec=e)
         elif ev == "VERIFY":
             res = [r for r in d.get("results") or [] if isinstance(r, dict)] if isinstance(d.get("results"), list) else []
             bad = [stages.check_name(r.get("cmd")) for r in res if r.get("exit") not in (0, None)]
@@ -309,7 +315,7 @@ def events_of(f: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any]
             text = ("自动检查通过（%d 项）" % len(res) if res else "自动检查通过") if ok else \
                 "自动检查没过：%s" % ("、".join(bad[:3]) or "有检查失败")
             add(at, "verify", "branch", "checks", text, ok=ok,
-                results=[[stages.check_name(r.get("cmd")), r.get("exit") in (0, None)] for r in res][:40])
+                results=[[stages.check_name(r.get("cmd")), r.get("exit") in (0, None)] for r in res][:40], _rec=e)
     # the trace: commits, the hand-over and the bridge, questions, the merge
     commits = ((t or {}).get("actions") or {}).get("commits") or []
     hand_sha = None
@@ -324,17 +330,19 @@ def events_of(f: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any]
         if sha and sha == hand_sha:
             seen_hand = True
             add(at, "handover", "local", "handover", "交给运行机（提交 %s）" % sha[:8], sha=sha, by="person",
-                files=c.get("files") or 0, records=bool(c.get("records_only")), subject=subj or "交接")
+                files=c.get("files") or 0, records=bool(c.get("records_only")), subject=subj or "交接", _commit=c)
         elif c.get("by") == "bot":
             add(at, "commit", "runner", "branch", "运行机提交 %s%s" % (sha[:8], "：%s" % _clip(subj, 60) if subj else ""), sha=sha,
-                by="bot", files=c.get("files") or 0, records=bool(c.get("records_only")), subject=subj, actor="runner")
+                by="bot", files=c.get("files") or 0, records=bool(c.get("records_only")), subject=subj, actor="runner",
+                _commit=c)
         elif c.get("after_handover"):
             add(at, "commit", "person", "branch", "交接以后有人推了%s（%s）" % ("记录" if c.get("records_only") else "代码", sha[:8]),
                 sha=sha, by="person", files=c.get("files") or 0, records=bool(c.get("records_only")), subject=subj,
-                actor="runner", outside=True)
+                actor="runner", outside=True, _commit=c)
         else:
             add(at, "commit", "local", "branch", "提交 %s%s" % (sha[:8], "：%s" % _clip(subj, 60) if subj else ""), sha=sha,
-                by="person", files=c.get("files") or 0, records=bool(c.get("records_only")), subject=subj, actor="local")
+                by="person", files=c.get("files") or 0, records=bool(c.get("records_only")), subject=subj, actor="local",
+                _commit=c)
     if hand_at is not None and not seen_hand:
         add(hand_at, "handover", "local", "handover", "交给运行机", by="person", sha=(handoff or {}).get("local_head") or "")
     for h in hands:
@@ -412,14 +420,291 @@ def events_of(f: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any]
     return out
 
 
+# ---------------------------------------------------------------- the stage graph (ui/src/types.ts StageNode, Run, Relay)
+
+# Where a board event sits on the stage graph, by its kind: which node, whose run (types.ts BoardEvent node / run).
+#   record     the Lean record it came from says both (stages.node_of; its ledger file's run)
+#   record_at  its record's run, at the node that run was at then (a blocked tool call)
+#   commit     the commit's run, at the node whose round holds it
+#   side_at    the run that asked or was answered (this machine's before the hand-over, else the runner's), at its node
+#   local_at   this machine's run, at its node then          first   this machine's run, at the first node of the way
+#   reflect    the write-back                                local   this machine's run, no node (the hand-over)
+#   relay      the runner run that hand-over went to, no node   none    nobody's run, no node
+PLACE = {
+    "stage": "record", "request": "record", "approve": "record", "reject": "record", "refused": "record",
+    "verify": "record", "blocked": "record_at", "commit": "commit", "question": "side_at", "answer": "side_at",
+    "session": "local_at", "start": "first", "reflect": "reflect", "handover": "local", "accepted": "relay",
+    "signed": "relay", "rejected": "none", "claim": "none", "merge": "none", "app": "none",
+}
+MARKS = {"request": "request", "approve": "approved", "reject": "rejected", "refused": "refused", "blocked": "blocked",
+         "commit": "commit", "question": "question", "answer": "answer", "reflect": "reflect", "session": "session"}
+# a question's kind on the MR, by the Lean approval it asks (an acceptance asks the release's)
+ASKS = {"RELEASE": "acceptance", "DESIGN": "design", "INCEPTION": "design", "PLAN": "plan", "REQUIREMENTS": "requirements"}
+
+
+def _branch_commits(t: dict[str, Any] | None, subjects: dict[str, str],
+                    changes: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    """The run branch's commits as the stage graph reads them, oldest first: when, by whom, records only or not, after
+    the hand-over or not, the subject, the files changed."""
+    out = []
+    for c in ((t or {}).get("actions") or {}).get("commits") or []:
+        at, sha = _epoch(c.get("at")), str(c.get("sha") or "")
+        if at is not None and sha:
+            out.append({"sha": sha, "at": at, "by": c.get("by"), "records_only": bool(c.get("records_only")),
+                        "after_handover": bool(c.get("after_handover")), "subject": subjects.get(sha) or "",
+                        "paths": [x["path"] for x in changes.get(sha) or []]})
+    return sorted(out, key=lambda c: c["at"])
+
+
+def _mr_questions(t: dict[str, Any] | None, team_decisions: list[dict[str, Any]],
+                  mr: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """The questions the bridge put on the MR (D-n): the bridge ledger's, as the trace or team mode read it, else the
+    MR's own."""
+    ds = [d for d in (t or {}).get("decisions") or [] if d.get("source") == "bridge"] or [
+        dict(d, asked_at=d.get("created"), at=d.get("updated") if d.get("answer") else None, choice=d.get("answer"))
+        for d in team_decisions]
+    if ds:
+        out = [{"id": d.get("id"), "kind": d.get("kind"), "lean": str(d.get("lean_request") or ""),
+                "asked": _epoch(d.get("asked_at")), "answered": _epoch(d.get("at")) if d.get("choice") else None}
+               for d in ds]
+    else:
+        out = [{"id": q.get("id"), "kind": q.get("kind"), "lean": str(q.get("lean_request") or ""),
+                "asked": _epoch(q.get("at")), "answered": None if q.get("state") == "open" else _epoch(q.get("at"))}
+               for q in (mr or {}).get("questions") or []]
+    return [q for q in out if q["id"]]
+
+
+def _sub(stage: stages.StageDef, unit: str | None) -> str:
+    """What a node hands in, said short: requirements.md · api 的代码生成计划 · lean verify · review.md · release.md."""
+    if stage.id == "code-generation":
+        return "%s 的代码生成计划" % unit
+    if stage.id == "build-and-test":
+        return "lean verify"
+    if stage.id == "reflect":
+        return "回写分支"
+    if unit:
+        return "%s 的%s" % (unit, stage.label)
+    return (stage.doc or "").rsplit("/", 1)[-1]
+
+
+def _round_wire(r: stages.Round) -> dict[str, Any]:
+    e, w, k = r.end, r.why, r.end.outcome
+    O = stages.Outcome
+    return {"n": r.n, "run": r.run, "started": r.started, "ended": r.ended,
+            "outcome": {"kind": k.value, "at": e.at if k in (O.APPROVED, O.SENT_BACK, O.REFUSED, O.SUPERSEDED) else None,
+                        "gate": e.gate if k in (O.APPROVED, O.SENT_BACK, O.REFUSED) else None,
+                        "by": (e.by or "").strip() or None if k in (O.APPROVED, O.SENT_BACK) else None,
+                        "decision": e.decision if k in (O.APPROVED, O.SENT_BACK) else None,
+                        "text": (lean_view.refused_why(e.check) or lean_view.REFUSED) if k is O.REFUSED else
+                        _clip(lean_view.say_note(e.reason), 160) or None if k is O.SKIPPED and e.reason else None,
+                        "sha": e.sha if k is O.SUPERSEDED else None,
+                        "subject": _clip(e.subject, 80) or None if k is O.SUPERSEDED and e.subject else None,
+                        "checks": [{"name": stages.check_name(c.cmd), "ok": c.ok, "secs": c.secs} for c in e.checks]},
+            "why": {"kind": w.kind, "round": w.round, "pipeline": w.pipeline, "sha": w.sha,
+                    "subject": _clip(w.subject, 80) or None if w.subject else None, "at": w.at},
+            "note": (lean_view.say_note(r.note) or "").strip()[:2000] or None,
+            "outputs": [{"path": path, "sha8": h[:8]} for path, h in r.outputs if h],
+            "commits": [c[:12] for c in r.commits]}
+
+
+def _gate_wire(g: stages.GateView) -> dict[str, Any]:
+    return {"kind": g.kind, "state": g.state, "round": g.round, "at": g.at, "who": g.who,
+            "by": (g.by or "").strip() or None, "line": g.line,
+            "mr": {"decision": g.mr[0], "url": g.mr[1]} if g.mr is not None else None, "text": g.text, "docs": list(g.docs)}
+
+
+def _node_wire(n: stages.Node, marks: list[dict[str, Any]]) -> dict[str, Any]:
+    st = n.status or n.waits
+    return {"id": n.id, "stage": n.stage.id, "n": n.stage.n, "unit": n.unit, "phase": n.stage.phase,
+            "title": n.stage.label, "sub": _sub(n.stage, n.unit), "icon": n.stage.icon, "status": st.status,
+            "doing": _clip(st.doing, 80), "since": st.since, "history": n.history, "spans": n.spans, "marks": marks,
+            "rounds": [_round_wire(r) for r in n.rounds], "gates": [_gate_wire(g) for g in n.gates],
+            "run": n.rounds[-1].run if n.rounds else None,
+            "child": {"req": n.child[0], "state": n.child[1]} if n.child is not None else None}
+
+
+def _run_wire(r: runs.RunView) -> dict[str, Any]:
+    now = r.now or runs.RunNow("waiting", "", None)
+    return {"key": r.key, "kind": r.kind, "label": r.label, "readable": r.readable, "n": r.n, "run_id": r.run_id,
+            "req": r.req, "unit": r.unit, "now": {"status": now.status, "doing": _clip(now.doing, 80), "since": now.since,
+                                                  "who": now.who, "node": now.node},
+            "credits": r.credits, "sessions": r.sessions}
+
+
+def _over(f: dict[str, Any], row: dict[str, Any], merged_at: float | None, now: float) -> tuple[str, float] | None:
+    """When the requirement's way ended, and how: closed; merged into the default branch (at the merge the events
+    read, else as the row says); a small requirement merged into its big one's branch (its `brain handoff` there)."""
+    st, waits = row.get("state"), row.get("waits") or {}
+    closed = (f.get("claim") or {}).get("closed")
+    if st == "closed" or closed:
+        return "closed", _first(closed.get("at") if isinstance(closed, dict) else None, waits.get("since"), now)
+    if merged_at is not None:
+        return "merged", merged_at
+    if st == "merged":
+        return "merged", _first(waits.get("since"), f.get("merged_at"), f.get("tip_at"), now)
+    if st == "merged_into_parent":
+        return "merged", _first((run_of(f).get("mr") or {}).get("requested_at"), f.get("tip_at"), now)
+    return None
+
+
+def stage_graph(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, evs: list[dict[str, Any]], *,
+                mr: dict[str, Any] | None, sessions: list[dict[str, Any]], team_decisions: list[dict[str, Any]],
+                subjects: dict[str, str], changes: dict[str, list[dict[str, Any]]],
+                reflect_refs: list[tuple[str, float, float | None]], you: str, me: str | None, hand_at: float | None,
+                merged_at: float | None, proposals: int, units: Any, now: float) -> dict[str, Any]:
+    """The board's stage graph: phases, nodes, runs, relays, other_runs, and each event (*evs*, events_of's) placed
+    on a node and a run (node, run, round set on it), live. Rounds and gates are stages', who did them runs'; the words
+    of a gate's decider (decided_by) and of whom a request waits on (the park.json ask, the MR question) are the
+    board's, as for the actors."""
+    run = run_of(f)
+    lean = sorted((e for e in f.get("events") or [] if isinstance(e, dict) and isinstance(e.get("_at"), (int, float))),
+                  key=lambda e: e["_at"])
+    family = runs.family_of(row.get("family"), run)
+    commits = _branch_commits(t, subjects, changes)
+    waits = row.get("waits") or {}
+    bounds = runs.boundaries(f, t)
+    if not bounds and runner_blind(f, row):   # the team runner has the hand-over in its ledger, nothing else yet
+        bounds = [_first(waits.get("since"), row.get("updated_at"), now)]
+    hands = ((t or {}).get("actions") or {}).get("handovers") or []
+    others = {str(o.get("run_id")) for o in (t or {}).get("other_runs") or [] if isinstance(o, dict)}
+    ids = {str(x) for x in list((t or {}).get("run_ids") or []) + [h.get("run_id") for h in hands if isinstance(h, dict)]
+           + list(row.get("run_ids") or []) if x} - others
+    who = runs.attribute(lean, runs.file_roles(lean, family), bounds, sorted(ids), commits)
+    humans = [h for h in (t or {}).get("humans") or [] if isinstance(h, dict)]
+    owners = {c.key: c.owner for c in family.children} if family is not None else {}
+    qs = _mr_questions(t, team_decisions, mr)
+    parks = [q for q in ((t or {}).get("actions") or {}).get("questions") or []
+             if isinstance(q, dict) and q.get("status") == "waiting"]
+
+    def by(e: dict[str, Any]) -> str:
+        r, d = who.run_of(e), e.get("data") or {}
+        if r.startswith("child-"):
+            return _you(me, owners.get(r[6:]))
+        if r.startswith("parent-"):
+            return "大需求的负责人"
+        return decided_by(humans, str(d.get("kind") or ""), e.get("_at"), r == runs.LOCAL, you)
+
+    def decision(e: dict[str, Any]) -> str | None:
+        kind, at = str((e.get("data") or {}).get("kind") or ""), e.get("_at")
+        hits = [q for q in qs if q["answered"] is not None and at is not None and -300 <= at - q["answered"] < 7200
+                and (q["kind"] == ASKS.get(kind) or q["lean"].split(" ")[0] == kind)]
+        return max(hits, key=lambda q: q["answered"])["id"] if hits and who.run_of(e) != runs.LOCAL else None
+
+    def pending(ask: stages.Ask) -> stages.Pending:
+        """Whom a request waits on; after the hand-over, the MR question that asks it: the first of its kind the
+        bridge put up after the request and before the next one."""
+        if ask.run == runs.LOCAL:
+            return stages.Pending(_who(you), you, line_ok=hand_at is None)
+        lean_kinds = ("REQUIREMENTS", "DESIGN") if ask.kind == "INCEPTION" else (ask.kind,)
+        w, asker = _asked(you, _park_for(parks, ask.at, lean=lean_kinds).get("ask"),
+                          "acceptance" if ask.kind == "RELEASE" else None, ask.kind)
+        nxt = min((e["_at"] for e in lean if e.get("event") == "APPROVAL_REQUESTED" and e["_at"] > ask.at
+                   and (e.get("data") or {}).get("kind") == ask.kind), default=float("inf"))
+        q = min((q for q in qs if ask.at - 60 <= (q["asked"] or 0) < nxt
+                 and (q["kind"] == ASKS.get(ask.kind) or q["lean"].split(" ")[0] == ask.kind)),
+                key=lambda q: q["asked"] or 0, default=None)
+        return stages.Pending(w, asker, mr=(q["id"] if q else None, (row.get("mr") or {}).get("url")))
+
+    st = row.get("state")
+    over = _over(f, row, merged_at, now)
+    way = stages.Way(child=family is not None and family.role == "child",
+                     children={c.unit: (c.key, c.state, c.owner) for c in (family.children if family else ())
+                               if c.unit and c.state != "merged"},
+                     over=over, proposals=proposals, you=you)
+    if family is not None and family.role == "child":     # unit-of-work.md is its big one's: it builds one unit
+        units = [u for u in units if u.name == family.unit]
+    planned = list(units) + [stages.UnitPlan(c.unit) for c in (family.children if family else ()) if c.unit]
+    rec = stages.Records(lean, run.get("intent"), who.run_of, commits, list(reflect_refs), by, decision)
+    nodes = stages.graph(rec, stages.units_of(lean, planned), way, f.get("approvals") or [], pending)
+    last_at: dict[str, float] = {}
+    starts: dict[str, float] = {}
+    for x in lean + commits:
+        k, at = who.run_of(x), x.get("_at", x.get("at"))
+        last_at[k], starts[k] = max(last_at.get(k, at), at), min(starts.get(k, at), at)
+    rs = runs.runs(nodes, who, started=bool(run), family=family, sessions=sessions, owner=f.get("owner"),
+                   mine=you == "你", team=row.get("where") == "runner")
+    runs.overlay(rs, nodes, row=row, sessions=sessions, hand_at=hand_at, last_at=last_at, over=over, you=you,
+                 approvals=f.get("approvals") or [], now=now)
+    stages.with_status(nodes, rec, {r.key: (stages.NodeStatus(r.now.status, r.now.doing, r.now.since, r.now.who),
+                                            r.now.node) for r in rs if r.now is not None}, way, pending)
+    by_id = {n.id: n for n in nodes}
+    first = next((n for n in nodes if n.rounds or n.waits.status == "waiting"), None)
+    marks: dict[str, list[dict[str, Any]]] = {n.id: [] for n in nodes}
+
+    def run_at(r: str | None, at: float) -> tuple[stages.Node | None, str | None]:
+        """The node *r* was at then: its round open at *at*, else the last one it began before."""
+        hit = (stages.round_at(nodes, r, at) or stages.round_at(nodes, r, at, began=True)) if r else None
+        return (hit[0] if hit else None), r
+
+    def place(e: dict[str, Any]) -> tuple[stages.Node | None, str | None]:
+        how, at = PLACE[e["kind"]], e["at"]
+        if how == "record":
+            return stages.node_of(nodes, e["_rec"], run.get("intent")), who.run_of(e["_rec"])
+        if how == "record_at":
+            return run_at(who.run_of(e["_rec"]), at)
+        if how == "commit":
+            c = e["_commit"]
+            return run_at(who.run_of({"by": c.get("by"), "at": at, "after_handover": c.get("after_handover")}), at)
+        if how == "side_at":
+            side = e["from"] if e["kind"] == "question" else e["to"]
+            return run_at(runs.LOCAL if side == "local" else who.runner_at(at), at)
+        if how == "local_at":
+            return run_at(runs.LOCAL, at)
+        if how == "first":
+            return first, runs.LOCAL
+        if how == "reflect":
+            return by_id.get(stages.node_id("reflect", None)), runs.LOCAL
+        if how == "local":
+            return None, runs.LOCAL
+        if how == "relay":
+            return None, who.runner_at(at)
+        return None, None
+
+    for e in evs:
+        n, r = place(e)
+        opens = e.get("_rec", {}).get("event") in ("STAGE_STARTED", "APPROVAL_REQUESTED")
+        rnd = stages.round_on(n, r, e["at"], opens) if n is not None else None
+        e["node"], e["run"], e["round"] = n.id if n is not None else None, r, rnd.n if rnd is not None else None
+        kind = "verify-ok" if e["kind"] == "verify" and e.get("ok") else "verify-fail" if e["kind"] == "verify" else \
+            MARKS.get(e["kind"])
+        if n is not None and kind:
+            marks[n.id].append({"at": e["at"], "kind": kind, "title": _clip(e["text"], 160)})
+    live = any(r.now is not None and r.now.status in ("running", "fixing") for r in rs) and \
+        st not in ("merged", "closed", "merged_into_parent")
+    return {"phases": stages.phases(nodes, way), "nodes": [_node_wire(n, marks[n.id]) for n in nodes],
+            "runs": [_run_wire(r) for r in rs], "relays": runs.relays(bounds, t, row, who, starts),
+            "other_runs": [{"branch": o.get("branch"), "state": o.get("state")} for o in (t or {}).get("other_runs") or []
+                           if isinstance(o, dict)],
+            "live": bool(live), "_nodes": nodes, "_runs": rs}
+
+
+def _tag_cells(cells: list[dict[str, Any]], nodes: list[stages.Node], rs: list[runs.RunView]) -> None:
+    """Each check cell's node (a gate's: the gated node; verify's: build-and-test) and run (its round's; the bridge's
+    and the signer's: the runner run)."""
+    one = {n.stage.id: n for n in nodes if n.unit is None}
+    plans = [n for n in nodes if n.stage.id == "code-generation" and n.gates]
+    gated = {"gate-REQUIREMENTS": one.get("requirements"), "gate-DESIGN": one.get("application-design"),
+             "gate-PLAN": max(plans, key=lambda n: n.gates[-1].at or 0) if plans else None,
+             "gate-RELEASE": one.get("release")}
+    runner = max((r for r in rs if r.kind == "runner"), key=lambda r: r.n or 0, default=None)
+    for c in cells:
+        n = gated.get(c["id"]) or (one.get("build-and-test") if c["group"] == "verify" else None)
+        c["node"] = n.id if n is not None else None
+        c["run"] = n.rounds[-1].run if n is not None and n.rounds else \
+            runner.key if c["group"] == "handover" and runner is not None else None
+
+
 def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any] | None,
           sessions: list[dict[str, Any]], app_events: list[dict[str, Any]], team_decisions: list[dict[str, Any]],
           subjects: dict[str, str], reflect_refs: list[tuple[str, float, float | None]], default_branch: str, local_only: bool,
           kit_rows: list[dict[str, Any]], decisions: list[dict[str, Any]], brain: dict[str, Any] | None,
-          me: str | None, now: float, changes: dict[str, list[dict[str, Any]]] | None = None) -> dict[str, Any]:
-    """The board's graph part (actors, events, belt, checks, accept, person, live, direct, missing, and Lean's progress
-    at each of its stage records for 回放: lean_view.steps); the service adds the requirement's detail (decisions,
-    questions, 变更说明, sessions, credits). *changes*: changes_from_log of the commits (GIT_LOG), by full sha."""
+          me: str | None, now: float, changes: dict[str, list[dict[str, Any]]] | None = None,
+          units: Any = ()) -> dict[str, Any]:
+    """The board's graph part (the stage graph: phases, nodes, runs, relays, other_runs; the actors, until the page
+    reads the graph; events, belt, checks, accept, person, live, direct, missing, and Lean's progress at each of its
+    stage records for 回放: lean_view.steps); the service adds the requirement's detail (decisions, questions, 变更说明,
+    sessions, credits). *changes*: changes_from_log of the commits (GIT_LOG), by full sha. *units*: the planned units
+    (stages.UnitPlan), when the service read unit-of-work.md."""
     run = f.get("run") or {}
     handoff = run.get("handoff") if isinstance(run.get("handoff"), dict) else None
     hand_at = _epoch((handoff or {}).get("requested_at"))
@@ -630,16 +915,22 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
     _facts(fo, f, evs, row, sessions, proposals)
     person = _person(row, me, f, you)
     accept = _accept(f, row, A, checks, decisions, t, sessions, merged_at, proposals, you, mr, team_decisions)
+    sg = stage_graph(f, row, t, evs, mr=mr, sessions=sessions, team_decisions=team_decisions, subjects=subjects,
+                     changes=changes or {}, reflect_refs=reflect_refs, you=you, me=me, hand_at=hand_at,
+                     merged_at=merged_at, proposals=proposals, units=units, now=now)
+    _tag_cells(checks["cells"], sg["_nodes"], sg["_runs"])
     belt = _belt(evs, changes or {})
     direct = hand_at is None and (local_only or merged_at is not None or A["ci"]["status"] != "waiting"
                                   or A["release"]["status"] != "waiting")
-    live = any(x["status"] in ("running", "fixing") for x in actors) and row.get("state") not in ("merged", "closed")
     for i, e in enumerate(evs, 1):
         e["seq"] = i
-    events = [{k: e[k] for k in ("seq", "at", "kind", "from", "to", "text", "detail", "src")} for e in evs][-MAX_EVENTS:]
+    events = [{k: e[k] for k in ("seq", "at", "kind", "from", "to", "text", "detail", "src", "node", "run", "round")}
+              for e in evs][-MAX_EVENTS:]
     return {"actors": actors, "events": events, "belt": belt, "checks": checks, "accept": accept, "person": person,
-            "live": bool(live), "direct": bool(direct), "started_at": first_at, "ended_at": merged_at,
+            "live": sg["live"], "direct": bool(direct), "started_at": first_at, "ended_at": merged_at,
             "lean_steps": lean_view.steps(f.get("events") or []),
+            "phases": sg["phases"], "nodes": sg["nodes"], "runs": sg["runs"], "relays": sg["relays"],
+            "other_runs": sg["other_runs"],
             "missing": missing_sources((t or {}).get("missing") or [], local_only=local_only, handed=hand_at is not None)}
 
 
@@ -834,15 +1125,17 @@ def _belt(evs: list[dict[str, Any]], changes: dict[str, list[dict[str, Any]]]) -
             out.append({"kind": "commit", "at": e["at"], "sha": e["sha"][:12], "by": e.get("by") or "person",
                         "text": _clip(e.get("subject") or ("运行机的提交" if e.get("by") == "bot" else "提交"), 80),
                         "files": int(e.get("files") or 0), "records_only": bool(e.get("records")),
-                        "actor": e.get("actor") or "local", "changes": list(changes.get(e["sha"]) or [])})
+                        "actor": e.get("actor") or "local", "run": e.get("run"), "node": e.get("node"),
+                        "changes": list(changes.get(e["sha"]) or [])})
         elif e["kind"] == "handover":   # brain-kit's own commit ("<KEY>: hand off to team runner"): said in words
             out.append({"kind": "handover", "at": e["at"], "sha": str(e.get("sha") or "")[:12], "by": "person",
                         "text": "交给运行机", "files": int(e.get("files") or 0),
-                        "records_only": bool(e.get("records")), "actor": "handover",
-                        "changes": list(changes.get(str(e.get("sha") or "")) or [])})
+                        "records_only": bool(e.get("records")), "actor": "handover", "run": e.get("run"),
+                        "node": e.get("node"), "changes": list(changes.get(str(e.get("sha") or "")) or [])})
         elif e["kind"] == "merge":
             out.append({"kind": "merge", "at": e["at"], "sha": str(e.get("sha") or "")[:12], "by": "person",
-                        "text": e["text"], "files": 0, "records_only": False, "actor": "release", "changes": []})
+                        "text": e["text"], "files": 0, "records_only": False, "actor": "release", "run": e.get("run"),
+                        "node": e.get("node"), "changes": []})
     return out[-MAX_BELT:]
 
 

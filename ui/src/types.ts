@@ -1398,6 +1398,210 @@ export interface Actor {
   line: string | null
 }
 
+/** A unit of work on the board: a Lean stage id, `stage/unit` for a per-unit stage (code-generation/api), or one of
+ * the two steps brain records by other means: `review` (Lean's release review, review.md) and `reflect` (brain
+ * reflect's branch). Made by the fold; the page never builds one. */
+export type NodeId = string & { readonly __brand: 'NodeId' }
+/** Who did a round: `local` (this requirement's session on the owner's machine), `runner-<n>` (the team runner's n-th
+ * run), `child-<KEY>` (a small requirement of this split), `parent-<KEY>` (the big one this was split from). */
+export type RunKey = string & { readonly __brand: 'RunKey' }
+/** Lean's approval kinds the board draws (CR-<team>-<n> is left out, as today). */
+export type GateKind = 'IDEATION' | 'REQUIREMENTS' | 'DESIGN' | 'INCEPTION' | 'PLAN' | 'RELEASE'
+
+/** One AI-DLC phase band, left to right: 0 初始化 · 1 构思 · 2 启动 · 3 构建 · ✓ 发布 · 4 运维 · 回写 (stages.PHASES). */
+export interface BoardPhase {
+  key: PhaseKey
+  /** 0 1 2 3 ✓ 4 */
+  n: string
+  title: string
+  /** its subtitle: its stage numbers and names */
+  sub: string
+  /** used: it has a node on this way; unused: nothing of it is on this way (Lean skipped it all, or it is not this
+   * requirement's: a small requirement's 发布 and 回写): a folded band saying `note`; unrecorded: nothing recorded and
+   * the run is past it (a run older than Lean 0.3): folded, Lean 没记这一段 */
+  state: 'used' | 'unused' | 'unrecorded'
+  /** a used band's foot line (跳过：逆向工程、用户故事 · 每个单元都跳过了功能、非功能、基础设施设计), a folded band's words
+   * (这次不需要 · 跟大需求一起发布 · Lean 没记这一段); null: none */
+  note: string | null
+}
+
+/** What this machine can read of a run's session: here, elsewhere (another machine has it), none (a program step). */
+export type Readable = 'here' | 'elsewhere' | 'none'
+
+/** A run's state now, for the orchestrator roster and the command path. */
+export interface RunNow {
+  status: ActorStatus
+  /** 等你批 · 在做：应用设计 · 最后一次推送 2 分钟前 · 做完 · 11:05 交出去 */
+  doing: string
+  since: number | null
+  /** whom a wait is on (the page says 等你 only for you) */
+  who: WaitWho | null
+  /** the node it is on now (the command path goes there); null: none */
+  node: NodeId | null
+}
+
+/** Who does the work: the roster under the orchestrator box, and each round's executor. */
+export interface Run {
+  key: RunKey
+  kind: 'local' | 'runner' | 'child' | 'parent'
+  /** 本机会话 · 运行机 第 1 次 · 小需求 PAY-12 · 大需求 PAY-11 */
+  label: string
+  readable: Readable
+  /** runner: its number (运行机 第 n 次); null otherwise */
+  n: number | null
+  /** runner: RUN-<KEY>-<n> when the bridge ledger, a voucher or the row's run ids say it; null otherwise */
+  run_id: string | null
+  /** child / parent: that requirement's key; null otherwise */
+  req: string | null
+  /** child: its unit; null otherwise */
+  unit: string | null
+  now: RunNow
+  /** summed over its sessions on this machine; null when none here (never per stage) */
+  credits: number | null
+  /** its KiroCrew sessions on this machine, to open; [] when none here */
+  sessions: { slot: string; url: string; busy: boolean; title: string }[]
+}
+
+/** One hand-over: 交接 → 桥 → 签名 → 运行机建工作区. A row in the roster and a pill on the rail at the hand-over commit. */
+export interface Relay {
+  /** the runner run it handed to; null: refused, or not taken yet */
+  to: RunKey | null
+  /** the hand-over request */
+  at: number
+  /** the hand-over commit, 12 hex; null when not known */
+  sha: string | null
+  steps: RelayStep[]
+}
+export interface RelayStep {
+  key: 'handover' | 'bridge' | 'signer' | 'workspace'
+  /** 交接 · 桥核对 · 签名 · 运行机建工作区 */
+  title: string
+  status: ActorStatus
+  at: number | null
+  /** 桥接手了（MR !41） · 推上去了，但 MR 上没有交接标签 */
+  text: string
+  /** the one thing to do when the step is stuck, plain Chinese; null otherwise */
+  todo: string | null
+}
+
+export interface CheckResult {
+  /** pytest, ruff, npm test (board._cmd_name) */
+  name: string
+  ok: boolean
+  secs: number | null
+}
+
+/** How a round ended (Python: stages.RoundEnd). Only the fields of its kind are set; the others are null / []. */
+export interface RoundOutcome {
+  kind: 'open' | 'done' | 'approved' | 'sent_back' | 'refused' | 'superseded' | 'passed' | 'failed' | 'skipped'
+  /** approved / sent_back / refused / superseded: when */
+  at: number | null
+  /** approved / sent_back / refused: which approval */
+  gate: GateKind | null
+  /** approved / sent_back: 你 · a user name · 产品在 MR 上 (never an email, never a pseudonym's real name) */
+  by: string | null
+  /** approved / sent_back on the MR: D-n; null when typed in the session */
+  decision: string | null
+  /** refused: why, in words (lean_view's refused words); skipped: Lean's reason (agent text, scrubbed) */
+  text: string | null
+  /** superseded: the commit after the request (12 hex) and its subject */
+  sha: string | null
+  subject: string | null
+  /** passed / failed: the checks of that VERIFY */
+  checks: CheckResult[]
+}
+
+/** Why the round happened (Python: stages.Why). */
+export interface RoundWhy {
+  kind: 'first' | 'sent_back' | 'verify_failed' | 'ci_failed' | 'code_changed' | 'reopened'
+  /** sent_back / verify_failed: the round it follows */
+  round: number | null
+  /** ci_failed (team mode only): the pipeline number */
+  pipeline: number | null
+  /** code_changed: the commit (12 hex) and its subject */
+  sha: string | null
+  subject: string | null
+  at: number | null
+}
+
+export interface Round {
+  /** 第 n 轮 of this node, from 1, over all runs (a run filter never renumbers) */
+  n: number
+  run: RunKey
+  started: number
+  /** null: still open */
+  ended: number | null
+  outcome: RoundOutcome
+  why: RoundWhy
+  /** the agent's own note of this round (Lean STAGE_COMPLETED note), scrubbed; null when none */
+  note: string | null
+  /** what the round declared: Lean's outputs, an approval's files, VERIFY's summary, `lean release`'s release.md:
+   * path relative to the repo, sha256's first 8 */
+  outputs: { path: string; sha8: string }[]
+  /** this run's commits inside the round, 12 hex, oldest first, at most 20 */
+  commits: string[]
+}
+
+/** A gate on the node whose document it approves. Pending gates never approve from the page: the person types the line. */
+export interface Gate {
+  kind: GateKind
+  state: 'pending' | 'queued' | 'approved' | 'sent_back' | 'refused' | 'stale'
+  /** the round of the node it belongs to */
+  round: number
+  /** pending / queued: since when; decided: when */
+  at: number | null
+  /** pending / queued: whom it waits on; null when decided */
+  who: WaitWho | null
+  /** decided: who decided (你 · a user name · 产品在 MR 上); null otherwise */
+  by: string | null
+  /** pending on a local run: the exact line to type in the session; null after the hand-over */
+  line: string | null
+  /** pending on the runner: the MR question that asks it (D-3) and the MR link; null on a local run */
+  mr: { decision: string | null; url: string | null } | null
+  /** queued: why it is held (等流水线过了才问); stale: 文件改过了：要重新请求批准; null otherwise */
+  text: string | null
+  /** the documents it approves, repo-relative (INCEPTION: two) */
+  docs: string[]
+}
+
+/** A node's lane time: a span with the run that was at it (需求详情's 价值流 tells this machine's AI from the runner by it). */
+export interface NodeSpan extends ActorSpan {
+  run: RunKey | null
+}
+
+/** A unit of work on the board. A skipped stage keeps its node (status skipped: the band's foot note and the replay
+ * name it); the graph draws no box for it. */
+export interface StageNode {
+  id: NodeId
+  /** Lean's stage id, or review / reflect */
+  stage: string
+  /** 2.3 · 3.5 · 3.6 · ✓ · 4 (stages.STAGES n) */
+  n: string
+  unit: string | null
+  phase: PhaseKey
+  /** 需求分析 (stages.STAGES label) */
+  title: string
+  /** what it hands in: requirements.md · api 的代码生成计划 · lean verify · review.md · release.md */
+  sub: string
+  /** the RoleIcon it is drawn with (stages.STAGES icon) */
+  icon: string
+  /** the one writer is stages.node_status */
+  status: ActorStatus
+  /** one short line: what it does, did, or waits for (等批了设计 · 等你批 · 需求和设计 · 第 3 轮 · 退回以后) */
+  doing: string
+  since: number | null
+  /** status over time, oldest first: what 回放 shows at a moment */
+  history: { at: number; status: ActorStatus; doing: string; who: WaitWho | null }[]
+  spans: NodeSpan[]
+  marks: ActorMark[]
+  rounds: Round[]
+  gates: Gate[]
+  /** who has it now: its latest round's run; null before any round */
+  run: RunKey | null
+  /** a split's unit done by a small requirement: that requirement and its state until it merges in; null otherwise */
+  child: { req: string; state: ChildState } | null
+}
+
 export type BoardEventKind =
   | 'claim' | 'start' | 'stage' | 'request' | 'approve' | 'reject' | 'refused' | 'blocked' | 'commit' | 'handover'
   | 'accepted' | 'rejected' | 'signed' | 'question' | 'answer' | 'verify' | 'merge' | 'reflect' | 'session' | 'app'
@@ -1417,6 +1621,10 @@ export interface BoardEvent {
   /** a step a reader may hide (Lean's stage events and blocked tool calls: 「Lean 细节」) */
   detail: boolean
   src: string | null
+  /** the node it is about, the run that did it, and its round there: the feed filters and the replay lights by them */
+  node: NodeId | null
+  run: RunKey | null
+  round: number | null
 }
 
 /** One commit of the run branch, the hand-over commit, or the merge into the default branch (the conveyor). */
@@ -1433,6 +1641,9 @@ export interface BeltItem {
   records_only: boolean
   /** the actor whose lane it drops into the rail from: local, runner, handover */
   actor: ActorKey
+  /** the run that committed it, and the node whose round the commit falls in (null: outside any round) */
+  run: RunKey | null
+  node: NodeId | null
   /** the files it changed, with lines added and removed (git show --numstat; A added, M modified, D deleted, R renamed):
    * the lanes' 改动 block (UI问题清单 BOARD-21). Absent from a backend that does not read them: the lane shows the
    * commits and their file counts */
@@ -1457,6 +1668,9 @@ export interface CheckCell {
   /** one plain line */
   detail: string
   actor: ActorKey | null
+  /** gate cells: the gated node; verify cells: build-and-test */
+  node: NodeId | null
+  run: RunKey | null
 }
 export interface CheckWall {
   cells: CheckCell[]
@@ -1505,6 +1719,16 @@ export interface ReqBoard {
   edges: [string, string][]
   /** a local-only requirement past its design: the way goes from the design approval straight to the checks */
   direct: boolean
+  /** all six, in order, `init` first (always used) */
+  phases: BoardPhase[]
+  /** in band order, then stage order, then unit order; at most 64; at most 40 rounds each */
+  nodes: StageNode[]
+  /** in order of first round (local first when it has one) */
+  runs: Run[]
+  /** one per hand-over request, oldest first */
+  relays: Relay[]
+  /** this key's runs on another branch (trace other_runs) */
+  other_runs: { branch: string; state: string | null }[]
   events: BoardEvent[]
   /** Lean's progress after each stage record that changed it, oldest first (the first, at 0, before any): what 回放
    * shows at a moment; the last one is row.lean */

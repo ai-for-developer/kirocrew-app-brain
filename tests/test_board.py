@@ -5,10 +5,11 @@ board.build folds from Lean's own records, read the way the page reads it: where
 for the person, the merge ends the requirement's time), what the check wall counts, who is asked, the one step."""
 
 import json
+import re
 import subprocess
 import time
 
-from appkit import mod
+from appkit import ROOT, mod
 from brainfix import (filled_notes, PY, brain, lean, make_project, make_service, needs_brainkit, request_requirements, run, sh,
                       start_in_worktree)
 
@@ -172,6 +173,35 @@ def test_an_idle_session_waits_since_one_moment_and_a_claim_has_nothing_to_trace
 
 
 @needs_brainkit
+def test_a_requirement_split_into_units_draws_each_planned_unit_before_its_code_generation(tmp_path, home):
+    """Rule 1 through the service: unit-of-work.md's first table, as the run branch's newest commit has it, gives
+    构建 a row per unit in the table's order before any code generation is recorded. The worktree's copy is not read."""
+    repo = make_project(tmp_path)
+    wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
+    intent = json.loads((wt / "runs" / "PAY-1" / "run.json").read_text())["intent"]
+    uow = wt / "aidlc-docs" / intent / "inception" / "application-design" / "unit-of-work.md"
+    lean(wt, "stage", "start", "units")
+    uow.write_text("# Units of Work\n\n| Unit | Owner team | Paths | Depends on |\n|---|---|---|---|\n"
+                   "| web | pay | web/** | api |\n| api | pay | services/api/** | - |\n", encoding="utf-8")
+    lean(wt, "stage", "done", "units", "--note", "web 和 api")
+    sh("git", "-C", wt, "add", "-A")
+    sh("git", "-C", wt, "commit", "-qm", "PAY-1：拆成 web 和 api")
+    uow.write_text(uow.read_text(encoding="utf-8") + "| jobs | pay | jobs/** | - |\n", encoding="utf-8")
+    svc = make_service(tmp_path, [repo])
+
+    async def go():
+        await svc.start()
+        try:
+            return await svc.board("r1", "PAY-1")
+        finally:
+            await svc.stop()
+
+    b = run(go())
+    assert [(n["id"], n["status"]) for n in b["nodes"] if n["stage"] in ("units", "code-generation")] == [
+        ("units", "done"), ("code-generation/web", "waiting"), ("code-generation/api", "waiting")]
+
+
+@needs_brainkit
 def test_the_board_route_is_the_owners_only_and_checks_its_path(tmp_path):
     """Only the dashboard's owner gets a board (never an app token), and a bad repo id or key is refused before anything
     runs (test_skeleton checks every route the same way; this one is named here)."""
@@ -268,11 +298,11 @@ def row_of(state, who, text, **waits):
 
 
 def snapshot(f, row, *, t=None, sessions=(), me="dana", now=T + 11.5 * H, local_only=True, mr=None,
-             app_events=(), reflect_refs=(), brain_=None, team_decisions=(), changes=None):
+             app_events=(), reflect_refs=(), brain_=None, team_decisions=(), changes=None, units=()):
     return board.build(f, row, t, mr=mr, sessions=list(sessions), app_events=list(app_events),
                        team_decisions=list(team_decisions), subjects={}, reflect_refs=list(reflect_refs),
                        default_branch="main", local_only=local_only, kit_rows=[], decisions=[], brain=brain_, me=me, now=now,
-                       changes=changes)
+                       changes=changes, units=units)
 
 
 def session(last, busy=False, awaiting=False):
@@ -691,3 +721,246 @@ def test_a_run_is_said_as_the_runner_page_says_it_the_id_only_on_hover():
     shown = json.dumps([b["events"], [a["facts"] for a in b["actors"]], [a["marks"] for a in b["actors"]]], ensure_ascii=False)
     assert "RUN-DEMO-3-1" not in shown.replace('"运行号 RUN-DEMO-3-1"', "")
     assert board.run_words(["RUN-PAY-4-1", "RUN-PAY-4-2"]) == "第 1、2 次运行"
+
+
+# ---------------------------------------------------------------- the stage graph: nodes, rounds, runs, relays
+
+BIG_FILE, SMALL_FILE = "aidlc-docs/audit/laptop-1a2b3c.jsonl", "aidlc-docs/audit/laptop-9f8e7d.jsonl"
+RUNNER_FILE = "aidlc-docs/audit/runner-4d5e6f.jsonl"
+IDEATION = [s.id for s in mod("stages").LEAN if s.phase == "ideation"]
+
+
+def node(b, nid):
+    return next(n for n in b["nodes"] if n["id"] == nid)
+
+
+def on_way(b):
+    return [n["id"] for n in b["nodes"] if n["status"] != "skipped"]
+
+
+def started():
+    """lean new without --ideation, then the requirements begun: what `brain start` leaves."""
+    return [ev(T, "PHASE_SKIPPED", phase="ideation", stages=IDEATION, reason="not requested (lean new without --ideation)"),
+            ev(T + 1, "STAGE_STARTED", stage="requirements", path="aidlc-docs/261109-x/inception/requirements/requirements.md",
+               created=True)]
+
+
+def test_a_requirement_just_begun_draws_the_default_way_waiting_and_one_band_for_a_phase_skipped_whole():
+    """Rule 1: the default way's stages are on the board before they are reached, each saying what it waits for; Lean's
+    one unit is app while unit-of-work.md names none; a phase skipped as a whole is one folded band."""
+    b = snapshot(facts(started()), row_of("local", "agent", "AI 在做"), sessions=[session(T + M, busy=True)], now=T + 2 * M)
+    assert on_way(b) == ["requirements", "code-generation/app", "build-and-test", "review", "release", "reflect"]
+    assert (node(b, "requirements")["status"], node(b, "code-generation/app")["doing"]) == ("running", "等批了设计")
+    assert [(p["key"], p["state"], p["note"]) for p in b["phases"]] == [
+        ("init", "used", None), ("ideation", "unused", "这次不需要"), ("inception", "used", None),
+        ("construction", "used", None), ("release", "used", None), ("operations", "used", None)]
+    assert [(r["key"], r["label"], r["now"]["status"], r["now"]["node"]) for r in b["runs"]] == [
+        ("local", "本机会话", "running", "requirements")]
+    assert b["relays"] == [] and b["live"] is True
+    # the units unit-of-work.md plans come first, in its order
+    planned = board.build(facts(started()), row_of("local", "agent", "AI 在做"), None, mr=None, sessions=[], app_events=[],
+                          team_decisions=[], subjects={}, reflect_refs=[], default_branch="main", local_only=True,
+                          kit_rows=[], decisions=[], brain=None, me="dana", now=T + 2 * M,
+                          units=[mod("stages").UnitPlan("web"), mod("stages").UnitPlan("api")])
+    assert [n["id"] for n in planned["nodes"] if n["stage"] == "code-generation"] == ["code-generation/web",
+                                                                                     "code-generation/api"]
+
+
+def test_a_lean_0_2_run_has_no_record_of_ideation_and_its_band_says_so():
+    """Rule 6: DEMO-3's records are Lean 0.2's shape (no PHASE_SKIPPED): the 构思 band it is past is unrecorded."""
+    b = snapshot(facts(demo3_events()), row_of("local", "you", "会话空着：轮到你回话"), sessions=[session(T + 16 * M)])
+    assert [(p["state"], p["note"]) for p in b["phases"] if p["key"] == "ideation"] == [("unrecorded", "Lean 没记这一段")]
+    assert next(p for p in b["phases"] if p["key"] == "construction")["note"] == "每个单元都跳过了功能设计"
+
+
+def small(state="local", busy=True, merged_in=False, units=()):
+    """DEMO-4, a small requirement of DEMO-1 (unit api): its branch holds its big one's records and its own clone's."""
+    design = {"kind": "DESIGN", "path": "aidlc-docs/261109-x/inception/application-design/application-design.md",
+              "sha256": "d" * 64}
+    evs = [dict(ev(T, "STAGE_COMPLETED", stage="requirements"), _file=BIG_FILE),
+           dict(ev(T + 5 * M, "APPROVAL_REQUESTED", **design), _file=BIG_FILE),
+           dict(ev(T + 10 * M, "APPROVED", **design), _file=BIG_FILE),
+           dict(ev(T + H, "STAGE_STARTED", stage="code-generation", unit="api"), _file=SMALL_FILE, actor={"team": "api"})]
+    f = facts(evs, key="DEMO-4")
+    f["run"].update(parent="DEMO-1", unit="api", lean_clone="9f8e7d")
+    fam = {"role": "child", "parent": "DEMO-1", "unit": "api", "state": "merged" if merged_in else "in_progress"}
+    row = dict(row_of("merged_into_parent" if merged_in else state, "nobody" if merged_in else "agent",
+                      "已合进大需求 DEMO-1 的分支：等它评审、发布" if merged_in else "AI 在做"), key="DEMO-4", family=fam)
+    return snapshot(f, row, sessions=[session(T + H, busy=busy)], now=T + 2 * H, units=units)
+
+
+def test_a_small_requirement_has_no_release_or_write_back_and_its_big_ones_rounds_are_the_big_ones():
+    """Rule 2: no 发布 and no 回写 Brain on a small requirement's way, their bands say the big one does them; what its
+    big one recorded is that one's; no runner run and no hand-over by construction."""
+    b = small()
+    assert "release" not in on_way(b) and "reflect" not in on_way(b)
+    assert [(p["state"], p["note"]) for p in b["phases"] if p["key"] in ("release", "operations")] == [
+        ("unused", "跟大需求一起发布"), ("unused", "跟大需求一起回写 Brain")]
+    assert [r["run"] for r in node(b, "requirements")["rounds"]] == ["parent-DEMO-1"]
+    assert node(b, "application-design")["rounds"][0]["outcome"]["by"] == "大需求的负责人"
+    assert (node(b, "code-generation/api")["run"], node(b, "code-generation/api")["status"]) == ("local", "running")
+    assert [(r["key"], r["kind"], r["label"], r["req"]) for r in b["runs"]] == [
+        ("local", "local", "本机会话", None), ("parent-DEMO-1", "parent", "大需求 DEMO-1", "DEMO-1")]
+    assert b["relays"] == []
+
+
+def test_a_small_requirement_builds_its_own_unit_of_its_big_ones_plan():
+    """Its branch holds its big one's unit-of-work.md: of the units it plans, only the small one's is on its way."""
+    plan = [mod("stages").UnitPlan(u) for u in ("web", "api", "jobs")]
+    assert [n["id"] for n in small(units=plan)["nodes"] if n["stage"] == "code-generation"] == ["code-generation/api"]
+
+
+def test_a_small_requirement_merged_into_its_big_one_is_not_live_and_nothing_of_it_runs():
+    """Rule 3 (the preview's PAY-12 glowed, 此刻有人在做): merged into its big one, its session still busy."""
+    b = small(merged_in=True)
+    assert b["live"] is False
+    assert [n["id"] for n in b["nodes"] if n["status"] in ("running", "fixing")] == []
+    assert [(r["key"], r["now"]["status"]) for r in b["runs"]] == [("local", "merged"), ("parent-DEMO-1", "done")]
+
+
+def test_a_big_requirement_draws_each_unit_of_its_small_ones():
+    """Rule 4: a unit whose small requirement has not merged is one node of that small one, with its state; once it
+    merged, its clone's rounds are on the big one's branch, done by child-<KEY>."""
+    evs = [dict(ev(T, "STAGE_COMPLETED", stage="requirements"), _file=BIG_FILE),
+           dict(ev(T + H, "STAGE_STARTED", stage="code-generation", unit="api"), _file=SMALL_FILE, actor={"team": "api"}),
+           dict(ev(T + 2 * H, "STAGE_COMPLETED", stage="code-generation", unit="api"), _file=SMALL_FILE,
+                actor={"team": "api"})]
+    fam = {"role": "parent", "children": [{"key": "DEMO-4", "unit": "api", "state": "merged", "owner": "dana"},
+                                          {"key": "DEMO-5", "unit": "web", "state": "in_progress", "owner": "bob"},
+                                          {"key": "DEMO-6", "unit": "jobs", "state": "unclaimed", "owner": None}]}
+    b = snapshot(facts(evs), dict(row_of("local", "people", "等小需求合进来：已合并 1/3", do="none"), family=fam),
+                 sessions=[session(T + 3 * H)], now=T + 4 * H)
+    cg = {n["unit"]: n for n in b["nodes"] if n["stage"] == "code-generation"}
+    assert list(cg) == ["api", "web", "jobs"]
+    assert ([r["run"] for r in cg["api"]["rounds"]], cg["api"]["child"]) == (["child-DEMO-4"], None)
+    assert (cg["web"]["child"], cg["web"]["status"], cg["web"]["doing"]) == (
+        {"req": "DEMO-5", "state": "in_progress"}, "running", "bob 在做（DEMO-5）")
+    assert (cg["jobs"]["child"], cg["jobs"]["doing"]) == ({"req": "DEMO-6", "state": "unclaimed"}, "待认领（DEMO-6）")
+    assert [(r["key"], r["unit"]) for r in b["runs"]] == [("local", None), ("child-DEMO-4", "api")]
+    # the big one waits on its small ones: nobody's turn, and no command path
+    assert (b["runs"][0]["now"]["status"], b["runs"][0]["now"]["node"]) == ("waiting", None)
+
+
+def handed_over(state="running", who="runner", text="运行机在跑", **waits):
+    """DEMO-3 handed over 30 minutes after its approval; the runner's clone checks it (a red verify), fixes it, asks
+    for the release; the MR question D-3 asks the product to accept it."""
+    hand = T + 30 * M
+    evs = demo3_events()[:12] + [
+        dict(ev(T + 40 * M, "VERIFY", ok=False, results=[{"cmd": "pytest -q", "exit": 1, "secs": 4.0}]), _file=RUNNER_FILE),
+        dict(ev(T + 70 * M, "VERIFY", ok=True, results=[{"cmd": "pytest -q", "exit": 0, "secs": 4.0}]), _file=RUNNER_FILE),
+        dict(ev(T + 80 * M, "STAGE_STARTED", stage="release", path="aidlc-docs/261109-x/operations/release.md",
+                sha256="e" * 64), _file=RUNNER_FILE),
+        dict(ev(T + 81 * M, "APPROVAL_REQUESTED", kind="RELEASE", path="aidlc-docs/261109-x/operations/release.md",
+                sha256="e" * 64), _file=RUNNER_FILE)]
+    f = facts(evs, handoff={"requested_at": iso(hand), "by": "dana"},
+              approvals=[{"kind": "RELEASE", "unit": None, "state": "pending", "sha8": "e" * 8, "at": T + 81 * M,
+                          "line": "approve RELEASE eeeeeeee", "path": None}])
+    fix = "%040x" % 7
+    t = {"actions": {"handovers": [{"kind": "requested", "at": iso(hand), "commit": "%040x" % 1},
+                                   {"kind": "bridge accepted", "at": iso(hand + M), "mr_iid": 41, "run_id": "RUN-DEMO-3-1"},
+                                   {"kind": "voucher", "at": iso(hand + 2 * M), "run_id": "RUN-DEMO-3-1"}],
+                     "commits": [{"sha": "%040x" % 1, "at": iso(hand), "by": "person", "records_only": True, "files": 2},
+                                 {"sha": fix, "at": iso(T + 60 * M), "by": "bot", "after_handover": True, "files": 1}]},
+         "decisions": [{"source": "bridge", "id": "D-3", "kind": "acceptance", "lean_request": "RELEASE eeeeeeee",
+                        "asked_at": iso(T + 82 * M), "at": None, "choice": None, "state": "open"}]}
+    mr = {"url": "https://gitlab.example.com/p/-/merge_requests/41"}
+    row = dict(row_of(state, who, text, **waits), mr={"iid": 41, "url": mr["url"], "state": "opened"},
+               run_ids=["RUN-DEMO-3-1"])
+    return snapshot(f, row, t=t, mr=mr, local_only=False, now=T + 90 * M)
+
+
+def test_a_round_says_who_did_it_and_each_event_its_node_run_and_round():
+    """Rule 7 on the board: build-and-test's two rounds are the runner's (the second because the first was red),
+    each verify event says which; the fix commit falls in round 2 on the conveyor; the hand-over is this machine's run
+    and on no node; the bridge's acceptance is the runner run's."""
+    b = handed_over()
+    bt = node(b, "build-and-test")
+    assert [(r["n"], r["run"], r["outcome"]["kind"], r["why"]["kind"]) for r in bt["rounds"]] == [
+        (1, "runner-1", "failed", "first"), (2, "runner-1", "passed", "verify_failed")]
+    assert [(e["node"], e["run"], e["round"]) for e in b["events"] if e["kind"] == "verify"] == [
+        ("build-and-test", "runner-1", 1), ("build-and-test", "runner-1", 2)]
+    fix = next(x for x in b["belt"] if x["kind"] == "commit")
+    assert (fix["run"], fix["node"]) == ("runner-1", "build-and-test") and bt["rounds"][1]["commits"] == [fix["sha"]]
+    assert [(e["node"], e["run"]) for e in b["events"] if e["kind"] in ("handover", "accepted", "signed")] == [
+        (None, "local"), (None, "runner-1"), (None, "runner-1")]
+    assert [(c["id"], c["node"], c["run"]) for c in b["checks"]["cells"] if c["group"] == "verify"] == [
+        ("verify-pytest-1", "build-and-test", "runner-1")]
+
+
+def test_a_request_out_has_its_line_on_this_machine_and_its_mr_question_after_the_hand_over():
+    """Rule 8: before the hand-over the person types the line (DEMO-3's REQUIREMENTS, when it was out); after it,
+    the gate is the MR question that asks it (D-3) and has no line; a decided gate says who decided."""
+    b = handed_over("acceptance", "product", "等产品在 MR 上验收 D-3（approve / reject）", do="accept")
+    rel = node(b, "release")
+    assert [(g["kind"], g["state"], g["who"], g["line"], g["mr"]) for g in rel["gates"]] == [
+        ("RELEASE", "pending", "product", None, {"decision": "D-3", "url": "https://gitlab.example.com/p/-/merge_requests/41"})]
+    assert (rel["status"], rel["doing"]) == ("awaiting_approval", "等产品验收（D-3）")
+    assert [(g["state"], g["by"], g["line"]) for g in node(b, "requirements")["gates"]] == [("approved", "你", None)]
+    out = demo3_events()[:10]          # the REQUIREMENTS request, not answered yet
+    asked = snapshot(facts(out, approvals=[{"kind": "REQUIREMENTS", "unit": None, "state": "pending", "sha8": "dfc1969f",
+                                            "at": T + 9 * M + 50, "line": "approve REQUIREMENTS dfc1969f", "path": None}]),
+                     row_of("local", "you", "等你批准需求", do="approve"), sessions=[session(T + 10 * M)])
+    assert [(g["state"], g["who"], g["line"], g["mr"]) for g in node(asked, "requirements")["gates"]] == [
+        ("pending", "you", "approve REQUIREMENTS dfc1969f", None)]
+
+
+def test_the_runner_run_is_numbered_named_and_handed_over_to_through_one_relay():
+    """The roster: this machine's session, then 运行机 第 1 次 named by its run id; one relay, every step done since
+    the runner's records came; the runner's run waits on the product at the release."""
+    b = handed_over("acceptance", "product", "等产品在 MR 上验收 D-3（approve / reject）", do="accept")
+    assert [(r["key"], r["label"], r["readable"], r["run_id"]) for r in b["runs"]] == [
+        ("local", "本机会话", "here", None), ("runner-1", "运行机 第 1 次", "elsewhere", "RUN-DEMO-3-1")]
+    assert (b["runs"][0]["now"]["doing"], b["runs"][1]["now"]["node"]) == ("做完 · 交出去了", "release")
+    [relay] = b["relays"]
+    assert (relay["to"], relay["sha"]) == ("runner-1", ("%040x" % 1)[:12])
+    assert [(s["key"], s["status"]) for s in relay["steps"]] == [
+        ("handover", "merged"), ("bridge", "merged"), ("signer", "merged"), ("workspace", "merged")]
+    assert relay["steps"][1]["text"] == "桥接手了（MR !41）"
+
+
+def test_a_repo_done_only_here_has_one_run_and_no_hand_over():
+    """Rule 5."""
+    b = snapshot(facts(demo3_events()), row_of("local", "you", "会话空着：轮到你回话"), sessions=[session(T + 16 * M)])
+    assert [r["key"] for r in b["runs"]] == ["local"] and b["relays"] == []
+    assert {r["run"] for n in b["nodes"] for r in n["rounds"]} == {"local"}
+
+
+def test_a_node_s_replay_ends_on_what_it_says_now():
+    """Rule 9: node_status alone writes a node's status, so 回放 at the end and the live node say the same."""
+    for b in (handed_over(), small(), snapshot(facts(demo3_events()), row_of("local", "you", "会话空着：轮到你回话"),
+                                                 sessions=[session(T + 16 * M)])):
+        for n in b["nodes"]:
+            if n["history"]:
+                assert (n["history"][-1]["status"], n["history"][-1]["doing"]) == (n["status"], n["doing"]), n["id"]
+            assert [h["at"] for h in n["history"]] == sorted(h["at"] for h in n["history"]), n["id"]
+
+
+def test_live_is_a_run_at_work_now():
+    """Rule 10: a busy session is at work; a quiet one waits for the person; a merged requirement is over."""
+    assert snapshot(facts(started()), row_of("local", "agent", "AI 在做"), sessions=[session(T + M, busy=True)],
+                    now=T + 2 * M)["live"] is True
+    assert snapshot(facts(started()), row_of("local", "you", "会话空着：轮到你回话"), sessions=[session(T + M)],
+                    now=T + 2 * M)["live"] is False
+    assert handed_over()["live"] is True
+    assert snapshot(facts(started(), merged=True), row_of("merged", "nobody", "已合并"),
+                    sessions=[session(T + M, busy=True)], now=T + 2 * M)["live"] is False
+
+
+def test_the_board_never_shows_typed_words_or_a_clone_s_host():
+    """A rejection's words are a person's (never read); a ledger file is named after its clone's host (never sent)."""
+    evs = demo3_events()[:10] + [ev(T + 10 * M, "REJECTED", kind="REQUIREMENTS", sha256="dfc1969f" * 8,
+                                    words="reject REQUIREMENTS 金额要到分，别四舍五入")]
+    b = snapshot(facts([dict(e, _file=BIG_FILE) for e in evs]), row_of("local", "you", "等它改需求"),
+                 sessions=[session(T + 11 * M)])
+    assert node(b, "requirements")["rounds"][0]["outcome"]["kind"] == "sent_back"
+    text = json.dumps(b, ensure_ascii=False)
+    assert "四舍五入" not in text and "laptop-1a2b3c" not in text
+
+
+def test_every_board_event_kind_has_a_place_on_the_graph():
+    """Each kind of ui/src/types.ts BoardEventKind says which node and whose run it is (board.PLACE): a kind added
+    there without a row fails here, instead of an event landing nowhere."""
+    src = (ROOT / "ui" / "src" / "types.ts").read_text(encoding="utf-8")
+    union = re.search(r"export type BoardEventKind =([^\n]*\n(?:\s*\|[^\n]*\n)+)", src).group(1)
+    kinds = set(re.findall(r"'([a-z]+)'", union))
+    assert {"claim", "verify", "reflect"} <= kinds and sorted(kinds - set(board.PLACE)) == []

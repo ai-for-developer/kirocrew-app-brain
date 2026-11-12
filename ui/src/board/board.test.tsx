@@ -858,7 +858,7 @@ describe('需求看板 · 轮到谁、做什么', () => {
 
   test('the wall asks to fix the repo’s kit: 去设置修 right there opens 设置', async () => {
     const b = fx.board()
-    b.checks.cells.push({ id: 'kit-0', group: 'brain', label: 'kit', name: 'kit 文件', status: 'fail', at: null, detail: '仓库里的 kit 是旧的：重装 kit 文件', actor: null })
+    b.checks.cells.push({ id: 'kit-0', group: 'brain', label: 'kit', name: 'kit 文件', status: 'fail', at: null, detail: '仓库里的 kit 是旧的：重装 kit 文件', actor: null, node: null, run: null })
     installFixtureRoutes(boardRoute(() => structuredClone(b)))
     const p = renderBoard()
     await loaded()
@@ -1135,7 +1135,7 @@ describe('需求看板 · 谁做的、等谁、看得清', () => {
     const b = fx.board()
     b.person = { ...b.person, me, owner: me ? 'alice' : 'erin' }
     const t = Math.max(...b.events.map((e) => e.at))
-    const ev = (seq: number, dt: number, kind: ReqBoard['events'][number]['kind'], from: string, to: string, text: string) => ({ seq, at: t + dt, kind, from, to, text, detail: false, src: null })
+    const ev = (seq: number, dt: number, kind: ReqBoard['events'][number]['kind'], from: string, to: string, text: string) => ({ seq, at: t + dt, kind, from, to, text, detail: false, src: null, node: null, run: null, round: null })
     b.events.push(ev(900, 10, 'handover', 'local', 'handover', '交给运行机'), ev(901, 20, 'question', 'bridge', 'person', 'D-1 在 MR 上问人：验收'),
       ev(902, 30, 'approve', 'person', 'release', '产品在 MR 上批准了发布'), ev(903, 40, 'answer', 'person', 'bridge', 'D-2 回答了：approve'),
       ev(904, 50, 'question', 'runner', 'person', '停下问人：验收'), ev(905, 60, 'question', 'runner', 'person', '停下问人：澄清'),

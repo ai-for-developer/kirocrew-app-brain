@@ -19,7 +19,7 @@ from typing import Any, Callable
 
 from . import (bk, brainview, crewcheck, deliveries, detail, family, identity, importer, inplace, installer, intake,
                landing, lean_view, mrdesc_view, mrinfo)
-from . import problems
+from . import problems, stages
 from . import board as board_mod
 from . import settings as settings_mod
 from . import todo as todo_mod
@@ -50,7 +50,7 @@ def scope_of(rid: str, key: str) -> str:
 
 SCRUB_KEYS = ("text", "why", "question", "label", "detail", "status", "next", "open_questions", "output", "reasons",
               "findings", "review", "blocking", "error", "session_error", "notes", "warnings", "problems", "summary",
-              "first", "todo", "raw", "doing", "facts", "title", "name", "checks")
+              "first", "todo", "raw", "doing", "facts", "title", "name", "checks", "note", "subject", "sub")
 
 
 def scrub_tree(obj: Any, scrub: Callable[[str], str], key: str = "") -> Any:
@@ -108,6 +108,7 @@ class Service:
         self._trace: dict[tuple, tuple] = {}
         self.desc = mrdesc_view.DescCache()     # each requirement's 变更说明, by the commits it is made from
         self._subj: dict[tuple, tuple] = {}     # the board's commit subjects and changed files, by the commits asked for
+        self._units: dict[tuple, list] = {}     # the units unit-of-work.md plans, by the commit it is read at
         self._me: str | None = None
         self.families = family.Families()      # brain-kit's listing per repo (大需求 and their 小需求), made in the background
         self._big_file = self.data_dir / "big.json"
@@ -896,6 +897,28 @@ class Service:
                     out.append((m.group(1), at, merged))
         return out
 
+    def _planned_units(self, git: Git, f: dict[str, Any]) -> list[stages.UnitPlan]:
+        """The units unit-of-work.md plans, as Lean reads its first table (brain-kit's split.parse_units), at the run
+        branch's newest commit (on the team runner: its workspace's HEAD). Only a regular file of that commit is read,
+        so never a symlink and never the worktree's copy. None when it is not committed there or brain-kit cannot read
+        it: the fold then has the units Lean's records name."""
+        intent = (f.get("run") or {}).get("intent")
+        sha = f.get("tip") or (f.get("ref") if f.get("where") == "main" else None) or (
+            mrdesc_view.target(git, "HEAD") if f.get("where") == "runner" else None)
+        if not sha or not isinstance(intent, str) or not lean_view.INTENT_RE.match(intent) or not bk.has("split"):
+            return []
+        sig = (git.repo, sha, intent)
+        if sig not in self._units:
+            raw = mrdesc_view.committed_file(git, sha, stages.doc_path(stages.BY_ID["units"], None, intent))
+            try:
+                got = bk.m("split").parse_units(raw.decode("utf-8", "replace"))[0] if raw else []
+            except Exception:  # noqa: BLE001 - brain-kit could not read it: nothing planned
+                got = []
+            if len(self._units) > 200:
+                self._units.clear()
+            self._units[sig] = [stages.UnitPlan(u["name"], tuple(u["paths"])) for u in got]
+        return self._units[sig]
+
     def _board_sync(self, rid: str, key: str, snap: dict[str, Any]) -> dict[str, Any]:
         parts: dict[str, Any] = {}
         d = self._detail_sync(rid, key, snap, parts)
@@ -913,11 +936,14 @@ class Service:
             reflect_refs=self._reflect_refs(git, key, str(cfg.get("default_branch") or "main")) if git is not None else [],
             default_branch=str(cfg.get("default_branch") or "main"), local_only=bool(parts.get("local_only")),
             kit_rows=board_mod.kit_cells(self.crew.get("rows") or [], parts.get("path") or ""),
-            decisions=d["decisions"], brain=d["brain"], me=parts.get("me"), now=self.now())
+            decisions=d["decisions"], brain=d["brain"], me=parts.get("me"), now=self.now(),
+            units=self._planned_units(git, f) if git is not None else [])
         return {"at": self.now(), "row": d["row"], "branch": d["row"].get("branch"),
                 "base": str(cfg.get("default_branch") or "main"), "started_at": g["started_at"], "ended_at": g["ended_at"],
                 "live": g["live"], "person": g["person"], "actors": g["actors"],
                 "edges": [list(e) for e in board_edges([a["key"] for a in g["actors"]], g["direct"])], "direct": g["direct"],
+                "phases": g["phases"], "nodes": g["nodes"], "runs": g["runs"], "relays": g["relays"],
+                "other_runs": g["other_runs"],
                 "events": g["events"], "lean_steps": g["lean_steps"], "belt": g["belt"], "checks": g["checks"],
                 "accept": g["accept"], "brain": d["brain"], "decisions": d["decisions"], "questions": d["questions"],
                 "mr_desc": d["mr_desc"],

@@ -18,9 +18,12 @@ The world (times relative to 2026-11-08 14:00 UTC, the fixtures' `at`; the previ
       for its acceptance (D-3); PAY-7 hand-over refused; PAY-6 carol's claim, PAY-8 alice's, neither started; PAY-2
       merged, with a whole trace for 回放 (a rejection, a question, a red verify, the acceptance, the write-back);
       PAY-11 退款大需求 split into three small ones (大需求拆成小需求): PAY-12 api merged into its branch, PAY-13 web
-      bob builds, PAY-14 jobs 待认领 (it waits for web).
+      bob builds, PAY-14 jobs 待认领 (it waits for web). PAY-16 本机 · waits for its INCEPTION approval, the session
+      quiet (the design's Scenario A). PAY-9 on the runner · its release sent back once by the product (D-2), asked
+      again after two CI fixes, waits for the product's acceptance (D-3; Scenario B, the mockup's story).
   shop-web (r2): brain-kit not installed yet.
-  shop-order (r3, GitLab shop/shop-order): ORD-1 … ORD-9 merged over ten weeks (most unattended), ORD-10 running now.
+  shop-order (r3, GitLab shop/shop-order): ORD-1 … ORD-9 merged over ten weeks (most unattended; ORD-8 handed over
+      twice: its first run stopped once its question was answered), ORD-10 running now.
   shop-tools (r4, no GitLab: local only): TOOL-1, the AI at work on this machine; its hook adapter is the old one
       (a ! reminder: it matters only once a requirement is handed to the runner).
 
@@ -101,6 +104,11 @@ def sha(*parts: object) -> str:
     return hashlib.sha1("/".join(map(str, parts)).encode()).hexdigest()
 
 
+def h64(*parts: object) -> str:
+    """A sha256 as Lean records one (a document's, a check's output, the code's fingerprint)."""
+    return hashlib.sha256("/".join(map(str, parts)).encode()).hexdigest()
+
+
 class Req:
     """One requirement's record, written in the order it happened."""
 
@@ -122,17 +130,52 @@ class Req:
         self.app: list[dict] = []
         self.proposals = 0
         self.worktree: str | None = None    # its checkout on this machine, if it has one
+        self.team: str | None = None        # a small requirement's Lean team (its unit), on each of its records
+        self.release_sha: str | None = None
+        self.clone("%s-mbp" % (owner or "team"))
+
+    def clone(self, host: str, n: int = 0) -> None:
+        """Lean writes to this clone's ledger file from now on (aidlc-docs/audit/<host>-<6 hex>.jsonl): the owner's
+        machine, each run on the team runner (a fresh worktree is a fresh clone), a small requirement's worktree."""
+        self.file = "aidlc-docs/audit/%s-%s.jsonl" % (host, sha(self.key, host, n)[:6])
+
+    def doc(self, sid: str, unit: str | None = None) -> str:
+        return "aidlc-docs/%s/%s" % (self.intent, stage_table.BY_ID[sid].doc.format(unit=unit or ""))
+
+    def head(self, at: float) -> str | None:
+        """The newest commit of the run branch at *at*."""
+        shas = [c["sha"] for c in self.commits if _epoch(c["at"]) <= at]
+        return shas[-1] if shas else None
 
     # Lean's ledger
     def _lean(self, at: float, event: str, **data) -> None:
-        self.events.append({"event": event, "ts": iso(at), "_at": at, "data": data, "intent": self.intent,
-                            "seq": len(self.events) + 1, "_file": "aidlc-docs/audit/x.jsonl"})
+        rec = {"event": event, "ts": iso(at), "_at": at, "data": data, "intent": self.intent, "_file": self.file,
+               "seq": sum(1 for e in self.events if e["_file"] == self.file) + 1}
+        if self.team:
+            rec["actor"] = {"team": self.team}
+        self.events.append(rec)
 
-    def stage(self, at: float, sid: str, state: str, unit: str | None = None, note: str | None = None) -> None:
+    def stage(self, at: float, sid: str, state: str, unit: str | None = None, note: str | None = None,
+              short: str = "") -> None:
+        """A stage record as Lean writes it: a start names its document (created the first time), a done each
+        output's sha256, a skip its reason. The release's start is `lean release`: release.md's sha256, the code's
+        fingerprint, the commit it is for."""
         ev = {"started": "STAGE_STARTED", "done": "STAGE_COMPLETED", "skipped": "STAGE_SKIPPED"}[state]
-        data = {"stage": sid}
-        if unit:
-            data["unit"] = unit
+        data: dict = {"stage": sid, "unit": unit}
+        path = self.doc(sid, unit)
+        if state == "started" and sid == "release":
+            self.release_sha = short + h64(self.key, "release.md", at)[len(short):]
+            data.update(path=path, sha256=self.release_sha, fingerprint=h64(self.key, "fp", at), head=self.head(at))
+        elif state == "started":
+            data.update(path=path, created=not any(e["event"] == "STAGE_STARTED" and e["data"].get("path") == path
+                                                   for e in self.events))
+        elif state == "done":
+            verified = [e["data"] for e in self.events if e["event"] == "VERIFY" and e["_at"] <= at]
+            data["outputs"] = {path: self.release_sha if sid == "release" and self.release_sha else
+                               verified[-1]["summary_sha256"] if sid == "build-and-test" and verified else
+                               h64(self.key, sid, unit, at)}
+            if sid == "code-generation":
+                data["fingerprint"] = h64(self.key, "fp", at)
         if note:
             data["note" if state == "done" else "reason"] = note
         self._lean(at, ev, **data)
@@ -143,15 +186,18 @@ class Req:
                    reason=reason)
 
     def _doc(self, kind: str, unit: str | None) -> dict:
-        """What Lean's approval of *kind* covers: its document (a PLAN is one unit's code-generation plan)."""
-        path = {"REQUIREMENTS": "inception/requirements/requirements.md",
-                "DESIGN": "inception/application-design/application-design.md",
-                "PLAN": "construction/plans/%s-code-generation-plan.md" % unit,
-                "RELEASE": "operations/release.md"}.get(kind, "%s.md" % kind.lower())
-        return dict({"path": "aidlc-docs/%s/%s" % (self.intent, path)}, **({"unit": unit} if unit else {}))
+        """What Lean's approval of *kind* covers: its document (a PLAN is one unit's code-generation plan); INCEPTION
+        the requirements and the design together, each file with its sha256."""
+        if kind == "INCEPTION":
+            files = {self.doc(s): h64(self.key, s) for s in ("requirements", "application-design")}
+            return {"paths": list(files), "files": files}
+        sid = {"REQUIREMENTS": "requirements", "DESIGN": "application-design", "PLAN": "code-generation",
+               "RELEASE": "release"}[kind]
+        return dict({"path": self.doc(sid, unit)}, **({"unit": unit} if unit else {}))
 
     def request(self, at: float, kind: str, unit: str | None = None, sha8: str | None = None) -> str:
-        h = sha(self.key, kind, at)
+        """`lean request`: a RELEASE is asked for the release.md `lean release` wrote."""
+        h = self.release_sha if kind == "RELEASE" and self.release_sha else sha(self.key, kind, at)
         h = sha8 + h[len(sha8):] if sha8 else h
         self._lean(at, "APPROVAL_REQUESTED", kind=kind, sha256=h, **self._doc(kind, unit))
         return h
@@ -172,9 +218,11 @@ class Req:
         self._lean(at, "APPROVED", kind=kind, sha256=h, **self._doc(kind, unit))
         self._human(at, "approval", kind, who)
 
-    def reject(self, at: float, kind: str, h: str) -> None:
-        self._lean(at, "REJECTED", kind=kind, sha256=h, **self._doc(kind, None))
-        self._human(at, "rejection", kind, None)
+    def reject(self, at: float, kind: str, h: str, who: str | None = None, words: str = "") -> None:
+        """A rejection, with the words the person typed (Lean keeps them; the board never reads them)."""
+        self._lean(at, "REJECTED", kind=kind, sha256=h, words=words or "reject %s %s" % (kind, h[:8]),
+                   **self._doc(kind, None))
+        self._human(at, "rejection", kind, who)
 
     def turn(self, at: float, session: str = "s-1") -> None:
         """The person typed in the session (Lean's UserPromptSubmit hook): the session's first prompt is its task."""
@@ -185,20 +233,30 @@ class Req:
         self._lean(at, "BLOCKED", gate=gate, path=path, tool="fs_write")
 
     def verify(self, at: float, results: list[tuple[str, int]]) -> None:
-        self._lean(at, "VERIFY", ok=all(e == 0 for _, e in results), results=[{"cmd": c, "exit": e} for c, e in results])
+        """`lean verify`: each check's exit, time and output hash, the commit it ran on, the summary it wrote."""
+        res = [{"cmd": c, "exit": e, "secs": round(3 + int(sha(self.key, c, at)[:2], 16) / 8, 1),
+                "output_sha256": h64(self.key, c, at)} for c, e in results]
+        self._lean(at, "VERIFY", ok=all(e == 0 for _, e in results), fingerprint=h64(self.key, "fp", at), results=res,
+                   base_commit=self.head(at), branch=self.branch, summary=self.doc("build-and-test"),
+                   summary_sha256=h64(self.key, "summary", at))
 
     # git and the hand-over
-    def commit(self, at: float, by: str, subject: str, files: int = 3, after: bool | None = None, records: bool = False) -> str:
+    def commit(self, at: float, by: str, subject: str, files: int = 3, after: bool | None = None, records: bool = False,
+               short: str = "", paths: tuple[str, ...] = ()) -> str:
+        """A commit of the run branch. *short*: the first hex of its sha, as a story tells it; *paths*: the files it
+        changed, when the story names them."""
         s = sha(self.key, "commit", at, subject)
+        s = short + s[len(short):]
         self.commits.append({"sha": s, "at": iso(at), "committed_at": iso(at), "by": by, "who": None if by == "bot" else self.me,
-                             "files": files, "records_only": records, "merge": False,
+                             "files": len(paths) or files, "records_only": records, "merge": False,
                              "after_handover": (self.hand_at is not None and at > self.hand_at) if after is None else after,
-                             "subject": subject})
+                             "subject": subject, "paths": list(paths)})
         return s
 
-    def handoff(self, at: float) -> None:
+    def handoff(self, at: float, short: str = "") -> None:
         self.hand_at = at
-        s = self.commit(at, "person", "%s: hand off to team runner" % self.key, files=2, after=False, records=True)
+        s = self.commit(at, "person", "%s: hand off to team runner" % self.key, files=2, after=False, records=True,
+                        short=short)
         self.hands.append({"at": iso(at), "kind": "requested", "by": self.owner, "commit": s})
 
     def accepted(self, at: float, iid: int, run_id: str) -> None:
@@ -213,10 +271,12 @@ class Req:
         self.park.append(dict({"at": iso(at), "status": status, "kind": kind}, **({"ask": ask} if ask else {})))
 
     def ask(self, did: str, kind: str, asked: float, answered: float | None = None, choice: str | None = None,
-            state: str = "open", who: str = "P-7C1D") -> None:
+            state: str = "open", who: str = "P-7C1D", human: bool = True) -> None:
+        """The bridge's question on the MR (D-n) and its answer. *human*: the answer is a person's act of its own (a
+        rejection the runner's Lean records is counted once, as the rejection)."""
         self.decs.append({"id": did, "source": "bridge", "kind": kind, "asked_at": iso(asked), "at": iso(answered) if answered else None,
                           "choice": choice, "state": state, "who": who if choice else None, "voucher_id": None})
-        if choice:
+        if choice and human:
             self._human(answered, "approval" if kind == "acceptance" else "answer", "acceptance" if kind == "acceptance" else kind, who)
 
     def merge(self, at: float, how: str = "merge commit") -> None:
@@ -225,11 +285,14 @@ class Req:
         self.after14 = {"value": False if closed else None, "window_closed": closed, "window_end": iso(at + 14 * D), "evidence": []}
 
     # what the backend reads it from
-    def facts(self, park: dict | None = None) -> dict:
+    def facts(self, park: dict | None = None, extra: tuple["Req", ...] = ()) -> dict:
+        """What the backend reads of it (repo.scan). *extra*: the requirements whose ledger files are on its branch as
+        well (a big requirement and the small ones merged into its branch share one intent)."""
         self.events.sort(key=lambda e: e["_at"])          # Lean's ledger in time order, as lean_view.events reads it
+        evs = sorted(self.events + [e for o in extra for e in o.events], key=lambda e: e["_at"])
         approvals = []
         last: dict[str, dict] = {}
-        for e in self.events:
+        for e in evs:
             if e["event"] in ("APPROVAL_REQUESTED", "APPROVED", "REJECTED"):
                 last[(e["data"]["kind"], e["data"].get("unit"))] = e        # a PLAN is asked per unit, as Lean does
         for (kind, _), e in last.items():
@@ -252,8 +315,8 @@ class Req:
                 "owner": self.owner, "worktree": None if self.merged_at else self.worktree, "run": run, "park": park, "merged": bool(self.merged_at),
                 "merged_at": self.merged_at, "tip_at": self.merged_at or (_epoch(self.commits[-1]["at"]) if self.commits else None),
                 "park_at": _epoch(self.park[-1]["at"]) if self.park else None, "review": None,
-                "decisions_text": "```brain-proposal\n```\n" * self.proposals, "events": self.events, "approvals": approvals,
-                "stages": lean_view.stages(self.events)}
+                "decisions_text": "```brain-proposal\n```\n" * self.proposals, "events": evs, "approvals": approvals,
+                "stages": lean_view.stages(evs)}
 
     def trace(self, brain: dict, family: dict | None = None) -> dict:
         stages = []
@@ -306,7 +369,9 @@ def changes(r: Req) -> dict[str, list[dict]]:
     out = {}
     for c in r.commits:
         h = int(c["sha"][:8], 16)
-        if c["subject"].endswith("hand off to team runner"):
+        if c.get("paths"):
+            pool = c["paths"]
+        elif c["subject"].endswith("hand off to team runner"):
             pool = ["runs/%s/run.json" % r.key, "runs/%s/MR.md" % r.key]
         elif c["records_only"]:
             pool = ["aidlc-docs/%s/%s" % (r.intent, x) for x in (
@@ -515,12 +580,15 @@ def standard(r: Req, t: float, *, design_back: bool = False, units: tuple[str, .
 
 
 def runner_half(r: Req, t: float, *, iid: int, question: tuple[str, str, float, str] | None = None, verify_fail: bool = False,
-                outside: bool = False, accept_after: float = 70 * M) -> float:
-    """Hand-over at *t* and the runner's half: code generation, build and test, the release and its acceptance."""
+                outside: bool = False, accept_after: float = 70 * M, again: float | None = None) -> float:
+    """Hand-over at *t* and the runner's half: code generation, build and test, the review, the release and its
+    acceptance. *again*: the first run stops once its question is answered (the answer never reached its session),
+    and this long after, the owner hands it over again: a second run, in a fresh worktree, does the rest."""
     run_id = "RUN-%s-1" % r.key
     r.commit(t - 4 * M, "person", "%s：交接说明" % r.key, files=1, records=True)
     r.handoff(t)
     r.accepted(t + 2 * M, iid, run_id)
+    r.clone("teamrunner", 1)
     u = r.slug.split("-")[0] + "-api"
     r.stage(t + 4 * M, "code-generation", "started", unit=u)
     c = t + 4 * M
@@ -533,13 +601,18 @@ def runner_half(r: Req, t: float, *, iid: int, question: tuple[str, str, float, 
         r.ask(did, kind, c + 3 * M, c + 3 * M + wait, choice, state="delivered")
         r.question_park(c + 4 * M + wait, "answered", kind, "owner" if kind == "clarify" else "product")
         c = c + 6 * M + wait
+        if again is not None:
+            r.commit(c + again - 4 * M, "person", "%s：交接说明（再交接一次）" % r.key, files=1, after=False, records=True)
+            r.handoff(c + again)
+            r.accepted(c + again + 2 * M, iid, "RUN-%s-2" % r.key)
+            r.clone("teamrunner", 2)
+            c += again + 4 * M
         r.commit(c + 18 * M, "bot", "%s：按 %s 的回答改" % (r.key, did), files=2)
         c += 18 * M
     if outside:
         r.commit(c + 9 * M, "person", "修了一个打字错误", files=1)
         c += 10 * M
     r.stage(c + 2 * M, "code-generation", "done", unit=u, note="代码写完")
-    r.stage(c + 3 * M, "build-and-test", "started")
     checks = [("pytest -q", 0), ("ruff check .", 0), ("python -m mypy src", 0)]
     if verify_fail:
         r.verify(c + 15 * M, [("pytest -q", 1), ("ruff check .", 0), ("python -m mypy src", 0)])
@@ -547,6 +620,7 @@ def runner_half(r: Req, t: float, *, iid: int, question: tuple[str, str, float, 
         c += 32 * M
     r.verify(c + 15 * M, checks)
     r.stage(c + 16 * M, "build-and-test", "done", note="verify PASS: %d checks on code fingerprint %s" % (len(checks), sha(r.key, "fp")[:8]))
+    r.commit(c + 16 * M + 10, "bot", "%s：审查（review.md）" % r.key, records=True, paths=(r.doc("review"),))
     r.stage(c + 16 * M + 20, "ci-pipeline", "skipped", note=CI_AS_IS)
     r.skip_phase(c + 16 * M + 40, "operations", OPS_BY_TEAM)
     r.stage(c + 17 * M, "release", "started")
@@ -562,6 +636,9 @@ def merged(r: Req, t: float, h: str, did: str, how: str = "merge commit") -> Non
     r.merge(t + 35 * M, how)
 
 
+# the requirement handed over twice: its first run on the team runner stopped once its question was answered (the
+# answer never got into the run's session, so the bridge gave the run up), and its owner handed it over again
+AGAIN = "ORD-8"
 # the 待办 fixture's items, in this order (ui/src/views/todo.test.tsx reads them by place)
 TODO_KINDS = ("lean_approval", "clarify", "question", "acceptance", "handoff_rejected", "handoff_unlabelled", "crew", "start",
               "reply")
@@ -622,6 +699,7 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
     return {"at": T0, "row": row, "branch": row.get("branch"), "base": "main", "started_at": g["started_at"], "ended_at": g["ended_at"],
             "live": g["live"], "person": g["person"], "actors": g["actors"],
             "edges": [list(e) for e in service.board_edges([a["key"] for a in g["actors"]], g["direct"])], "direct": g["direct"],
+            "phases": g["phases"], "nodes": g["nodes"], "runs": g["runs"], "relays": g["relays"], "other_runs": g["other_runs"],
             "events": g["events"], "lean_steps": g["lean_steps"], "belt": g["belt"], "checks": g["checks"],
             "accept": g["accept"], "brain": brain,
             "decisions": decisions or [], "questions": questions or [],
@@ -679,6 +757,7 @@ def split_family(tmpl: dict, det: dict, mrdesc, decisions) -> tuple[list, list, 
                    "unknown": ["PAY-11 credits"], "last_activity": {"at": iso(T0 - 25 * M), "key": "PAY-13", "src": ""}}}
     # the small ones
     p12 = Req("r1", "PAY-12", "api · 通过接口提交退款", "alice", "api", intent, project="shop/shop-pay")
+    p12.team = "api"
     p12.claim_at, p12.start_at = T0 - 2 * D + 4 * H, T0 - 2 * D + 5 * H
     p12.stage(p12.start_at + 5 * M, "code-generation", "started", unit="api")
     p12.commit(p12.start_at + 70 * M, "person", "PAY-12：退款接口（api）", files=4)
@@ -689,6 +768,7 @@ def split_family(tmpl: dict, det: dict, mrdesc, decisions) -> tuple[list, list, 
     p12.commit(p12.start_at + 140 * M, "person", "PAY-12: ready to merge into %s (unit api of PAY-11)" % branch, files=2,
                records=True)
     p13 = Req("r1", "PAY-13", "web · 在订单页看到退款状态", "bob", "web", intent, project="shop/shop-pay")
+    p13.team = "web"
     p13.claim_at, p13.start_at = T0 - 8 * H, T0 - 7 * H
     p13.stage(p13.start_at + 4 * M, "code-generation", "started", unit="web")
     p13.commit(p13.start_at + 50 * M, "person", "PAY-13：订单页的退款状态（web）", files=3)
@@ -696,15 +776,16 @@ def split_family(tmpl: dict, det: dict, mrdesc, decisions) -> tuple[list, list, 
     p14 = Req("r1", "PAY-14", "jobs · 每晚自动对账", "", "jobs", "", project="shop/shop-pay")
     p14.claim_at = T0 - 2 * D + 3 * H
 
-    def facts_of(r: Req, **kw) -> dict:
-        f = r.facts()
+    def facts_of(r: Req, extra: tuple[Req, ...] = (), **kw) -> dict:
+        f = r.facts(extra=extra)
         f.update(kw)
         return f
-    run12 = dict(p12.facts()["run"], parent="PAY-11", unit="api", target_branch=branch,
-                 mr={"requested_at": iso(p12.start_at + 140 * M), "by": "alice"})
-    facts = {"PAY-11": facts_of(p11, claim={**docs[0]}, worktree="/Users/alice/workplace/brain-app/shop-pay/big", branch=branch),
-             "PAY-12": facts_of(p12, claim=docs[1], run=run12, where="branch"),
-             "PAY-13": facts_of(p13, claim=docs[2], where="branch"),
+    run12 = dict(p12.facts()["run"], parent="PAY-11", unit="api", target_branch=branch, lean_team="api",
+                 lean_clone=p12.file.rsplit("-", 1)[-1][:6], mr={"requested_at": iso(p12.start_at + 140 * M), "by": "alice"})
+    facts = {"PAY-11": facts_of(p11, (p12,), claim={**docs[0]}, worktree="/Users/alice/workplace/brain-app/shop-pay/big",
+                                branch=branch),
+             "PAY-12": facts_of(p12, (p11,), claim=docs[1], run=run12, where="branch"),
+             "PAY-13": facts_of(p13, (p11, p12), claim=docs[2], where="branch"),
              "PAY-14": facts_of(p14, claim=docs[3], owner=None, where="claim")}
     fams = family_mod.families(list(facts.values()), docs, me=ME, cfg={"tracker": "none"}, can_split=True, big=set(),
                                at=T0 - 2 * M)
@@ -898,7 +979,7 @@ def main() -> None:
                                   ("application-design", "重复和非法单号在入口直接拒", "下游对账按单号去重", None, "agent", ["T-12"]),
                                   ("code-generation", "校验写成纯函数，接口和批量导入共用", "照 Brain 的约定", "P-7", "brain", ["P-7"])])
     board_later(p2, row, decisions=p2_decisions,
-                                  reflect=[("brain/PAY-2-reflect-1", p2.merged_at + 15 * H, None)],
+                                  reflect=[("brain/PAY-2-reflect-1", p2.merged_at + 15 * H, p2.merged_at + 15 * H)],
                                   sessions=[p2_sess],
                                   runner_sessions=[dict(det["sessions"][0], slot="brain-run-RUN-PAY-2-1", url="/chat?sid=brain-run-RUN-PAY-2-1", title="RUN-PAY-2-1",
                                                         agent="brain-run", kind="runner", credits=14.4, turns=41, busy=False, awaiting=False, last_activity=p2.merged_at)],
@@ -954,6 +1035,7 @@ def main() -> None:
     p4.commit(t + 10 * M, "person", "PAY-4：设计定稿", files=2, records=True)
     p4.handoff(t + 30 * M)
     p4.accepted(t + 32 * M, 41, "RUN-PAY-4-1")
+    p4.clone("teamrunner", 1)
     p4.stage(t + 35 * M, "functional-design", "started", unit="split-job")
     p4.commit(t + 2 * H, "bot", "PAY-4：拆分任务的骨架（split-job）", files=5)
     p4.question_park(T0 - 3 * H - 2 * M, "waiting", "design", "product")
@@ -1088,6 +1170,138 @@ def main() -> None:
     extra_rows.append(classified(p1, row, slot=p1_sess))
     board_later(p1, row, sessions=[p1_sess], credits=9.8, mr_desc=mrdesc(p1, row["summary"]))
 
+    # PAY-16 (Scenario A): on this machine, Inception done (requirements, the application design, the units); its
+    # INCEPTION waits for alice's approval, the session quiet since it asked, twelve minutes ago
+    p16 = Req("r1", "PAY-16", "退款进度查询", "alice", "refund-progress", "261108-refund-progress", project="shop/shop-pay")
+    p16.claim_at = T0 - 2 * H
+    t = p16.start_at = T0 - 80 * M
+    p16.app += [app_event(t, "在 app 里开工", "工作区 /Users/alice/workplace/brain-app/shop-pay/refund-progress，分支 %s" % p16.branch),
+                app_event(t + 20, "开了本机会话", store.TRUSTED)]
+    p16.skip_phase(t + 20, "ideation", NOT_REQUESTED)
+    p16.stage(t + 30, "requirements", "started")
+    p16.turn(t + 40)
+    p16.stage(t + 2 * M, "reverse-engineering", "skipped", note="新功能，代码已经读过")
+    p16.stage(t + 20 * M, "requirements", "done", note="需求写好了：退款详情页显示进度，4 条验收标准")
+    p16.stage(t + 21 * M, "user-stories", "skipped", note="只有一类用户")
+    p16.stage(t + 22 * M, "application-design", "started")
+    p16.stage(t + 44 * M, "application-design", "done", note="进度由退款单的状态和渠道回调算出来，不加新表")
+    p16.stage(t + 45 * M, "units", "started")
+    p16.stage(t + 66 * M, "units", "done", note="一个单元就够了")
+    p16.request(T0 - 12 * M, "INCEPTION", sha8="3fa2c1d0")
+    reqs["r1"].append(p16)
+    p16_sess = dict(det["sessions"][0], slot="brain-PAY-16-4c7d", url="/chat?sid=brain-PAY-16-4c7d", title="PAY-16 退款进度查询",
+                    credits=3.1, turns=4, busy=False, awaiting=False, last_activity=T0 - 12 * M, opened_at=t + 20)
+    row = copy.deepcopy(rows["PAY-3"])
+    row.update(key="PAY-16", title=p16.title, owner="alice", branch=p16.branch, intent=p16.intent, credits=3.1,
+               updated_at=T0 - 12 * M, summary=None, sessions=1, expected_paths=["src/refund/progress/"], overlap=[],
+               open_questions=[], worktree="/Users/alice/workplace/brain-app/shop-pay/refund-progress")
+    extra_rows.append(classified(p16, row, slot=p16_sess))
+    board_later(p16, row, sessions=[p16_sess], credits=3.1,
+                mr_desc={"available": True, "text": "", "first": None, "source": None, "path": None, "ref": None,
+                         "error": "还没有提交：做完第一步以后才有变更说明"})
+
+    # PAY-9 (Scenario B, the mockup's story; 16:15 is now): alice's requirements and design approved on this machine
+    # (INCEPTION), split into api and web, handed over at 11:05. Its run on the team runner (RUN-PAY-9-1) checks on
+    # arrival, writes api, then web, has its review written and asks for the release; the product sends round 1 back
+    # on the MR (D-2); after rounds 2 and 3 the MR's pipeline fails and each fix is a new commit after the request;
+    # round 4 waits for the product's acceptance (D-3)
+    def at9(hm: str) -> float:
+        h_, m_ = hm.split(":")
+        return T0 - ((16 * 60 + 15) - (int(h_) * 60 + int(m_))) * M
+    p9 = Req("r1", "PAY-9", "退款通知短信", "alice", "refund-sms", "261108-refund-sms", project="shop/shop-pay")
+    p9.claim_at, p9.start_at = at9("09:40"), at9("10:05")
+    p9.app += [app_event(p9.start_at, "在 app 里开工", "工作区 /Users/alice/workplace/brain-app/shop-pay/refund-sms，分支 %s" % p9.branch),
+               app_event(p9.start_at + 20, "开了本机会话", store.TRUSTED)]
+    p9.skip_phase(p9.start_at + 20, "ideation", NOT_REQUESTED)
+    p9.stage(p9.start_at + 30, "requirements", "started")
+    p9.turn(p9.start_at + 31)
+    p9.stage(p9.start_at + 50, "reverse-engineering", "skipped", note="新功能，代码已经读过")
+    p9.stage(at9("10:06") + 2, "application-design", "started")
+    p9.stage(at9("10:19"), "requirements", "done", note="需求写好了：退款成功以后给用户发短信，5 条验收标准")
+    p9.stage(at9("10:19") + 30, "user-stories", "skipped", note="只有一类用户")
+    p9.turn(at9("10:21"))
+    p9.stage(at9("10:31"), "application-design", "done", note="短信走统一通知服务：退款成功事件触发，失败重试三次")
+    inc = p9.request(at9("10:36"), "INCEPTION")
+    p9.commit(at9("10:41"), "person", "PAY-9：需求和设计", records=True, short="a1c3e09",
+              paths=(p9.doc("requirements"), p9.doc("application-design")))
+    p9.turn(at9("10:52"))
+    p9.approve(at9("10:52") + 1, "INCEPTION", inc)
+    p9.stage(at9("10:52") + 30, "units", "started")
+    p9.commit(at9("10:53"), "person", "PAY-9：拆成 api 和 web", records=True, short="6d20f4b", paths=(p9.doc("units"),))
+    p9.stage(at9("10:54"), "units", "done", note="拆成 api 和 web 两个单元")
+    p9.commit(at9("11:01"), "person", "PAY-9：交接说明", files=1, records=True)
+    p9.handoff(at9("11:05"), short="e7d2b11")
+    p9.accepted(at9("11:07"), 53, "RUN-PAY-9-1")
+    p9.clone("teamrunner", 1)
+    pass_all = [("pytest -q", 0), ("ruff check .", 0), ("python -m mypy src", 0)]
+    pass_note = "verify PASS: 3 checks on code fingerprint %s"
+    p9.verify(at9("11:10"), pass_all)
+    p9.stage(at9("11:10") + 1, "build-and-test", "done", note=pass_note % sha("PAY-9", "fp", 1)[:8])
+    for k, u in enumerate(("api", "web")):
+        for j, sid in enumerate(("functional-design", "nfr-design", "infrastructure-design")):
+            p9.stage(at9("11:11") + 20 * (3 * k + j), sid, "skipped", unit=u, note="这个单元没有新的设计")
+    p9.stage(at9("11:14"), "code-generation", "started", unit="api")
+    p9.question_park(at9("11:40"), "waiting", "clarify", "product")
+    p9.ask("D-1", "clarify", at9("11:41"), at9("11:55"), "A", state="delivered", who="P-9E3B")
+    p9.question_park(at9("11:56"), "answered", "clarify", "product")
+    p9.commit(at9("12:18"), "bot", "api 的短信通知", files=6, short="5f0a3c2")
+    p9.stage(at9("12:19"), "code-generation", "done", unit="api", note="api：退款成功事件里发短信，失败重试三次")
+    p9.stage(at9("12:19") + 30, "code-generation", "started", unit="web")
+    p9.commit(at9("13:03"), "bot", "web 的退款短信入口", files=5, short="c41b7d9")
+    p9.stage(at9("13:04"), "code-generation", "done", unit="web", note="web：退款详情页能看到短信发了没有")
+    p9.verify(at9("13:08"), pass_all)
+    p9.stage(at9("13:08") + 1, "build-and-test", "done", note=pass_note % sha("PAY-9", "fp", 2)[:8])
+    p9.commit(at9("13:20"), "bot", "审查（review.md）", records=True, paths=(p9.doc("review"),))
+    p9.stage(at9("13:22"), "ci-pipeline", "skipped", note=CI_AS_IS)
+    p9.skip_phase(at9("13:23"), "operations", OPS_BY_TEAM)
+    rel_files = (p9.doc("release"), "runs/PAY-9/park.json", "runs/PAY-9/MR.md")
+    p9.stage(at9("13:25"), "release", "started")
+    p9.commit(at9("13:26"), "bot", "请批发布", records=True, short="3b8e01f", paths=rel_files)
+    h9 = p9.request(at9("13:26") + 30, "RELEASE")
+    p9.question_park(at9("13:27"), "waiting", "acceptance", "product")
+    p9.ask("D-2", "acceptance", at9("13:28"), at9("14:40"), "reject", state="delivered", who="P-9E3B", human=False)
+    p9.reject(at9("14:41"), "RELEASE", h9, who="P-9E3B", words="reject RELEASE %s 旧订单也发了短信，不对" % h9[:8])
+    p9.question_park(at9("14:42"), "answered", "acceptance", "product")
+    p9.commit(at9("15:02"), "bot", "按 D-2 改：旧订单不发短信", files=2, short="4a7b9c1")
+    for verified, released, fixed, subject, short in (("15:05", "15:06", "15:30", "修好 CI：api 的 lint", "2e8d1f6"),
+                                                       ("15:33", "15:34", "16:08", "修好 CI：web 的类型检查", "9f3c2a8")):
+        p9.verify(at9(verified), pass_all)
+        p9.stage(at9(verified) + 1, "build-and-test", "done", note=pass_note % sha("PAY-9", "fp", verified)[:8])
+        p9.stage(at9(released), "release", "started")
+        p9.commit(at9(released) + 50, "bot", "请批发布", records=True, paths=rel_files)
+        p9.request(at9(released) + 70, "RELEASE")
+        p9.commit(at9(fixed), "bot", subject, files=1 if "api" in subject else 2, short=short)
+    p9.verify(at9("16:10"), pass_all)
+    p9.stage(at9("16:10") + 1, "build-and-test", "done", note=pass_note % sha("PAY-9", "fp", 5)[:8])
+    p9.stage(at9("16:11"), "release", "started", short="73b5061f")
+    p9.commit(at9("16:12"), "bot", "请批发布", records=True, paths=rel_files)
+    p9.request(at9("16:12") + 30, "RELEASE")
+    p9.question_park(at9("16:13"), "waiting", "acceptance", "product")
+    p9.ask("D-3", "acceptance", at9("16:14"))
+    reqs["r1"].append(p9)
+    p9_park = {"status": "waiting", "kind": "acceptance", "lean_request": "RELEASE 73b5061f"}
+    p9_q = {"id": "D-3", "kind": "acceptance", "state": "open", "lean_request": "RELEASE 73b5061f", "at": iso(at9("16:14"))}
+    p9_sess = dict(det["sessions"][0], slot="brain-PAY-9-7f2c", url="/chat?sid=brain-PAY-9-7f2c", title="PAY-9 退款通知短信",
+                   credits=12.4, turns=7, busy=False, awaiting=False, last_activity=p9.hand_at, opened_at=p9.start_at)
+    row = copy.deepcopy(rows["PAY-5"])
+    row.update(key="PAY-9", title=p9.title, owner="alice", branch=p9.branch, intent=p9.intent, credits=12.4,
+               updated_at=at9("16:14"), summary="退款成功以后给用户发短信，旧订单不发。", run_ids=["RUN-PAY-9-1"],
+               mr={"iid": 53, "url": "%s/shop/shop-pay/-/merge_requests/53" % GL, "state": "opened"},
+               expected_paths=["src/refund/notify/"], overlap=[], worktree=None)
+    extra_rows.append(classified(p9, row, park=p9_park, mr={"state": "opened", "labels": ["ai-running"], "questions": [p9_q]}))
+    p9_dec = decisions(p9, [("requirements", "短信文案先用默认模板", "运营下周给正式文案（D-1 的回答）", "P-9E3B", "person", []),
+                            ("code-generation", "短信通道的限流沿用统一通知服务的配置", "照 Brain 的约定", "P-7", "brain", ["P-7"]),
+                            ("release", "旧订单不发短信", "产品退回了第 1 轮发布（D-2）", None, "agent", [])])
+    for d_, did in zip(p9_dec[1:], ("D-4", "D-5")):
+        d_.update(id=did)
+    board_later(p9, row, park=p9_park, decisions=p9_dec, sessions=[p9_sess], credits=12.4,
+                mr_desc=mrdesc(p9, row["summary"]),
+                questions=[{"source": "mr", "id": "D-3", "kind": "acceptance", "kind_label": "验收",
+                            "question": "验收：退款成功以后给用户发短信，旧订单不发。", "options": [], "recommend": None,
+                            "lean_request": "RELEASE 73b5061f", "refs": [], "state": "open", "answer": None, "answerer": None,
+                            "voucher_id": None, "mr_url": "%s/shop/shop-pay/-/merge_requests/53" % GL, "at": at9("16:14"),
+                            "answerable_here": False, "answer_via": None}])
+
     # ---------------------------------------------------------------- shop-pay: a big requirement split into three small ones
     fam_rows, fam_runs, fam_eval = split_family(tmpl, det, mrdesc, decisions)
     runs.extend(fam_runs)
@@ -1112,19 +1326,22 @@ def main() -> None:
             r.stage(t + 96 * M, "build-and-test", "done")
             r.stage(t + 96 * M + 20, "ci-pipeline", "skipped", note=CI_AS_IS)
             r.skip_phase(t + 98 * M, "operations", OPS_BY_TEAM)
+            r.stage(t + 99 * M, "release", "started")
             h = r.request(t + 100 * M, "RELEASE")
             r.approve(t + 115 * M, "RELEASE", h)
             r.stage(t + 116 * M, "release", "done", note="RELEASE approved (sha %s)" % h[:8])
             r.merge(t + 140 * M, "fast-forward")
         else:
             end, h = runner_half(r, t + 30 * M, iid=10 + i, question=("D-1", "clarify", 35 * M, "B") if how == "people" and i % 2 else None,
-                                 verify_fail=(i % 4 == 1), outside=(how == "people" and not i % 2))
+                                 verify_fail=(i % 4 == 1), outside=(how == "people" and not i % 2),
+                                 again=95 * M if key == AGAIN else None)
             merged(r, end, h, "D-2" if how == "people" and i % 2 else "D-1")
         row = copy.deepcopy(tmpl)
         row.update(repo="r3", key=key, title=title, owner=r.owner, branch=r.branch, intent=r.intent, state="merged", state_label="已合并",
                    credits=cr, updated_at=r.merged_at + 35 * M, summary="%s：做完了，合并进 main" % title,
                    mr={"iid": 10 + i, "url": "%s/shop/shop-order/-/merge_requests/%d" % (GL, 10 + i), "state": "merged"},
-                   run_ids=["RUN-%s-1" % key] if how != "local" else [], open_questions=[], overlap=[], expected_paths=[], worktree=None, where="main")
+                   run_ids=["RUN-%s-%d" % (key, n) for n in range(1, 3 if key == AGAIN else 2)] if how != "local" else [],
+                   open_questions=[], overlap=[], expected_paths=[], worktree=None, where="main")
         r.proposals = 1 if key == "ORD-9" else i % 2      # ORD-9: merged 3 days ago, its knowledge not written back yet
         reqs["r3"].append(r)
         order_rows.append(classified(r, row, reflected=bool(i % 2 and ago_d > 5)))
@@ -1141,6 +1358,7 @@ def main() -> None:
     r.commit(t + 5 * M, "person", "ORD-10：交接说明", files=1, records=True)
     r.handoff(t + 9 * M)
     r.accepted(t + 11 * M, 19, "RUN-ORD-10-1")
+    r.clone("teamrunner", 1)
     r.stage(t + 13 * M, "code-generation", "started", unit="push-svc")
     r.commit(t + 40 * M, "bot", "ORD-10：推送服务的骨架", files=4)
     r.commit(T0 - 25 * M, "bot", "ORD-10：模板消息和重试", files=3)

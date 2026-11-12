@@ -650,10 +650,12 @@ describe('需求详情', () => {
   })
 
   test('用到的 Brain: a proposal already written to its write-back branch says so and opens that write-back', async () => {
+    const m = fx.boardMerged()
+    Object.assign(m.actors.find((a) => a.key === 'reflect')!, { status: 'done', doing: '回写分支 brain/PAY-2-reflect-1' })
     withDetail((x) => {
       x.row.state = 'merged'
       x.brain.proposals = 2
-    }, { [`GET ${API}/board/*`]: () => fx.boardMerged() })
+    }, { [`GET ${API}/board/*`]: () => structuredClone(m) })
     const { go } = renderDetail()
     const card = await screen.findByRole('region', { name: '用到的 Brain' })
     await waitFor(() => expect(within(card).getByTestId('brain-proposals')).toHaveTextContent('提议 2 条新知识：已写到回写分支 brain/PAY-2-reflect-1，等合并'))

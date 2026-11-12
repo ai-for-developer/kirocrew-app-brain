@@ -192,11 +192,17 @@ def test_code_generation_is_at_work_after_its_plan_is_approved_until_its_code_is
         rs = rounds_of("code-generation", evs, unit)
         assert told(rs) == [(1, "local", "approved", "first")]
         assert rs[0].ended == at(done) and rs[0].end.gate == "PLAN"
-    r, _ = records(evs)
-    cg = stages.BY_ID["code-generation"]
-    then = stages.rounds_of(cg, "api", r.until(at("2026-11-10T06:02:40Z")))     # approved at 06:02:32
-    assert status("code-generation", then, unit="api") == ("running", "在做")
-    assert [(g.kind, g.state) for g in stages.gates_of(then, "api")] == [("PLAN", "approved")]
+    r, _ = records(evs, who=lambda e: "你")
+    mine = lambda a: stages.Pending("you", "你", line_ok=True)  # noqa: E731
+    nodes = stages.graph(r, stages.units_of(evs), stages.Way(), pending=mine)
+    stages.with_status(nodes, r, {}, stages.Way(), mine)
+    api = next(n for n in nodes if n.id == "code-generation/api")
+    assert [(h["at"], h["status"], h["doing"]) for h in api.history] == [
+        (at("2026-11-10T06:02:25.568Z"), "running", "在做"),
+        (at("2026-11-10T06:02:29.397Z"), "awaiting_approval", "等你批代码生成计划"),
+        (at("2026-11-10T06:02:32.230Z"), "running", "在做"),
+        (at("2026-11-10T06:02:43.627Z"), "merged", "你批了")]
+    assert [(g.kind, g.state) for g in api.gates] == [("PLAN", "approved")]
 
 
 def test_a_skipped_stage_has_one_skipped_round_and_its_reason():

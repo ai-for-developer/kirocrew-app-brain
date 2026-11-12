@@ -612,6 +612,1639 @@
     ]
   ],
   "direct": false,
+  "phases": [
+    {
+      "key": "init",
+      "n": "0",
+      "title": "初始化",
+      "sub": "认领 · 开工 · 带上 Brain 的知识",
+      "state": "used",
+      "note": null
+    },
+    {
+      "key": "ideation",
+      "n": "1",
+      "title": "构思",
+      "sub": "1.1 意图捕获 · 1.4 范围定义 · 1.7 审批交接",
+      "state": "unused",
+      "note": "这次不需要"
+    },
+    {
+      "key": "inception",
+      "n": "2",
+      "title": "启动",
+      "sub": "2.3 需求分析 · 2.6 应用设计 · 2.7 拆分单元",
+      "state": "used",
+      "note": "跳过：逆向工程、用户故事"
+    },
+    {
+      "key": "construction",
+      "n": "3",
+      "title": "构建",
+      "sub": "3.5 代码生成 · 3.6 构建测试 · 审查",
+      "state": "used",
+      "note": "每个单元都跳过了非功能设计、基础设施设计"
+    },
+    {
+      "key": "release",
+      "n": "✓",
+      "title": "发布",
+      "sub": "发布审批 · 产品验收",
+      "state": "used",
+      "note": null
+    },
+    {
+      "key": "operations",
+      "n": "4",
+      "title": "运维 · 回写",
+      "sub": "4.1 部署流水线 · 回写 Brain",
+      "state": "used",
+      "note": null
+    }
+  ],
+  "nodes": [
+    {
+      "id": "intent-capture",
+      "stage": "intent-capture",
+      "n": "1.1",
+      "unit": null,
+      "phase": "ideation",
+      "title": "意图捕获",
+      "sub": "intent-statement.md",
+      "icon": "idea",
+      "status": "skipped",
+      "doing": "跳过了",
+      "since": 1794045620,
+      "history": [
+        {
+          "at": 1794045620,
+          "status": "skipped",
+          "doing": "跳过了",
+          "who": null
+        }
+      ],
+      "spans": [],
+      "marks": [],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794045620,
+          "ended": 1794045620,
+          "outcome": {
+            "kind": "skipped",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": "这次没要构思这一段",
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": null,
+          "outputs": [],
+          "commits": []
+        }
+      ],
+      "gates": [],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "market-research",
+      "stage": "market-research",
+      "n": "1.2",
+      "unit": null,
+      "phase": "ideation",
+      "title": "市场调研",
+      "sub": "market-research.md",
+      "icon": "search",
+      "status": "skipped",
+      "doing": "跳过了",
+      "since": 1794045620,
+      "history": [
+        {
+          "at": 1794045620,
+          "status": "skipped",
+          "doing": "跳过了",
+          "who": null
+        }
+      ],
+      "spans": [],
+      "marks": [],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794045620,
+          "ended": 1794045620,
+          "outcome": {
+            "kind": "skipped",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": "这次没要构思这一段",
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": null,
+          "outputs": [],
+          "commits": []
+        }
+      ],
+      "gates": [],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "feasibility",
+      "stage": "feasibility",
+      "n": "1.3",
+      "unit": null,
+      "phase": "ideation",
+      "title": "可行性评估",
+      "sub": "feasibility-assessment.md",
+      "icon": "scale",
+      "status": "skipped",
+      "doing": "跳过了",
+      "since": 1794045620,
+      "history": [
+        {
+          "at": 1794045620,
+          "status": "skipped",
+          "doing": "跳过了",
+          "who": null
+        }
+      ],
+      "spans": [],
+      "marks": [],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794045620,
+          "ended": 1794045620,
+          "outcome": {
+            "kind": "skipped",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": "这次没要构思这一段",
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": null,
+          "outputs": [],
+          "commits": []
+        }
+      ],
+      "gates": [],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "scope-definition",
+      "stage": "scope-definition",
+      "n": "1.4",
+      "unit": null,
+      "phase": "ideation",
+      "title": "范围定义",
+      "sub": "scope-document.md",
+      "icon": "scope",
+      "status": "skipped",
+      "doing": "跳过了",
+      "since": 1794045620,
+      "history": [
+        {
+          "at": 1794045620,
+          "status": "skipped",
+          "doing": "跳过了",
+          "who": null
+        }
+      ],
+      "spans": [],
+      "marks": [],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794045620,
+          "ended": 1794045620,
+          "outcome": {
+            "kind": "skipped",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": "这次没要构思这一段",
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": null,
+          "outputs": [],
+          "commits": []
+        }
+      ],
+      "gates": [],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "team-formation",
+      "stage": "team-formation",
+      "n": "1.5",
+      "unit": null,
+      "phase": "ideation",
+      "title": "团队组建",
+      "sub": "team-assessment.md",
+      "icon": "team",
+      "status": "skipped",
+      "doing": "跳过了",
+      "since": 1794045620,
+      "history": [
+        {
+          "at": 1794045620,
+          "status": "skipped",
+          "doing": "跳过了",
+          "who": null
+        }
+      ],
+      "spans": [],
+      "marks": [],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794045620,
+          "ended": 1794045620,
+          "outcome": {
+            "kind": "skipped",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": "这次没要构思这一段",
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": null,
+          "outputs": [],
+          "commits": []
+        }
+      ],
+      "gates": [],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "rough-mockups",
+      "stage": "rough-mockups",
+      "n": "1.6",
+      "unit": null,
+      "phase": "ideation",
+      "title": "草图原型",
+      "sub": "wireframes.md",
+      "icon": "sketch",
+      "status": "skipped",
+      "doing": "跳过了",
+      "since": 1794045620,
+      "history": [
+        {
+          "at": 1794045620,
+          "status": "skipped",
+          "doing": "跳过了",
+          "who": null
+        }
+      ],
+      "spans": [],
+      "marks": [],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794045620,
+          "ended": 1794045620,
+          "outcome": {
+            "kind": "skipped",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": "这次没要构思这一段",
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": null,
+          "outputs": [],
+          "commits": []
+        }
+      ],
+      "gates": [],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "approval-handoff",
+      "stage": "approval-handoff",
+      "n": "1.7",
+      "unit": null,
+      "phase": "ideation",
+      "title": "审批交接",
+      "sub": "initiative-brief.md",
+      "icon": "handoff",
+      "status": "skipped",
+      "doing": "跳过了",
+      "since": 1794045620,
+      "history": [
+        {
+          "at": 1794045620,
+          "status": "skipped",
+          "doing": "跳过了",
+          "who": null
+        }
+      ],
+      "spans": [],
+      "marks": [
+        {
+          "at": 1794045620.0,
+          "kind": "session",
+          "title": "开了本机会话"
+        }
+      ],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794045620,
+          "ended": 1794045620,
+          "outcome": {
+            "kind": "skipped",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": "这次没要构思这一段",
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": null,
+          "outputs": [],
+          "commits": []
+        }
+      ],
+      "gates": [],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "reverse-engineering",
+      "stage": "reverse-engineering",
+      "n": "2.1",
+      "unit": null,
+      "phase": "inception",
+      "title": "逆向工程",
+      "sub": "architecture.md",
+      "icon": "search",
+      "status": "skipped",
+      "doing": "跳过了",
+      "since": 1794045720,
+      "history": [
+        {
+          "at": 1794045720,
+          "status": "skipped",
+          "doing": "跳过了",
+          "who": null
+        }
+      ],
+      "spans": [],
+      "marks": [],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794045720,
+          "ended": 1794045720,
+          "outcome": {
+            "kind": "skipped",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": "新功能，代码已经读过",
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": null,
+          "outputs": [],
+          "commits": []
+        }
+      ],
+      "gates": [],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "requirements",
+      "stage": "requirements",
+      "n": "2.3",
+      "unit": null,
+      "phase": "inception",
+      "title": "需求分析",
+      "sub": "requirements.md",
+      "icon": "req",
+      "status": "merged",
+      "doing": "你批了",
+      "since": 1794048720,
+      "history": [
+        {
+          "at": 1794045780,
+          "status": "running",
+          "doing": "在做",
+          "who": null
+        },
+        {
+          "at": 1794047460,
+          "status": "awaiting_approval",
+          "doing": "等你批需求",
+          "who": "you"
+        },
+        {
+          "at": 1794048720,
+          "status": "running",
+          "doing": "在做",
+          "who": null
+        },
+        {
+          "at": 1794048780,
+          "status": "merged",
+          "doing": "你批了",
+          "who": null
+        }
+      ],
+      "spans": [
+        {
+          "a": 1794045780,
+          "b": 1794047460,
+          "kind": "work",
+          "run": "local"
+        },
+        {
+          "a": 1794047460,
+          "b": 1794048720,
+          "kind": "wait",
+          "run": "local"
+        },
+        {
+          "a": 1794048720,
+          "b": 1794048780,
+          "kind": "work",
+          "run": "local"
+        }
+      ],
+      "marks": [
+        {
+          "at": 1794047280.0,
+          "kind": "commit",
+          "title": "提交 e7e3cc10：PAY-3：需求初稿"
+        },
+        {
+          "at": 1794047460,
+          "kind": "request",
+          "title": "请你批准需求"
+        },
+        {
+          "at": 1794048720,
+          "kind": "approved",
+          "title": "你批准了需求"
+        }
+      ],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794045780,
+          "ended": 1794048780,
+          "outcome": {
+            "kind": "approved",
+            "at": 1794048720,
+            "gate": "REQUIREMENTS",
+            "by": "你",
+            "decision": null,
+            "text": null,
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": "需求写好了，6 条验收标准",
+          "outputs": [
+            {
+              "path": "aidlc-docs/261107-refund-export/inception/requirements/requirements.md",
+              "sha8": "050a7077"
+            }
+          ],
+          "commits": [
+            "e7e3cc104242"
+          ]
+        }
+      ],
+      "gates": [
+        {
+          "kind": "REQUIREMENTS",
+          "state": "approved",
+          "round": 1,
+          "at": 1794048720,
+          "who": null,
+          "by": "你",
+          "line": null,
+          "mr": null,
+          "text": null,
+          "docs": [
+            "aidlc-docs/261107-refund-export/inception/requirements/requirements.md"
+          ]
+        }
+      ],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "user-stories",
+      "stage": "user-stories",
+      "n": "2.4",
+      "unit": null,
+      "phase": "inception",
+      "title": "用户故事",
+      "sub": "stories.md",
+      "icon": "stories",
+      "status": "skipped",
+      "doing": "跳过了",
+      "since": 1794048840,
+      "history": [
+        {
+          "at": 1794048840,
+          "status": "skipped",
+          "doing": "跳过了",
+          "who": null
+        }
+      ],
+      "spans": [],
+      "marks": [],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794048840,
+          "ended": 1794048840,
+          "outcome": {
+            "kind": "skipped",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": "小需求",
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": null,
+          "outputs": [],
+          "commits": []
+        }
+      ],
+      "gates": [],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "application-design",
+      "stage": "application-design",
+      "n": "2.6",
+      "unit": null,
+      "phase": "inception",
+      "title": "应用设计",
+      "sub": "application-design.md",
+      "icon": "design",
+      "status": "merged",
+      "doing": "你批了",
+      "since": 1794052860,
+      "history": [
+        {
+          "at": 1794048900,
+          "status": "running",
+          "doing": "在做",
+          "who": null
+        },
+        {
+          "at": 1794051360,
+          "status": "awaiting_approval",
+          "doing": "等你批设计",
+          "who": "you"
+        },
+        {
+          "at": 1794052860,
+          "status": "running",
+          "doing": "在做",
+          "who": null
+        },
+        {
+          "at": 1794052920,
+          "status": "merged",
+          "doing": "你批了",
+          "who": null
+        }
+      ],
+      "spans": [
+        {
+          "a": 1794048900,
+          "b": 1794051360,
+          "kind": "work",
+          "run": "local"
+        },
+        {
+          "a": 1794051360,
+          "b": 1794052860,
+          "kind": "wait",
+          "run": "local"
+        },
+        {
+          "a": 1794052860,
+          "b": 1794052920,
+          "kind": "work",
+          "run": "local"
+        }
+      ],
+      "marks": [
+        {
+          "at": 1794049800,
+          "kind": "blocked",
+          "title": "Lean 拦下了写 src/refund/service.py：需求和设计还没批"
+        },
+        {
+          "at": 1794051360,
+          "kind": "request",
+          "title": "请你批准设计"
+        },
+        {
+          "at": 1794052860,
+          "kind": "approved",
+          "title": "你批准了设计"
+        }
+      ],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794048900,
+          "ended": 1794052920,
+          "outcome": {
+            "kind": "approved",
+            "at": 1794052860,
+            "gate": "DESIGN",
+            "by": "你",
+            "decision": null,
+            "text": null,
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": "设计过了",
+          "outputs": [
+            {
+              "path": "aidlc-docs/261107-refund-export/inception/application-design/application-design.md",
+              "sha8": "cc2ec3a8"
+            }
+          ],
+          "commits": []
+        }
+      ],
+      "gates": [
+        {
+          "kind": "DESIGN",
+          "state": "approved",
+          "round": 1,
+          "at": 1794052860,
+          "who": null,
+          "by": "你",
+          "line": null,
+          "mr": null,
+          "text": null,
+          "docs": [
+            "aidlc-docs/261107-refund-export/inception/application-design/application-design.md"
+          ]
+        }
+      ],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "units",
+      "stage": "units",
+      "n": "2.7",
+      "unit": null,
+      "phase": "inception",
+      "title": "拆分单元",
+      "sub": "unit-of-work.md",
+      "icon": "units",
+      "status": "done",
+      "doing": "做完了",
+      "since": 1794053520,
+      "history": [
+        {
+          "at": 1794052980,
+          "status": "running",
+          "doing": "在做",
+          "who": null
+        },
+        {
+          "at": 1794053520,
+          "status": "done",
+          "doing": "做完了",
+          "who": null
+        }
+      ],
+      "spans": [
+        {
+          "a": 1794052980,
+          "b": 1794053520,
+          "kind": "work",
+          "run": "local"
+        }
+      ],
+      "marks": [],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794052980,
+          "ended": 1794053520,
+          "outcome": {
+            "kind": "done",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": null,
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": "拆成 2 个单元：refund-export、refund-api",
+          "outputs": [
+            {
+              "path": "aidlc-docs/261107-refund-export/inception/application-design/unit-of-work.md",
+              "sha8": "6a1f3cbc"
+            }
+          ],
+          "commits": []
+        }
+      ],
+      "gates": [],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "functional-design/refund-export",
+      "stage": "functional-design",
+      "n": "3.1",
+      "unit": "refund-export",
+      "phase": "construction",
+      "title": "功能设计",
+      "sub": "refund-export 的功能设计",
+      "icon": "design",
+      "status": "done",
+      "doing": "做完了",
+      "since": 1794054720,
+      "history": [
+        {
+          "at": 1794053640,
+          "status": "running",
+          "doing": "在做",
+          "who": null
+        },
+        {
+          "at": 1794054720,
+          "status": "done",
+          "doing": "做完了",
+          "who": null
+        }
+      ],
+      "spans": [
+        {
+          "a": 1794053640,
+          "b": 1794054720,
+          "kind": "work",
+          "run": "local"
+        }
+      ],
+      "marks": [],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794053640,
+          "ended": 1794054720,
+          "outcome": {
+            "kind": "done",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": null,
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": "导出字段和分批规则定了",
+          "outputs": [
+            {
+              "path": "aidlc-docs/261107-refund-export/construction/refund-export/functional-design/functional-design.md",
+              "sha8": "2153881d"
+            }
+          ],
+          "commits": []
+        }
+      ],
+      "gates": [],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "functional-design/refund-api",
+      "stage": "functional-design",
+      "n": "3.1",
+      "unit": "refund-api",
+      "phase": "construction",
+      "title": "功能设计",
+      "sub": "refund-api 的功能设计",
+      "icon": "design",
+      "status": "done",
+      "doing": "做完了",
+      "since": 1794054720,
+      "history": [
+        {
+          "at": 1794053640,
+          "status": "running",
+          "doing": "在做",
+          "who": null
+        },
+        {
+          "at": 1794054720,
+          "status": "done",
+          "doing": "做完了",
+          "who": null
+        }
+      ],
+      "spans": [
+        {
+          "a": 1794053640,
+          "b": 1794054720,
+          "kind": "work",
+          "run": "local"
+        }
+      ],
+      "marks": [],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794053640,
+          "ended": 1794054720,
+          "outcome": {
+            "kind": "done",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": null,
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": "导出字段和分批规则定了",
+          "outputs": [
+            {
+              "path": "aidlc-docs/261107-refund-export/construction/refund-api/functional-design/functional-design.md",
+              "sha8": "0602fc35"
+            }
+          ],
+          "commits": []
+        }
+      ],
+      "gates": [],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "nfr-design/refund-export",
+      "stage": "nfr-design",
+      "n": "3.2",
+      "unit": "refund-export",
+      "phase": "construction",
+      "title": "非功能设计",
+      "sub": "refund-export 的非功能设计",
+      "icon": "shield",
+      "status": "skipped",
+      "doing": "跳过了",
+      "since": 1794054840,
+      "history": [
+        {
+          "at": 1794054840,
+          "status": "skipped",
+          "doing": "跳过了",
+          "who": null
+        }
+      ],
+      "spans": [],
+      "marks": [],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794054840,
+          "ended": 1794054840,
+          "outcome": {
+            "kind": "skipped",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": "没有新的指标",
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": null,
+          "outputs": [],
+          "commits": []
+        }
+      ],
+      "gates": [],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "nfr-design/refund-api",
+      "stage": "nfr-design",
+      "n": "3.2",
+      "unit": "refund-api",
+      "phase": "construction",
+      "title": "非功能设计",
+      "sub": "refund-api 的非功能设计",
+      "icon": "shield",
+      "status": "skipped",
+      "doing": "跳过了",
+      "since": 1794054840,
+      "history": [
+        {
+          "at": 1794054840,
+          "status": "skipped",
+          "doing": "跳过了",
+          "who": null
+        }
+      ],
+      "spans": [],
+      "marks": [],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794054840,
+          "ended": 1794054840,
+          "outcome": {
+            "kind": "skipped",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": "没有新的指标",
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": null,
+          "outputs": [],
+          "commits": []
+        }
+      ],
+      "gates": [],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "infrastructure-design/refund-export",
+      "stage": "infrastructure-design",
+      "n": "3.4",
+      "unit": "refund-export",
+      "phase": "construction",
+      "title": "基础设施设计",
+      "sub": "refund-export 的基础设施设计",
+      "icon": "server",
+      "status": "skipped",
+      "doing": "跳过了",
+      "since": 1794054900,
+      "history": [
+        {
+          "at": 1794054900,
+          "status": "skipped",
+          "doing": "跳过了",
+          "who": null
+        }
+      ],
+      "spans": [],
+      "marks": [],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794054900,
+          "ended": 1794054900,
+          "outcome": {
+            "kind": "skipped",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": "不动基础设施",
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": null,
+          "outputs": [],
+          "commits": []
+        }
+      ],
+      "gates": [],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "infrastructure-design/refund-api",
+      "stage": "infrastructure-design",
+      "n": "3.4",
+      "unit": "refund-api",
+      "phase": "construction",
+      "title": "基础设施设计",
+      "sub": "refund-api 的基础设施设计",
+      "icon": "server",
+      "status": "skipped",
+      "doing": "跳过了",
+      "since": 1794054900,
+      "history": [
+        {
+          "at": 1794054900,
+          "status": "skipped",
+          "doing": "跳过了",
+          "who": null
+        }
+      ],
+      "spans": [],
+      "marks": [],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794054900,
+          "ended": 1794054900,
+          "outcome": {
+            "kind": "skipped",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": "不动基础设施",
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": null,
+          "outputs": [],
+          "commits": []
+        }
+      ],
+      "gates": [],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "code-generation/refund-export",
+      "stage": "code-generation",
+      "n": "3.5",
+      "unit": "refund-export",
+      "phase": "construction",
+      "title": "代码生成",
+      "sub": "refund-export 的代码生成计划",
+      "icon": "code",
+      "status": "merged",
+      "doing": "你批了",
+      "since": 1794056760,
+      "history": [
+        {
+          "at": 1794055020,
+          "status": "running",
+          "doing": "在做",
+          "who": null
+        },
+        {
+          "at": 1794055740,
+          "status": "awaiting_approval",
+          "doing": "等你批代码生成计划",
+          "who": "you"
+        },
+        {
+          "at": 1794056760,
+          "status": "running",
+          "doing": "在做",
+          "who": null
+        },
+        {
+          "at": 1794060240,
+          "status": "merged",
+          "doing": "你批了",
+          "who": null
+        }
+      ],
+      "spans": [
+        {
+          "a": 1794055020,
+          "b": 1794055740,
+          "kind": "work",
+          "run": "local"
+        },
+        {
+          "a": 1794055740,
+          "b": 1794056760,
+          "kind": "wait",
+          "run": "local"
+        },
+        {
+          "a": 1794056760,
+          "b": 1794060240,
+          "kind": "work",
+          "run": "local"
+        }
+      ],
+      "marks": [
+        {
+          "at": 1794055740,
+          "kind": "request",
+          "title": "请你批准代码生成计划"
+        },
+        {
+          "at": 1794056760,
+          "kind": "approved",
+          "title": "你批准了代码生成计划"
+        },
+        {
+          "at": 1794057840.0,
+          "kind": "commit",
+          "title": "提交 93b2dea5：PAY-3：导出接口的骨架"
+        },
+        {
+          "at": 1794059340.0,
+          "kind": "commit",
+          "title": "提交 193239b7：PAY-3：refund-export：分批写 CSV"
+        },
+        {
+          "at": 1794128400,
+          "kind": "answer",
+          "title": "你在会话里回话了"
+        }
+      ],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794055020,
+          "ended": 1794060240,
+          "outcome": {
+            "kind": "approved",
+            "at": 1794056760,
+            "gate": "PLAN",
+            "by": "你",
+            "decision": null,
+            "text": null,
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": "refund-export 的代码写完了，单测全过",
+          "outputs": [
+            {
+              "path": "aidlc-docs/261107-refund-export/construction/plans/refund-export-code-generation-plan.md",
+              "sha8": "9ea99a48"
+            }
+          ],
+          "commits": [
+            "93b2dea57790",
+            "193239b77a5f"
+          ]
+        }
+      ],
+      "gates": [
+        {
+          "kind": "PLAN",
+          "state": "approved",
+          "round": 1,
+          "at": 1794056760,
+          "who": null,
+          "by": "你",
+          "line": null,
+          "mr": null,
+          "text": null,
+          "docs": [
+            "aidlc-docs/261107-refund-export/construction/plans/refund-export-code-generation-plan.md"
+          ]
+        }
+      ],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "code-generation/refund-api",
+      "stage": "code-generation",
+      "n": "3.5",
+      "unit": "refund-api",
+      "phase": "construction",
+      "title": "代码生成",
+      "sub": "refund-api 的代码生成计划",
+      "icon": "code",
+      "status": "awaiting_approval",
+      "doing": "等你批代码生成计划",
+      "since": 1794146040,
+      "history": [
+        {
+          "at": 1794128520,
+          "status": "running",
+          "doing": "在做",
+          "who": null
+        },
+        {
+          "at": 1794146040,
+          "status": "awaiting_approval",
+          "doing": "等你批代码生成计划",
+          "who": "you"
+        }
+      ],
+      "spans": [
+        {
+          "a": 1794128520,
+          "b": 1794146040,
+          "kind": "work",
+          "run": "local"
+        },
+        {
+          "a": 1794146040,
+          "b": null,
+          "kind": "wait",
+          "run": "local"
+        }
+      ],
+      "marks": [
+        {
+          "at": 1794144000.0,
+          "kind": "commit",
+          "title": "提交 61ddbc30：PAY-3：refund-api 的代码计划"
+        },
+        {
+          "at": 1794145200.0,
+          "kind": "question",
+          "title": "停下问你：澄清"
+        },
+        {
+          "at": 1794146040,
+          "kind": "request",
+          "title": "请你批准代码生成计划"
+        }
+      ],
+      "rounds": [
+        {
+          "n": 1,
+          "run": "local",
+          "started": 1794128520,
+          "ended": null,
+          "outcome": {
+            "kind": "open",
+            "at": null,
+            "gate": null,
+            "by": null,
+            "decision": null,
+            "text": null,
+            "sha": null,
+            "subject": null,
+            "checks": []
+          },
+          "why": {
+            "kind": "first",
+            "round": null,
+            "pipeline": null,
+            "sha": null,
+            "subject": null,
+            "at": null
+          },
+          "note": null,
+          "outputs": [
+            {
+              "path": "aidlc-docs/261107-refund-export/construction/plans/refund-api-code-generation-plan.md",
+              "sha8": "5d1e7a90"
+            }
+          ],
+          "commits": [
+            "61ddbc3019ed"
+          ]
+        }
+      ],
+      "gates": [
+        {
+          "kind": "PLAN",
+          "state": "pending",
+          "round": 1,
+          "at": 1794146040,
+          "who": "you",
+          "by": null,
+          "line": "approve PLAN 5d1e7a90",
+          "mr": null,
+          "text": null,
+          "docs": [
+            "aidlc-docs/261107-refund-export/construction/plans/refund-api-code-generation-plan.md"
+          ]
+        }
+      ],
+      "run": "local",
+      "child": null
+    },
+    {
+      "id": "build-and-test",
+      "stage": "build-and-test",
+      "n": "3.6",
+      "unit": null,
+      "phase": "construction",
+      "title": "构建测试",
+      "sub": "lean verify",
+      "icon": "ci",
+      "status": "waiting",
+      "doing": "等代码生成",
+      "since": null,
+      "history": [],
+      "spans": [],
+      "marks": [],
+      "rounds": [],
+      "gates": [],
+      "run": null,
+      "child": null
+    },
+    {
+      "id": "review",
+      "stage": "review",
+      "n": "3.6",
+      "unit": null,
+      "phase": "construction",
+      "title": "审查",
+      "sub": "review.md",
+      "icon": "review",
+      "status": "waiting",
+      "doing": "等构建测试",
+      "since": null,
+      "history": [],
+      "spans": [],
+      "marks": [],
+      "rounds": [],
+      "gates": [],
+      "run": null,
+      "child": null
+    },
+    {
+      "id": "release",
+      "stage": "release",
+      "n": "✓",
+      "unit": null,
+      "phase": "release",
+      "title": "发布",
+      "sub": "release.md",
+      "icon": "release",
+      "status": "waiting",
+      "doing": "等审查和自动检查",
+      "since": null,
+      "history": [],
+      "spans": [],
+      "marks": [],
+      "rounds": [],
+      "gates": [],
+      "run": null,
+      "child": null
+    },
+    {
+      "id": "reflect",
+      "stage": "reflect",
+      "n": "4",
+      "unit": null,
+      "phase": "operations",
+      "title": "回写 Brain",
+      "sub": "回写分支",
+      "icon": "brain",
+      "status": "waiting",
+      "doing": "等合并以后",
+      "since": null,
+      "history": [],
+      "spans": [],
+      "marks": [],
+      "rounds": [],
+      "gates": [],
+      "run": null,
+      "child": null
+    }
+  ],
+  "runs": [
+    {
+      "key": "local",
+      "kind": "local",
+      "label": "本机会话",
+      "readable": "here",
+      "n": null,
+      "run_id": null,
+      "req": null,
+      "unit": null,
+      "now": {
+        "status": "awaiting_approval",
+        "doing": "会话里有一个工具调用等你批准",
+        "since": 1794146040.0,
+        "who": "you",
+        "node": "code-generation/refund-api"
+      },
+      "credits": 12.4,
+      "sessions": [
+        {
+          "slot": "brain-PAY-3-7f3a",
+          "url": "/chat?sid=brain-PAY-3-7f3a",
+          "busy": false,
+          "title": "PAY-3 退款单导出 CSV"
+        }
+      ]
+    }
+  ],
+  "relays": [],
+  "other_runs": [],
   "events": [
     {
       "seq": 1,
@@ -621,7 +2254,10 @@
       "to": "person",
       "text": "认领 PAY-3：退款单导出 CSV",
       "detail": false,
-      "src": "认领记录 claim/PAY-3"
+      "src": "认领记录 claim/PAY-3",
+      "node": null,
+      "run": null,
+      "round": null
     },
     {
       "seq": 2,
@@ -631,7 +2267,10 @@
       "to": "local",
       "text": "开工：在它自己的工作目录里",
       "detail": false,
-      "src": "开工记录 runs/PAY-3/run.json"
+      "src": "开工记录 runs/PAY-3/run.json",
+      "node": "intent-capture",
+      "run": "local",
+      "round": null
     },
     {
       "seq": 3,
@@ -641,7 +2280,10 @@
       "to": "local",
       "text": "跳过「构思」整段：这次没要构思这一段",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": null,
+      "run": "local",
+      "round": null
     },
     {
       "seq": 4,
@@ -651,7 +2293,10 @@
       "to": "local",
       "text": "开了本机会话",
       "detail": false,
-      "src": null
+      "src": null,
+      "node": "approval-handoff",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 5,
@@ -661,7 +2306,10 @@
       "to": "local",
       "text": "跳过「逆向工程」：新功能，代码已经读过",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "reverse-engineering",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 6,
@@ -671,7 +2319,10 @@
       "to": "local",
       "text": "开始「需求分析」",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "requirements",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 7,
@@ -681,7 +2332,10 @@
       "to": "branch",
       "text": "提交 e7e3cc10：PAY-3：需求初稿",
       "detail": false,
-      "src": null
+      "src": null,
+      "node": "requirements",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 8,
@@ -691,7 +2345,10 @@
       "to": "req",
       "text": "请你批准需求",
       "detail": false,
-      "src": null
+      "src": null,
+      "node": "requirements",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 9,
@@ -701,7 +2358,10 @@
       "to": "req",
       "text": "你批准了需求",
       "detail": false,
-      "src": null
+      "src": null,
+      "node": "requirements",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 10,
@@ -711,7 +2371,10 @@
       "to": "local",
       "text": "做完「需求分析」",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "requirements",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 11,
@@ -721,7 +2384,10 @@
       "to": "local",
       "text": "跳过「用户故事」：小需求",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "user-stories",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 12,
@@ -731,7 +2397,10 @@
       "to": "local",
       "text": "开始「应用设计」",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "application-design",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 13,
@@ -741,7 +2410,10 @@
       "to": "local",
       "text": "Lean 拦下了写 src/refund/service.py：需求和设计还没批",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "application-design",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 14,
@@ -751,7 +2423,10 @@
       "to": "design",
       "text": "请你批准设计",
       "detail": false,
-      "src": null
+      "src": null,
+      "node": "application-design",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 15,
@@ -761,7 +2436,10 @@
       "to": "design",
       "text": "你批准了设计",
       "detail": false,
-      "src": null
+      "src": null,
+      "node": "application-design",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 16,
@@ -771,7 +2449,10 @@
       "to": "local",
       "text": "做完「应用设计」",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "application-design",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 17,
@@ -781,7 +2462,10 @@
       "to": "local",
       "text": "开始「拆分单元」",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "units",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 18,
@@ -791,7 +2475,10 @@
       "to": "local",
       "text": "做完「拆分单元」",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "units",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 19,
@@ -801,7 +2488,10 @@
       "to": "local",
       "text": "开始「功能设计（refund-export）」",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "functional-design/refund-export",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 20,
@@ -811,7 +2501,10 @@
       "to": "local",
       "text": "开始「功能设计（refund-api）」",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "functional-design/refund-api",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 21,
@@ -821,7 +2514,10 @@
       "to": "local",
       "text": "做完「功能设计（refund-export）」",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "functional-design/refund-export",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 22,
@@ -831,7 +2527,10 @@
       "to": "local",
       "text": "做完「功能设计（refund-api）」",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "functional-design/refund-api",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 23,
@@ -841,7 +2540,10 @@
       "to": "local",
       "text": "跳过「非功能设计（refund-export）」：没有新的指标",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "nfr-design/refund-export",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 24,
@@ -851,7 +2553,10 @@
       "to": "local",
       "text": "跳过「非功能设计（refund-api）」：没有新的指标",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "nfr-design/refund-api",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 25,
@@ -861,7 +2566,10 @@
       "to": "local",
       "text": "跳过「基础设施设计（refund-export）」：不动基础设施",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "infrastructure-design/refund-export",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 26,
@@ -871,7 +2579,10 @@
       "to": "local",
       "text": "跳过「基础设施设计（refund-api）」：不动基础设施",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "infrastructure-design/refund-api",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 27,
@@ -881,7 +2592,10 @@
       "to": "local",
       "text": "开始「代码生成（refund-export）」",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "code-generation/refund-export",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 28,
@@ -891,7 +2605,10 @@
       "to": "design",
       "text": "请你批准代码生成计划",
       "detail": false,
-      "src": null
+      "src": null,
+      "node": "code-generation/refund-export",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 29,
@@ -901,7 +2618,10 @@
       "to": "design",
       "text": "你批准了代码生成计划",
       "detail": false,
-      "src": null
+      "src": null,
+      "node": "code-generation/refund-export",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 30,
@@ -911,7 +2631,10 @@
       "to": "branch",
       "text": "提交 93b2dea5：PAY-3：导出接口的骨架",
       "detail": false,
-      "src": null
+      "src": null,
+      "node": "code-generation/refund-export",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 31,
@@ -921,7 +2644,10 @@
       "to": "branch",
       "text": "提交 193239b7：PAY-3：refund-export：分批写 CSV",
       "detail": false,
-      "src": null
+      "src": null,
+      "node": "code-generation/refund-export",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 32,
@@ -931,7 +2657,10 @@
       "to": "local",
       "text": "做完「代码生成（refund-export）」",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "code-generation/refund-export",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 33,
@@ -941,7 +2670,10 @@
       "to": "local",
       "text": "你在会话里回话了",
       "detail": false,
-      "src": null
+      "src": null,
+      "node": "code-generation/refund-export",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 34,
@@ -951,7 +2683,10 @@
       "to": "local",
       "text": "开始「代码生成（refund-api）」",
       "detail": true,
-      "src": null
+      "src": null,
+      "node": "code-generation/refund-api",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 35,
@@ -961,7 +2696,10 @@
       "to": "branch",
       "text": "提交 61ddbc30：PAY-3：refund-api 的代码计划",
       "detail": false,
-      "src": null
+      "src": null,
+      "node": "code-generation/refund-api",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 36,
@@ -971,7 +2709,10 @@
       "to": "person",
       "text": "停下问你：澄清",
       "detail": false,
-      "src": null
+      "src": null,
+      "node": "code-generation/refund-api",
+      "run": "local",
+      "round": 1
     },
     {
       "seq": 37,
@@ -981,7 +2722,10 @@
       "to": "design",
       "text": "请你批准代码生成计划",
       "detail": false,
-      "src": null
+      "src": null,
+      "node": "code-generation/refund-api",
+      "run": "local",
+      "round": 1
     }
   ],
   "lean_steps": [
@@ -1351,6 +3095,8 @@
       "files": 2,
       "records_only": true,
       "actor": "local",
+      "run": "local",
+      "node": "requirements",
       "changes": [
         {
           "path": "aidlc-docs/261107-refund-export/inception/application-design/application-design.md",
@@ -1375,6 +3121,8 @@
       "files": 4,
       "records_only": false,
       "actor": "local",
+      "run": "local",
+      "node": "code-generation/refund-export",
       "changes": [
         {
           "path": "src/refund/api.py",
@@ -1411,6 +3159,8 @@
       "files": 3,
       "records_only": false,
       "actor": "local",
+      "run": "local",
+      "node": "code-generation/refund-export",
       "changes": [
         {
           "path": "src/refund/jobs.py",
@@ -1441,6 +3191,8 @@
       "files": 1,
       "records_only": true,
       "actor": "local",
+      "run": "local",
+      "node": "code-generation/refund-api",
       "changes": [
         {
           "path": "aidlc-docs/261107-refund-export/audit.md",
@@ -1461,7 +3213,9 @@
         "status": "pass",
         "at": 1794048720,
         "detail": "你批准了",
-        "actor": "req"
+        "actor": "req",
+        "node": "requirements",
+        "run": "local"
       },
       {
         "id": "gate-DESIGN",
@@ -1471,7 +3225,9 @@
         "status": "pass",
         "at": 1794052860,
         "detail": "你批准了",
-        "actor": "design"
+        "actor": "design",
+        "node": "application-design",
+        "run": "local"
       },
       {
         "id": "gate-PLAN",
@@ -1481,7 +3237,9 @@
         "status": "wait",
         "at": null,
         "detail": "等你在会话里打这一行批准：approve PLAN 5d1e7a90",
-        "actor": "design"
+        "actor": "design",
+        "node": "code-generation/refund-api",
+        "run": "local"
       },
       {
         "id": "gate-RELEASE",
@@ -1491,7 +3249,9 @@
         "status": "skip",
         "at": null,
         "detail": "还没到这一步",
-        "actor": "release"
+        "actor": "release",
+        "node": "release",
+        "run": null
       },
       {
         "id": "verify",
@@ -1501,7 +3261,9 @@
         "status": "skip",
         "at": null,
         "detail": "还没跑过自动检查（构建和测试阶段跑）",
-        "actor": "ci"
+        "actor": "ci",
+        "node": "build-and-test",
+        "run": null
       },
       {
         "id": "bridge",
@@ -1511,7 +3273,9 @@
         "status": "skip",
         "at": null,
         "detail": "还没交接",
-        "actor": "bridge"
+        "actor": "bridge",
+        "node": null,
+        "run": null
       },
       {
         "id": "signer",
@@ -1521,7 +3285,9 @@
         "status": "skip",
         "at": null,
         "detail": "还没签",
-        "actor": "signer"
+        "actor": "signer",
+        "node": null,
+        "run": null
       },
       {
         "id": "brain-cite",
@@ -1531,7 +3297,9 @@
         "status": "fail",
         "at": null,
         "detail": "引用了 Brain 里没有的 T-PAY-9-1",
-        "actor": "reflect"
+        "actor": "reflect",
+        "node": null,
+        "run": null
       }
     ],
     "passed": 2,

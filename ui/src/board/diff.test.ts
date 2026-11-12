@@ -12,7 +12,7 @@ const QUIET = { req: REQ, first: true, fresh: [], items: [], flashes: [], flips:
 const NOTHING = { ...QUIET, first: false }
 
 function ev(over: Partial<BoardEvent> & Pick<BoardEvent, 'kind'>): BoardEvent {
-  return { seq: N, at: AT, from: null, to: null, text: '', detail: false, src: null, ...over }
+  return { seq: N, at: AT, from: null, to: null, text: '', detail: false, src: null, node: null, run: null, round: null, ...over }
 }
 
 /** The next snapshot: a fresh copy of board.json with *change* made to it. */
@@ -164,7 +164,7 @@ describe('diffBoards: one poll', () => {
   })
 
   it('a new commit on the conveyor is listed by its belt key, the old ones are not', () => {
-    const commit: BeltItem = { kind: 'commit', at: AT, sha: 'abcdef123456', by: 'person', text: 'PAY-3：导出按钮', files: 2, records_only: false, actor: 'local' }
+    const commit: BeltItem = { kind: 'commit', at: AT, sha: 'abcdef123456', by: 'person', text: 'PAY-3：导出按钮', files: 2, records_only: false, actor: 'local', run: null, node: null }
     expect(diffBoards(fx.board(), after((b) => b.belt.push(commit))).belt).toEqual(['commit@abcdef123456@1794146400'])
   })
 })

@@ -204,7 +204,7 @@ describe('replayAt', () => {
       prev = now
     }
     expect(prev).toEqual(counts(b))
-    expect(prev).toMatchObject({ events: 52, belt: 11, passed: 9, rounds: 2 })
+    expect(prev).toMatchObject({ events: 52, belt: 12, passed: 9, rounds: 2 })
   })
 
   it('shows a check cell only once it is decided, with its final status', () => {
@@ -221,7 +221,7 @@ describe('replayAt', () => {
 
   it('shows an undated cell that waits for a person only while its actor waits for one', () => {
     const b = fx.board()
-    b.events.push({ seq: 22, at: b.at, kind: 'app', from: null, to: null, text: '看板刷新', detail: false, src: null })
+    b.events.push({ seq: 22, at: b.at, kind: 'app', from: null, to: null, text: '看板刷新', detail: false, src: null, node: null, run: null, round: null })
     const plan = (r: ReqBoard) => r.checks.cells.find((c) => c.id === 'gate-PLAN')
     const waiting = replayAt(b, 1794146100)
     expect(waiting.actors.find((a) => a.key === 'design')?.status).toBe('awaiting_approval')
