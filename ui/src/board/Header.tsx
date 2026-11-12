@@ -11,7 +11,7 @@
  */
 import type { ReqBoard, ReqFamily } from '../types'
 import { StateChip } from '../ui'
-import { ACT, DO_NAME, FAMILY_ACT, leanProgress } from '../vocab'
+import { ACT, DO_NAME, FAMILY_ACT, leanProgress, wholeSkips } from '../vocab'
 import { WORKING, actorLabel, actorMeta, boardWho, checksSay, fmtCredits, fmtWhen, leanOf, localOnly, runnerBlind, titleOf, waitsOnMe } from './format'
 import { useChangeCount, useTween } from './hooks'
 import { waitCount } from './next'
@@ -132,7 +132,8 @@ function ChecksKpi({ board, reducedMotion }: { board: ReqBoard; reducedMotion: b
   )
 }
 
-/** Lean's stages, the one way (vocab.leanProgress): done green, skipped grey, the next one lit. */
+/** Lean's stages on the way, the one way (vocab.leanProgress): done green, skipped grey, the next one lit; a phase
+ * skipped as a whole is not a cell, it is said once under them. */
 function LeanKpi({ board }: { board: ReqBoard }) {
   const ln = leanOf(board.row.lean)
   const through = ln.done_n + ln.skipped_n
@@ -140,7 +141,8 @@ function LeanKpi({ board }: { board: ReqBoard }) {
   const back = board.events.filter((e) => e.kind === 'reject').length
   const blocked = board.events.filter((e) => e.kind === 'blocked').length
   const blind = runnerBlind(board)
-  const seg = (i: number) => (i < ln.done_n ? 'is-pass' : i < through ? 'is-skip' : !blind && ln.next && i === ln.next.n - 1 ? (ln.started ? 'is-run' : 'is-next') : '')
+  const whole = wholeSkips(ln.skipped_phases)
+  const seg = (i: number) => (i < ln.done_n ? 'is-pass' : i < through ? 'is-skip' : !blind && ln.next && i === through ? (ln.started ? 'is-run' : 'is-next') : '')
   return (
     <div className="kt-kpi kt-kpi-gates br-kpi-lean" aria-label={`AI-DLC Lean：${blind ? '运行机还读不到 Lean 的记录' : leanProgress(ln)}`}>
       <div className="kt-kpi-label">AI-DLC Lean</div>
@@ -151,7 +153,12 @@ function LeanKpi({ board }: { board: ReqBoard }) {
       <div className="kt-segs" aria-hidden="true">
         {Array.from({ length: ln.total }, (_, i) => <i key={i} className={seg(i)} />)}
       </div>
-      <div className="kt-kpi-note br-lean-next">{blind ? '运行机还读不到 Lean 的记录' : ln.next ? <>{ln.started ? '在做' : '下一步'}：<b>{ln.next.label}</b></> : through ? '全部做完' : '还没开始'}</div>
+      <div className="kt-kpi-note br-lean-next">
+        {blind ? '运行机还读不到 Lean 的记录' : <>
+          {ln.next ? <>{ln.started ? '在做' : '下一步'}：<b>{ln.next.label}</b></> : through ? '全部做完' : '还没开始'}
+          {whole && <span data-testid="br-lean-whole"> · {whole}</span>}
+        </>}
+      </div>
       <div className="kt-gates-rows">
         <span>批准 <b>{approved}</b></span>
         <span className={back ? 'is-hit' : ''}>退回 <b>{back}</b></span>

@@ -50,6 +50,7 @@ todo = importlib.import_module("_brainapp_backend.core.todo")
 mrdesc_view = importlib.import_module("_brainapp_backend.core.mrdesc_view")
 detail = importlib.import_module("_brainapp_backend.core.detail")
 lean_view = importlib.import_module("_brainapp_backend.core.lean_view")
+stage_table = importlib.import_module("_brainapp_backend.core.stages")
 deliveries = importlib.import_module("_brainapp_backend.core.deliveries")
 identity = importlib.import_module("_brainapp_backend.core.identity")
 family_mod = importlib.import_module("_brainapp_backend.core.family")
@@ -77,6 +78,11 @@ ADAPTER_OLD = (".kiro/brain/lean-hook.py is an older adapter (version 0, needs 2
                "commit it on main through an MR")
 COST_NOTE = "--credits 只有一条记录，却有 6 个需求：不知道是谁的，没有算给任何一个（请按 run 号或需求号给）"
 SKIPPED_RAW = "runs/PAY-1/run.json is not valid JSON: line 3"
+# Lean 0.3.1's records: `lean new` without --ideation skips Ideation (its own reason); the agent skips ci-pipeline when
+# CI is as it was, and Operations before `lean release` when the team's pipeline deploys (its own words)
+NOT_REQUESTED = "not requested (lean new without --ideation)"
+CI_AS_IS = "现有的 CI 够用，不用改"
+OPS_BY_TEAM = "部署和运维由团队的流水线做"
 # what brainkit.trace says it could not read on a person's machine (its own words)
 TRACE_MISSING = ["bridge ledger (--ledger not given)", "vouchers (--vouchers not given and no intake store)",
                  "pushes (git keeps no push log; person commits after hand-over stand in for them)",
@@ -130,6 +136,11 @@ class Req:
         if note:
             data["note" if state == "done" else "reason"] = note
         self._lean(at, ev, **data)
+
+    def skip_phase(self, at: float, phase: str, reason: str) -> None:
+        """`lean stage skip <phase>` (or `lean new` without --ideation): one PHASE_SKIPPED for the phase's stages."""
+        self._lean(at, "PHASE_SKIPPED", phase=phase, stages=[s.id for s in stage_table.LEAN if s.phase == phase],
+                   reason=reason)
 
     def _doc(self, kind: str, unit: str | None) -> dict:
         """What Lean's approval of *kind* covers: its document (a PLAN is one unit's code-generation plan)."""
@@ -248,11 +259,16 @@ class Req:
         stages = []
         seen: dict[str, dict] = {}
         for e in self.events:
+            d = e["data"]
             if e["event"] in lean_view.STAGE_STATE:
-                d = e["data"]
                 sid = d["stage"] + ("/" + d["unit"] if d.get("unit") else "")
                 row = seen.setdefault(sid, {"id": sid, "first_at": e["ts"], "times": {}})
                 row.update(state=lean_view.STAGE_STATE[e["event"]], at=e["ts"], note=d.get("note") or d.get("reason"), src="aidlc-docs/audit/L-3F2A1C.jsonl")
+            elif e["event"] == "PHASE_SKIPPED":
+                for sid in d["stages"]:
+                    row = seen.setdefault(sid, {"id": sid, "first_at": e["ts"], "times": {}})
+                    row.update(state="skipped", at=e["ts"], note=d["reason"], phase_skipped=d["phase"],
+                               src="aidlc-docs/audit/L-3F2A1C.jsonl#%d" % e["seq"])
         stages = sorted(seen.values(), key=lambda r: r["first_at"])
         verify = [{"at": e["ts"], "ok": e["data"]["ok"], "src": "aidlc-docs/audit/L-3F2A1C.jsonl"} for e in self.events if e["event"] == "VERIFY"]
         out = {"owner": self.owner, "stages": stages, "humans": self.humans, "brain": brain, "missing": TRACE_MISSING,
@@ -469,6 +485,7 @@ def standard(r: Req, t: float, *, design_back: bool = False, units: tuple[str, .
     skipped, the application design (sent back once when *design_back*), units skipped (or split into *units*).
     Returns where it ended."""
     r.start_at = t
+    r.skip_phase(t + 20, "ideation", NOT_REQUESTED)
     r.stage(t + 2 * M, "reverse-engineering", "skipped", note="新功能，代码已经读过")
     r.stage(t + 3 * M, "requirements", "started")
     r.commit(t + 28 * M, "person", "%s：需求初稿" % r.key, files=2, records=True)
@@ -530,6 +547,8 @@ def runner_half(r: Req, t: float, *, iid: int, question: tuple[str, str, float, 
         c += 32 * M
     r.verify(c + 15 * M, checks)
     r.stage(c + 16 * M, "build-and-test", "done", note="verify PASS: %d checks on code fingerprint %s" % (len(checks), sha(r.key, "fp")[:8]))
+    r.stage(c + 16 * M + 20, "ci-pipeline", "skipped", note=CI_AS_IS)
+    r.skip_phase(c + 16 * M + 40, "operations", OPS_BY_TEAM)
     r.stage(c + 17 * M, "release", "started")
     h = r.request(c + 25 * M, "RELEASE")
     r.question_park(c + 26 * M, "waiting", "acceptance", "product")
@@ -603,7 +622,8 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
     return {"at": T0, "row": row, "branch": row.get("branch"), "base": "main", "started_at": g["started_at"], "ended_at": g["ended_at"],
             "live": g["live"], "person": g["person"], "actors": g["actors"],
             "edges": [list(e) for e in service.board_edges([a["key"] for a in g["actors"]], g["direct"])], "direct": g["direct"],
-            "events": g["events"], "belt": g["belt"], "checks": g["checks"], "accept": g["accept"], "brain": brain,
+            "events": g["events"], "lean_steps": g["lean_steps"], "belt": g["belt"], "checks": g["checks"],
+            "accept": g["accept"], "brain": brain,
             "decisions": decisions or [], "questions": questions or [],
             "mr_desc": mr_desc or {"available": True, "text": "", "first": None, "source": None, "path": None, "ref": None,
                                    "error": "还没开工：开工以后才有变更说明"},
@@ -772,7 +792,8 @@ def detail_of(r: Req, row: dict, kw: dict, b: dict) -> dict:
                 "handoff": {"requested_at": run["handoff"].get("requested_at"), "by": run["handoff"].get("by")}
                 if isinstance(run.get("handoff"), dict) else None} if run else None,
         "claim": service.Service._claim_view(f.get("claim")),
-        "lean": {"stages": f["stages"], "approvals": [{k: a[k] for k in ("kind", "state", "sha8", "at", "line", "path")} for a in f["approvals"]],
+        "lean": {"stages": f["stages"], "phases": lean_view.phases(f["stages"]),
+                 "approvals": [{k: a[k] for k in ("kind", "state", "sha8", "at", "line", "path")} for a in f["approvals"]],
                  **lean_view.notes("Status: %s · %s" % (row["stage"], row["waits"]["text"]) if row.get("stage") else None)},
         "decisions": kw.get("decisions") or [], "questions": kw.get("questions") or [],
         "timeline": {"source": "trace" if t else "app",
@@ -917,7 +938,8 @@ def main() -> None:
     row = classified(p3, rows["PAY-3"], park=p3_park, slot=det["sessions"][0])
     det["row"] = row
     f3 = p3.facts(p3_park)      # 需求详情's Lean card, as service._detail_sync sends it: the same records as the row
-    det["lean"]["stages"] = f3["stages"]
+    det["lean"] = dict({"stages": f3["stages"], "phases": lean_view.phases(f3["stages"])},
+                       **{k: v for k, v in det["lean"].items() if k not in ("stages", "phases")})
     det["lean"]["approvals"] = [{k: a[k] for k in ("kind", "state", "sha8", "at", "line", "path")} for a in f3["approvals"]]
     det["timeline"]["missing"] = board.missing_sources(TRACE_MISSING, local_only=False, handed=False)
     board_later(p3, row, park=p3_park,
@@ -990,6 +1012,7 @@ def main() -> None:
     p7.stage(t + 70 * M, "code-generation", "done", unit="refund-ui", note="代码写完")
     p7.verify(t + 80 * M, [("pytest -q", 0), ("npm test", 0)])
     p7.stage(t + 81 * M, "build-and-test", "done", note="verify PASS: 2 checks on code fingerprint %s" % sha("PAY-7", "fp")[:8])
+    p7.stage(t + 81 * M + 20, "ci-pipeline", "skipped", note=CI_AS_IS)
     p7.handoff(t + 85 * M)
     reqs["r1"].append(p7)
     p7_why = ["label 'ai-handoff' was added by bob, not by the branch owner alice"]
@@ -1029,6 +1052,7 @@ def main() -> None:
     p10.stage(t + 55 * M, "code-generation", "done", unit="confirm", note="代码写完")
     p10.verify(t + 62 * M, [("pytest -q", 0)])
     p10.stage(t + 63 * M, "build-and-test", "done", note="构建测试做完了")
+    p10.stage(t + 63 * M + 20, "ci-pipeline", "skipped", note=CI_AS_IS)
     p10.handoff(t + 70 * M)
     reqs["r1"].append(p10)
     row = copy.deepcopy(rows["PAY-7"])
@@ -1052,6 +1076,7 @@ def main() -> None:
     p1.stage(t + 42 * M, "code-generation", "done", unit="stats", note="代码写完，计划 3 步全打勾")
     p1.verify(t + 50 * M, [("pytest -q", 0)])
     p1.stage(t + 51 * M, "build-and-test", "done", note="verify PASS：1 项")
+    p1.stage(t + 51 * M + 20, "ci-pipeline", "skipped", note=CI_AS_IS)
     p1_idle = t + 53 * M
     reqs["r1"].append(p1)
     p1_sess = dict(det["sessions"][0], slot="brain-PAY-1-3d8e", url="/chat?sid=brain-PAY-1-3d8e", title="PAY-1 退款原因统计",
@@ -1085,6 +1110,8 @@ def main() -> None:
             r.stage(t + 80 * M, "code-generation", "done", unit="invoice-ui")
             r.verify(t + 95 * M, [("pytest -q", 0), ("npm test", 0)])
             r.stage(t + 96 * M, "build-and-test", "done")
+            r.stage(t + 96 * M + 20, "ci-pipeline", "skipped", note=CI_AS_IS)
+            r.skip_phase(t + 98 * M, "operations", OPS_BY_TEAM)
             h = r.request(t + 100 * M, "RELEASE")
             r.approve(t + 115 * M, "RELEASE", h)
             r.stage(t + 116 * M, "release", "done", note="RELEASE approved (sha %s)" % h[:8])
@@ -1135,6 +1162,7 @@ def main() -> None:
     r = Req("r4", "TOOL-1", "价格表批量导入", "alice", "price-import", "261108-price-import")
     r.claim_at = T0 - 3 * H
     r.start_at = T0 - 2 * H - 40 * M
+    r.skip_phase(r.start_at + 20, "ideation", NOT_REQUESTED)
     r.stage(r.start_at + 2 * M, "reverse-engineering", "skipped", note="新工具")
     r.stage(r.start_at + 3 * M, "requirements", "started")
     h = r.request(r.start_at + 30 * M, "REQUIREMENTS")
@@ -1300,6 +1328,7 @@ def main() -> None:
                     if isinstance(run.get("handoff"), dict) else None} if run else None,
             "claim": None,
             "lean": {"stages": f.get("stages") or lean_view.stages([]),
+                     "phases": lean_view.phases(f.get("stages") or lean_view.stages([])),
                      "approvals": [dict({k: a[k] for k in ("kind", "state", "sha8", "at", "path")}, line=None)
                                    for a in f.get("approvals") or []],
                      **lean_view.notes(f.get("state_text"))},
@@ -1349,6 +1378,7 @@ def main() -> None:
              "overviews": overviews, "overviews_team": overviews_team, "todo": world_todo, "reflects": reflects,
              "crew_missing": crew_fail, "crew_not_ready": crewcheck.not_ready([crew_fail]),
              "me_token": identity.of("", GL, token=True), "boards": boards, "details": details, "stages": STAGES,
+             "phases": {k: lean_view.phases(v) for k, v in STAGES.items()},
              "brains": brains, "intake_gates": intake_gates()}
     (ROOT / "ui" / "preview" / "world.json").write_text(json.dumps(world, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     # the contract fixtures the UI tests read: the overview's numbers for its own rows, one live board and one merged

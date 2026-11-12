@@ -18,7 +18,7 @@ import { RoleIcon } from './board/RoleIcon'
 import type { Tone } from './styles'
 import type {
   AnswerBody, AnswerResult, ApprovalState, CheckRow, CommitResult, CrewFixBody, CrewFixResult, FileChange, ImportJob, ImportPurpose,
-  InstallChoices, InstallMode, JobStart, JobStepState, LeanSummary, Level, MeNameResult, MergeResult, MrRef, PendingInstall, PublishResult,
+  InstallChoices, InstallMode, JobStart, JobStepState, Level, MeNameResult, MergeResult, MrRef, PendingInstall, PublishResult,
   PullResult, PushResult, Question, ReqState, RepoInfo, RepoMe, StageState, WaitWho,
 } from './types'
 import { STATE_LABEL } from './types'
@@ -74,6 +74,7 @@ export const STAGE_META: Record<StageState, { label: string; glyph: string; tone
   skipped: { label: '跳过', glyph: '–', tone: 'idle' },
   started: { label: '在做', glyph: '●', tone: 'run' },
   todo: { label: '没开始', glyph: '○', tone: 'idle' },
+  optional: { label: '可选', glyph: '○', tone: 'idle' },
 }
 
 export const QUESTION_STATE: Record<string, { label: string; tone: Tone }> = {
@@ -99,31 +100,6 @@ export const QUESTION_STATE: Record<string, { label: string; tone: Tone }> = {
 export const questionMeta = (state: string, source?: Question['source']) =>
   source === 'park' && state === 'answered' ? { label: '已回答', tone: 'info' as Tone } : QUESTION_STATE[state] ?? { label: state, tone: 'idle' as Tone }
 export const isOpenQuestion = (q: Pick<Question, 'state'>) => q.state === 'waiting' || q.state === 'open'
-
-/** What the stage of a LeanSummary is, when it is not the one being worked on. */
-const LEAN_HINT: Partial<Record<StageState, string>> = { todo: '下一步', done: '做完', skipped: '做完' }
-
-/**
- * 3/11 需求分析, with one cell per Lean stage (green: done or skipped, blue: the one in progress); 下一步 when nothing is
- * open and that stage is the next one to do, 做完 when it is the last stage and done (the requirement's Lean work is
- * finished).
- */
-export function LeanCell({ lean, compact = false }: { lean: LeanSummary; compact?: boolean }) {
-  const hint = lean.stage_state ? LEAN_HINT[lean.stage_state] : undefined
-  const now = lean.stage_state === 'started' && lean.stage_n !== null ? lean.stage_n : null
-  return (
-    <span className="br-row" style={{ gap: 6 }} data-testid="lean-cell">
-      <span className="br-mono">{lean.stage_n !== null ? `${lean.stage_n}/${lean.total}` : `0/${lean.total}`}</span>
-      {!compact && <span>{lean.stage_label ?? '还没开始'}</span>}
-      {hint && <span className="br-hint" data-testid="lean-hint">{hint}</span>}
-      <span className="br-prog" role="img" aria-label={`做完 ${lean.done}/${lean.total}`} title={`做完或跳过 ${lean.done}/${lean.total}`}>
-        {Array.from({ length: lean.total }, (_, i) => (
-          <i key={i} className={i < lean.done ? 'is-done' : now !== null && i === now - 1 ? 'is-started' : ''} />
-        ))}
-      </span>
-    </span>
-  )
-}
 
 /** A link that opens outside the app (a new tab). Only http(s) URLs become links. */
 export function ExtLink({ href, children, className = 'br-link' }: { href: string | null | undefined; children: ReactNode; className?: string }) {

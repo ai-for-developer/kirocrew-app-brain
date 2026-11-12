@@ -106,24 +106,26 @@ export interface Waits {
 }
 
 export interface LeanSummary {
-  /** the current Lean stage id (see stage_state); null only when Lean recorded no stage yet */
+  /** the current Lean stage id (see stage_state); null while Lean recorded no stage on the way yet */
   stage: string | null
   /** its Chinese label, e.g. 需求分析 */
   stage_label: string | null
-  /** 1..11, the stage's place in Lean's order */
-  stage_n: number | null
+  /** its AI-DLC number, e.g. 2.3 (发布: ✓) */
+  stage_n: string | null
   /** the state of `stage`: started (being worked on); todo (nothing open: the next stage to do after the last one done);
    * done or skipped (every stage up to the last is done: the requirement's Lean work is finished); null when Lean
    * recorded no stage yet */
   stage_state: StageState | null
-  /** stages done or skipped / 11 */
+  /** the stages on the way done or skipped, of how many: Lean's own, and an optional one (Ideation's, ci-pipeline,
+   * Operations') once recorded; a phase skipped as a whole is not among them (backend/core/lean_view.py summary) */
   done: number
   total: number
-  /** UI问题清单 #8, the one way to say the progress (vocab.leanProgress): stages done, stages skipped, and the next one
-   * to do (null: every stage done or skipped). The backend always sends them */
-  done_n?: number
-  skipped_n?: number
-  next?: { id: string; label: string; n: number } | null
+  /** UI问题清单 #8, the one way to say the progress (vocab.leanProgress): stages done, stages skipped, the next one to do
+   * (null: every stage on the way done or skipped), and the phases skipped as a whole, said once: 构思、运维 */
+  done_n: number
+  skipped_n: number
+  next: { id: string; label: string; n: string } | null
+  skipped_phases: string[]
 }
 
 export interface MrRef { iid: number; url: string | null; state: string | null }
@@ -840,16 +842,35 @@ export interface Overview {
 
 // ---------------------------------------------------------------- GET /requirements/{repo}/{key}
 
-export type StageState = 'done' | 'skipped' | 'started' | 'todo'
+/** optional: Lean never asks for the stage (Ideation's, ci-pipeline, Operations') and nothing recorded it: not on the way */
+export type StageState = 'done' | 'skipped' | 'started' | 'todo' | 'optional'
+/** an AI-DLC phase (backend/core/stages.py PHASES) */
+export type PhaseKey = 'init' | 'ideation' | 'inception' | 'construction' | 'release' | 'operations'
+/** One of Lean's 26 stages (backend/core/stages.py STAGES), in Lean's order. */
 export interface Stage {
   id: string
   label: string
-  n: number
+  /** its AI-DLC number: 2.3, 3.5, ✓ (发布), 4.1 */
+  n: string
+  phase: PhaseKey
   state: StageState
   /** per-unit stages: each unit's state */
   units: { unit: string; state: StageState }[]
   note: string | null
   at: number | null
+}
+
+/** One of Lean's phases, in order: used (its stages are listed one by one); skipped (every stage of it skipped by a
+ * record: said once, 整段不需要; *note*: the reason, when one covers them all); optional (nothing recorded in a phase Lean
+ * never asks for: said once, 可选，还没记). */
+export interface LeanPhase {
+  key: PhaseKey
+  /** its AI-DLC number, as the board's band says it: 1 构思 · 2 启动 · 3 构建 · ✓ 发布 · 4 运维 */
+  n: string
+  /** 构思 */
+  name: string
+  state: 'used' | 'skipped' | 'optional'
+  note: string | null
 }
 
 export type ApprovalState = 'approved' | 'pending' | 'rejected' | 'stale' | 'refused'
@@ -981,6 +1002,7 @@ export interface RequirementDetail {
   claim: { owner: string | null; title: string; created_at: string | null; source: string; closed: string | null } | null
   lean: {
     stages: Stage[]
+    phases: LeanPhase[]
     approvals: Approval[]
     /** aidlc-state.md Session notes */
     status: string | null
@@ -1484,6 +1506,9 @@ export interface ReqBoard {
   /** a local-only requirement past its design: the way goes from the design approval straight to the checks */
   direct: boolean
   events: BoardEvent[]
+  /** Lean's progress after each stage record that changed it, oldest first (the first, at 0, before any): what 回放
+   * shows at a moment; the last one is row.lean */
+  lean_steps: { at: number; lean: LeanSummary }[]
   belt: BeltItem[]
   checks: CheckWall
   accept: Acceptance

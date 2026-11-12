@@ -1,7 +1,7 @@
 /**
  * 回放: a requirement played again (the sample team board's timeline.ts). The board at any moment *t*, rebuilt from the
  * snapshot itself: each actor's status history, its spans and marks up to *t*, the events, the conveyor, the check
- * cells decided by then, Lean's stages from its stage events, whom it waited for then. What has no time of its own (the
+ * cells decided by then, Lean's progress at its stage records, whom it waited for then. What has no time of its own (the
  * decisions, what the Brain was cited for, credits) is not shown until the end. Pure: the same snapshot and *t* always
  * give the same board, so the replay can be scrubbed.
  *
@@ -10,7 +10,7 @@
  * real time.
  */
 import type { ActorStatus, CheckCell, ReqBoard, ReqState, WaitWho } from '../types'
-import { leanFromEvents, ownerIsYou } from './format'
+import { ownerIsYou } from './format'
 
 export interface ReplaySpan {
   start: number
@@ -124,8 +124,8 @@ export function replayAt(b: ReqBoard, t: number): ReqBoard {
   const rel = statusOf.get('release')
   const merged = b.ended_at !== null && b.ended_at <= t
   const state = stateAt(b, t, statusOf, merged)
-  const ln = leanFromEvents(b.events, t, b.row.lean.total)
-  const through = ln.done_n + ln.skipped_n
+  // Lean's progress then, as the backend counted it at its stage records (one rule: backend/core/lean_view.py)
+  const lean = [...b.lean_steps].reverse().find((s) => s.at <= t)?.lean ?? b.row.lean
   const who: WaitWho = awaiting ? waitOn.get(awaiting.key) ?? 'people' : working ? (statusOf.get('runner') === 'running' ? 'runner' : 'agent') : 'nobody'
   // only claimed: as a live claim of that owner shows it (deliveries' row, board.py's person): no run branch, no working
   // directory, it waits on its owner to start it
@@ -139,8 +139,7 @@ export function replayAt(b: ReqBoard, t: number): ReqBoard {
       // the MR is opened at the hand-over
       mr: b.events.some((e) => e.kind === 'handover' && e.at <= t) ? b.row.mr : null,
       ...(claimed ? { branch: null, worktree: null } : {}),
-      lean: { ...b.row.lean, done_n: ln.done_n, skipped_n: ln.skipped_n, next: ln.next, done: through, stage: ln.next?.id ?? null, stage_label: ln.next?.label ?? null, stage_n: ln.next?.n ?? null,
-        stage_state: ln.next ? (ln.started ? 'started' : 'todo') : through ? 'done' : null },
+      lean,
       waits: claimed
         ? { ...b.row.waits, who: ownerIsYou(b) ? 'you' : 'people', text: starts, line: null, raw: '', do: 'start', since: claimAt }
         : { ...b.row.waits, who, text: awaiting ? awaiting.doing : working ? 'AI 在做' : '', line: null, raw: '', do: 'none', since: awaiting?.since ?? null },

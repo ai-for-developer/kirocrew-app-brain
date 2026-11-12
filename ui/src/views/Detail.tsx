@@ -3,7 +3,7 @@
  * shows one delivery. First what to do now (此刻: who it waits on, since when, and the step right there: 打开会话,
  * 复制那一行, 开审查会话, 开工, 去 MR 上回答, 回写 Brain), then how long it took, where the time went (AI on this machine,
  * the runner, waiting for a person, done again), what it cost and what the checks say; the 价值流 on a time axis (图 /
- * 表格, every part and moment opens the board there); Lean's 11 stages and approvals; the decisions (each opens the
+ * 表格, every part and moment opens the board there); Lean's stages by phase and approvals; the decisions (each opens the
  * board at its stage); questions and answers (the answer form only where the person may answer here), the MR's 变更说明
  * (formatted, 复制 copies the Markdown), Lean's notes, the sessions, what the run used of the Brain and the timeline.
  * A requirement only claimed is one sentence and 开工; one that is not there says so and where to go.
@@ -16,7 +16,7 @@
  * and its dependencies, with 认领 / 放弃认领 / 开工 / 同步 / 拆成小需求 as brain-kit offers them. A small one not started
  * yet has it under its facts: it is claimed and started there, not in 开需求.
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useAppApi, useNavigate } from '@kirocrew/app-sdk'
 import { POLL_MS, paths, usePoll, useAction } from '../api'
 import { PERSON, boardWho, todoLeft, whoThen, whoWord } from '../board/format'
@@ -26,13 +26,13 @@ import { Hit, Mini } from '../cto/charts'
 import { ago, fmtCredits, fmtIso, fmtSpan, fmtTime, isoDay } from '../format'
 import { VIEW_NAME, type BoardEntry, type ItemEntry } from '../nav'
 import type {
-  CheckCell, Decision, LeanSummary, OpenSessionBody, OpenSessionResult, ReqBoard, RequirementDetail, SessionRow, Stage,
+  CheckCell, Decision, LeanPhase, OpenSessionBody, OpenSessionResult, ReqBoard, RequirementDetail, SessionRow, Stage,
   TimelineItem, TimelineKind, WaitDo, WaitWho, Waits,
 } from '../types'
 import { APPROVAL_META, Icon, LoadState, MrLink, STAGE_META, StateChip, TYPE_IT_YOURSELF, isOpenQuestion } from '../ui'
 import {
   ACT, CHECK_GROUP_NAME, CHILD_STATE_NAME, DECIDED_BY, DO_NAME, FAMILY_ACT, WHERE_NAME, approvalName, leanProgress, missingSourceName,
-  sourceName, stageName, waitsOn,
+  sourceName, waitsOn,
 } from '../vocab'
 import { Inline, Paths, pathPieces } from './Markdown'
 import { FamilyPanel, useFamily, type FamilyCtl } from './Family'
@@ -101,9 +101,14 @@ export const DETAIL_CSS = `
 .br-detail .br-phrase { display: inline-block; max-width: 100%; }
 .br-detail .br-rawlist { margin: 6px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 12px; }
 .br-detail .br-rawlist dd { margin: 0; overflow-wrap: anywhere; }
-.br-detail .br-stagecells { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 4px; list-style: none; margin: 0; padding: 0; }
-@container br-detail (max-width: 1100px) { .br-detail .br-stagecells { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
-@container br-detail (max-width: 600px) { .br-detail .br-stagecells { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+/* Lean's phases left to right, as the board's AI-DLC bands: each group as wide as its cells, a phase said once one cell */
+.br-detail .br-lean-phases { display: flex; flex-wrap: wrap; gap: 8px 10px; }
+.br-detail .br-lean-phase { display: grid; gap: 4px; align-content: start; min-width: 0; flex: var(--cells) 1 calc(var(--cells) * var(--cell));
+  max-width: calc(var(--cells) * 150px); }
+.br-detail .br-lean-phase-h { font-size: .74em; font-weight: 800; color: var(--muted); white-space: nowrap; }
+.br-detail .br-stagecells { display: grid; grid-template-columns: repeat(var(--cells), minmax(0, 1fr)); gap: 4px; list-style: none; margin: 0; padding: 0; }
+@container br-detail (max-width: 600px) { .br-detail .br-stagecells { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); } }
+.br-detail .br-stagecell.is-whole { grid-column: 1 / -1; }
 .br-detail .br-stagecell { position: relative; display: grid; gap: 2px; align-content: start; padding: 7px 8px 8px; border-radius: 10px; min-height: 64px;
   border: 2px solid color-mix(in srgb, var(--kt-tone) 70%, var(--border)); background: color-mix(in srgb, var(--kt-tone) 12%, var(--card)); }
 .br-detail .br-stagecell.is-done { background: var(--kt-ok-solid); border-color: color-mix(in srgb, var(--kt-ok) 75%, transparent); }
@@ -111,12 +116,13 @@ export const DETAIL_CSS = `
 .br-detail .br-stagecell.is-done .br-stage-units .br-chip { color: #fff; background: rgba(255, 255, 255, .18); border-color: rgba(255, 255, 255, .4); }
 .br-detail .br-stagecell.is-skipped { border-style: dashed; background: transparent; opacity: .7; }
 .br-detail .br-stagecell.is-todo { border-style: dashed; background: transparent; border-color: var(--border-strong); }
+.br-detail .br-stagecell.is-optional { border-style: dotted; background: transparent; border-color: var(--border-strong); opacity: .6; }
 .br-detail .br-stagecell.is-next { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent); }
 .br-detail .br-stagecell.is-next .br-stage-n { color: var(--accent); }
 .br-detail .br-stagecell.is-started { box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-run) 25%, transparent), 0 0 18px -6px var(--kt-run); }
 .br-detail .br-stage-n { font-size: .74em; font-weight: 800; color: var(--muted); }
 .br-detail .br-stage-label { font-size: .86em; font-weight: 750; color: var(--text-strong); line-height: 1.25; }
-/* a unit's chip stays inside its tile (its state as a glyph, the words in its title): 11 tiles fit 1280 */
+/* a unit's chip stays inside its tile (its state as a glyph, the words in its title) */
 .br-detail .br-stagecell { grid-template-columns: minmax(0, 1fr); min-width: 0; }
 .br-detail .br-stage-units { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; min-width: 0; }
 .br-detail .br-stage-units .br-chip { display: block; font-size: .7em; padding: 0 6px; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -172,15 +178,11 @@ function handedOver(x: RequirementDetail): boolean {
   return !!x.run?.handoff || ['handed_over', 'running', 'parked', 'acceptance'].includes(x.row.state)
 }
 
-/** Lean's progress the one way (vocab.leanProgress): the backend's counts, else counted from the stages; a next stage
- * already started is 在做 (its stage_state), not 下一步. */
-function leanOf(x: RequirementDetail): Required<Pick<LeanSummary, 'done_n' | 'skipped_n' | 'next' | 'stage' | 'stage_state'>> {
-  const l = x.row.lean
-  if (l.done_n !== undefined && l.skipped_n !== undefined && l.next !== undefined) return { done_n: l.done_n, skipped_n: l.skipped_n, next: l.next, stage: l.stage, stage_state: l.stage_state }
-  const st = x.lean.stages
-  const next = st.find((s) => s.state === 'started' || s.state === 'todo')
-  return { done_n: st.filter((s) => s.state === 'done').length, skipped_n: st.filter((s) => s.state === 'skipped').length, next: next ? { id: next.id, label: next.label, n: next.n } : null,
-    stage: next?.id ?? null, stage_state: next?.state === 'started' ? 'started' : null }
+/** Lean's stages on the way, the ones its progress counts (vocab.leanProgress, backend lean_view.summary): those of a
+ * phase not said once as a whole, an optional one only once recorded. */
+const onWay = (x: RequirementDetail): Stage[] => {
+  const used = new Set(x.lean.phases.filter((p) => p.state === 'used').map((p) => p.key))
+  return x.lean.stages.filter((s) => used.has(s.phase) && s.state !== 'optional')
 }
 
 const isoSec = (iso: string | null | undefined) => (iso && Number.isFinite(Date.parse(iso)) ? Date.parse(iso) / 1000 : null)
@@ -506,7 +508,7 @@ function Claimed({ x, now, at, onStart }: { x: RequirementDetail; now: Now; at: 
       <p className="cto-desc">
         {mine
           ? '开工会在这台机器上建它的工作目录和分支，再开一个 brain-dev 会话。还没开工，所以没有周期、时间、成本、检查和记录。'
-          : `${owner} 认领了${span ? ` ${span}` : ''}，还没开工。开工以后，这里有周期、时间、成本、检查和 Lean 的 11 个阶段。`}
+          : `${owner} 认领了${span ? ` ${span}` : ''}，还没开工。开工以后，这里有周期、时间、成本、检查和 Lean 每个阶段做到哪了。`}
       </p>
       {mine && child && <p className="br-hint">{ACT.start}在下面「{child.parent} 的小需求」里：从大需求的分支开</p>}
       {mine && !child && (
@@ -693,7 +695,7 @@ function Cards({ x, board, at, localOnly, replying, onBoard, onSessions }: {
 }) {
   const start = startOf(x, board)
   const end = board?.ended_at ?? null
-  const lean = leanOf(x)
+  const lean = x.row.lean
   const segs = board ? valueStream(board, at) : []
   const split = splitOf(segs)
   const busy = split.filter((s) => s.p !== 'person').reduce((a, s) => a + s.s, 0)
@@ -708,9 +710,9 @@ function Cards({ x, board, at, localOnly, replying, onBoard, onSessions }: {
         <div className="cto-value" data-testid="item-cycle">{start ? fmtSpan((end ?? at) - start) : '—'}</div>
         <div className="cto-desc">{start ? `${fmtTime(start)} 开工` : '开工时间没记下'}{end ? ` → ${fmtTime(end)} 合并` : ' → 进行中'}</div>
         <div className="kt-segs cto-segs" role="img" aria-label={`Lean：${leanProgress(lean)}`}>
-          {x.lean.stages.map((s) => (
-            <i key={s.id} title={`${s.n} ${s.label} · ${lean.next?.n === s.n && s.state === 'todo' ? '下一步' : STAGE_META[s.state]?.label ?? s.state}`}
-              className={s.state === 'done' ? 'is-pass' : s.state === 'skipped' ? 'is-skip' : s.state === 'started' ? 'is-run' : lean.next?.n === s.n ? 'is-next' : 'is-todo'} />
+          {onWay(x).map((s) => (
+            <i key={s.id} title={`${s.n} ${s.label} · ${lean.next?.id === s.id && s.state === 'todo' ? '下一步' : STAGE_META[s.state]?.label ?? s.state}`}
+              className={s.state === 'done' ? 'is-pass' : s.state === 'skipped' ? 'is-skip' : s.state === 'started' ? 'is-run' : lean.next?.id === s.id ? 'is-next' : 'is-todo'} />
           ))}
         </div>
         <div className="cto-legend"><span data-testid="lean-progress">Lean {leanProgress(lean)}</span></div>
@@ -869,8 +871,8 @@ function SplitBar({ split }: { split: { p: Part; s: number }[] }) {
 // ------------------------------------------------------------------ Lean
 
 function LeanCard({ x, sessionUrl, mrUrl, waiter }: { x: RequirementDetail; sessionUrl: string | null; mrUrl: string | null; waiter: string | null }) {
-  const { stages, approvals } = x.lean
-  const lean = leanOf(x)
+  const { stages, phases, approvals } = x.lean
+  const lean = x.row.lean
   const onMr = handedOver(x)
   const navigate = useNavigate()
   return (
@@ -879,9 +881,22 @@ function LeanCard({ x, sessionUrl, mrUrl, waiter }: { x: RequirementDetail; sess
         <h3>AI-DLC Lean</h3>
         <span className="cto-dim">{leanProgress(lean)} · {onMr ? '交接以后，审批在 MR 上回答' : '审批的那一行由你在会话里自己打，app 不替你发'}</span>
       </div>
-      <ol className="br-stagecells" aria-label="11 个阶段">
-        {stages.map((s) => <StageCell key={s.id} s={s} next={lean.next?.n === s.n && s.state === 'todo'} />)}
-      </ol>
+      <div className="br-lean-phases" data-testid="lean-phases">
+        {phases.map((p) => {
+          const mine = stages.filter((s) => s.phase === p.key)
+          return (
+            <div key={p.key} role="group" className="br-lean-phase" aria-label={`${p.n} ${p.name}`}
+              style={{ '--cells': p.state === 'used' ? mine.length : 2, '--cell': mine.some((s) => s.units.length) ? '104px' : '70px' } as CSSProperties}>
+              <div className="br-lean-phase-h">{p.n} {p.name}</div>
+              <ol className="br-stagecells" aria-label={`${p.name}的阶段`}>
+                {p.state === 'used'
+                  ? mine.map((s) => <StageCell key={s.id} s={s} next={lean.next?.id === s.id && s.state === 'todo'} />)
+                  : <PhaseCell p={p} stages={mine.length} />}
+              </ol>
+            </div>
+          )
+        })}
+      </div>
       <h3 className="br-lean-sub">审批</h3>
       {approvals.length === 0 ? <p className="br-empty">还没有审批。</p> : (
         <ul className="br-approvals" aria-label="审批">
@@ -935,6 +950,18 @@ function ApprovalLine({ line, sessionUrl, onOpen }: { line: string; sessionUrl: 
       </div>
       <p>{TYPE_IT_YOURSELF}</p>
     </div>
+  )
+}
+
+/** A phase said once instead of its stages: skipped as a whole (its reason), or optional with nothing recorded. */
+function PhaseCell({ p, stages }: { p: LeanPhase; stages: number }) {
+  const said = p.state === 'skipped' ? '整段不需要' : '可选，还没记'
+  return (
+    <li className={`br-stagecell is-whole is-${p.state === 'skipped' ? 'skipped' : 'optional'} tone-idle`} data-testid="stage-phase" data-state={p.state}
+      title={p.note ?? said}>
+      <span className="br-stage-n">{stages} 个阶段 · {said}</span>
+      <span className="br-stage-label">{p.note ?? (p.state === 'skipped' ? '跳过了' : 'Lean 不要求这一段')}</span>
+    </li>
   )
 }
 
@@ -1033,7 +1060,7 @@ function DecisionsCard({ decisions, stages, repo, owner, me, go, onAt, picked }:
                 <tr key={dd.id} data-testid="decision" data-decision={dd.id} ref={dd.id === picked ? pickedRow : undefined}
                   className={dd.id === picked ? 'is-picked' : undefined} aria-current={dd.id === picked ? 'true' : undefined}>
                   <td className="br-key" data-label="编号" title={[dd.date, dd.src].filter(Boolean).join(' · ')}>{dd.id}</td>
-                  <td className="br-dim" data-label="阶段">{stageName(dd.stage) || '—'}</td>
+                  <td className="br-dim" data-label="阶段">{stages.find((s) => s.id === dd.stage)?.label ?? (dd.stage || '—')}</td>
                   <td data-label="决定"><Inline text={dd.text} /></td>
                   <td className="br-dim" data-label="为什么">{dd.why ? <Inline text={dd.why} /> : '—'}</td>
                   <td data-label="谁定的" title={tip || undefined}>{decidedBy(dd, owner, me)}</td>

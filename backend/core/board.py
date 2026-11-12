@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from typing import Any, Callable
 
-from . import lean_view, problems
+from . import lean_view, problems, stages
 from .deliveries import ASK_NAME, ASK_WHO, CAT_LABEL, CAT_ORDER, KIND_LABEL, category, park_waiting
 
 # (key, title, sub, icon): the actors in the order of the way
@@ -80,8 +80,7 @@ def _clip(s: Any, n: int) -> str:
 
 
 def _stage_label(d: dict[str, Any]) -> str:
-    sid = str(d.get("stage") or "")
-    label = lean_view.STAGE_LABEL.get(sid, sid or "一个阶段")
+    label = stages.label(d.get("stage"))
     return "%s（%s）" % (label, d["unit"]) if d.get("unit") else label
 
 
@@ -285,6 +284,10 @@ def events_of(f: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any]
         elif ev == "STAGE_SKIPPED":
             add(at, "stage", s, s, "跳过「%s」%s" % (_stage_label(d), "：%s" % _clip(d.get("reason"), 60) if d.get("reason") else ""),
                 detail=True, stage=d.get("stage"), state="skipped")
+        elif ev == "PHASE_SKIPPED":
+            why = lean_view.say_note(d.get("reason"))
+            add(at, "stage", s, s, "跳过「%s」整段%s" % (lean_view.phase_name(d.get("phase")), "：%s" % _clip(why, 60) if why else ""),
+                detail=True, state="skipped")
         elif ev in ("APPROVAL_REQUESTED", "APPROVED", "REJECTED", "APPROVAL_REFUSED"):
             kind = str(d.get("kind") or "")
             gates = GATES_OF.get(kind)
@@ -427,9 +430,9 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
           subjects: dict[str, str], reflect_refs: list[tuple[str, float, float | None]], default_branch: str, local_only: bool,
           kit_rows: list[dict[str, Any]], decisions: list[dict[str, Any]], brain: dict[str, Any] | None,
           me: str | None, now: float, changes: dict[str, list[dict[str, Any]]] | None = None) -> dict[str, Any]:
-    """The board's graph part (actors, events, belt, checks, accept, person, live, direct, missing); the service adds
-    the requirement's detail (decisions, questions, 变更说明, sessions, credits). *changes*: changes_from_log of the
-    commits (GIT_LOG), by full sha."""
+    """The board's graph part (actors, events, belt, checks, accept, person, live, direct, missing, and Lean's progress
+    at each of its stage records for 回放: lean_view.steps); the service adds the requirement's detail (decisions,
+    questions, 变更说明, sessions, credits). *changes*: changes_from_log of the commits (GIT_LOG), by full sha."""
     run = f.get("run") or {}
     handoff = run.get("handoff") if isinstance(run.get("handoff"), dict) else None
     hand_at = _epoch((handoff or {}).get("requested_at"))
@@ -471,7 +474,7 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
             s = e["from"]
             if A[s]["status"] in ("skipped",):
                 continue
-            label = lean_view.STAGE_LABEL.get(str(e.get("stage") or ""), "一个阶段")
+            label = stages.label(e.get("stage"))
             doing = open_stages[s]
             if label in doing:
                 doing.remove(label)
@@ -649,6 +652,7 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
     events = [{k: e[k] for k in ("seq", "at", "kind", "from", "to", "text", "detail", "src")} for e in evs][-MAX_EVENTS:]
     return {"actors": actors, "events": events, "belt": belt, "checks": checks, "accept": accept, "person": person,
             "live": bool(live), "direct": bool(direct), "started_at": first_at, "ended_at": merged_at,
+            "lean_steps": lean_view.steps(f.get("events") or []),
             "missing": missing_sources((t or {}).get("missing") or [], local_only=local_only, handed=hand_at is not None)}
 
 
@@ -1074,18 +1078,13 @@ def _said(note: str, you: str) -> tuple[str, str | None]:
 
 def _reply_step(row: dict[str, Any], f: dict[str, Any], you: str) -> tuple[str, str | None]:
     """An idle local session (BOARD-4): where Lean is, its next stage, and what to say to the session."""
-    stages = f.get("stages") or []
+    rows = f.get("stages") or []
     lean = row.get("lean") or {}
-    if "next" in lean:
-        nxt = lean.get("next")
-    else:
-        end = max([r["n"] for r in stages if r.get("state") in ("done", "skipped")], default=0)
-        nxt = next((r for r in stages if r.get("state") == "started"), None) or \
-            next((r for r in stages if r.get("state") == "todo" and r["n"] > end), None)
-    done = [r for r in stages if r.get("state") == "done"]
+    nxt = lean["next"] if "next" in lean else lean_view.summary(rows)["next"]
+    done = [r for r in rows if r.get("state") == "done"]
     head = "会话空着，轮到%s回话。" % you
     if done:
-        head += "Lean 做完了「%s」，" % max(done, key=lambda r: r["n"])["label"]
+        head += "Lean 做完了「%s」，" % done[-1]["label"]
     head += "下一步是「%s」。" % nxt["label"] if nxt else "Lean 的阶段都做完了。"
     # before the release, the review in a new session: the line to say is Lean's own (the one 开审查会话 sends), never
     # one the session that wrote the code worded for its reviewer

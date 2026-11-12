@@ -16,24 +16,13 @@ import re
 from datetime import datetime
 from typing import Any, Callable, Optional
 
+from .stages import BY_ID, LEAN, PHASES, label
+
 DOCS = "aidlc-docs"
-# Lean 0.2's stages in order: (id, Chinese label, per unit)
-STAGES = (
-    ("reverse-engineering", "逆向工程", False),
-    ("requirements", "需求分析", False),
-    ("user-stories", "用户故事", False),
-    ("application-design", "应用设计", False),
-    ("units", "拆分单元", False),
-    ("functional-design", "功能设计", True),
-    ("nfr-design", "非功能设计", True),
-    ("infrastructure-design", "基础设施设计", True),
-    ("code-generation", "代码生成", True),
-    ("build-and-test", "构建测试", False),
-    ("release", "发布", False),
-)
-STAGE_LABEL = {s[0]: s[1] for s in STAGES}
-STAGE_N = {s[0]: i for i, s in enumerate(STAGES, 1)}
 STAGE_STATE = {"STAGE_STARTED": "started", "STAGE_COMPLETED": "done", "STAGE_SKIPPED": "skipped"}
+# the records that decide a stage's state: its own, and a PHASE_SKIPPED, which skips each stage it names
+DECIDES = dict(STAGE_STATE, PHASE_SKIPPED="skipped")
+IDEATION = frozenset(s.id for s in LEAN if s.phase == "ideation")
 # the notes Lean writes itself (aidlc_lean.py: verify's build-and-test completion, the RELEASE approval's, `lean new`'s
 # Ideation skip), said in words; a note the agent wrote is its own and stays as written
 LEAN_NOTES = (
@@ -53,6 +42,18 @@ def say_note(note: Any) -> str | None:
         if m:
             return say(m)
     return note
+
+
+def phase_name(phase: Any) -> str:
+    """A phase key read from a record, as a sentence names it: 构思; 一段 for one the stage table does not know."""
+    return next((p.name for p in PHASES if p.key == phase), "一段")
+
+
+def phase_skipped(phase: Any) -> str:
+    """A PHASE_SKIPPED record (a whole phase skipped in one go) as a timeline says it: 构思：整段跳过."""
+    return "%s：整段跳过" % phase_name(phase)
+
+
 PASSED_OVER = "Lean 没记这一步，直接往后做了"
 APPROVAL_EVENTS = ("APPROVAL_REQUESTED", "APPROVED", "REJECTED", "APPROVAL_REFUSED")
 KIND_LABEL = {"REQUIREMENTS": "需求", "DESIGN": "设计", "INCEPTION": "需求和设计", "PLAN": "代码生成计划",
@@ -126,83 +127,147 @@ def _data(e: dict[str, Any]) -> dict[str, Any]:
     return d if isinstance(d, dict) else {}
 
 
+def _ideation_in_use(evs: list[dict[str, Any]]) -> bool:
+    """Lean's rule (aidlc_lean.py Project.ideation_in_use): an Ideation stage has a start or done record newer than the
+    last phase skip of Ideation (with no phase skip: any start or done record)."""
+    used = skip = -1
+    for k, e in enumerate(evs):
+        d = _data(e)
+        if e.get("event") == "PHASE_SKIPPED" and d.get("phase") == "ideation":
+            skip = k
+        elif e.get("event") in ("STAGE_STARTED", "STAGE_COMPLETED") and d.get("stage") in IDEATION:
+            used = k
+    return used > skip
+
+
 def stages(evs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Lean's 11 stages with state done | skipped | started | todo; per-unit stages with each unit's state."""
+    """Lean's 26 stages (stages.LEAN, in Lean's order), each with its state: done, skipped, started, todo, or optional
+    (Lean never asks for it and nothing recorded it: it is not on this intent's way). A stage's state is its own last
+    record's, or that of a later PHASE_SKIPPED naming it (Lean's stage_event); once Ideation is in use again, its
+    phase skips no longer count. A per-unit stage has each unit's state."""
+    in_use = _ideation_in_use(evs)
     last: dict[tuple, dict[str, Any]] = {}
     for e in evs:
-        if e.get("event") not in STAGE_STATE:
-            continue
-        d = _data(e)
-        last[(str(d.get("stage") or ""), str(d.get("unit") or ""))] = e
+        ev, d = e.get("event"), _data(e)
+        if ev in STAGE_STATE:
+            last[(str(d.get("stage") or ""), str(d.get("unit") or ""))] = e
+        elif ev == "PHASE_SKIPPED" and isinstance(d.get("stages"), list) and not (d.get("phase") == "ideation" and in_use):
+            for sid in d["stages"]:
+                last[(str(sid), "")] = e
     out = []
-    for n, (sid, label, per_unit) in enumerate(STAGES, 1):
-        rows = {u: e for (s, u), e in last.items() if s == sid}
-        units = sorted((u, STAGE_STATE[e["event"]]) for u, e in rows.items() if u)
-        whole = rows.get("")
-        states = [STAGE_STATE[e["event"]] for e in rows.values()]
+    for s in LEAN:
+        rows = {u: e for (sid, u), e in last.items() if sid == s.id}
+        units = sorted((u, DECIDES[e["event"]]) for u, e in rows.items() if u)
+        states = [DECIDES[e["event"]] for e in rows.values()]
         if not states:
-            state = "todo"
+            state = "optional" if s.optional and not (s.phase == "ideation" and in_use) else "todo"
         elif "started" in states:
             state = "started"
-        elif all(s == "skipped" for s in states):
+        elif all(x == "skipped" for x in states):
             state = "skipped"
         else:
             state = "done"
         latest = max(rows.values(), key=lambda e: e.get("ts") or "") if rows else None
         d = _data(latest) if latest else {}
         note = d.get("note") if latest and latest.get("event") == "STAGE_COMPLETED" else \
-            d.get("reason") if latest and latest.get("event") == "STAGE_SKIPPED" else None
-        out.append({"id": sid, "label": label, "n": n, "state": state,
-                    "units": [{"unit": u, "state": s} for u, s in units] if per_unit else [],
+            d.get("reason") if latest and latest.get("event") in ("STAGE_SKIPPED", "PHASE_SKIPPED") else None
+        out.append({"id": s.id, "n": s.n, "label": s.label, "phase": s.phase, "state": state,
+                    "units": [{"unit": u, "state": x} for u, x in units] if s.per_unit else [],
                     "note": say_note(str(note)[:300]) if isinstance(note, str) else None,
-                    "at": latest.get("_at") if latest else (whole.get("_at") if whole else None)})
-    # a stage Lean went past without a word (a later one is recorded) was not on this intent's way: skipped
-    last = max((r["n"] for r in out if r["state"] != "todo"), default=0)
-    for r in out:
-        if r["state"] == "todo" and r["n"] < last:
+                    "at": latest.get("_at") if latest else None})
+    # a stage on the way that Lean went past without a word (a later stage Lean always asks for is recorded) was not
+    # on this intent's way: skipped. An optional stage recorded early (Operations before the release) passes nothing.
+    end = max((i for i, (s, r) in enumerate(zip(LEAN, out)) if not s.optional and r["state"] != "todo"), default=0)
+    for r in out[:end]:
+        if r["state"] == "todo":
             r.update(state="skipped", note=PASSED_OVER)
     return out
 
 
+def phases(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Lean's phases in order, each with its state: skipped (every stage of it skipped by a record, one PHASE_SKIPPED
+    or each its own, not passed over; *note*: their reason when one reason covers them all), optional (nothing recorded
+    in a phase Lean never asks for), else used. Lean's progress counts only the stages of a used phase and says the
+    skipped ones once: 构思、运维两段整段不需要."""
+    out = []
+    for p in PHASES:
+        mine = [r for r in rows if r["phase"] == p.key]
+        if not mine:
+            continue
+        states, notes = {r["state"] for r in mine}, {r["note"] for r in mine}
+        state = "skipped" if states == {"skipped"} and PASSED_OVER not in notes else \
+            "optional" if states == {"optional"} else "used"
+        out.append({"key": p.key, "n": p.n, "name": p.name, "state": state,
+                    "note": next(iter(notes)) if state == "skipped" and len(notes) == 1 else None})
+    return out
+
+
+def _way(rows: list[dict[str, Any]], ph: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The stages Lean's progress counts: those of a used phase, but an optional one only once recorded."""
+    used = {p["key"] for p in ph if p["state"] == "used"}
+    return [r for r in rows if r["phase"] in used and r["state"] != "optional"]
+
+
 def summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """The current stage of Lean's 11 (the row the overview shows, the same stages the detail view lists): the one
-    furthest along that is started; else the next one to do after the last one done or skipped; else (nothing left
-    after it) that last one, done. None only when Lean has recorded no stage at all. done_n / skipped_n / next say
-    the progress the one way the app says it (ui/src/vocab.ts leanProgress): next is the stage to do now (the
-    started one, else the first not reached), None once every stage is done or skipped."""
-    started = [r for r in rows if r["state"] == "started"]
+    """Lean's progress over the stages on the way (_way: the ones 交付总览, 需求详情 and 需求看板 count): the current
+    stage is the one furthest along that is started; else the next one to do after the last one done or skipped; else
+    (nothing left after it) that last one, done; None while none of them is recorded. done_n / skipped_n / next say
+    the progress the one way the app says it (ui/src/vocab.ts leanProgress): next is the stage to do now (the started
+    one, else the first not reached), None once every stage on the way is done or skipped. skipped_phases: the phases
+    skipped as a whole, by name, said once instead of counted."""
+    ph = phases(rows)
+    way = _way(rows, ph)
+    started = [r for r in way if r["state"] == "started"]
     cur = started[-1] if started else None
     if cur is None:
-        done_n = [r["n"] for r in rows if r["state"] in ("done", "skipped")]
-        if done_n:
-            last = max(done_n)
-            cur = next((r for r in rows if r["state"] == "todo" and r["n"] > last), None) or \
-                next(r for r in rows if r["n"] == last)
+        done = [i for i, r in enumerate(way) if r["state"] in ("done", "skipped")]
+        if done:
+            cur = next((r for r in way[done[-1] + 1:] if r["state"] == "todo"), way[done[-1]])
     nxt = cur if cur and cur["state"] in ("started", "todo") else \
-        None if cur else next((r for r in rows if r["state"] == "todo"), None)
+        None if cur else next((r for r in way if r["state"] == "todo"), None)
     return {"stage": cur["id"] if cur else None, "stage_label": cur["label"] if cur else None,
             "stage_n": cur["n"] if cur else None, "stage_state": cur["state"] if cur else None,
-            "done": sum(1 for r in rows if r["state"] in ("done", "skipped")), "total": len(rows),
-            "done_n": sum(1 for r in rows if r["state"] == "done"),
-            "skipped_n": sum(1 for r in rows if r["state"] == "skipped"),
-            "next": {"id": nxt["id"], "label": nxt["label"], "n": nxt["n"]} if nxt else None}
+            "done": sum(1 for r in way if r["state"] in ("done", "skipped")), "total": len(way),
+            "done_n": sum(1 for r in way if r["state"] == "done"),
+            "skipped_n": sum(1 for r in way if r["state"] == "skipped"),
+            "next": {"id": nxt["id"], "label": nxt["label"], "n": nxt["n"]} if nxt else None,
+            "skipped_phases": [p["name"] for p in ph if p["state"] == "skipped"]}
 
 
 def stage_text(lean: dict[str, Any]) -> str | None:
-    """「做完 4 · 跳过 6 · 下一步：发布」, said exactly as ui/src/vocab.ts leanProgress says it: a next stage already
-    started is 「在做：发布」, the end 「全部做完（跳过 6）」; None before Lean recorded a stage."""
-    if not lean.get("stage_n"):
+    """「做完 4 · 跳过 6 · 下一步：发布 · 构思整段不需要」, said exactly as ui/src/vocab.ts leanProgress says it: a next
+    stage already started is 「在做：发布」, the end 「全部做完（跳过 6）」, the phases skipped as a whole last; None before
+    Lean recorded a stage on the way."""
+    if not lean.get("stage"):
         return None
     nxt = lean.get("next")
     if not nxt:
-        return "全部做完（跳过 %d）" % lean["skipped_n"] if lean.get("skipped_n") else "全部做完"
-    parts = ["做完 %d" % lean["done_n"]] + (["跳过 %d" % lean["skipped_n"]] if lean.get("skipped_n") else [])
-    started = lean.get("stage_state") == "started" and lean.get("stage") in (None, nxt["id"])
-    parts.append("%s：%s" % ("在做" if started else "下一步", nxt["label"]))
+        parts = ["全部做完（跳过 %d）" % lean["skipped_n"] if lean.get("skipped_n") else "全部做完"]
+    else:
+        parts = ["做完 %d" % lean["done_n"]] + (["跳过 %d" % lean["skipped_n"]] if lean.get("skipped_n") else [])
+        started = lean.get("stage_state") == "started" and lean.get("stage") in (None, nxt["id"])
+        parts.append("%s：%s" % ("在做" if started else "下一步", nxt["label"]))
+    whole = lean.get("skipped_phases") or []
+    if whole:
+        parts.append("%s%s整段不需要" % ("、".join(whole), "两段" if len(whole) == 2 else ""))
     return " · ".join(parts)
 
 
-REVIEW_DOC = "construction/build-and-test/review.md"   # Lean's release review (skill aidlc-lean-release)
+def steps(evs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Lean's progress (summary) after each stage record that changed it, oldest first, the first one (at 0) before
+    any: what 回放 shows at a moment. The last one is the progress now."""
+    out = [{"at": 0, "lean": summary(stages([]))}]
+    seen = []
+    for e in evs:
+        if e.get("event") in DECIDES:
+            seen.append(e)
+            lean = summary(stages(seen))
+            if lean != out[-1]["lean"] and isinstance(e.get("_at"), (int, float)):
+                out.append({"at": e["_at"], "lean": lean})
+    return out
+
+
+REVIEW_DOC = BY_ID["review"].doc   # Lean's release review (skill aidlc-lean-release)
 INTENT_RE = re.compile(r"^[0-9]{6}-[a-z0-9][a-z0-9-]{0,80}$")
 # what Lean's release skill tells the person to say in a new chat: the review is made by a context that did not write
 # the code (and is not told how by the one that did)
@@ -233,15 +298,17 @@ def idle_step(rows: list[dict[str, Any]], *, review_ok: bool, default_branch: st
         return "Lean 的阶段都做完了：可以把分支合并进 %s 了" % default_branch
     if lean["stage_state"] == "started":
         return "「%s」做到一半，会话停下了：看它最后问了什么，回它" % nxt["label"]
-    before = [r for r in rows if r["state"] in ("done", "skipped") and r["n"] < nxt["n"]]
+    way = _way(rows, phases(rows))
+    before = way[:[r["id"] for r in way].index(nxt["id"])]
     if not before:
         return "会话停下了，Lean 还没记下阶段：看它最后说了什么，回它"
-    prev = max(before, key=lambda r: r["n"])["label"]
+    done = [r for r in before if r["state"] == "done"]
+    prev = "%s做完了" % done[-1]["label"] if done else "%s跳过了" % before[-1]["label"]
     if nxt["id"] == "release":
         if review_ok:
             return "审查写好了，下一步是发布：回会话让它接着发布（它会请你批准发布）"
-        return "%s做完了，下一步是发布：先开一个新会话做审查（这个会话写了代码，不能自己审）" % prev
-    return "%s做完了，下一步是%s：在会话里让它接着做" % (prev, nxt["label"])
+        return "%s，下一步是发布：先开一个新会话做审查（这个会话写了代码，不能自己审）" % prev
+    return "%s，下一步是%s：在会话里让它接着做" % (prev, nxt["label"])
 
 
 def _approval_sha(path: str, raw: bytes | None) -> str | None:
@@ -353,18 +420,20 @@ def stage_events(evs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         at = e.get("ts") if isinstance(e.get("ts"), str) else None
         src = "%s#%s" % (labels.get(str(e.get("_file") or ""), DOCS + "/audit"), e.get("seq"))
         if ev in STAGE_STATE:
-            label = "%s：%s" % (STAGE_LABEL.get(str(d.get("stage")), str(d.get("stage"))),
-                               {"started": "开始", "done": "完成", "skipped": "跳过"}[STAGE_STATE[ev]])
+            said = "%s：%s" % (label(d.get("stage")), {"started": "开始", "done": "完成", "skipped": "跳过"}[STAGE_STATE[ev]])
             if d.get("unit"):
-                label += "（%s）" % d["unit"]
-            out.append({"at": at, "kind": "stage", "label": label, "detail": say_note(d.get("note") or d.get("reason")),
+                said += "（%s）" % d["unit"]
+            out.append({"at": at, "kind": "stage", "label": said, "detail": say_note(d.get("note") or d.get("reason")),
+                        "who": None, "src": src})
+        elif ev == "PHASE_SKIPPED":
+            out.append({"at": at, "kind": "stage", "label": phase_skipped(d.get("phase")), "detail": say_note(d.get("reason")),
                         "who": None, "src": src})
         elif ev in APPROVAL_EVENTS:
             kind = str(d.get("kind") or "")
             name = KIND_LABEL.get(kind, kind)
-            label = "%s（%s）" % (REFUSED, name) if ev == "APPROVAL_REFUSED" else \
+            said = "%s（%s）" % (REFUSED, name) if ev == "APPROVAL_REFUSED" else \
                 {"APPROVAL_REQUESTED": "请求批准", "APPROVED": "批准", "REJECTED": "退回"}[ev] + name
-            out.append({"at": at, "kind": "approval", "label": label,
+            out.append({"at": at, "kind": "approval", "label": said,
                         "detail": refused_why(d.get("check")) if ev == "APPROVAL_REFUSED" else None, "who": None, "src": src})
         elif ev == "BLOCKED":
             out.append({"at": at, "kind": "blocked", "label": "%s：%s" % (BLOCKED, block_rule(d.get("gate"))),

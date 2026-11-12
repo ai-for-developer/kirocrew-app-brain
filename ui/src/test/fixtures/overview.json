@@ -15,7 +15,7 @@
       "lean": {
         "stage": "code-generation",
         "stage_label": "代码生成",
-        "stage_n": 9,
+        "stage_n": "3.5",
         "stage_state": "started",
         "done": 8,
         "total": 11,
@@ -24,10 +24,13 @@
         "next": {
           "id": "code-generation",
           "label": "代码生成",
-          "n": 9
-        }
+          "n": "3.5"
+        },
+        "skipped_phases": [
+          "构思"
+        ]
       },
-      "stage": "做完 4 · 跳过 4 · 在做：代码生成",
+      "stage": "做完 4 · 跳过 4 · 在做：代码生成 · 构思整段不需要",
       "waits": {
         "who": "you",
         "text": "等你批准 refund-api 的代码生成计划：读完再在会话里自己打那一行",
@@ -73,7 +76,7 @@
       "lean": {
         "stage": "functional-design",
         "stage_label": "功能设计",
-        "stage_n": 6,
+        "stage_n": "3.1",
         "stage_state": "started",
         "done": 5,
         "total": 11,
@@ -82,10 +85,13 @@
         "next": {
           "id": "functional-design",
           "label": "功能设计",
-          "n": 6
-        }
+          "n": "3.1"
+        },
+        "skipped_phases": [
+          "构思"
+        ]
       },
-      "stage": "做完 2 · 跳过 3 · 在做：功能设计",
+      "stage": "做完 2 · 跳过 3 · 在做：功能设计 · 构思整段不需要",
       "waits": {
         "who": "product",
         "text": "等产品在 MR 上回答 D-2（设计）",
@@ -139,19 +145,23 @@
       "lean": {
         "stage": "release",
         "stage_label": "发布",
-        "stage_n": 11,
+        "stage_n": "✓",
         "stage_state": "started",
-        "done": 10,
-        "total": 11,
+        "done": 11,
+        "total": 12,
         "done_n": 4,
-        "skipped_n": 6,
+        "skipped_n": 7,
         "next": {
           "id": "release",
           "label": "发布",
-          "n": 11
-        }
+          "n": "✓"
+        },
+        "skipped_phases": [
+          "构思",
+          "运维"
+        ]
       },
-      "stage": "做完 4 · 跳过 6 · 在做：发布",
+      "stage": "做完 4 · 跳过 7 · 在做：发布 · 构思、运维两段整段不需要",
       "waits": {
         "who": "product",
         "text": "等产品在 MR 上验收 D-3（approve / reject）",
@@ -202,19 +212,22 @@
       "lean": {
         "stage": "release",
         "stage_label": "发布",
-        "stage_n": 11,
+        "stage_n": "✓",
         "stage_state": "todo",
-        "done": 10,
-        "total": 11,
+        "done": 11,
+        "total": 12,
         "done_n": 4,
-        "skipped_n": 6,
+        "skipped_n": 7,
         "next": {
           "id": "release",
           "label": "发布",
-          "n": 11
-        }
+          "n": "✓"
+        },
+        "skipped_phases": [
+          "构思"
+        ]
       },
-      "stage": "做完 4 · 跳过 6 · 下一步：发布",
+      "stage": "做完 4 · 跳过 7 · 下一步：发布 · 构思整段不需要",
       "waits": {
         "who": "you",
         "text": "接手被拒：标签是 bob 打的，不是负责人 alice",
@@ -270,8 +283,9 @@
         "next": {
           "id": "reverse-engineering",
           "label": "逆向工程",
-          "n": 1
-        }
+          "n": "2.1"
+        },
+        "skipped_phases": []
       },
       "stage": null,
       "waits": {
@@ -314,15 +328,19 @@
       "lean": {
         "stage": "release",
         "stage_label": "发布",
-        "stage_n": 11,
+        "stage_n": "✓",
         "stage_state": "done",
-        "done": 11,
-        "total": 11,
+        "done": 12,
+        "total": 12,
         "done_n": 5,
-        "skipped_n": 6,
-        "next": null
+        "skipped_n": 7,
+        "next": null,
+        "skipped_phases": [
+          "构思",
+          "运维"
+        ]
       },
-      "stage": "全部做完（跳过 6）",
+      "stage": "全部做完（跳过 7） · 构思、运维两段整段不需要",
       "waits": {
         "who": "nobody",
         "text": "已合并，在观察合并后的 14 天（到 11-17）",

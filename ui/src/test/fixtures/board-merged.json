@@ -14,15 +14,19 @@
     "lean": {
       "stage": "release",
       "stage_label": "发布",
-      "stage_n": 11,
+      "stage_n": "✓",
       "stage_state": "done",
-      "done": 11,
-      "total": 11,
+      "done": 12,
+      "total": 12,
       "done_n": 5,
-      "skipped_n": 6,
-      "next": null
+      "skipped_n": 7,
+      "next": null,
+      "skipped_phases": [
+        "构思",
+        "运维"
+      ]
     },
-    "stage": "全部做完（跳过 6）",
+    "stage": "全部做完（跳过 7） · 构思、运维两段整段不需要",
     "waits": {
       "who": "nobody",
       "text": "已合并，在观察合并后的 14 天（到 11-17）",
@@ -920,6 +924,16 @@
     },
     {
       "seq": 3,
+      "at": 1793628020,
+      "kind": "stage",
+      "from": "local",
+      "to": "local",
+      "text": "跳过「构思」整段：这次没要构思这一段",
+      "detail": true,
+      "src": null
+    },
+    {
+      "seq": 4,
       "at": 1793628120,
       "kind": "stage",
       "from": "local",
@@ -929,7 +943,7 @@
       "src": null
     },
     {
-      "seq": 4,
+      "seq": 5,
       "at": 1793628180,
       "kind": "stage",
       "from": "local",
@@ -939,7 +953,7 @@
       "src": null
     },
     {
-      "seq": 5,
+      "seq": 6,
       "at": 1793629680.0,
       "kind": "commit",
       "from": "local",
@@ -949,7 +963,7 @@
       "src": null
     },
     {
-      "seq": 6,
+      "seq": 7,
       "at": 1793629860,
       "kind": "request",
       "from": "local",
@@ -959,7 +973,7 @@
       "src": null
     },
     {
-      "seq": 7,
+      "seq": 8,
       "at": 1793631120,
       "kind": "approve",
       "from": "person",
@@ -969,7 +983,7 @@
       "src": null
     },
     {
-      "seq": 8,
+      "seq": 9,
       "at": 1793631180,
       "kind": "stage",
       "from": "local",
@@ -979,7 +993,7 @@
       "src": null
     },
     {
-      "seq": 9,
+      "seq": 10,
       "at": 1793631240,
       "kind": "stage",
       "from": "local",
@@ -989,7 +1003,7 @@
       "src": null
     },
     {
-      "seq": 10,
+      "seq": 11,
       "at": 1793631300,
       "kind": "stage",
       "from": "local",
@@ -999,7 +1013,7 @@
       "src": null
     },
     {
-      "seq": 11,
+      "seq": 12,
       "at": 1793632200,
       "kind": "blocked",
       "from": "local",
@@ -1009,7 +1023,7 @@
       "src": null
     },
     {
-      "seq": 12,
+      "seq": 13,
       "at": 1793633760,
       "kind": "request",
       "from": "local",
@@ -1019,7 +1033,7 @@
       "src": null
     },
     {
-      "seq": 13,
+      "seq": 14,
       "at": 1793635080,
       "kind": "reject",
       "from": "person",
@@ -1029,7 +1043,7 @@
       "src": null
     },
     {
-      "seq": 14,
+      "seq": 15,
       "at": 1793636460.0,
       "kind": "commit",
       "from": "local",
@@ -1039,7 +1053,7 @@
       "src": null
     },
     {
-      "seq": 15,
+      "seq": 16,
       "at": 1793636580,
       "kind": "request",
       "from": "local",
@@ -1049,7 +1063,7 @@
       "src": null
     },
     {
-      "seq": 16,
+      "seq": 17,
       "at": 1793637960,
       "kind": "approve",
       "from": "person",
@@ -1059,7 +1073,7 @@
       "src": null
     },
     {
-      "seq": 17,
+      "seq": 18,
       "at": 1793638020,
       "kind": "stage",
       "from": "local",
@@ -1069,7 +1083,7 @@
       "src": null
     },
     {
-      "seq": 18,
+      "seq": 19,
       "at": 1793638080,
       "kind": "stage",
       "from": "local",
@@ -1079,7 +1093,7 @@
       "src": null
     },
     {
-      "seq": 19,
+      "seq": 20,
       "at": 1793639100.0,
       "kind": "commit",
       "from": "local",
@@ -1089,7 +1103,7 @@
       "src": null
     },
     {
-      "seq": 20,
+      "seq": 21,
       "at": 1793639340.0,
       "kind": "handover",
       "from": "local",
@@ -1099,7 +1113,7 @@
       "src": null
     },
     {
-      "seq": 21,
+      "seq": 22,
       "at": 1793639460.0,
       "kind": "accepted",
       "from": "handover",
@@ -1109,7 +1123,7 @@
       "src": null
     },
     {
-      "seq": 22,
+      "seq": 23,
       "at": 1793639480.0,
       "kind": "signed",
       "from": "bridge",
@@ -1119,7 +1133,7 @@
       "src": "运行号 RUN-PAY-2-1"
     },
     {
-      "seq": 23,
+      "seq": 24,
       "at": 1793639580,
       "kind": "stage",
       "from": "runner",
@@ -1129,7 +1143,7 @@
       "src": null
     },
     {
-      "seq": 24,
+      "seq": 25,
       "at": 1793641020.0,
       "kind": "commit",
       "from": "runner",
@@ -1139,7 +1153,7 @@
       "src": null
     },
     {
-      "seq": 25,
+      "seq": 26,
       "at": 1793642880.0,
       "kind": "commit",
       "from": "runner",
@@ -1149,7 +1163,7 @@
       "src": null
     },
     {
-      "seq": 26,
+      "seq": 27,
       "at": 1793645160.0,
       "kind": "commit",
       "from": "runner",
@@ -1159,7 +1173,7 @@
       "src": null
     },
     {
-      "seq": 27,
+      "seq": 28,
       "at": 1793647860.0,
       "kind": "commit",
       "from": "runner",
@@ -1169,7 +1183,7 @@
       "src": null
     },
     {
-      "seq": 28,
+      "seq": 29,
       "at": 1793647980.0,
       "kind": "question",
       "from": "runner",
@@ -1179,7 +1193,7 @@
       "src": null
     },
     {
-      "seq": 29,
+      "seq": 30,
       "at": 1793648040.0,
       "kind": "question",
       "from": "bridge",
@@ -1189,7 +1203,7 @@
       "src": null
     },
     {
-      "seq": 30,
+      "seq": 31,
       "at": 1793650500.0,
       "kind": "answer",
       "from": "person",
@@ -1199,7 +1213,7 @@
       "src": null
     },
     {
-      "seq": 31,
+      "seq": 32,
       "at": 1793650501.0,
       "kind": "answer",
       "from": "bridge",
@@ -1209,7 +1223,7 @@
       "src": null
     },
     {
-      "seq": 32,
+      "seq": 33,
       "at": 1793650560.0,
       "kind": "answer",
       "from": "person",
@@ -1219,7 +1233,7 @@
       "src": null
     },
     {
-      "seq": 33,
+      "seq": 34,
       "at": 1793651760.0,
       "kind": "commit",
       "from": "runner",
@@ -1229,7 +1243,7 @@
       "src": null
     },
     {
-      "seq": 34,
+      "seq": 35,
       "at": 1793651880,
       "kind": "stage",
       "from": "runner",
@@ -1239,7 +1253,7 @@
       "src": null
     },
     {
-      "seq": 35,
+      "seq": 36,
       "at": 1793651940,
       "kind": "stage",
       "from": "runner",
@@ -1249,7 +1263,7 @@
       "src": null
     },
     {
-      "seq": 36,
+      "seq": 37,
       "at": 1793652660,
       "kind": "verify",
       "from": "branch",
@@ -1259,7 +1273,7 @@
       "src": null
     },
     {
-      "seq": 37,
+      "seq": 38,
       "at": 1793653620.0,
       "kind": "commit",
       "from": "runner",
@@ -1269,7 +1283,7 @@
       "src": null
     },
     {
-      "seq": 38,
+      "seq": 39,
       "at": 1793654580,
       "kind": "verify",
       "from": "branch",
@@ -1279,7 +1293,7 @@
       "src": null
     },
     {
-      "seq": 39,
+      "seq": 40,
       "at": 1793654640,
       "kind": "stage",
       "from": "runner",
@@ -1289,7 +1303,27 @@
       "src": null
     },
     {
-      "seq": 40,
+      "seq": 41,
+      "at": 1793654660,
+      "kind": "stage",
+      "from": "runner",
+      "to": "runner",
+      "text": "跳过「CI 流水线」：现有的 CI 够用，不用改",
+      "detail": true,
+      "src": null
+    },
+    {
+      "seq": 42,
+      "at": 1793654680,
+      "kind": "stage",
+      "from": "runner",
+      "to": "runner",
+      "text": "跳过「运维」整段：部署和运维由团队的流水线做",
+      "detail": true,
+      "src": null
+    },
+    {
+      "seq": 43,
       "at": 1793654700,
       "kind": "stage",
       "from": "runner",
@@ -1299,7 +1333,7 @@
       "src": null
     },
     {
-      "seq": 41,
+      "seq": 44,
       "at": 1793655180,
       "kind": "request",
       "from": "runner",
@@ -1309,7 +1343,7 @@
       "src": null
     },
     {
-      "seq": 42,
+      "seq": 45,
       "at": 1793655240.0,
       "kind": "question",
       "from": "runner",
@@ -1319,7 +1353,7 @@
       "src": null
     },
     {
-      "seq": 43,
+      "seq": 46,
       "at": 1793656440.0,
       "kind": "question",
       "from": "bridge",
@@ -1329,7 +1363,7 @@
       "src": null
     },
     {
-      "seq": 44,
+      "seq": 47,
       "at": 1793659440.0,
       "kind": "answer",
       "from": "person",
@@ -1339,7 +1373,7 @@
       "src": null
     },
     {
-      "seq": 45,
+      "seq": 48,
       "at": 1793659441.0,
       "kind": "answer",
       "from": "bridge",
@@ -1349,7 +1383,7 @@
       "src": null
     },
     {
-      "seq": 46,
+      "seq": 49,
       "at": 1793659500,
       "kind": "approve",
       "from": "person",
@@ -1359,7 +1393,7 @@
       "src": null
     },
     {
-      "seq": 47,
+      "seq": 50,
       "at": 1793659560,
       "kind": "stage",
       "from": "runner",
@@ -1369,7 +1403,7 @@
       "src": null
     },
     {
-      "seq": 48,
+      "seq": 51,
       "at": 1793661540.0,
       "kind": "merge",
       "from": "branch",
@@ -1379,7 +1413,7 @@
       "src": null
     },
     {
-      "seq": 49,
+      "seq": 52,
       "at": 1793715540.0,
       "kind": "reflect",
       "from": "person",
@@ -1387,6 +1421,362 @@
       "text": "回写 Brain：成功（回写分支 brain/PAY-2-reflect-1）",
       "detail": false,
       "src": null
+    }
+  ],
+  "lean_steps": [
+    {
+      "at": 0,
+      "lean": {
+        "stage": null,
+        "stage_label": null,
+        "stage_n": null,
+        "stage_state": null,
+        "done": 0,
+        "total": 11,
+        "done_n": 0,
+        "skipped_n": 0,
+        "next": {
+          "id": "reverse-engineering",
+          "label": "逆向工程",
+          "n": "2.1"
+        },
+        "skipped_phases": []
+      }
+    },
+    {
+      "at": 1793628020,
+      "lean": {
+        "stage": null,
+        "stage_label": null,
+        "stage_n": null,
+        "stage_state": null,
+        "done": 0,
+        "total": 11,
+        "done_n": 0,
+        "skipped_n": 0,
+        "next": {
+          "id": "reverse-engineering",
+          "label": "逆向工程",
+          "n": "2.1"
+        },
+        "skipped_phases": [
+          "构思"
+        ]
+      }
+    },
+    {
+      "at": 1793628120,
+      "lean": {
+        "stage": "requirements",
+        "stage_label": "需求分析",
+        "stage_n": "2.3",
+        "stage_state": "todo",
+        "done": 1,
+        "total": 11,
+        "done_n": 0,
+        "skipped_n": 1,
+        "next": {
+          "id": "requirements",
+          "label": "需求分析",
+          "n": "2.3"
+        },
+        "skipped_phases": [
+          "构思"
+        ]
+      }
+    },
+    {
+      "at": 1793628180,
+      "lean": {
+        "stage": "requirements",
+        "stage_label": "需求分析",
+        "stage_n": "2.3",
+        "stage_state": "started",
+        "done": 1,
+        "total": 11,
+        "done_n": 0,
+        "skipped_n": 1,
+        "next": {
+          "id": "requirements",
+          "label": "需求分析",
+          "n": "2.3"
+        },
+        "skipped_phases": [
+          "构思"
+        ]
+      }
+    },
+    {
+      "at": 1793631180,
+      "lean": {
+        "stage": "user-stories",
+        "stage_label": "用户故事",
+        "stage_n": "2.4",
+        "stage_state": "todo",
+        "done": 2,
+        "total": 11,
+        "done_n": 1,
+        "skipped_n": 1,
+        "next": {
+          "id": "user-stories",
+          "label": "用户故事",
+          "n": "2.4"
+        },
+        "skipped_phases": [
+          "构思"
+        ]
+      }
+    },
+    {
+      "at": 1793631240,
+      "lean": {
+        "stage": "application-design",
+        "stage_label": "应用设计",
+        "stage_n": "2.6",
+        "stage_state": "todo",
+        "done": 3,
+        "total": 11,
+        "done_n": 1,
+        "skipped_n": 2,
+        "next": {
+          "id": "application-design",
+          "label": "应用设计",
+          "n": "2.6"
+        },
+        "skipped_phases": [
+          "构思"
+        ]
+      }
+    },
+    {
+      "at": 1793631300,
+      "lean": {
+        "stage": "application-design",
+        "stage_label": "应用设计",
+        "stage_n": "2.6",
+        "stage_state": "started",
+        "done": 3,
+        "total": 11,
+        "done_n": 1,
+        "skipped_n": 2,
+        "next": {
+          "id": "application-design",
+          "label": "应用设计",
+          "n": "2.6"
+        },
+        "skipped_phases": [
+          "构思"
+        ]
+      }
+    },
+    {
+      "at": 1793638020,
+      "lean": {
+        "stage": "units",
+        "stage_label": "拆分单元",
+        "stage_n": "2.7",
+        "stage_state": "todo",
+        "done": 4,
+        "total": 11,
+        "done_n": 2,
+        "skipped_n": 2,
+        "next": {
+          "id": "units",
+          "label": "拆分单元",
+          "n": "2.7"
+        },
+        "skipped_phases": [
+          "构思"
+        ]
+      }
+    },
+    {
+      "at": 1793638080,
+      "lean": {
+        "stage": "functional-design",
+        "stage_label": "功能设计",
+        "stage_n": "3.1",
+        "stage_state": "todo",
+        "done": 5,
+        "total": 11,
+        "done_n": 2,
+        "skipped_n": 3,
+        "next": {
+          "id": "functional-design",
+          "label": "功能设计",
+          "n": "3.1"
+        },
+        "skipped_phases": [
+          "构思"
+        ]
+      }
+    },
+    {
+      "at": 1793639580,
+      "lean": {
+        "stage": "code-generation",
+        "stage_label": "代码生成",
+        "stage_n": "3.5",
+        "stage_state": "started",
+        "done": 8,
+        "total": 11,
+        "done_n": 2,
+        "skipped_n": 6,
+        "next": {
+          "id": "code-generation",
+          "label": "代码生成",
+          "n": "3.5"
+        },
+        "skipped_phases": [
+          "构思"
+        ]
+      }
+    },
+    {
+      "at": 1793651880,
+      "lean": {
+        "stage": "build-and-test",
+        "stage_label": "构建测试",
+        "stage_n": "3.6",
+        "stage_state": "todo",
+        "done": 9,
+        "total": 11,
+        "done_n": 3,
+        "skipped_n": 6,
+        "next": {
+          "id": "build-and-test",
+          "label": "构建测试",
+          "n": "3.6"
+        },
+        "skipped_phases": [
+          "构思"
+        ]
+      }
+    },
+    {
+      "at": 1793651940,
+      "lean": {
+        "stage": "build-and-test",
+        "stage_label": "构建测试",
+        "stage_n": "3.6",
+        "stage_state": "started",
+        "done": 9,
+        "total": 11,
+        "done_n": 3,
+        "skipped_n": 6,
+        "next": {
+          "id": "build-and-test",
+          "label": "构建测试",
+          "n": "3.6"
+        },
+        "skipped_phases": [
+          "构思"
+        ]
+      }
+    },
+    {
+      "at": 1793654640,
+      "lean": {
+        "stage": "release",
+        "stage_label": "发布",
+        "stage_n": "✓",
+        "stage_state": "todo",
+        "done": 10,
+        "total": 11,
+        "done_n": 4,
+        "skipped_n": 6,
+        "next": {
+          "id": "release",
+          "label": "发布",
+          "n": "✓"
+        },
+        "skipped_phases": [
+          "构思"
+        ]
+      }
+    },
+    {
+      "at": 1793654660,
+      "lean": {
+        "stage": "release",
+        "stage_label": "发布",
+        "stage_n": "✓",
+        "stage_state": "todo",
+        "done": 11,
+        "total": 12,
+        "done_n": 4,
+        "skipped_n": 7,
+        "next": {
+          "id": "release",
+          "label": "发布",
+          "n": "✓"
+        },
+        "skipped_phases": [
+          "构思"
+        ]
+      }
+    },
+    {
+      "at": 1793654680,
+      "lean": {
+        "stage": "release",
+        "stage_label": "发布",
+        "stage_n": "✓",
+        "stage_state": "todo",
+        "done": 11,
+        "total": 12,
+        "done_n": 4,
+        "skipped_n": 7,
+        "next": {
+          "id": "release",
+          "label": "发布",
+          "n": "✓"
+        },
+        "skipped_phases": [
+          "构思",
+          "运维"
+        ]
+      }
+    },
+    {
+      "at": 1793654700,
+      "lean": {
+        "stage": "release",
+        "stage_label": "发布",
+        "stage_n": "✓",
+        "stage_state": "started",
+        "done": 11,
+        "total": 12,
+        "done_n": 4,
+        "skipped_n": 7,
+        "next": {
+          "id": "release",
+          "label": "发布",
+          "n": "✓"
+        },
+        "skipped_phases": [
+          "构思",
+          "运维"
+        ]
+      }
+    },
+    {
+      "at": 1793659560,
+      "lean": {
+        "stage": "release",
+        "stage_label": "发布",
+        "stage_n": "✓",
+        "stage_state": "done",
+        "done": 12,
+        "total": 12,
+        "done_n": 5,
+        "skipped_n": 7,
+        "next": null,
+        "skipped_phases": [
+          "构思",
+          "运维"
+        ]
+      }
     }
   ],
   "belt": [

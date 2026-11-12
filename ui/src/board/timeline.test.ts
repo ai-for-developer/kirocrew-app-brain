@@ -204,7 +204,7 @@ describe('replayAt', () => {
       prev = now
     }
     expect(prev).toEqual(counts(b))
-    expect(prev).toMatchObject({ events: 49, belt: 11, passed: 9, rounds: 2 })
+    expect(prev).toMatchObject({ events: 52, belt: 11, passed: 9, rounds: 2 })
   })
 
   it('shows a check cell only once it is decided, with its final status', () => {

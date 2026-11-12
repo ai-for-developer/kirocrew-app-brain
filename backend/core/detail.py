@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from . import bk, lean_view, problems
+from . import bk, lean_view, problems, stages
 from .deliveries import KIND_LABEL, park_waiting
 
 CITE_RE = re.compile(r"(?<![A-Za-z0-9-])([PTIJ]-[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}-[1-9][0-9]{0,3})(?![0-9-])")
@@ -256,11 +256,17 @@ def trace_timeline(t: dict[str, Any]) -> list[dict[str, Any]]:
     def who(w: Any) -> Any:
         return OWNER if w and str(w) in mine else w
 
-    items = []
+    items, whole = [], set()
     for s in t.get("stages") or []:
+        if s.get("phase_skipped"):   # brainkit.trace gives each stage a phase skip covered its own row: said once
+            if (s["phase_skipped"], s.get("src")) not in whole:
+                whole.add((s["phase_skipped"], s.get("src")))
+                items.append({"at": s.get("at"), "kind": "stage", "label": lean_view.phase_skipped(s["phase_skipped"]),
+                              "detail": lean_view.say_note(s.get("note")), "who": None, "src": s.get("src")})
+            continue
         stage, _, unit = str(s.get("id", "")).partition("/")     # brainkit.trace: <stage>/<unit> for a unit's stage
         items.append({"at": s.get("at"), "kind": "stage",
-                      "label": "%s：%s" % (lean_view.STAGE_LABEL.get(stage, stage),
+                      "label": "%s：%s" % (stages.label(stage),
                                           {"started": "开始", "done": "完成", "skipped": "跳过"}.get(s.get("state"), s.get("state")))
                       + ("（%s）" % unit if unit else ""),
                       "detail": lean_view.say_note(s.get("note")), "who": None, "src": s.get("src")})

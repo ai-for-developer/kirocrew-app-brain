@@ -189,10 +189,81 @@ def test_the_lean_stage_of_a_row():
     # a merged run that never recorded its unit's design stages: the cells and the count say the same (skipped)
     unsaid = [e for e in done if e["data"]["stage"] not in ("functional-design", "nfr-design", "infrastructure-design")]
     rows = lv.stages(unsaid + [ev("STAGE_COMPLETED", "release")])
-    assert [r["state"] for r in rows if r["n"] in (6, 7, 8)] == ["skipped"] * 3
+    unit_designs = ("functional-design", "nfr-design", "infrastructure-design")
+    assert [r["state"] for r in rows if r["id"] in unit_designs] == ["skipped"] * 3
     assert at(unsaid + [ev("STAGE_COMPLETED", "release")])[2:4] == (5, 6)
     assert at([ev("STAGE_SKIPPED", "reverse-engineering")]) == ("requirements", "todo", 0, 1, "requirements",
                                                                 "做完 0 · 跳过 1 · 下一步：需求分析")
+
+
+def test_lean_0_3_stages_are_counted_and_a_phase_skipped_whole_is_said_once():
+    """Lean 0.3.1 has 26 stages: Ideation (which `brain start` skips as a whole, one PHASE_SKIPPED), ci-pipeline and
+    Operations come in. A stage Lean never asks for counts once it is recorded, so a recorded ci-pipeline or
+    deployment pipeline is not dropped; a phase skipped as a whole leaves the count and is said once."""
+    lv = mod("lean_view")
+    ideation = ["intent-capture", "market-research", "feasibility", "scope-definition", "team-formation",
+                "rough-mockups", "approval-handoff"]
+    operations = ["deployment-pipeline", "environment-provisioning", "deployment-execution", "observability-setup",
+                  "incident-response", "performance-validation", "feedback-optimization"]
+
+    def ev(event, stage=None, unit=None, **data):
+        return {"event": event, "data": dict(data, **({"stage": stage} if stage else {}), **({"unit": unit} if unit else {})),
+                "ts": "2026-11-09T00:00:00Z", "_at": 1.0}
+
+    def said(evs):
+        rows = lv.stages(evs)
+        lean = lv.summary(rows)
+        return lean["total"], lv.stage_text(lean), {p["key"]: p["state"] for p in lv.phases(rows)}
+
+    new = [ev("PHASE_SKIPPED", phase="ideation", stages=ideation, reason="not requested (lean new without --ideation)")]
+    built = new + [ev("STAGE_SKIPPED", "reverse-engineering"), ev("STAGE_COMPLETED", "requirements"),
+                   ev("STAGE_SKIPPED", "user-stories"), ev("STAGE_COMPLETED", "application-design"),
+                   ev("STAGE_COMPLETED", "units")] + \
+        [ev("STAGE_SKIPPED", s, u) for u in ("api", "web") for s in ("functional-design", "nfr-design", "infrastructure-design")] + \
+        [ev("STAGE_COMPLETED", "code-generation", u) for u in ("api", "web")] + \
+        [ev("STAGE_COMPLETED", "build-and-test"), ev("STAGE_SKIPPED", "ci-pipeline")]
+    ops_skipped = ev("PHASE_SKIPPED", phase="operations", stages=operations, reason="platform team deploys")
+    assert len(lv.stages([])) == 26
+    assert said(new) == (11, None, {"ideation": "skipped", "inception": "used", "construction": "used", "release": "used",
+                                    "operations": "optional"})
+    # the typical run of the design: 5 done, 6 skipped (ci-pipeline among them), 构思 and 运维 said once
+    assert said(built + [ops_skipped, ev("STAGE_STARTED", "release")])[:2] == (
+        12, "做完 5 · 跳过 6 · 在做：发布 · 构思、运维两段整段不需要")
+    # released: the Operations stages nobody recorded do not hold it open (Lean: optional after RELEASE)
+    assert said(built + [ev("STAGE_COMPLETED", "release")])[:2] == (12, "全部做完（跳过 6） · 构思整段不需要")
+    # an Operations page written before the release counts, and does not make the release look passed over
+    early = built + [ev("STAGE_COMPLETED", "deployment-pipeline"), ev("STAGE_STARTED", "release")]
+    assert said(early)[:2] == (13, "做完 6 · 跳过 6 · 在做：发布 · 构思整段不需要")
+    states = {r["id"]: r["state"] for r in lv.stages(early)}
+    assert (states["deployment-pipeline"], states["environment-provisioning"], states["ci-pipeline"]) == \
+        ("done", "optional", "skipped")
+    # the reason is Lean's own line, in words, and every stage of the phase carries it
+    assert {p["key"]: p["note"] for p in lv.phases(lv.stages(new))}["ideation"] == "这次没要构思这一段"
+    # a phase Lean went past without a word is counted as skipped, never said as not needed: nothing recorded that
+    unrecorded = said(new + [ev("STAGE_COMPLETED", "code-generation", "app")])
+    assert unrecorded[2]["inception"] == "used" and unrecorded[1] == "做完 1 · 跳过 8 · 下一步：构建测试 · 构思整段不需要"
+    # Ideation opened again (a start after its phase skip): the skip no longer counts, its stages are on the way
+    reopened = lv.stages(new + [ev("STAGE_STARTED", "intent-capture")])
+    assert [r["state"] for r in reopened if r["phase"] == "ideation"] == ["started"] + ["todo"] * 6
+    assert lv.summary(reopened)["next"]["id"] == "intent-capture"
+
+
+def test_lean_progress_over_time_ends_on_the_progress_now():
+    """回放 reads Lean's progress at a moment from lean_view.steps: one summary per stage record that changed it, the
+    first before any record, the last the progress the live views say."""
+    lv = mod("lean_view")
+    ideation = [s.id for s in mod("stages").LEAN if s.phase == "ideation"]
+    evs = [{"event": "PHASE_SKIPPED", "_at": 10.0, "ts": "2026-11-09T00:00:10Z",
+            "data": {"phase": "ideation", "stages": ideation, "reason": "not requested (lean new without --ideation)"}},
+           {"event": "HUMAN_TURN", "_at": 15.0, "ts": "2026-11-09T00:00:15Z", "data": {}},
+           {"event": "STAGE_STARTED", "_at": 20.0, "ts": "2026-11-09T00:00:20Z", "data": {"stage": "requirements"}},
+           {"event": "STAGE_STARTED", "_at": 21.0, "ts": "2026-11-09T00:00:21Z", "data": {"stage": "requirements"}},
+           {"event": "STAGE_COMPLETED", "_at": 30.0, "ts": "2026-11-09T00:00:30Z", "data": {"stage": "requirements"}}]
+    steps = lv.steps(evs)
+    assert [s["at"] for s in steps] == [0, 10.0, 20.0, 30.0]    # a turn, and a start said again, change nothing
+    assert steps[0]["lean"]["next"]["id"] == "reverse-engineering" and steps[0]["lean"]["done_n"] == 0
+    assert steps[1]["lean"]["skipped_phases"] == ["构思"] and steps[1]["lean"]["total"] == 11
+    assert steps[-1]["lean"] == lv.summary(lv.stages(evs))
 
 
 def test_an_idle_session_says_what_to_tell_it_from_lean():

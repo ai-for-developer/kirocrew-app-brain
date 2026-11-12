@@ -26,7 +26,7 @@ import type { OverviewEntry, View } from '../nav'
 import type { CtoNumbers, CtoRun, EvalFamily, EvalMetric, EvalView, Funnel, Overview, RefreshResult, ReqFamily, ReqState, RepoInfo, Requirement } from '../types'
 import { STATE_LABEL } from '../types'
 import { ACT, DECIDED_BY, leanProgress, waitName } from '../vocab'
-import { EmptyHero, Icon, ImportCta, LeanCell, LoadState, MrLink, PendingRepo, STATE_TONE, StateChip } from '../ui'
+import { EmptyHero, Icon, ImportCta, LoadState, MrLink, PendingRepo, STATE_TONE, StateChip } from '../ui'
 import type { ViewProps } from './props'
 
 const STATES = Object.keys(STATE_LABEL) as ReqState[]
@@ -787,19 +787,19 @@ function Summary({ text }: { text: string }) {
   )
 }
 
-/** Lean's progress the one way the app says it: 做完 4 · 跳过 6 · 下一步：发布, the next stage's cell outlined. */
+/** Lean's progress the one way the app says it: 做完 4 · 跳过 6 · 下一步：发布, the next stage's cell outlined. The phases
+ * skipped as a whole (构思整段不需要: nearly every row's) are in the bar's name and hover, not printed in each row. */
 function LeanProgress({ r }: { r: Requirement }) {
   const l = r.lean
-  if (l.done_n === undefined) return <LeanCell lean={l} compact />
-  if (r.state === 'claimed' || (l.stage_n === null && !l.done_n && !l.skipped_n)) return <span className="cto-was" data-testid="lean-cell">还没开工</span>
-  const next = l.next && l.next.label ? l.next : null
-  const text = leanProgress({ done_n: l.done_n, skipped_n: l.skipped_n ?? 0, next })
-  const skipped = l.skipped_n ?? 0
+  if (r.state === 'claimed' || (l.stage === null && !l.done_n && !l.skipped_n)) return <span className="cto-was" data-testid="lean-cell">还没开工</span>
+  const said = { done_n: l.done_n, skipped_n: l.skipped_n, next: l.next }
+  const whole = leanProgress({ ...said, skipped_phases: l.skipped_phases })
+  const text = leanProgress({ ...said, skipped_phases: [] })
   return (
-    <span className="br-lean" data-testid="lean-cell">
-      <span className="br-prog" role="img" aria-label={text}>
+    <span className="br-lean" data-testid="lean-cell" title={whole}>
+      <span className="br-prog" role="img" aria-label={whole}>
         {Array.from({ length: l.total }, (_, i) => (
-          <i key={i} className={i < l.done_n! ? 'is-done' : i < l.done_n! + skipped ? 'is-skipped' : next && i === l.done_n! + skipped ? 'is-next' : ''} />
+          <i key={i} className={i < l.done_n ? 'is-done' : i < l.done_n + l.skipped_n ? 'is-skipped' : l.next && i === l.done_n + l.skipped_n ? 'is-next' : ''} />
         ))}
       </span>
       <span>{text.split(' · ').map((part, i) => <span key={i}>{i > 0 && ' · '}<span className="br-nw">{part}</span></span>)}</span>

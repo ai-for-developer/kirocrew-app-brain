@@ -1,25 +1,10 @@
 /**
- * The app's one word list (UI问题清单 #10, #14): every view says a stage, a state, who waits, an action, a source with
- * these words and no other. A code name (stage id, field, enum) is never shown to a person: look it up here; one that
- * is missing gets added here, not spelled out in a view.
+ * The app's one word list (UI问题清单 #10, #14): every view says a state, who waits, an action, a source with these
+ * words and no other. A code name (stage id, field, enum) is never shown to a person: look it up here; one that is
+ * missing gets added here, not spelled out in a view. Lean's stages are named by the backend's stage table
+ * (backend/core/stages.py), which every Stage and LeanSummary carries.
  */
 import type { ChildState, LeanSummary, SyncResult, WaitDo, WaitWho, Waits } from './types'
-
-/** Lean's stage ids → the stage's Chinese name (backend/core/lean_view.py STAGES) */
-export const STAGE_NAME: Record<string, string> = {
-  'reverse-engineering': '逆向工程',
-  requirements: '需求分析',
-  'user-stories': '用户故事',
-  'application-design': '应用设计',
-  units: '拆分单元',
-  'functional-design': '功能设计',
-  'nfr-design': '非功能设计',
-  'infrastructure-design': '基础设施设计',
-  'code-generation': '代码生成',
-  'build-and-test': '构建测试',
-  release: '发布',
-}
-export const stageName = (id: string | null | undefined): string => (id ? STAGE_NAME[id] ?? id : '')
 
 /** Lean's approval kinds → what is approved */
 export const APPROVAL_NAME: Record<string, string> = {
@@ -91,14 +76,23 @@ export const CLASS_NAME: Record<string, string> = {
   public: '公开', internal: '内部', confidential: '机密', restricted: '严格受限', unsure: '不确定', secret: '绝密',
 }
 
-/** 4 done · 6 skipped · next: 发布 — the one way the whole app says Lean's progress (#8); a next stage already started
- * is 「在做：代码生成」 (LeanSummary.stage_state of that stage) */
-export function leanProgress(lean: Pick<LeanSummary, 'done_n' | 'skipped_n' | 'next'> & Partial<Pick<LeanSummary, 'stage' | 'stage_state'>>): string {
-  if (!lean.next) return lean.skipped_n ? `全部做完（跳过 ${lean.skipped_n}）` : '全部做完'
-  const parts = [`做完 ${lean.done_n}`]
-  if (lean.skipped_n) parts.push(`跳过 ${lean.skipped_n}`)
-  const started = lean.stage_state === 'started' && (!lean.stage || lean.stage === lean.next.id)
-  parts.push(`${started ? '在做' : '下一步'}：${lean.next.label}`)
+/** The phases Lean skipped as a whole, said once instead of counted: 构思整段不需要 · 构思、运维两段整段不需要 */
+export const wholeSkips = (names: readonly string[]): string =>
+  names.length ? `${names.join('、')}${names.length === 2 ? '两段' : ''}整段不需要` : ''
+
+/** 4 done · 6 skipped · next: 发布 · 构思整段不需要 — the one way the whole app says Lean's progress (#8, and
+ * backend/core/lean_view.py stage_text); a next stage already started is 「在做：代码生成」 (LeanSummary.stage_state of
+ * that stage) */
+export function leanProgress(lean: Pick<LeanSummary, 'done_n' | 'skipped_n' | 'next' | 'skipped_phases'> & Partial<Pick<LeanSummary, 'stage' | 'stage_state'>>): string {
+  const parts: string[] = []
+  if (!lean.next) parts.push(lean.skipped_n ? `全部做完（跳过 ${lean.skipped_n}）` : '全部做完')
+  else {
+    parts.push(`做完 ${lean.done_n}`)
+    if (lean.skipped_n) parts.push(`跳过 ${lean.skipped_n}`)
+    const started = lean.stage_state === 'started' && (!lean.stage || lean.stage === lean.next.id)
+    parts.push(`${started ? '在做' : '下一步'}：${lean.next.label}`)
+  }
+  if (lean.skipped_phases.length) parts.push(wholeSkips(lean.skipped_phases))
   return parts.join(' · ')
 }
 

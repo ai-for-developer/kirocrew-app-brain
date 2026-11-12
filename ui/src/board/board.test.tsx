@@ -61,7 +61,7 @@ describe('需求看板', () => {
     expect(kpis.getByTestId('br-checks-counter')).toHaveTextContent('2/4')
     expect(kpis.getByTestId('br-checks-say')).toHaveTextContent('1 项没过')
     const lean = kpis.getByText('AI-DLC Lean').parentElement as HTMLElement
-    expect(lean).toHaveAccessibleName('AI-DLC Lean：做完 4 · 跳过 4 · 在做：代码生成')   // the stage it works on is 在做, not 下一步
+    expect(lean).toHaveAccessibleName('AI-DLC Lean：做完 4 · 跳过 4 · 在做：代码生成 · 构思整段不需要')   // the stage it works on is 在做, not 下一步
     expect(within(lean).getByTestId('br-lean-counter')).toHaveTextContent('4做完 · 跳过 4')
     expect(lean).toHaveTextContent('在做：代码生成')
     expect(lean).toHaveTextContent('批准 3退回 0拦下 1')
@@ -594,7 +594,7 @@ function idle(): ReqBoard {
   const b = fx.board()
   const since = b.at - 11 * H - 30 * 60
   b.row.waits = { who: 'you', text: '会话空着：轮到你回话', line: null, raw: '', do: 'reply', since, where: 'session', review: false }
-  b.row.lean = { ...b.row.lean, stage: 'release', stage_label: '发布', stage_n: 11, stage_state: 'todo', done: 10, done_n: 4, skipped_n: 6, next: { id: 'release', label: '发布', n: 11 } }
+  b.row.lean = { ...b.row.lean, stage: 'release', stage_label: '发布', stage_n: '✓', stage_state: 'todo', done: 10, done_n: 4, skipped_n: 6, next: { id: 'release', label: '发布', n: '✓' } }
   b.accept.step = { text: '构建和测试做完了，下一步是发布：在会话里让它接着做', who: '你', line: null, mr_url: null, session_url: '/chat?sid=brain-PAY-3-7f3a' }
   b.questions = []
   b.person = { ...b.person, doing: '会话空着：轮到你回话' }
@@ -873,12 +873,15 @@ describe('需求看板 · 轮到谁、做什么', () => {
     renderBoard()
     await loaded()
     const lean = screen.getByText('AI-DLC Lean').parentElement as HTMLElement
-    expect(lean).toHaveAccessibleName('AI-DLC Lean：做完 4 · 跳过 6 · 下一步：发布')
+    expect(lean).toHaveAccessibleName('AI-DLC Lean：做完 4 · 跳过 6 · 下一步：发布 · 构思整段不需要')
+    // one cell per stage on the way: Ideation, skipped as a whole by `lean new`, is said once instead of 7 grey cells
+    expect(lean.querySelectorAll('.kt-segs i')).toHaveLength(11)
     expect(lean.querySelectorAll('.kt-segs .is-pass')).toHaveLength(4)
     expect(lean.querySelectorAll('.kt-segs .is-skip')).toHaveLength(6)
     expect(lean.querySelectorAll('.kt-segs .is-next')).toHaveLength(1)
+    expect(within(lean).getByTestId('br-lean-whole')).toHaveTextContent('构思整段不需要')
     const lane = screen.getAllByTestId('kt-lane').find((l) => l.dataset.role === 'local') as HTMLElement
-    expect(within(lane).getByRole('list', { name: '事实' })).toHaveTextContent('Lean 做完 4 · 跳过 6 · 下一步：发布')
+    expect(within(lane).getByRole('list', { name: '事实' })).toHaveTextContent('Lean 做完 4 · 跳过 6 · 下一步：发布 · 构思整段不需要')
     expect(lane).not.toHaveTextContent('10/11')
   })
 

@@ -803,46 +803,48 @@ describe('需求详情', () => {
     expect(screen.queryByText(/看板读不到/)).toBeNull()
   })
 
-  test('Lean’s progress, one way: 做完 · 跳过 · 在做 / 下一步 (the backend’s counts, else counted from the stages); the next stage cell says 下一步', async () => {
-    withDetail((d) => {
-      delete d.row.lean.done_n
-      delete d.row.lean.skipped_n
-      delete d.row.lean.next
-    })
+  test('Lean’s progress, one way: 做完 · 跳过 · 在做 / 下一步, a phase skipped as a whole said once; the next stage cell says 下一步', async () => {
     renderDetail()
-    // code generation is started: 在做, not 下一步
-    expect(await screen.findByTestId('lean-progress')).toHaveTextContent('Lean 做完 4 · 跳过 4 · 在做：代码生成')
-    expect(screen.getByRole('region', { name: 'Lean 进度' })).toHaveTextContent('做完 4 · 跳过 4 · 在做：代码生成')
+    // code generation is started: 在做, not 下一步; `lean new` skipped 构思 as a whole: out of the count, said once
+    expect(await screen.findByTestId('lean-progress')).toHaveTextContent('Lean 做完 4 · 跳过 4 · 在做：代码生成 · 构思整段不需要')
+    expect(screen.getByRole('region', { name: 'Lean 进度' })).toHaveTextContent('做完 4 · 跳过 4 · 在做：代码生成 · 构思整段不需要')
+    // 周期's cells are the stages on the way, as many as Lean's progress counts
+    expect(screen.getByRole('article', { name: '周期' }).querySelectorAll('.cto-segs i')).toHaveLength(fx.detail().row.lean.total)
     cleanup()
-    installFixtureRoutes()   // the backend's counts and stage_state
-    renderDetail()
-    expect(await screen.findByTestId('lean-progress')).toHaveTextContent('Lean 做完 4 · 跳过 4 · 在做：代码生成')
     withDetail((d) => {
-      d.lean.stages = d.lean.stages.map((s) => ({ ...s, state: s.n === 11 ? 'todo' : s.n % 2 ? 'skipped' : 'done' }))
-      d.row.lean = { ...d.row.lean, done_n: 5, skipped_n: 5, next: { id: 'release', label: '发布', n: 11 } }
+      d.lean.stages = d.lean.stages.map((s) => (['code-generation', 'build-and-test'].includes(s.id)
+        ? { ...s, state: 'done', units: s.units.map((u) => ({ ...u, state: 'done' as const })) } : s))
+      d.row.lean = { ...d.row.lean, stage: 'release', stage_label: '发布', stage_n: '✓', stage_state: 'todo', done_n: 6, skipped_n: 4,
+        next: { id: 'release', label: '发布', n: '✓' } }
     })
     renderDetail()
-    await waitFor(() => expect(screen.getAllByTestId('lean-progress').at(-1)).toHaveTextContent('Lean 做完 5 · 跳过 5 · 下一步：发布'))
-    const cells = screen.getAllByRole('list', { name: '11 个阶段' }).at(-1)!
-    const last = within(cells).getAllByTestId('stage')[10]
-    expect(last).toHaveTextContent('11 · 下一步')
-    expect(last).not.toHaveTextContent('没开始')
+    await waitFor(() => expect(screen.getAllByTestId('lean-progress').at(-1)).toHaveTextContent('Lean 做完 6 · 跳过 4 · 下一步：发布 · 构思整段不需要'))
+    const release = within(screen.getAllByRole('list', { name: '发布的阶段' }).at(-1)!).getByTestId('stage')
+    expect(release).toHaveTextContent('✓ · 下一步')
+    expect(release).not.toHaveTextContent('没开始')
   })
 
-  test('the Lean card: the 11 stages, each its number, name, state and units; approvals by name, the code values under 细节; only the pending one has the line', async () => {
+  test('the Lean card: Lean’s phases as the board’s bands, a used one with each stage’s number, name, state and units, one skipped as a whole or not recorded said once; approvals by name, the code values under 细节; only the pending one has the line', async () => {
     renderDetail()
     const lean = await screen.findByRole('region', { name: 'Lean 进度' })
     const d = fx.detail()
-    const STATE: Record<string, string> = { done: '做完', skipped: '跳过', started: '在做', todo: '没开始' }
-    const cells = within(within(lean).getByRole('list', { name: '11 个阶段' })).getAllByTestId('stage')
-    expect(cells).toHaveLength(11)
+    const STATE: Record<string, string> = { done: '做完', skipped: '跳过', started: '在做', todo: '没开始', optional: '可选' }
+    const phases = within(within(lean).getByTestId('lean-phases')).getAllByRole('group')
+    expect(phases.map((g) => g.getAttribute('aria-label'))).toEqual(['1 构思', '2 启动', '3 构建', '✓ 发布', '4 运维'])
+    expect(within(phases[0]).getByTestId('stage-phase')).toHaveTextContent('7 个阶段 · 整段不需要这次没要构思这一段')
+    expect(within(phases[4]).getByTestId('stage-phase')).toHaveTextContent('7 个阶段 · 可选，还没记')
+    // every stage of the other three phases, ci-pipeline (可选: nothing recorded it) among them
+    const listed = d.lean.stages.filter((s) => s.phase !== 'ideation' && s.phase !== 'operations')
+    const cells = within(lean).getAllByTestId('stage')
+    expect(cells).toHaveLength(12)
     cells.forEach((cell, i) => {
-      const s = d.lean.stages[i]
+      const s = listed[i]
       expect(cell.dataset.state).toBe(s.state)
       expect(cell).toHaveTextContent(`${s.n} · ${STATE[s.state]}`)
       expect(cell).toHaveTextContent(s.label)
       for (const u of s.units) expect(cell).toHaveTextContent(`${u.unit} · ${STATE[u.state]}`)
     })
+    expect(within(phases[2]).getAllByTestId('stage').at(-1)).toHaveTextContent('3.7 · 可选CI 流水线')
     const rows = within(within(lean).getByRole('list', { name: '审批' })).getAllByTestId('approval')
     expect(rows.map((r) => r.querySelector('b')!.textContent)).toEqual(['需求审批', '设计审批', '代码生成计划审批 · refund-export', '代码生成计划审批 · refund-api'])
     rows.forEach((row, i) => {

@@ -28,12 +28,12 @@ function localWorld(): { ov: Overview; status: Status } {
   const status = fx.status()
   status.repos = status.repos.map((r) => ({ ...r, remote: false }))
   const base = ov.rows[0]
-  const lean = { stage: 'release', stage_label: '发布', stage_n: 11, stage_state: 'todo' as const, done: 10, total: 11, done_n: 4, skipped_n: 6, next: { id: 'release', label: '发布', n: 11 } }
+  const lean = { stage: 'release', stage_label: '发布', stage_n: '✓', stage_state: 'todo' as const, done: 10, total: 11, done_n: 4, skipped_n: 6, next: { id: 'release', label: '发布', n: '✓' }, skipped_phases: [] }
   const reply = (key: string, title: string): Requirement => ({ ...base, key, title, owner: 'dana', state: 'local', state_label: '本地开发中', lean, stage: '做完 4 · 跳过 6 · 下一步：发布', overlap: [], open_questions: [], mr: null, local_only: true,
     waits: { who: 'you', text: '构建测试做完了，下一步是发布：先开一个新会话做审查（这个会话写了代码，不能自己审）', line: null, raw: '', do: 'reply', since: ov.at - 11 * 3600 - 120, where: 'session', review: true },
     session_url: `/chat?sid=brain-${key}-dev`, worktree: `/Users/dana/workplace/demo/${key}` })
   const claim = (key: string, title: string): Requirement => ({ ...base, key, title, owner: 'dana', state: 'claimed', state_label: '已认领', summary: null, credits: null, updated_at: null, overlap: [], open_questions: [], mr: null, local_only: true,
-    lean: { stage: null, stage_label: null, stage_n: null, stage_state: null, done: 0, total: 11, done_n: 0, skipped_n: 0, next: null }, stage: null,
+    lean: { stage: null, stage_label: null, stage_n: null, stage_state: null, done: 0, total: 11, done_n: 0, skipped_n: 0, next: null, skipped_phases: [] }, stage: null,
     waits: { who: 'you', text: '已认领，还没开工', line: null, raw: '', do: 'start', since: ov.at - 3 * 3600, where: 'app' } })
   ov.rows = [reply('DEMO-1', '计算器减法'), claim('DEMO-2', 'AGENTS.md 缺仓库简介'), reply('DEMO-3', '计算器乘法'), claim('DEMO-4', 'add 的测试'), claim('DEMO-5', '仓库说明')]
   ov.overlaps = [{ keys: ['DEMO-1', 'DEMO-3'], paths: ['calc.py'] }]
@@ -456,16 +456,20 @@ describe('交付总览', () => {
     expect(s.ids).toBe('D01#S002 · 097f2e9e')
   })
 
-  test('the Lean cell says progress the one way: 做完 n · 下一步：…; 全部做完 when finished; 还没开工 for a claim', async () => {
+  test('the Lean cell says progress the one way: 做完 n · 下一步：…; 全部做完 when finished; 还没开工 for a claim; a phase skipped as a whole in its name, not printed in every row', async () => {
     installFixtureRoutes()
     render(<OverviewView entry={{}} {...props()} />)
     const table = await screen.findByTestId('req-table')
     const cell = (key: string) => within(rowOf(table, key)).getByTestId('lean-cell')
     expect(cell('PAY-3')).toHaveTextContent(/^做完 4 · 跳过 4 · 下一步：代码生成$/)
-    expect(within(cell('PAY-3')).getByRole('img')).toHaveAccessibleName('做完 4 · 跳过 4 · 下一步：代码生成')
+    expect(within(cell('PAY-3')).getByRole('img')).toHaveAccessibleName('做完 4 · 跳过 4 · 下一步：代码生成 · 构思整段不需要')
+    expect(cell('PAY-3')).toHaveAttribute('title', '做完 4 · 跳过 4 · 下一步：代码生成 · 构思整段不需要')
     expect(within(cell('PAY-3')).getByText('下一步：代码生成')).toHaveClass('br-nw') // never broken inside a stage name
-    expect(cell('PAY-7')).toHaveTextContent(/^做完 4 · 跳过 6 · 下一步：发布$/)
-    expect(cell('PAY-2')).toHaveTextContent(/^全部做完（跳过 6）$/)
+    expect(within(cell('PAY-3')).getByRole('img').querySelectorAll('i')).toHaveLength(11)   // the stages on the way
+    // ci-pipeline, skipped after the verify, counts with the skipped ones (Lean 0.3.1 has it)
+    expect(cell('PAY-7')).toHaveTextContent(/^做完 4 · 跳过 7 · 下一步：发布$/)
+    expect(cell('PAY-2')).toHaveTextContent(/^全部做完（跳过 7）$/)
+    expect(within(cell('PAY-2')).getByRole('img')).toHaveAccessibleName('全部做完（跳过 7） · 构思、运维两段整段不需要')
     expect(cell('PAY-6')).toHaveTextContent(/^还没开工$/)
   })
 
@@ -832,8 +836,10 @@ const KIDS: FamilyChild[] = [
   { key: 'PAY-23', unit: 'jobs', title: '每晚自动对账', state: 'merged', state_label: '已合并', owner: 'carol', depends_on: [], blocked_by: [] },
   { key: 'PAY-24', unit: 'admin', title: '后台查退款', state: 'claimed', state_label: 'bob 认领了', owner: 'bob', depends_on: ['PAY-23', 'PAY-21'], blocked_by: ['PAY-21'] },
 ]
-const lean = (n: number | null, label: string | null, done: number): LeanSummary =>
-  ({ stage: label && 'x', stage_label: label, stage_n: n, stage_state: n === null ? null : 'started', done, total: 11 })
+/** Lean at a stage by its AI-DLC number (2.6 应用设计), started */
+const lean = (n: string | null, label: string | null, done: number): LeanSummary =>
+  ({ stage: label && 'x', stage_label: label, stage_n: n, stage_state: n === null ? null : 'started', done, total: 11, done_n: done, skipped_n: 0,
+    next: n !== null && label ? { id: 'x', label, n } : null, skipped_phases: [] })
 const waits = (who: Requirement['waits']['who'], text: string): Requirement['waits'] => ({ who, text, line: null, raw: '' })
 
 /** A ledger row made from fx.overview()'s PAY-3 (a copy), as *over* says. */
@@ -864,16 +870,16 @@ function splitOverview(): Overview {
   const ov = classic()
   const t = (ov.rows.find((r) => r.key === 'PAY-6')?.updated_at as number) - 600
   ov.rows.push(
-    req({ key: 'PAY-20', title: '退款大需求', state: 'local', owner: 'alice', updated_at: t, lean: lean(7, '拆单元', 7), stage: '7/11 拆单元',
+    req({ key: 'PAY-20', title: '退款大需求', state: 'local', owner: 'alice', updated_at: t, lean: lean('2.7', '拆分单元', 7), stage: '做完 7 · 在做：拆分单元',
       waits: waits('people', '等小需求合进来：已合并 1/4（1 个待认领，1 个认领了，1 个在做）'),
       family: famOf({ role: 'parent', owner: 'alice', children: KIDS, family_state: 'in_progress', family_label: '小需求在做',
         progress: { merged: 1, total: 4, unclaimed: 1, claimed: 1, in_progress: 1, closed: 0, text: '1/4 merged' } }) }),
-    req({ key: 'PAY-21', title: '通过接口提交退款', state: 'local', owner: 'alice', updated_at: t - 100, lean: lean(9, '代码生成', 8), stage: '9/11 代码生成',
+    req({ key: 'PAY-21', title: '通过接口提交退款', state: 'local', owner: 'alice', updated_at: t - 100, lean: lean('3.5', '代码生成', 8), stage: '做完 8 · 在做：代码生成',
       waits: waits('agent', 'AI 在做代码生成'), family: famOf({ unit: 'api', state: 'in_progress', state_label: 'alice 在做', owner: 'alice' }) }),
     req({ key: 'PAY-22', title: '在订单页看到退款状态', state: 'unclaimed', owner: null, updated_at: t - 200, lean: lean(null, null, 0), stage: null,
       waits: waits('people', '待认领：谁做都可以认领（开工要等 PAY-21（api，alice 在做）合进大需求）'),
       family: famOf({ unit: 'web', state: 'unclaimed', state_label: '待认领', depends_on: [DEP_API], blocked_by: ['PAY-21'] }) }),
-    req({ key: 'PAY-23', title: '每晚自动对账', state: 'merged_into_parent', owner: 'carol', updated_at: t - 300, lean: lean(10, '构建和测试', 10), stage: '10/11 构建和测试',
+    req({ key: 'PAY-23', title: '每晚自动对账', state: 'merged_into_parent', owner: 'carol', updated_at: t - 300, lean: lean('3.6', '构建测试', 10), stage: '做完 10 · 在做：构建测试',
       waits: waits('nobody', '已合进大需求 PAY-20 的分支：等它评审、发布'), family: famOf({ unit: 'jobs', state: 'merged', state_label: '已合并', owner: 'carol' }) }),
     req({ key: 'PAY-24', title: '后台查退款', state: 'claimed', owner: 'bob', updated_at: t - 400, lean: lean(null, null, 0), stage: null,
       waits: waits('people', 'bob 认领了，还没开工'),
@@ -898,7 +904,7 @@ describe('交付总览: 大需求和小需求', () => {
     // a small one whose MR into the big one's branch is open waits for the big one's owner
     expect(place({ ...at('PAY-21'), waits: waits('people', '交了 MR：等大需求的负责人合进 ai/alice/PAY-20-big'), mr: { iid: 12, url: null, state: 'opened' } })).toEqual(['构建', 'people'])
     // a small one is built in 构建 whatever its Lean stage says; closed: no card
-    expect(place({ ...at('PAY-21'), lean: lean(4, '应用设计', 3) })).toEqual(['构建', 'agent'])
+    expect(place({ ...at('PAY-21'), lean: lean('2.6', '应用设计', 3) })).toEqual(['构建', 'agent'])
     expect(place({ ...at('PAY-24'), state: 'closed' })).toEqual([null, null])
     // every small one merged: review and release, its owner's turn (the backend: you / reply)
     const ready = { ...at('PAY-20'), waits: { ...waits('you', '小需求都合进来了：评审，再批发布'), do: 'reply' as const },
@@ -906,7 +912,7 @@ describe('交付总览: 大需求和小需求', () => {
     expect(place(ready)).toEqual(['发布验收', 'you'])
     expect(colOf({ ...at('PAY-20'), state: 'merged' })).toBe('已合并')
     // opened as a big one, not split yet: its Lean stage, as any requirement
-    expect(place(req({ key: 'PAY-30', state: 'local', lean: lean(5, '应用设计', 4), waits: waits('agent', 'AI 在做'), family: famOf({ role: 'big', parent: 'PAY-30' }) }))).toEqual(['设计', 'agent'])
+    expect(place(req({ key: 'PAY-30', state: 'local', lean: lean('2.6', '应用设计', 4), waits: waits('agent', 'AI 在做'), family: famOf({ role: 'big', parent: 'PAY-30' }) }))).toEqual(['设计', 'agent'])
   })
 
   test('需求流动: the 待认领 lane holds the unclaimed small ones; the stats count them apart; 已合并 spans every lane', async () => {

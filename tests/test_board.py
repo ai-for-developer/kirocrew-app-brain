@@ -242,12 +242,12 @@ def demo3_events():
             ev(T + 14 * M + 13, "STAGE_COMPLETED", stage="build-and-test")]
 
 
-STAGES = [{"id": sid, "label": label, "n": n, "state": st} for n, (sid, label, st) in enumerate((
-    ("reverse-engineering", "逆向工程", "done"), ("requirements", "需求分析", "done"), ("user-stories", "用户故事", "skipped"),
-    ("application-design", "应用设计", "skipped"), ("units", "拆分单元", "skipped"),
-    ("functional-design", "功能设计", "skipped"), ("nfr-design", "非功能设计", "skipped"),
-    ("infrastructure-design", "基础设施设计", "skipped"), ("code-generation", "代码生成", "done"),
-    ("build-and-test", "构建测试", "done"), ("release", "发布", "todo")), 1)]
+STAGES = mod("lean_view").stages([
+    ev(T, "STAGE_COMPLETED" if st == "done" else "STAGE_SKIPPED", stage=sid, **unit) for sid, st, unit in (
+        ("reverse-engineering", "done", {}), ("requirements", "done", {}), ("user-stories", "skipped", {}),
+        ("application-design", "skipped", {}), ("units", "skipped", {}), ("functional-design", "skipped", {"unit": "app"}),
+        ("nfr-design", "skipped", {"unit": "app"}), ("infrastructure-design", "skipped", {"unit": "app"}),
+        ("code-generation", "done", {"unit": "app"}), ("build-and-test", "done", {}))])
 
 
 def facts(events, *, key="DEMO-3", owner="dana", run=True, handoff=None, merged=False, approvals=(), park=None,

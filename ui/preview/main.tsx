@@ -82,7 +82,8 @@ const W = world as unknown as {
   crew_not_ready?: string
   /** 你是谁 on a GitLab repo of this machine, which has a GitLab token (identity.of: GitLab's name, nothing asked) */
   me_token?: NonNullable<ImportInspect['me']>
-  stages: Record<string, RequirementDetail['lean']['stages']>; brains: Record<string, BrainView>
+  stages: Record<string, RequirementDetail['lean']['stages']>; phases: Record<string, RequirementDetail['lean']['phases']>
+  brains: Record<string, BrainView>
   /** brainview.preview of a reflectable run, by repo/key, when the world recorded it */
   reflects?: Record<string, ReflectPreview>
   /** 先检查's stop lines: brain-kit's own (its dry run: the picks 机密 / 不确定 / 绝密, the partner guide marked 机密,
@@ -149,21 +150,18 @@ function detailFor(path: string): RequirementDetail {
   if (!b) throw new StubApiError(404, { error: `没有这个需求：${key}`, code: 'not_found' })
   const d = fx.detail()
   const row = b.row
-  const n = row.lean.stage_n ?? 0
-  const finished = row.state === 'merged'
   d.row = row
   d.where_label = WHERE[row.where] ?? row.where
   d.claim = d.claim && { ...d.claim, owner: row.owner, title: row.title, created_at: new Date((b.started_at ?? b.at) * 1000).toISOString() }
   d.run = row.intent && d.run ? { ...d.run, owner: row.owner, branch: row.branch, intent: row.intent, created_at: new Date((b.started_at ?? b.at) * 1000).toISOString(),
     handoff: b.belt.some((x) => x.kind === 'handover') ? { requested_at: new Date(b.belt.find((x) => x.kind === 'handover')!.at * 1000).toISOString(), by: row.owner } : null } : null
-  // the construction stages run per unit: this requirement's one unit (its slug), on the stages it has reached
-  const unit = (row.branch ?? '').split('/').pop()?.replace(/^[A-Z]+-\d+-/, '') || row.key.toLowerCase()
-  d.lean.stages = W.stages[id] ?? d.lean.stages.map((s) => ({ ...s, state: finished || s.n <= row.lean.done ? 'done' : s.n === n ? (row.lean.stage_state === 'todo' ? 'todo' : 'started') : 'todo',
-    units: s.units.length && (finished || s.n <= n) ? [{ unit, state: (finished || s.n < n ? 'done' : 'started') as 'done' | 'started' }] : [] }))
+  // Lean's stages and phases as lean_view read them from this requirement's records (preview_world.py keeps every board's)
+  d.lean.stages = W.stages[id] ?? d.lean.stages
+  d.lean.phases = W.phases[id] ?? d.lean.phases
   d.lean.approvals = b.actors.filter((a) => ['req', 'design', 'release'].includes(a.key) && a.status !== 'waiting' && a.status !== 'skipped').map((a) => ({
     kind: a.key === 'req' ? 'REQUIREMENTS' : a.key === 'design' ? 'DESIGN' : 'RELEASE', state: a.status === 'merged' ? 'approved' as const : a.status === 'fixing' ? 'rejected' as const : 'pending' as const,
     sha8: (a.history[a.history.length - 1]?.at ?? 0).toString(16).slice(-8), at: a.since, line: a.line, path: `aidlc-docs/${row.intent}/${a.key}.md` }))
-  d.lean.status = n ? `${row.stage ?? ''} · ${row.waits.text}` : null
+  d.lean.status = row.lean.stage ? `${row.stage ?? ''} · ${row.waits.text}` : null
   d.lean.next = []
   d.lean.open_questions = []
   d.questions = b.questions

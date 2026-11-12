@@ -734,6 +734,7 @@ class Service:
                                 if isinstance(run.get("handoff"), dict) else None)} if f.get("run") else None,
             "claim": self._claim_view(f.get("claim")),
             "lean": {"stages": f.get("stages") or lean_view.stages([]),
+                     "phases": lean_view.phases(f.get("stages") or lean_view.stages([])),
                      "approvals": [{k: a[k] for k in ("kind", "state", "sha8", "at", "line", "path")}
                                    for a in f.get("approvals") or []],
                      **lean_view.notes(f.get("state_text"))},
@@ -817,6 +818,7 @@ class Service:
                                 if isinstance(run.get("handoff"), dict) else None)} if run else None,
             "claim": None,
             "lean": {"stages": f.get("stages") or lean_view.stages([]),
+                     "phases": lean_view.phases(f.get("stages") or lean_view.stages([])),
                      "approvals": [dict({k: a[k] for k in ("kind", "state", "sha8", "at", "path")}, line=None)
                                    for a in f.get("approvals") or []],
                      **lean_view.notes(f.get("state_text"))},
@@ -916,8 +918,9 @@ class Service:
                 "base": str(cfg.get("default_branch") or "main"), "started_at": g["started_at"], "ended_at": g["ended_at"],
                 "live": g["live"], "person": g["person"], "actors": g["actors"],
                 "edges": [list(e) for e in board_edges([a["key"] for a in g["actors"]], g["direct"])], "direct": g["direct"],
-                "events": g["events"], "belt": g["belt"], "checks": g["checks"], "accept": g["accept"],
-                "brain": d["brain"], "decisions": d["decisions"], "questions": d["questions"], "mr_desc": d["mr_desc"],
+                "events": g["events"], "lean_steps": g["lean_steps"], "belt": g["belt"], "checks": g["checks"],
+                "accept": g["accept"], "brain": d["brain"], "decisions": d["decisions"], "questions": d["questions"],
+                "mr_desc": d["mr_desc"],
                 "sessions": d["sessions"], "credits": d["credits"], "source": d["timeline"]["source"],
                 "missing": g["missing"], "error": d["timeline"]["error"], "rollup": board_mod.rollup(t)}
 

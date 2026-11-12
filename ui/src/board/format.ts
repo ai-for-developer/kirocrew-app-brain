@@ -6,7 +6,7 @@
  * same word always has the same colour and every colour has a word next to it.
  */
 import type { Actor, ActorStatus, BoardEvent, BoardEventKind, CheckWall, LeanSummary, ReqBoard, WaitWho } from '../types'
-import { STAGE_NAME, waitsOn } from '../vocab'
+import { waitsOn } from '../vocab'
 
 export const POLL_MS = 2000
 
@@ -252,47 +252,13 @@ export const titleOf = (r: Pick<ReqBoard['row'], 'key' | 'title'>): string => (r
 
 /** *started*: the next stage is the one being worked on (「在做」), not one still to do; *stage_state* says the same in
  * LeanSummary's word, for vocab.leanProgress */
-export type LeanNow = { done_n: number; skipped_n: number; next: { id: string; label: string; n: number } | null; total: number; started: boolean; stage_state: 'started' | null }
+export type LeanNow = Pick<LeanSummary, 'done_n' | 'skipped_n' | 'next' | 'total' | 'skipped_phases'> & { started: boolean; stage_state: 'started' | null }
 
-const withState = (n: Omit<LeanNow, 'stage_state'>): LeanNow => ({ ...n, stage_state: n.started ? 'started' : null })
-
-/** Lean's progress the one way (vocab.leanProgress's parts); an older backend's counts read as done, none skipped. */
+/** Lean's progress the one way (vocab.leanProgress's parts). */
 export function leanOf(l: LeanSummary): LeanNow {
-  if (typeof l.done_n === 'number') {
-    const next = l.next ?? null
-    return withState({ done_n: l.done_n, skipped_n: l.skipped_n ?? 0, next, total: l.total, started: l.stage_state === 'started' && !!next && (!l.stage || l.stage === next.id) })
-  }
-  const next = (l.stage_state === 'started' || l.stage_state === 'todo') && l.stage_label && l.stage_n !== null
-    ? { id: l.stage ?? '', label: l.stage_label, n: l.stage_n } : null
-  return withState({ done_n: l.done, skipped_n: 0, next, total: l.total, started: l.stage_state === 'started' })
-}
-
-const STAGES = Object.entries(STAGE_NAME)
-
-/** Lean's progress as its stage events tell it up to *t* (回放), read the way the backend reads Lean's ledger
- * (backend/core/lean_view.py stages, summary), so the replay ends on the live board's numbers: each stage's state from
- * the latest word on each of its units (any started: started; all skipped: skipped; else done); a stage Lean went past
- * without a word (a later one is recorded) is skipped; the next is the furthest started, else the first left to do. */
-export function leanFromEvents(events: ReadonlyArray<{ kind: string; at: number; text: string }>, t: number, total = 11): LeanNow {
-  const last = new Map<string, Map<string, string>>()
-  for (const e of events) {
-    if (e.kind !== 'stage' || e.at > t) continue
-    const m = /^(开始|做完|跳过)「([^」（]+)(?:（([^）]*)）)?」/.exec(e.text)
-    if (!m) continue
-    const units = last.get(m[2]) ?? new Map<string, string>()
-    units.set(m[3] ?? '', m[1])
-    last.set(m[2], units)
-  }
-  const said = STAGES.map(([, label]) => {
-    const s = [...(last.get(label)?.values() ?? [])]
-    return !s.length ? 'todo' : s.includes('开始') ? 'started' : s.every((x) => x === '跳过') ? 'skipped' : 'done'
-  })
-  const end = said.reduce((n, s, i) => (s !== 'todo' ? i : n), -1)
-  const state = said.map((s, i) => (s === 'todo' && i < end ? 'skipped' : s))
-  const at = state.lastIndexOf('started')
-  const i = at >= 0 ? at : state.indexOf('todo')
-  const next = i < 0 ? null : { id: STAGES[i][0], label: STAGES[i][1], n: i + 1 }
-  return withState({ done_n: state.filter((s) => s === 'done').length, skipped_n: state.filter((s) => s === 'skipped').length, next, total, started: at >= 0 })
+  const started = l.stage_state === 'started' && !!l.next && (!l.stage || l.stage === l.next.id)
+  return { done_n: l.done_n, skipped_n: l.skipped_n, next: l.next, total: l.total, skipped_phases: l.skipped_phases, started,
+    stage_state: started ? 'started' : null }
 }
 
 export interface ChecksSay {

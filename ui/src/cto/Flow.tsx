@@ -39,7 +39,8 @@ const LANE_OF_WHO: Record<WaitWho, Lane | null> = {
 const RUNNER_STATES = new Set(['handed_over', 'running', 'rejected', 'parked'])
 
 /** The column of a requirement on its journey: its state (a hand-over, refused or not, is 交给运行机 whatever Lean's
- * stage), else its Lean stage (1–3 需求, 4–8 设计, 9–10 构建, 11 发布).
+ * stage), else its Lean stage by its AI-DLC number (stage_n): 需求 before 2.6 应用设计, 设计 before 3.5 代码生成, 构建
+ * before ✓ 发布, then 发布验收 (the release and Operations' 4.x).
  * A small requirement is in 构建 (it is a unit of its big one's construction) until it is handed over; a split big one
  * is in 构建 while its small ones are built, in 发布验收 once they have all merged; one merged into its big one's branch
  * has no card (null), as a closed one. */
@@ -48,15 +49,17 @@ export function colOf(r: Requirement): Col | null {
   if (r.state === 'merged') return '已合并'
   if (r.state === 'acceptance') return '发布验收'
   if (r.state === 'unclaimed') return '构建'
-  const n = r.lean.stage_n ?? 0
+  const n = r.lean.stage_n
+  const released = n === '✓' || !!n?.startsWith('4.')
+  const at = Number(n ?? 0)
   const runner = r.state === 'handed_over' || r.state === 'running' || r.state === 'rejected' || ((r.state === 'parked') && (r.mr !== null || r.run_ids.length > 0))
   const role = r.family?.role
   if (role === 'child' && !runner) return '构建'
   if (runner && !r.local_only) return '交给运行机'
-  if (n >= 11) return '发布验收'
+  if (released) return '发布验收'
   if (role === 'parent') return r.family?.family_state === 'ready_to_release' ? '发布验收' : '构建'
-  if (r.state === 'claimed' || n <= 3) return '需求'
-  if (n <= 8) return '设计'
+  if (r.state === 'claimed' || at < 2.6) return '需求'
+  if (at < 3.5) return '设计'
   return '构建'
 }
 
