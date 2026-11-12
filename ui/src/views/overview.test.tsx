@@ -1249,4 +1249,66 @@ describe('交付总览: 全队卡点和按人看', () => {
     expect(screen.getByTestId('ledger-pick')).toHaveTextContent('全队卡点')
     expect(keysOf(screen.getByTestId('req-table')).sort()).toEqual(['PAY-2', 'PAY-3', 'PAY-4', 'PAY-5', 'PAY-6', 'PAY-7'])
   })
+
+  test('需求流动 按阶段 / 按人: 按阶段 first; 按人 is a lane per person with 在做 n/上限, red at the limit, their cards, and one for what nobody has', async () => {
+    const user = userEvent.setup()
+    const ov = fx.overview()
+    const six = ov.rows.find((r) => r.key === 'PAY-6')!
+    ov.rows.push({ ...six, key: 'PAY-14', title: '每晚自动对账', owner: null, state: 'unclaimed', state_label: '待认领',
+      waits: { ...six.waits, who: 'people', text: '待认领：谁做都可以认领', do: 'start' } })
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
+    render(<OverviewView entry={{}} {...props()} />)
+    const flow = await screen.findByTestId('flow')
+    const by = within(flow).getByTestId('flow-by')
+    expect(within(by).getByRole('button', { name: '按阶段' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(flow).queryByTestId('flow-by-person')).toBeNull()
+    await user.click(within(by).getByRole('button', { name: '按人' }))
+    expect(within(by).getByRole('button', { name: '按人' })).toHaveAttribute('aria-pressed', 'true')
+    const lanes = Array.from(flow.querySelectorAll('.cto-lane')) as HTMLElement[]
+    expect(lanes.map((l) => l.querySelector('.br-lane-name')?.textContent)).toEqual(['你（alice）', 'carol', '还没人认领'])
+    const wip = (owner: string) => within(flow.querySelector(`.cto-lane[data-owner="${owner}"]`) as HTMLElement).getByTestId('lane-wip')
+    expect(wip('alice')).toHaveTextContent(/^在做 3\/3$/)
+    expect(wip('alice')).toHaveClass('br-chip', 'tone-bad')
+    expect(wip('carol')).toHaveTextContent(/^在做 2\/3$/)
+    expect(wip('carol')).not.toHaveClass('tone-bad')
+    const cellOf = (key: string) => cardOf(flow, key).closest('[data-col]') as HTMLElement
+    for (const [key, owner] of [['PAY-3', 'alice'], ['PAY-5', 'alice'], ['PAY-7', 'alice'], ['PAY-4', 'carol'], ['PAY-6', 'carol']] as const) {
+      expect([cellOf(key).dataset.lane, cellOf(key).dataset.owner, cellOf(key).dataset.col]).toEqual(['person', owner, colOf(ov.rows.find((r) => r.key === key)!)])
+    }
+    expect(cellOf('PAY-14').dataset.lane).toBe('nobody')
+    expect(within(flow).getByTestId('flow-by-person')).toHaveTextContent('按人看：每人一行，在做的需求到了 3 个标红。这里看谁手上有多少、卡在哪，不比谁快谁慢。')
+    // a person's name is the ledger of what they have open
+    await user.click(within(flow).getByRole('button', { name: /^你（alice）$/ }))
+    expect(screen.getByTestId('ledger-pick')).toHaveTextContent('需求流动 · 你在做的')
+    expect(keysOf(screen.getByTestId('req-table')).sort()).toEqual(['PAY-3', 'PAY-5', 'PAY-7'])
+    await user.click(within(by).getByRole('button', { name: '按阶段' }))
+    expect(cellOf('PAY-3').dataset.lane).toBe('you')
+  })
+
+  test('a card past a timeout or a limit has the red mark in both views, its ledger row too; an overlap is no mark', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => stuckWorld() })
+    render(<OverviewView entry={{}} {...props()} />)
+    const flow = await screen.findByTestId('flow')
+    const marks = (key: string) => within(cardOf(flow, key)).queryAllByTestId('late-mark').map((m) => m.textContent)
+    const check = () => {
+      expect(marks('PAY-6')).toEqual(['超时'])
+      expect(marks('PAY-4')).toEqual(['很久没动'])
+      expect(marks('PAY-7')).toEqual(['verify 失败 3 次'])
+      expect(marks('PAY-3')).toEqual([])
+      for (const k of ['PAY-6', 'PAY-4', 'PAY-7']) expect(cardOf(flow, k)).toHaveClass('is-late')
+      expect(cardOf(flow, 'PAY-3')).not.toHaveClass('is-late')
+    }
+    check()
+    await user.click(within(flow).getByRole('button', { name: '按人' }))
+    check()
+    const table = screen.getByTestId('req-table')
+    expect(within(rowOf(table, 'PAY-6')).getByTestId('late-mark')).toHaveTextContent('超时')
+    expect(within(rowOf(table, 'PAY-7')).getByTestId('verify-fails')).toHaveTextContent('verify 失败 3 次')
+    expect(within(rowOf(table, 'PAY-7')).getByTestId('verify-fails')).toHaveClass('tone-bad')
+    expect(within(rowOf(table, 'PAY-5')).getByTestId('verify-fails')).toHaveClass('tone-warn')   // under the limit: said, not red
+    expect(within(rowOf(table, 'PAY-3')).queryByTestId('late-mark')).toBeNull()
+    expect(within(rowOf(table, 'PAY-3')).queryByTestId('verify-fails')).toBeNull()
+    expect(screen.getByTestId('notes-team')).toHaveTextContent('超过 4 个工作小时；「很久没动」是别人在自己机器上做的需求，8 个工作小时没有推上新进度')
+  })
 })

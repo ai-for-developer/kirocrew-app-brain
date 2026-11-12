@@ -6,17 +6,21 @@
  * (`waits.do`, stepOf). Column names, lane names and 「+N 个」 filter the ledger (onCell). In a repo done only on this
  * machine the runner's column and lane fold to a narrow 「这次不需要」.
  * While a big requirement is split here a fifth lane, 待认领, holds the small ones nobody has.
+ * 按人 (the switch beside the title; 按阶段 is the default) makes each person a lane instead, with 「在做 n/上限」 from the
+ * backend's roster, red at or over the limit, and a lane for what nobody has. A card past a timeout or a limit (the
+ * roster's overdue, stale and verify_fails) has a red mark in either view.
  *
  * A big requirement split into small ones (brain split) is one card with its small ones in short (n/m merged as
  * segments, then each key · unit · state); a small one is a unit of its construction (构建), with its big one, its
  * dependencies and what blocks it; one merged into the big one's branch has no card of its own (its big one's says it).
  */
+import { useState } from 'react'
 import { useNavigate } from '@kirocrew/app-sdk'
 import { RoleIcon } from '../board/RoleIcon'
 import type { View } from '../nav'
-import type { ChildState, FamilyDep, ReqFamily, Requirement, WaitWho } from '../types'
+import type { ChildState, FamilyDep, ReqFamily, Requirement, Roster, Stuck, StuckKind, WaitWho } from '../types'
 import { ago, fmtCredits, fmtWaited } from '../format'
-import { ACT, DO_NAME, PHRASE_BREAK, waitName, waitsOn } from '../vocab'
+import { ACT, DO_NAME, PHRASE_BREAK, STUCK_NAME, waitName, waitsOn } from '../vocab'
 import { ReviewButton } from '../views/Question'
 
 export type Col = '需求' | '设计' | '构建' | '交给运行机' | '发布验收' | '已合并'
@@ -125,6 +129,48 @@ type Handlers = {
   onGo: (v: View) => void
   /** filter the ledger to a column, a lane or one cell, and go there */
   onCell: (col?: Col, lane?: Lane) => void
+  /** 按人: filter the ledger to what one person has open (null: what nobody has), in one column or all of them */
+  onOwner: (owner: string | null, col?: Col) => void
+}
+
+/** The kinds of stuck that mark a card red: past a timeout or a limit. Two requirements changing one directory are a
+ * warning, said in 全队卡点 and the overlap card, not a mark. */
+const LATE: ReadonlySet<StuckKind> = new Set(['overdue', 'stale', 'verify_fails'])
+
+/** Each requirement's red marks (the roster's stuck items of the LATE kinds), by "<repo>/<key>". */
+export function lateMarks(roster: Roster): Map<string, Stuck[]> {
+  const out = new Map<string, Stuck[]>()
+  for (const s of roster.stuck) {
+    if (!LATE.has(s.kind)) continue
+    const id = `${s.repo}/${s.key}`
+    out.set(id, [...(out.get(id) ?? []), s])
+  }
+  return out
+}
+
+/** A red mark's word: 超时, 很久没动, verify 失败 3 次. */
+export const lateWord = (s: Stuck, r: Requirement): string =>
+  s.kind === 'verify_fails' ? `${STUCK_NAME.verify_fails} ${r.verify_fails} 次` : STUCK_NAME[s.kind]
+
+/** A lane of the kanban: whose turn it is (按阶段) or whose it is (按人). */
+type LaneSpec = {
+  id: string
+  /** its cells' data-lane: a Lane, person, or nobody (按人's lane of what nobody has) */
+  lane: string
+  /** 按人: whose lane it is (its header and cells say it as data-owner) */
+  owner?: string
+  name: string
+  icon: string
+  /** it waits on a person (the lane and its cells are tinted) */
+  wait: boolean
+  cls: string
+  has: (r: Requirement) => boolean
+  /** the ledger filtered to this lane, in one column or all of them */
+  pick: (col?: Col) => void
+  /** 按人: what the person has open against the limit */
+  wip?: { open: number; limit: number }
+  /** what an empty cell of this lane says, if anything */
+  empty?: (col: Col) => string
 }
 
 /** The small requirements of a split shown here: the lane 待认领 is on while there are any. */
@@ -189,7 +235,7 @@ function Kids({ f }: { f: ReqFamily }) {
   )
 }
 
-function Card({ r, at, hl, repoName, h }: { r: Requirement; at: number; hl: string | null; repoName?: string; h: Handlers }) {
+function Card({ r, at, hl, repoName, late = [], h }: { r: Requirement; at: number; hl: string | null; repoName?: string; late?: Stuck[]; h: Handlers }) {
   const lane = laneOf(r)
   const f = r.family
   const wait = lane === 'you' || lane === 'people'
@@ -207,12 +253,15 @@ function Card({ r, at, hl, repoName, h }: { r: Requirement; at: number; hl: stri
   let focus = r.waits.text || f?.state_label || r.state_label
   if (blocks.some((d) => focus.includes(d.key))) focus = child?.state_label || r.state_label
   return (
-    <div className={`cto-kcard cto-pick${wait ? ' is-live is-wait' : live ? ' is-live is-agent' : ''}${free ? ' br-kfree' : ''}${hl === r.key ? ' is-hl' : ''}`} data-key={r.key} data-testid="flow-card"
+    <div className={`cto-kcard cto-pick${wait ? ' is-live is-wait' : live ? ' is-live is-agent' : ''}${free ? ' br-kfree' : ''}${late.length ? ' is-late' : ''}${hl === r.key ? ' is-hl' : ''}`} data-key={r.key} data-testid="flow-card"
       data-role={f?.role ?? undefined} role="button" tabIndex={0} title="打开它的需求看板" onClick={() => h.onOpen(r)} onKeyDown={(e) => e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), h.onOpen(r))}>
       <div className="cto-ktop">
         <span className={wait ? 'cto-gate' : ''}>{wait && <RoleIcon role={lane === 'you' ? 'person' : 'wait'} size={13} />}<b className="kt-mono">{r.key}</b></span>
         {when && <span>{when}</span>}
       </div>
+      {late.length > 0 && (
+        <div className="br-klate">{late.map((s) => <span key={s.kind} className="br-chip tone-bad" data-testid="late-mark" title={s.text}>{lateWord(s, r)}</span>)}</div>
+      )}
       <div className="cto-ktitle" title={r.title}>{r.title}</div>
       {child && <div className="br-kfam" data-testid="flow-parent">{child.parent} 的小需求{child.unit ? ` · ${child.unit}` : ''}</div>}
       <div className="cto-kfocus br-kwait" title={r.waits.text}>{focus}</div>
@@ -236,8 +285,10 @@ function Card({ r, at, hl, repoName, h }: { r: Requirement; at: number; hl: stri
 
 const PER_CELL = 3
 
-export function Flow({ rows, at, hl, onNew, repoName, localOnly = false, repos = 1, ...h }: {
+export function Flow({ rows, roster, at, hl, onNew, repoName, localOnly = false, repos = 1, ...h }: {
   rows: Requirement[]
+  /** the backend's team view: 按人's lanes and limits, the cards' red marks */
+  roster: Roster
   at: number
   hl: string | null
   onNew?: () => void
@@ -247,11 +298,12 @@ export function Flow({ rows, at, hl, onNew, repoName, localOnly = false, repos =
   /** how many repos the board shows (the band says 这个仓库 or 这 N 个仓库) */
   repos?: number
 } & Handlers) {
+  const [by, setBy] = useState<'stage' | 'person'>('stage')
   const live = rows.filter((r) => colOf(r) && colOf(r) !== '已合并')
   // a merge that still waits on you (回写 Brain) stays on the board however old it is
   const merged = rows.filter((r) => colOf(r) === '已合并' && ((r.updated_at ?? 0) >= at - 14 * 86400 || r.waits.who === 'you'))
     .sort((a, b) => Number(b.waits.who === 'you') - Number(a.waits.who === 'you'))
-  const cell = (c: Col, l: Lane) => live.filter((r) => colOf(r) === c && laneOf(r) === l).sort((a, b) => (a.waits.since ?? Infinity) - (b.waits.since ?? Infinity) || (b.updated_at ?? 0) - (a.updated_at ?? 0))
+  const cell = (c: Col, l: LaneSpec) => live.filter((r) => colOf(r) === c && l.has(r)).sort((a, b) => (a.waits.since ?? Infinity) - (b.waits.since ?? Infinity) || (b.updated_at ?? 0) - (a.updated_at ?? 0))
   const count = (c: Col) => (c === '已合并' ? merged.length : live.filter((r) => colOf(r) === c).length)
   const inLane = (l: Lane) => live.filter((r) => laneOf(r) === l)
   const yours = inLane('you')
@@ -263,7 +315,21 @@ export function Flow({ rows, at, hl, onNew, repoName, localOnly = false, repos =
   const longest = yours.map((r) => r.waits.since).filter((s): s is number => typeof s === 'number').sort((a, b) => a - b)[0]
   const split = hasSplit(rows)
   const many = new Set(rows.map(homeOf)).size > 1
-  const lanes = LANES.filter(([l]) => !(localOnly && l === 'runner') && (l !== 'unclaimed' || split))
+  const stageLanes: LaneSpec[] = LANES.filter(([l]) => !(localOnly && l === 'runner') && (l !== 'unclaimed' || split)).map(([lane, name, icon, wait]) => ({
+    id: lane, lane, name, icon, wait, cls: lane === 'you' ? ' is-you' : lane === 'unclaimed' ? ' br-lane-free' : '',
+    has: (r) => laneOf(r) === lane, pick: (col) => h.onCell(col, lane),
+    empty: (col) => (lane === 'you' ? '此刻没有' : col === '交给运行机' && lane === 'agent' ? '交给运行机以后就不在本机做了' : col === '构建' && lane === 'unclaimed' ? '小需求都有人认领了' : ''),
+  }))
+  const personLanes: LaneSpec[] = roster.people.map((p) => ({
+    id: `person:${p.owner}`, lane: 'person', owner: p.owner, name: p.you ? `你（${p.owner}）` : p.owner, icon: 'person', wait: false,
+    cls: ' br-lane-person', has: (r) => r.owner === p.owner, pick: (col) => h.onOwner(p.owner, col),
+    wip: { open: p.open, limit: p.limit },
+  }))
+  if (live.some((r) => !r.owner)) {
+    personLanes.push({ id: 'nobody', lane: 'nobody', name: '还没人认领', icon: 'list', wait: false, cls: ' br-lane-free', has: (r) => !r.owner, pick: (col) => h.onOwner(null, col) })
+  }
+  const lanes = by === 'person' ? personLanes : stageLanes
+  const late = lateMarks(roster)
   const cols = COLS.filter(([c]) => c !== '已合并')
   const template = `136px ${cols.map(([c]) => (localOnly && c === '交给运行机' ? '96px' : 'minmax(0, 1fr)')).join(' ')} minmax(0, 1fr)`
   return (
@@ -273,6 +339,10 @@ export function Flow({ rows, at, hl, onNew, repoName, localOnly = false, repos =
         <h3>需求流动</h3>
         <span className="cto-dim">此刻 · 每 5 秒刷新 · 点卡片打开它的需求看板，点列名、行名看下方交付清单里的这些</span>
         <span className="cto-grow" />
+        <div className="cto-seg br-flow-by" role="group" aria-label="需求流动按什么分行" data-testid="flow-by">
+          <button type="button" aria-pressed={by === 'stage'} onClick={() => setBy('stage')}>按阶段</button>
+          <button type="button" aria-pressed={by === 'person'} onClick={() => setBy('person')}>按人</button>
+        </div>
         {onNew && <button type="button" className="kt-btn is-small cto-noprint" onClick={onNew}>开需求 ↗</button>}
       </div>
       <div className="cto-stats" data-testid="flow-stats">
@@ -283,6 +353,9 @@ export function Flow({ rows, at, hl, onNew, repoName, localOnly = false, repos =
         {mergedYours.length > 0 && <><span>·</span><b>已合并、等你{DO_NAME.write_back} {mergedYours.length}</b></>}
       </div>
       {longest !== undefined && <div className="cto-dim" data-testid="flow-longest">轮到你的事，最久的已等 {fmtWaited(at - longest)}。</div>}
+      {by === 'person' && (
+        <div className="cto-dim" data-testid="flow-by-person">按人看：每人一行，在做的需求到了 {roster.limits.wip_limit} 个标红。这里看谁手上有多少、卡在哪，不比谁快谁慢。</div>
+      )}
       <div className="cto-kanban br-kanban" role="table" aria-label="需求流动看板" style={{ gridTemplateColumns: template }}>
         <div />
         {COLS.map(([key, name, sub]) => (
@@ -293,9 +366,9 @@ export function Flow({ rows, at, hl, onNew, repoName, localOnly = false, repos =
             </button>
           </div>
         ))}
-        {lanes.map(([lane, name, icon, wait], i) => (
-          <LaneRow key={lane} lane={lane} name={name} icon={icon} wait={wait} first={i === 0} span={lanes.length} cols={cols.map(([c]) => c)} cell={cell} at={at} hl={hl}
-            repoName={many ? repoName : () => undefined} merged={i === 0 ? merged : null} localOnly={localOnly} h={h} />
+        {lanes.map((spec, i) => (
+          <LaneRow key={spec.id} spec={spec} first={i === 0} span={lanes.length} cols={cols.map(([c]) => c)} cell={cell} at={at} hl={hl}
+            repoName={many ? repoName : () => undefined} merged={i === 0 ? merged : null} localOnly={localOnly} late={late} h={h} />
         ))}
         {localOnly && (
           <div className="br-kband" data-testid="flow-runner-off">
@@ -308,27 +381,29 @@ export function Flow({ rows, at, hl, onNew, repoName, localOnly = false, repos =
   )
 }
 
-function LaneRow({ lane, name, icon, wait, first, span, cols, cell, at, hl, repoName, merged, localOnly, h }: {
-  lane: Lane; name: string; icon: string; wait: boolean; first: boolean; span: number; cols: Col[]; cell: (c: Col, l: Lane) => Requirement[]; at: number; hl: string | null
-  repoName: (id: string) => string | undefined; merged: Requirement[] | null; localOnly: boolean; h: Handlers
+function LaneRow({ spec, first, span, cols, cell, at, hl, repoName, merged, localOnly, late, h }: {
+  spec: LaneSpec; first: boolean; span: number; cols: Col[]; cell: (c: Col, l: LaneSpec) => Requirement[]; at: number; hl: string | null
+  repoName: (id: string) => string | undefined; merged: Requirement[] | null; localOnly: boolean; late: Map<string, Stuck[]>; h: Handlers
 }) {
+  const { name, wait, wip } = spec
+  const over = !!wip && wip.open >= wip.limit
   return (
     <>
-      <div className={`cto-lane${wait ? ' is-wait' : ''}${lane === 'you' ? ' is-you' : ''}${lane === 'unclaimed' ? ' br-lane-free' : ''}`}>
-        <button type="button" className="br-lane-name" onClick={() => h.onCell(undefined, lane)} title={`在下方交付清单里看「${name}」的需求`}><RoleIcon role={icon} size={15} />{name}</button>
+      <div className={`cto-lane${wait ? ' is-wait' : ''}${spec.cls}`} data-owner={spec.owner}>
+        <button type="button" className="br-lane-name" onClick={() => spec.pick()} title={`在下方交付清单里看「${name}」的需求`}><RoleIcon role={spec.icon} size={15} />{name}</button>
+        {wip && <span className={over ? 'br-chip tone-bad' : 'br-wip'} data-testid="lane-wip">在做 {wip.open}/{wip.limit}</span>}
       </div>
       {cols.map((c) => {
         if (localOnly && c === '交给运行机') {
           return first ? <div key={c} className="cto-cell br-kcell-off" style={{ gridRow: `span ${span}` }} data-col={c}>这次不需要</div> : null
         }
-        const list = cell(c, lane)
+        const list = cell(c, spec)
+        const empty = list.length === 0 && spec.empty ? spec.empty(c) : ''
         return (
-          <div key={c} className={`cto-cell${wait ? ' is-wait' : ''}`} data-col={c} data-lane={lane}>
-            {list.length === 0 && lane === 'you' && <div className="cto-kempty">此刻没有</div>}
-            {list.length === 0 && c === '交给运行机' && lane === 'agent' && <div className="cto-kempty">交给运行机以后就不在本机做了</div>}
-            {list.length === 0 && c === '构建' && lane === 'unclaimed' && <div className="cto-kempty">小需求都有人认领了</div>}
-            {list.slice(0, PER_CELL).map((r) => <Card key={`${r.repo}/${r.key}`} r={r} at={at} hl={hl} repoName={repoName(homeOf(r))} h={h} />)}
-            {list.length > PER_CELL && <button type="button" className="cto-kmore cto-link" onClick={() => h.onCell(c, lane)}>+{list.length - PER_CELL} 个（见下方交付清单）</button>}
+          <div key={c} className={`cto-cell${wait ? ' is-wait' : ''}`} data-col={c} data-lane={spec.lane} data-owner={spec.owner}>
+            {empty && <div className="cto-kempty">{empty}</div>}
+            {list.slice(0, PER_CELL).map((r) => <Card key={`${r.repo}/${r.key}`} r={r} at={at} hl={hl} repoName={repoName(homeOf(r))} late={late.get(`${r.repo}/${r.key}`)} h={h} />)}
+            {list.length > PER_CELL && <button type="button" className="cto-kmore cto-link" onClick={() => spec.pick(c)}>+{list.length - PER_CELL} 个（见下方交付清单）</button>}
           </div>
         )
       })}
