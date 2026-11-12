@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useAppApi } from '@kirocrew/app-sdk'
 import { paths, useAction, usePoll } from '../api'
 import { ago } from '../format'
-import type { RemoveResult, RepoInfo, Settings, Status } from '../types'
+import type { RemoveResult, RepoInfo, Settings, Status, TeamLimits } from '../types'
 import { CheckRows, CommandLine, Flow, IMPORT_FLOW, LEVEL_TONE, LoadState, MeLine, PendingRepo, RoleIcon, brainkitProblem } from '../ui'
 import { ACT, MODULE_NAME, TRACKER_NAME } from '../vocab'
 import type { ViewProps } from './props'
@@ -32,6 +32,13 @@ const settingsOf = (f: Form): Form => ({ ...f, brainkit: f.brainkit.trim(), work
 const TEAM_FIELDS: [Exclude<keyof Settings['team'], 'enabled' | 'dev_same_user'>, string, string][] = [
   ['bridge_config', '桥的配置文件', '…/bridge.json'],
   ['runnerd_config', '运行机的配置文件', '…/runnerd.json'],
+]
+
+const LIMIT_LINES: { key: keyof TeamLimits; before: string; after: string; max: number }[] = [
+  { key: 'wip_limit', before: '每人同时在做的需求，最多', after: '个', max: 20 },
+  { key: 'wait_timeout_h', before: '等人批准、回答或验收，超过', after: '个工作小时算超时', max: 200 },
+  { key: 'stale_after_h', before: '别人在自己机器上做的需求，', after: '个工作小时没有新进度算很久没动', max: 400 },
+  { key: 'verify_fail_limit', before: 'verify 连续失败', after: '次，就该停下来问人', max: 20 },
 ]
 
 /** A repo's state in one word, by its reason (RepoInfo.error is the backend's sentence). */
@@ -123,7 +130,7 @@ export function SettingsView({ status, setStatus, reloadStatus, go }: ViewProps)
       </header>
       <LoadState loading={got.loading} error={got.error} has={!!form} />
       {form && (
-        <form className="br-form" onSubmit={(e) => { e.preventDefault(); void submit() }}>
+        <form className="br-form" noValidate onSubmit={(e) => { e.preventDefault(); void submit() }}>
           <div className="st-fields">
             {!kitCard && kitField}
             <div className="br-field">
@@ -132,6 +139,18 @@ export function SettingsView({ status, setStatus, reloadStatus, go }: ViewProps)
               <p className="br-hint">要在 ~/workplace 或 ~/workspace 下面：KiroCrew 的会话只能在这两个目录里干活。</p>
             </div>
           </div>
+          <fieldset className="br-fieldset">
+            <legend>全队视图</legend>
+            {LIMIT_LINES.map(({ key, before, after, max }) => (
+              <label key={key} className="st-limit">
+                {before}
+                <input type="number" min={1} max={max} step={1} aria-describedby="set-limits-hint" value={Number.isNaN(form[key]) ? '' : form[key]}
+                  onChange={(e) => edit({ [key]: e.target.valueAsNumber })} />
+                {after}
+              </label>
+            ))}
+            <p className="br-hint" id="set-limits-hint">工作小时只算周一到周五 9 点到 18 点（这台机器的时间）。到了上限只提醒，不拦开工。</p>
+          </fieldset>
           <fieldset className={`br-fieldset st-team${form.team.enabled ? ' is-on' : ''}`}>
             <legend>团队模式</legend>
             <div className="st-toggle">
@@ -460,6 +479,7 @@ const ST_CSS = `
 .st-me > .br-dim { padding-top: .2em; }
 .st-norepo { display: grid; gap: .8em; }
 .st-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(18em, 1fr)); gap: .8em 1.2em; align-items: start; }
+.st-limit input { width: 5.2em; margin: 0 .4em; text-align: center; }
 .st-team { gap: .8em; }
 .st-team.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .st-toggle { display: grid; gap: .1em; }
