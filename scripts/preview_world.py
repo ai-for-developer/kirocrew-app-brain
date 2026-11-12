@@ -640,7 +640,7 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
             "source": "trace" if t else "app", "error": "", "missing": g["missing"], "rollup": board.rollup(t)}
 
 
-U = {"api": "services/api/**", "web": "web/**", "jobs": "jobs/**"}
+U = {"api": "services/api/**", "web": "web/order/**", "jobs": "jobs/**"}
 
 
 def split_family(tmpl: dict, det: dict, mrdesc, decisions) -> tuple[list, list, list]:
@@ -1371,6 +1371,8 @@ def main() -> None:
                      summary=mrdesc_view.plain_line((kw.get("mr_desc") or {}).get("first")) if f.get("run") else None)
         rid = {"shop/shop-pay": "r1", "shop/shop-order": "r3"}.get(rr["project"])
         mine = next((r_ for r_ in all_rows if (r_["repo"], r_["key"]) == (rid, key)), None)
+        if mine is not None:     # runnerd's workspace has the run.json the hand-over pushed: the same expected paths
+            row_t["expected_paths"] = list(mine["expected_paths"])
         own = next((x for x in reqs.get(rid, []) if x.key == key), None)
         if deliveries.runner_takes(own.facts() if own and mine else None, mine, row_t):
             row_t["home"] = rid

@@ -1000,7 +1000,7 @@
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
-     "web/**"
+     "web/order/**"
     ],
     "local_only": false,
     "session_url": null,
@@ -1025,7 +1025,7 @@
      ],
      "blocked_by": [],
      "paths": [
-      "web/**"
+      "web/order/**"
      ],
      "contracts": [],
      "children": [],
@@ -2567,7 +2567,7 @@
     {
      "owner": "alice",
      "you": true,
-     "open": 8,
+     "open": 7,
      "limit": 3,
      "keys": [
       "PAY-3",
@@ -2576,7 +2576,6 @@
       "PAY-8",
       "PAY-10",
       "PAY-1",
-      "PAY-11",
       "TOOL-1"
      ]
     },
@@ -2633,7 +2632,7 @@
      "repo": "r3",
      "key": "ORD-11",
      "kind": "stale",
-     "text": "dave 在自己的机器上做，12 个工作小时没有新进度：问问 dave 卡在哪",
+     "text": "dave 在自己的机器上做，12 个工作小时没有推上新进度：问问 dave 卡在哪",
      "since": 1793862000.0,
      "other_key": null
     },
@@ -2649,7 +2648,7 @@
      "repo": "r3",
      "key": "ORD-12",
      "kind": "verify_fails",
-     "text": "verify 连续失败 3 次，该停下来问人了",
+     "text": "同一项检查 verify 连续失败 3 次，该停下来问人了",
      "since": null,
      "other_key": null
     }
@@ -3499,7 +3498,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "web/**"
+       "web/order/**"
       ],
       "local_only": false,
       "session_url": null,
@@ -3524,7 +3523,7 @@
        ],
        "blocked_by": [],
        "paths": [
-        "web/**"
+        "web/order/**"
        ],
        "contracts": [],
        "children": [],
@@ -5066,7 +5065,7 @@
       {
        "owner": "alice",
        "you": true,
-       "open": 8,
+       "open": 7,
        "limit": 3,
        "keys": [
         "PAY-3",
@@ -5075,7 +5074,6 @@
         "PAY-8",
         "PAY-10",
         "PAY-1",
-        "PAY-11",
         "TOOL-1"
        ]
       },
@@ -5132,7 +5130,7 @@
        "repo": "r3",
        "key": "ORD-11",
        "kind": "stale",
-       "text": "dave 在自己的机器上做，12 个工作小时没有新进度：问问 dave 卡在哪",
+       "text": "dave 在自己的机器上做，12 个工作小时没有推上新进度：问问 dave 卡在哪",
        "since": 1793862000.0,
        "other_key": null
       },
@@ -5148,7 +5146,7 @@
        "repo": "r3",
        "key": "ORD-12",
        "kind": "verify_fails",
-       "text": "verify 连续失败 3 次，该停下来问人了",
+       "text": "同一项检查 verify 连续失败 3 次，该停下来问人了",
        "since": null,
        "other_key": null
       }
@@ -5996,7 +5994,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "web/**"
+       "web/order/**"
       ],
       "local_only": false,
       "session_url": null,
@@ -6021,7 +6019,7 @@
        ],
        "blocked_by": [],
        "paths": [
-        "web/**"
+        "web/order/**"
        ],
        "contracts": [],
        "children": [],
@@ -6608,7 +6606,7 @@
       {
        "owner": "alice",
        "you": true,
-       "open": 7,
+       "open": 6,
        "limit": 3,
        "keys": [
         "PAY-3",
@@ -6616,8 +6614,7 @@
         "PAY-7",
         "PAY-8",
         "PAY-10",
-        "PAY-1",
-        "PAY-11"
+        "PAY-1"
        ]
       },
       {
@@ -8091,7 +8088,7 @@
        "repo": "r3",
        "key": "ORD-11",
        "kind": "stale",
-       "text": "dave 在自己的机器上做，12 个工作小时没有新进度：问问 dave 卡在哪",
+       "text": "dave 在自己的机器上做，12 个工作小时没有推上新进度：问问 dave 卡在哪",
        "since": 1793862000.0,
        "other_key": null
       },
@@ -8099,7 +8096,7 @@
        "repo": "r3",
        "key": "ORD-12",
        "kind": "verify_fails",
-       "text": "verify 连续失败 3 次，该停下来问人了",
+       "text": "同一项检查 verify 连续失败 3 次，该停下来问人了",
        "since": null,
        "other_key": null
       }
@@ -8555,7 +8552,10 @@
       "open_questions": [
        "D-2"
       ],
-      "expected_paths": [],
+      "expected_paths": [
+       "src/refund/ledger.py",
+       "src/statement/"
+      ],
       "local_only": false,
       "session_url": null,
       "family": null
@@ -8621,7 +8621,9 @@
       "open_questions": [
        "D-3"
       ],
-      "expected_paths": [],
+      "expected_paths": [
+       "src/callback/"
+      ],
       "local_only": false,
       "session_url": null,
       "family": null
@@ -9799,7 +9801,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "web/**"
+       "web/order/**"
       ],
       "local_only": false,
       "session_url": null,
@@ -9824,7 +9826,7 @@
        ],
        "blocked_by": [],
        "paths": [
-        "web/**"
+        "web/order/**"
        ],
        "contracts": [],
        "children": [],
@@ -10985,7 +10987,7 @@
       {
        "owner": "alice",
        "you": true,
-       "open": 8,
+       "open": 7,
        "limit": 3,
        "keys": [
         "PAY-3",
@@ -10994,7 +10996,6 @@
         "PAY-8",
         "PAY-10",
         "PAY-1",
-        "PAY-11",
         "TOOL-1"
        ]
       },
@@ -11051,7 +11052,7 @@
        "repo": "r3",
        "key": "ORD-11",
        "kind": "stale",
-       "text": "dave 在自己的机器上做，12 个工作小时没有新进度：问问 dave 卡在哪",
+       "text": "dave 在自己的机器上做，12 个工作小时没有推上新进度：问问 dave 卡在哪",
        "since": 1793862000.0,
        "other_key": null
       },
@@ -11067,7 +11068,7 @@
        "repo": "r3",
        "key": "ORD-12",
        "kind": "verify_fails",
-       "text": "verify 连续失败 3 次，该停下来问人了",
+       "text": "同一项检查 verify 连续失败 3 次，该停下来问人了",
        "since": null,
        "other_key": null
       }
@@ -11915,7 +11916,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "web/**"
+       "web/order/**"
       ],
       "local_only": false,
       "session_url": null,
@@ -11940,7 +11941,7 @@
        ],
        "blocked_by": [],
        "paths": [
-        "web/**"
+        "web/order/**"
        ],
        "contracts": [],
        "children": [],
@@ -12315,7 +12316,7 @@
       {
        "owner": "alice",
        "you": true,
-       "open": 7,
+       "open": 6,
        "limit": 3,
        "keys": [
         "PAY-3",
@@ -12323,8 +12324,7 @@
         "PAY-7",
         "PAY-8",
         "PAY-10",
-        "PAY-1",
-        "PAY-11"
+        "PAY-1"
        ]
       },
       {
@@ -13494,7 +13494,7 @@
        "repo": "r3",
        "key": "ORD-11",
        "kind": "stale",
-       "text": "dave 在自己的机器上做，12 个工作小时没有新进度：问问 dave 卡在哪",
+       "text": "dave 在自己的机器上做，12 个工作小时没有推上新进度：问问 dave 卡在哪",
        "since": 1793862000.0,
        "other_key": null
       },
@@ -13502,7 +13502,7 @@
        "repo": "r3",
        "key": "ORD-12",
        "kind": "verify_fails",
-       "text": "verify 连续失败 3 次，该停下来问人了",
+       "text": "同一项检查 verify 连续失败 3 次，该停下来问人了",
        "since": null,
        "other_key": null
       }
@@ -13903,7 +13903,10 @@
       "open_questions": [
        "D-2"
       ],
-      "expected_paths": [],
+      "expected_paths": [
+       "src/refund/ledger.py",
+       "src/statement/"
+      ],
       "local_only": false,
       "session_url": null,
       "family": null
@@ -13969,7 +13972,9 @@
       "open_questions": [
        "D-3"
       ],
-      "expected_paths": [],
+      "expected_paths": [
+       "src/callback/"
+      ],
       "local_only": false,
       "session_url": null,
       "family": null
@@ -14306,7 +14311,9 @@
       "worktree": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
       "run_ids": [],
       "sessions": 1,
-      "overlap": [],
+      "overlap": [
+       "PAY-4"
+      ],
       "open_questions": [],
       "expected_paths": [
        "src/refund/",
@@ -14944,7 +14951,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "web/**"
+       "web/order/**"
       ],
       "local_only": false,
       "session_url": null,
@@ -14969,7 +14976,7 @@
        ],
        "blocked_by": [],
        "paths": [
-        "web/**"
+        "web/order/**"
        ],
        "contracts": [],
        "children": [],
@@ -15986,11 +15993,16 @@
        "RUN-PAY-4-1"
       ],
       "sessions": 1,
-      "overlap": [],
+      "overlap": [
+       "PAY-3"
+      ],
       "open_questions": [
        "D-2"
       ],
-      "expected_paths": [],
+      "expected_paths": [
+       "src/refund/ledger.py",
+       "src/statement/"
+      ],
       "local_only": false,
       "session_url": null,
       "family": null
@@ -16056,7 +16068,9 @@
       "open_questions": [
        "D-3"
       ],
-      "expected_paths": [],
+      "expected_paths": [
+       "src/callback/"
+      ],
       "local_only": false,
       "session_url": null,
       "family": null
@@ -16125,7 +16139,17 @@
       "family": null
      }
     ],
-    "overlaps": [],
+    "overlaps": [
+     {
+      "keys": [
+       "PAY-3",
+       "PAY-4"
+      ],
+      "paths": [
+       "src/refund"
+      ]
+     }
+    ],
     "funnel": {
      "source": "evaluate",
      "total": 15,
@@ -16693,7 +16717,7 @@
       {
        "owner": "alice",
        "you": true,
-       "open": 8,
+       "open": 7,
        "limit": 3,
        "keys": [
         "PAY-3",
@@ -16701,7 +16725,6 @@
         "PAY-8",
         "PAY-10",
         "PAY-1",
-        "PAY-11",
         "TOOL-1",
         "PAY-5"
        ]
@@ -16759,15 +16782,23 @@
        "repo": "r3",
        "key": "ORD-11",
        "kind": "stale",
-       "text": "dave 在自己的机器上做，12 个工作小时没有新进度：问问 dave 卡在哪",
+       "text": "dave 在自己的机器上做，12 个工作小时没有推上新进度：问问 dave 卡在哪",
        "since": 1793862000.0,
        "other_key": null
+      },
+      {
+       "repo": "r1",
+       "key": "PAY-3",
+       "kind": "overlap",
+       "text": "和 PAY-4 都要改 src/refund：先商量好谁先合",
+       "since": null,
+       "other_key": "PAY-4"
       },
       {
        "repo": "r3",
        "key": "ORD-12",
        "kind": "verify_fails",
-       "text": "verify 连续失败 3 次，该停下来问人了",
+       "text": "同一项检查 verify 连续失败 3 次，该停下来问人了",
        "since": null,
        "other_key": null
       }
@@ -16775,7 +16806,7 @@
      "counts": {
       "overdue": 1,
       "stale": 1,
-      "overlap": 0,
+      "overlap": 1,
       "verify_fails": 1
      },
      "limits": {
@@ -16837,7 +16868,9 @@
       "worktree": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
       "run_ids": [],
       "sessions": 1,
-      "overlap": [],
+      "overlap": [
+       "PAY-4"
+      ],
       "open_questions": [],
       "expected_paths": [
        "src/refund/",
@@ -17475,7 +17508,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "web/**"
+       "web/order/**"
       ],
       "local_only": false,
       "session_url": null,
@@ -17500,7 +17533,7 @@
        ],
        "blocked_by": [],
        "paths": [
-        "web/**"
+        "web/order/**"
        ],
        "contracts": [],
        "children": [],
@@ -17802,11 +17835,16 @@
        "RUN-PAY-4-1"
       ],
       "sessions": 1,
-      "overlap": [],
+      "overlap": [
+       "PAY-3"
+      ],
       "open_questions": [
        "D-2"
       ],
-      "expected_paths": [],
+      "expected_paths": [
+       "src/refund/ledger.py",
+       "src/statement/"
+      ],
       "local_only": false,
       "session_url": null,
       "family": null
@@ -17872,13 +17910,25 @@
       "open_questions": [
        "D-3"
       ],
-      "expected_paths": [],
+      "expected_paths": [
+       "src/callback/"
+      ],
       "local_only": false,
       "session_url": null,
       "family": null
      }
     ],
-    "overlaps": [],
+    "overlaps": [
+     {
+      "keys": [
+       "PAY-3",
+       "PAY-4"
+      ],
+      "paths": [
+       "src/refund"
+      ]
+     }
+    ],
     "funnel": {
      "source": "evaluate",
      "total": 15,
@@ -18269,7 +18319,7 @@
       {
        "owner": "alice",
        "you": true,
-       "open": 7,
+       "open": 6,
        "limit": 3,
        "keys": [
         "PAY-3",
@@ -18277,7 +18327,6 @@
         "PAY-8",
         "PAY-10",
         "PAY-1",
-        "PAY-11",
         "PAY-5"
        ]
       },
@@ -18310,12 +18359,20 @@
        "text": "等 carol 批准设计，已等 6 个工作小时（超时）",
        "since": 1793937600.0,
        "other_key": null
+      },
+      {
+       "repo": "r1",
+       "key": "PAY-3",
+       "kind": "overlap",
+       "text": "和 PAY-4 都要改 src/refund：先商量好谁先合",
+       "since": null,
+       "other_key": "PAY-4"
       }
      ],
      "counts": {
       "overdue": 1,
       "stale": 0,
-      "overlap": 0,
+      "overlap": 1,
       "verify_fails": 0
      },
      "limits": {
@@ -19744,7 +19801,7 @@
        "repo": "r3",
        "key": "ORD-11",
        "kind": "stale",
-       "text": "dave 在自己的机器上做，12 个工作小时没有新进度：问问 dave 卡在哪",
+       "text": "dave 在自己的机器上做，12 个工作小时没有推上新进度：问问 dave 卡在哪",
        "since": 1793862000.0,
        "other_key": null
       },
@@ -19752,7 +19809,7 @@
        "repo": "r3",
        "key": "ORD-12",
        "kind": "verify_fails",
-       "text": "verify 连续失败 3 次，该停下来问人了",
+       "text": "同一项检查 verify 连续失败 3 次，该停下来问人了",
        "since": null,
        "other_key": null
       }
@@ -20208,7 +20265,10 @@
       "open_questions": [
        "D-2"
       ],
-      "expected_paths": [],
+      "expected_paths": [
+       "src/refund/ledger.py",
+       "src/statement/"
+      ],
       "local_only": false,
       "session_url": null,
       "family": null
@@ -20274,7 +20334,9 @@
       "open_questions": [
        "D-3"
       ],
-      "expected_paths": [],
+      "expected_paths": [
+       "src/callback/"
+      ],
       "local_only": false,
       "session_url": null,
       "family": null
@@ -20674,7 +20736,9 @@
       "worktree": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
       "run_ids": [],
       "sessions": 1,
-      "overlap": [],
+      "overlap": [
+       "PAY-4"
+      ],
       "open_questions": [],
       "expected_paths": [
        "src/refund/",
@@ -21312,7 +21376,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "web/**"
+       "web/order/**"
       ],
       "local_only": false,
       "session_url": null,
@@ -21337,7 +21401,7 @@
        ],
        "blocked_by": [],
        "paths": [
-        "web/**"
+        "web/order/**"
        ],
        "contracts": [],
        "children": [],
@@ -22354,11 +22418,16 @@
        "RUN-PAY-4-1"
       ],
       "sessions": 1,
-      "overlap": [],
+      "overlap": [
+       "PAY-3"
+      ],
       "open_questions": [
        "D-2"
       ],
-      "expected_paths": [],
+      "expected_paths": [
+       "src/refund/ledger.py",
+       "src/statement/"
+      ],
       "local_only": false,
       "session_url": null,
       "family": null
@@ -22424,7 +22493,9 @@
       "open_questions": [
        "D-3"
       ],
-      "expected_paths": [],
+      "expected_paths": [
+       "src/callback/"
+      ],
       "local_only": false,
       "session_url": null,
       "family": null
@@ -22493,7 +22564,17 @@
       "family": null
      }
     ],
-    "overlaps": [],
+    "overlaps": [
+     {
+      "keys": [
+       "PAY-3",
+       "PAY-4"
+      ],
+      "paths": [
+       "src/refund"
+      ]
+     }
+    ],
     "funnel": {
      "source": "app",
      "total": 4,
@@ -22680,7 +22761,7 @@
       {
        "owner": "alice",
        "you": true,
-       "open": 8,
+       "open": 7,
        "limit": 3,
        "keys": [
         "PAY-3",
@@ -22688,7 +22769,6 @@
         "PAY-8",
         "PAY-10",
         "PAY-1",
-        "PAY-11",
         "TOOL-1",
         "PAY-5"
        ]
@@ -22746,15 +22826,23 @@
        "repo": "r3",
        "key": "ORD-11",
        "kind": "stale",
-       "text": "dave 在自己的机器上做，12 个工作小时没有新进度：问问 dave 卡在哪",
+       "text": "dave 在自己的机器上做，12 个工作小时没有推上新进度：问问 dave 卡在哪",
        "since": 1793862000.0,
        "other_key": null
+      },
+      {
+       "repo": "r1",
+       "key": "PAY-3",
+       "kind": "overlap",
+       "text": "和 PAY-4 都要改 src/refund：先商量好谁先合",
+       "since": null,
+       "other_key": "PAY-4"
       },
       {
        "repo": "r3",
        "key": "ORD-12",
        "kind": "verify_fails",
-       "text": "verify 连续失败 3 次，该停下来问人了",
+       "text": "同一项检查 verify 连续失败 3 次，该停下来问人了",
        "since": null,
        "other_key": null
       }
@@ -22762,7 +22850,7 @@
      "counts": {
       "overdue": 1,
       "stale": 1,
-      "overlap": 0,
+      "overlap": 1,
       "verify_fails": 1
      },
      "limits": {
@@ -22824,7 +22912,9 @@
       "worktree": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
       "run_ids": [],
       "sessions": 1,
-      "overlap": [],
+      "overlap": [
+       "PAY-4"
+      ],
       "open_questions": [],
       "expected_paths": [
        "src/refund/",
@@ -23462,7 +23552,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "web/**"
+       "web/order/**"
       ],
       "local_only": false,
       "session_url": null,
@@ -23487,7 +23577,7 @@
        ],
        "blocked_by": [],
        "paths": [
-        "web/**"
+        "web/order/**"
        ],
        "contracts": [],
        "children": [],
@@ -23789,11 +23879,16 @@
        "RUN-PAY-4-1"
       ],
       "sessions": 1,
-      "overlap": [],
+      "overlap": [
+       "PAY-3"
+      ],
       "open_questions": [
        "D-2"
       ],
-      "expected_paths": [],
+      "expected_paths": [
+       "src/refund/ledger.py",
+       "src/statement/"
+      ],
       "local_only": false,
       "session_url": null,
       "family": null
@@ -23859,13 +23954,25 @@
       "open_questions": [
        "D-3"
       ],
-      "expected_paths": [],
+      "expected_paths": [
+       "src/callback/"
+      ],
       "local_only": false,
       "session_url": null,
       "family": null
      }
     ],
-    "overlaps": [],
+    "overlaps": [
+     {
+      "keys": [
+       "PAY-3",
+       "PAY-4"
+      ],
+      "paths": [
+       "src/refund"
+      ]
+     }
+    ],
     "funnel": {
      "source": "app",
      "total": 4,
@@ -24044,7 +24151,7 @@
       {
        "owner": "alice",
        "you": true,
-       "open": 7,
+       "open": 6,
        "limit": 3,
        "keys": [
         "PAY-3",
@@ -24052,7 +24159,6 @@
         "PAY-8",
         "PAY-10",
         "PAY-1",
-        "PAY-11",
         "PAY-5"
        ]
       },
@@ -24085,12 +24191,20 @@
        "text": "等 carol 批准设计，已等 6 个工作小时（超时）",
        "since": 1793937600.0,
        "other_key": null
+      },
+      {
+       "repo": "r1",
+       "key": "PAY-3",
+       "kind": "overlap",
+       "text": "和 PAY-4 都要改 src/refund：先商量好谁先合",
+       "since": null,
+       "other_key": "PAY-4"
       }
      ],
      "counts": {
       "overdue": 1,
       "stale": 0,
-      "overlap": 0,
+      "overlap": 1,
       "verify_fails": 0
      },
      "limits": {
@@ -25215,7 +25329,7 @@
        "repo": "r3",
        "key": "ORD-11",
        "kind": "stale",
-       "text": "dave 在自己的机器上做，12 个工作小时没有新进度：问问 dave 卡在哪",
+       "text": "dave 在自己的机器上做，12 个工作小时没有推上新进度：问问 dave 卡在哪",
        "since": 1793862000.0,
        "other_key": null
       },
@@ -25223,7 +25337,7 @@
        "repo": "r3",
        "key": "ORD-12",
        "kind": "verify_fails",
-       "text": "verify 连续失败 3 次，该停下来问人了",
+       "text": "同一项检查 verify 连续失败 3 次，该停下来问人了",
        "since": null,
        "other_key": null
       }
@@ -25624,7 +25738,10 @@
       "open_questions": [
        "D-2"
       ],
-      "expected_paths": [],
+      "expected_paths": [
+       "src/refund/ledger.py",
+       "src/statement/"
+      ],
       "local_only": false,
       "session_url": null,
       "family": null
@@ -25690,7 +25807,9 @@
       "open_questions": [
        "D-3"
       ],
-      "expected_paths": [],
+      "expected_paths": [
+       "src/callback/"
+      ],
       "local_only": false,
       "session_url": null,
       "family": null
@@ -40909,7 +41028,7 @@
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
-     "web/**"
+     "web/order/**"
     ],
     "local_only": false,
     "session_url": null,
@@ -40934,7 +41053,7 @@
      ],
      "blocked_by": [],
      "paths": [
-      "web/**"
+      "web/order/**"
      ],
      "contracts": [],
      "children": [],
@@ -64944,7 +65063,10 @@
     "open_questions": [
      "D-2"
     ],
-    "expected_paths": [],
+    "expected_paths": [
+     "src/refund/ledger.py",
+     "src/statement/"
+    ],
     "local_only": false,
     "session_url": null,
     "family": null
@@ -66312,7 +66434,9 @@
     "open_questions": [
      "D-3"
     ],
-    "expected_paths": [],
+    "expected_paths": [
+     "src/callback/"
+    ],
     "local_only": false,
     "session_url": null,
     "family": null
@@ -68141,7 +68265,9 @@
     "sessions": 1,
     "overlap": [],
     "open_questions": [],
-    "expected_paths": [],
+    "expected_paths": [
+     "src/refund/id.py"
+    ],
     "local_only": false,
     "session_url": null,
     "family": null
@@ -78797,7 +78923,7 @@
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
-     "web/**"
+     "web/order/**"
     ],
     "local_only": false,
     "session_url": null,
@@ -78822,7 +78948,7 @@
      ],
      "blocked_by": [],
      "paths": [
-      "web/**"
+      "web/order/**"
      ],
      "contracts": [],
      "children": [],
@@ -89162,7 +89288,10 @@
     "open_questions": [
      "D-2"
     ],
-    "expected_paths": [],
+    "expected_paths": [
+     "src/refund/ledger.py",
+     "src/statement/"
+    ],
     "local_only": false,
     "session_url": null,
     "family": null
@@ -89830,7 +89959,9 @@
     "open_questions": [
      "D-3"
     ],
-    "expected_paths": [],
+    "expected_paths": [
+     "src/callback/"
+    ],
     "local_only": false,
     "session_url": null,
     "family": null
@@ -90565,7 +90696,9 @@
     "sessions": 1,
     "overlap": [],
     "open_questions": [],
-    "expected_paths": [],
+    "expected_paths": [
+     "src/refund/id.py"
+    ],
     "local_only": false,
     "session_url": null,
     "family": null
