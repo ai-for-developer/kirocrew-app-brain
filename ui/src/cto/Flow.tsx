@@ -165,10 +165,10 @@ type LaneSpec = {
   wait: boolean
   cls: string
   has: (r: Requirement) => boolean
-  /** the ledger filtered to this lane, in one column or all of them */
-  pick: (col?: Col) => void
-  /** 按人: what the person has open against the limit */
-  wip?: { open: number; limit: number }
+  /** the ledger filtered to this lane, in one column or all of them; none: its name is no filter */
+  pick?: (col?: Col) => void
+  /** 按人: what the person has open, against the limit (null: in one repo of several, no limit to measure it by) */
+  wip?: { open: number; limit: number | null }
   /** what an empty cell of this lane says, if anything */
   empty?: (col: Col) => string
 }
@@ -285,10 +285,12 @@ function Card({ r, at, hl, repoName, late = [], h }: { r: Requirement; at: numbe
 
 const PER_CELL = 3
 
-export function Flow({ rows, roster, at, hl, onNew, repoName, localOnly = false, repos = 1, ...h }: {
+export function Flow({ rows, roster, partial = false, at, hl, onNew, repoName, localOnly = false, repos = 1, ...h }: {
   rows: Requirement[]
   /** the backend's team view: 按人's lanes and limits, the cards' red marks */
   roster: Roster
+  /** one repo of several: what a person has open is counted in this repo only, so it is said without the limit */
+  partial?: boolean
   at: number
   hl: string | null
   onNew?: () => void
@@ -323,10 +325,14 @@ export function Flow({ rows, roster, at, hl, onNew, repoName, localOnly = false,
   const personLanes: LaneSpec[] = roster.people.map((p) => ({
     id: `person:${p.owner}`, lane: 'person', owner: p.owner, name: p.you ? `你（${p.owner}）` : p.owner, icon: 'person', wait: false,
     cls: ' br-lane-person', has: (r) => r.owner === p.owner, pick: (col) => h.onOwner(p.owner, col),
-    wip: { open: p.open, limit: p.limit },
+    wip: { open: p.open, limit: partial ? null : p.limit },
   }))
   if (live.some((r) => !r.owner)) {
     personLanes.push({ id: 'nobody', lane: 'nobody', name: '还没人认领', icon: 'list', wait: false, cls: ' br-lane-free', has: (r) => !r.owner, pick: (col) => h.onOwner(null, col) })
+  }
+  if (personLanes.length === 0) {
+    personLanes.push({ id: 'none', lane: 'none', name: '没有人在做', icon: 'person', wait: false, cls: '', has: () => false,
+      empty: (col) => (col === '需求' ? '此刻没有人手上有在做的需求：开需求认领一个，它就在认领人的那一行。' : '') })
   }
   const lanes = by === 'person' ? personLanes : stageLanes
   const late = lateMarks(roster)
@@ -354,7 +360,10 @@ export function Flow({ rows, roster, at, hl, onNew, repoName, localOnly = false,
       </div>
       {longest !== undefined && <div className="cto-dim" data-testid="flow-longest">轮到你的事，最久的已等 {fmtWaited(at - longest)}。</div>}
       {by === 'person' && (
-        <div className="cto-dim" data-testid="flow-by-person">按人看：每人一行，在做的需求到了 {roster.limits.wip_limit} 个标红。这里看谁手上有多少、卡在哪，不比谁快谁慢。</div>
+        <div className="cto-dim" data-testid="flow-by-person">
+          {partial ? '按人看：每人一行，只算这个仓库里在做的；每人一共在做几个、到没到上限，切到「全部」看。'
+            : `按人看：每人一行，在做的需求到了 ${roster.limits.wip_limit} 个标红。`}这里看谁手上有多少、卡在哪，不比谁快谁慢。
+        </div>
       )}
       <div className="cto-kanban br-kanban" role="table" aria-label="需求流动看板" style={{ gridTemplateColumns: template }}>
         <div />
@@ -370,9 +379,6 @@ export function Flow({ rows, roster, at, hl, onNew, repoName, localOnly = false,
           <LaneRow key={spec.id} spec={spec} first={i === 0} span={lanes.length} cols={cols.map(([c]) => c)} cell={cell} at={at} hl={hl}
             repoName={many ? repoName : () => undefined} merged={i === 0 ? merged : null} localOnly={localOnly} late={late} h={h} />
         ))}
-        {lanes.length === 0 && (
-          <div className="br-kband" data-testid="flow-no-people">此刻没有人手上有在做的需求：开需求认领一个，它就在认领人的那一行。</div>
-        )}
         {localOnly && (
           <div className="br-kband" data-testid="flow-runner-off">
             <span className="br-lane-name"><RoleIcon role="runner" size={15} />运行机在跑</span>
@@ -389,12 +395,13 @@ function LaneRow({ spec, first, span, cols, cell, at, hl, repoName, merged, loca
   repoName: (id: string) => string | undefined; merged: Requirement[] | null; localOnly: boolean; late: Map<string, Stuck[]>; h: Handlers
 }) {
   const { name, wait, wip } = spec
-  const over = !!wip && wip.open >= wip.limit
+  const over = !!wip && wip.limit !== null && wip.open >= wip.limit
   return (
     <>
       <div className={`cto-lane${wait ? ' is-wait' : ''}${spec.cls}`} data-owner={spec.owner}>
-        <button type="button" className="br-lane-name" onClick={() => spec.pick()} title={`在下方交付清单里看「${name}」的需求`}><RoleIcon role={spec.icon} size={15} />{name}</button>
-        {wip && <span className={over ? 'br-chip tone-bad' : 'br-wip'} data-testid="lane-wip">在做 {wip.open}/{wip.limit}</span>}
+        {spec.pick ? <button type="button" className="br-lane-name" onClick={() => spec.pick?.()} title={`在下方交付清单里看「${name}」的需求`}><RoleIcon role={spec.icon} size={15} />{name}</button>
+          : <span className="br-lane-name"><RoleIcon role={spec.icon} size={15} />{name}</span>}
+        {wip && <span className={over ? 'br-chip tone-bad' : 'br-wip'} data-testid="lane-wip">{wip.limit === null ? `在这个仓库做 ${wip.open}` : `在做 ${wip.open}/${wip.limit}`}</span>}
       </div>
       {cols.map((c) => {
         if (localOnly && c === '交给运行机') {
@@ -406,7 +413,7 @@ function LaneRow({ spec, first, span, cols, cell, at, hl, repoName, merged, loca
           <div key={c} className={`cto-cell${wait ? ' is-wait' : ''}`} data-col={c} data-lane={spec.lane} data-owner={spec.owner}>
             {empty && <div className="cto-kempty">{empty}</div>}
             {list.slice(0, PER_CELL).map((r) => <Card key={`${r.repo}/${r.key}`} r={r} at={at} hl={hl} repoName={repoName(homeOf(r))} late={late.get(`${r.repo}/${r.key}`)} h={h} />)}
-            {list.length > PER_CELL && <button type="button" className="cto-kmore cto-link" onClick={() => spec.pick(c)}>+{list.length - PER_CELL} 个（见下方交付清单）</button>}
+            {list.length > PER_CELL && <button type="button" className="cto-kmore cto-link" onClick={() => spec.pick?.(c)}>+{list.length - PER_CELL} 个（见下方交付清单）</button>}
           </div>
         )
       })}

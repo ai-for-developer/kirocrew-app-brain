@@ -1177,10 +1177,10 @@ describe('交付总览: 全队卡点和按人看', () => {
     const ov = fx.overview()
     const overlap = ov.roster.stuck[0]
     ov.roster.stuck = [
-      { repo: 'r1', key: 'PAY-6', kind: 'overdue', text: '等 carol 开工，已等 6 个工作小时（超时）', since: ov.at - 2 * 86400, other_key: null },
-      { repo: 'r1', key: 'PAY-4', kind: 'stale', text: 'carol 在自己的机器上做，12 个工作小时没有新进度：问问 carol 卡在哪', since: ov.at - 3 * 86400, other_key: null },
+      { repo: 'r1', key: 'PAY-6', kind: 'overdue', text: '等 carol 批准设计，已等 6 个工作小时（超时）', since: ov.at - 2 * 86400, other_key: null },
+      { repo: 'r1', key: 'PAY-4', kind: 'stale', text: 'carol 在自己的机器上做，12 个工作小时没有推上新进度：问问 carol 卡在哪', since: ov.at - 3 * 86400, other_key: null },
       overlap,
-      { repo: 'r1', key: 'PAY-7', kind: 'verify_fails', text: 'verify 连续失败 3 次，该停下来问人了', since: null, other_key: null },
+      { repo: 'r1', key: 'PAY-7', kind: 'verify_fails', text: '同一项检查 verify 连续失败 3 次，该停下来问人了', since: null, other_key: null },
     ]
     ov.roster.counts = { overdue: 1, stale: 1, overlap: 1, verify_fails: 1 }
     ov.rows = ov.rows.map((r) => (r.key === 'PAY-7' ? { ...r, verify_fails: 3 } : r.key === 'PAY-5' ? { ...r, verify_fails: 1 } : r))
@@ -1201,9 +1201,9 @@ describe('交付总览: 全队卡点和按人看', () => {
     expect(within(card).getByTestId('stuck-counts')).toHaveTextContent(/^超时 1 · 很久没动 1 · 目录撞车 1 · verify 失败 1$/)
     expect(Array.from(card.querySelectorAll('li')).map((li) => [li.dataset.kind, li.dataset.key])).toEqual([
       ['overdue', 'PAY-6'], ['stale', 'PAY-4'], ['overlap', 'PAY-3'], ['verify_fails', 'PAY-7']])
-    expect(lineOf(card, 'PAY-6')).toHaveTextContent('超时PAY-6商户结算周报shop-pay等 carol 开工，已等 6 个工作小时（超时）')
-    expect(lineOf(card, 'PAY-4')).toHaveTextContent('很久没动PAY-4对账单按商户拆分shop-paycarol 在自己的机器上做，12 个工作小时没有新进度：问问 carol 卡在哪')
-    expect(lineOf(card, 'PAY-7')).toHaveTextContent('verify 失败PAY-7退款原因下拉框shop-payverify 连续失败 3 次，该停下来问人了')
+    expect(lineOf(card, 'PAY-6')).toHaveTextContent('超时PAY-6商户结算周报shop-pay等 carol 批准设计，已等 6 个工作小时（超时）')
+    expect(lineOf(card, 'PAY-4')).toHaveTextContent('很久没动PAY-4对账单按商户拆分shop-paycarol 在自己的机器上做，12 个工作小时没有推上新进度：问问 carol 卡在哪')
+    expect(lineOf(card, 'PAY-7')).toHaveTextContent('verify 失败PAY-7退款原因下拉框shop-pay同一项检查 verify 连续失败 3 次，该停下来问人了')
     // an overlap names both, and either one opens its board
     const pair = lineOf(card, 'PAY-3')
     expect(pair).toHaveTextContent('目录撞车PAY-3退款单导出 CSVshop-pay和 PAY-4 都要改 src/refund：先商量好谁先合')
@@ -1224,7 +1224,7 @@ describe('交付总览: 全队卡点和按人看', () => {
     const card = await screen.findByTestId('team-stuck')
     expect(card).toHaveClass('is-ok')
     expect(within(card).getByTestId('stuck-counts')).toHaveTextContent(/^没有卡住的需求$/)
-    expect(within(card).getByTestId('stuck-none')).toHaveTextContent('等人超过 4 个工作小时的、别人做着 8 个工作小时没有新进度的、两个需求要改同一个目录的、verify 连续 3 次没过的，都会列在这里。')
+    expect(within(card).getByTestId('stuck-none')).toHaveTextContent('等人批准、回答或验收超过 4 个工作小时的，别人做着 8 个工作小时没有推上新进度的，两个需求要改同一个目录的，同一项检查 verify 连续 3 次没过的，都会列在这里。')
     expect(screen.queryByTestId('your-turn')).toBeNull()
     expect(screen.getByTestId('ov-duo')).toHaveClass('is-one')
     unmount()
@@ -1285,7 +1285,7 @@ describe('交付总览: 全队卡点和按人看', () => {
     expect(cellOf('PAY-3').dataset.lane).toBe('you')
   })
 
-  test('按人 with nobody holding anything open says so and what to do, instead of an empty board', async () => {
+  test('按人 with nobody holding anything open: one lane says so and what to do, and the merges still show', async () => {
     const user = userEvent.setup()
     const ov = fx.overview()
     ov.rows = ov.rows.filter((r) => r.state === 'merged')
@@ -1294,8 +1294,24 @@ describe('交付总览: 全队卡点和按人看', () => {
     render(<OverviewView entry={{}} {...props()} />)
     const flow = await screen.findByTestId('flow')
     await user.click(within(flow).getByRole('button', { name: '按人' }))
-    expect(flow.querySelectorAll('.cto-lane')).toHaveLength(0)
-    expect(within(flow).getByTestId('flow-no-people')).toHaveTextContent('此刻没有人手上有在做的需求：开需求认领一个，它就在认领人的那一行。')
+    expect(Array.from(flow.querySelectorAll('.cto-lane')).map((l) => l.textContent)).toEqual(['没有人在做'])
+    expect(flow.querySelector('[data-col="需求"][data-lane="none"]')).toHaveTextContent('此刻没有人手上有在做的需求：开需求认领一个，它就在认领人的那一行。')
+    expect(flow.querySelector('[data-col="已合并"] [data-key="PAY-2"]')).toHaveTextContent('退款单号校验')
+  })
+
+  test('one repo of several: 按人 counts what each has open in this repo, without the limit or red; the card says it looks at this repo only', async () => {
+    const user = userEvent.setup()
+    const status = fx.status()
+    status.repos = status.repos.map((r) => ({ ...r, ok: true, error: '', pending: null }))
+    installFixtureRoutes()
+    render(<OverviewView entry={{ repo: 'r1' }} {...props({ status })} />)
+    const flow = await screen.findByTestId('flow')
+    expect(within(screen.getByTestId('team-stuck')).getByTestId('stuck-counts')).toHaveTextContent(/^目录撞车 1 · 只看这个仓库$/)
+    await user.click(within(flow).getByRole('button', { name: '按人' }))
+    const wip = within(flow.querySelector('.cto-lane[data-owner="alice"]') as HTMLElement).getByTestId('lane-wip')
+    expect(wip).toHaveTextContent(/^在这个仓库做 3$/)
+    expect(wip).not.toHaveClass('tone-bad')
+    expect(within(flow).getByTestId('flow-by-person')).toHaveTextContent('只算这个仓库里在做的；每人一共在做几个、到没到上限，切到「全部」看。')
   })
 
   test('a card past a timeout or a limit has the red mark in both views, its ledger row too; an overlap is no mark', async () => {
@@ -1322,6 +1338,6 @@ describe('交付总览: 全队卡点和按人看', () => {
     expect(within(rowOf(table, 'PAY-5')).getByTestId('verify-fails')).toHaveClass('tone-warn')   // under the limit: said, not red
     expect(within(rowOf(table, 'PAY-3')).queryByTestId('late-mark')).toBeNull()
     expect(within(rowOf(table, 'PAY-3')).queryByTestId('verify-fails')).toBeNull()
-    expect(screen.getByTestId('notes-team')).toHaveTextContent('超过 4 个工作小时；「很久没动」是别人在自己机器上做的需求，8 个工作小时没有推上新进度')
+    expect(screen.getByTestId('notes-team')).toHaveTextContent('「超时」是人关（批准、回答、验收）等了 4 个工作小时以上；「很久没动」是别人在自己机器上做的需求，8 个工作小时没有推上新进度')
   })
 })

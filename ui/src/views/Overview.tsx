@@ -294,6 +294,8 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
   // nothing here can be handed over: no origin to push to, or no GitLab for the bridge (the backend's local_only rule)
   const localOnly = readable.length > 0 && readable.every((r) => r.remote === false || !(r.kit?.gitlab_base && r.kit?.gitlab_project))
   const manyRepos = repo === 'all' && repos.length > 1
+  // one repo of several: the team view's counts are this repo's (a person's whole load is 全部's)
+  const partial = repo !== 'all' && repos.filter((r) => r.ok).length > 1
   const team = !!status && (status.app.team || status.team.enabled)
   const newReq = () => go({ kind: 'new', ...(repo !== 'all' ? { repo } : {}) })
 
@@ -406,7 +408,7 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
           <div className={`cto-duo${yours.length > 0 ? '' : ' is-one'}`} data-testid="ov-duo">
             {yours.length > 0 && <YourTurn rows={yours} at={data.at} repoName={manyRepos ? repoName : () => undefined} onGo={go} onOpen={(r) => toBoard(r)}
               onAll={() => filterTo(cellPick(undefined, 'you'))} />}
-            <TeamStuck roster={data.roster} rows={data.rows} repoName={manyRepos ? repoName : () => undefined} onOpen={toBoard} onAll={() => filterTo(stuckPick(data.roster))} />
+            <TeamStuck roster={data.roster} rows={data.rows} partial={partial} repoName={manyRepos ? repoName : () => undefined} onOpen={toBoard} onAll={() => filterTo(stuckPick(data.roster))} />
           </div>
 
           <section className="cto-cards" data-testid="ov-cards">
@@ -436,7 +438,7 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
 
           {data.overlaps.length > 0 && <Overlaps data={data} onKey={(k) => openKey(k)} />}
 
-          <Flow rows={data.rows} roster={data.roster} at={data.at} hl={null} localOnly={localOnly} repos={scope.length} onOpen={(r) => toBoard(r)} onGo={go} onNew={newReq} repoName={repoName}
+          <Flow rows={data.rows} roster={data.roster} partial={partial} at={data.at} hl={null} localOnly={localOnly} repos={scope.length} onOpen={(r) => toBoard(r)} onGo={go} onNew={newReq} repoName={repoName}
             onCell={(col, lane) => filterTo(cellPick(col, lane))} onOwner={(owner, col) => filterTo(ownerPick(owner, col, data.roster))} />
 
           <section className="cto-card" aria-label="交付清单" data-anchor="ledger" data-testid="ledger" ref={ledgerRef}>
@@ -495,7 +497,7 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
             <li>决定 · 谁定的：<WhoSyntax />。每个决定只算一次，写了别的就算「没归类」，列出在哪一行，不猜是谁。还在分支上、没合并的需求也算；评估里的「知识有用率」只看默认分支上的引用，所以两个数的范围不一样。</li>
             <li>每周合并：合并进默认分支的那一周（周一起）；交付方式同上，没评估过的合并算「还没评」。</li>
             <li>轮到你、等别人：按每个需求此刻等谁；「已等」从它开始这样等的那一刻算起。</li>
-            <li data-testid="notes-team">全队卡点、按人看：「超时」是等一个人（批准、回答、验收、开工、回会话）超过 {data.roster.limits.wait_timeout_h} 个工作小时；「很久没动」是别人在自己机器上做的需求，{data.roster.limits.stale_after_h} 个工作小时没有推上新进度；「目录撞车」是两个在做的需求要改同一个目录；「verify 失败」是 Lean 的 verify 连续 {data.roster.limits.verify_fail_limit} 次没过，AI 该停下来问人。「在做」是一个人手上没做完的需求（待认领的不算，交给运行机的算在负责人名下），到了 {data.roster.limits.wip_limit} 个标红。工作小时只算周一到周五 9 点到 18 点。这些数在设置里改。</li>
+            <li data-testid="notes-team">全队卡点、按人看：「超时」是人关（批准、回答、验收）等了 {data.roster.limits.wait_timeout_h} 个工作小时以上；「很久没动」是别人在自己机器上做的需求，{data.roster.limits.stale_after_h} 个工作小时没有推上新进度；「目录撞车」是两个在做的需求要改的目录可能有同一个文件；「verify 失败」是同一项检查 verify 连续 {data.roster.limits.verify_fail_limit} 次没过，AI 该停下来问人。「在做」是一个人手上没做完的需求（待认领的不算，交给运行机的算在负责人名下，拆成小需求的大需求在等小需求时不算，它的小需求算），到了 {data.roster.limits.wip_limit} 个标红；只看一个仓库时只数这个仓库的。工作小时只算周一到周五 9 点到 18 点。这些数在设置里改。</li>
             <li>没交付就结束：交给运行机以后，运行机没能开始，或 MR 关了没合并。它不算无人值守，也不算进分母。</li>
             <li>大需求：拆成小需求的需求。已合并 = 合进大需求分支的小需求；评估里大需求那一行的介入、问题和 credits 是大需求和它的小需求加起来的。待认领：拆出来、还没人认领的小需求。</li>
           </ul>
@@ -627,8 +629,8 @@ function YourTurn({ rows, at, repoName, onGo, onOpen, onAll }: {
 
 /** 全队卡点: what is stuck across the team, the worst first, as the backend's roster says it, in 轮到你's look. Each key
  * opens that requirement's 需求看板, an overlap's other key too. */
-function TeamStuck({ roster, rows, repoName, onOpen, onAll }: {
-  roster: Roster; rows: Requirement[]; repoName: (id: string) => string | undefined; onOpen: (r: { repo: string; key: string }) => void; onAll: () => void
+function TeamStuck({ roster, rows, partial, repoName, onOpen, onAll }: {
+  roster: Roster; rows: Requirement[]; partial: boolean; repoName: (id: string) => string | undefined; onOpen: (r: { repo: string; key: string }) => void; onAll: () => void
 }) {
   const SHOWN = 5
   const kinds = (Object.keys(roster.counts) as StuckKind[]).filter((k) => roster.counts[k] > 0)
@@ -639,10 +641,10 @@ function TeamStuck({ roster, rows, repoName, onOpen, onAll }: {
     <section className={`cto-card br-yours br-stuck${red ? ' is-bad' : kinds.length ? ' is-warn' : ' is-ok'}`} aria-label="全队卡点" data-testid="team-stuck">
       <div className="cto-chart-head">
         <h3>全队卡点</h3>
-        <span className="cto-dim" data-testid="stuck-counts">{kinds.length ? kinds.map((k) => `${STUCK_NAME[k]} ${roster.counts[k]}`).join(' · ') : '没有卡住的需求'}</span>
+        <span className="cto-dim" data-testid="stuck-counts">{kinds.length ? kinds.map((k) => `${STUCK_NAME[k]} ${roster.counts[k]}`).join(' · ') : '没有卡住的需求'}{partial ? ' · 只看这个仓库' : ''}</span>
       </div>
       {roster.stuck.length === 0 ? (
-        <p className="cto-was" data-testid="stuck-none">等人超过 {wait} 个工作小时的、别人做着 {stale} 个工作小时没有新进度的、两个需求要改同一个目录的、verify 连续 {fails} 次没过的，都会列在这里。</p>
+        <p className="cto-was" data-testid="stuck-none">等人批准、回答或验收超过 {wait} 个工作小时的，别人做着 {stale} 个工作小时没有推上新进度的，两个需求要改同一个目录的，同一项检查 verify 连续 {fails} 次没过的，都会列在这里。</p>
       ) : (
         <ul>
           {roster.stuck.slice(0, SHOWN).map((s) => {
