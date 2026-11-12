@@ -56,6 +56,14 @@ def test_every_requirement_shows_where_it_is_and_what_it_waits_on(tmp_path, home
     assert view["counts"]["local"] == 2 and view["counts"]["claimed"] == 1
     assert view["funnel"]["rows"] and view["eval"]["metrics"] is not None
     assert "token" not in json.dumps(view).lower()
+    # the team view: what its one person has open, and the overlap as a stuck line
+    team = view["roster"]
+    owner = rows["PAY-1"]["owner"]
+    assert team["people"] == [{"owner": owner, "you": True, "open": 3, "limit": 3, "keys": ["PAY-1", "PAY-2", "PAY-3"]}]
+    assert team["stuck"] == [{"repo": "r1", "key": "PAY-1", "kind": "overlap", "since": None, "other_key": "PAY-2",
+                              "text": "和 PAY-2 都要改 src/pay：都是 %s 的，先合一个再做另一个" % owner}]
+    assert team["counts"] == {"overdue": 0, "stale": 0, "overlap": 1, "verify_fails": 0}
+    assert [r["verify_fails"] for r in view["rows"]] == [0, 0, 0]
 
 
 def test_a_handed_over_run_and_a_merged_one(tmp_path, home):

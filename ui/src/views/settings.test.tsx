@@ -395,4 +395,59 @@ describe('设置', () => {
     expect(sync).toHaveTextContent('现在的仓库都只在本机做（没有远端），不用推。')
     expect(within(sync).queryByTestId('fetch-failed')).toBeNull()
   })
+
+  // a box's name is its sentence, with a space where its number is
+  const WIP = '每人同时在做的需求，最多 个'
+  const WAIT = '等人批准、回答或验收，超过 个工作小时算超时'
+  const STALE = '别人在自己机器上做的需求， 个工作小时没有推上新进度算很久没动'
+  const VERIFY = '同一项检查 verify 连续失败 次，就该停下来问人'
+  const limitsCard = () => screen.findByRole('group', { name: '全队视图' })
+
+  test('全队视图: four lines, each a sentence around its number, whole numbers in the backend’s bounds, after the work directory and before team mode', async () => {
+    installFixtureRoutes({})
+    render(<SettingsView {...props()} />)
+    const limits = await limitsCard()
+    const box = (name: string) => within(limits).getByRole('spinbutton', { name })
+    expect(box(WIP)).toHaveValue(3)
+    expect(box(WAIT)).toHaveValue(4)
+    expect(box(STALE)).toHaveValue(8)
+    expect(box(VERIFY)).toHaveValue(3)
+    expect(within(limits).getAllByRole('spinbutton').map((x) => [x.getAttribute('min'), x.getAttribute('max'), x.getAttribute('step')]))
+      .toEqual([['1', '20', '1'], ['1', '200', '1'], ['1', '400', '1'], ['1', '20', '1']])
+    const hint = '工作小时只算周一到周五 9 点到 18 点（这台机器的时间）。到了上限只提醒，不拦开工。'
+    expect(within(limits).getByText(hint)).toBeInTheDocument()
+    expect(box(WIP)).toHaveAccessibleDescription(hint)
+    const work = screen.getByLabelText('每个需求的工作目录放在哪')
+    expect(work.compareDocumentPosition(limits) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(limits.compareDocumentPosition(screen.getByRole('group', { name: '团队模式' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  test('a limit changed is saved as a number; the other three go as they were', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes({
+      [`POST ${API}/settings`]: (body) => ({ ok: true, settings: { ...fx.settings(), ...(body as Partial<Settings>) }, status: fx.status() }),
+    })
+    render(<SettingsView {...props()} />)
+    const box = within(await limitsCard()).getByRole('spinbutton', { name: WIP })
+    await user.clear(box)
+    await user.type(box, '5')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByText('已保存')).toBeInTheDocument()
+    const { repos: _repos, ...rest } = fx.settings()
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).toEqual({ ...rest, wip_limit: 5 })
+    expect(box).toHaveValue(5)
+  })
+
+  test('a limit out of bounds goes to the backend, and 保存 shows its refusal, which names the field', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes({ [`POST ${API}/settings`]: () => { throw apiError(400, 'invalid_settings', '「每人同时在做的需求上限」要写 1 到 20 的整数') } })
+    render(<SettingsView {...props()} />)
+    const box = within(await limitsCard()).getByRole('spinbutton', { name: WIP })
+    await user.clear(box)
+    await user.type(box, '25')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('「每人同时在做的需求上限」要写 1 到 20 的整数（400）')
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).toMatchObject({ wip_limit: 25 })
+    expect(screen.queryByText('已保存')).toBeNull()
+  })
 })

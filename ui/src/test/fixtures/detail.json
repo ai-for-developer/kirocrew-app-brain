@@ -59,6 +59,7 @@
     "session_url": "/chat?sid=brain-PAY-3-7f3a",
     "family": null,
     "home": null,
+    "verify_fails": 0,
     "progress_pushed_at": null
   },
   "where_label": "本机的工作目录",

@@ -18,7 +18,7 @@
  */
 
 const KPI = '.kt-kpi, .cto-cards > .cto-card, .br-kpi'
-const BLOCK = '.kt-card, .kt-experts, .kt-kb, .kt-sign, .kt-start, .cto-root > section.cto-card, .br-card'
+const BLOCK = '.kt-card, .kt-experts, .kt-kb, .kt-sign, .kt-start, .cto-root > section.cto-card, .cto-root > :where(.cto-duo) > section.cto-card, .br-card'
 const FRAMED = `${KPI}, ${BLOCK}, .kt-graph, .kt-lane`
 const HEAD = '.kt-card-head h2, .kt-experts-title, .kt-kb-head b, .kt-sign-head h2, .cto-chart-head h3, .cto-flow-head h3, .cto-ledger-head h3'
 

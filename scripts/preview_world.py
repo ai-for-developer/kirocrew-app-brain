@@ -41,6 +41,11 @@ import tempfile
 import time
 from pathlib import Path
 
+# the team works in this time zone: the world's working hours (roster.py) and its local dates are the same on any
+# machine that makes it
+os.environ["TZ"] = "Asia/Shanghai"
+time.tzset()
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import backend.routes  # noqa: E402,F401  (the private namespace the app's modules live in)
@@ -64,6 +69,8 @@ crewcheck = importlib.import_module("_brainapp_backend.core.crewcheck")
 repo_mod = importlib.import_module("_brainapp_backend.core.repo")
 progress = importlib.import_module("_brainapp_backend.core.progress")
 store = importlib.import_module("_brainapp_backend.core.store")
+roster_mod = importlib.import_module("_brainapp_backend.core.roster")
+settings_mod = importlib.import_module("_brainapp_backend.core.settings")
 BRAINKIT = Path(os.environ.get("BRAIN_TEST_BRAINKIT") or Path.home() / "warren_ws" / "brain-kit")
 
 FIX = ROOT / "ui" / "src" / "test" / "fixtures"
@@ -71,6 +78,7 @@ T0 = 1794146400          # 2026-11-08 14:00 UTC: the fixtures' `at`
 M, H, D = 60, 3600, 86400
 GL = "https://gitlab.example.com"
 ME = "alice"
+LIMITS = {k: v[0] for k, v in settings_mod.LIMITS.items()}      # 设置's defaults for the team view
 NO_KIT = "还没装 brain-kit：在「导入仓库」里检查它，装上就能用"     # service.reload_sync's words for a repo without it
 CFG = {"default_branch": "main", "handoff_label": "ai-handoff", "running_label": "ai-running",
        "rejected_label": "ai-handoff-rejected"}
@@ -608,7 +616,8 @@ def classified(r: Req, row: dict, *, park: dict | None = None, mr: dict | None =
     f = facts or r.facts(park)
     got = deliveries.base_row(r.repo, f, local_only=local_only)
     deliveries.classify(got, f, mr=mr, slot=slot, cfg=CFG, me=ME, reflected=reflected, now=T0, at_handover=at_handover)
-    row.update({k: got[k] for k in ("state", "state_label", "lean", "stage", "waits", "local_only", "where", "worktree")})
+    row.update({k: got[k] for k in ("state", "state_label", "lean", "stage", "verify_fails", "waits", "local_only", "where",
+                                    "worktree")})
     # the head says where it is, the facts list its checkout: never 「这台机器没检出」 above a 工作目录 on this machine
     assert not (row["where"] == "branch" and row["worktree"]), r.key
     row.setdefault("family", None)     # service._row: family.families' (none for a requirement outside a family)
@@ -661,7 +670,7 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
             "source": "trace" if t else "app", "error": "", "missing": g["missing"], "rollup": board.rollup(t)}
 
 
-U = {"api": "services/api/**", "web": "web/**", "jobs": "jobs/**"}
+U = {"api": "services/api/**", "web": "web/order/**", "jobs": "jobs/**"}
 
 
 def split_family(tmpl: dict, det: dict, mrdesc, decisions) -> tuple[list, list, list]:
@@ -1089,7 +1098,8 @@ def main() -> None:
     row = copy.deepcopy(rows["PAY-7"])
     row.update(key="PAY-10", title=p10.title, owner="alice", branch=p10.branch, intent=p10.intent, credits=12.6,
                updated_at=p10.hand_at, summary="退款审批前弹一次二次确认，金额超过一万再要一次。", run_ids=[], worktree=None,
-               mr={"iid": 52, "url": "%s/shop/shop-pay/-/merge_requests/52" % GL, "state": "opened"}, open_questions=[])
+               mr={"iid": 52, "url": "%s/shop/shop-pay/-/merge_requests/52" % GL, "state": "opened"}, open_questions=[],
+               expected_paths=["web/refund-confirm/"])
     extra_rows.append(classified(p10, row, mr={"state": "opened", "labels": [], "questions": []}, at_handover=True))
     board_later(p10, row, mr_desc=mrdesc(p10, row["summary"]), credits=12.6,
                 decisions=decisions(p10, [("requirements", "超过一万的退款要二次确认", "Q1 答\"按推荐\"（产品定的）", "P-1A2B", "person", [])]))
@@ -1114,7 +1124,7 @@ def main() -> None:
                    credits=9.8, turns=14, busy=False, awaiting=False, last_activity=p1_idle, opened_at=p1.start_at)
     row = copy.deepcopy(rows["PAY-3"])
     row.update(key="PAY-1", title=p1.title, owner="alice", branch=p1.branch, intent=p1.intent, credits=9.8, updated_at=p1_idle,
-               summary="按退款原因汇总金额和笔数，给运营看哪类退款最多（规模小）。", sessions=1, expected_paths=["src/refund/stats/"], overlap=[],
+               summary="按退款原因汇总金额和笔数，给运营看哪类退款最多（规模小）。", sessions=1, expected_paths=["src/stats/refund/"], overlap=[],
                worktree="/Users/alice/workplace/brain-app/shop-pay/refund-stats")
     extra_rows.append(classified(p1, row, slot=p1_sess))
     board_later(p1, row, sessions=[p1_sess], credits=9.8, mr_desc=mrdesc(p1, row["summary"]))
@@ -1217,12 +1227,63 @@ def main() -> None:
     board_later(r, row, local_only=True, kit_rows=tool_kit, credits=4.9, sessions=[tool_sess],
                                    mr_desc={"available": True, "text": "", "first": None, "source": None, "path": None, "ref": None, "error": "还没有提交：做完第一步以后才有变更说明"})
 
+    # ---------------------------------------------------------------- teammates' runs, read from the branches they pushed
+    # The world's clock is Sunday 22:00, so working hours count up to Friday 18:00 (roster.work_hours_between).
+    team_rows = []
+
+    def theirs(r: Req, paths: list[str], summary: str) -> None:
+        """*r* on its owner's machine, read here from the run branch they pushed: no session or worktree on this one."""
+        f = r.facts()
+        f.update(where="branch")
+        row = copy.deepcopy(tmpl)
+        row.update(repo=r.repo, key=r.key, title=r.title, owner=r.owner, branch=r.branch, intent=r.intent, credits=None,
+                   sessions=0, updated_at=deliveries.updated_at(f, None), summary=summary, mr=None, run_ids=[],
+                   open_questions=[], overlap=[], expected_paths=paths, worktree=None)
+        team_rows.append(classified(r, row, facts=f))
+        board_later(r, row, facts=f, mr_desc=mrdesc(r, summary))
+
+    fri = T0 - 2 * D - 13 * H           # Friday 09:00
+    # PAY-15: carol's run has waited for its DESIGN approval since Friday noon: 6 working hours, past the timeout
+    p15 = Req("r1", "PAY-15", "退款差异对账表", "carol", "refund-diff", "261106-refund-diff", project="shop/shop-pay")
+    p15.claim_at, p15.start_at = fri + 10 * M, fri + 20 * M
+    p15.skip_phase(p15.start_at + 20, "ideation", NOT_REQUESTED)
+    p15.stage(p15.start_at + 2 * M, "reverse-engineering", "skipped", note="新报表，代码已经读过")
+    p15.stage(p15.start_at + 3 * M, "requirements", "started")
+    h = p15.request(p15.start_at + 31 * M, "REQUIREMENTS")
+    p15.approve(p15.start_at + 52 * M, "REQUIREMENTS", h)
+    p15.stage(p15.start_at + 53 * M, "requirements", "done", note="需求写好了，5 条验收标准")
+    p15.stage(p15.start_at + 54 * M, "user-stories", "skipped", note="小需求")
+    p15.stage(p15.start_at + 55 * M, "application-design", "started")
+    p15.request(fri + 3 * H, "DESIGN")
+    p15.commit(fri + 3 * H + 2 * M, "person", "PAY-15：差异报表的设计，请批准", files=2, records=True)
+    theirs(p15, ["src/reconcile/"], "按天对比退款单和银行流水，列出对不上的那几笔。")
+    # ORD-11: dave has pushed nothing new since Thursday 15:00: 12 working hours without progress
+    o11 = Req("r3", "ORD-11", "订单评价晒图", "dave", "review-photos", "261105-review-photos", project="shop/shop-order")
+    o11.claim_at = fri - D + 20 * M
+    t = standard(o11, fri - D + 30 * M)
+    o11.stage(t, "code-generation", "started", unit="review-ui")
+    o11.commit(fri - D + 4 * H + 10 * M, "person", "ORD-11：晒图上传和压缩", files=4)
+    o11.commit(fri - D + 6 * H, "person", "ORD-11：评价页加图片墙", files=3)
+    theirs(o11, ["web/review/"], "评价里能传 9 张图，评价页按时间排成图片墙。")
+    # ORD-12: erin's run failed verify three times in a row on Friday afternoon, and it is still fixing
+    o12 = Req("r3", "ORD-12", "订单导出加水印", "erin", "export-watermark", "261106-export-watermark", project="shop/shop-order")
+    o12.claim_at = fri + 5 * M
+    t = standard(o12, fri + 15 * M)
+    o12.stage(t, "code-generation", "started", unit="watermark")
+    o12.commit(t + 40 * M, "person", "ORD-12：导出的 PDF 加水印", files=3)
+    o12.stage(t + 45 * M, "code-generation", "done", unit="watermark", note="代码写完")
+    o12.stage(t + 50 * M, "build-and-test", "started")
+    for i, fix in enumerate(("修水印压住表头的问题", "换一种字体渲染水印", "调低水印的透明度")):
+        o12.verify(fri + (5 + i) * H, [("pytest -q", 1), ("ruff check .", 0)])
+        o12.commit(fri + (5 + i) * H + 20 * M, "person", "ORD-12：%s" % fix, files=2)
+    theirs(o12, ["src/export/watermark/"], "导出的订单 PDF 每页加上公司水印。")
+
     # ---------------------------------------------------------------- the overview of the world, and its numbers
     for x in runs:          # brain-kit 0d52e97's batch facts of each run (none known for these: older batches)
         for k, v in (("state", None), ("state_label", ""), ("stuck", None), ("delivery", None), ("delivery_label", ""),
                      ("parent", None)):
             x.setdefault(k, v)
-    all_rows = list(rows.values()) + extra_rows + fam_rows + order_rows + tool_rows
+    all_rows = list(rows.values()) + extra_rows + fam_rows + order_rows + tool_rows + team_rows
     parts = [("r1", {"runs": [x for x in runs if x["repo"] == "r1"], "unattended": None, "judgment": None, "kinds": [], "ref": "origin/main"}),
              ("r3", {"runs": [x for x in runs if x["repo"] == "r3"], "unattended": None, "judgment": None, "kinds": [], "ref": "origin/main"})]
     judged = [x for x in runs if x["how"] in ("unattended", "people")]
@@ -1239,15 +1300,21 @@ def main() -> None:
     runner_rows: list[dict] = []     # the team runner's rows (service._team_rows), made below with team mode's 待办
     taken: set[tuple[str, str]] = set()     # team mode: the repos' rows the runner's stand for (service._team_split)
 
+    def team_view(rows_: list[dict]) -> tuple[list[dict], dict]:
+        """service._overview_sync's overlaps (each row told its own) and its roster, over these rows."""
+        for r_ in rows_:
+            r_["overlap"] = []
+        return deliveries.overlaps(rows_), roster_mod.roster(rows_, me=ME, now=T0, settings=LIMITS)
+
     def overview_of(repo: str, evaluated: bool, team: bool = False) -> dict:
         """交付总览 for 全部 or one repo, as service._overview_sync makes it: its rows, its repos' numbers; without
         brainkit.evaluate the funnel is the app's own count and every merge is still 还没评. *team*: on the team
         runner's machine, where each requirement is listed once (a handed-over one as the runner's)."""
         ids = [x for x in ("r1", "r3", "r4") if repo in ("all", x)]
         o = copy.deepcopy(ov)
-        o["rows"] = [r_ for r_ in all_rows if r_["repo"] in ids and not (team and (r_["repo"], r_["key"]) in taken)] + (
-            [copy.deepcopy(r_) for r_ in runner_rows if repo in ("all", "runner", r_["home"])] if team else [])
-        o["overlaps"] = [x for x in ov["overlaps"] if any(r_["key"] == x["keys"][0] for r_ in o["rows"])]
+        o["rows"] = copy.deepcopy([r_ for r_ in all_rows if r_["repo"] in ids and not (team and (r_["repo"], r_["key"]) in taken)]
+                                  + ([r_ for r_ in runner_rows if repo in ("all", "runner", r_["home"])] if team else []))
+        o["overlaps"], o["roster"] = team_view(o["rows"])
         o["counts"] = deliveries.counts(o["rows"])
         o["errors"] = [e for e in ov["errors"] if repo in ("all", e["repo"])]
         mine = [p_ for p_ in parts if p_[0] in ids] if evaluated else []
@@ -1336,6 +1403,8 @@ def main() -> None:
                      summary=mrdesc_view.plain_line((kw.get("mr_desc") or {}).get("first")) if f.get("run") else None)
         rid = {"shop/shop-pay": "r1", "shop/shop-order": "r3"}.get(rr["project"])
         mine = next((r_ for r_ in all_rows if (r_["repo"], r_["key"]) == (rid, key)), None)
+        if mine is not None:     # runnerd's workspace has the run.json the hand-over pushed: the same expected paths
+            row_t["expected_paths"] = list(mine["expected_paths"])
         own = next((x for x in reqs.get(rid, []) if x.key == key), None)
         if deliveries.runner_takes(own.facts() if own and mine else None, mine, row_t):
             row_t["home"] = rid
@@ -1415,6 +1484,7 @@ def main() -> None:
     # the contract fixtures the UI tests read: the overview's numbers for its own rows, one live board and one merged
     ov["cto"] = deliveries.cto_numbers([("r1", parts[0][1])], list(rows.values()), available=True, now=T0, names=names, repos=1)
     ov["eval"]["ref"] = ov["cto"]["ref"]
+    ov["overlaps"], ov["roster"] = team_view(ov["rows"])
     (FIX / "overview.json").write_text(json.dumps(ov, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (FIX / "detail.json").write_text(json.dumps(det, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     # 待办's fixture: one item of every kind, each as todo.build made it in the world (team mode's runner questions, and

@@ -70,9 +70,13 @@ def test_the_rows_of_a_family_say_who_it_waits_on():
     assert (r["state"], r["state_label"], r["waits"]["who"], r["waits"]["do"]) == ("unclaimed", "待认领", "people", "start")
     assert r["waits"]["text"] == "待认领：谁做都可以认领（开工要等 PAY-2（api，bob 在做）合进大需求）"
     r = row_of("PAY-3")
-    family.classify(r, dict(child, state="claimed", owner="bob"), {}, "alice")
+    family.classify(r, dict(child, state="claimed", owner="bob", blocked_by=[]), {}, "alice")
     assert r["waits"] == {"who": "people", "do": "start", "text": "等 bob 开工", "line": None, "raw": "", "since": None,
                           "where": "app", "review": False, "todo": ""}
+    r = row_of("PAY-3")      # bob's claim held by a dependency: nobody can start it, so it does not wait on bob
+    family.classify(r, dict(child, state="claimed", owner="bob"), {}, "alice")
+    assert (r["waits"]["who"], r["waits"]["do"], r["waits"]["text"]) == (
+        "people", "none", "bob 认领了：要等 PAY-2（api，bob 在做）合进大需求才能开工")
     r = row_of("PAY-3")
     family.classify(r, dict(child, state="claimed", owner="alice", blocked_by=[]), {}, "alice")
     assert (r["waits"]["who"], r["waits"]["do"], r["waits"]["text"]) == ("you", "start", "认领了，依赖都合进来了：可以开工")
@@ -83,6 +87,12 @@ def test_the_rows_of_a_family_say_who_it_waits_on():
     r = row_of("PAY-3", "local", who="you", text="会话空着：轮到你回话")
     family.classify(r, dict(child, state="in_progress", owner="alice"), {"run": {"mr": {"by": "alice"}}}, "alice")
     assert (r["waits"]["who"], r["waits"]["text"], r["waits"]["where"]) == ("people", "交了 MR：等大需求的负责人合进 b", "mr")
+    r = row_of("PAY-3", "local", who="people", do="none", text="alice 在自己的机器上做")     # the same, on bob's machine
+    family.classify(r, dict(child, state="in_progress", owner="alice"), {"run": {"mr": {"by": "alice"}}}, "bob")
+    assert (r["waits"]["text"], r["waits"]["where"]) == ("交了 MR：等大需求的负责人合进 b", "mr")
+    r = row_of("PAY-3", "local", who="people", do="approve", text="等 bob 批准设计：读完再在会话里自己打那一行")
+    family.classify(r, dict(child, state="in_progress", owner="bob"), {}, "alice")
+    assert (r["waits"]["do"], r["waits"]["text"]) == ("approve", "等 bob 批准设计：读完再在会话里自己打那一行")  # bob's gate stays
     parent = {"role": "parent", "owner": "alice", "family_state": "in_progress",
               "progress": {"merged": 1, "total": 3, "unclaimed": 1, "claimed": 0, "in_progress": 1}}
     r = row_of("PAY-1", "local", who="you", text="会话空着：轮到你回话")

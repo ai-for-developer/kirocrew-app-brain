@@ -152,6 +152,8 @@ export interface Requirement {
   /** the current Lean stage as text, as the backend writes it: 「9/11 代码生成」 (started), 「3/11 用户故事（下一步）」
    * (todo), 「11/11 发布（做完）」 (done or skipped); null when Lean recorded no stage */
   stage: string | null
+  /** Lean's verify runs that failed in a row since the last one that passed (0: the last passed, or none ran) */
+  verify_fails: number
   waits: Waits
   /** the first line of its 变更说明 (brain mr-desc's 一句话, from runs/<KEY>/MR.md or the run's records at the commit
    * the row is read at); null before it has a run, while it is being made, or when brain-kit cannot make one */
@@ -762,7 +764,7 @@ export interface RemoveResult { ok: boolean; text: string; status: Status }
 
 /** POST /settings takes any part of it: a key left out keeps its value (the 设置 form sends no repos: 导入仓库 adds
  * them, 移出列表 removes them). */
-export interface Settings {
+export interface Settings extends TeamLimits {
   /** brain-kit checkout this app imports (read-only to the app) */
   brainkit: string
   /** project repos (brain-kit installed, or on its way) shown on this machine */
@@ -786,6 +788,62 @@ export interface Settings {
 // ---------------------------------------------------------------- GET /overview?repo=<id>|all
 
 export interface Overlap { keys: string[]; paths: string[] }
+
+/** 交付总览's team view limits, kept in 设置 (backend/core/settings.py LIMITS). Working hours are Monday to Friday, 09:00 to
+ * 18:00, this machine's time. */
+export interface TeamLimits {
+  /** requirements a person has open at once: 按人看 marks a person at it red, 开需求 reminds them (it never stops them) */
+  wip_limit: number
+  /** working hours a wait on a person may last before it is 超时 */
+  wait_timeout_h: number
+  /** working hours someone else's run on their own machine may go without new progress before it is 很久没动 */
+  stale_after_h: number
+  /** failed verify runs in a row after which the AI should stop and ask a person */
+  verify_fail_limit: number
+}
+
+/** What 全队卡点 says is stuck (backend/core/roster.py STUCK_RULES, the worst kind first): overdue 超时 (a wait on a
+ * person for wait_timeout_h), stale 很久没动 (someone else's run on their own machine, stale_after_h without new
+ * progress), overlap 目录撞车 (two open requirements change one directory), verify_fails verify 失败 (verify_fail_limit
+ * failed runs in a row). */
+export type StuckKind = 'overdue' | 'stale' | 'overlap' | 'verify_fails'
+
+/** A stuck requirement and the line said after its key, e.g. 「等 carol 批准设计，已等 6 个工作小时（超时）」. */
+export interface Stuck {
+  repo: string
+  key: string
+  kind: StuckKind
+  /** one plain line; how long is said in working hours */
+  text: string
+  /** since when (epoch s): the wait's since, or the last progress pushed; null for an overlap and a verify streak */
+  since: number | null
+  /** an overlap's other requirement (the line names it); null for the other kinds */
+  other_key: string | null
+}
+
+/** One person with requirements open (按人看): open counts the states claimed to rejected (not 待认领), a row on the
+ * team runner under its owner. */
+export interface Person {
+  owner: string
+  /** this machine's person */
+  you: boolean
+  open: number
+  /** at it or over it, the person is marked red */
+  limit: number
+  /** the requirements open counts */
+  keys: string[]
+}
+
+/** 交付总览's team view: who has how much open, and what is stuck. It ranks nobody: people come you first, then by how
+ * much they have open. */
+export interface Roster {
+  people: Person[]
+  /** the worst kind first, the worst first within a kind */
+  stuck: Stuck[]
+  /** every kind, zeros too, in the order the stuck lines come */
+  counts: Record<StuckKind, number>
+  limits: TeamLimits
+}
 
 export interface EvalMetric {
   id: string
@@ -867,6 +925,8 @@ export interface Overview {
   eval: EvalView
   /** the 交付总览's three numbers, their charts and the weekly deliveries (CtoNumbers, below) */
   cto: CtoNumbers
+  /** the team view: 全队卡点 and 需求流动's 按人看 */
+  roster: Roster
   /** state → count */
   counts: Partial<Record<ReqState, number>>
   /** a repo whose requirements could not be read: what happened and what to do, in words; raw: the original (细节) */

@@ -12,5 +12,9 @@
     "bridge_config": "/Users/alice/.brain/bridge.json",
     "runnerd_config": "/Users/alice/.brain/runnerd.json",
     "dev_same_user": false
-  }
+  },
+  "wip_limit": 3,
+  "wait_timeout_h": 4,
+  "stale_after_h": 8,
+  "verify_fail_limit": 3
 }

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import (bk, brainview, crewcheck, deliveries, detail, family, identity, importer, inplace, installer, intake,
-               landing, lean_view, mrdesc_view, mrinfo, progress)
+               landing, lean_view, mrdesc_view, mrinfo, progress, roster)
 from . import problems
 from . import board as board_mod
 from . import settings as settings_mod
@@ -364,6 +364,12 @@ class Service:
             raise AppError("没有这个仓库", "no_repo", 404)
         return self.repos[rid]
 
+    def me(self, which: str) -> str | None:
+        """This machine's person on 交付总览's *which*: the name in that repo; on 全部 and the runner's view, the first
+        repo's that has one, the name /status's 你是谁 says (me_line)."""
+        repos = [self.repos[which]] if which in self.repos else self.repos.values()
+        return next((name for name in map(self.me_in, repos) if name), None)
+
     def me_in(self, repo: Repo) -> str | None:
         return self._me_view(repo)["name"]
 
@@ -608,7 +614,8 @@ class Service:
                                      names={rid: r.name for rid, r in self.repos.items()}, repos=len(scope),
                                      local_repos=sum(1 for r in scope if self._local_only(r)))
         return {"at": self.now(), "rows": rows, "overlaps": overlaps, "funnel": funnel, "eval": view, "cto": cto,
-                "counts": deliveries.counts(rows), "errors": errors}
+                "counts": deliveries.counts(rows), "errors": errors,
+                "roster": roster.roster(rows, me=self.me(which), now=self.now(), settings=self.settings)}
 
     def _eval_view(self, which: str, snap: dict[str, Any],
                    parts: list[tuple[str, dict[str, Any]]] | None = None) -> tuple[dict[str, Any], dict | None]:

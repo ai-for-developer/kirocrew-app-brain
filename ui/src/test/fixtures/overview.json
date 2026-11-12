@@ -61,6 +61,7 @@
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
       "home": null,
+      "verify_fails": 0,
       "progress_pushed_at": null
     },
     {
@@ -131,6 +132,7 @@
       "session_url": null,
       "family": null,
       "home": null,
+      "verify_fails": 0,
       "progress_pushed_at": null
     },
     {
@@ -199,6 +201,7 @@
       "session_url": null,
       "family": null,
       "home": null,
+      "verify_fails": 0,
       "progress_pushed_at": null
     },
     {
@@ -262,6 +265,7 @@
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
       "home": null,
+      "verify_fails": 0,
       "progress_pushed_at": null
     },
     {
@@ -317,6 +321,7 @@
       "session_url": null,
       "family": null,
       "home": null,
+      "verify_fails": 0,
       "progress_pushed_at": null
     },
     {
@@ -379,6 +384,7 @@
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
       "home": null,
+      "verify_fails": 0,
       "progress_pushed_at": null
     }
   ],
@@ -389,7 +395,7 @@
         "PAY-4"
       ],
       "paths": [
-        "src/refund/"
+        "src/refund"
       ]
     }
   ],
@@ -763,5 +769,52 @@
         "pending": 0
       }
     ]
+  },
+  "roster": {
+    "people": [
+      {
+        "owner": "alice",
+        "you": true,
+        "open": 3,
+        "limit": 3,
+        "keys": [
+          "PAY-3",
+          "PAY-5",
+          "PAY-7"
+        ]
+      },
+      {
+        "owner": "carol",
+        "you": false,
+        "open": 2,
+        "limit": 3,
+        "keys": [
+          "PAY-4",
+          "PAY-6"
+        ]
+      }
+    ],
+    "stuck": [
+      {
+        "repo": "r1",
+        "key": "PAY-3",
+        "kind": "overlap",
+        "text": "和 PAY-4 都要改 src/refund：先商量好谁先合",
+        "since": null,
+        "other_key": "PAY-4"
+      }
+    ],
+    "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 1,
+      "verify_fails": 0
+    },
+    "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+    }
   }
 }

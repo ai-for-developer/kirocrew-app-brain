@@ -2,9 +2,10 @@
  * 交付总览: the sample's CTO 视图 for brain-kit — one sentence and three numbers (how many requirements handed to the
  * runner ran unattended end to end, how many times a person stepped in at the judgment points and outside them,
  * credits per requirement) and who settled the decisions, each with its small SVG chart (cto/charts.tsx); 轮到你 (what
- * waits on the person, with its one step); the weekly merges; 需求流动 (cto/Flow.tsx: the kanban of what is in
- * progress); the 交付清单 (every requirement, a big requirement's small ones folded under it); brain-kit's eval batch
- * (its big requirements split into small ones among its rows). Every card and row opens the requirement's board
+ * waits on the person, with its one step) and beside it 全队卡点 (what is stuck across the team, the backend's roster);
+ * the weekly merges; 需求流动 (cto/Flow.tsx: the kanban of what is in progress, 按阶段 or 按人); the 交付清单 (every
+ * requirement, a big requirement's small ones folded under it); brain-kit's eval batch (its big requirements split
+ * into small ones among its rows). Every card and row opens the requirement's board
  * (需求看板). Polls GET /overview (Overview.cto has the numbers, from brainkit.evaluate). The repo pills and the
  * ledger's state filter are in the URL; a big number, a legend entry, a week, a column, a lane or 「+N 个」 filters the
  * ledger once more (a LedgerPick, with its ✕) and scrolls to it.
@@ -20,12 +21,12 @@ import { useAppApi, useNavigate } from '@kirocrew/app-sdk'
 import { POLL_MS, paths, useAction, usePoll } from '../api'
 import { RoleIcon } from '../board/RoleIcon'
 import { HOW, HOW_LABEL, HOW_VAR, MiniCredits, MiniPeople, MiniUnattended, MiniWho, WHO_VAR, WeeklyChart, fmt, slash } from '../cto/charts'
-import { COL_NAME, Flow, LANE_NAME, StepButton, blockText, blockersOf, colOf, familyProgress, homeOf, laneOf, stepOf, waitedText, type Col, type Lane } from '../cto/Flow'
+import { COL_NAME, Flow, LANE_NAME, StepButton, blockText, blockersOf, colOf, familyProgress, homeOf, lateMarks, laneOf, stepOf, waitedText, type Col, type Lane } from '../cto/Flow'
 import { ago, fmtCredits, spaced } from '../format'
 import type { OverviewEntry, View } from '../nav'
-import type { CtoNumbers, CtoRun, EvalFamily, EvalMetric, EvalView, Funnel, Overview, RefreshResult, ReqFamily, ReqState, RepoInfo, Requirement } from '../types'
+import type { CtoNumbers, CtoRun, EvalFamily, EvalMetric, EvalView, Funnel, Overview, RefreshResult, ReqFamily, ReqState, RepoInfo, Requirement, Roster, Stuck, StuckKind } from '../types'
 import { STATE_LABEL } from '../types'
-import { ACT, DECIDED_BY, leanProgress, waitName } from '../vocab'
+import { ACT, DECIDED_BY, STUCK_NAME, leanProgress, waitName } from '../vocab'
 import { EmptyHero, Icon, ImportCta, LoadState, MrLink, PendingRepo, STATE_TONE, StateChip } from '../ui'
 import type { ViewProps } from './props'
 
@@ -70,6 +71,17 @@ export const OV_CSS = `
 .br-ov .br-linecopy { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .br-ov .br-linecopy code { white-space: nowrap; }
 .br-ov .br-linecopy code { padding: 1px 8px; border-radius: 6px; border: 1px dashed color-mix(in srgb, var(--kt-approve) 60%, var(--border)); color: var(--text-strong); font-weight: 700; user-select: all; }
+.br-ov .cto-duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--kit-gap-block); align-items: start; }
+.br-ov .cto-duo.is-one { grid-template-columns: minmax(0, 1fr); }
+.br-ov .br-stuck li { background: color-mix(in srgb, var(--kt-bad) 6%, var(--cto-cell)); }
+.br-ov .br-stuck li[data-kind="overlap"] { background: color-mix(in srgb, var(--kt-warn) 7%, var(--cto-cell)); }
+.br-ov .br-stuck li .br-chip { padding: 0 8px; }
+.br-ov .cto-kcard.is-late { border-color: var(--kit-bad); box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-bad) 16%, transparent); }
+.br-ov .br-klate { display: flex; flex-wrap: wrap; gap: 4px; }
+.br-ov .br-klate .br-chip, .br-ov .cto-lane .br-chip { padding: 0 7px; font-size: 11.5px; }
+.br-ov .cto-lane.br-lane-person { flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; }
+.br-ov .br-wip { font-size: 12px; font-weight: 600; color: var(--muted); }
+.br-ov .br-flow-by button { padding: 3px 12px; font-size: 13px; }
 
 .br-ov .cto-lane { justify-content: flex-start; padding: 8px 10px; }
 .br-ov .cto-lane .br-lane-name { white-space: nowrap; font-weight: 650; }
@@ -158,6 +170,7 @@ export const OV_CSS = `
   .br-ov .br-ledger .br-acts { flex-direction: column; align-items: stretch; }
 }
 @container brov (max-width: 900px) {
+  .br-ov .cto-duo { grid-template-columns: minmax(0, 1fr); }
   .br-ov .br-kanban { grid-template-columns: minmax(0, 1fr) !important; }
   .br-ov .br-merged-cell, .br-ov .br-kcell-off { grid-row: auto !important; }
   .br-ov .br-kcell-off { writing-mode: horizontal-tb; padding: 6px; }
@@ -281,6 +294,8 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
   // nothing here can be handed over: no origin to push to, or no GitLab for the bridge (the backend's local_only rule)
   const localOnly = readable.length > 0 && readable.every((r) => r.remote === false || !(r.kit?.gitlab_base && r.kit?.gitlab_project))
   const manyRepos = repo === 'all' && repos.length > 1
+  // one repo of several: the team view's counts are this repo's (a person's whole load is 全部's)
+  const partial = repo !== 'all' && repos.filter((r) => r.ok).length > 1
   const team = !!status && (status.app.team || status.team.enabled)
   const newReq = () => go({ kind: 'new', ...(repo !== 'all' ? { repo } : {}) })
 
@@ -297,6 +312,7 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
   const credits = (data?.rows ?? []).filter((r) => r.credits !== null && r.credits > 0).map((r) => ({ key: r.key, credits: r.credits as number }))
   const yours = (data?.rows ?? []).filter((r) => r.waits.who === 'you' && r.state !== 'closed')
     .sort((a, b) => (a.waits.since ?? Infinity) - (b.waits.since ?? Infinity) || (b.updated_at ?? 0) - (a.updated_at ?? 0))
+  const late = data ? lateMarks(data.roster) : new Map<string, Stuck[]>()
   const where = scope.length > 1 ? '这些仓库' : '这个仓库'
   return (
     <main className="kt-root br-view cto-root br-ov" data-testid="overview">
@@ -389,8 +405,11 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
 
       {data && c && !empty && (
         <>
-          {yours.length > 0 && <YourTurn rows={yours} at={data.at} repoName={manyRepos ? repoName : () => undefined} onGo={go} onOpen={(r) => toBoard(r)}
-            onAll={() => filterTo(cellPick(undefined, 'you'))} />}
+          <div className={`cto-duo${yours.length > 0 ? '' : ' is-one'}`} data-testid="ov-duo">
+            {yours.length > 0 && <YourTurn rows={yours} at={data.at} repoName={manyRepos ? repoName : () => undefined} onGo={go} onOpen={(r) => toBoard(r)}
+              onAll={() => filterTo(cellPick(undefined, 'you'))} />}
+            <TeamStuck roster={data.roster} rows={data.rows} partial={partial} repoName={manyRepos ? repoName : () => undefined} onOpen={toBoard} onAll={() => filterTo(stuckPick(data.roster))} />
+          </div>
 
           <section className="cto-cards" data-testid="ov-cards">
             <UnattendedCard c={c} localOnly={localOnly} computing={computing} pick={pick} onPick={filterTo} onKey={(r) => (r.repo ? toBoard(r) : openKey(r.key))} />
@@ -419,8 +438,8 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
 
           {data.overlaps.length > 0 && <Overlaps data={data} onKey={(k) => openKey(k)} />}
 
-          <Flow rows={data.rows} at={data.at} hl={null} localOnly={localOnly} repos={scope.length} onOpen={(r) => toBoard(r)} onGo={go} onNew={newReq} repoName={repoName}
-            onCell={(col, lane) => filterTo(cellPick(col, lane))} />
+          <Flow rows={data.rows} roster={data.roster} partial={partial} at={data.at} hl={null} localOnly={localOnly} repos={scope.length} onOpen={(r) => toBoard(r)} onGo={go} onNew={newReq} repoName={repoName}
+            onCell={(col, lane) => filterTo(cellPick(col, lane))} onOwner={(owner, col) => filterTo(ownerPick(owner, col, data.roster))} />
 
           <section className="cto-card" aria-label="交付清单" data-anchor="ledger" data-testid="ledger" ref={ledgerRef}>
             <div className="cto-ledger-head">
@@ -446,6 +465,7 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
                     const open = !folded.has(id)
                     const row = (r: Requirement, tree?: Tree) => (
                       <Row key={idOf(r)} r={r} at={data.at} run={runsBy.get(idOf(r))} ev={data.eval} repoName={manyRepos && !tree ? repoName(homeOf(r)) : undefined} tree={tree}
+                        late={late.get(idOf(r)) ?? []} verifyLimit={data.roster.limits.verify_fail_limit}
                         fold={r === g.r && g.kids.length ? { open, onFold: () => fold(id) } : undefined}
                         onOpen={() => toBoard(r)} onItem={() => toItem(r)} onReplay={() => toBoard(r, true)} onGo={go} />
                     )
@@ -477,6 +497,7 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
             <li>决定 · 谁定的：<WhoSyntax />。每个决定只算一次，写了别的就算「没归类」，列出在哪一行，不猜是谁。还在分支上、没合并的需求也算；评估里的「知识有用率」只看默认分支上的引用，所以两个数的范围不一样。</li>
             <li>每周合并：合并进默认分支的那一周（周一起）；交付方式同上，没评估过的合并算「还没评」。</li>
             <li>轮到你、等别人：按每个需求此刻等谁；「已等」从它开始这样等的那一刻算起。</li>
+            <li data-testid="notes-team">全队卡点、按人看：「超时」是人关（批准、回答、验收）等了 {data.roster.limits.wait_timeout_h} 个工作小时以上；「很久没动」是别人在自己机器上做的需求，{data.roster.limits.stale_after_h} 个工作小时没有推上新进度；「目录撞车」是两个在做的需求要改的目录可能有同一个文件；「verify 失败」是同一项检查 verify 连续 {data.roster.limits.verify_fail_limit} 次没过，AI 该停下来问人。「在做」是一个人手上没做完的需求（待认领的不算，交给运行机的算在负责人名下，拆成小需求的大需求在等小需求时不算，它的小需求算），到了 {data.roster.limits.wip_limit} 个标红；只看一个仓库时只数这个仓库的。工作小时只算周一到周五 9 点到 18 点。这些数在设置里改。</li>
             <li>没交付就结束：交给运行机以后，运行机没能开始，或 MR 关了没合并。它不算无人值守，也不算进分母。</li>
             <li>大需求：拆成小需求的需求。已合并 = 合进大需求分支的小需求；评估里大需求那一行的介入、问题和 credits 是大需求和它的小需求加起来的。待认领：拆出来、还没人认领的小需求。</li>
           </ul>
@@ -513,6 +534,22 @@ function cellPick(col?: Col, lane?: Lane): LedgerPick {
     label: `需求流动 · ${label}`,
     keep: (r) => (!col || colOf(r) === col) && (!lane || (laneOf(r) === lane && isOpen(r))),
   }
+}
+
+/** 按人's lane or cell as a ledger filter: what one person has open (null: what nobody has), in one column or all. */
+function ownerPick(owner: string | null, col: Col | undefined, roster: Roster): LedgerPick {
+  const who = owner === null ? '还没人认领的' : roster.people.find((p) => p.owner === owner)?.you ? '你在做的' : `${owner} 在做的`
+  return {
+    id: `owner:${owner ?? ''}:${col ?? ''}`,
+    label: `需求流动 · ${col ? `「${COL_NAME[col]}」这一列里` : ''}${who}`,
+    keep: (r) => (r.owner ?? null) === owner && isOpen(r) && (!col || colOf(r) === col),
+  }
+}
+
+/** 全队卡点's 「还有 N 件」 as a ledger filter: every requirement it lists, an overlap's other one too. */
+function stuckPick(roster: Roster): LedgerPick {
+  const ids = new Set(roster.stuck.flatMap((s) => [idOf(s), ...(s.other_key ? [idOf({ repo: s.repo, key: s.other_key })] : [])]))
+  return { id: 'stuck', label: '全队卡点', keep: (r) => ids.has(idOf(r)) }
 }
 
 /** The week a requirement was merged in, as the backend buckets 每周合并 (deliveries.cto_numbers / _week): its run's
@@ -586,6 +623,47 @@ function YourTurn({ rows, at, repoName, onGo, onOpen, onAll }: {
         })}
       </ul>
       {rows.length > SHOWN && <button type="button" className="br-link" style={{ justifySelf: 'start' }} onClick={onAll}>还有 {rows.length - SHOWN} 件：在交付清单里看全部</button>}
+    </section>
+  )
+}
+
+/** 全队卡点: what is stuck across the team, the worst first, as the backend's roster says it, in 轮到你's look. Each key
+ * opens that requirement's 需求看板, an overlap's other key too. */
+function TeamStuck({ roster, rows, partial, repoName, onOpen, onAll }: {
+  roster: Roster; rows: Requirement[]; partial: boolean; repoName: (id: string) => string | undefined; onOpen: (r: { repo: string; key: string }) => void; onAll: () => void
+}) {
+  const SHOWN = 5
+  const kinds = (Object.keys(roster.counts) as StuckKind[]).filter((k) => roster.counts[k] > 0)
+  const red = roster.stuck.some((s) => s.kind !== 'overlap')
+  const { wait_timeout_h: wait, stale_after_h: stale, verify_fail_limit: fails } = roster.limits
+  const key = (repo: string, k: string) => <button type="button" className="br-link br-key" onClick={() => onOpen({ repo, key: k })} title="打开它的需求看板">{k}</button>
+  return (
+    <section className={`cto-card br-yours br-stuck${red ? ' is-bad' : kinds.length ? ' is-warn' : ' is-ok'}`} aria-label="全队卡点" data-testid="team-stuck">
+      <div className="cto-chart-head">
+        <h3>全队卡点</h3>
+        <span className="cto-dim" data-testid="stuck-counts">{kinds.length ? kinds.map((k) => `${STUCK_NAME[k]} ${roster.counts[k]}`).join(' · ') : '没有卡住的需求'}{partial ? ' · 只看这个仓库' : ''}</span>
+      </div>
+      {roster.stuck.length === 0 ? (
+        <p className="cto-was" data-testid="stuck-none">等人批准、回答或验收超过 {wait} 个工作小时的，别人做着 {stale} 个工作小时没有推上新进度的，两个需求要改同一个目录的，同一项检查 verify 连续 {fails} 次没过的，都会列在这里。</p>
+      ) : (
+        <ul>
+          {roster.stuck.slice(0, SHOWN).map((s) => {
+            const row = rows.find((r) => r.repo === s.repo && r.key === s.key)
+            const name = row ? repoName(homeOf(row)) : undefined
+            const at = s.other_key ? s.text.indexOf(s.other_key) : -1
+            return (
+              <li key={`${s.kind}:${idOf(s)}:${s.other_key ?? ''}`} data-key={s.key} data-kind={s.kind}>
+                <span className={`br-chip tone-${s.kind === 'overlap' ? 'warn' : 'bad'}`}>{STUCK_NAME[s.kind]}</span>
+                {key(s.repo, s.key)}
+                {row && <span className="br-yt-title">{row.title}</span>}
+                {name && <span className="cto-was">{name}</span>}
+                <span>{s.other_key && at >= 0 ? <>{s.text.slice(0, at)}{key(s.repo, s.other_key)}{s.text.slice(at + s.other_key.length)}</> : s.text}</span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {roster.stuck.length > SHOWN && <button type="button" className="br-link" style={{ justifySelf: 'start' }} onClick={onAll}>还有 {roster.stuck.length - SHOWN} 件：在交付清单里看全部</button>}
     </section>
   )
 }
@@ -869,8 +947,10 @@ function HowCell({ r, run }: { r: Requirement; run?: CtoRun }) {
   )
 }
 
-function Row({ r, at, run, ev, repoName, tree, fold, onOpen, onItem, onReplay, onGo }: {
+function Row({ r, at, run, ev, repoName, tree, fold, late, verifyLimit, onOpen, onItem, onReplay, onGo }: {
   r: Requirement; at: number; run?: CtoRun; ev: EvalView; repoName?: string; tree?: Tree; fold?: { open: boolean; onFold: () => void }
+  /** its red marks past a timeout (verify's is said by its count) */
+  late: Stuck[]; verifyLimit: number
   onOpen: () => void; onItem: () => void; onReplay: () => void; onGo: (v: View) => void
 }) {
   const f = r.family
@@ -891,6 +971,11 @@ function Row({ r, at, run, ev, repoName, tree, fold, onOpen, onItem, onReplay, o
           {repoName && <span className="cto-was">{repoName}</span>}
           {r.open_questions.map((q) => <span key={q} className="br-chip tone-wait" title="还没回答的问题">{q} 待答</span>)}
           {r.overlap.length > 0 && <span className="br-chip tone-warn" title="和这些需求要改同一处">和 {r.overlap.join('、')} 重叠</span>}
+          {late.filter((s) => s.kind !== 'verify_fails').map((s) => <span key={s.kind} className="br-chip tone-bad" data-testid="late-mark" title={s.text}>{STUCK_NAME[s.kind]}</span>)}
+          {r.verify_fails > 0 && (
+            <span className={`br-chip tone-${r.verify_fails >= verifyLimit ? 'bad' : 'warn'}`} data-testid="verify-fails"
+              title={`Lean 的 verify 上次通过以后连续没过 ${r.verify_fails} 次${r.verify_fails >= verifyLimit ? '：AI 该停下来问人了' : ''}`}>verify 失败 {r.verify_fails} 次</span>
+          )}
           {review && <span className="br-chip tone-warn" title={review.reasons.join('；')}>要复看</span>}
           {skipped && <span className="br-chip tone-idle" title={skipped.why}>评估跳过了它</span>}
         </div>
