@@ -47,7 +47,18 @@
      "suggest": "",
      "error": ""
     },
-    "remote": true
+    "remote": true,
+    "sync": {
+     "auto_push": true,
+     "push_why": "",
+     "push_cmd": "",
+     "fetch": {
+      "at": 1794146220,
+      "ok": true,
+      "text": "已经从远端取到最新。",
+      "raw": ""
+     }
+    }
    },
    {
     "id": "r2",
@@ -58,7 +69,8 @@
     "kit": null,
     "pending": null,
     "me": null,
-    "remote": false
+    "remote": false,
+    "sync": null
    },
    {
     "id": "r3",
@@ -85,7 +97,18 @@
      "suggest": "",
      "error": ""
     },
-    "remote": true
+    "remote": true,
+    "sync": {
+     "auto_push": true,
+     "push_why": "",
+     "push_cmd": "",
+     "fetch": {
+      "at": 1794145800,
+      "ok": false,
+      "text": "从远端取最新没成功：连不上远端：检查网络或 VPN，再点一次。",
+      "raw": "fatal: unable to access 'https://gitlab.example.com/shop/shop-order.git/': Could not resolve host: gitlab.example.com"
+     }
+    }
    },
    {
     "id": "r4",
@@ -112,7 +135,13 @@
      "suggest": "",
      "error": ""
     },
-    "remote": false
+    "remote": false,
+    "sync": {
+     "auto_push": null,
+     "push_why": "",
+     "push_cmd": "",
+     "fetch": null
+    }
    }
   ],
   "crew": {
@@ -168,7 +197,7 @@
    }
   },
   "counts": {
-   "todo": 6
+   "todo": 7
   }
  },
  "overview": {
@@ -230,7 +259,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-3-7f3a",
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r1",
@@ -296,7 +326,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r1",
@@ -359,7 +390,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r1",
@@ -418,7 +450,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-7-2b9f",
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r1",
@@ -471,7 +504,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r1",
@@ -528,7 +562,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-2-1c4e",
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r1",
@@ -581,7 +616,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r1",
@@ -640,7 +676,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r1",
@@ -695,7 +732,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-1-3d8e",
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r1",
@@ -824,7 +862,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r1",
@@ -909,7 +948,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r1",
@@ -1003,7 +1043,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r1",
@@ -1105,7 +1146,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r3",
@@ -1160,7 +1202,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r3",
@@ -1215,7 +1258,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r3",
@@ -1270,7 +1314,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r3",
@@ -1325,7 +1370,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r3",
@@ -1378,7 +1424,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r3",
@@ -1433,7 +1480,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r3",
@@ -1488,7 +1536,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r3",
@@ -1543,7 +1592,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r3",
@@ -1598,7 +1648,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r3",
@@ -1657,7 +1708,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    {
     "repo": "r4",
@@ -1712,7 +1764,8 @@
     "local_only": true,
     "session_url": "/chat?sid=brain-TOOL-1-5a2c",
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    }
   ],
   "overlaps": [
@@ -2350,7 +2403,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -2416,7 +2470,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -2479,7 +2534,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -2538,7 +2594,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -2591,7 +2648,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -2648,7 +2706,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -2701,7 +2760,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -2760,7 +2820,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -2815,7 +2876,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -2944,7 +3006,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -3029,7 +3092,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -3123,7 +3187,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -3225,7 +3290,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -3280,7 +3346,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -3335,7 +3402,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -3390,7 +3458,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -3445,7 +3514,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -3498,7 +3568,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -3553,7 +3624,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -3608,7 +3680,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -3663,7 +3736,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -3718,7 +3792,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -3777,7 +3852,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r4",
@@ -3832,7 +3908,8 @@
       "local_only": true,
       "session_url": "/chat?sid=brain-TOOL-1-5a2c",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [
@@ -4468,7 +4545,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -4534,7 +4612,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -4597,7 +4676,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -4656,7 +4736,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -4709,7 +4790,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -4766,7 +4848,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -4819,7 +4902,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -4878,7 +4962,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -4933,7 +5018,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -5062,7 +5148,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -5147,7 +5234,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -5241,7 +5329,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -5343,7 +5432,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [
@@ -6034,7 +6124,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -6089,7 +6180,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -6144,7 +6236,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -6199,7 +6292,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -6252,7 +6346,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -6307,7 +6402,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -6362,7 +6458,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -6417,7 +6514,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -6472,7 +6570,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -6531,7 +6630,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [],
@@ -7008,7 +7108,8 @@
       "local_only": true,
       "session_url": "/chat?sid=brain-TOOL-1-5a2c",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [],
@@ -7295,7 +7396,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -7356,7 +7458,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -7417,7 +7520,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -7476,7 +7580,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [],
@@ -7774,7 +7879,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -7840,7 +7946,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -7903,7 +8010,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -7962,7 +8070,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -8015,7 +8124,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -8072,7 +8182,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -8125,7 +8236,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -8184,7 +8296,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -8239,7 +8352,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -8368,7 +8482,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -8453,7 +8568,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -8547,7 +8663,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -8649,7 +8766,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -8704,7 +8822,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -8759,7 +8878,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -8814,7 +8934,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -8869,7 +8990,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -8922,7 +9044,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -8977,7 +9100,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -9032,7 +9156,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -9087,7 +9212,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -9142,7 +9268,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -9201,7 +9328,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r4",
@@ -9256,7 +9384,8 @@
       "local_only": true,
       "session_url": "/chat?sid=brain-TOOL-1-5a2c",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [
@@ -9511,7 +9640,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -9577,7 +9707,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -9640,7 +9771,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -9699,7 +9831,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -9752,7 +9885,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -9809,7 +9943,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -9862,7 +9997,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -9921,7 +10057,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -9976,7 +10113,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -10105,7 +10243,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -10190,7 +10329,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -10284,7 +10424,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -10386,7 +10527,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [
@@ -10810,7 +10952,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -10865,7 +11008,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -10920,7 +11064,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -10975,7 +11120,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -11028,7 +11174,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -11083,7 +11230,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -11138,7 +11286,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -11193,7 +11342,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -11248,7 +11398,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -11307,7 +11458,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [],
@@ -11535,7 +11687,8 @@
       "local_only": true,
       "session_url": "/chat?sid=brain-TOOL-1-5a2c",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [],
@@ -11767,7 +11920,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -11828,7 +11982,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -11889,7 +12044,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -11948,7 +12104,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [],
@@ -12183,7 +12340,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -12242,7 +12400,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -12295,7 +12454,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -12352,7 +12512,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -12405,7 +12566,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -12464,7 +12626,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -12519,7 +12682,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -12648,7 +12812,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -12733,7 +12898,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -12827,7 +12993,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -12929,7 +13096,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -12984,7 +13152,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -13039,7 +13208,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -13094,7 +13264,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -13149,7 +13320,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -13202,7 +13374,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -13257,7 +13430,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -13312,7 +13486,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -13367,7 +13542,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -13422,7 +13598,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r4",
@@ -13477,7 +13654,8 @@
       "local_only": true,
       "session_url": "/chat?sid=brain-TOOL-1-5a2c",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -13536,7 +13714,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -13597,7 +13776,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -13658,7 +13838,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -13717,7 +13898,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [
@@ -14353,7 +14535,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -14412,7 +14595,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -14465,7 +14649,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -14522,7 +14707,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -14575,7 +14761,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -14634,7 +14821,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -14689,7 +14877,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -14818,7 +15007,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -14903,7 +15093,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -14997,7 +15188,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -15099,7 +15291,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -15158,7 +15351,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -15219,7 +15413,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -15280,7 +15475,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [
@@ -15971,7 +16167,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -16026,7 +16223,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -16081,7 +16279,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -16136,7 +16335,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -16189,7 +16389,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -16244,7 +16445,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -16299,7 +16501,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -16354,7 +16557,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -16409,7 +16613,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -16468,7 +16673,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [],
@@ -16945,7 +17151,8 @@
       "local_only": true,
       "session_url": "/chat?sid=brain-TOOL-1-5a2c",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [],
@@ -17232,7 +17439,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -17293,7 +17501,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -17354,7 +17563,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -17413,7 +17623,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [],
@@ -17711,7 +17922,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -17770,7 +17982,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -17823,7 +18036,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -17880,7 +18094,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -17933,7 +18148,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -17992,7 +18208,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -18047,7 +18264,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -18176,7 +18394,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -18261,7 +18480,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -18355,7 +18575,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -18457,7 +18678,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -18512,7 +18734,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -18567,7 +18790,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -18622,7 +18846,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -18677,7 +18902,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -18730,7 +18956,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -18785,7 +19012,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -18840,7 +19068,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -18895,7 +19124,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -18950,7 +19180,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r4",
@@ -19005,7 +19236,8 @@
       "local_only": true,
       "session_url": "/chat?sid=brain-TOOL-1-5a2c",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -19064,7 +19296,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -19125,7 +19358,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -19186,7 +19420,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -19245,7 +19480,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [
@@ -19500,7 +19736,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-3-7f3a",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -19559,7 +19796,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-7-2b9f",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -19612,7 +19850,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -19669,7 +19908,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-2-1c4e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -19722,7 +19962,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -19781,7 +20022,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -19836,7 +20078,8 @@
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -19965,7 +20208,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -20050,7 +20294,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -20144,7 +20389,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r1",
@@ -20246,7 +20492,8 @@
        "source": "brainkit",
        "at": 1794146280
       },
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -20305,7 +20552,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -20366,7 +20614,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -20427,7 +20676,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [
@@ -20851,7 +21101,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -20906,7 +21157,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -20961,7 +21213,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -21016,7 +21269,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -21069,7 +21323,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -21124,7 +21379,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -21179,7 +21435,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -21234,7 +21491,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "r3",
@@ -21289,7 +21547,8 @@
       "local_only": false,
       "session_url": null,
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -21348,7 +21607,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [],
@@ -21576,7 +21836,8 @@
       "local_only": true,
       "session_url": "/chat?sid=brain-TOOL-1-5a2c",
       "family": null,
-      "home": null
+      "home": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [],
@@ -21808,7 +22069,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -21869,7 +22131,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -21930,7 +22193,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      },
      {
       "repo": "runner",
@@ -21989,7 +22253,8 @@
       "expected_paths": [],
       "local_only": false,
       "session_url": null,
-      "family": null
+      "family": null,
+      "progress_pushed_at": null
      }
     ],
     "overlaps": [],
@@ -22305,6 +22570,27 @@
       "title": "PAY-1 退款原因统计",
       "url": "/chat?sid=brain-PAY-1-3d8e"
      },
+     "since": 1794144000,
+     "review": true,
+     "path": null,
+     "todo": "在这个需求的工作目录里把远端的提交取下来合进来（细节里有命令），下一个关卡 app 会接着推；app 不会强推。",
+     "raw": "To gitlab.example.com:shop/shop-pay.git\n ! [rejected]        4c087c83b2b9d3f1e0a7c6b5d4e3f2a1b0c9d8e7 -> ai/alice/PAY-1-refund-stats (fetch first)\nerror: failed to push some refs to 'gitlab.example.com:shop/shop-pay.git'\nhint: Updates were rejected because the remote contains work that you do not\nhint: have locally. This is usually caused by another repository pushing to\nhint: the same ref.\n\n做法：git -C /Users/alice/workplace/brain-app/shop-pay/refund-stats pull --no-rebase origin ai/alice/PAY-1-refund-stats",
+     "kind": "push_failed",
+     "text": "推进度没成功：远端的这个分支上有这台机器没有的提交（你在别处推过，或者有人推到了你的分支上）"
+    },
+    {
+     "repo": "r1",
+     "key": "PAY-1",
+     "title": "退款原因统计",
+     "line": null,
+     "approval": null,
+     "mr_url": null,
+     "question": null,
+     "session": {
+      "slot": "brain-PAY-1-3d8e",
+      "title": "PAY-1 退款原因统计",
+      "url": "/chat?sid=brain-PAY-1-3d8e"
+     },
      "since": 1794133620.0,
      "review": true,
      "path": null,
@@ -22443,6 +22729,27 @@
      "raw": "MR 上要有标签 ai-handoff。再交接一次：在这个需求的分支上跑 brain handoff（它会提交交接、推送、打标签）",
      "kind": "handoff_unlabelled",
      "text": "推上去了，但 MR 上没有交接标签：什么也没交出去。看一眼 MR，再交接一次"
+    },
+    {
+     "repo": "r1",
+     "key": "PAY-1",
+     "title": "退款原因统计",
+     "line": null,
+     "approval": null,
+     "mr_url": null,
+     "question": null,
+     "session": {
+      "slot": "brain-PAY-1-3d8e",
+      "title": "PAY-1 退款原因统计",
+      "url": "/chat?sid=brain-PAY-1-3d8e"
+     },
+     "since": 1794144000,
+     "review": true,
+     "path": null,
+     "todo": "在这个需求的工作目录里把远端的提交取下来合进来（细节里有命令），下一个关卡 app 会接着推；app 不会强推。",
+     "raw": "To gitlab.example.com:shop/shop-pay.git\n ! [rejected]        4c087c83b2b9d3f1e0a7c6b5d4e3f2a1b0c9d8e7 -> ai/alice/PAY-1-refund-stats (fetch first)\nerror: failed to push some refs to 'gitlab.example.com:shop/shop-pay.git'\nhint: Updates were rejected because the remote contains work that you do not\nhint: have locally. This is usually caused by another repository pushing to\nhint: the same ref.\n\n做法：git -C /Users/alice/workplace/brain-app/shop-pay/refund-stats pull --no-rebase origin ai/alice/PAY-1-refund-stats",
+     "kind": "push_failed",
+     "text": "推进度没成功：远端的这个分支上有这台机器没有的提交（你在别处推过，或者有人推到了你的分支上）"
     },
     {
      "repo": "r1",
@@ -22612,6 +22919,27 @@
      "raw": "MR 上要有标签 ai-handoff。再交接一次：在这个需求的分支上跑 brain handoff（它会提交交接、推送、打标签）",
      "kind": "handoff_unlabelled",
      "text": "推上去了，但 MR 上没有交接标签：什么也没交出去。看一眼 MR，再交接一次"
+    },
+    {
+     "repo": "r1",
+     "key": "PAY-1",
+     "title": "退款原因统计",
+     "line": null,
+     "approval": null,
+     "mr_url": null,
+     "question": null,
+     "session": {
+      "slot": "brain-PAY-1-3d8e",
+      "title": "PAY-1 退款原因统计",
+      "url": "/chat?sid=brain-PAY-1-3d8e"
+     },
+     "since": 1794144000,
+     "review": true,
+     "path": null,
+     "todo": "在这个需求的工作目录里把远端的提交取下来合进来（细节里有命令），下一个关卡 app 会接着推；app 不会强推。",
+     "raw": "To gitlab.example.com:shop/shop-pay.git\n ! [rejected]        4c087c83b2b9d3f1e0a7c6b5d4e3f2a1b0c9d8e7 -> ai/alice/PAY-1-refund-stats (fetch first)\nerror: failed to push some refs to 'gitlab.example.com:shop/shop-pay.git'\nhint: Updates were rejected because the remote contains work that you do not\nhint: have locally. This is usually caused by another repository pushing to\nhint: the same ref.\n\n做法：git -C /Users/alice/workplace/brain-app/shop-pay/refund-stats pull --no-rebase origin ai/alice/PAY-1-refund-stats",
+     "kind": "push_failed",
+     "text": "推进度没成功：远端的这个分支上有这台机器没有的提交（你在别处推过，或者有人推到了你的分支上）"
     },
     {
      "repo": "r1",
@@ -23002,7 +23330,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-2-1c4e",
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/alice/PAY-2-refund-id",
    "base": "main",
@@ -24942,7 +25271,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-3-7f3a",
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/alice/PAY-3-refund-export",
    "base": "main",
@@ -26347,7 +26677,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/carol/PAY-4-merchant-split",
    "base": "main",
@@ -27482,7 +27813,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/alice/PAY-5-callback-retry",
    "base": "main",
@@ -28942,7 +29274,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-7-2b9f",
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/alice/PAY-7-refund-reason",
    "base": "main",
@@ -29960,7 +30293,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": null,
    "base": "main",
@@ -30357,7 +30691,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": null,
    "base": "main",
@@ -30760,7 +31095,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/alice/PAY-10-refund-confirm",
    "base": "main",
@@ -31715,7 +32051,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-1-3d8e",
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/alice/PAY-1-refund-stats",
    "base": "main",
@@ -32710,7 +33047,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/alice/PAY-11-big",
    "base": "main",
@@ -33779,7 +34117,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/alice/PAY-12-api",
    "base": "main",
@@ -34497,7 +34836,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/bob/PAY-13-web",
    "base": "main",
@@ -35073,7 +35413,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": null,
    "base": "main",
@@ -35465,7 +35806,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/erin/ORD-1-order-1",
    "base": "main",
@@ -36966,7 +37308,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/dave/ORD-2-order-2",
    "base": "main",
@@ -38568,7 +38911,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/erin/ORD-3-order-3",
    "base": "main",
@@ -40213,7 +40557,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/dave/ORD-4-order-4",
    "base": "main",
@@ -41736,7 +42081,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/erin/ORD-5-order-5",
    "base": "main",
@@ -42737,7 +43083,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/dave/ORD-6-order-6",
    "base": "main",
@@ -44431,7 +44778,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/erin/ORD-7-order-7",
    "base": "main",
@@ -45945,7 +46293,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/dave/ORD-8-order-8",
    "base": "main",
@@ -47634,7 +47983,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/erin/ORD-9-order-9",
    "base": "main",
@@ -49252,7 +49602,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/erin/ORD-10-wecom-push",
    "base": "main",
@@ -50318,7 +50669,8 @@
     "local_only": true,
     "session_url": "/chat?sid=brain-TOOL-1-5a2c",
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/alice/TOOL-1-price-import",
    "base": "main",
@@ -50956,7 +51308,8 @@
     "expected_paths": [],
     "local_only": false,
     "session_url": null,
-    "family": null
+    "family": null,
+    "progress_pushed_at": null
    },
    "branch": null,
    "base": "main",
@@ -51364,7 +51717,8 @@
     "expected_paths": [],
     "local_only": false,
     "session_url": null,
-    "family": null
+    "family": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/carol/PAY-4-merchant-split",
    "base": "main",
@@ -52507,7 +52861,8 @@
     "expected_paths": [],
     "local_only": false,
     "session_url": null,
-    "family": null
+    "family": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/alice/PAY-5-callback-retry",
    "base": "main",
@@ -53963,7 +54318,8 @@
     "expected_paths": [],
     "local_only": false,
     "session_url": null,
-    "family": null
+    "family": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/alice/PAY-2-refund-id",
    "base": "main",
@@ -55943,7 +56299,8 @@
     "expected_paths": [],
     "local_only": false,
     "session_url": null,
-    "family": null
+    "family": null,
+    "progress_pushed_at": null
    },
    "branch": "ai/erin/ORD-10-wecom-push",
    "base": "main",
@@ -57094,7 +57451,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-3-7f3a",
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "本机的工作目录",
    "run": {
@@ -57743,7 +58101,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-2-1c4e",
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -58367,7 +58726,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "分支 （没在这台机器上检出）",
    "run": {
@@ -58826,7 +59186,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "这台机器的工作区 /Users/alice/workplace/brain-app/PAY-5-callback-retry",
    "run": {
@@ -59343,7 +59704,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-7-2b9f",
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "这台机器的工作区 /Users/alice/workplace/brain-app/PAY-7-refund-reason",
    "run": {
@@ -59743,7 +60105,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "这台机器的工作区 None",
    "run": null,
@@ -59943,7 +60306,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "这台机器的工作区 None",
    "run": null,
@@ -60149,7 +60513,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "分支 （没在这台机器上检出）",
    "run": {
@@ -60531,7 +60896,8 @@
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-1-3d8e",
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "这台机器的工作区 /Users/alice/workplace/brain-app/shop-pay/refund-stats",
    "run": {
@@ -61004,7 +61370,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "这台机器的工作区 /Users/alice/workplace/brain-app/shop-pay/big",
    "run": {
@@ -61403,7 +61770,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "这台机器的工作区 None",
    "run": {
@@ -61711,7 +62079,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "这台机器的工作区 None",
    "run": {
@@ -62003,7 +62372,8 @@
      "source": "brainkit",
      "at": 1794146280
     },
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "这台机器的工作区 None",
    "run": null,
@@ -62205,7 +62575,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -62673,7 +63044,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -63157,7 +63529,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -63652,7 +64025,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -64118,7 +64492,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -64494,7 +64869,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -64994,7 +65370,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -65465,7 +65842,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -65975,7 +66353,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -66466,7 +66845,8 @@
     "local_only": false,
     "session_url": null,
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "分支 （没在这台机器上检出）",
    "run": {
@@ -66856,7 +67236,8 @@
     "local_only": true,
     "session_url": "/chat?sid=brain-TOOL-1-5a2c",
     "family": null,
-    "home": null
+    "home": null,
+    "progress_pushed_at": null
    },
    "where_label": "这台机器的工作区 /Users/alice/workplace/brain-app/shop-tools/price-import",
    "run": {
@@ -67139,7 +67520,8 @@
     "expected_paths": [],
     "local_only": false,
     "session_url": null,
-    "family": null
+    "family": null,
+    "progress_pushed_at": null
    },
    "where_label": "运行机工作区 （还没建）",
    "run": null,
@@ -67342,7 +67724,8 @@
     "expected_paths": [],
     "local_only": false,
     "session_url": null,
-    "family": null
+    "family": null,
+    "progress_pushed_at": null
    },
    "where_label": "运行机工作区 /home/runner/brain/runs/RUN-PAY-4-1",
    "run": {
@@ -67799,7 +68182,8 @@
     "expected_paths": [],
     "local_only": false,
     "session_url": null,
-    "family": null
+    "family": null,
+    "progress_pushed_at": null
    },
    "where_label": "运行机工作区 /home/runner/brain/runs/RUN-PAY-5-1",
    "run": {
@@ -68307,7 +68691,8 @@
     "expected_paths": [],
     "local_only": false,
     "session_url": null,
-    "family": null
+    "family": null,
+    "progress_pushed_at": null
    },
    "where_label": "运行机工作区 /home/runner/brain/runs/RUN-PAY-2-1",
    "run": {
@@ -68950,7 +69335,8 @@
     "expected_paths": [],
     "local_only": false,
     "session_url": null,
-    "family": null
+    "family": null,
+    "progress_pushed_at": null
    },
    "where_label": "运行机工作区 /home/runner/brain/runs/RUN-ORD-10-1",
    "run": {

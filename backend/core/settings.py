@@ -3,6 +3,9 @@
   brainkit    the brain-kit checkout to import (default: $BRAINKIT_HOME or a usual place, see bk.default_path)
   repos       project repos with brain-kit installed, shown on this machine (ids r1, r2 … in this order)
   work_root   where each requirement's worktree goes (KiroCrew lets agents work under ~/workplace or ~/workspace only)
+  fetch_every_min  every repo with a remote is fetched this often by itself, in minutes (0: only on 「从远端取最新」)
+  auto_push   {repo path: false} for a listed repo whose run branches are not pushed at Lean's checkpoints (on when
+              left out; progress.py)
   team        team mode (the team runner only): the bridge loop and runnerd run inside the app
     enabled          on / off
     bridge_config    brain-kit's bridge.json (projects, gitlab, identities, ledger, spool_dir, vouchers_dir …) with
@@ -26,13 +29,14 @@ from . import bk
 from .constants import WORK_ROOT
 
 MAX_REPOS = 20
+MAX_FETCH_MIN = 120
 TEAM_FIELD = {"bridge_config": "桥的配置文件", "runnerd_config": "运行机的配置文件"}     # 设置's labels
 AGAIN = "：刷新页面再存一次"
 
 
 def defaults() -> dict[str, Any]:
-    return {"brainkit": bk.default_path(), "repos": [], "work_root": str(WORK_ROOT),
-            "team": {"enabled": False, "bridge_config": "", "runnerd_config": "", "dev_same_user": False}}
+    return {"brainkit": bk.default_path(), "repos": [], "work_root": str(WORK_ROOT), "fetch_every_min": 5,
+            "auto_push": {}, "team": {"enabled": False, "bridge_config": "", "runnerd_config": "", "dev_same_user": False}}
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -100,6 +104,19 @@ def check(data: Any) -> tuple[dict[str, Any], list[str]]:
             probs.append("「每个需求的工作目录」要在 ~/workplace 或 ~/workspace 下面（KiroCrew 只让 AI 在那里干活）")
         elif p:
             out["work_root"] = p
+    if "fetch_every_min" in data:
+        n = data["fetch_every_min"]
+        if isinstance(n, bool) or not isinstance(n, int) or not 0 <= n <= MAX_FETCH_MIN:
+            probs.append("「每隔几分钟从远端取最新」要填 0 到 %d 的整数（填 0 就不自动取）" % MAX_FETCH_MIN)
+        else:
+            out["fetch_every_min"] = n
+    pushes = data.get("auto_push", {})
+    if not isinstance(pushes, dict) or not all(isinstance(k, str) and isinstance(v, bool) for k, v in pushes.items()):
+        probs.append("「过关卡时把进度推到远端」的格式不对" + AGAIN)
+    else:
+        listed = set(seen)
+        out["auto_push"] = {p: v for p, v in ((os.path.realpath(_path(k)), v) for k, v in pushes.items() if _path(k))
+                            if p in listed}
     team = data.get("team")
     if team is not None:
         if not isinstance(team, dict):

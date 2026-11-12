@@ -99,6 +99,7 @@ def base_row(repo_id: str, f: dict[str, Any], *, local_only: bool = False) -> di
         "local_only": bool(local_only),
         "session_url": None,     # its brain-dev session on this machine (KiroCrew's chat URL), filled in by the service
         "family": None,      # a 大需求 or one of its 小需求 (family.families), filled in by the service
+        "progress_pushed_at": None,     # when this machine last pushed its run branch at a checkpoint (progress.py)
     }
 
 

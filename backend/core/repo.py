@@ -9,7 +9,8 @@ In each place: runs/<KEY>/run.json, runs/<KEY>/park.json, aidlc-docs/<intent>/ai
 the Lean ledger aidlc-docs/audit/*.jsonl.
 
 ``scan()`` is cached per key on a signature (the refs' shas, the worktree files' mtimes), so a poll that finds
-nothing new costs two git calls. Network: never, except ``fetch()`` (the page's 「从远端取最新」).
+nothing new costs two git calls. Network: never, except ``fetch()`` (the page's 「从远端取最新」, and progress.py's
+loop every few minutes; progress.py also pushes the person's own run branch at Lean's checkpoints).
 """
 
 from __future__ import annotations

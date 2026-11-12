@@ -44,7 +44,18 @@
         "suggest": "",
         "error": ""
       },
-      "remote": true
+      "remote": true,
+      "sync": {
+        "auto_push": true,
+        "push_why": "",
+        "push_cmd": "",
+        "fetch": {
+          "at": 1794146220,
+          "ok": true,
+          "text": "已经从远端取到最新。",
+          "raw": ""
+        }
+      }
     },
     {
       "id": "r2",
@@ -55,7 +66,8 @@
       "kit": null,
       "pending": null,
       "me": null,
-      "remote": true
+      "remote": true,
+      "sync": null
     }
   ],
   "crew": {
@@ -111,6 +123,6 @@
     }
   },
   "counts": {
-    "todo": 9
+    "todo": 10
   }
 }

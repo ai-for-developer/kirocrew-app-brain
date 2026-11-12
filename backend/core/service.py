@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import (bk, brainview, crewcheck, deliveries, detail, family, identity, importer, inplace, installer, intake,
-               landing, lean_view, mrdesc_view, mrinfo)
+               landing, lean_view, mrdesc_view, mrinfo, progress)
 from . import problems
 from . import board as board_mod
 from . import settings as settings_mod
@@ -110,6 +110,7 @@ class Service:
         self._subj: dict[tuple, tuple] = {}     # the board's commit subjects and changed files, by the commits asked for
         self._me: str | None = None
         self.families = family.Families()      # brain-kit's listing per repo (大需求 and their 小需求), made in the background
+        self.sync = progress.Sync(self.data_dir, self.log)     # pushes at Lean's checkpoints, fetches every few minutes
         self._big_file = self.data_dir / "big.json"
         self._big = self._load_big()           # scopes opened here as 「大需求：先拆成小需求」
 
@@ -136,7 +137,8 @@ class Service:
         await self._start_team()
         self.started = True
         loop = asyncio.get_running_loop()
-        self._tasks = [loop.create_task(self._forever()), loop.create_task(self._slow())]
+        self._tasks = [loop.create_task(self._forever()), loop.create_task(self._slow()),
+                       loop.create_task(self._sync_forever())]
         if self.team is not None:
             self._tasks.append(loop.create_task(self._team_forever()))
         self.log.info("brain: started, brain-kit %s, %d repos, team %s", bk.info().get("version"), len(self.repos),
@@ -261,6 +263,41 @@ class Service:
                 raise
             except Exception:  # noqa: BLE001
                 self.log.exception("brain: background refresh failed")
+
+    async def _sync_forever(self) -> None:
+        """Teammates see each other's runs: the repos due for a fetch, then the checkpoints to push (progress.py)."""
+        while True:
+            try:
+                await asyncio.sleep(progress.TICK_S)
+                await asyncio.to_thread(self.sync_tick)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                self.log.exception("brain: pushing progress or fetching failed")
+
+    def sync_tick(self) -> None:
+        """One round of the loop (blocking): every run branch whose new checkpoint is due pushed
+        (progress.Sync.push_tick), then each repo with a remote fetched when due, in its own thread."""
+        repos = list(self.repos.items())
+        # pruned by the listed paths, not by self.repos: a settings save refills that dict while a tick may read it
+        self.sync.push_tick([(repo, self._push_ctx(repo)) for _, repo in repos], self.now(), set(self.settings["repos"]))
+        every = self.settings["fetch_every_min"] * 60
+        for rid, repo in repos:
+            if self.sync.fetches.take_turn(repo, every):
+                threading.Thread(target=self._fetch, args=(rid, repo, False), daemon=True, name="brain-fetch").start()
+
+    def _fetch(self, rid: str, repo: Repo, wait: bool) -> dict[str, Any] | None:
+        """repo.fetch() through progress.Fetches (one at a time per repo); None when one runs and *wait* is False."""
+        got = self.sync.fetches.fetch(repo, wait)
+        if got and got.get("ok") and bk.has("split"):
+            self.families.want(rid, repo.path, now=True)    # the 大需求 too: who claimed which small one
+        return got
+
+    def _push_ctx(self, repo: Repo) -> progress.Ctx:
+        return progress.Ctx(me=self.me_in(repo), prefix=str(repo.cfg["branch_prefix"]),
+                            default_branch=str(repo.cfg["default_branch"]), team_repo=not self._local_only(repo),
+                            auto_push=self.settings["auto_push"].get(repo.path, True),
+                            runner=bool(self.settings["team"].get("enabled")))
 
     def _pending_changed(self) -> bool:
         """A pending repo's checkout has kit.json now (pulled after the merge), or its state moved (merged, pushed, an
@@ -411,6 +448,7 @@ class Service:
         row["sessions"] = len(sess)
         row["updated_at"] = deliveries.updated_at(f, live)
         row["session_url"] = live["url"] if live else None
+        row["progress_pushed_at"] = self.sync.pushed_at(repo.path, f.get("branch"))
         job = self._desc_job(repo, f, row["credits"])
         row["summary"] = mrdesc_view.plain_line(self.desc.first(*job)) if job else None
         if mr:
@@ -679,11 +717,9 @@ class Service:
         return scrub_tree(await asyncio.to_thread(self._overview_sync, which, snap), self.scrub)
 
     async def refresh(self, rid: str) -> dict[str, Any]:
+        """「从远端取最新」: after the background fetch of this repo, when one runs."""
         repo = self._repo(rid)
-        got = await asyncio.to_thread(repo.fetch)
-        if got.get("ok") and bk.has("split"):
-            self.families.want(rid, repo.path, now=True)    # the 大需求 too: who claimed which small one
-        return got
+        return await asyncio.to_thread(self._fetch, rid, repo, True)
 
     # ---- 需求详情 ------------------------------------------------------------------------------------- #
 
@@ -1262,7 +1298,8 @@ class Service:
             entries.append({"row": row, "facts": f, "own": own, "has_session": bool(live),
                             "can_post": own and bool(base and project) and token,
                             "mr": self.mr.get(project, f.get("branch") or "") if base and project else None,
-                            "session": {"slot": live["slot"], "title": live["title"], "url": live["url"]} if live else None})
+                            "session": {"slot": live["slot"], "title": live["title"], "url": live["url"]} if live else None,
+                            "push_error": self.sync.push_error(repo.path, f)})
         out = todo_mod.build(entries, team=False, crew_rows=self.crew["rows"])
         if self._team_on():
             team_entries = [{"row": row, "decisions": decs, "mr_url": (row.get("mr") or {}).get("url")}
@@ -1309,8 +1346,10 @@ class Service:
         token = await asyncio.to_thread(self._token_present)
         loaded = {x["id"]: self.repos[x["id"]] for x in repos if x["ok"] and x["id"] in self.repos}
         mes = await asyncio.to_thread(lambda: {rid: self._me_view(r, token) for rid, r in loaded.items()})
+        syncs = await asyncio.to_thread(lambda: {rid: self.sync.repo_view(r, self._push_ctx(r)) for rid, r in loaded.items()})
         for x in repos:
             x["me"] = mes.get(x["id"])
+            x["sync"] = syncs.get(x["id"])
         return {"app": {"name": self.name, "version": VERSION, "team": self.team is not None},
                 "brainkit": {"path": info["path"], "ok": info["ok"], "version": info["version"], "error": info["error"],
                              "modules": info["modules"]},
@@ -1319,7 +1358,7 @@ class Service:
                 "team": self._team_status(), "counts": {"todo": len(todo["items"])}}
 
     def settings_view(self) -> dict[str, Any]:
-        return {**self.settings, "team": dict(self.settings["team"])}
+        return {**self.settings, "team": dict(self.settings["team"]), "auto_push": dict(self.settings["auto_push"])}
 
     async def save_settings(self, body: Any) -> dict[str, Any]:
         """Check, save atomically, reload. A key the body leaves out keeps its value (the 设置 form sends no repos: the
