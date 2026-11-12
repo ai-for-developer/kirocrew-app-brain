@@ -486,7 +486,7 @@ describe('交付总览', () => {
     expect(p.go).toHaveBeenCalledTimes(2) // the button does not open the board as well
     const overlaps = screen.getByTestId('overlaps')
     expect(overlaps).toHaveTextContent('这些需求要改同一处')
-    expect(overlaps).toHaveTextContent('PAY-3alice和PAY-4carol都要改src/refund/先商量好谁先合，免得冲突')
+    expect(overlaps).toHaveTextContent('PAY-3alice和PAY-4carol都要改src/refund先商量好谁先合，免得冲突')
     await user.click(within(overlaps).getByRole('button', { name: 'PAY-3' }))
     expect(p.go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-3', from: 'overview' })
   })

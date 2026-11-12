@@ -77,7 +77,7 @@ def test_the_default_brainkit_is_brainkit_home_then_the_one_bundled_in_the_app_t
     assert bk.default_path() == str(usual)
 
 
-def test_the_team_views_limits_have_defaults_and_bounds_and_are_saved(tmp_path, home):
+def test_the_team_views_limits_have_defaults_and_bounds_and_reach_the_overview(tmp_path, home):
     settings = mod("settings")
     assert {k: settings.defaults()[k] for k in settings.LIMITS} == {"wip_limit": 3, "wait_timeout_h": 4,
                                                                    "stale_after_h": 8, "verify_fail_limit": 3}
@@ -89,15 +89,18 @@ def test_the_team_views_limits_have_defaults_and_bounds_and_are_saved(tmp_path, 
     (tmp_path / "old.json").write_text(json.dumps({"repos": []}))      # a settings.json from before them
     assert {k: settings.load(tmp_path / "old.json")[k] for k in settings.LIMITS} == {
         "wip_limit": 3, "wait_timeout_h": 4, "stale_after_h": 8, "verify_fail_limit": 3}
-    svc = make_service(tmp_path, [])
+    repo = make_project(tmp_path)
+    svc = make_service(tmp_path, [repo])
 
     async def go():
         await svc.start()
         try:
-            return await svc.save_settings({"wip_limit": 2, "verify_fail_limit": 5})
+            saved = await svc.save_settings({"wip_limit": 2, "verify_fail_limit": 5})
+            return saved, await svc.overview("all")
         finally:
             await svc.stop()
 
-    saved = run(go())
+    saved, view = run(go())
     assert (saved["settings"]["wip_limit"], saved["settings"]["stale_after_h"]) == (2, 8)    # one left out keeps its value
     assert json.loads((tmp_path / "data" / "settings.json").read_text())["verify_fail_limit"] == 5
+    assert view["roster"]["limits"] == {"wip_limit": 2, "wait_timeout_h": 4, "stale_after_h": 8, "verify_fail_limit": 5}

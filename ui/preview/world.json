@@ -664,7 +664,7 @@
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
-     "web/refund/"
+     "web/refund-confirm/"
     ],
     "local_only": false,
     "session_url": null,
@@ -723,7 +723,7 @@
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
-     "src/refund/stats/"
+     "src/stats/refund/"
     ],
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-1-3d8e",
@@ -1819,7 +1819,7 @@
      "PAY-4"
     ],
     "paths": [
-     "src/refund/"
+     "src/refund"
     ]
    }
   ],
@@ -2384,6 +2384,76 @@
      "pending": 1
     }
    ]
+  },
+  "roster": {
+   "people": [
+    {
+     "owner": "alice",
+     "you": true,
+     "open": 8,
+     "limit": 3,
+     "keys": [
+      "PAY-3",
+      "PAY-5",
+      "PAY-7",
+      "PAY-8",
+      "PAY-10",
+      "PAY-1",
+      "PAY-11",
+      "TOOL-1"
+     ]
+    },
+    {
+     "owner": "carol",
+     "you": false,
+     "open": 2,
+     "limit": 3,
+     "keys": [
+      "PAY-4",
+      "PAY-6"
+     ]
+    },
+    {
+     "owner": "bob",
+     "you": false,
+     "open": 1,
+     "limit": 3,
+     "keys": [
+      "PAY-13"
+     ]
+    },
+    {
+     "owner": "erin",
+     "you": false,
+     "open": 1,
+     "limit": 3,
+     "keys": [
+      "ORD-10"
+     ]
+    }
+   ],
+   "stuck": [
+    {
+     "repo": "r1",
+     "key": "PAY-3",
+     "kind": "overlap",
+     "text": "和 PAY-4 都要改 src/refund：先商量好谁先合",
+     "since": null,
+     "other_key": "PAY-4"
+    }
+   ],
+   "counts": {
+    "overdue": 0,
+    "stale": 0,
+    "overlap": 1,
+    "verify_fails": 0
+   },
+   "limits": {
+    "wip_limit": 3,
+    "wait_timeout_h": 4,
+    "stale_after_h": 8,
+    "verify_fail_limit": 3
+   }
   }
  },
  "overviews": {
@@ -2881,7 +2951,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "web/refund/"
+       "web/refund-confirm/"
       ],
       "local_only": false,
       "session_url": null,
@@ -2940,7 +3010,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/stats/"
+       "src/stats/refund/"
       ],
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
@@ -4036,7 +4106,7 @@
        "PAY-4"
       ],
       "paths": [
-       "src/refund/"
+       "src/refund"
       ]
      }
     ],
@@ -4601,6 +4671,76 @@
        "pending": 1
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "alice",
+       "you": true,
+       "open": 8,
+       "limit": 3,
+       "keys": [
+        "PAY-3",
+        "PAY-5",
+        "PAY-7",
+        "PAY-8",
+        "PAY-10",
+        "PAY-1",
+        "PAY-11",
+        "TOOL-1"
+       ]
+      },
+      {
+       "owner": "carol",
+       "you": false,
+       "open": 2,
+       "limit": 3,
+       "keys": [
+        "PAY-4",
+        "PAY-6"
+       ]
+      },
+      {
+       "owner": "bob",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "PAY-13"
+       ]
+      },
+      {
+       "owner": "erin",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "ORD-10"
+       ]
+      }
+     ],
+     "stuck": [
+      {
+       "repo": "r1",
+       "key": "PAY-3",
+       "kind": "overlap",
+       "text": "和 PAY-4 都要改 src/refund：先商量好谁先合",
+       "since": null,
+       "other_key": "PAY-4"
+      }
+     ],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 1,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "r1": {
@@ -5096,7 +5236,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "web/refund/"
+       "web/refund-confirm/"
       ],
       "local_only": false,
       "session_url": null,
@@ -5155,7 +5295,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/stats/"
+       "src/stats/refund/"
       ],
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
@@ -5591,7 +5731,7 @@
        "PAY-4"
       ],
       "paths": [
-       "src/refund/"
+       "src/refund"
       ]
      }
     ],
@@ -5979,6 +6119,66 @@
        "pending": 0
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "alice",
+       "you": true,
+       "open": 7,
+       "limit": 3,
+       "keys": [
+        "PAY-3",
+        "PAY-5",
+        "PAY-7",
+        "PAY-8",
+        "PAY-10",
+        "PAY-1",
+        "PAY-11"
+       ]
+      },
+      {
+       "owner": "carol",
+       "you": false,
+       "open": 2,
+       "limit": 3,
+       "keys": [
+        "PAY-4",
+        "PAY-6"
+       ]
+      },
+      {
+       "owner": "bob",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "PAY-13"
+       ]
+      }
+     ],
+     "stuck": [
+      {
+       "repo": "r1",
+       "key": "PAY-3",
+       "kind": "overlap",
+       "text": "和 PAY-4 都要改 src/refund：先商量好谁先合",
+       "since": null,
+       "other_key": "PAY-4"
+      }
+     ],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 1,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "r2": {
@@ -6214,6 +6414,22 @@
        "pending": 0
       }
      ]
+    },
+    "roster": {
+     "people": [],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "r3": {
@@ -7237,6 +7453,32 @@
        "pending": 1
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "erin",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "ORD-10"
+       ]
+      }
+     ],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "r4": {
@@ -7524,6 +7766,32 @@
        "pending": 0
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "alice",
+       "you": true,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "TOOL-1"
+       ]
+      }
+     ],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "runner": {
@@ -8017,6 +8285,50 @@
        "pending": 0
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "alice",
+       "you": true,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "PAY-5"
+       ]
+      },
+      {
+       "owner": "carol",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "PAY-4"
+       ]
+      },
+      {
+       "owner": "erin",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "ORD-10"
+       ]
+      }
+     ],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    }
   },
@@ -8514,7 +8826,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "web/refund/"
+       "web/refund-confirm/"
       ],
       "local_only": false,
       "session_url": null,
@@ -8573,7 +8885,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/stats/"
+       "src/stats/refund/"
       ],
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
@@ -9669,7 +9981,7 @@
        "PAY-4"
       ],
       "paths": [
-       "src/refund/"
+       "src/refund"
       ]
      }
     ],
@@ -9853,6 +10165,76 @@
        "pending": 2
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "alice",
+       "you": true,
+       "open": 8,
+       "limit": 3,
+       "keys": [
+        "PAY-3",
+        "PAY-5",
+        "PAY-7",
+        "PAY-8",
+        "PAY-10",
+        "PAY-1",
+        "PAY-11",
+        "TOOL-1"
+       ]
+      },
+      {
+       "owner": "carol",
+       "you": false,
+       "open": 2,
+       "limit": 3,
+       "keys": [
+        "PAY-4",
+        "PAY-6"
+       ]
+      },
+      {
+       "owner": "bob",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "PAY-13"
+       ]
+      },
+      {
+       "owner": "erin",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "ORD-10"
+       ]
+      }
+     ],
+     "stuck": [
+      {
+       "repo": "r1",
+       "key": "PAY-3",
+       "kind": "overlap",
+       "text": "和 PAY-4 都要改 src/refund：先商量好谁先合",
+       "since": null,
+       "other_key": "PAY-4"
+      }
+     ],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 1,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "r1": {
@@ -10348,7 +10730,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "web/refund/"
+       "web/refund-confirm/"
       ],
       "local_only": false,
       "session_url": null,
@@ -10407,7 +10789,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/stats/"
+       "src/stats/refund/"
       ],
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
@@ -10843,7 +11225,7 @@
        "PAY-4"
       ],
       "paths": [
-       "src/refund/"
+       "src/refund"
       ]
      }
     ],
@@ -11019,6 +11401,66 @@
        "pending": 1
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "alice",
+       "you": true,
+       "open": 7,
+       "limit": 3,
+       "keys": [
+        "PAY-3",
+        "PAY-5",
+        "PAY-7",
+        "PAY-8",
+        "PAY-10",
+        "PAY-1",
+        "PAY-11"
+       ]
+      },
+      {
+       "owner": "carol",
+       "you": false,
+       "open": 2,
+       "limit": 3,
+       "keys": [
+        "PAY-4",
+        "PAY-6"
+       ]
+      },
+      {
+       "owner": "bob",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "PAY-13"
+       ]
+      }
+     ],
+     "stuck": [
+      {
+       "repo": "r1",
+       "key": "PAY-3",
+       "kind": "overlap",
+       "text": "和 PAY-4 都要改 src/refund：先商量好谁先合",
+       "since": null,
+       "other_key": "PAY-4"
+      }
+     ],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 1,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "r2": {
@@ -11199,6 +11641,22 @@
        "pending": 0
       }
      ]
+    },
+    "roster": {
+     "people": [],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "r3": {
@@ -11973,6 +12431,32 @@
        "pending": 1
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "erin",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "ORD-10"
+       ]
+      }
+     ],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "r4": {
@@ -12205,6 +12689,32 @@
        "pending": 0
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "alice",
+       "you": true,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "TOOL-1"
+       ]
+      }
+     ],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "runner": {
@@ -12633,6 +13143,50 @@
        "pending": 0
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "alice",
+       "you": true,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "PAY-5"
+       ]
+      },
+      {
+       "owner": "carol",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "PAY-4"
+       ]
+      },
+      {
+       "owner": "erin",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "ORD-10"
+       ]
+      }
+     ],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    }
   }
@@ -12690,9 +13244,7 @@
       "worktree": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
       "run_ids": [],
       "sessions": 1,
-      "overlap": [
-       "PAY-4"
-      ],
+      "overlap": [],
       "open_questions": [],
       "expected_paths": [
        "src/refund/",
@@ -12994,7 +13546,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "web/refund/"
+       "web/refund-confirm/"
       ],
       "local_only": false,
       "session_url": null,
@@ -13053,7 +13605,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/stats/"
+       "src/stats/refund/"
       ],
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
@@ -14334,17 +14886,7 @@
       "family": null
      }
     ],
-    "overlaps": [
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-4"
-      ],
-      "paths": [
-       "src/refund/"
-      ]
-     }
-    ],
+    "overlaps": [],
     "funnel": {
      "source": "evaluate",
      "total": 15,
@@ -14906,6 +15448,67 @@
        "pending": 1
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "alice",
+       "you": true,
+       "open": 8,
+       "limit": 3,
+       "keys": [
+        "PAY-3",
+        "PAY-7",
+        "PAY-8",
+        "PAY-10",
+        "PAY-1",
+        "PAY-11",
+        "TOOL-1",
+        "PAY-5"
+       ]
+      },
+      {
+       "owner": "carol",
+       "you": false,
+       "open": 2,
+       "limit": 3,
+       "keys": [
+        "PAY-6",
+        "PAY-4"
+       ]
+      },
+      {
+       "owner": "bob",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "PAY-13"
+       ]
+      },
+      {
+       "owner": "erin",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "ORD-10"
+       ]
+      }
+     ],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "r1": {
@@ -14959,9 +15562,7 @@
       "worktree": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
       "run_ids": [],
       "sessions": 1,
-      "overlap": [
-       "PAY-4"
-      ],
+      "overlap": [],
       "open_questions": [],
       "expected_paths": [
        "src/refund/",
@@ -15263,7 +15864,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "web/refund/"
+       "web/refund-confirm/"
       ],
       "local_only": false,
       "session_url": null,
@@ -15322,7 +15923,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/stats/"
+       "src/stats/refund/"
       ],
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
@@ -15943,17 +16544,7 @@
       "family": null
      }
     ],
-    "overlaps": [
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-4"
-      ],
-      "paths": [
-       "src/refund/"
-      ]
-     }
-    ],
+    "overlaps": [],
     "funnel": {
      "source": "evaluate",
      "total": 15,
@@ -16338,6 +16929,57 @@
        "pending": 0
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "alice",
+       "you": true,
+       "open": 7,
+       "limit": 3,
+       "keys": [
+        "PAY-3",
+        "PAY-7",
+        "PAY-8",
+        "PAY-10",
+        "PAY-1",
+        "PAY-11",
+        "PAY-5"
+       ]
+      },
+      {
+       "owner": "carol",
+       "you": false,
+       "open": 2,
+       "limit": 3,
+       "keys": [
+        "PAY-6",
+        "PAY-4"
+       ]
+      },
+      {
+       "owner": "bob",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "PAY-13"
+       ]
+      }
+     ],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "r2": {
@@ -16573,6 +17215,22 @@
        "pending": 0
       }
      ]
+    },
+    "roster": {
+     "people": [],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "r3": {
@@ -17596,6 +18254,32 @@
        "pending": 1
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "erin",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "ORD-10"
+       ]
+      }
+     ],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "r4": {
@@ -17883,6 +18567,32 @@
        "pending": 0
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "alice",
+       "you": true,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "TOOL-1"
+       ]
+      }
+     ],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "runner": {
@@ -18376,6 +19086,50 @@
        "pending": 0
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "alice",
+       "you": true,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "PAY-5"
+       ]
+      },
+      {
+       "owner": "carol",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "PAY-4"
+       ]
+      },
+      {
+       "owner": "erin",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "ORD-10"
+       ]
+      }
+     ],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    }
   },
@@ -18431,9 +19185,7 @@
       "worktree": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
       "run_ids": [],
       "sessions": 1,
-      "overlap": [
-       "PAY-4"
-      ],
+      "overlap": [],
       "open_questions": [],
       "expected_paths": [
        "src/refund/",
@@ -18735,7 +19487,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "web/refund/"
+       "web/refund-confirm/"
       ],
       "local_only": false,
       "session_url": null,
@@ -18794,7 +19546,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/stats/"
+       "src/stats/refund/"
       ],
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
@@ -20075,17 +20827,7 @@
       "family": null
      }
     ],
-    "overlaps": [
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-4"
-      ],
-      "paths": [
-       "src/refund/"
-      ]
-     }
-    ],
+    "overlaps": [],
     "funnel": {
      "source": "app",
      "total": 4,
@@ -20266,6 +21008,67 @@
        "pending": 2
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "alice",
+       "you": true,
+       "open": 8,
+       "limit": 3,
+       "keys": [
+        "PAY-3",
+        "PAY-7",
+        "PAY-8",
+        "PAY-10",
+        "PAY-1",
+        "PAY-11",
+        "TOOL-1",
+        "PAY-5"
+       ]
+      },
+      {
+       "owner": "carol",
+       "you": false,
+       "open": 2,
+       "limit": 3,
+       "keys": [
+        "PAY-6",
+        "PAY-4"
+       ]
+      },
+      {
+       "owner": "bob",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "PAY-13"
+       ]
+      },
+      {
+       "owner": "erin",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "ORD-10"
+       ]
+      }
+     ],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "r1": {
@@ -20319,9 +21122,7 @@
       "worktree": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
       "run_ids": [],
       "sessions": 1,
-      "overlap": [
-       "PAY-4"
-      ],
+      "overlap": [],
       "open_questions": [],
       "expected_paths": [
        "src/refund/",
@@ -20623,7 +21424,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "web/refund/"
+       "web/refund-confirm/"
       ],
       "local_only": false,
       "session_url": null,
@@ -20682,7 +21483,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/stats/"
+       "src/stats/refund/"
       ],
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-1-3d8e",
@@ -21303,17 +22104,7 @@
       "family": null
      }
     ],
-    "overlaps": [
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-4"
-      ],
-      "paths": [
-       "src/refund/"
-      ]
-     }
-    ],
+    "overlaps": [],
     "funnel": {
      "source": "app",
      "total": 4,
@@ -21486,6 +22277,57 @@
        "pending": 1
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "alice",
+       "you": true,
+       "open": 7,
+       "limit": 3,
+       "keys": [
+        "PAY-3",
+        "PAY-7",
+        "PAY-8",
+        "PAY-10",
+        "PAY-1",
+        "PAY-11",
+        "PAY-5"
+       ]
+      },
+      {
+       "owner": "carol",
+       "you": false,
+       "open": 2,
+       "limit": 3,
+       "keys": [
+        "PAY-6",
+        "PAY-4"
+       ]
+      },
+      {
+       "owner": "bob",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "PAY-13"
+       ]
+      }
+     ],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "r2": {
@@ -21666,6 +22508,22 @@
        "pending": 0
       }
      ]
+    },
+    "roster": {
+     "people": [],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "r3": {
@@ -22440,6 +23298,32 @@
        "pending": 1
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "erin",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "ORD-10"
+       ]
+      }
+     ],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "r4": {
@@ -22672,6 +23556,32 @@
        "pending": 0
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "alice",
+       "you": true,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "TOOL-1"
+       ]
+      }
+     ],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    },
    "runner": {
@@ -23100,6 +24010,50 @@
        "pending": 0
       }
      ]
+    },
+    "roster": {
+     "people": [
+      {
+       "owner": "alice",
+       "you": true,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "PAY-5"
+       ]
+      },
+      {
+       "owner": "carol",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "PAY-4"
+       ]
+      },
+      {
+       "owner": "erin",
+       "you": false,
+       "open": 1,
+       "limit": 3,
+       "keys": [
+        "ORD-10"
+       ]
+      }
+     ],
+     "stuck": [],
+     "counts": {
+      "overdue": 0,
+      "stale": 0,
+      "overlap": 0,
+      "verify_fails": 0
+     },
+     "limits": {
+      "wip_limit": 3,
+      "wait_timeout_h": 4,
+      "stale_after_h": 8,
+      "verify_fail_limit": 3
+     }
     }
    }
   }
@@ -33401,7 +34355,7 @@
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
-     "web/refund/"
+     "web/refund-confirm/"
     ],
     "local_only": false,
     "session_url": null,
@@ -34653,7 +35607,7 @@
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
-     "src/refund/stats/"
+     "src/stats/refund/"
     ],
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-1-3d8e",
@@ -70364,7 +71318,7 @@
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
-     "web/refund/"
+     "web/refund-confirm/"
     ],
     "local_only": false,
     "session_url": null,
@@ -70964,7 +71918,7 @@
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
-     "src/refund/stats/"
+     "src/stats/refund/"
     ],
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-1-3d8e",

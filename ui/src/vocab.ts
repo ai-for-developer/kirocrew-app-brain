@@ -4,7 +4,7 @@
  * missing gets added here, not spelled out in a view. Lean's stages are named by the backend's stage table
  * (backend/core/stages.py), which every Stage and LeanSummary carries.
  */
-import type { ChildState, LeanSummary, SyncResult, WaitDo, WaitWho, Waits } from './types'
+import type { ChildState, LeanSummary, StuckKind, SyncResult, WaitDo, WaitWho, Waits } from './types'
 
 /** Lean's approval kinds → what is approved */
 export const APPROVAL_NAME: Record<string, string> = {
@@ -146,3 +146,6 @@ export const TRACKER_NAME: Record<string, string> = { none: '不用 Jira', jira:
 
 /** what kind of gap a run found missing (brain-gap blocks, brainkit.intents GAP_KINDS) */
 export const GAP_KIND_NAME: Record<string, string> = { knowledge: '缺知识', test: '缺测试', other: '其他' }
+
+/** what is stuck (Roster.stuck's kind) → the word 全队卡点 counts it by and a card is marked with */
+export const STUCK_NAME: Record<StuckKind, string> = { overdue: '超时', stale: '很久没动', overlap: '目录撞车', verify_fails: 'verify 失败' }

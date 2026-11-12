@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import (bk, brainview, crewcheck, deliveries, detail, family, identity, importer, inplace, installer, intake,
-               landing, lean_view, mrdesc_view, mrinfo)
+               landing, lean_view, mrdesc_view, mrinfo, roster)
 from . import problems
 from . import board as board_mod
 from . import settings as settings_mod
@@ -585,7 +585,8 @@ class Service:
                                      names={rid: r.name for rid, r in self.repos.items()}, repos=len(scope),
                                      local_repos=sum(1 for r in scope if self._local_only(r)))
         return {"at": self.now(), "rows": rows, "overlaps": overlaps, "funnel": funnel, "eval": view, "cto": cto,
-                "counts": deliveries.counts(rows), "errors": errors}
+                "counts": deliveries.counts(rows), "errors": errors,
+                "roster": roster.roster(rows, me=self.me(), now=self.now(), settings=self.settings)}
 
     def _eval_view(self, which: str, snap: dict[str, Any],
                    parts: list[tuple[str, dict[str, Any]]] | None = None) -> tuple[dict[str, Any], dict | None]:

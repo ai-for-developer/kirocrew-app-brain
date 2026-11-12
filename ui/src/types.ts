@@ -767,6 +767,49 @@ export interface TeamLimits {
   verify_fail_limit: number
 }
 
+/** What 全队卡点 says is stuck (backend/core/roster.py STUCK_RULES, the worst kind first): overdue 超时 (a wait on a
+ * person for wait_timeout_h), stale 很久没动 (someone else's run on their own machine, stale_after_h without new
+ * progress), overlap 目录撞车 (two open requirements change one directory), verify_fails verify 失败 (verify_fail_limit
+ * failed runs in a row). */
+export type StuckKind = 'overdue' | 'stale' | 'overlap' | 'verify_fails'
+
+/** A stuck requirement and the line said after its key, e.g. 「等 carol 批准设计，已等 6 个工作小时（超时）」. */
+export interface Stuck {
+  repo: string
+  key: string
+  kind: StuckKind
+  /** one plain line; how long is said in working hours */
+  text: string
+  /** since when (epoch s): the wait's since, or the last progress pushed; null for an overlap and a verify streak */
+  since: number | null
+  /** an overlap's other requirement (the line names it); null for the other kinds */
+  other_key: string | null
+}
+
+/** One person with requirements open (按人看): open counts the states claimed to rejected (not 待认领), a row on the
+ * team runner under its owner. */
+export interface Person {
+  owner: string
+  /** this machine's person */
+  you: boolean
+  open: number
+  /** at it or over it, the person is marked red */
+  limit: number
+  /** the requirements open counts */
+  keys: string[]
+}
+
+/** 交付总览's team view: who has how much open, and what is stuck. It ranks nobody: people come you first, then by how
+ * much they have open. */
+export interface Roster {
+  people: Person[]
+  /** the worst kind first, the worst first within a kind */
+  stuck: Stuck[]
+  /** every kind, zeros too, in the order the stuck lines come */
+  counts: Record<StuckKind, number>
+  limits: TeamLimits
+}
+
 export interface EvalMetric {
   id: string
   label: string
@@ -847,6 +890,8 @@ export interface Overview {
   eval: EvalView
   /** the 交付总览's three numbers, their charts and the weekly deliveries (CtoNumbers, below) */
   cto: CtoNumbers
+  /** the team view: 全队卡点 and 需求流动's 按人看 */
+  roster: Roster
   /** state → count */
   counts: Partial<Record<ReqState, number>>
   /** a repo whose requirements could not be read: what happened and what to do, in words; raw: the original (细节) */

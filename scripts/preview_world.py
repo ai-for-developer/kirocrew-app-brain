@@ -39,6 +39,11 @@ import tempfile
 import time
 from pathlib import Path
 
+# the team works in this time zone: the world's working hours (roster.py) and its local dates are the same on any
+# machine that makes it
+os.environ["TZ"] = "Asia/Shanghai"
+time.tzset()
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import backend.routes  # noqa: E402,F401  (the private namespace the app's modules live in)
@@ -61,6 +66,8 @@ intake = importlib.import_module("_brainapp_backend.core.intake")
 crewcheck = importlib.import_module("_brainapp_backend.core.crewcheck")
 repo_mod = importlib.import_module("_brainapp_backend.core.repo")
 store = importlib.import_module("_brainapp_backend.core.store")
+roster_mod = importlib.import_module("_brainapp_backend.core.roster")
+settings_mod = importlib.import_module("_brainapp_backend.core.settings")
 BRAINKIT = Path(os.environ.get("BRAIN_TEST_BRAINKIT") or Path.home() / "warren_ws" / "brain-kit")
 
 FIX = ROOT / "ui" / "src" / "test" / "fixtures"
@@ -68,6 +75,7 @@ T0 = 1794146400          # 2026-11-08 14:00 UTC: the fixtures' `at`
 M, H, D = 60, 3600, 86400
 GL = "https://gitlab.example.com"
 ME = "alice"
+LIMITS = {k: v[0] for k, v in settings_mod.LIMITS.items()}      # 设置's defaults for the team view
 NO_KIT = "还没装 brain-kit：在「导入仓库」里检查它，装上就能用"     # service.reload_sync's words for a repo without it
 CFG = {"default_branch": "main", "handoff_label": "ai-handoff", "running_label": "ai-running",
        "rejected_label": "ai-handoff-rejected"}
@@ -1059,7 +1067,8 @@ def main() -> None:
     row = copy.deepcopy(rows["PAY-7"])
     row.update(key="PAY-10", title=p10.title, owner="alice", branch=p10.branch, intent=p10.intent, credits=12.6,
                updated_at=p10.hand_at, summary="退款审批前弹一次二次确认，金额超过一万再要一次。", run_ids=[], worktree=None,
-               mr={"iid": 52, "url": "%s/shop/shop-pay/-/merge_requests/52" % GL, "state": "opened"}, open_questions=[])
+               mr={"iid": 52, "url": "%s/shop/shop-pay/-/merge_requests/52" % GL, "state": "opened"}, open_questions=[],
+               expected_paths=["web/refund-confirm/"])
     extra_rows.append(classified(p10, row, mr={"state": "opened", "labels": [], "questions": []}, at_handover=True))
     board_later(p10, row, mr_desc=mrdesc(p10, row["summary"]), credits=12.6,
                 decisions=decisions(p10, [("requirements", "超过一万的退款要二次确认", "Q1 答\"按推荐\"（产品定的）", "P-1A2B", "person", [])]))
@@ -1084,7 +1093,7 @@ def main() -> None:
                    credits=9.8, turns=14, busy=False, awaiting=False, last_activity=p1_idle, opened_at=p1.start_at)
     row = copy.deepcopy(rows["PAY-3"])
     row.update(key="PAY-1", title=p1.title, owner="alice", branch=p1.branch, intent=p1.intent, credits=9.8, updated_at=p1_idle,
-               summary="按退款原因汇总金额和笔数，给运营看哪类退款最多（规模小）。", sessions=1, expected_paths=["src/refund/stats/"], overlap=[],
+               summary="按退款原因汇总金额和笔数，给运营看哪类退款最多（规模小）。", sessions=1, expected_paths=["src/stats/refund/"], overlap=[],
                worktree="/Users/alice/workplace/brain-app/shop-pay/refund-stats")
     extra_rows.append(classified(p1, row, slot=p1_sess))
     board_later(p1, row, sessions=[p1_sess], credits=9.8, mr_desc=mrdesc(p1, row["summary"]))
@@ -1209,15 +1218,21 @@ def main() -> None:
     runner_rows: list[dict] = []     # the team runner's rows (service._team_rows), made below with team mode's 待办
     taken: set[tuple[str, str]] = set()     # team mode: the repos' rows the runner's stand for (service._team_split)
 
+    def team_view(rows_: list[dict]) -> tuple[list[dict], dict]:
+        """service._overview_sync's overlaps (each row told its own) and its roster, over these rows."""
+        for r_ in rows_:
+            r_["overlap"] = []
+        return deliveries.overlaps(rows_), roster_mod.roster(rows_, me=ME, now=T0, settings=LIMITS)
+
     def overview_of(repo: str, evaluated: bool, team: bool = False) -> dict:
         """交付总览 for 全部 or one repo, as service._overview_sync makes it: its rows, its repos' numbers; without
         brainkit.evaluate the funnel is the app's own count and every merge is still 还没评. *team*: on the team
         runner's machine, where each requirement is listed once (a handed-over one as the runner's)."""
         ids = [x for x in ("r1", "r3", "r4") if repo in ("all", x)]
         o = copy.deepcopy(ov)
-        o["rows"] = [r_ for r_ in all_rows if r_["repo"] in ids and not (team and (r_["repo"], r_["key"]) in taken)] + (
-            [copy.deepcopy(r_) for r_ in runner_rows if repo in ("all", "runner", r_["home"])] if team else [])
-        o["overlaps"] = [x for x in ov["overlaps"] if any(r_["key"] == x["keys"][0] for r_ in o["rows"])]
+        o["rows"] = copy.deepcopy([r_ for r_ in all_rows if r_["repo"] in ids and not (team and (r_["repo"], r_["key"]) in taken)]
+                                  + ([r_ for r_ in runner_rows if repo in ("all", "runner", r_["home"])] if team else []))
+        o["overlaps"], o["roster"] = team_view(o["rows"])
         o["counts"] = deliveries.counts(o["rows"])
         o["errors"] = [e for e in ov["errors"] if repo in ("all", e["repo"])]
         mine = [p_ for p_ in parts if p_[0] in ids] if evaluated else []
@@ -1385,6 +1400,7 @@ def main() -> None:
     # the contract fixtures the UI tests read: the overview's numbers for its own rows, one live board and one merged
     ov["cto"] = deliveries.cto_numbers([("r1", parts[0][1])], list(rows.values()), available=True, now=T0, names=names, repos=1)
     ov["eval"]["ref"] = ov["cto"]["ref"]
+    ov["overlaps"], ov["roster"] = team_view(ov["rows"])
     (FIX / "overview.json").write_text(json.dumps(ov, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (FIX / "detail.json").write_text(json.dumps(det, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     # 待办's fixture: one item of every kind, each as todo.build made it in the world (team mode's runner questions, and

@@ -24,6 +24,7 @@ KIND_LABEL = {"clarify": "澄清", "design": "设计", "plan": "计划", "accept
               "other": "其他", "requirements": "需求批准"}
 ASK_WHO = {"product": "product", "builder": "builder", "owner": "you", "security": "people", "data": "people"}
 ASK_NAME = {"product": "产品", "builder": "开发的人", "you": "你", "people": "人"}
+APPROVE_REJECT = "approve / reject"     # how an approval or an acceptance is answered on the MR (mr_ask)
 WATCH_S = 14 * 86400    # brain-kit's 14 days after a merge (eval.md: a delivery counts once they are over)
 # who settled a decision (brainkit.evaluate's categories and labels; "unclassified": a Who outside the runner's
 # vocabulary, listed and never guessed)
@@ -256,7 +257,14 @@ def mr_ask(who: str, what: str, did: Any, *, approval: bool, owner: str | None =
     name = owner if who == "people" and owner else ASK_NAME.get(who, "人")
     verb = "验收" if what == "验收" else "回答"
     return spaced("等", name, "在 MR 上%s%s（%s）" % (verb, " " + str(did) if did else "",
-                                                 "approve / reject" if approval else what))
+                                                 APPROVE_REJECT if approval else what))
+
+
+def wait_head(text: str) -> str:
+    """What a ``waits`` sentence says the requirement waits on, without how to take the step: the part before its
+    first 「：」 (「等 carol 批准设计：读完再在会话里自己打那一行」 → 「等 carol 批准设计」), and without the answers an MR
+    question takes (「等产品在 MR 上验收 D-3（approve / reject）」 → 「等产品在 MR 上验收 D-3」)."""
+    return text.split("：", 1)[0].replace("（%s）" % APPROVE_REJECT, "")
 
 
 # the bridge holds the answer while park.json at the tip still waits (who it waits on, the line)
@@ -445,8 +453,9 @@ def runner_takes(f: dict[str, Any] | None, row: dict[str, Any] | None, runner_ro
     return not (runner_row["state"] in ended and row["state"] in ended)
 
 
-def overlaps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Open requirements whose expected paths overlap (same path, or one inside the other), as the bridge warns."""
+def overlap_pairs(rows: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any], list[str]]]:
+    """(row, row, the paths they share) for each two open requirements of one repo whose expected paths overlap (the
+    same path, or one inside the other), as the bridge warns; each pair once, in the rows' order."""
     live = [r for r in rows if r["state"] in OPEN_STATES and r["expected_paths"]]
     out = []
     for i, a in enumerate(live):
@@ -457,9 +466,17 @@ def overlaps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             theirs = [p.rstrip("/") for p in b["expected_paths"] if p]
             both = sorted({x for x in mine for t in theirs if x == t or x.startswith(t + "/") or t.startswith(x + "/")})
             if both:
-                out.append({"keys": [a["key"], b["key"]], "paths": both[:10]})
-                a["overlap"].append(b["key"])
-                b["overlap"].append(a["key"])
+                out.append((a, b, both))
+    return out
+
+
+def overlaps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The overlapping pairs as 交付总览 lists them, each row told the keys it shares a path with (its ``overlap``)."""
+    out = []
+    for a, b, both in overlap_pairs(rows):
+        out.append({"keys": [a["key"], b["key"]], "paths": both[:10]})
+        a["overlap"].append(b["key"])
+        b["overlap"].append(a["key"])
     return out
 
 
