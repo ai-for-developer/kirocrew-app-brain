@@ -127,17 +127,23 @@ def _merged(put: Any, f: dict[str, Any], *, now: float | None, reflected: bool, 
     return put("merged", "nobody", "none", text, since=at)
 
 
+def owns(me: str | None, owner: str | None) -> bool:
+    """The requirement is the reading person's: nobody has it, or it is theirs. When the app cannot tell who the person
+    is (*me* None), someone's requirement is not theirs."""
+    return not owner or owner == me
+
+
 def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | None, slot: dict[str, Any] | None,
              cfg: dict[str, Any], bot_commits: int = 0, at_handover: bool = False, me: str | None = None,
              reflected: bool = False, now: float | None = None) -> None:
     """Fill in state, state_label and waits (person mode). *at_handover*: the branch tip is the hand-over commit
     `brain handoff` made (its parent is run.json's handoff.local_head). *me*: who this machine's person is (None: not
-    known, every requirement counts as theirs); someone else's requirement waits for them, not for "you". *reflected*:
-    its Brain proposals were written back already (a brain/<KEY>-reflect-<n> branch)."""
+    known, so only a requirement nobody has is theirs: owns); someone else's requirement waits for them, not for "you".
+    *reflected*: its Brain proposals were written back already (a brain/<KEY>-reflect-<n> branch)."""
     run, park, claim = f.get("run"), f.get("park"), f.get("claim") or {}
     pending = [a for a in f.get("approvals") or [] if a["state"] == "pending" and a.get("line")]
     owner = f.get("owner") or claim.get("owner")
-    mine = not me or not owner or me == owner
+    mine = owns(me, owner)
     you = "you" if mine else "people"
     them = "你" if mine else str(owner)
 

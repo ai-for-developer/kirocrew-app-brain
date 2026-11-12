@@ -500,7 +500,7 @@ def classify(row: dict[str, Any], fam: dict[str, Any] | None, f: dict[str, Any],
     (已合进大需求), one claimed by someone else, one waiting for its dependencies, one whose MR waits for the big one's
     owner; a big one waiting for its small ones, or ready to be released. What the row says otherwise
     (deliveries.classify: an approval line, a question) stays."""
-    from .deliveries import STATE_LABEL, waits
+    from .deliveries import STATE_LABEL, owns, waits
     from . import lean_view
 
     def put(state: str, who: str, do: str, text: str, **kw: Any) -> None:
@@ -540,7 +540,7 @@ def classify(row: dict[str, Any], fam: dict[str, Any] | None, f: dict[str, Any],
     if fam["role"] == "parent" and row["state"] == "local" and not row["waits"].get("line"):
         pr = fam.get("progress") or {}
         if fam.get("family_state") == "ready_to_release":
-            mine = not me or not owner or owner == me
+            mine = owns(me, owner)
             w = row.get("waits") or {}
             return put("local", "you" if mine else "people", "reply" if mine else "none",
                        "小需求都合进来了：%s评审，再批发布（或者交给运行机）" % ("" if mine else "等负责人"),
