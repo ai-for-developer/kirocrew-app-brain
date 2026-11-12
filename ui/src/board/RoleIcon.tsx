@@ -399,12 +399,97 @@ export const BRAIN_ICONS = {
 } satisfies Record<string, ReactNode>
 export type BrainIcon = keyof typeof BRAIN_ICONS
 
+/** The stages of AI-DLC Lean the stage graph draws (backend/core/stages.py's icon column), where no drawing above fits. */
+export const STAGE_ICONS = {
+  // 代码生成：尖括号和一道斜线
+  code: (
+    <>
+      <path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5" />
+      <path d="M13.5 5.5l-3 13" />
+    </>
+  ),
+  // 用户故事：一张对话卡
+  stories: (
+    <>
+      <path d="M4.5 6.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H11l-4 3.5v-3.5H6.5a2 2 0 0 1-2-2z" />
+      <path d="M8.5 9h7M8.5 12h4.5" />
+    </>
+  ),
+  // 意图捕获：灯泡
+  idea: (
+    <>
+      <path d="M9.5 18h5M10.5 21h3" />
+      <path d="M12 3.5a5.5 5.5 0 0 0-3.2 10c.7.5 1.2 1.4 1.2 2.3v.2h4v-.2c0-.9.5-1.8 1.2-2.3A5.5 5.5 0 0 0 12 3.5z" />
+    </>
+  ),
+  // 调研、逆向工程：放大镜下的几行字
+  search: (
+    <>
+      <circle cx="10.5" cy="10.5" r="6" />
+      <path d="M15 15l5 5" />
+      <path d="M8 9h5M8 12h3.5" />
+    </>
+  ),
+  // 团队组建：两个人
+  team: (
+    <>
+      <circle cx="9" cy="8.5" r="3" />
+      <path d="M3.5 19c.4-3.2 2.6-5 5.5-5s5.1 1.8 5.5 5" />
+      <circle cx="16.5" cy="9" r="2.5" />
+      <path d="M16 14c2.5 0 4.3 1.6 4.6 4.5" />
+    </>
+  ),
+  // 流水线：三段连起来的管道
+  pipeline: (
+    <>
+      <rect x="2.5" y="9" width="5" height="6" rx="1.2" />
+      <rect x="9.5" y="9" width="5" height="6" rx="1.2" />
+      <rect x="16.5" y="9" width="5" height="6" rx="1.2" />
+      <path d="M7.5 12h2M14.5 12h2" />
+    </>
+  ),
+  // 可观测性：眼睛
+  eye: (
+    <>
+      <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+      <circle cx="12" cy="12" r="2.8" />
+    </>
+  ),
+  // 故障响应：警铃
+  alarm: (
+    <>
+      <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z" />
+      <path d="M10 20.5h4" />
+    </>
+  ),
+  // 性能验证：仪表
+  gauge: (
+    <>
+      <path d="M4 16a8 8 0 1 1 16 0" />
+      <path d="M12 16l4-5M4 16h2M18 16h2" />
+    </>
+  ),
+  // 反馈优化：首尾相接的箭头
+  loop: (
+    <>
+      <path d="M19.5 12a7.5 7.5 0 0 1-12.9 5.2M4.5 12a7.5 7.5 0 0 1 12.9-5.2" />
+      <path d="M17.5 3.5v3.3h-3.3M6.5 20.5v-3.3h3.3" />
+    </>
+  ),
+} satisfies Record<string, ReactNode>
+
+/** Stage icons that are drawings above under another name. */
+const STAGE_ALIAS: Record<string, string> = {
+  units: 'catalog', review: 'reviewer', scale: 'feasibility', sketch: 'designer', handoff: 'handover', shield: 'security', server: 'backend', rocket: 'deploy',
+}
+
 const FALLBACK = <circle cx="12" cy="12" r="7.5" />
 
 /** A role's drawing by its key; numbered team members (frontend2, backend1) share their kind's drawing. */
 export function rolePaths(role: string | null | undefined): ReactNode {
-  return (role && (PATHS[role] || PATHS[role.replace(/\d+$/, '')] || (ACTION_ICONS as Record<string, ReactNode>)[role] ||
-    (BRAIN_ICONS as Record<string, ReactNode>)[role])) || FALLBACK
+  const key = role ? STAGE_ALIAS[role] ?? role : role
+  return (key && (PATHS[key] || PATHS[key.replace(/\d+$/, '')] || (ACTION_ICONS as Record<string, ReactNode>)[key] ||
+    (BRAIN_ICONS as Record<string, ReactNode>)[key] || (STAGE_ICONS as Record<string, ReactNode>)[key])) || FALLBACK
 }
 
 export function RoleIcon({ role, size = 18, className = '' }: { role: string | null | undefined; size?: number; className?: string }) {

@@ -8,7 +8,7 @@ import type { ChildState, LeanSummary, SyncResult, WaitDo, WaitWho, Waits } from
 
 /** Lean's approval kinds → what is approved */
 export const APPROVAL_NAME: Record<string, string> = {
-  REQUIREMENTS: '需求审批', DESIGN: '设计审批', INCEPTION: '需求和设计审批', PLAN: '代码生成计划审批', RELEASE: '发布审批',
+  IDEATION: '构思审批', REQUIREMENTS: '需求审批', DESIGN: '设计审批', INCEPTION: '需求和设计审批', PLAN: '代码生成计划审批', RELEASE: '发布审批',
 }
 export const approvalName = (kind: string | null | undefined): string => (kind ? APPROVAL_NAME[kind] ?? kind : '')
 

@@ -1,6 +1,6 @@
 /**
  * What the 需求看板 adds to the sample team board's stylesheet (styles.ts BOARD_CSS stays the sample's): the owner in
- * the orchestrator's slot, a refused node's ✕, the hand-over and merge dots on the rail, the check cells that wait for a
+ * the orchestrator's slot, a refused node's ✕, the merge dot on the rail, the check cells that wait for a
  * person, the spans and marks of a requirement's lanes, the conveyor's hand-over / runner / merge chips, the counters'
  * extras, 验收's step, the introduction's five phases. Only the board's tones and the host's variables.
  */
@@ -17,12 +17,10 @@ export const BOARD_EXTRA_CSS = `
 .br-board .kt-node.is-awaiting_approval .kt-node-task, .br-board .kt-node.is-failed .kt-node-task { fill: var(--text); }
 .br-board .kt-node.is-failed .kt-node-task { fill: #fff; fill-opacity: .85; }
 .br-board .kt-node.is-merged .kt-node-task { fill: #fff; fill-opacity: .8; }
-.br-board .kt-rail-dot.is-handover circle { fill: var(--kt-handoff); }
 .br-board .kt-rail-dot.is-merge circle { fill: var(--kt-ok-solid); stroke: var(--kt-ok); stroke-width: 2.5; }
 .br-board .kt-rail-dot .kt-role-icon { color: #fff; }
 .br-board .kt-rail-n { fill: var(--muted); font-size: 11px; font-weight: 800; }
 .br-board .kt-station.is-part .kt-station-bg { stroke: color-mix(in srgb, var(--kt-approve) 60%, transparent); }
-.br-board .kt-gate-chip text { fill: #fff; }
 
 /* the check wall: a cell that waits for a person is magenta, like everything that waits for one */
 .br-board .kt-cell.is-wait { --kt-c: var(--kt-approve); }
@@ -125,8 +123,9 @@ export const BOARD_EXTRA_CSS = `
 .br-board .kt-track-span.is-wait.is-other.is-live { background: var(--kt-info); box-shadow: none; }
 .br-board .kt-track-span.is-wait.is-other.is-live::after { display: none; }
 
-/* the graph keeps its text readable: an app too narrow for its six columns gets one column per phase (layout.ts
-   graphShape); narrower still, it scrolls the graph sideways and the hidden part's edge fades and says so */
+/* the graph keeps its text readable: an app too narrow for the full layout gets the compact one, each band in one
+   column (layout.ts stageShape); narrower still, it scrolls the graph sideways and the hidden part's edge fades and
+   says so */
 .br-graph-view { position: relative; }
 /* its smallest words are 12 px too, so at that scale nothing on the graph is under 10 px (BOARD-31) */
 .br-board .kt-graph-svg :is(.kt-orch-sub, .kt-rail-n, .kt-phase-stages, .kt-roster-title, .kt-roster-item text) { font-size: 12px; }

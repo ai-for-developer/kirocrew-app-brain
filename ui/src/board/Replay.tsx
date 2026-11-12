@@ -39,7 +39,7 @@ export interface ReplayHandle {
   setSpeed: (s: number) => void
 }
 
-export function useReplay(board: ReqBoard | null, onDiff: (d: BoardDiff) => void): ReplayHandle {
+export function useReplay(board: ReqBoard | null, onDiff: (d: BoardDiff, b: ReqBoard) => void): ReplayHandle {
   const [st, setSt] = useState({ on: false, p: 0, speed: 1, playing: false })
   const frozen = useRef<ReqBoard | null>(null)
   const prev = useRef<ReqBoard | null>(null)
@@ -94,7 +94,7 @@ export function useReplay(board: ReqBoard | null, onDiff: (d: BoardDiff) => void
     const d = diffBoards(prev.current, shown, { at: t, resync: quiet.current, lateS: late })
     quiet.current = false
     prev.current = shown
-    onDiff(d)
+    onDiff(d, shown)
   }, [shown]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const clock = useMemo(() => (shown ? { at: t, receivedAt: Number.POSITIVE_INFINITY } : null), [shown, t])

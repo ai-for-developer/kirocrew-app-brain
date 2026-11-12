@@ -38,8 +38,6 @@ export function actorMeta(status: string): StatusMeta {
   return ACTOR_META[status as ActorStatus] ?? { label: String(status), tone: 'idle', icon: '•', hint: '' }
 }
 
-/** Nothing more will happen to this actor for this requirement. */
-export const isFinal = (s: ActorStatus) => s === 'merged' || s === 'skipped'
 /** At work right now (these glow; stalled and awaiting get their own loud look). */
 export const WORKING: ReadonlySet<ActorStatus> = new Set<ActorStatus>(['running', 'fixing'])
 export const LIVE: ReadonlySet<ActorStatus> = new Set<ActorStatus>(['running', 'fixing', 'stalled', 'awaiting_approval'])
@@ -136,12 +134,17 @@ export function textWidth(s: string): number {
   return w
 }
 
+/** Chinese characters, fullwidth forms and CJK punctuation: one em wide. */
+const isWide = (ch: string) => {
+  const c = ch.codePointAt(0) ?? 0
+  return (c >= 0x2e80 && c <= 0x9fff) || (c >= 0xff00 && c <= 0xffef) || (c >= 0x3000 && c <= 0x303f)
+}
+
 function charWidth(ch: string): number {
   const c = ch.codePointAt(0) ?? 0
   if (c === 0x20) return 0.3
   if (c > 0x1f000) return 1.2
-  if ((c >= 0x2e80 && c <= 0x9fff) || (c >= 0xff00 && c <= 0xffef) || (c >= 0x3000 && c <= 0x303f)) return 1
-  return 0.58
+  return isWide(ch) ? 1 : 0.58
 }
 
 /** Cut *s* to about *maxEm* em with an ellipsis (SVG text does not ellipsize by itself). */
@@ -156,6 +159,67 @@ export function clip(s: string, maxEm: number): string {
     w += cw
   }
   return `${out.trimEnd()}…`
+}
+
+/** Chinese line breaking: a line does not start with these, nor end with an opening bracket. */
+const NO_START = new Set([...'、，。：；！？）」』…'])
+const NO_END = new Set([...'（「『'])
+
+/** How much better a line ending is than a break between two Chinese characters: after a hyphen or at a space, after
+ * 、，；：, before a ` · `. */
+const BREAK_BONUS = [0, 0.15, 0.35, 0.6]
+
+/** *s* in lines of at most *maxEm* em, at most *maxLines* of them (the last clipped when they are not enough), for SVG
+ * text, which does not wrap. A line ends before a ` · `, after 、，；：, at a space or after a hyphen, else between two
+ * Chinese characters, whichever leaves it fullest for its kind; then the lines are evened out to about one length. */
+export function wrap(s: string, maxEm: number, maxLines: number): string[] {
+  const first = fill(s, maxEm, maxLines)
+  if (first.lines.length < 2 || first.clipped) return first.lines
+  let [lo, hi] = [maxEm / first.lines.length, maxEm]
+  while (hi - lo > 0.2) {
+    const mid = (lo + hi) / 2
+    const t = fill(s, mid, first.lines.length)
+    if (t.clipped) lo = mid
+    else hi = mid
+  }
+  return fill(s, hi, first.lines.length).lines
+}
+
+/** The lines of *s* at *maxEm*, each ended at its best break; *clipped*: *maxLines* were not enough. */
+function fill(s: string, maxEm: number, maxLines: number): { lines: string[]; clipped: boolean } {
+  const ch = [...s]
+  const w = (a: number, b: number) => textWidth(ch.slice(a, b).join(''))
+  const lines: string[] = []
+  let at = 0
+  while (at < ch.length) {
+    const rest = ch.slice(at).join('').trim()
+    if (lines.length === maxLines - 1 || w(at, ch.length) <= maxEm) return { lines: [...lines, clip(rest, maxEm)], clipped: w(at, ch.length) > maxEm }
+    // [where this line ends, where the next starts, what kind of break]
+    const cuts: [number, number, number][] = []
+    for (let i = at + 1; i < ch.length; i++) {
+      const [a, b] = [ch[i - 1], ch[i]]
+      if (b === ' ' && ch[i + 1] === '·' && ch[i + 2] === ' ') cuts.push([i, i + 3, 3])
+      else if ('、，；：'.includes(a)) cuts.push([i, i, 2])
+      else if (b === ' ') cuts.push([i, i + 1, 1])
+      else if (a === '-' || a === '/') cuts.push([i, i, 1])
+      else if ((isWide(a) || isWide(b)) && a !== ' ' && !NO_START.has(b) && !NO_END.has(a)) cuts.push([i, i, 0])
+    }
+    const fit = cuts.filter(([end]) => w(at, end) <= maxEm)
+    if (!fit.length) return { lines: [...lines, clip(rest, maxEm)], clipped: true }
+    const score = ([end, , kind]: [number, number, number]) => w(at, end) / maxEm + BREAK_BONUS[kind]
+    const [end, next] = fit.reduce((best, c) => (score(c) > score(best) ? c : best))
+    lines.push(ch.slice(at, end).join('').trim())
+    at = next
+  }
+  return { lines, clipped: false }
+}
+
+/** *s* in at most *maxEm* em on one line: whole when it fits, else without its closing （…）, else what comes before its
+ * first ：, else *or* (the same said shorter elsewhere on the page), else clipped. */
+export function brief(s: string, maxEm: number, or: string | null = null): string {
+  const bare = s.replace(/（[^（）]*）$/, '').trim()
+  const fit = [s, bare, bare.split('：')[0], or].find((x): x is string => !!x && textWidth(x) <= maxEm)
+  return fit ?? clip(bare, maxEm)
 }
 
 /** The actor an event is about, for filtering: either end. */

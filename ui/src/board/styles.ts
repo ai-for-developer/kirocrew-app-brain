@@ -499,6 +499,74 @@ ${legendSwatches}
 .kt-legend-sep { width: 1px; height: 14px; background: var(--border); }
 .kt-legend-note { margin-left: auto; font-style: italic; }
 
+/* ---------- the stage graph (StageGraph.tsx); every word on it 12 px or more, as BOARD-31 asks ---------- */
+.kt-node-tag { font-size: 12px; font-weight: 650; fill-opacity: .72; font-family: var(--mono, ui-monospace, monospace); }
+.kt-node-task.is-wait { fill: var(--kt-approve); fill-opacity: 1; font-family: var(--mono, ui-monospace, monospace); font-weight: 650; }
+.kt-node-task.is-wait.is-other { fill: var(--kt-info); }
+.kt-node-badge.is-okline rect { fill: var(--card); stroke: var(--kt-ok); stroke-width: 1.5; }
+.kt-node-badge.is-okline text { fill: var(--kt-ok); }
+/* a gate's chips: a class of their own, since .kt-gate-chip text is white whatever the chip's own colour */
+.kt-gate-pill { cursor: pointer; outline: none; }
+.kt-gate-pill.is-static { cursor: default; }
+.kt-gate-pill rect { fill: var(--card); stroke-width: 1.5; }
+.kt-gate-pill text { font-size: 12.5px; font-weight: 800; }
+.kt-gate-pill.is-mine rect { fill: var(--kt-approve); stroke: color-mix(in srgb, #fff 40%, transparent); stroke-width: 1; }
+.kt-gate-pill.is-mine text { fill: var(--kt-on); }
+.kt-gate-pill.is-other rect { fill: color-mix(in srgb, var(--kt-info) 10%, var(--card)); stroke: var(--kt-info); }
+.kt-gate-pill.is-other text { fill: var(--kt-info); }
+.kt-gate-pill.is-back rect { stroke: var(--kt-fix); }
+.kt-gate-pill.is-back text { fill: var(--kt-fix); }
+.kt-gate-pill.is-queued rect { stroke: var(--kt-queue); stroke-dasharray: 4 3; }
+.kt-gate-pill.is-queued text { fill: var(--kt-queue); }
+.kt-gate-pill:not(.is-static):is(:hover, :focus-visible) rect { filter: brightness(1.12); stroke-width: 2.2; }
+/* the list under the owner: this time's runs and hand-overs */
+.kt-run-row rect { fill: color-mix(in srgb, var(--muted) 8%, transparent); stroke: color-mix(in srgb, var(--muted) 30%, transparent); }
+.kt-run-row circle { fill: color-mix(in srgb, var(--muted) 55%, transparent); }
+.kt-run-row text { fill: var(--text-strong); font-size: 12px; font-weight: 650; }
+.kt-run-row.is-idle text { fill: var(--muted); }
+.kt-run-row.is-done rect { fill: color-mix(in srgb, var(--kt-ok) 14%, transparent); stroke: color-mix(in srgb, var(--kt-ok) 60%, transparent); }
+.kt-run-row.is-done circle { fill: var(--kt-ok); }
+.kt-run-row.is-work rect { fill: color-mix(in srgb, var(--kt-run) 16%, transparent); stroke: var(--kt-run); }
+.kt-run-row.is-work circle { fill: var(--kt-run); animation: kt-blink 2.4s ease-in-out infinite; }
+.kt-run-row.is-mine rect { fill: color-mix(in srgb, var(--kt-approve) 14%, transparent); stroke: var(--kt-approve); }
+.kt-run-row.is-mine circle { fill: var(--kt-approve); animation: kt-blink 1.1s ease-in-out infinite; }
+.kt-run-row.is-other rect { fill: color-mix(in srgb, var(--kt-info) 10%, transparent); stroke: var(--kt-info); }
+.kt-run-row.is-other circle { fill: var(--kt-info); }
+.kt-run-row.is-bad rect { fill: color-mix(in srgb, var(--kt-bad) 12%, transparent); stroke: var(--kt-bad); }
+.kt-run-row.is-bad circle { fill: var(--kt-bad); }
+.kt-run-row.is-relay rect { fill: color-mix(in srgb, var(--kt-handoff) 10%, transparent); stroke: color-mix(in srgb, var(--kt-handoff) 55%, transparent); stroke-dasharray: 3 2; }
+.kt-run-row.is-relay circle { fill: var(--kt-handoff); }
+.kt-roster-sub { fill: var(--muted); font-size: 12px; font-weight: 600; font-family: var(--mono, ui-monospace, monospace); }
+/* 3 构建's units; a band waiting for the person looking */
+.kt-units-pill rect { fill: color-mix(in srgb, var(--kt-handoff) 12%, var(--card)); stroke: color-mix(in srgb, var(--kt-handoff) 60%, transparent); stroke-width: 1.3; }
+.kt-units-pill text { fill: var(--kt-handoff); font-size: 12.5px; font-weight: 800; }
+.kt-unit-label { fill: var(--kt-handoff); font-size: 12px; font-weight: 800; font-family: var(--mono, ui-monospace, monospace); }
+.kt-phase.is-wait .kt-phase-band { fill: color-mix(in srgb, var(--kt-approve) 4%, transparent); stroke: color-mix(in srgb, var(--kt-approve) 50%, transparent); stroke-dasharray: none; }
+.kt-phase.is-wait .kt-phase-title { fill: var(--text-strong); }
+/* a run's line to its box: magenta only for the person looking, calm and still for anyone else */
+.kt-cmd.is-other { stroke: var(--kt-info); opacity: .75; animation: none; }
+.kt-cmd-label rect { fill: var(--card); stroke: var(--kt-run); stroke-width: 1.2; }
+.kt-cmd-label text { fill: var(--kt-run); font-size: 12px; font-weight: 750; }
+.kt-cmd-label:is(.is-awaiting_approval, .is-stalled) rect { stroke: var(--kt-approve); }
+.kt-cmd-label:is(.is-awaiting_approval, .is-stalled) text { fill: var(--kt-approve); }
+.kt-cmd-label.is-other rect { stroke: var(--kt-info); }
+.kt-cmd-label.is-other text { fill: var(--kt-info); }
+.kt-cmd-label.is-fixing rect { stroke: var(--kt-fix); }
+.kt-cmd-label.is-fixing text { fill: var(--kt-fix); }
+.kt-cmd-label.is-queued rect { stroke: var(--kt-queue); }
+.kt-cmd-label.is-queued text { fill: var(--kt-queue); }
+/* a hand-over on the rail */
+.kt-relay rect { fill: color-mix(in srgb, var(--kt-handoff) 12%, var(--card)); stroke: var(--kt-handoff); stroke-width: 1.5; }
+.kt-relay text { fill: var(--kt-handoff); font-size: 12px; font-weight: 800; }
+.kt-relay .ok { fill: var(--kt-ok); }
+.kt-relay .bad { fill: var(--kt-bad); }
+.kt-relay.is-bad rect { stroke: var(--kt-bad); fill: color-mix(in srgb, var(--kt-bad) 10%, var(--card)); }
+/* a box's rounds in its hover card; the legend's 第 2 轮 */
+.kt-ncard-rounds { margin: 0 0 8px; padding: 0; list-style: none; display: grid; gap: 4px; }
+.kt-ncard-rounds li { display: grid; grid-template-columns: 4.2em 1fr; gap: 6px; }
+.kt-ncard-rounds b { color: var(--kt-tone); }
+.kt-legend-round { display: inline-grid; place-items: center; height: 15px; padding: 0 6px; border-radius: 8px; font-size: 10.5px; font-weight: 800; color: var(--kt-on); background: var(--kt-fix); }
+
 /* ---------- cards: conveyor, wall, feed ---------- */
 .kt-card { min-width: 0; } /* frame: kit.ts */
 .kt-card-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 10px; }
