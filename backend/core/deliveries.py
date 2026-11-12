@@ -25,6 +25,7 @@ KIND_LABEL = {"clarify": "澄清", "design": "设计", "plan": "计划", "accept
 ASK_WHO = {"product": "product", "builder": "builder", "owner": "you", "security": "people", "data": "people"}
 ASK_NAME = {"product": "产品", "builder": "开发的人", "you": "你", "people": "人"}
 APPROVE_REJECT = "approve / reject"     # how an approval or an acceptance is answered on the MR (mr_ask)
+GATES = ("approve", "answer", "accept")      # the steps (waits.do) that are a human gate: a Lean approval, a question, the acceptance
 WATCH_S = 14 * 86400    # brain-kit's 14 days after a merge (eval.md: a delivery counts once they are over)
 # who settled a decision (brainkit.evaluate's categories and labels; "unclassified": a Who outside the runner's
 # vocabulary, listed and never guessed)
