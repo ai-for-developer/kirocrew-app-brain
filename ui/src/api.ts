@@ -66,11 +66,12 @@ const NO_ANSWER = /failed to fetch|networkerror|load failed|network request fail
  * them. KiroCrew's host answers `{"error": "Token required"}` (403) when the dashboard login is gone; the browser's own
  * words for no answer are `Failed to fetch`.
  */
+const RESTART = '到 KiroCrew 的 Apps 里把 Brain 交付停用再启用'
 export function httpProblem(status: number): { text: string; todo: string } {
-  if (status === 401 || status === 403) return { text: '登录过期了', todo: '重新打开 KiroCrew 仪表盘，登录以后点「再试一次」' }
-  if (status === 0) return { text: '连不上 app 的后端', todo: 'KiroCrew 或这个 app 可能停了，网络也可能断了：等一会儿点「再试一次」' }
-  if (status === 404) return { text: 'app 的后端和页面版本对不上', todo: '在 KiroCrew 里重新装一次这个 app' }
-  return { text: 'app 的后端出错了', todo: '点「再试一次」；还不行就在 KiroCrew 里重启这个 app' }
+  if (status === 401 || status === 403) return { text: '登录过期了', todo: '重新打开 KiroCrew 仪表盘，登录以后再试一次' }
+  if (status === 0) return { text: '连不上 app 的后端', todo: `刷新一下页面；还不行，${RESTART}` }
+  if (status === 404) return { text: 'app 的后端和页面版本对不上', todo: '刷新一下页面；还不行，到 KiroCrew 的 Apps 里更新 Brain 交付' }
+  return { text: 'app 的后端出错了', todo: `再试一次；还不行，${RESTART}` }
 }
 
 /** The error as it came (the SDK rejects with `API <status>: <body>`, the body `{"error", "code"}`), for 细节. */
@@ -78,11 +79,13 @@ export function errorRaw(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-/** The API error's text in Chinese: the backend's own words (with the status), else httpProblem's; never English. */
+/** The API error's text in Chinese: the backend's own words (with the status: they say what to do), else httpProblem's
+ * with what to do (UI-14); never English. */
 export function errorText(e: unknown): string {
   const raw = errorRaw(e)
+  const said = (p: { text: string; todo: string }, status = '') => `${p.text}${status && `（${status}）`}：${p.todo}`
   const m = /^API (\d{3}): ([\s\S]*)$/.exec(raw)
-  if (!m) return CJK.test(raw) ? raw : httpProblem(NO_ANSWER.test(raw) ? 0 : 500).text
+  if (!m) return CJK.test(raw) ? raw : said(httpProblem(NO_ANSWER.test(raw) ? 0 : 500))
   const [, status, body] = m
   try {
     const data = JSON.parse(body) as { error?: unknown }
@@ -90,7 +93,7 @@ export function errorText(e: unknown): string {
   } catch {
     if (CJK.test(body)) return `${body.trim().slice(0, 200)}（${status}）`
   }
-  return `${httpProblem(Number(status)).text}（${status}）`
+  return said(httpProblem(Number(status)), status)
 }
 
 export function errorStatus(e: unknown): number {
