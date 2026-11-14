@@ -289,6 +289,19 @@ describe('运行机', () => {
     expect(screen.queryByTestId('runner-hooks')).toBeNull()
   })
 
+  test('an MR the bridge does not take (not in its project’s MR list) says so in words, on a quiet chip', async () => {
+    const tv = fx.team()
+    tv.handovers = [...tv.handovers, { ...tv.handovers[0], iid: 4, result: 'skipped', error: '' }]
+    installFixtureRoutes({ [`GET ${API}/team`]: () => tv })
+    render(<TeamPage {...props()} />)
+    const ho = await screen.findByRole('region', { name: '交接' })
+    const chip = ho.querySelector('[data-result="skipped"]') as HTMLElement
+    expect(within(chip).getByText('没看：不在名单里')).toHaveClass('kt-pill', 'tone-idle')
+    expect(chip).toHaveTextContent('不在这个项目要接的 MR 名单里，桥没看它')
+    expect(chip).not.toHaveTextContent('skipped')
+    expect(chip).toHaveClass('kt-belt-chip', 'is-seen')
+  })
+
   test('what the bridge said about each labelled MR last round: waiting and unlabelled are looked at again next round', async () => {
     installFixtureRoutes()
     const { unmount } = render(<TeamPage {...props()} />)
@@ -310,7 +323,7 @@ describe('运行机', () => {
     expect(within(item('waiting')).getByText('正在别处签名')).toHaveClass('kt-pill', 'tone-hand')
     expect(ho.querySelector('.kt-belt-end.is-head')).toHaveTextContent('运行机')
     expect(ho.querySelector('.kt-belt .kt-belt-end')).toBeNull()
-    expect(Object.keys(HANDOVER_RESULT).sort()).toEqual(['accepted', 'error', 'rejected', 'seen', 'unlabelled', 'waiting'])
+    expect(Object.keys(HANDOVER_RESULT).sort()).toEqual(['accepted', 'error', 'rejected', 'seen', 'skipped', 'unlabelled', 'waiting'])
     expect(handoverMeta('later')).toEqual({ label: 'later', tone: 'idle', hint: '' })
     unmount()
     const tv = fx.team()
