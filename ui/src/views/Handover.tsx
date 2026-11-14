@@ -72,7 +72,7 @@ export function Handover({ x, repo, reqKey, localOnly, onDone }: {
       {asking && (
         <div className="br-confirm" role="group" aria-label="确定交接">
           <p>
-            会做三件事：提交交接记录、把分支 <code>{x.row.branch ?? x.run?.branch}</code> 推到远端、在 MR 上加交接标签。
+            会做三件事：提交交接记录、把分支 <code>{x.row.branch ?? x.run?.branch}</code> 推到远端、在 MR 上加交接标签。{''}
             之后运行机接着做，你在 MR 上回答它的问题。
           </p>
           <div className="br-row">

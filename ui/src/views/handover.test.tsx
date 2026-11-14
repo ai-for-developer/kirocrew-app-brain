@@ -53,6 +53,7 @@ describe('交接给运行机', () => {
     const box = await card()
     await user.click(within(box).getByRole('button', { name: '交接给运行机' }))
     const ask = within(box).getByRole('group', { name: '确定交接' })
+    expect(ask).toHaveTextContent('在 MR 上加交接标签。之后运行机接着做')     // one sentence after the other, no stray space
     for (const said of ['提交交接记录', 'ai/alice/PAY-3-refund-export', '推到远端', '在 MR 上加交接标签', '运行机接着做', '在 MR 上回答']) {
       expect(ask).toHaveTextContent(said)
     }
