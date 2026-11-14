@@ -252,9 +252,7 @@
     "run_ids": [],
     "sessions": 1,
     "overlap": [
-     "PAY-4",
-     "PAY-16",
-     "PAY-9"
+     "PAY-4"
     ],
     "open_questions": [],
     "expected_paths": [
@@ -819,12 +817,10 @@
     "worktree": "/Users/alice/workplace/brain-app/shop-pay/refund-progress",
     "run_ids": [],
     "sessions": 1,
-    "overlap": [
-     "PAY-3"
-    ],
+    "overlap": [],
     "open_questions": [],
     "expected_paths": [
-     "src/refund/progress/"
+     "src/progress/refund/"
     ],
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-16-4c7d",
@@ -888,14 +884,12 @@
      "RUN-PAY-9-1"
     ],
     "sessions": 1,
-    "overlap": [
-     "PAY-3"
-    ],
+    "overlap": [],
     "open_questions": [
      "D-3"
     ],
     "expected_paths": [
-     "src/refund/notify/"
+     "src/notify/refund/"
     ],
     "local_only": false,
     "session_url": null,
@@ -2194,24 +2188,6 @@
     "paths": [
      "src/refund"
     ]
-   },
-   {
-    "keys": [
-     "PAY-3",
-     "PAY-16"
-    ],
-    "paths": [
-     "src/refund"
-    ]
-   },
-   {
-    "keys": [
-     "PAY-3",
-     "PAY-9"
-    ],
-    "paths": [
-     "src/refund"
-    ]
    }
   ],
   "funnel": {
@@ -2861,22 +2837,6 @@
      "other_key": "PAY-4"
     },
     {
-     "repo": "r1",
-     "key": "PAY-3",
-     "kind": "overlap",
-     "text": "和 PAY-16 都要改 src/refund：都是 alice 的，先合一个再做另一个",
-     "since": null,
-     "other_key": "PAY-16"
-    },
-    {
-     "repo": "r1",
-     "key": "PAY-3",
-     "kind": "overlap",
-     "text": "和 PAY-9 都要改 src/refund：都是 alice 的，先合一个再做另一个",
-     "since": null,
-     "other_key": "PAY-9"
-    },
-    {
      "repo": "r3",
      "key": "ORD-12",
      "kind": "verify_fails",
@@ -2888,7 +2848,7 @@
    "counts": {
     "overdue": 1,
     "stale": 1,
-    "overlap": 3,
+    "overlap": 1,
     "verify_fails": 1
    },
    "limits": {
@@ -2953,9 +2913,7 @@
       "run_ids": [],
       "sessions": 1,
       "overlap": [
-       "PAY-4",
-       "PAY-16",
-       "PAY-9"
+       "PAY-4"
       ],
       "open_questions": [],
       "expected_paths": [
@@ -3520,12 +3478,10 @@
       "worktree": "/Users/alice/workplace/brain-app/shop-pay/refund-progress",
       "run_ids": [],
       "sessions": 1,
-      "overlap": [
-       "PAY-3"
-      ],
+      "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/progress/"
+       "src/progress/refund/"
       ],
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-16-4c7d",
@@ -3589,14 +3545,12 @@
        "RUN-PAY-9-1"
       ],
       "sessions": 1,
-      "overlap": [
-       "PAY-3"
-      ],
+      "overlap": [],
       "open_questions": [
        "D-3"
       ],
       "expected_paths": [
-       "src/refund/notify/"
+       "src/notify/refund/"
       ],
       "local_only": false,
       "session_url": null,
@@ -4895,24 +4849,6 @@
       "paths": [
        "src/refund"
       ]
-     },
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-16"
-      ],
-      "paths": [
-       "src/refund"
-      ]
-     },
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-9"
-      ],
-      "paths": [
-       "src/refund"
-      ]
      }
     ],
     "funnel": {
@@ -5562,22 +5498,6 @@
        "other_key": "PAY-4"
       },
       {
-       "repo": "r1",
-       "key": "PAY-3",
-       "kind": "overlap",
-       "text": "和 PAY-16 都要改 src/refund：都是 alice 的，先合一个再做另一个",
-       "since": null,
-       "other_key": "PAY-16"
-      },
-      {
-       "repo": "r1",
-       "key": "PAY-3",
-       "kind": "overlap",
-       "text": "和 PAY-9 都要改 src/refund：都是 alice 的，先合一个再做另一个",
-       "since": null,
-       "other_key": "PAY-9"
-      },
-      {
        "repo": "r3",
        "key": "ORD-12",
        "kind": "verify_fails",
@@ -5589,7 +5509,7 @@
      "counts": {
       "overdue": 1,
       "stale": 1,
-      "overlap": 3,
+      "overlap": 1,
       "verify_fails": 1
      },
      "limits": {
@@ -5652,9 +5572,7 @@
       "run_ids": [],
       "sessions": 1,
       "overlap": [
-       "PAY-4",
-       "PAY-16",
-       "PAY-9"
+       "PAY-4"
       ],
       "open_questions": [],
       "expected_paths": [
@@ -6219,12 +6137,10 @@
       "worktree": "/Users/alice/workplace/brain-app/shop-pay/refund-progress",
       "run_ids": [],
       "sessions": 1,
-      "overlap": [
-       "PAY-3"
-      ],
+      "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/progress/"
+       "src/progress/refund/"
       ],
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-16-4c7d",
@@ -6288,14 +6204,12 @@
        "RUN-PAY-9-1"
       ],
       "sessions": 1,
-      "overlap": [
-       "PAY-3"
-      ],
+      "overlap": [],
       "open_questions": [
        "D-3"
       ],
       "expected_paths": [
-       "src/refund/notify/"
+       "src/notify/refund/"
       ],
       "local_only": false,
       "session_url": null,
@@ -6802,24 +6716,6 @@
       "paths": [
        "src/refund"
       ]
-     },
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-16"
-      ],
-      "paths": [
-       "src/refund"
-      ]
-     },
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-9"
-      ],
-      "paths": [
-       "src/refund"
-      ]
      }
     ],
     "funnel": {
@@ -7262,28 +7158,12 @@
        "text": "和 PAY-4 都要改 src/refund：先商量好谁先合",
        "since": null,
        "other_key": "PAY-4"
-      },
-      {
-       "repo": "r1",
-       "key": "PAY-3",
-       "kind": "overlap",
-       "text": "和 PAY-16 都要改 src/refund：都是 alice 的，先合一个再做另一个",
-       "since": null,
-       "other_key": "PAY-16"
-      },
-      {
-       "repo": "r1",
-       "key": "PAY-3",
-       "kind": "overlap",
-       "text": "和 PAY-9 都要改 src/refund：都是 alice 的，先合一个再做另一个",
-       "since": null,
-       "other_key": "PAY-9"
       }
      ],
      "counts": {
       "overdue": 1,
       "stale": 0,
-      "overlap": 3,
+      "overlap": 1,
       "verify_fails": 0
      },
      "limits": {
@@ -9126,7 +9006,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/notify/"
+       "src/notify/refund/"
       ],
       "local_only": false,
       "session_url": null,
@@ -9668,9 +9548,7 @@
       "run_ids": [],
       "sessions": 1,
       "overlap": [
-       "PAY-4",
-       "PAY-16",
-       "PAY-9"
+       "PAY-4"
       ],
       "open_questions": [],
       "expected_paths": [
@@ -10235,12 +10113,10 @@
       "worktree": "/Users/alice/workplace/brain-app/shop-pay/refund-progress",
       "run_ids": [],
       "sessions": 1,
-      "overlap": [
-       "PAY-3"
-      ],
+      "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/progress/"
+       "src/progress/refund/"
       ],
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-16-4c7d",
@@ -10304,14 +10180,12 @@
        "RUN-PAY-9-1"
       ],
       "sessions": 1,
-      "overlap": [
-       "PAY-3"
-      ],
+      "overlap": [],
       "open_questions": [
        "D-3"
       ],
       "expected_paths": [
-       "src/refund/notify/"
+       "src/notify/refund/"
       ],
       "local_only": false,
       "session_url": null,
@@ -11610,24 +11484,6 @@
       "paths": [
        "src/refund"
       ]
-     },
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-16"
-      ],
-      "paths": [
-       "src/refund"
-      ]
-     },
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-9"
-      ],
-      "paths": [
-       "src/refund"
-      ]
      }
     ],
     "funnel": {
@@ -11896,22 +11752,6 @@
        "other_key": "PAY-4"
       },
       {
-       "repo": "r1",
-       "key": "PAY-3",
-       "kind": "overlap",
-       "text": "和 PAY-16 都要改 src/refund：都是 alice 的，先合一个再做另一个",
-       "since": null,
-       "other_key": "PAY-16"
-      },
-      {
-       "repo": "r1",
-       "key": "PAY-3",
-       "kind": "overlap",
-       "text": "和 PAY-9 都要改 src/refund：都是 alice 的，先合一个再做另一个",
-       "since": null,
-       "other_key": "PAY-9"
-      },
-      {
        "repo": "r3",
        "key": "ORD-12",
        "kind": "verify_fails",
@@ -11923,7 +11763,7 @@
      "counts": {
       "overdue": 1,
       "stale": 1,
-      "overlap": 3,
+      "overlap": 1,
       "verify_fails": 1
      },
      "limits": {
@@ -11986,9 +11826,7 @@
       "run_ids": [],
       "sessions": 1,
       "overlap": [
-       "PAY-4",
-       "PAY-16",
-       "PAY-9"
+       "PAY-4"
       ],
       "open_questions": [],
       "expected_paths": [
@@ -12553,12 +12391,10 @@
       "worktree": "/Users/alice/workplace/brain-app/shop-pay/refund-progress",
       "run_ids": [],
       "sessions": 1,
-      "overlap": [
-       "PAY-3"
-      ],
+      "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/progress/"
+       "src/progress/refund/"
       ],
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-16-4c7d",
@@ -12622,14 +12458,12 @@
        "RUN-PAY-9-1"
       ],
       "sessions": 1,
-      "overlap": [
-       "PAY-3"
-      ],
+      "overlap": [],
       "open_questions": [
        "D-3"
       ],
       "expected_paths": [
-       "src/refund/notify/"
+       "src/notify/refund/"
       ],
       "local_only": false,
       "session_url": null,
@@ -13136,24 +12970,6 @@
       "paths": [
        "src/refund"
       ]
-     },
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-16"
-      ],
-      "paths": [
-       "src/refund"
-      ]
-     },
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-9"
-      ],
-      "paths": [
-       "src/refund"
-      ]
      }
     ],
     "funnel": {
@@ -13384,28 +13200,12 @@
        "text": "和 PAY-4 都要改 src/refund：先商量好谁先合",
        "since": null,
        "other_key": "PAY-4"
-      },
-      {
-       "repo": "r1",
-       "key": "PAY-3",
-       "kind": "overlap",
-       "text": "和 PAY-16 都要改 src/refund：都是 alice 的，先合一个再做另一个",
-       "since": null,
-       "other_key": "PAY-16"
-      },
-      {
-       "repo": "r1",
-       "key": "PAY-3",
-       "kind": "overlap",
-       "text": "和 PAY-9 都要改 src/refund：都是 alice 的，先合一个再做另一个",
-       "since": null,
-       "other_key": "PAY-9"
       }
      ],
      "counts": {
       "overdue": 1,
       "stale": 0,
-      "overlap": 3,
+      "overlap": 1,
       "verify_fails": 0
      },
      "limits": {
@@ -14889,7 +14689,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/notify/"
+       "src/notify/refund/"
       ],
       "local_only": false,
       "session_url": null,
@@ -15368,8 +15168,6 @@
       "run_ids": [],
       "sessions": 1,
       "overlap": [
-       "PAY-16",
-       "PAY-9",
        "PAY-4"
       ],
       "open_questions": [],
@@ -15795,12 +15593,10 @@
       "worktree": "/Users/alice/workplace/brain-app/shop-pay/refund-progress",
       "run_ids": [],
       "sessions": 1,
-      "overlap": [
-       "PAY-3"
-      ],
+      "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/progress/"
+       "src/progress/refund/"
       ],
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-16-4c7d",
@@ -17079,12 +16875,10 @@
        "RUN-PAY-9-1"
       ],
       "sessions": 0,
-      "overlap": [
-       "PAY-3"
-      ],
+      "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/notify/"
+       "src/notify/refund/"
       ],
       "local_only": false,
       "session_url": null,
@@ -17297,24 +17091,6 @@
      }
     ],
     "overlaps": [
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-16"
-      ],
-      "paths": [
-       "src/refund"
-      ]
-     },
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-9"
-      ],
-      "paths": [
-       "src/refund"
-      ]
-     },
      {
       "keys": [
        "PAY-3",
@@ -17966,22 +17742,6 @@
        "repo": "r1",
        "key": "PAY-3",
        "kind": "overlap",
-       "text": "和 PAY-16 都要改 src/refund：都是 alice 的，先合一个再做另一个",
-       "since": null,
-       "other_key": "PAY-16"
-      },
-      {
-       "repo": "r1",
-       "key": "PAY-3",
-       "kind": "overlap",
-       "text": "和 PAY-9 都要改 src/refund：先商量好谁先合",
-       "since": null,
-       "other_key": "PAY-9"
-      },
-      {
-       "repo": "r1",
-       "key": "PAY-3",
-       "kind": "overlap",
        "text": "和 PAY-4 都要改 src/refund：先商量好谁先合",
        "since": null,
        "other_key": "PAY-4"
@@ -17998,7 +17758,7 @@
      "counts": {
       "overdue": 1,
       "stale": 1,
-      "overlap": 3,
+      "overlap": 1,
       "verify_fails": 1
      },
      "limits": {
@@ -18061,8 +17821,6 @@
       "run_ids": [],
       "sessions": 1,
       "overlap": [
-       "PAY-16",
-       "PAY-9",
        "PAY-4"
       ],
       "open_questions": [],
@@ -18488,12 +18246,10 @@
       "worktree": "/Users/alice/workplace/brain-app/shop-pay/refund-progress",
       "run_ids": [],
       "sessions": 1,
-      "overlap": [
-       "PAY-3"
-      ],
+      "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/progress/"
+       "src/progress/refund/"
       ],
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-16-4c7d",
@@ -19044,12 +18800,10 @@
        "RUN-PAY-9-1"
       ],
       "sessions": 0,
-      "overlap": [
-       "PAY-3"
-      ],
+      "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/notify/"
+       "src/notify/refund/"
       ],
       "local_only": false,
       "session_url": null,
@@ -19198,24 +18952,6 @@
      }
     ],
     "overlaps": [
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-16"
-      ],
-      "paths": [
-       "src/refund"
-      ]
-     },
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-9"
-      ],
-      "paths": [
-       "src/refund"
-      ]
-     },
      {
       "keys": [
        "PAY-3",
@@ -19662,22 +19398,6 @@
        "repo": "r1",
        "key": "PAY-3",
        "kind": "overlap",
-       "text": "和 PAY-16 都要改 src/refund：都是 alice 的，先合一个再做另一个",
-       "since": null,
-       "other_key": "PAY-16"
-      },
-      {
-       "repo": "r1",
-       "key": "PAY-3",
-       "kind": "overlap",
-       "text": "和 PAY-9 都要改 src/refund：先商量好谁先合",
-       "since": null,
-       "other_key": "PAY-9"
-      },
-      {
-       "repo": "r1",
-       "key": "PAY-3",
-       "kind": "overlap",
        "text": "和 PAY-4 都要改 src/refund：先商量好谁先合",
        "since": null,
        "other_key": "PAY-4"
@@ -19686,7 +19406,7 @@
      "counts": {
       "overdue": 1,
       "stale": 0,
-      "overlap": 3,
+      "overlap": 1,
       "verify_fails": 0
      },
      "limits": {
@@ -21529,7 +21249,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/notify/"
+       "src/notify/refund/"
       ],
       "local_only": false,
       "session_url": null,
@@ -22071,8 +21791,6 @@
       "run_ids": [],
       "sessions": 1,
       "overlap": [
-       "PAY-16",
-       "PAY-9",
        "PAY-4"
       ],
       "open_questions": [],
@@ -22498,12 +22216,10 @@
       "worktree": "/Users/alice/workplace/brain-app/shop-pay/refund-progress",
       "run_ids": [],
       "sessions": 1,
-      "overlap": [
-       "PAY-3"
-      ],
+      "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/progress/"
+       "src/progress/refund/"
       ],
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-16-4c7d",
@@ -23782,12 +23498,10 @@
        "RUN-PAY-9-1"
       ],
       "sessions": 0,
-      "overlap": [
-       "PAY-3"
-      ],
+      "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/notify/"
+       "src/notify/refund/"
       ],
       "local_only": false,
       "session_url": null,
@@ -24000,24 +23714,6 @@
      }
     ],
     "overlaps": [
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-16"
-      ],
-      "paths": [
-       "src/refund"
-      ]
-     },
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-9"
-      ],
-      "paths": [
-       "src/refund"
-      ]
-     },
      {
       "keys": [
        "PAY-3",
@@ -24288,22 +23984,6 @@
        "repo": "r1",
        "key": "PAY-3",
        "kind": "overlap",
-       "text": "和 PAY-16 都要改 src/refund：都是 alice 的，先合一个再做另一个",
-       "since": null,
-       "other_key": "PAY-16"
-      },
-      {
-       "repo": "r1",
-       "key": "PAY-3",
-       "kind": "overlap",
-       "text": "和 PAY-9 都要改 src/refund：先商量好谁先合",
-       "since": null,
-       "other_key": "PAY-9"
-      },
-      {
-       "repo": "r1",
-       "key": "PAY-3",
-       "kind": "overlap",
        "text": "和 PAY-4 都要改 src/refund：先商量好谁先合",
        "since": null,
        "other_key": "PAY-4"
@@ -24320,7 +24000,7 @@
      "counts": {
       "overdue": 1,
       "stale": 1,
-      "overlap": 3,
+      "overlap": 1,
       "verify_fails": 1
      },
      "limits": {
@@ -24383,8 +24063,6 @@
       "run_ids": [],
       "sessions": 1,
       "overlap": [
-       "PAY-16",
-       "PAY-9",
        "PAY-4"
       ],
       "open_questions": [],
@@ -24810,12 +24488,10 @@
       "worktree": "/Users/alice/workplace/brain-app/shop-pay/refund-progress",
       "run_ids": [],
       "sessions": 1,
-      "overlap": [
-       "PAY-3"
-      ],
+      "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/progress/"
+       "src/progress/refund/"
       ],
       "local_only": false,
       "session_url": "/chat?sid=brain-PAY-16-4c7d",
@@ -25366,12 +25042,10 @@
        "RUN-PAY-9-1"
       ],
       "sessions": 0,
-      "overlap": [
-       "PAY-3"
-      ],
+      "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/notify/"
+       "src/notify/refund/"
       ],
       "local_only": false,
       "session_url": null,
@@ -25520,24 +25194,6 @@
      }
     ],
     "overlaps": [
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-16"
-      ],
-      "paths": [
-       "src/refund"
-      ]
-     },
-     {
-      "keys": [
-       "PAY-3",
-       "PAY-9"
-      ],
-      "paths": [
-       "src/refund"
-      ]
-     },
      {
       "keys": [
        "PAY-3",
@@ -25772,22 +25428,6 @@
        "repo": "r1",
        "key": "PAY-3",
        "kind": "overlap",
-       "text": "和 PAY-16 都要改 src/refund：都是 alice 的，先合一个再做另一个",
-       "since": null,
-       "other_key": "PAY-16"
-      },
-      {
-       "repo": "r1",
-       "key": "PAY-3",
-       "kind": "overlap",
-       "text": "和 PAY-9 都要改 src/refund：先商量好谁先合",
-       "since": null,
-       "other_key": "PAY-9"
-      },
-      {
-       "repo": "r1",
-       "key": "PAY-3",
-       "kind": "overlap",
        "text": "和 PAY-4 都要改 src/refund：先商量好谁先合",
        "since": null,
        "other_key": "PAY-4"
@@ -25796,7 +25436,7 @@
      "counts": {
       "overdue": 1,
       "stale": 0,
-      "overlap": 3,
+      "overlap": 1,
       "verify_fails": 0
      },
      "limits": {
@@ -27280,7 +26920,7 @@
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
-       "src/refund/notify/"
+       "src/notify/refund/"
       ],
       "local_only": false,
       "session_url": null,
@@ -48065,7 +47705,7 @@
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
-     "src/refund/progress/"
+     "src/progress/refund/"
     ],
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-16-4c7d",
@@ -49606,7 +49246,7 @@
      "D-3"
     ],
     "expected_paths": [
-     "src/refund/notify/"
+     "src/notify/refund/"
     ],
     "local_only": false,
     "session_url": null,
@@ -100207,7 +99847,7 @@
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
-     "src/refund/notify/"
+     "src/notify/refund/"
     ],
     "local_only": false,
     "session_url": null,
@@ -117656,7 +117296,7 @@
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
-     "src/refund/progress/"
+     "src/progress/refund/"
     ],
     "local_only": false,
     "session_url": "/chat?sid=brain-PAY-16-4c7d",
@@ -118173,7 +117813,7 @@
      "D-3"
     ],
     "expected_paths": [
-     "src/refund/notify/"
+     "src/notify/refund/"
     ],
     "local_only": false,
     "session_url": null,
@@ -130395,7 +130035,7 @@
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
-     "src/refund/notify/"
+     "src/notify/refund/"
     ],
     "local_only": false,
     "session_url": null,

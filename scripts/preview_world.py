@@ -1232,7 +1232,7 @@ def main() -> None:
                     credits=3.1, turns=4, busy=False, awaiting=False, last_activity=T0 - 12 * M, opened_at=t + 20)
     row = copy.deepcopy(rows["PAY-3"])
     row.update(key="PAY-16", title=p16.title, owner="alice", branch=p16.branch, intent=p16.intent, credits=3.1,
-               updated_at=T0 - 12 * M, summary=None, sessions=1, expected_paths=["src/refund/progress/"], overlap=[],
+               updated_at=T0 - 12 * M, summary=None, sessions=1, expected_paths=["src/progress/refund/"], overlap=[],
                open_questions=[], worktree="/Users/alice/workplace/brain-app/shop-pay/refund-progress")
     extra_rows.append(classified(p16, row, slot=p16_sess))
     board_later(p16, row, sessions=[p16_sess], credits=3.1,
@@ -1326,7 +1326,7 @@ def main() -> None:
     row.update(key="PAY-9", title=p9.title, owner="alice", branch=p9.branch, intent=p9.intent, credits=12.4,
                updated_at=at9("16:14"), summary="退款成功以后给用户发短信，旧订单不发。", run_ids=["RUN-PAY-9-1"],
                mr={"iid": 53, "url": "%s/shop/shop-pay/-/merge_requests/53" % GL, "state": "opened"},
-               expected_paths=["src/refund/notify/"], overlap=[], worktree=None)
+               expected_paths=["src/notify/refund/"], overlap=[], worktree=None)
     extra_rows.append(classified(p9, row, park=p9_park, mr={"state": "opened", "labels": ["ai-running"], "questions": [p9_q]}))
     p9_dec = decisions(p9, [("requirements", "短信文案先用默认模板", "运营下周给正式文案（D-1 的回答）", "P-9E3B", "person", []),
                             ("code-generation", "短信通道的限流沿用统一通知服务的配置", "照 Brain 的约定", "P-7", "brain", ["P-7"]),
