@@ -50,24 +50,27 @@ describe('format', () => {
 })
 
 describe('errorText: the SDK rejects with `API <status>: <body>`', () => {
-  it('says the backend’s own Chinese words, or what the status means; never English', () => {
+  it('says the backend’s own Chinese words, or what the status means and what to do; never English (UI-14)', () => {
     expect(errorText(new Error('API 409: {"error": "PAY-3 已经有人认领了", "code": "claimed"}'))).toBe('PAY-3 已经有人认领了（409）')
     expect(errorText(new Error('API 403: {"error": "只有 KiroCrew 仪表盘的主人本人能用这个 app：用主人的账号登录仪表盘", "code": "owner_only"}'))).toBe('只有 KiroCrew 仪表盘的主人本人能用这个 app：用主人的账号登录仪表盘（403）')
     // KiroCrew's host when the dashboard login is gone
-    expect(errorText(new Error('API 403: {"error": "Token required"}'))).toBe('登录过期了（403）')
-    expect(errorText(new Error('API 401: '))).toBe('登录过期了（401）')
-    expect(errorText(new Error('API 404: Not Found'))).toBe('app 的后端和页面版本对不上（404）')
-    expect(errorText(new Error('API 500: boom'))).toBe('app 的后端出错了（500）')
+    expect(errorText(new Error('API 403: {"error": "Token required"}'))).toBe('登录过期了（403）：重新打开 KiroCrew 仪表盘，登录以后再试一次')
+    expect(errorText(new Error('API 401: '))).toBe('登录过期了（401）：重新打开 KiroCrew 仪表盘，登录以后再试一次')
+    expect(errorText(new Error('API 404: Not Found'))).toBe('app 的后端和页面版本对不上（404）：刷新一下页面；还不行，到 KiroCrew 的 Apps 里更新 Brain 交付')
+    expect(errorText(new Error('API 500: {"error": "app route failed"}'))).toBe('app 的后端出错了（500）：再试一次；还不行，到 KiroCrew 的 Apps 里把 Brain 交付停用再启用')
+    expect(errorText(new Error('API 500: Internal Server Error'))).toBe('app 的后端出错了（500）：再试一次；还不行，到 KiroCrew 的 Apps 里把 Brain 交付停用再启用')
     expect(errorText(new Error('API 502: 网关没回话'))).toBe('网关没回话（502）')
-    expect(errorText(new TypeError('Failed to fetch'))).toBe('连不上 app 的后端')
-    expect(errorText(new TypeError('Load failed'))).toBe('连不上 app 的后端')
+    expect(errorText(new TypeError('Failed to fetch'))).toBe('连不上 app 的后端：刷新一下页面；还不行，到 KiroCrew 的 Apps 里把 Brain 交付停用再启用')
+    expect(errorText(new TypeError('Load failed'))).toBe('连不上 app 的后端：刷新一下页面；还不行，到 KiroCrew 的 Apps 里把 Brain 交付停用再启用')
     expect(errorText(new Error('读不到进度'))).toBe('读不到进度')
     expect(errorRaw(new Error('API 403: {"error": "Token required"}'))).toBe('API 403: {"error": "Token required"}')
     expect(errorStatus(new Error('API 502: x'))).toBe(502)
     expect(errorStatus('nothing')).toBe(0)
   })
   it('says what to do for a status: the login, no answer, the version, the backend', () => {
-    expect(httpProblem(403)).toEqual({ text: '登录过期了', todo: '重新打开 KiroCrew 仪表盘，登录以后点「再试一次」' })
+    expect(httpProblem(403)).toEqual({ text: '登录过期了', todo: '重新打开 KiroCrew 仪表盘，登录以后再试一次' })
+    expect(httpProblem(0).todo).toBe('刷新一下页面；还不行，到 KiroCrew 的 Apps 里把 Brain 交付停用再启用')
+    expect(httpProblem(500).todo).toBe('再试一次；还不行，到 KiroCrew 的 Apps 里把 Brain 交付停用再启用')
     expect(httpProblem(401).text).toBe('登录过期了')
     expect(httpProblem(0).text).toBe('连不上 app 的后端')
     expect(httpProblem(404).text).toBe('app 的后端和页面版本对不上')

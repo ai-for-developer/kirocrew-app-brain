@@ -338,7 +338,7 @@ describe('the app: one bar over the views', () => {
     installFixtureRoutes({ [`GET ${API}/status`]: () => { if (fail) throw apiError(403, 'forbidden', 'Token required'); return fx.status() } })
     render(<BrainApp pollMs={60_000} />)
     const b = await screen.findByTestId('br-status-error')
-    expect(b).toHaveTextContent('登录过期了做什么重新打开 KiroCrew 仪表盘，登录以后点「再试一次」')
+    expect(b).toHaveTextContent('登录过期了做什么重新打开 KiroCrew 仪表盘，登录以后再试一次')
     expect(b).not.toHaveTextContent(/Token required.*细节/)              // the host's English only under 细节
     expect(within(b).getByText('细节').closest('details')).not.toHaveAttribute('open')
     expect(b.querySelector('details pre')).toHaveTextContent('API 403: {"error":"Token required","code":"forbidden"}')
@@ -351,7 +351,7 @@ describe('the app: one bar over the views', () => {
     installFixtureRoutes({ [`GET ${API}/status`]: () => { throw new TypeError('Failed to fetch') } })
     render(<BrainApp pollMs={60_000} />)
     const b = await screen.findByTestId('br-status-error')
-    expect(b).toHaveTextContent('连不上 app 的后端做什么KiroCrew 或这个 app 可能停了，网络也可能断了：等一会儿点「再试一次」')
+    expect(b).toHaveTextContent('连不上 app 的后端做什么刷新一下页面；还不行，到 KiroCrew 的 Apps 里把 Brain 交付停用再启用')
     expect(within(b).getByRole('button', { name: '再试一次' })).toBeInTheDocument()
     expect(b.querySelector('details pre')).toHaveTextContent('Failed to fetch')
   })
