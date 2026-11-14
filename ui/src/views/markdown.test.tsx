@@ -72,4 +72,15 @@ describe('Markdown as text', () => {
     expect(container.querySelector('img')).toBeNull()
     expect(md.textContent).toContain('<img src=x onerror=alert(1)>')
   })
+
+  test('a document rendered in 产出 makes no link and no HTML element, whatever scheme or tag its text names', () => {
+    const text = ['# 发布', '[点我](javascript:alert(1))', '[看](data:text/html;base64,PHNjcmlwdD4=)', '[MR](https://x.test/1)',
+      '<a href="javascript:alert(1)">x</a>', '<script>alert(1)</script>', '| a | b |', '|---|---|', '| [c](vbscript:x) | <iframe src=x> |',
+      '- [ ] [任务](javascript:1)', '> [引用](file:///etc/passwd)', '```', '<svg onload=alert(1)>', '```'].join('\n')
+    const { container } = render(<Markdown text={text} testid="md" doc />)
+    expect(container.querySelectorAll('a, script, iframe, svg, img, object, embed').length).toBe(0)
+    expect([...container.querySelectorAll('*')].flatMap((el) => [...el.attributes].map((a) => a.name)).filter((n) => /^on|href|src/.test(n))).toEqual([])
+    expect(container.textContent).toContain('点我')
+    expect(container.textContent).toContain('<script>alert(1)</script>')
+  })
 })

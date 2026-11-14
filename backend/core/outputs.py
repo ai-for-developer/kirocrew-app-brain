@@ -8,14 +8,18 @@ commit before it. ``GET /outputs/{repo}/{key}/file?ref&base&path&view&pin`` (fil
 (view source or content) or its change (view diff).
 
 Both read the board's own fold (Fold: what Service._board_sync folded last for the requirement), never a second one,
-and only what it names: a ref or a base outside the requirement's commits and their parents (AllowedRefs) is 404,
-never fetched. Files are read from commits only (mrdesc_view.committed_file: a regular blob of at most 4 MB; a symlink
-or a submodule is refused). The one exception is a local run's document waiting for approval before it is committed
-(Lean commits documents with the code): read from this machine's worktree only when the path is the stage table's
-document of one of the requirement's nodes, a local round of it recorded that very sha256, no part of the path is a
-symlink, and the bytes hash to it (pinned_file). A diff never runs a diff driver or a textconv the repo's
-.gitattributes names. Lean's ledgers are never listed nor read: they hold what people typed in their sessions. Emails
-become brain-kit's pseudonyms (G-<6 hex>) before anything is shown: release.md's approval table carries git emails.
+and only what it names: a path none of the requirement's commits changed and Lean recorded for none of its rounds
+(_own_paths), or a ref or a base outside its commits and their parents (AllowedRefs), is 404, never fetched. Files
+are read from commits only (mrdesc_view.committed_file: a regular blob of at most 4 MB; a folder, a symlink or a
+submodule is refused, on either side of a diff too). The one exception is a local run's document waiting for approval
+before it is committed (Lean commits documents with the code): read from this machine's worktree only when the path
+is the stage table's document of one of the requirement's nodes, a local round of it recorded that very sha256, no
+part of the path is a symlink, and the bytes hash to it (pinned_file). A diff never runs a diff driver or a textconv
+the repo's .gitattributes names. Lean's ledgers (aidlc-docs/audit, wherever aidlc-docs is) are never listed nor read:
+they hold what people typed in their sessions. Emails become brain-kit's pseudonyms (G-<6 hex>) before anything is
+shown: release.md's approval table carries git emails. A text over TEXT_MAX is cut at a line end first, so the
+scrubber never gets part of a secret. git runs with GIT_NO_REPLACE_OBJECTS: a replace ref never swaps a commit's
+bytes.
 """
 
 from __future__ import annotations
@@ -42,13 +46,14 @@ MAX_FILES = 200             # files listed for a round
 MAX_TRIES = 24              # commits whose blob is hashed to find the version Lean recorded
 DIFF_TIMEOUT_S = 20
 VIEWS = ("content", "source", "diff")
-HEX40 = re.compile(r"^[0-9a-f]{40}$")
-HEX64 = re.compile(r"^[0-9a-f]{64}$")
-NODE_RE = re.compile(r"^[a-z][a-z-]{0,39}(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$")
-ROUND_RE = re.compile(r"^[1-9][0-9]{0,2}$")
-HIDDEN = re.compile(r"^aidlc-docs/audit/")
-# brain-kit trace.EMAIL_RE and trace.pseudonym, so a person is the same G-xxxxxx here as everywhere on the board
-EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*")
+HEX40 = re.compile(r"[0-9a-f]{40}")             # these four: whole strings only (fullmatch)
+HEX64 = re.compile(r"[0-9a-f]{64}")
+NODE_RE = re.compile(r"[a-z][a-z-]{0,39}(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?")
+ROUND_RE = re.compile(r"[1-9][0-9]{0,2}")
+HIDDEN = re.compile(r"(?:^|/)aidlc-docs/audit(?:/|$)")      # Lean's ledgers, wherever aidlc-docs is
+# brain-kit trace.EMAIL_RE and trace.pseudonym, so a person is the same G-xxxxxx here as everywhere on the board; the
+# part before the @ held to 64 characters (RFC 5321; the same matches up to it): unbounded, a 60 000-letter run took 4 s
+EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*")
 LANG = {"md": "markdown", "markdown": "markdown", "py": "python", "ts": "typescript", "tsx": "typescript",
         "js": "javascript", "jsx": "javascript", "mjs": "javascript", "json": "json", "jsonl": "json", "yml": "yaml",
         "yaml": "yaml", "toml": "toml", "sh": "shell", "css": "css", "html": "html", "sql": "sql", "go": "go",
@@ -63,15 +68,17 @@ BAD_PIN = "页面说的文件指纹不对：刷新页面再试"
 NO_NODE = "看板上没有这一步：刷新看板再看"
 NO_ROUND = "这一步没有这一轮：刷新看板再看"
 NOT_OURS = "这个提交不是这个需求的：刷新看板，从看板上点开文件"
-NOT_SHOWN = "Lean 的账本不在这里显示：里面有人在会话里打的字"
+NOT_OURS_FILE = "这个文件不是这个需求的：刷新看板，从看板上点开文件"
+NOT_SHOWN = "Lean 的账本不在这里显示，里面有人在会话里打的字：到看板的「事件」里看它记下的事"
 NOT_RECORDED = "Lean 没有为这一步记下这个文件的这一版：从看板上点开文件"
 NO_WORKTREE = "这台机器上没有这个需求的工作区：这一版只能等提交以后看"
 CHANGED = "这一版还没提交，工作区里的文件也和 Lean 记下的不一样了：到会话里看"
-SYMLINK = "这是一个符号链接（或路径里有符号链接）：这里不读它指向的东西"
-SUBMODULE = "这是一个子模块：这里不显示"
+SYMLINK = "这是一个符号链接（或者路径里有符号链接），这里不读它指向的东西：到会话里看"
+SUBMODULE = "这是一个子模块，这里不显示：到它自己的仓库里看"
+NOT_A_FILE = "这不是一个普通文件（是文件夹或者特殊文件），这里不读它：到会话里看"
 MISSING = "这一版里没有这个文件（可能这一轮删掉了它）：看「改动」"
 GONE = "工作区里没有这个文件了：到会话里看"
-TOO_BIG = "文件太大（超过 4 MB）：这里不显示"
+TOO_BIG = "文件太大（超过 4 MB），这里不显示：到会话里看"
 NO_DIFF = "这两版比不出来：刷新看板再试"
 
 
@@ -85,13 +92,21 @@ def safe_path(p: Any) -> str:
     if not isinstance(p, str) or not p or len(p) > PATH_MAX or p.startswith("/") or "\\" in p \
             or any(ord(c) < 32 or ord(c) == 127 for c in p) or any(x in ("", ".", "..") for x in p.split("/")):
         raise AppError(BAD_PATH, "invalid_path")
-    if HIDDEN.match(p):
+    if HIDDEN.search(p):
         raise AppError(NOT_SHOWN, "not_shown", 403)
     return p
 
 
 def _lang(path: str) -> str:
     return LANG.get(path.rsplit(".", 1)[-1].lower() if "." in path.rsplit("/", 1)[-1] else "", "text")
+
+
+class _NoReplaceGit(Git):
+    """git with GIT_NO_REPLACE_OBJECTS: a replace ref (refs/replace/, anyone with the repo can add one) cannot swap
+    what a commit holds."""
+
+    def run(self, *args: str, env: Optional[dict] = None, **kw: Any) -> Any:
+        return super().run(*args, env=dict(env or {}, GIT_NO_REPLACE_OBJECTS="1"), **kw)
 
 
 class GitReader:
@@ -101,7 +116,7 @@ class GitReader:
     _parents: Dict[Tuple[str, str], Optional[str]] = {}
 
     def __init__(self, git: Git) -> None:
-        self.git = git
+        self.git = _NoReplaceGit(git.repo)
 
     def entry(self, sha: str, rel: str) -> Optional[Tuple[str, str, int]]:
         return mrdesc_view.tree_entry(self.git, sha, rel)
@@ -137,11 +152,12 @@ class GitReader:
         return {s: self._parents[(self.git.repo, s)] for s in shas}
 
     def diff(self, base: str, ref: str, rel: str) -> Optional[str]:
-        """`git diff base ref -- rel` as plain text: no external diff, no textconv, whatever .gitattributes says."""
+        """`git diff base ref -- rel` as plain text: no external diff, no textconv, whatever .gitattributes says; a
+        file that is not UTF-8 decoded as its source is (a character it cannot be becomes �)."""
         p = self.git.run("-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--no-textconv",
                          "--src-prefix=a/", "--dst-prefix=b/", base, ref, "--", rel, timeout=DIFF_TIMEOUT_S,
-                         env=mrdesc_view.LITERAL)
-        return p.stdout if p.returncode == 0 else None
+                         text=False, env=mrdesc_view.LITERAL)
+        return p.stdout.decode("utf-8", "replace") if p.returncode == 0 else None
 
 
 @dataclass(frozen=True)
@@ -194,9 +210,9 @@ class NodeQuery:
 
 
 def node_query(node: Any, rnd: Any) -> NodeQuery:
-    if not isinstance(node, str) or not NODE_RE.match(node):
+    if not isinstance(node, str) or not NODE_RE.fullmatch(node):
         raise AppError(BAD_NODE, "invalid_node")
-    if rnd not in (None, "") and (not isinstance(rnd, str) or not ROUND_RE.match(rnd)):
+    if rnd not in (None, "") and (not isinstance(rnd, str) or not ROUND_RE.fullmatch(rnd)):
         raise AppError(BAD_ROUND, "invalid_round")
     return NodeQuery(node, int(rnd) if rnd else None)
 
@@ -217,10 +233,10 @@ def file_query(q: Mapping[str, Any]) -> FileQuery:
     if view not in VIEWS:
         raise AppError(BAD_VIEW, "invalid_view")
     ref, base, pin = q.get("ref"), q.get("base") or None, q.get("pin") or None
-    if not isinstance(ref, str) or not (ref == "worktree" or HEX40.match(ref)) or \
-            base is not None and (not isinstance(base, str) or not HEX40.match(base)):
+    if not isinstance(ref, str) or not (ref == "worktree" or HEX40.fullmatch(ref)) or \
+            base is not None and (not isinstance(base, str) or not HEX40.fullmatch(base)):
         raise AppError(BAD_SHA, "invalid_ref")
-    if ref == "worktree" and (not isinstance(pin, str) or not HEX64.match(pin)):
+    if ref == "worktree" and (not isinstance(pin, str) or not HEX64.fullmatch(pin)):
         raise AppError(BAD_PIN, "invalid_pin")
     return FileQuery(path, view, ref, base, pin if ref == "worktree" else None)
 
@@ -274,7 +290,7 @@ def _declared(fold: Fold, n: stages.Node, r: stages.Round) -> List[Tuple[str, Op
     if doc and doc not in got and any(doc in _paths(fold, s) for s in r.commits):
         got[doc] = None
     order = sorted(got, key=lambda p: (p != doc, p))
-    return [(p, got[p]) for p in order if not HIDDEN.match(p)]
+    return [(p, got[p]) for p in order if not HIDDEN.search(p)]
 
 
 def _in_unit(fold: Fold, n: stages.Node, path: str) -> bool:
@@ -340,7 +356,7 @@ def _others(fold: Fold, allowed: AllowedRefs, n: stages.Node, r: stages.Round, s
     for sha in r.commits:
         for ch in fold.changes.get(sha) or []:
             p = str(ch.get("path") or "")
-            if not p or p in skip or HIDDEN.match(p) or not _in_unit(fold, n, p):
+            if not p or p in skip or HIDDEN.search(p) or not _in_unit(fold, n, p):
                 continue
             had = by.get(p)
             st = str(ch.get("status") or "M")
@@ -376,6 +392,15 @@ def node_output(fold: Fold, q: NodeQuery) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------- one file
+
+def _own_paths(fold: Fold) -> set:
+    """The requirement's files: the paths its commits changed and the ones Lean recorded for its rounds."""
+    out = {p for c in fold.commits for p in _paths(fold, str(c["sha"]))}
+    for n in fold.nodes:
+        for r in n.rounds:
+            out |= {p for p, _ in r.outputs + (r.ask.files if r.ask else ())}
+    return out
+
 
 def _pins(fold: Fold, path: str) -> set:
     """The sha256s a local round of a node recorded for its own document *path*: what a pinned read may match."""
@@ -427,7 +452,7 @@ def pinned_file(worktree: str, rel: str, sha256: str) -> bytes:
         try:
             st = os.fstat(ffd)
             if not stat.S_ISREG(st.st_mode):
-                raise AppError(SYMLINK, "not_a_file", 403)
+                raise AppError(NOT_A_FILE, "not_a_file", 403)
             if st.st_size > mrdesc_view.MAX_RAW:
                 raise AppError(TOO_BIG, "too_big", 413)
             chunks, left = [], mrdesc_view.MAX_RAW + 1
@@ -451,33 +476,45 @@ def pinned_file(worktree: str, rel: str, sha256: str) -> bytes:
     return data
 
 
+def _shown(text: str) -> Tuple[str, bool]:
+    """(text, truncated): cut at its last line end within TEXT_MAX, then emails pseudonymized. Cut first, at a line
+    end: the pattern reads at most TEXT_MAX characters, and the scrubber after it never sees part of a secret."""
+    if len(text) <= TEXT_MAX:
+        return pseudonymize(text), False
+    cut = text[:TEXT_MAX]
+    return pseudonymize(cut[:cut.rfind("\n") + 1]), True
+
+
 def _text(raw: bytes) -> Tuple[str, bool, bool]:
-    """(text, binary, truncated): decoded, emails pseudonymized, cut to TEXT_MAX."""
+    """(text, binary, truncated): decoded, then _shown."""
     if b"\0" in raw[:BINARY_PROBE]:
         return "", True, False
-    s = pseudonymize(raw.decode("utf-8", "replace"))
-    return s[:TEXT_MAX], False, len(s) > TEXT_MAX
+    s, cut = _shown(raw.decode("utf-8", "replace"))
+    return s, False, cut
 
 
-def _blob_or_refuse(rd: GitReader, sha: str, path: str) -> bytes:
+def _file_or_refuse(rd: GitReader, sha: str, path: str, absent_ok: bool = False) -> None:
+    """*path* at *sha* is a file the drawer reads: a side of a diff may lack it (added, deleted). A folder is no file
+    (its diff would show every file under it), a symlink or a submodule is refused, a file over 4 MB too."""
     e = rd.entry(sha, path)
+    if e is None and absent_ok:
+        return
     if e is None or e[0] == "040000":
         raise AppError(MISSING, "missing", 404)
     if e[0] == "120000":
         raise AppError(SYMLINK, "symlink", 403)
     if e[0] == "160000":
         raise AppError(SUBMODULE, "submodule", 403)
+    if e[2] > mrdesc_view.MAX_RAW:
+        raise AppError(TOO_BIG, "too_big", 413)
+
+
+def _blob_or_refuse(rd: GitReader, sha: str, path: str) -> bytes:
+    _file_or_refuse(rd, sha, path)
     raw = rd.blob(sha, path)
     if raw is None:
         raise AppError(TOO_BIG, "too_big", 413)
     return raw
-
-
-def _no_link(rd: GitReader, sha: str, path: str) -> None:
-    """A side of a diff may lack the file (added, deleted), never be a symlink or a submodule."""
-    e = rd.entry(sha, path)
-    if e is not None and e[0] in ("120000", "160000"):
-        raise AppError(SYMLINK if e[0] == "120000" else SUBMODULE, "symlink" if e[0] == "120000" else "submodule", 403)
 
 
 def _added_diff(path: str, raw: bytes) -> str:
@@ -492,6 +529,8 @@ def file_view(fold: Fold, q: FileQuery) -> Dict[str, Any]:
     added)."""
     path, view, ref, pin = q.path, q.view, q.ref, q.pin
     rd = _reader(fold)
+    if path not in _own_paths(fold):
+        raise AppError(NOT_OURS_FILE, "unknown_file", 404)
     allowed = AllowedRefs(fold)
     base = allowed.need(q.base) if q.base else None
     pinned = ref == "worktree"
@@ -512,7 +551,7 @@ def file_view(fold: Fold, q: FileQuery) -> Dict[str, Any]:
         text, binary, cut = _text(raw)
         return dict(out, text=text, binary=binary, truncated=cut, size=len(raw))
     if base is not None:
-        _no_link(rd, base, path)
+        _file_or_refuse(rd, base, path, absent_ok=True)
         if pinned:
             old = rd.blob(base, path) or b""
             if b"\0" in old[:BINARY_PROBE] or b"\0" in raw[:BINARY_PROBE]:
@@ -521,7 +560,7 @@ def file_view(fold: Fold, q: FileQuery) -> Dict[str, Any]:
                 old.decode("utf-8", "replace").splitlines(True), raw.decode("utf-8", "replace").splitlines(True),
                 "a/" + path, "b/" + path))
         else:
-            _no_link(rd, ref, path)
+            _file_or_refuse(rd, ref, path, absent_ok=True)
             got = rd.diff(base, ref, path)
             if got is None:
                 raise AppError(NO_DIFF, "no_diff", 404)
@@ -530,5 +569,5 @@ def file_view(fold: Fold, q: FileQuery) -> Dict[str, Any]:
         if b"\0" in raw[:BINARY_PROBE]:
             return dict(out, text="", binary=True, truncated=False, size=len(raw))
         text = _added_diff(path, raw)
-    s = pseudonymize(text)
-    return dict(out, text=s[:TEXT_MAX], binary=False, truncated=len(s) > TEXT_MAX, size=len(text))
+    s, cut = _shown(text)
+    return dict(out, text=s, binary=False, truncated=cut, size=len(text))

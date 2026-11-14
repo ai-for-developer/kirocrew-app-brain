@@ -81,7 +81,8 @@ def pay9(tmp_path):
 
 # ---------------------------------------------------------------- the routes: the owner's only, paths checked first
 
-def routes(tmp_path, owner):
+def routes(tmp_path, owner, fold_=None):
+    """The two route handlers as the host calls them; *fold_*: the fold they read in place of the board's."""
     import backend.routes as br
     from http_fakes import FakeWeb
 
@@ -90,6 +91,8 @@ def routes(tmp_path, owner):
             self.method, self.path, self.handler = method, path, handler
 
     svc = br.service.Service(SimpleNamespace(name="brain", logger=None, data_dir=str(tmp_path / "data")))
+    if fold_ is not None:
+        svc._fold = lambda rid, key, snap: fold_
     r = {(x.method, x.path): x.handler for x in br.handlers.build_routes(svc, Route, web=FakeWeb(), is_owner=lambda _r: owner)}
     return r[("GET", "/outputs/{repo}/{key}")], r[("GET", "/outputs/{repo}/{key}/file")]
 
@@ -163,8 +166,10 @@ def test_a_commit_outside_the_requirement_is_404_never_read(pay9):
     other = sh("git", "-C", pay9.repo, "commit-tree", "-m", "x", sh("git", "-C", pay9.repo, "write-tree").stdout.strip()).stdout.strip()
     refused(lambda: view(pay9.fold, ref=other, path=RELEASE), 404, "unknown_commit")
     refused(lambda: view(pay9.fold, ref=pay9.r2, base=other, path=RELEASE, view="diff"), 404, "unknown_commit")
-    # the commit before the branch's first is the version before it: readable
-    assert view(pay9.fold, ref=pay9.base, path="README.md")["text"] == "shop\n"
+    # the commit before the branch's first is the version before it: a file of the requirement is compared with it
+    assert "+| INCEPTION |" in view(pay9.fold, ref=pay9.r1, base=pay9.base, path=RELEASE, view="diff")["text"]
+    # a file only that commit has is not the requirement's: never read
+    refused(lambda: view(pay9.fold, ref=pay9.base, path="README.md"), 404, "unknown_file")
 
 
 def test_a_symlink_in_a_commit_is_refused_not_followed(tmp_path):
@@ -263,7 +268,8 @@ def test_a_pinned_read_is_refused_when_the_file_itself_is_a_symlink(waiting, tmp
 
 def test_a_pinned_read_is_refused_at_a_path_that_is_not_the_stage_tables_document(waiting):
     # the same bytes, the same sha256, another path: never read
-    refused(lambda: view(waiting.fold, ref="worktree", pin=h(waiting.text), path="notes.md"), 404, "not_recorded")
+    refused(lambda: view(waiting.fold, ref="worktree", pin=h(waiting.text), path="notes.md"), 404, "unknown_file")
+    refused(lambda: view(waiting.fold, ref="worktree", pin=h("x\n"), path="README.md"), 404, "not_recorded")
     refused(lambda: view(waiting.fold, ref="worktree", pin=h("other"), path=REQS), 404, "not_recorded")
 
 
