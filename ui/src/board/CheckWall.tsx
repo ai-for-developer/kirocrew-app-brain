@@ -2,8 +2,9 @@
  * The check wall (the sample team board's 测试墙): one cell per check, grouped — Lean's approvals, the last verify
  * round's checks, the hand-over (the bridge and the signer), the Brain and the repo's kit, the 14 days after the merge —
  * green passed, red failed, magenta waiting for a person, dashed not yet, blue-grey ⏳ watching (the 14 days: nobody's
- * turn), dotted not needed this time. A cell whose status changed since the previous poll flips; hovering or focusing a
- * cell says what it is and why in the inspector line under the wall. The sparkline is verify over time: checks passed
+ * turn), dotted not needed this time; each carries the icon of the stage it checks, and a click looks at that stage. A
+ * cell whose status changed since the previous poll flips; hovering or focusing a cell says what it is and why in the
+ * inspector line under the wall. The sparkline is verify over time: checks passed
  * per round (from two rounds on). The repo's kit is fixed in 设置: the wall says so with a link where it asks for a fix.
  */
 import { useState } from 'react'
@@ -12,8 +13,8 @@ import { CELL_GROUPS, CELL_META, boardWho, checksSay, fmtAgo } from './format'
 import { useServerNow } from './hooks'
 import { RoleIcon } from './RoleIcon'
 
-export function CheckWall({ board, focus, onActor, flips, onSettings }: {
-  board: ReqBoard; focus: string | null; onActor: (k: string) => void; flips: Record<string, number>; onSettings?: () => void
+export function CheckWall({ board, focus, onNode, flips, onSettings }: {
+  board: ReqBoard; focus: string | null; onNode: (id: string) => void; flips: Record<string, number>; onSettings?: () => void
 }) {
   const [inspect, setInspect] = useState<string | null>(null)
   const w = board.checks
@@ -22,7 +23,7 @@ export function CheckWall({ board, focus, onActor, flips, onSettings }: {
   const waiting = w.cells.filter((c) => c.status === 'wait')
   const say = checksSay(w, board)
   const green = say.green
-  const icon = (c: CheckCell) => board.actors.find((a) => a.key === c.actor)?.icon
+  const icon = (c: CheckCell) => board.nodes.find((n) => n.id === c.node)?.icon
   const meta = (c: CheckCell) => (c.status === 'wait' ? { ...CELL_META.wait, label: boardWho(board) } : CELL_META[c.status] ?? { label: c.status, glyph: '?' })
   const kit = w.cells.filter((c) => c.group === 'brain' && c.id.startsWith('kit') && c.status !== 'pass')
   return (
@@ -57,11 +58,11 @@ export function CheckWall({ board, focus, onActor, flips, onSettings }: {
                     const flip = flips[c.id] ?? 0
                     const m = meta(c)
                     return (
-                      <button key={c.id} type="button" className={`kt-cell is-${c.status}${focus ? (c.actor === focus ? ' is-hot' : ' is-dim') : ''}`}
+                      <button key={c.id} type="button" className={`kt-cell is-${c.status}${focus ? (c.node === focus ? ' is-hot' : ' is-dim') : ''}`}
                         data-testid="kt-cell" data-case={c.id} data-status={c.status} aria-label={`${c.name}：${m.label}，${c.detail}`}
                         onMouseEnter={() => setInspect(c.id)} onMouseLeave={() => setInspect((x) => (x === c.id ? null : x))}
                         onFocus={() => setInspect(c.id)} onBlur={() => setInspect((x) => (x === c.id ? null : x))}
-                        onClick={() => c.actor && onActor(c.actor)}>
+                        onClick={() => c.node && onNode(c.node)}>
                         <span key={flip} className={`kt-cell-face${flip ? ' is-flip' : ''}`}>
                           <span className="kt-cell-ac">{c.label}</span>
                           <span className="kt-cell-glyph" aria-hidden="true">{m.glyph}</span>

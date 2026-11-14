@@ -709,7 +709,7 @@ def gates_of(rounds: Sequence[Round], unit: Optional[str], approvals: Sequence[M
         now = next((a for a in approvals if a.get("kind") == r.ask.kind
                     and (a.get("unit") or None) == (unit if r.ask.kind == "PLAN" else None)), None)
         if now is not None and now.get("state") == "stale":
-            out.append(GateView(r.ask.kind, "stale", r.n, r.ask.at, text=STALE, docs=docs))
+            out.append(GateView(r.ask.kind, "stale", r.n, r.ask.at, text=STALE, docs=docs, asker=p.asker))
         elif r.refused is not None:
             out.append(GateView(r.ask.kind, "refused", r.n, r.refused.at, who=p.who, docs=docs, asker=p.asker))
         else:
@@ -728,6 +728,9 @@ class NodeStatus:
 
 
 # what a node of the default way waits for before its first round
+# the team runner's page of a requirement it has no workspace for yet (the bridge took it, the signer signs or the
+# runner prepares one): what was done before the hand-over is behind it, and nothing of it is readable there
+RUNNER_BLIND = "交接前的事：运行机还没建工作区，读不到它的记录"
 WAITS = {"requirements": "等开工", "application-design": "等需求分析", "units": "等应用设计",
          "code-generation": "等批了设计", "build-and-test": "等代码生成", "review": "等构建测试",
          "release": "等审查和自动检查", "reflect": "等合并以后"}
@@ -757,14 +760,15 @@ def _asking(g: GateView) -> str:
 
 
 def node_status(kind: str, rounds: Sequence[Round], gates: Sequence[GateView], run_now: Optional[NodeStatus],
-                over: Optional[Tuple[str, float]], waits: NodeStatus) -> NodeStatus:
+                over: Optional[Tuple[str, float]], waits: NodeStatus, passed: bool = False) -> NodeStatus:
     """The one writer of a node's status (ActorStatus) and its line. *kind*: its stage's round kind. No round yet:
     *waits*, what the fold says it waits for. Then its latest round decides: a request out → awaiting_approval (stale →
     stalled, a refused line → stalled); open → running, fixing from round 2, unless *run_now* (its run's live state
     while the run is at this node; None in the replay) says the run waits on a person or is stuck; sent back,
     superseded or refused → fixing; a failed verify → failed; skipped → skipped; approved → merged; done or passed →
-    merged once the requirement merged after it, else done. *over*: ("merged", at) or ("closed", at) when the
-    requirement's way is over (merged, a small one merged into its big one, closed): nothing is at work on it then."""
+    merged once the way moved past it (*passed*: a later node's round began after it ended) or the requirement merged
+    after it, else done. *over*: ("merged", at) or ("closed", at) when the requirement's way is over (merged, a small
+    one merged into its big one, closed): nothing is at work on it then."""
     if not rounds:
         return waits
     last = rounds[-1]
@@ -802,7 +806,7 @@ def node_status(kind: str, rounds: Sequence[Round], gates: Sequence[GateView], r
     if end.outcome is Outcome.APPROVED:
         return NodeStatus("merged", "已合进 Brain" if kind == "reflect" else
                           _line(_name(end.by), "批了") if end.by else "批准了", end.at)
-    merged = over is not None and over[0] == "merged" and last.ended is not None and last.ended <= over[1]
+    merged = passed or over is not None and over[0] == "merged" and last.ended is not None and last.ended <= over[1]
     return NodeStatus("merged" if merged else "done", DONE_WORDS.get(kind, "做完了"), last.ended)
 
 
@@ -825,12 +829,14 @@ class Way:
     """What decides a requirement's way besides its records. A small requirement's way has no release and no
     write-back. A split's unit that its small requirement has not merged in is that one's: unit -> (key, state,
     owner). *over*: ("merged", at) or ("closed", at) once the way is over (a small one: merged into its big one).
-    *proposals*: the Brain proposals waiting to be written back after the merge, by *you* (你, or the owner's name)."""
+    *proposals*: the Brain proposals waiting to be written back after the merge, by *you* (你, or the owner's name).
+    *blind*: the team runner's page of a requirement handed over before it has a workspace (board.runner_blind)."""
     child: bool = False
     children: Mapping[str, Tuple[str, str, Optional[str]]] = field(default_factory=dict)
     over: Optional[Tuple[str, float]] = None
     proposals: int = 0
     you: str = "你"
+    blind: bool = False
 
 
 @dataclass
@@ -861,6 +867,10 @@ def _waits(stage: StageDef, kid: Optional[Tuple[str, str, Optional[str]]], way: 
                           way.over[1], "you" if way.you == "你" else "people")
     if way.over is not None:
         return NodeStatus("skipped", "这次没有要回写的知识" if stage.id == "reflect" else "这次不需要", way.over[1])
+    if way.blind and stage.phase in ("ideation", "inception"):
+        return NodeStatus("done", RUNNER_BLIND, None)
+    if way.blind and stage.id == "code-generation":
+        return NodeStatus("waiting", "等运行机开工", None)
     return NodeStatus("waiting", WAITS.get(stage.id, "等前一个阶段"), None)
 
 
@@ -930,9 +940,31 @@ def phases(nodes: Sequence[Node], way: Way) -> List[Dict[str, Any]]:
     return out
 
 
-def _spans(n: Node, over: Optional[Tuple[str, float]]) -> List[Dict[str, Any]]:
+Quiet = Mapping[RunKey, Sequence[Tuple[float, Optional[float]]]]
+
+
+def _cut(span: Tuple[float, Optional[float], str, RunKey],
+         quiet: Sequence[Tuple[float, Optional[float]]]) -> List[Tuple[float, Optional[float], str, RunKey]]:
+    """A work or fix span with the stretches its run's session sat waiting for its person taken out as waits."""
+    a, b, kind, run = span
+    out = []
+    for qa, qb in sorted(quiet, key=lambda q: q[0]):
+        if (b is not None and qa >= b) or (qb is not None and qb <= a):
+            continue
+        if qa > a:
+            out.append((a, qa, kind, run))
+        end = b if qb is None or (b is not None and b <= qb) else qb
+        out.append((max(a, qa), end, "wait", run))
+        if end is None or end == b:
+            return out
+        a = end
+    return out + [(a, b, kind, run)]
+
+
+def _spans(n: Node, over: Optional[Tuple[str, float]], quiet: Quiet) -> List[Dict[str, Any]]:
     """The node's lane: each round's work (fix after a no), and the wait while its request was out; nothing of the
-    requirement's time after its way is over."""
+    requirement's time after its way is over. *quiet*: by run, when its session sat waiting for its person (before
+    each reply the person typed, and now while it waits on them): those hours are a wait, not work (UI问题清单 #2)."""
     out = []
     for r in n.rounds:
         if r.end.outcome is Outcome.SKIPPED:
@@ -948,22 +980,24 @@ def _spans(n: Node, over: Optional[Tuple[str, float]]) -> List[Dict[str, Any]]:
         out.append((ask, r.decided.at if r.decided is not None else r.ended, "wait", r.run))
         if r.decided is not None and r.decided.outcome is Outcome.APPROVED and (r.ended is None or r.ended > r.decided.at):
             out.append((r.decided.at, r.ended, kind, r.run))      # approved while at work: its code comes after its plan
+    out = [x for sp in out for x in (_cut(sp, quiet.get(sp[3]) or ()) if sp[2] != "wait" else [sp])]
     end = over[1] if over is not None else None
     spans = []
     for a, b, kind, run in out:
-        if end is not None and a >= end:
-            continue
         b = end if end is not None and (b is None or b > end) else b
         if b is None or b > a:
             spans.append({"a": a, "b": b, "kind": kind, "run": run})
     return spans
 
 
-def _history(n: Node, rec: Records, way: Way, pending: Optional[Callable[[Ask], Pending]]) -> List[Dict[str, Any]]:
-    """node_status at each moment its rounds changed, as the records stood then: what 回放 plays."""
+def _history(n: Node, rec: Records, way: Way, pending: Optional[Callable[[Ask], Pending]],
+             later: Sequence[float] = ()) -> List[Dict[str, Any]]:
+    """node_status at each moment its rounds changed, as the records stood then, and at each moment the way moved past
+    it (*later*: when the rounds of the nodes after it began): what 回放 plays."""
     moments = {t for r in n.rounds for t in (r.started, r.ended, r.ask.at if r.ask else None,
                                             r.decided.at if r.decided else None, r.refused.at if r.refused else None)
                if t is not None}
+    moments |= {next((s for s in later if s >= r.ended), None) for r in n.rounds if r.ended is not None} - {None}
     if way.over is not None:
         moments.add(way.over[1])
     ats = sorted(moments)
@@ -971,7 +1005,8 @@ def _history(n: Node, rec: Records, way: Way, pending: Optional[Callable[[Ask], 
     for t, last in zip(ats, AS_OF[n.stage.rounds](n.stage, n.unit, rec, ats)):
         rs = [last] if last is not None else []
         over = way.over if way.over is not None and way.over[1] <= t else None
-        st = node_status(n.stage.rounds, rs, gates_of(rs, n.unit, (), pending), None, over, n.waits)
+        moved = last is not None and last.ended is not None and any(last.ended <= s <= t for s in later)
+        st = node_status(n.stage.rounds, rs, gates_of(rs, n.unit, (), pending), None, over, n.waits, moved)
         if not rs and st.since is None:
             continue
         if not out or (out[-1]["status"], out[-1]["doing"]) != (st.status, st.doing):
@@ -980,20 +1015,27 @@ def _history(n: Node, rec: Records, way: Way, pending: Optional[Callable[[Ask], 
 
 
 def with_status(nodes: Sequence[Node], rec: Records, now: Mapping[RunKey, Tuple[NodeStatus, Optional[str]]],
-                way: Way, pending: Optional[Callable[[Ask], Pending]] = None) -> None:
+                way: Way, pending: Optional[Callable[[Ask], Pending]] = None, quiet: Optional[Quiet] = None) -> None:
     """Each node's status now (node_status, with its run's live state while the run is at it: *now*, run -> (its
-    state, the node it is at)), its history (what 回放 plays; it ends on the status now) and its lane's spans."""
-    for n in nodes:
+    state, the node it is at); merged once a later node's round began after its latest one ended), its history (what
+    回放 plays; it ends on the status now) and its lane's spans (*quiet*: _spans')."""
+    later: List[List[float]] = []
+    began: List[float] = []
+    for n in reversed(nodes):
+        later.append(sorted(began))
+        began += [r.started for r in n.rounds]
+    for n, moved in zip(nodes, reversed(later)):
         last = n.rounds[-1] if n.rounds else None
         live = now.get(last.run) if last is not None else None
-        n.status = node_status(n.stage.rounds, n.rounds, n.gates, live[0] if live and live[1] == n.id else None,
-                               way.over, n.waits)
-        n.history = _history(n, rec, way, pending)
+        run_now = live[0] if live and live[1] == n.id else None
+        passed = last is not None and last.ended is not None and any(s >= last.ended for s in moved)
+        n.status = node_status(n.stage.rounds, n.rounds, n.gates, run_now, way.over, n.waits, passed)
+        n.history = _history(n, rec, way, pending, moved)
         h = n.history[-1] if n.history else None
         if h is not None and (h["status"], h["doing"]) != (n.status.status, n.status.doing):
             n.history.append({"at": max(n.status.since or h["at"], h["at"]), "status": n.status.status,
                               "doing": n.status.doing, "who": n.status.who})
-        n.spans = _spans(n, way.over)
+        n.spans = _spans(n, way.over, quiet or {})
 
 
 def node_of(nodes: Sequence[Node], e: Mapping[str, Any], intent: Optional[str]) -> Optional[Node]:
@@ -1012,10 +1054,12 @@ def node_of(nodes: Sequence[Node], e: Mapping[str, Any], intent: Optional[str]) 
 
 def round_at(nodes: Sequence[Node], run: RunKey, t: float, began: bool = False) -> Optional[Tuple[Node, Round]]:
     """Where *run* was at *t*: of its rounds open then (begun, not ended), the latest begun, and its node; *began*:
-    of all it had begun by then."""
-    hits = [(r.started, i, n, r) for i, n in enumerate(nodes) for r in n.rounds
-            if r.run == run and r.started <= t and (began or r.ended is None or t <= r.ended)]
-    return max(hits, key=lambda x: (x[0], x[1]))[2:] if hits else None
+    of all it had begun by then, the one it was at last (open then, else the latest to end: 逆向工程 done inside 需求分析
+    leaves it at 需求分析). A stage it skipped is no place it was at: the graph draws no box for it."""
+    hits = [(t if r.ended is None or t <= r.ended else r.ended, r.started, i, n, r) for i, n in enumerate(nodes)
+            for r in n.rounds if r.run == run and r.end.outcome is not Outcome.SKIPPED and r.started <= t
+            and (began or r.ended is None or t <= r.ended)]
+    return max(hits, key=lambda x: x[:3])[3:] if hits else None
 
 
 def round_on(node: Node, run: Optional[RunKey], t: float, opens: bool = False) -> Optional[Round]:

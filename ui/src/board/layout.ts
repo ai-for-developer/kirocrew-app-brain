@@ -142,11 +142,13 @@ function across(start: Pt, end: Pt, between: ReadonlyArray<{ index: number; x: n
  * the graph keeps this scale and scrolls sideways (GraphFrame's Scroller). The text never changes. */
 export const SCALE = 0.84
 
-/** 'run' (the run branch), 'tests' (the check ring), 'orch' (the owner) or a box's node id. */
+/** 'run' (the run branch), 'tests' (the check ring), 'orch' (the owner), `relay:<i>` (the i-th hand-over's pill on
+ * the rail) or a box's node id. */
 export type Anchor = string
 export const RUN = 'run'
 export const TESTS = 'tests'
 export const ORCH = 'orch'
+export const relayAnchor = (i: number): Anchor => `relay:${i}`
 
 /** A row of the list under the orchestrator box: this time's runs (a runner run's id under its row) and hand-overs,
  * then what the Brain brought in. */
@@ -476,11 +478,16 @@ export function stageCommandPath(lay: StageLayout, run: string, node: string, la
   return { path: [sCurve(p0, up), line(up, turn), turnDown(turn, down), turnRight(down, { x: b.x - NODE_W / 2, y: b.y })], bus: { x1: up.x, x2: turn.x, y } }
 }
 
-/** The box an anchor of the stage graph takes up (a blip pulses around it): ORCH, RUN (the rail's head), TESTS, a box. */
+/** The box an anchor of the stage graph takes up (a blip pulses around it): ORCH, RUN (the rail's head), TESTS, a
+ * hand-over's pill, a box. */
 export function stageAnchorBox(lay: StageLayout, a: Anchor, head: number): (Pt & { w: number; h: number; rx: number }) | null {
   if (a === TESTS) return { x: lay.station.x, y: lay.station.y, w: lay.station.r * 2, h: lay.station.r * 2, rx: lay.station.r }
   if (a === RUN) return { x: head, y: lay.rail.y, w: 22, h: 22, rx: 11 }
   if (a === ORCH) return { ...lay.orch, w: ST_ORCH.w, h: ST_ORCH.h, rx: 18 }
+  if (a.startsWith('relay:')) {
+    const x = lay.relayX[Number(a.slice(6))]
+    return x === undefined ? null : { x, y: lay.rail.y, w: RELAY_W, h: 26, rx: 13 }
+  }
   const b = lay.boxes.get(a)
   return b ? { x: b.x, y: b.y, w: NODE_W, h: NODE_H, rx: 16 } : null
 }

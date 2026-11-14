@@ -651,7 +651,7 @@ describe('需求详情', () => {
 
   test('用到的 Brain: a proposal already written to its write-back branch says so and opens that write-back', async () => {
     const m = fx.boardMerged()
-    Object.assign(m.actors.find((a) => a.key === 'reflect')!, { status: 'done', doing: '回写分支 brain/PAY-2-reflect-1' })
+    m.nodes = m.nodes.map((n) => (n.id === 'reflect' ? { ...n, status: 'done' as const, doing: '回写分支 brain/PAY-2-reflect-1' } : n))
     withDetail((x) => {
       x.row.state = 'merged'
       x.brain.proposals = 2
@@ -665,8 +665,7 @@ describe('需求详情', () => {
 
   test('用到的 Brain: once the write-back branch is on the default branch (the reflect step merged) it says 已合进 Brain', async () => {
     const m = fx.boardMerged()
-    const r = m.actors.find((a) => a.key === 'reflect')!
-    Object.assign(r, { status: 'merged', doing: '回写分支 brain/PAY-2-reflect-1 已合并' })
+    m.nodes = m.nodes.map((n) => (n.id === 'reflect' ? { ...n, status: 'merged' as const, doing: '回写分支 brain/PAY-2-reflect-1 已合并' } : n))
     withDetail((x) => {
       x.row.state = 'merged'
       x.brain.proposals = 2
@@ -721,23 +720,23 @@ describe('需求详情', () => {
     expect(screen.queryByRole('region', { name: '开会话' })).toBeNull()
   })
 
-  test('价值流: each part named (the gate it waited at, the session, the AI) on a time axis; a part and a moment open the board there', async () => {
+  test('价值流: each part named (the stage, the gate it waited at) on a time axis; a part and a moment open the board there', async () => {
     const { go } = renderDetail()
     const card = await screen.findByRole('region', { name: '价值流' })
     expect(apiCalls.map((c) => c.path).filter((p) => !p.startsWith(`${API}/overview`))).toEqual([`${API}/requirements/r1/PAY-3`, `${API}/board/r1/PAY-3`])
-    // board.json: the local session works and waits at the approvals (the 设计审批 node also asks for each code-generation
-    // plan: the part says which), waits overnight for the person's reply, works, then waits in the session (the question)
-    // and at the second plan; the gaps after each approval have nothing recorded
+    // board.json: each stage's own stretch, and the gate each wait was at (the 设计审批 node also asks for each
+    // code-generation plan: the part says which). The quiet night between two stages is drawn by neither (the legend
+    // says so): 周期 still counts it
     const parts = [
-      'AI 在本机做 31 分钟', '需求审批 21 分钟', 'AI 在本机做 44 分钟', '设计审批 25 分钟', 'AI 在本机做 48 分钟', '代码生成计划审批 17 分钟',
-      'AI 在本机做 58 分钟', '会话等人 18 小时 56 分', 'AI 在本机做 4 小时 40 分', '会话等人 14 分钟', '代码生成计划审批 6 分钟',
+      '需求分析 28 分钟', '需求审批 21 分钟', '需求分析 1 分钟', '应用设计 41 分钟', '设计审批 25 分钟', '应用设计 1 分钟', '拆分单元 9 分钟',
+      '功能设计 · refund-export 18 分钟', '代码生成 · refund-export 12 分钟', '代码生成计划审批 17 分钟', '代码生成 · refund-export 58 分钟',
+      '代码生成 · refund-api 4 小时 52 分', '代码生成计划审批 6 分钟',
     ]
     const chart = within(card).getByRole('group', { name: /^价值流：/ })
     expect(chart).toHaveAttribute('aria-label', '价值流：' + parts.join('，'))
     const segs = within(chart).getAllByRole('button').filter((b) => parts.includes(b.getAttribute('aria-label')!))
     expect(segs.map((b) => b.getAttribute('aria-label'))).toEqual(parts)
     expect(card).toHaveTextContent('从开工到此刻，共 28 小时')
-    expect(chart).toHaveTextContent('18 小时 56 分')
     // the moments: the start, the approvals, the reply and the question, not the requests, stages or commits
     expect(within(chart).getAllByTestId('vs-moment')).toHaveLength(6)
     for (const t of ['开工', '你批准了需求', '你批准了设计', '你批准了代码生成计划', '你在会话里回话了', '停下问你：澄清']) expect(chart).toHaveTextContent(t)
@@ -751,9 +750,28 @@ describe('需求详情', () => {
     expect(go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-3', from: 'item', at: 1794048720 })
   })
 
+  test('价值流 shows a run waiting on its person between two stages, which no stage’s lane holds', async () => {
+    const b = fx.board()
+    // PAY-3 after refund-api's plan was approved: the session went quiet two hours ago, waiting for the person to talk
+    const quiet = b.at - 2 * 3600
+    b.nodes = b.nodes.map((n) => (n.id !== 'code-generation/refund-api' ? n
+      : { ...n, status: 'merged' as const, spans: n.spans.filter((x) => x.kind !== 'wait').map((x) => ({ ...x, b: x.b ?? quiet })) }))
+    b.runs = b.runs.map((r) => ({ ...r, now: { ...r.now, status: 'awaiting_approval' as const, since: quiet, who: 'you' as const, node: null, do: 'reply' as const } }))
+    installFixtureRoutes({ [`GET ${API}/board/*`]: () => structuredClone(b) })
+    renderDetail()
+    const card = await screen.findByRole('region', { name: '价值流' })
+    const chart = within(card).getByRole('group', { name: /^价值流：/ })
+    expect(chart.getAttribute('aria-label')).toMatch(/，会话等人 2 小时$/)
+    fireEvent.click(within(within(card).getByRole('group', { name: '图或表格' })).getByRole('button', { name: '表格' }))
+    const rows = within(within(card).getByRole('table', { name: '价值流的每一段' })).getAllByRole('row').slice(1)
+    expect(rows[rows.length - 1]).toHaveTextContent('会话等人人2 小时')
+  })
+
   test('价值流 says the whole time 周期 says; a quiet end with nothing recorded is said, not drawn', async () => {
     const b = fx.board()
-    for (const a of b.actors) a.spans = a.spans.map((x) => ({ ...x, b: x.b ?? b.at }))
+    // everything stopped at the snapshot and nobody waits since: the five hours after it are quiet, not a wait
+    b.nodes = b.nodes.map((n) => ({ ...n, spans: n.spans.map((x) => ({ ...x, b: x.b ?? b.at })) }))
+    b.runs = b.runs.map((r) => ({ ...r, now: { ...r.now, status: 'done' as const, who: null, do: null } }))
     b.at += 5 * 3600
     installFixtureRoutes({ [`GET ${API}/board/*`]: () => structuredClone(b) })
     renderDetail()
@@ -762,17 +780,17 @@ describe('需求详情', () => {
     expect(within(screen.getByRole('article', { name: '周期' })).getByTestId('item-cycle')).toHaveTextContent(/^33 小时$/)
   })
 
-  test('价值流 as a table: one row per part with its time, who, how long and how it ended', async () => {
+  test('价值流 as a table: one row per part with its stage, who, how long and how it ended', async () => {
     renderDetail()
     const card = await screen.findByRole('region', { name: '价值流' })
     fireEvent.click(within(within(card).getByRole('group', { name: '图或表格' })).getByRole('button', { name: '表格' }))
     const rows = within(within(card).getByRole('table', { name: '价值流的每一段' })).getAllByRole('row').slice(1)
-    expect(rows).toHaveLength(11)
-    expect(rows[0]).toHaveTextContent('AI（本机会话）31 分钟')
+    expect(rows).toHaveLength(13)
+    expect(rows[0]).toHaveTextContent('需求分析AI（本机会话）28 分钟')
     expect(rows[1]).toHaveTextContent('需求审批人21 分钟批准')
-    expect(rows[3]).toHaveTextContent('设计审批人25 分钟批准')
-    expect(rows[5]).toHaveTextContent('代码生成计划审批人17 分钟批准')
-    expect(rows[7]).toHaveTextContent('会话等人人18 小时 56 分回答了')
+    expect(rows[4]).toHaveTextContent('设计审批人25 分钟批准')
+    expect(rows[9]).toHaveTextContent('代码生成计划审批人17 分钟批准')
+    expect(rows[11]).toHaveTextContent('代码生成 · refund-apiAI（本机会话）4 小时 52 分')
   })
 
   test('a merged requirement: nothing after the merge counts (the write-back wait is not the delivery’s); ▶ 回放 ↗', async () => {

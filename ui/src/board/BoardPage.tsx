@@ -4,13 +4,13 @@
  * Polls GET /board/{repo}/{key} every 2 s (useBoard.ts) and renders only that contract (types.ts ReqBoard): the
  * header, 你要做的一步 (a narrow strip: what the person does now, and where), the live counters, the stage graph
  * (StageGraph.tsx, the hero: a box per stage a run did, in the AI-DLC phase bands, with the particle layer), the
- * commit conveyor, one lane per actor on a shared time axis, the check wall, the events, and 验收 (on top once it is
+ * commit conveyor, one lane per stage a run did on a shared time axis, the check wall, the events, and 验收 (on top once it is
  * time to accept, else under the lanes). Each poll's
- * snapshot is diffed against the previous one (diff.ts): new events become particles and node flashes, changed check
+ * snapshot is diffed against the previous one (diff.ts): new events become particles and box flashes, changed check
  * cells flip, changed lanes and new commits get a one-time highlight. The first snapshot is history and never animates.
  *
- * Click a box to look at that stage, an actor's lane, chip or cell to look at that actor only; 跟随 scrolls to the
- * actor that moved last; Esc lets go. 回放
+ * Click a box, a lane, a commit, a cell, a stage's dot or an event's chip to look at that stage only, everywhere on the
+ * page (what has no stage looks at nothing); 跟随 scrolls to the stage that moved last; Esc lets go. 回放
  * (Replay.tsx) plays the requirement again from the same snapshot (timeline.ts); while it plays nothing can be done.
  * Reduced motion: nothing flies or pulses, states still change.
  *
@@ -23,7 +23,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppApi, useNavigate } from '@kirocrew/app-sdk'
 import { VIEW_NAME, type BoardEntry } from '../nav'
-import type { ReqBoard, Run, WaitDo } from '../types'
+import type { ReqBoard, WaitDo } from '../types'
 import { LoadState } from '../ui'
 import { FamilyPanel, useFamily } from '../views/Family'
 import { QuestionCard } from '../views/Question'
@@ -33,11 +33,11 @@ import { Accept } from './Accept'
 import type { FlashMap } from './GraphFrame'
 import { CheckWall } from './CheckWall'
 import { Conveyor } from './Conveyor'
-import type { BoardDiff } from './diff'
+import { effects, type BoardDiff, type Flash } from './diff'
 import type { Item } from './engine'
 import { EventFeed } from './EventFeed'
 import { BOARD_EXTRA_CSS } from './extra'
-import { PERSON, WORKING, boardWho } from './format'
+import { PERSON, WORKING, boardWho, sessionOf } from './format'
 import { NextStep } from './NextStep'
 import { openHere, reviewNext } from './next'
 import { Intro, Kpis, TopBar } from './Header'
@@ -46,7 +46,7 @@ import { Lanes } from './Lanes'
 import { stageKey, stageLayout, stageShape } from './layout'
 import { ReplayBar, useReplay } from './Replay'
 import { RoleIcon } from './RoleIcon'
-import { StageGraph, stageEffects, stageInput } from './StageGraph'
+import { StageGraph, stageInput } from './StageGraph'
 import { useBoard } from './useBoard'
 
 interface Effects {
@@ -60,35 +60,31 @@ interface Effects {
 }
 const NO_EFFECTS: Effects = { req: null, flips: {}, flashes: {}, bumps: {}, belt: new Set(), fresh: new Set(), announce: '' }
 
-/** Fold one poll's diff into the one-shot effects (each counter is a key that replays an animation). */
-export function applyDiff(f: Effects, d: BoardDiff): Effects {
+/** Fold one poll's diff and its flashes on the graph into the one-shot effects (each counter is a key that replays an
+ * animation; a lane's bump is its node's). */
+export function applyDiff(f: Effects, d: BoardDiff, flashed: Flash[]): Effects {
   if (d.first || f.req !== d.req) return { ...NO_EFFECTS, req: d.req }
   const flips = { ...f.flips }
   for (const x of d.flips) flips[x.id] = (flips[x.id] ?? 0) + 1
   const flashes = { ...f.flashes }
-  for (const x of d.flashes) flashes[x.target] = { n: (flashes[x.target]?.n ?? 0) + 1, tone: x.tone }
+  for (const x of flashed) flashes[x.target] = { n: (flashes[x.target]?.n ?? 0) + 1, tone: x.tone }
   const bumps = { ...f.bumps }
-  for (const x of d.actors) bumps[x.key] = (bumps[x.key] ?? 0) + 1
+  for (const x of d.nodes) bumps[x.id] = (bumps[x.id] ?? 0) + 1
   return { req: d.req, flips, flashes, bumps, belt: new Set(d.belt), fresh: new Set(d.fresh.map((e) => e.seq)), announce: d.announce ?? f.announce }
 }
 
-/** The actor 跟随 looks at: the one at work that changed last, else the one waiting for the person. */
+/** The stage 跟随 looks at: the one at work or waiting whose state began last. */
 export function mostActive(b: ReqBoard): string | null {
-  const live = b.actors.filter((a) => WORKING.has(a.status) || a.status === 'awaiting_approval')
+  const live = b.nodes.filter((n) => WORKING.has(n.status) || n.status === 'awaiting_approval')
   live.sort((x, y) => (y.since ?? 0) - (x.since ?? 0))
-  return live[0]?.key ?? null
+  return live[0]?.id ?? null
 }
 
-/** What a box or a lane looks at: a node (a box), else an actor (a lane, a belt chip, a cell, an event's chip). */
+/** The stage looked at, for the crumb and the focus bar. */
 function focusOf(b: ReqBoard, focus: string | null): { icon: string; title: string } | null {
   const n = b.nodes.find((x) => x.id === focus)
-  if (n) return { icon: n.icon, title: n.unit ? `${n.title} · ${n.unit}` : n.title }
-  const a = b.actors.find((x) => x.key === focus)
-  return a ? { icon: a.icon, title: a.title } : null
+  return n ? { icon: n.icon, title: n.unit ? `${n.title} · ${n.unit}` : n.title } : null
 }
-
-/** The session a run's box opens: the one at work, else its latest on this machine. */
-const sessionOf = (r: Run | undefined) => (r?.sessions.find((s) => s.busy) ?? r?.sessions[r.sessions.length - 1])?.url
 
 /** An error the board came with, said so a person can act on it (brain-kit's own words folded under 细节). A claimed
  * requirement has no run yet: nothing to read is no error. */
@@ -117,9 +113,9 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
   const replaying = useRef(false)
   const boxes = useRef<ReadonlySet<string>>(new Set())
   const animate = useCallback((d: BoardDiff, b: ReqBoard) => {
-    const on = stageEffects(d, b, boxes.current)
+    const on = effects(d, b, boxes.current)
     if (on.items.length) feed.current?.(on.items)
-    setFx((f) => applyDiff(f, { ...d, flashes: on.flashes }))
+    setFx((f) => applyDiff(f, d, on.flashes))
   }, [])
   const onDiff = useCallback((d: BoardDiff, b: ReqBoard) => void (replaying.current || animate(d, b)), [animate])
   const live = useBoard(api, { repo: entry.repo, reqKey: entry.key, pollMs, onDiff })
@@ -185,15 +181,11 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
   const liveClock: SnapshotClock = useMemo(() => ({ at: live.board?.at ?? Date.now() / 1000, receivedAt: live.receivedAt || Date.now() }), [live.board?.at, live.receivedAt])
   const clock = rp.clock ?? liveClock
 
-  const onActor = useCallback((key: string) => setFocus((f) => (f === key ? null : key)), [])
-  // the graph's boxes are nodes; the lanes, the belt, the wall and the feed still name actors: each part is told of a
-  // focus of its own kind only, so a box looked at leaves the rest unfiltered rather than all dimmed
-  const boxFocus = focus && lay?.boxes.has(focus) ? focus : null
-  const actorFocus = focus && board?.actors.some((a) => a.key === focus) ? focus : null
+  const onNode = useCallback((id: string) => setFocus((f) => (f === id ? null : id)), [])
   const followKey = follow && board ? mostActive(board) : null
   useEffect(() => {
     if (!followKey) return
-    rootRef.current?.querySelector(`[data-testid="kt-lane"][data-role="${followKey}"]`)?.scrollIntoView?.({ block: 'nearest', behavior: reducedMotion ? 'auto' : 'smooth' })
+    rootRef.current?.querySelector(`[data-testid="kt-lane"][data-node="${followKey}"]`)?.scrollIntoView?.({ block: 'nearest', behavior: reducedMotion ? 'auto' : 'smooth' })
   }, [followKey, reducedMotion])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setFocus(null)
@@ -215,7 +207,7 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
   const onAct = useCallback((id: string, d: WaitDo) => {
     const runs = board?.runs ?? []
     const run = runs.find((r) => r.key === board?.nodes.find((n) => n.id === id)?.run)
-    const url = sessionOf(run) ?? sessionOf(runs.find((r) => r.kind === 'local'))
+    const url = (sessionOf(run) ?? sessionOf(runs.find((r) => r.kind === 'local')))?.url
     const review = !!board && reviewNext(board.row.waits)
     if (((d === 'reply' && !review) || d === 'tool') && url) return navigate(url)
     if (d === 'write_back') return toBrain()
@@ -287,30 +279,30 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
             ) : (
               <>
                 {!quiet && <NextStep board={board} repo={entry.repo} reqKey={entry.key} onAnswered={live.reload} onBrain={toBrain} onDetail={toDetail} />}
-                <Kpis key={`${rp.on ? 'replay' : 'live'}`} board={board} reducedMotion={reducedMotion} onActor={onActor} replaying={rp.on} />
+                <Kpis key={`${rp.on ? 'replay' : 'live'}`} board={board} reducedMotion={reducedMotion} onNode={onNode} replaying={rp.on} />
                 {acceptTop && <Accept board={board} onDetail={toDetail} quiet={quiet} />}
                 {fam?.role === 'big' && famCard}
                 <div className="kt-body">
                   <div className="kt-col">
                     <div ref={graphBox}>
-                      <StageGraph key={`${entry.repo}/${entry.key}${rp.on ? ':replay' : ''}`} board={board} lay={lay} focus={boxFocus} onNode={onActor} flashes={fx.flashes}
+                      <StageGraph key={`${entry.repo}/${entry.key}${rp.on ? ':replay' : ''}`} board={board} lay={lay} focus={focus} onNode={onNode} flashes={fx.flashes}
                         reducedMotion={reducedMotion} feed={feed} quiet={quiet} onSession={(url) => navigate(url)} onAct={quiet ? undefined : onAct} />
                     </div>
                     {focus && <FocusBar board={board} focus={focus} onClear={() => setFocus(null)} />}
-                    <Conveyor board={board} fresh={fx.belt} focus={actorFocus} onActor={onActor} />
+                    <Conveyor board={board} fresh={fx.belt} focus={focus} onNode={onNode} />
                     {(fam?.role === 'parent' || fam?.role === 'child') && famCard}
-                    <Lanes board={board} focus={actorFocus} bumps={fx.bumps} onActor={onActor} quiet={quiet} />
+                    <Lanes board={board} focus={focus} bumps={fx.bumps} onNode={onNode} quiet={quiet} />
                     {!acceptTop && <Accept board={board} onDetail={toDetail} quiet={quiet} />}
                   </div>
                   <aside className="kt-side" aria-label="检查、问题和事件">
-                    <CheckWall board={board} focus={actorFocus} onActor={onActor} flips={fx.flips} onSettings={() => go({ kind: 'settings' })} />
+                    <CheckWall board={board} focus={focus} onNode={onNode} flips={fx.flips} onSettings={() => go({ kind: 'settings' })} />
                     {!quiet && side.length > 0 && (
                       <section className="kt-card br-board-qs" aria-label="等回答的问题" data-testid="br-board-questions">
                         <header className="kt-card-head"><h2>等回答的问题</h2><span className={`kt-badge tone-${board.row.waits.who === 'you' ? 'approve' : 'info'}`}>{side.length}</span></header>
                         {side.map((q, i) => <QuestionCard key={`${q.id ?? 'q'}-${i}`} q={q} repo={entry.repo} reqKey={entry.key} onAnswered={live.reload} waiter={waiter} />)}
                       </section>
                     )}
-                    <EventFeed board={board} focus={actorFocus} onActor={onActor} fresh={fx.fresh} />
+                    <EventFeed board={board} focus={focus} onNode={onNode} fresh={fx.fresh} />
                   </aside>
                 </div>
               </>

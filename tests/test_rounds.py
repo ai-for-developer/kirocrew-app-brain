@@ -141,9 +141,10 @@ def told(rs):
     return [(r.n, r.run, r.end.outcome.value, r.why.kind) for r in rs]
 
 
-def status(stage, rs, gates=None, unit=None, run_now=None, over=None, waits=WAITING):
+def status(stage, rs, gates=None, unit=None, run_now=None, over=None, waits=WAITING, passed=False):
     kind = stages.BY_ID[stage].rounds
-    st = stages.node_status(kind, rs, stages.gates_of(rs, unit) if gates is None else gates, run_now, over, waits)
+    st = stages.node_status(kind, rs, stages.gates_of(rs, unit) if gates is None else gates, run_now, over, waits,
+                            passed)
     return st.status, st.doing
 
 
@@ -430,8 +431,16 @@ def test_a_node_says_what_it_does_did_or_waits_for():
     green = rounds_of("build-and-test", [rec(T, "VERIFY", ok=True, results=[])])
     assert status("build-and-test", green, over=("merged", T + H)) == ("merged", "检查都过了")
     assert status("build-and-test", green) == ("done", "检查都过了")
+    # the way moved past it (a later stage began after it ended): finished for good, in the same words
+    assert status("build-and-test", green, passed=True) == ("merged", "检查都过了")
+    assert status("build-and-test", red, passed=True) == ("failed", "自动检查没过：pytest")
     started = rounds_of("requirements", [rec(T, "STAGE_STARTED", stage="requirements")])
     assert status("requirements", started) == ("running", "在做")
+    assert status("requirements", started, passed=True) == ("running", "在做")
+    asked = rounds_of("requirements", [rec(T, "STAGE_STARTED", stage="requirements"),
+                                       rec(T + M, "STAGE_COMPLETED", stage="requirements"),
+                                       rec(T + 2 * M, "APPROVAL_REQUESTED", kind="REQUIREMENTS", path=REQ, sha256=H_REQ)])
+    assert status("requirements", asked, passed=True) == ("awaiting_approval", "等人批需求")
     assert status("requirements", started, over=("merged", T + H)) == ("merged", "已合并")
     assert status("requirements", started, over=("closed", T + H)) == ("skipped", "需求已关闭")
     quiet = stages.NodeStatus("awaiting_approval", "会话空着：轮到你回话", T + M, "you")

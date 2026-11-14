@@ -16,7 +16,7 @@ export const paths = {
   refresh: () => `${BASE}/refresh`,
   overview: (repo: string) => `${BASE}/overview?repo=${enc(repo || 'all')}`,
   requirement: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}`,
-  /** 需求看板: the requirement's board snapshot (actors, lanes, belt, checks, events), polled every 2 s */
+  /** 需求看板: the requirement's board snapshot (stages, runs, lanes, belt, checks, events), polled every 2 s */
   board: (repo: string, key: string) => `${BASE}/board/${enc(repo)}/${enc(key)}`,
   session: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/session`,
   answer: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/answer`,

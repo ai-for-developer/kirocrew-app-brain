@@ -686,7 +686,8 @@ ${legendSwatches}
 .kt-lane:is(.is-merged, .tone-ok) .kt-avatar { background: var(--kt-ok-solid); border-color: var(--kt-ok-solid); }
 .kt-lane:is(.is-running, .is-fixing) .kt-avatar { animation: kt-glow 2.4s ease-in-out infinite; }
 .kt-lane-who { display: flex; flex-direction: column; justify-content: center; gap: 5px; min-width: 0; }
-.kt-lane-name { display: flex; align-items: center; gap: 6px; font-size: 1.18em; line-height: 1.2; font-weight: 850; color: var(--text-strong); }
+.kt-lane-name { font-size: 1.18em; line-height: 1.2; font-weight: 850; color: var(--text-strong); }
+.kt-lane-unit { white-space: nowrap; }
 .kt-lane-doing { font-size: 12px; color: var(--muted); margin: 1px 0 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kt-lane-doing.is-sent-back { color: var(--kt-fix); font-weight: 650; }
 .kt-lane-tag { display: flex; align-items: center; gap: 6px; min-width: 0; }

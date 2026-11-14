@@ -9,7 +9,7 @@
  * A requirement only claimed is one sentence and 开工; one that is not there says so and where to go.
  *
  * Polls GET /requirements/{repo}/{key} every 5 s, and the board's snapshot (GET /board/{repo}/{key}) for the value
- * stream (its actors' spans), the checks and the step; without a board the cards that need it say so.
+ * stream (its stages' spans), the checks and the step; without a board the cards that need it say so.
  *
  * A requirement of a family (row.family: a big one split into small ones, one of those, or a big one not split yet)
  * has its family panel under the four numbers (Family.tsx): the small ones as lanes with the roll-up, or the big one
@@ -1190,7 +1190,7 @@ function BrainUseCard({ x, board, repo, reqKey, go }: { x: RequirementDetail; bo
   const b = x.brain
   const branch = b.proposals ? reflectBranch(x, board) : null
   // the board's write-back step: merged once its branch is on the default branch, done while that branch waits
-  const reflect = board?.actors.find((a) => a.key === 'reflect')?.status ?? null
+  const reflect = board?.nodes.find((n) => n.id === 'reflect')?.status ?? null
   const toReflect = () => go({ kind: 'brain', ...(repo !== 'runner' ? { repo } : {}), reflect: reqKey })
   return (
     <section className="cto-card" aria-label="用到的 Brain">

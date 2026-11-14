@@ -79,7 +79,7 @@ const skipped = (id: string, run: string, at: number) => stage(id, 'skipped', [r
 export function run(key: string, kind: Run['kind'], label: string, now: Partial<Run['now']>, over: Partial<Run> = {}): Run {
   return {
     key: key as RunKey, kind, label, readable: kind === 'local' ? 'here' : 'elsewhere', n: null, run_id: null, req: null, unit: null,
-    now: { status: 'done', doing: '', since: null, who: null, node: null, ...now }, credits: null, sessions: [], ...over,
+    now: { status: 'done', doing: '', since: null, who: null, node: null, do: null, ...now }, credits: null, sessions: [], ...over,
   }
 }
 
@@ -89,12 +89,12 @@ function step(key: RelayStep['key'], title: string, at: number, text: string): R
 
 function commit(sha: string, at: number, runKey: string, text: string, over: Partial<BeltItem> = {}): BeltItem {
   const local = runKey === 'local'
-  return { kind: 'commit', at, sha: sha.padEnd(12, '0'), by: local ? 'person' : 'bot', text, files: 2, records_only: false, actor: local ? 'local' : 'runner',
+  return { kind: 'commit', at, sha: sha.padEnd(12, '0'), by: local ? 'person' : 'bot', text, files: 2, records_only: false,
     run: runKey as RunKey, node: null, ...over }
 }
 
 function verifyCell(name: string, at: number, secs: string): CheckCell {
-  return { id: `verify-${name}`, group: 'verify', label: name, name, status: 'pass', at, detail: secs, actor: 'runner', node: 'build-and-test' as NodeId, run: 'runner-1' as RunKey }
+  return { id: `verify-${name}`, group: 'verify', label: name, name, status: 'pass', at, detail: secs, node: 'build-and-test' as NodeId, run: 'runner-1' as RunKey }
 }
 
 /** design.md's Scenario B: PAY-9 退款通知短信, at 16:15. */

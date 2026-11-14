@@ -3,10 +3,10 @@ import { describe, expect, test, vi } from 'vitest'
 import { fx } from '../test/data'
 import { pay16, pay9 } from '../test/stageBoards'
 import type { BoardEvent, NodeId, ReqBoard, RunKey } from '../types'
-import { diffBoards } from './diff'
+import { diffBoards, effects } from './diff'
 import { ClockContext } from './hooks'
-import { RUN, TESTS, stageLayout, stageShape } from './layout'
-import { StageGraph, stageEffects, stageInput, type StageGraphProps } from './StageGraph'
+import { ORCH, RUN, TESTS, stageLayout, stageShape } from './layout'
+import { StageGraph, stageInput, type StageGraphProps } from './StageGraph'
 
 /** The graph of *b* as the 1600 px app draws it (*card*: its graph card's width). */
 function draw(b: ReqBoard, over: Partial<StageGraphProps> = {}, card = 1558) {
@@ -221,19 +221,20 @@ test('every word on the graph is whole at the 1280 and 1600 px apps (BOARD-31: 1
 test('a poll’s new events: a blip on the box each names, a red flash on a sent-back one, verify from the rail to the check ring; a late one stays still', () => {
   const was = pay9()
   const b = pay9()
-  const ev = (seq: number, kind: BoardEvent['kind'], node: string | null, text = '', at = b.at): BoardEvent =>
-    ({ seq, at, kind, from: 'runner', to: 'runner', text, detail: false, src: null, node: node as NodeId | null, run: 'runner-1' as RunKey, round: null })
-  b.events = [ev(1, 'stage', 'review'), ev(2, 'reject', 'release', '产品退回了发布'), ev(3, 'verify', 'build-and-test', '自动检查通过'), ev(4, 'accepted', null),
-    ev(5, 'stage', 'ci-pipeline'), ev(6, 'stage', 'units', '', b.at - 600)]
+  const ev = (seq: number, kind: BoardEvent['kind'], from: string, to: string, text = '', at = b.at): BoardEvent =>
+    ({ seq, at, kind, from, to, text, detail: false, src: null, node: null, run: 'runner-1' as RunKey, round: null })
+  b.events = [ev(1, 'stage', 'review', 'review'), ev(2, 'reject', 'person', 'release', '产品退回了发布'), ev(3, 'verify', 'branch', 'checks', '自动检查通过'),
+    ev(4, 'accepted', 'relay', 'relay'), ev(5, 'stage', 'ci-pipeline', 'ci-pipeline'), ev(6, 'stage', 'units', 'units', '', b.at - 600)]
   const input = stageInput(b)
   const ids = new Set(stageLayout(input, stageShape(1558, input)).boxes.keys())
-  const { items, flashes } = stageEffects(diffBoards(was, b, { at: b.at }), b, ids)
-  expect(items.map((i) => [i.kind, i.from, i.to, i.shape])).toEqual([['stage', 'review', 'review', 'spark'], ['reject', 'release', 'release', 'cross'], ['verify', RUN, TESTS, 'comet']])
+  const { items, flashes } = effects(diffBoards(was, b, { at: b.at }), b, ids)
+  expect(items.map((i) => [i.kind, i.from, i.to, i.shape])).toEqual([['stage', 'review', 'review', 'spark'], ['reject', ORCH, 'release', 'comet'], ['verify', RUN, TESTS, 'comet'],
+    ['accepted', 'relay:0', 'relay:0', 'ring']])
   expect(items[2].label).toBe('3/3')
   expect(flashes.map((f) => [f.target, f.tone])).toEqual([['release', 'bad']])
   // the merge: the rail and every merged box flash green
   const merged = { ...b, ended_at: b.at }
-  const at = stageEffects(diffBoards(b, merged, { at: b.at }), merged, ids).flashes
+  const at = effects(diffBoards(b, merged, { at: b.at }), merged, ids).flashes
   expect(at.map((f) => [f.target, f.tone])).toEqual([RUN, 'requirements', 'application-design', 'units', 'code-generation/api', 'code-generation/web', 'build-and-test', 'review']
     .map((t) => [t, 'ok']))
 })

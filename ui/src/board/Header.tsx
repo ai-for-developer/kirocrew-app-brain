@@ -12,7 +12,7 @@
 import type { ReqBoard, ReqFamily } from '../types'
 import { StateChip } from '../ui'
 import { ACT, DO_NAME, FAMILY_ACT, leanProgress, wholeSkips } from '../vocab'
-import { WORKING, actorLabel, actorMeta, boardWho, checksSay, fmtCredits, fmtWhen, leanOf, localOnly, runnerBlind, titleOf, waitsOnMe } from './format'
+import { WORKING, actorMeta, boardWho, checksSay, fmtCredits, fmtWhen, leanOf, localOnly, nodeLabel, outsidePushes, runnerBlind, sessionOf, titleOf, waitsOnMe } from './format'
 import { useChangeCount, useTween } from './hooks'
 import { waitCount } from './next'
 import { RoleIcon } from './RoleIcon'
@@ -33,8 +33,9 @@ export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail,
   onFamily?: () => void
 }) {
   const r = board.row
-  const local = board.actors.find((a) => a.key === 'local')?.session ?? null
-  const runner = board.actors.find((a) => a.key === 'runner')?.session ?? null
+  // this machine's session, and the latest runner run's when it is readable here (team mode)
+  const local = sessionOf(board.runs.find((x) => x.kind === 'local')) ?? null
+  const runner = sessionOf([...board.runs].reverse().find((x) => x.kind === 'runner' && x.sessions.length)) ?? null
   const finished = board.ended_at !== null || r.state === 'merged' || r.state === 'closed'
   return (
     <header className="kt-top">
@@ -98,13 +99,13 @@ function FamilyPills({ f, onParent, onFamily }: { f: ReqFamily; onParent?: (key:
   ) : <span className="kt-pill tone-handoff">{text}</span>
 }
 
-export function Kpis({ board, reducedMotion, onActor, replaying = false }: { board: ReqBoard; reducedMotion: boolean; onActor?: (key: string) => void; replaying?: boolean }) {
+export function Kpis({ board, reducedMotion, onNode, replaying = false }: { board: ReqBoard; reducedMotion: boolean; onNode?: (id: string) => void; replaying?: boolean }) {
   return (
     <div className="kt-kpis br-kpis" role="group" aria-label="指标">
       <ChecksKpi board={board} reducedMotion={reducedMotion} />
       <LeanKpi board={board} />
       <PeopleKpi board={board} />
-      <StepsKpi board={board} onActor={onActor} replaying={replaying} />
+      <StepsKpi board={board} onNode={onNode} replaying={replaying} />
       <CreditsKpi board={board} reducedMotion={reducedMotion} replaying={replaying} />
     </div>
   )
@@ -175,7 +176,7 @@ export function peopleActs(board: ReqBoard): { gates: number; answers: number; o
   const gates = board.events.filter((e) => (e.kind === 'approve' || e.kind === 'reject') && e.from === 'person').length
   const answered = board.events.filter((e) => e.kind === 'answer' && e.from === 'person').length
   const decided = board.decisions.filter((d) => d.by === 'person').length
-  const outside = board.events.filter((e) => e.kind === 'commit' && e.from === 'person').length
+  const outside = outsidePushes(board).length
   return { gates, answers: Math.max(answered, decided), outside }
 }
 
@@ -201,10 +202,12 @@ function PeopleKpi({ board }: { board: ReqBoard }) {
   )
 }
 
-function StepsKpi({ board, onActor, replaying }: { board: ReqBoard; onActor?: (k: string) => void; replaying: boolean }) {
-  const on = board.actors.filter((a) => a.status !== 'skipped')
-  const done = on.filter((a) => a.status === 'merged' || a.status === 'done').length
-  const working = on.filter((a) => WORKING.has(a.status)).length
+/** The stages on this way (Lean skipped none of them), one icon each, done green; a click looks at that stage. */
+function StepsKpi({ board, onNode, replaying }: { board: ReqBoard; onNode?: (id: string) => void; replaying: boolean }) {
+  const on = board.nodes.filter((n) => n.status !== 'skipped')
+  const runs = new Map(board.runs.map((r) => [r.key as string, r]))
+  const done = on.filter((n) => n.status === 'merged' || n.status === 'done').length
+  const working = on.filter((n) => WORKING.has(n.status)).length
   const mine = waitsOnMe(board)
   const waiting = waitCount(board, replaying)
   return (
@@ -215,14 +218,16 @@ function StepsKpi({ board, onActor, replaying }: { board: ReqBoard; onActor?: (k
         <span className="kt-kpi-of">/{on.length}</span>
       </div>
       <div className="kt-role-dots">
-        {on.map((a) => {
-          const m = actorMeta(a.status)
-          const label = actorLabel(a.status, board)
-          const tone = a.status === 'awaiting_approval' && !mine ? 'info' : m.tone
+        {on.map((n) => {
+          const m = actorMeta(n.status)
+          const run = runs.get(n.run ?? '')
+          const label = nodeLabel(n, run, board)
+          const tone = n.status === 'awaiting_approval' && label !== '等你' ? 'info' : m.tone
+          const title = n.unit ? `${n.title} · ${n.unit}` : n.title
           return (
-            <button key={a.key} type="button" className={`kt-role-dot tone-${tone}${WORKING.has(a.status) ? ' is-working' : ''}`}
-              title={`${a.title}：${label}（点一下只看它）`} aria-label={`${a.title}：${label}`} onClick={() => onActor?.(a.key)}>
-              <RoleIcon role={a.icon} size={15} />
+            <button key={n.id} type="button" className={`kt-role-dot tone-${tone}${WORKING.has(n.status) ? ' is-working' : ''}`}
+              title={`${title}：${label}（点一下只看它）`} aria-label={`${title}：${label}`} onClick={() => onNode?.(n.id)}>
+              <RoleIcon role={n.icon} size={15} />
             </button>
           )
         })}

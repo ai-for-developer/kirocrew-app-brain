@@ -80,6 +80,24 @@ export const BOARD_EXTRA_CSS = `
 
 /* the event feed's places (你, 运行分支, 检查) */
 .br-board .kt-ev-place { padding: 0 5px; border-radius: 7px; border: 1px dashed var(--border-strong, var(--border)); font-size: 12px; color: var(--muted); }
+.br-board .kt-ev-role.is-off { cursor: default; opacity: .5; border-style: dashed; }
+.br-board .kt-ev-run { display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border-radius: 7px; font-size: 12px; color: var(--kt-handoff); white-space: nowrap;
+  background: color-mix(in srgb, var(--kt-handoff) 9%, transparent); }
+.br-board .kt-belt-chip.is-push { border: 2px solid var(--kt-warn); background: color-mix(in srgb, var(--kt-warn) 12%, var(--card)); }
+
+/* a stage's lane: its AI-DLC number, who did it, its rounds */
+.br-board .br-lane-n { margin-left: 6px; font-size: .62em; font-weight: 750; color: var(--muted); font-family: var(--mono, ui-monospace, monospace); }
+.br-board .br-run-pill { display: inline-flex; align-items: center; gap: 3px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.br-board .kt-lane-tag { flex-wrap: wrap; }
+/* a lane's 「交什么 · 第 N 轮」 line wraps instead of cutting the round off */
+.br-board .kt-lane-doing { white-space: normal; }
+.br-board .br-rounds { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 5px; font-size: .8em; }
+.br-board .br-round { padding: 2px 8px; border-radius: 8px; white-space: nowrap; color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--kt-tone) 45%, var(--border)); background: color-mix(in srgb, var(--kt-tone) 8%, var(--card)); }
+.br-board .br-round b { color: var(--kt-tone); font-weight: 800; }
+.br-board .br-round.is-now { border-width: 2px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-tone) 16%, transparent); }
+/* 交的文件: the file name is what matters, so the directory is the part that gives way (as 改动's rows do) */
+.br-board [data-testid="kt-outputs"] .kt-commits li { display: grid; grid-template-columns: auto minmax(0, 1fr); }
 
 /* 验收 */
 .br-board .kt-sign.is-idle { border-color: var(--border); }

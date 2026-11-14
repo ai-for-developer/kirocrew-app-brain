@@ -158,9 +158,16 @@ function detailFor(path: string): RequirementDetail {
   // Lean's stages and phases as lean_view read them from this requirement's records (preview_world.py keeps every board's)
   d.lean.stages = W.stages[id] ?? d.lean.stages
   d.lean.phases = W.phases[id] ?? d.lean.phases
-  d.lean.approvals = b.actors.filter((a) => ['req', 'design', 'release'].includes(a.key) && a.status !== 'waiting' && a.status !== 'skipped').map((a) => ({
-    kind: a.key === 'req' ? 'REQUIREMENTS' : a.key === 'design' ? 'DESIGN' : 'RELEASE', state: a.status === 'merged' ? 'approved' as const : a.status === 'fixing' ? 'rejected' as const : 'pending' as const,
-    sha8: (a.history[a.history.length - 1]?.at ?? 0).toString(16).slice(-8), at: a.since, line: a.line, path: `aidlc-docs/${row.intent}/${a.key}.md` }))
+  // Lean's approvals as the nodes' gates say them: one per gate kind, its latest (INCEPTION covers two nodes)
+  const approvals = new Map<string, RequirementDetail['lean']['approvals'][number]>()
+  for (const n of b.nodes) {
+    for (const g of n.gates) {
+      if (g.state === 'queued') continue
+      approvals.set(g.kind, { kind: g.kind, state: g.state === 'sent_back' ? 'rejected' : g.state, sha8: (g.at ?? n.since ?? 0).toString(16).slice(-8), at: g.at, line: g.line,
+        path: g.docs[0] ? `aidlc-docs/${row.intent}/${g.docs[0]}` : null })
+    }
+  }
+  d.lean.approvals = [...approvals.values()]
   d.lean.status = row.lean.stage ? `${row.stage ?? ''} · ${row.waits.text}` : null
   d.lean.next = []
   d.lean.open_questions = []

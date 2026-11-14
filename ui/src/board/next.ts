@@ -1,12 +1,12 @@
 /**
  * What the person looking at the board does now, read from one judgment (UI问题清单 #1, #4): the requirement's
- * `waits` (who, do, since, where), 验收's step, the actors that wait for them, and the questions they can answer right
- * here. The strip above the graph, the chips under the nodes and the counters all read this. Pure.
+ * `waits` (who, do, since, where), 验收's step, the runs and gates that wait for them, and the questions they can
+ * answer right here. The strip above the graph, the chips under the nodes and the counters all read this. Pure.
  */
-import type { Actor, Question, ReqBoard, WaitDo, Waits, WaitWho } from '../types'
+import type { Question, ReqBoard, WaitDo, Waits, WaitWho } from '../types'
 import { isOpenQuestion } from '../ui'
 import { ACT } from '../vocab'
-import { leanOf, waitsOnMe } from './format'
+import { leanOf, openGate, sessionOf, waitsOnMe } from './format'
 
 export interface Step {
   id: string
@@ -55,46 +55,33 @@ export const REVIEW_SENDS = `${ACT.review}会把 Lean 的审查要求发给新�
 /** Its next step is Lean's review in a new session: the backend says so (waits.review); an older one said it in words. */
 export const reviewNext = (w: Waits): boolean => w.review ?? isReview(w.text)
 
-/** The step an older backend did not name, from the requirement's state. */
+/** The step an older backend did not name: from the requirement's state, else what its runs wait on the person for. */
 function guessDo(b: ReqBoard): WaitDo {
   const st = b.row.state
-  const waiting = b.actors.filter((a) => a.status === 'awaiting_approval')
   if (st === 'claimed') return 'start'
   if (st === 'rejected') return 'redo_handoff'
   if (st === 'acceptance') return 'accept'
   if (st === 'parked') return 'answer'
-  if (b.accept.step.line || waiting.some((a) => a.line)) return 'approve'
-  if (waiting.some((a) => a.doing.includes('工具调用'))) return 'tool'
-  if (st === 'merged' && b.actors.find((a) => a.key === 'reflect')?.status === 'awaiting_approval') return 'write_back'
+  const asked = b.runs.find((r) => r.now.who === 'you' && r.now.do)?.now.do
+  if (asked) return asked
+  if (b.accept.step.line || b.nodes.some((n) => openGate(n)?.line)) return 'approve'
+  if (st === 'merged' && b.nodes.find((n) => n.id === 'reflect')?.status === 'awaiting_approval') return 'write_back'
   if (st === 'local' && b.row.waits.who === 'you') return 'reply'
   return 'none'
 }
 
 export const doOf = (b: ReqBoard): WaitDo => b.row.waits.do ?? guessDo(b)
 
-/** The step an actor that waits for the person stands for (its chip under the node). */
-export function actorDo(a: Actor, b: ReqBoard): WaitDo {
-  if (a.line) return 'approve'
-  if (a.key === 'release') return 'accept'
-  if (a.key === 'reflect') return 'write_back'
-  if (a.status === 'failed' || a.doing.includes('接手被拒')) return 'redo_handoff'
-  if (a.doing.includes('工具调用')) return 'tool'
-  if (a.key === 'local') {
-    const d = doOf(b)
-    if (d === 'reply' || d === 'tool' || d === 'approve') return d
-  }
-  return 'answer'
-}
-
-const sessionOf = (b: ReqBoard) => b.accept.step.session_url ?? b.actors.find((a) => a.key === 'local')?.session?.url ?? null
+/** This machine's session: 验收's, else the local run's. */
+const localSession = (b: ReqBoard) => b.accept.step.session_url ?? sessionOf(b.runs.find((r) => r.kind === 'local'))?.url ?? null
 
 export function nextOf(b: ReqBoard): Next {
   const w = b.row.waits
   const mine = w.who === 'you'
   const mr = b.accept.step.mr_url ?? b.row.mr?.url ?? null
-  const waiting = b.actors.filter((a) => a.status === 'awaiting_approval')
-  // the backend's since (null: it does not know); an older backend's, from the actors that wait
-  const since = w.since !== undefined ? w.since : waiting.map((a) => a.since).filter((x): x is number => x !== null).sort((x, y) => x - y)[0] ?? null
+  const waiting = b.runs.filter((r) => r.now.status === 'awaiting_approval')
+  // the backend's since (null: it does not know); an older backend's, from the runs that wait
+  const since = w.since !== undefined ? w.since : waiting.map((r) => r.now.since).filter((x): x is number => x !== null).sort((x, y) => x - y)[0] ?? null
   if (!mine) return { who: w.who, mine, since, steps: [], text: w.text, mr }
   const steps: Step[] = []
   b.questions.forEach((q, i) => {
@@ -102,7 +89,7 @@ export function nextOf(b: ReqBoard): Next {
   })
   const st = b.accept.step
   const d = doOf(b)
-  const session = sessionOf(b)
+  const session = localSession(b)
   const text = st.text || w.text
   if (text && d !== 'none' && d !== 'watch') {
     const main: Step = { id: 'main', do: d, text, line: st.line, mr: st.mr_url, session: st.session_url }
@@ -125,18 +112,22 @@ export function nextOf(b: ReqBoard): Next {
     if (d === 'answer' && steps.some((s) => s.question)) main.text = ''
     if (main.text) steps.push(main)
   }
-  for (const a of waiting) {
-    if (a.line && a.line !== st.line) {
-      steps.push({ id: `a-${a.key}`, do: 'approve', text: a.doing, line: a.line, session: a.session?.url ?? session })
-    } else if (!a.line && actorDo(a, b) === 'tool' && d !== 'tool') {
-      steps.push({ id: `a-${a.key}`, do: 'tool', text: a.doing, session: a.session?.url ?? session })
+  // another approval the person types, besides the one asked now; a tool call a run waits on, besides the step's
+  for (const n of b.nodes) {
+    const g = openGate(n)
+    if (g?.line && g.who === 'you' && g.line !== st.line && !steps.some((x) => x.line === g.line)) {
+      const run = b.runs.find((r) => r.key === n.run)
+      steps.push({ id: `g-${n.id}`, do: 'approve', text: n.doing, line: g.line, session: sessionOf(run)?.url ?? session })
     }
+  }
+  for (const r of waiting) {
+    if (r.now.who === 'you' && r.now.do === 'tool' && d !== 'tool') steps.push({ id: `r-${r.key}`, do: 'tool', text: r.now.doing, session: sessionOf(r)?.url ?? session })
   }
   return { who: w.who, mine, since, steps, text: w.text, mr }
 }
 
-/** How many things wait, the one count the page says (这条路走到哪了, the graph's name): on the person looking, what 你要做的
- * 一步 lists (a hand-over to label is one, though no actor asks); else, and in a replay, the actors that wait. */
+/** How many things wait, the one count the page says (这条路走到哪了): on the person looking, what 你要做的一步 lists (a
+ * hand-over to label is one, though no gate asks); else, and in a replay, the runs that wait. */
 export function waitCount(b: ReqBoard, replaying = false): number {
-  return waitsOnMe(b) && !replaying ? nextOf(b).steps.length : b.actors.filter((a) => a.status === 'awaiting_approval').length
+  return waitsOnMe(b) && !replaying ? nextOf(b).steps.length : b.runs.filter((r) => r.now.status === 'awaiting_approval').length
 }

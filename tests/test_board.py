@@ -1,8 +1,9 @@
-"""需求看板 (GET /board/{repo}/{key}): on real brain-kit projects, the actors' states, their histories for 回放, the
-events, the conveyor, the check wall and 验收 — a local requirement waiting for its requirements approval, one approved
-and handed over, one merged; the approval line is shown, never sent; the route is the owner's only. And the snapshot
-board.build folds from Lean's own records, read the way the page reads it: where the time went (a quiet session waits
-for the person, the merge ends the requirement's time), what the check wall counts, who is asked, the one step."""
+"""需求看板 (GET /board/{repo}/{key}): on real brain-kit projects, the stage graph's nodes, runs and hand-overs, the
+events placed on it, the conveyor, the check wall and 验收: a local requirement waiting for its requirements approval,
+one approved and handed over, one merged; the approval line is shown, never sent; the route is the owner's only. And
+the snapshot board.build folds from Lean's own records, read the way the page reads it: where the time went (a quiet
+session waits for the person, the merge ends the requirement's time), what the check wall counts, who is asked, the
+one step."""
 
 import json
 import re
@@ -24,10 +25,6 @@ def approve(wt, line):
     assert p.returncode == 0, p.stderr
 
 
-def actors(b):
-    return {a["key"]: a for a in b["actors"]}
-
-
 @needs_brainkit
 def test_a_local_requirement_waits_for_its_approval_on_the_board(tmp_path, home):
     repo = make_project(tmp_path)
@@ -44,26 +41,25 @@ def test_a_local_requirement_waits_for_its_approval_on_the_board(tmp_path, home)
             await svc.stop()
 
     b = run(go())
-    a = actors(b)
-    assert [x["key"] for x in b["actors"]] == ["local", "req", "design", "handover", "bridge", "signer", "runner", "ci",
-                                                "release", "reflect"]
+    req = node(b, "requirements")
     # the requirements approval waits for the person, with the exact line to type (shown, never sent)
-    assert a["req"]["status"] == "awaiting_approval" and a["req"]["line"] == line
-    assert a["local"]["status"] in ("done", "awaiting_approval", "stalled")
+    assert req["status"] == "awaiting_approval"
+    assert [(g["kind"], g["state"], g["line"]) for g in req["gates"]] == [("REQUIREMENTS", "pending", line)]
+    assert (b["runs"][0]["key"], b["runs"][0]["now"]["status"], b["runs"][0]["now"]["do"]) == (
+        "local", "awaiting_approval", "approve")
     assert b["person"]["status"] == "awaiting_approval" and b["person"]["owner"] == "alice"
     assert b["accept"]["step"]["line"] == line and b["accept"]["state"] == "not_yet"
-    # a repo without GitLab: the runner's half is not on this requirement's way
-    assert all(a[k]["status"] == "skipped" for k in ("handover", "bridge", "signer", "runner"))
-    assert b["direct"] is True and ["design", "ci"] in b["edges"]
+    # a repo without GitLab: nothing is handed over, nobody runs it but this machine
+    assert b["relays"] == [] and [r["key"] for r in b["runs"]] == ["local"]
     # the events, in time order, numbered; the stage events are Lean's detail
     kinds = [e["kind"] for e in b["events"]]
     assert "start" in kinds and "request" in kinds and [e["seq"] for e in b["events"]] == list(range(1, len(b["events"]) + 1))
     assert all(e["detail"] for e in b["events"] if e["kind"] == "stage")
-    req = next(e for e in b["events"] if e["kind"] == "request")
-    assert req["to"] == "req" and req["from"] == "local"
-    # the gate's history says when it began to wait: the replay shows it
-    assert a["req"]["history"] and a["req"]["history"][-1]["status"] == "awaiting_approval"
-    assert a["req"]["spans"] and a["req"]["spans"][-1]["kind"] == "wait" and a["req"]["spans"][-1]["b"] is None
+    asked = next(e for e in b["events"] if e["kind"] == "request")
+    assert (asked["from"], asked["to"], asked["node"]) == ("requirements", "person", "requirements")
+    # the node's history says when it began to wait: the replay shows it
+    assert req["history"] and req["history"][-1]["status"] == "awaiting_approval"
+    assert req["spans"] and req["spans"][-1]["kind"] == "wait" and req["spans"][-1]["b"] is None
     # the check wall: the requirements gate waits, verify has not run
     cells = {c["id"]: c for c in b["checks"]["cells"]}
     assert cells["gate-REQUIREMENTS"]["status"] == "wait" and cells["verify"]["status"] == "skip"
@@ -101,19 +97,19 @@ def test_an_approved_requirement_handed_over_and_one_merged(tmp_path, home):
             await svc.stop()
 
     b1, b2, d1 = run(go())
-    a1 = actors(b1)
-    assert a1["req"]["status"] == "merged" and a1["req"]["line"] is None
-    assert a1["local"]["status"] == "done" and a1["handover"]["status"] == "queued"
-    assert a1["bridge"]["status"] == "running"
+    assert [(g["state"], g["line"]) for g in node(b1, "requirements")["gates"]] == [("approved", None)]
+    assert b1["runs"][0]["now"]["doing"] == "做完 · 交出去了"
+    [relay] = b1["relays"]
+    assert [(x["key"], x["status"]) for x in relay["steps"]][:2] == [("handover", "merged"), ("bridge", "running")]
     ok = next(e for e in b1["events"] if e["kind"] == "approve")
-    assert ok["from"] == "person" and ok["to"] == "req"
+    assert (ok["from"], ok["to"]) == ("person", "requirements")
     if b1["source"] == "trace":
         # the conveyor: the person's commits on the run branch and the hand-over commit
         kinds = [x["kind"] for x in b1["belt"]]
         assert "handover" in kinds and kinds.index("handover") == len(kinds) - 1
         subj = [x["text"] for x in b1["belt"] if x["kind"] == "commit"]
         assert any("refund: the CSV export" in s for s in subj)
-        assert any(e["kind"] == "handover" and e["to"] == "handover" for e in b1["events"])
+        assert any(e["kind"] == "handover" and e["to"] == "relay" for e in b1["events"])
         # BOARD-21: each commit with the files it changed, as git says it
         export = next(x for x in b1["belt"] if x["kind"] == "commit" and "refund: the CSV export" in x["text"])
         assert {"path": "src/refund.py", "added": 2, "removed": 0, "status": "A"} in export["changes"]
@@ -122,14 +118,13 @@ def test_an_approved_requirement_handed_over_and_one_merged(tmp_path, home):
         assert not any(w in json.dumps(b1["missing"]) for w in ("ledger", "--", "not given"))
     cells = {c["id"]: c for c in b1["checks"]["cells"]}
     assert cells["gate-REQUIREMENTS"]["status"] == "pass" and cells["bridge"]["status"] == "wait"
-    a2 = actors(b2)
     assert b2["row"]["state"] == "merged" and b2["accept"]["state"] == "merged"
     if b2["source"] == "trace":
         assert b2["ended_at"] is not None and any(e["kind"] == "merge" for e in b2["events"])
-        assert all(a2[k]["status"] in ("merged", "skipped") for k in ("local", "req", "design", "ci", "release")), \
-            sorted((k, a2[k]["status"], a2[k]["doing"]) for k in a2 if a2[k]["status"] not in ("merged", "skipped"))
-        # a merged requirement that never went to the runner: its runner half is skipped
-        assert all(a2[k]["status"] == "skipped" for k in ("handover", "bridge", "signer", "runner"))
+        assert all(n["status"] in ("merged", "skipped") for n in b2["nodes"]), \
+            sorted((n["id"], n["status"], n["doing"]) for n in b2["nodes"] if n["status"] not in ("merged", "skipped"))
+        # a merged requirement that never went to the runner: no hand-over, only this machine's run
+        assert b2["relays"] == [] and [r["key"] for r in b2["runs"]] == ["local"]
     text = json.dumps([b1, b2])
     assert "glpat-" not in text and "gitlab_token" not in text.lower() and "@example" not in text  # no secret, no email
 
@@ -166,9 +161,9 @@ def test_an_idle_session_waits_since_one_moment_and_a_claim_has_nothing_to_trace
     w = rows["PAY-1"]["waits"]
     assert (w["who"], w["do"]) == ("you", "reply")
     assert w["since"] > time.time() - 600          # the Lean step just now, not the transcript's 2026-11-08 stamp
-    local = actors(b)["local"]
-    assert local["status"] == "awaiting_approval" and local["since"] == w["since"] == b["row"]["waits"]["since"]
-    assert local["history"][-1]["who"] == "you"            # the replay says whose turn each wait was
+    now = b["runs"][0]["now"]
+    assert (now["status"], now["who"], now["do"]) == ("awaiting_approval", "you", "reply")
+    assert now["since"] == w["since"] == b["row"]["waits"]["since"]
     assert claimed["row"]["state"] == "claimed" and claimed["error"] == "" and claimed["source"] == "app"
 
 
@@ -310,53 +305,79 @@ def session(last, busy=False, awaiting=False):
             "awaiting": awaiting, "last_activity": last, "credits": 36.954}
 
 
-def actor(b, key):
-    return next(a for a in b["actors"] if a["key"] == key)
+def run_now(b, key):
+    return next(r["now"] for r in b["runs"] if r["key"] == key)
 
 
 def spent(b, kinds, end):
-    """Seconds of the actors' spans of *kinds*, an open one drawn to *end* (as 需求详情's 时间花在哪 draws it)."""
-    return sum((s["b"] if s["b"] is not None else end) - s["a"] for a in b["actors"] for s in a["spans"] if s["kind"] in kinds)
+    """Seconds of the nodes' spans of *kinds*, an open one drawn to *end* (as 需求详情's 时间花在哪 draws it)."""
+    return sum((s["b"] if s["b"] is not None else end) - s["a"] for n in b["nodes"] for s in n["spans"] if s["kind"] in kinds)
+
+
+def said(b):
+    """Every line the page shows a person (a run id only on hover: Run.run_id, an event's src)."""
+    return json.dumps([[e["text"] for e in b["events"]], [(r["label"], r["now"]["doing"]) for r in b["runs"]],
+                       [[(s["title"], s["text"], s["todo"]) for s in x["steps"]] for x in b["relays"]],
+                       [(n["doing"], [h["doing"] for h in n["history"]], [m["title"] for m in n["marks"]])
+                        for n in b["nodes"]]], ensure_ascii=False)
 
 
 def test_a_big_requirement_waiting_on_its_small_ones_has_a_quiet_session_that_is_nobodys_turn():
     """A big requirement whose small ones are being built (family.classify: people / none): its own session sits quiet,
-    and the board says what the row says, never 轮到你回话 beside it."""
+    and the board says what the row says, never 轮到你回话 beside it: its run waits on nobody, at no node."""
     last = T + 15 * M + 43
     text = "等小需求合进来：已合并 1/3（1 个待认领，1 个在做）"
     b = snapshot(facts(demo3_events()), row_of("local", "people", text, do="none"), sessions=[session(last)])
-    local = actor(b, "local")
-    assert (local["status"], local["doing"]) == ("waiting", text)
-    assert "轮到" not in local["doing"] and local["since"] == last
+    now = run_now(b, "local")
+    assert (now["status"], now["doing"], now["since"], now["who"], now["node"], now["do"]) == (
+        "waiting", text, last, None, None, None)
+    assert "轮到" not in said(b)
+    assert [n["id"] for n in b["nodes"] if n["status"] == "awaiting_approval"] == []
 
 
 def test_a_quiet_session_waits_for_the_person_from_its_last_message_not_works_on():
     """DEMO-3 (UI问题清单 #2): the AI worked about 15 minutes, then its session sat quiet for eleven hours. The board
-    says the session waits for the person since its last message, and the hours are waiting, not AI work."""
+    says its run waits for the person since the session's last message, at the stage it would do next, and none of
+    those hours is AI work: every node's work ends before it, nothing glows."""
     last = T + 15 * M + 43   # the session's last message, 09:07:08
     b = snapshot(facts(demo3_events()), row_of("local", "you", "会话空着：轮到你回话"), sessions=[session(last)])
-    local = actor(b, "local")
-    assert local["status"] == "awaiting_approval" and local["since"] == last
-    assert local["spans"][-1] == {"a": last, "b": None, "kind": "wait"}
-    assert all(s["b"] is not None and s["b"] <= last for s in local["spans"] if s["kind"] != "wait")
+    now = run_now(b, "local")
+    assert (now["status"], now["doing"], now["since"], now["who"], now["node"], now["do"]) == (
+        "awaiting_approval", "会话空着：轮到你回话", last, "you", "review", "reply")
+    assert all(s["b"] is not None and s["b"] <= last for n in b["nodes"] for s in n["spans"])
+    assert [n["id"] for n in b["nodes"] if n["status"] in ("running", "fixing")] == []
     assert not b["live"]
-    now = T + 11.5 * H
-    assert spent(b, ("work", "fix"), now) < 16 * M
-    assert spent(b, ("wait",), now) > 11 * H
+    assert spent(b, ("work", "fix"), T + 11.5 * H) < 16 * M
     # the person's own reply in the session is a person's act; the kickoff and the approval line are not replies
     assert [e["text"] for e in b["events"] if e["kind"] == "answer"] == ["你在会话里回话了"]
+    # while the AI wrote the requirements it waited for that reply: since Lean's last record before it (逆向工程 done)
+    assert {"a": T + 4 * M + 30, "b": T + 6 * M + 17, "kind": "wait", "run": "local"} in node(b, "requirements")["spans"]
 
 
 def test_a_reply_after_a_long_quiet_does_not_turn_the_quiet_into_ai_work():
-    """The person answers the next morning: the night is still a wait, and the AI works from the reply on."""
-    reply = T + 24 * H
+    """The session goes quiet in the middle of code generation: its lane waits for the person from the session's last
+    message. The person answers the next morning: the night is still a wait, and the AI works from the reply on. Quiet
+    between two stages (the night before 发布 began) is on no lane at all."""
+    last, reply = T + 15 * M + 43, T + 24 * H
+    coding = demo3_events()[:14]            # code generation begun at 09:03:33, not done
+    b = snapshot(facts(coding), row_of("local", "you", "会话空着：轮到你回话"), sessions=[session(last)], now=T + 11.5 * H)
+    cg = node(b, "code-generation/app")
+    assert (cg["status"], cg["doing"]) == ("awaiting_approval", "会话空着：轮到你回话")
+    assert cg["spans"] == [{"a": T + 11 * M + 47, "b": last, "kind": "work", "run": "local"},
+                           {"a": last, "b": None, "kind": "wait", "run": "local"}]
+    assert spent(b, ("wait",), T + 11.5 * H) > 11 * H and not b["live"]
+    evs = coding + [turn(reply, 4), ev(reply + 20 * M, "STAGE_COMPLETED", stage="code-generation", unit="app")]
+    b = snapshot(facts(evs), row_of("local", "agent", "AI 在做"), sessions=[session(reply + 20 * M, busy=True)],
+                 now=reply + 30 * M)
+    assert node(b, "code-generation/app")["spans"] == [{"a": T + 11 * M + 47, "b": reply, "kind": "wait", "run": "local"},
+                                                       {"a": reply, "b": reply + 20 * M, "kind": "work", "run": "local"}]
+    assert spent(b, ("work", "fix"), reply + 30 * M) < 16 * M + 30 * M
     evs = demo3_events() + [turn(reply, 4), ev(reply + 20 * M, "STAGE_STARTED", stage="release")]
     b = snapshot(facts(evs), row_of("local", "agent", "AI 在做"), sessions=[session(reply + 20 * M, busy=True)],
                  now=reply + 30 * M)
-    local = actor(b, "local")
-    assert local["status"] == "running" and b["live"]
-    assert spent(b, ("work", "fix"), reply + 30 * M) < 16 * M + 30 * M
-    assert any(s["kind"] == "wait" and s["a"] <= T + 16 * M and s["b"] == reply for s in local["spans"])
+    assert run_now(b, "local")["status"] == "running" and b["live"]
+    assert [s for n in b["nodes"] for s in n["spans"] if s["a"] < reply and (s["b"] is None or s["b"] > T + 16 * M)] == []
+    assert node(b, "release")["spans"] == [{"a": reply + 20 * M, "b": None, "kind": "work", "run": "local"}]
 
 
 def test_the_idle_step_says_what_to_say_next_and_where():
@@ -388,10 +409,10 @@ def test_a_design_lean_skipped_is_not_needed_and_the_wall_says_what_is_still_to_
     the way; the wall counts what happened and names the release approval still to come; no citation is no check."""
     b = snapshot(facts(demo3_events()), row_of("local", "you", "会话空着：轮到你回话"), sessions=[session(T + 16 * M)],
                  t={"brain": {"loaded": 5, "cited": [], "stale": [], "unknown": []}})
-    design = actor(b, "design")
-    assert design["status"] == "skipped" and design["doing"].startswith("这次不需要")
+    assert (node(b, "application-design")["status"], node(b, "application-design")["doing"]) == ("skipped", "跳过了")
     cells = {c["id"]: c for c in b["checks"]["cells"]}
-    assert cells["gate-DESIGN"]["status"] == "not_needed"
+    assert (cells["gate-DESIGN"]["status"], cells["gate-DESIGN"]["detail"], cells["gate-DESIGN"]["node"]) == (
+        "not_needed", "这次不需要：Lean 跳过了设计", "application-design")
     assert "brain-cite" not in cells
     w = b["checks"]
     assert (w["passed"], w["failed"], w["total"], w["todo"]) == (2, 0, 2, ["发布审批"])
@@ -411,13 +432,19 @@ def test_the_merge_ends_the_requirements_time_and_its_14_days_are_watched_not_wa
     it); the 14 days after it are watched, nobody's turn, and still to come."""
     merged_at = T + 20 * M
     evs = demo3_events() + [ev(T + 15 * M, "APPROVAL_REQUESTED", kind="RELEASE", sha256="ab" * 32),
-                            ev(T + 16 * M, "APPROVED", kind="RELEASE", sha256="ab" * 32)]
+                            ev(T + 16 * M, "APPROVED", kind="RELEASE", sha256="ab" * 32),
+                            ev(T + 17 * M, "STAGE_STARTED", stage="ci-pipeline")]     # still at it when it merged
     b = snapshot(facts(evs, merged=True), row_of("merged", "nobody", "已合并"), sessions=[session(T + 17 * M)],
                  t=merged_trace(merged_at, merged_at + 14 * 86400), brain_={"proposals": 2},
                  app_events=[{"at": iso(merged_at + 15 * H), "label": "回写 Brain：成功", "detail": "brain/DEMO-3-reflect-1"}],
                  reflect_refs=[("brain/DEMO-3-reflect-1", merged_at + 15 * H, None)], now=merged_at + 2 * 86400)
     assert b["ended_at"] == merged_at
-    assert all(s["b"] is not None and s["b"] <= merged_at for a in b["actors"] for s in a["spans"])
+    assert all(s["b"] is not None and s["b"] <= merged_at for n in b["nodes"] for s in n["spans"])
+    assert node(b, "ci-pipeline")["spans"] == [{"a": T + 17 * M, "b": merged_at, "kind": "work", "run": "local"}]
+    # merged into main: every stage it finished is finished for good, and what was still at work is over
+    assert [(n["id"], n["status"]) for n in b["nodes"] if n["rounds"] and n["stage"] != "reflect"
+            and n["status"] != "skipped"] == [(x, "merged") for x in (
+                "reverse-engineering", "requirements", "code-generation/app", "build-and-test", "ci-pipeline", "release")]
     cells = {c["id"]: c for c in b["checks"]["cells"]}
     assert cells["after-14d"]["status"] == "watch" and cells["after-14d"]["detail"].startswith("观察中")
     # watched is not still to come: nothing is left, one cell is watched
@@ -428,42 +455,50 @@ def test_the_merge_ends_the_requirements_time_and_its_14_days_are_watched_not_wa
     # the owner approved the release in their own session: they are named, never a pseudonym
     assert b["accept"]["done"]["who"] == "dana"
     # DETAIL-25: the write-back branch waits to be merged, then it is in the default branch
-    assert (actor(b, "reflect")["status"], actor(b, "reflect")["doing"]) == ("done", "回写 Brain：成功（回写分支 brain/DEMO-3-reflect-1）")
+    reflect = node(b, "reflect")
+    assert (reflect["status"], reflect["doing"], reflect["since"]) == (
+        "done", "写好了回写分支：等合进 Brain", merged_at + 15 * H)
+    assert [(h["status"], h["who"]) for h in reflect["history"]] == [("awaiting_approval", "you"), ("done", None)]
     b = snapshot(facts(evs, merged=True), row_of("merged", "nobody", "已合并"), t=merged_trace(merged_at, merged_at + 14 * 86400),
                  brain_={"proposals": 2}, reflect_refs=[("brain/DEMO-3-reflect-1", merged_at + 15 * H, merged_at + 16 * H)],
                  now=merged_at + 2 * 86400)
-    a = actor(b, "reflect")
-    assert (a["status"], a["doing"], a["since"]) == ("merged", "回写分支 brain/DEMO-3-reflect-1 已合并", merged_at + 16 * H)
+    reflect = node(b, "reflect")
+    assert (reflect["status"], reflect["doing"], reflect["since"]) == ("merged", "已合进 Brain", merged_at + 16 * H)
+    assert [e["text"] for e in b["events"] if e["kind"] == "reflect"][-1] == "回写分支 brain/DEMO-3-reflect-1 已合并"
 
 
 def test_the_replay_knows_whose_turn_each_wait_was():
-    """A release asked on the MR after the hand-over waits for the product, not for you: each history entry of a wait
-    says whom it is on, as Waits.who does."""
+    """A release asked on the MR after the hand-over (the runner's clone asks it) waits for the product, not for you:
+    each history entry of a wait says whom it is on, as Waits.who does, and the release is the product's acceptance."""
     hand = T + 16 * M
-    evs = demo3_events() + [ev(T + 40 * M, "APPROVAL_REQUESTED", kind="RELEASE", sha256="cd" * 32)]
+    evs = demo3_events() + [dict(ev(T + 40 * M, "APPROVAL_REQUESTED", kind="RELEASE", sha256="cd" * 32), _file=RUNNER_FILE)]
     b = snapshot(facts(evs, handoff={"requested_at": iso(hand), "by": "dana"}),
                  row_of("acceptance", "product", "等产品在 MR 上验收 D-3（approve / reject）", do="accept"),
                  local_only=False, now=T + 2 * H)
-    waits = [(h["doing"], h["who"]) for h in actor(b, "release")["history"] if h["status"] == "awaiting_approval"]
-    assert waits and all(who == "product" for _, who in waits) and waits[0][0] == "等产品在 MR 上批准发布"
-    assert [h["who"] for h in actor(b, "req")["history"] if h["status"] == "awaiting_approval"] == ["you"]
-    assert (actor(b, "release")["title"], actor(b, "release")["sub"]) == ("发布验收", "发布审批 · 验收")
+    assert [(h["doing"], h["who"]) for h in node(b, "release")["history"] if h["status"] == "awaiting_approval"] == [
+        ("等产品验收", "product")]
+    assert [h["who"] for h in node(b, "requirements")["history"] if h["status"] == "awaiting_approval"] == ["you"]
+    assert run_now(b, "runner-1")["do"] == "accept" and run_now(b, "local")["do"] is None
 
 
 def test_a_repo_done_only_here_has_no_runner_half_and_reads_no_runner_sources():
-    """#5 (BOARD-9, DETAIL-6): no remote, so the runner's half is 这次不需要, says nothing, and its sources are not missing."""
+    """#5 (BOARD-9, DETAIL-6): no remote, so there is no runner half: no hand-over on the rail, no runner run in the
+    roster, no 桥 or 签名 on the wall, and its sources are not missing. Nobody accepts it on an MR: its release waits
+    for its person's approval in the session."""
+    t = {"missing": ["bridge ledger (--ledger not given)", "vouchers (--vouchers not given and no intake store)",
+                     "pushes (git keeps no push log; person commits after hand-over stand in for them)",
+                     "CI pipelines (GitLab, not readable here)", "credits (not passed in)"]}
     b = snapshot(facts(demo3_events()), dict(row_of("local", "you", "会话空着：轮到你回话"), local_only=True),
-                 sessions=[session(T + 16 * M)], local_only=False,
-                 t={"missing": ["bridge ledger (--ledger not given)", "vouchers (--vouchers not given and no intake store)",
-                                "pushes (git keeps no push log; person commits after hand-over stand in for them)",
-                                "CI pipelines (GitLab, not readable here)", "credits (not passed in)"]})
-    for k in ("handover", "bridge", "signer", "runner"):
-        a = actor(b, k)
-        assert a["status"] == "skipped" and a["doing"].startswith("这次不需要") and a["facts"] == []
+                 sessions=[session(T + 16 * M)], local_only=False, t=t)
+    assert b["relays"] == [] and [r["key"] for r in b["runs"]] == ["local"]
     assert not [c for c in b["checks"]["cells"] if c["group"] == "handover"]
     assert b["missing"] == ["花费：KiroCrew 还没报 credits"]
-    # nobody accepts it on an MR: its release is Lean's approval, named so on the graph and the lanes
-    assert (actor(b, "release")["title"], actor(b, "release")["sub"]) == ("发布审批", "Lean 请人批发布")
+    asked = demo3_events() + [ev(T + 20 * M, "STAGE_STARTED", stage="release"),
+                              ev(T + 21 * M, "APPROVAL_REQUESTED", kind="RELEASE", sha256="ab" * 32)]
+    b = snapshot(facts(asked), dict(row_of("local", "you", "等你批准发布", do="approve"), local_only=True),
+                 sessions=[session(T + 21 * M)], local_only=False, t=t)
+    assert (node(b, "release")["status"], node(b, "release")["doing"]) == ("awaiting_approval", "等你批发布")
+    assert [(g["state"], g["who"], g["mr"]) for g in node(b, "release")["gates"]] == [("pending", "you", None)]
 
 
 def test_someone_elses_requirement_names_them_and_a_question_for_the_product_is_not_yours():
@@ -492,10 +527,12 @@ def test_someone_elses_requirement_names_them_and_a_question_for_the_product_is_
 
 
 def test_a_claim_not_started_says_since_when_and_to_start_it():
-    """#3 (BOARD-6): a claim only: the session's node says since the claim, the step is to start this very key."""
+    """#3 (BOARD-6): a claim only: the board starts at the claim, no run is there yet and nothing was done, the first
+    stage waits to be started, and the step is to start this very key."""
     b = snapshot(facts([], run=False), row_of("claimed", "you", "认领了，还没开工"), now=T + 12 * H)
-    local = actor(b, "local")
-    assert local["status"] == "waiting" and local["since"] == T and local["facts"] == []
+    assert (b["started_at"], [(e["kind"], e["at"]) for e in b["events"]]) == (T, [("claim", T)])
+    assert b["runs"] == [] and b["relays"] == [] and [n for n in b["nodes"] if n["rounds"]] == []
+    assert (node(b, "requirements")["status"], node(b, "requirements")["doing"]) == ("waiting", "等开工")
     assert b["accept"]["step"]["text"] == "认领了，还没开工：在开需求里开工 DEMO-3"
     assert b["person"]["you"] is True
     b = snapshot(facts([], run=False, owner="carol"), row_of("claimed", "people", "已认领，还没开工"), me="alice")
@@ -542,13 +579,13 @@ def test_each_commit_on_the_conveyor_carries_the_files_it_changed(tmp_path):
 
 def test_the_replay_says_what_the_session_is_doing_while_it_works():
     """A stage done inside another (逆向工程 inside 需求分析) leaves the session at work on the outer one: the replay
-    never shows 「做完…」 for a session at work; the progress itself is the KPI's, not a lane fact."""
+    shows 需求分析 at work until it asks for its approval, never 做完, and what the person said meanwhile is its."""
     b = snapshot(facts(demo3_events()), row_of("local", "you", "会话空着：轮到你回话"), sessions=[session(T + 16 * M)])
-    local = actor(b, "local")
-    running = [h["doing"] for h in local["history"] if h["status"] == "running"]
-    assert "在做：需求分析" in running[running.index("在做：逆向工程") + 1:]
-    assert not [d for d in running if d.startswith("做完")]
-    assert not [x for x in local["facts"] if x.startswith("Lean")]
+    assert [(h["at"], h["status"]) for h in node(b, "reverse-engineering")["history"]][:2] == [
+        (T + 4 * M, "running"), (T + 4 * M + 30, "done")]
+    assert [(h["at"], h["status"]) for h in node(b, "requirements")["history"]][:2] == [
+        (T + 1, "running"), (T + 9 * M + 50, "awaiting_approval")]
+    assert [(e["node"], e["run"], e["round"]) for e in b["events"] if e["kind"] == "answer"] == [("requirements", "local", 1)]
 
 
 def test_a_gate_history_stays_in_time_order_with_no_repeats_under_a_later_plan():
@@ -565,13 +602,16 @@ def test_a_gate_history_stays_in_time_order_with_no_repeats_under_a_later_plan()
                                                ("PLAN", "api", "pending", "c", p2, "approve PLAN cccccccc"))]
     b = snapshot(facts(evs, approvals=approvals),
                  row_of("local", "you", "等你批准 api 的代码生成计划：读完再在会话里自己打那一行", do="approve"), now=p2 + H)
-    design = actor(b, "design")
-    h = design["history"]
-    assert [x["at"] for x in h] == sorted(x["at"] for x in h)
-    assert len({(x["at"], x["status"]) for x in h}) == len(h)
-    assert (h[-1]["status"], h[-1]["at"], design["line"]) == ("awaiting_approval", p2, "approve PLAN cccccccc")
-    during_first_plan = [x for x in h if x["at"] <= p1 - 10 * M][-1]
-    assert during_first_plan["status"] == "awaiting_approval"
+    for n in b["nodes"]:
+        h = n["history"]
+        assert [x["at"] for x in h] == sorted(x["at"] for x in h) and len({(x["at"], x["status"]) for x in h}) == len(h), n["id"]
+    assert [(x["at"], x["status"]) for x in node(b, "application-design")["history"]] == [
+        (T + 30 * M, "awaiting_approval"), (d, "merged")]
+    assert [(x["at"], x["status"]) for x in node(b, "code-generation/export")["history"]] == [
+        (p1 - 20 * M, "awaiting_approval"), (p1, "merged")]
+    api = node(b, "code-generation/api")
+    assert ([(x["at"], x["status"]) for x in api["history"]], [g["line"] for g in api["gates"]]) == (
+        [(p2, "awaiting_approval")], ["approve PLAN cccccccc"])
 
 
 def test_a_push_without_its_label_waits_on_the_person_not_on_the_runner():
@@ -583,24 +623,28 @@ def test_a_push_without_its_label_waits_on_the_person_not_on_the_runner():
                  do="label_handoff", since=hand)
     now = hand + 7 * H + 46 * M
     b = snapshot(f, row, local_only=False, now=now)
-    runners = [s for a in b["actors"] if a["key"] in ("handover", "bridge", "signer", "runner") for s in a["spans"]
-               if s["kind"] == "work"]
-    assert runners == [], runners
-    assert spent(b, ("wait",), now) >= 7 * H + 46 * M
-    assert actor(b, "handover")["history"][-1]["who"] == "you"
-    # the check wall (and 需求详情's 检查, which shows it) says the label is missing, as the bridge's node does: nothing
-    # is being checked, the person labels it
+    assert [r["kind"] for r in b["runs"]] == ["local"]
+    assert [s for n in b["nodes"] for s in n["spans"] if s["b"] is None or s["b"] > hand] == []
+    assert (run_now(b, "local")["status"], run_now(b, "local")["since"], run_now(b, "local")["who"],
+            run_now(b, "local")["do"]) == ("awaiting_approval", hand, "you", "label_handoff")
+    [relay] = b["relays"]
+    assert relay["to"] is None
+    assert [(s["key"], s["status"], s["todo"]) for s in relay["steps"]] == [
+        ("handover", "stalled", "在 MR 上补上交接标签，或者在分支上再交接一次"), ("bridge", "waiting", None),
+        ("signer", "waiting", None), ("workspace", "waiting", None)]
+    # the check wall (and 需求详情's 检查, which shows it) says the label is missing, as the relay's 桥 step does:
+    # nothing is being checked, the person labels it
     cell = next(c for c in b["checks"]["cells"] if c["group"] == "handover" and c["id"] == "bridge")
-    assert (cell["label"], cell["name"], cell["status"], cell["actor"]) == ("标签", "补上交接标签", "wait", "handover"), cell
-    assert cell["detail"] == actor(b, "bridge")["doing"] == "MR 上没有交接标签：桥不会接"
+    assert (cell["label"], cell["name"], cell["status"], cell["node"], cell["run"]) == ("标签", "补上交接标签", "wait", None, None)
+    assert cell["detail"] == relay["steps"][1]["text"] == "MR 上没有交接标签：桥不会接"
     assert "在核对" not in json.dumps(b["checks"], ensure_ascii=False)
 
 
 def test_a_question_the_runner_asks_on_the_mr_waits_on_whom_park_json_asks_as_the_row_says():
     """Preview r1/PAY-2: after the hand-over the runner's 澄清 asks the owner (park.json's ask), yet the replay said
-    等别人 to the owner. Each wait on the runner's side is on whom the row's waits would name (deliveries.classify):
+    等别人 to the owner. What the runner's run asks is said of whom the row's waits would name (deliveries.classify):
     park.json's ask, the owner being 你 only to the owner; the bridge's D-n asks whom its park.json asks; a code
-    generation plan asked of the builder on the MR waits for the builder."""
+    generation plan asked of the builder on the MR waits for the builder, and its run waits for the row's answer."""
     hand, q_at, plan_at = T + 30 * M, T + 90 * M, T + 3 * H
     plan = "PLAN " + "b" * 8
 
@@ -612,22 +656,29 @@ def test_a_question_the_runner_asks_on_the_mr_waits_on_whom_park_json_asks_as_th
             "decisions": [{"source": "bridge", "id": "D-1", "kind": "clarify", "state": "delivered",
                            "asked_at": iso(q_at + M), "at": iso(q_at + 30 * M), "choice": "A"}]}
 
-    evs = demo3_events()[:12] + [ev(plan_at, "APPROVAL_REQUESTED", kind="PLAN", unit="api", sha256="b" * 64)]
+    evs = demo3_events()[:12] + [dict(ev(plan_at, "APPROVAL_REQUESTED", kind="PLAN", unit="api", sha256="b" * 64),
+                                      _file=RUNNER_FILE)]
     f = facts(evs, handoff={"requested_at": iso(hand), "by": "dana"})
-    row = row_of("parked", "builder", "等开发的人在 MR 上回答 D-2（approve / reject）", do="answer", where="mr")
+    text = "等开发的人在 MR 上回答 D-2（approve / reject）"
+    row = row_of("parked", "builder", text, do="answer", where="mr")
 
-    def waits(b, key):
-        return [(h["doing"], h["who"]) for h in actor(b, key)["history"] if h["status"] == "awaiting_approval"]
+    def asked(b):
+        return [e["text"] for e in b["events"] if e["kind"] == "question"][:2]
 
     b = snapshot(f, row, t=trace("owner"), local_only=False, now=plan_at + H)
-    assert waits(b, "runner")[:2] == [("停下问你：澄清", "you"), ("停下问你：澄清（D-1）", "you")]
-    assert {"停下问你：澄清", "D-1 在 MR 上问你：澄清"} <= {e["text"] for e in b["events"]}
-    assert waits(b, "design")[-1] == ("等开发的人在 MR 上批准代码生成计划", "builder")
+    assert asked(b) == ["停下问你：澄清", "D-1 在 MR 上问你：澄清"]
+    cg = node(b, "code-generation/api")
+    assert (cg["status"], cg["doing"], cg["run"], [g["who"] for g in cg["gates"]]) == (
+        "awaiting_approval", "等开发的人在 MR 上批代码生成计划", "runner-1", ["builder"])
+    assert [(h["doing"], h["who"]) for h in cg["history"]] == [("等开发的人在 MR 上批代码生成计划", "builder")]
     assert "请开发的人在 MR 上批准代码生成计划" in [e["text"] for e in b["events"]]
+    now = run_now(b, "runner-1")
+    assert (now["status"], now["doing"], now["who"], now["node"], now["do"]) == (
+        "awaiting_approval", text, "builder", "code-generation/api", "answer")
     b = snapshot(f, row, t=trace("owner"), me="alice", local_only=False, now=plan_at + H)
-    assert waits(b, "runner")[:2] == [("停下问 dana：澄清", "people"), ("停下问 dana：澄清（D-1）", "people")]
+    assert asked(b) == ["停下问 dana：澄清", "D-1 在 MR 上问 dana：澄清"]
     b = snapshot(f, row, t=trace("product"), local_only=False, now=plan_at + H)
-    assert waits(b, "runner")[:2] == [("停下问产品：澄清", "product"), ("停下问产品：澄清（D-1）", "product")]
+    assert asked(b) == ["停下问产品：澄清", "D-1 在 MR 上问产品：澄清"]
 
 
 def test_the_board_says_the_bridges_refusal_the_repos_kit_and_what_it_could_not_read_in_words():
@@ -688,13 +739,14 @@ def test_the_runners_page_of_a_hand_over_it_cannot_read_yet_tells_one_story():
                updated_at=T, mr={"iid": 53, "url": "https://gitlab.example.com/p/-/merge_requests/53", "state": None},
                run_ids=["RUN-DEMO-3-1"])
     b = snapshot(f, row, me="alice", local_only=False, now=T + M)
-    assert (actor(b, "handover")["status"], actor(b, "bridge")["status"]) == ("merged", "done")
-    assert (actor(b, "signer")["status"], actor(b, "signer")["doing"]) == ("running", "在签接手合同")
-    assert actor(b, "runner")["status"] == "waiting"
-    for k in ("local", "req", "design"):
-        assert (actor(b, k)["status"], actor(b, k)["doing"]) == ("done", board.RUNNER_BLIND), k
-    text = json.dumps(b["actors"], ensure_ascii=False)
-    assert "等开工" not in text and "等桥核对" not in text
+    [relay] = b["relays"]
+    assert [(s["key"], s["status"], s["text"]) for s in relay["steps"]] == [
+        ("handover", "merged", "交接了"), ("bridge", "merged", "桥接手了"), ("signer", "running", "在签接手合同"),
+        ("workspace", "waiting", "等签好合同")]
+    assert b["runs"] == [] and relay["to"] is None
+    assert [(n["id"], n["status"], n["doing"]) for n in b["nodes"] if n["phase"] in ("inception", "construction")][:2] == [
+        ("requirements", "done", mod("stages").RUNNER_BLIND), ("code-generation/app", "waiting", "等运行机开工")]
+    assert "等开工" not in said(b) and "等桥核对" not in said(b)
     cells = {c["id"]: c for c in b["checks"]["cells"]}
     assert cells["bridge"]["status"] == "pass" and cells["signer"]["detail"] == "在签"
     assert "gate-REQUIREMENTS" not in cells and "需求审批" not in b["checks"]["todo"]
@@ -702,13 +754,13 @@ def test_the_runners_page_of_a_hand_over_it_cannot_read_yet_tells_one_story():
     # signed: the runner prepares its working directory
     row = dict(row, waits=dict(row["waits"], who="runner", text="运行机在准备工作区"))
     b = snapshot(f, row, me="alice", local_only=False, now=T + M)
-    assert actor(b, "signer")["status"] == "merged"
-    assert (actor(b, "runner")["status"], actor(b, "runner")["doing"]) == ("queued", "运行机在准备工作区")
+    assert [(s["key"], s["status"], s["text"]) for s in b["relays"][0]["steps"]][2:] == [
+        ("signer", "merged", "签了接手合同"), ("workspace", "running", "运行机在准备工作区")]
 
 
 def test_a_run_is_said_as_the_runner_page_says_it_the_id_only_on_hover():
     """ovrest: the feed said 「签名服务签了接手合同（RUN-PAY-4-1）」 and the runner's lane had a 「RUN-PAY-4-1」 chip; the
-    运行机 page says 「第 1 次运行」."""
+    运行机 page says 「第 1 次运行」, and the roster 「运行机 第 1 次」 with the run id on hover (Run.run_id)."""
     hand = T + 30 * M
     f = facts(demo3_events()[:12], handoff={"requested_at": iso(hand), "by": "dana"})
     t = {"actions": {"handovers": [{"kind": "bridge accepted", "at": iso(hand + M), "mr_iid": 41},
@@ -717,9 +769,10 @@ def test_a_run_is_said_as_the_runner_page_says_it_the_id_only_on_hover():
     b = snapshot(f, row, t=t, local_only=False, now=hand + H)
     signed = next(e for e in b["events"] if e["kind"] == "signed")
     assert (signed["text"], signed["src"]) == ("签名服务签了接手合同（第 1 次运行）", "运行号 RUN-DEMO-3-1")
-    assert "第 1 次运行" in actor(b, "runner")["facts"]
-    shown = json.dumps([b["events"], [a["facts"] for a in b["actors"]], [a["marks"] for a in b["actors"]]], ensure_ascii=False)
-    assert "RUN-DEMO-3-1" not in shown.replace('"运行号 RUN-DEMO-3-1"', "")
+    runner = handed_over()
+    assert [(r["label"], r["run_id"]) for r in runner["runs"] if r["kind"] == "runner"] == [("运行机 第 1 次", "RUN-DEMO-3-1")]
+    for x in (b, runner):
+        assert "RUN-DEMO-3-1" not in said(x)
     assert board.run_words(["RUN-PAY-4-1", "RUN-PAY-4-2"]) == "第 1、2 次运行"
 
 
@@ -786,7 +839,7 @@ def small(state="local", busy=True, merged_in=False, units=()):
     fam = {"role": "child", "parent": "DEMO-1", "unit": "api", "state": "merged" if merged_in else "in_progress"}
     row = dict(row_of("merged_into_parent" if merged_in else state, "nobody" if merged_in else "agent",
                       "已合进大需求 DEMO-1 的分支：等它评审、发布" if merged_in else "AI 在做"), key="DEMO-4", family=fam)
-    return snapshot(f, row, sessions=[session(T + H, busy=busy)], now=T + 2 * H, units=units)
+    return snapshot(f, row, sessions=[session(T + H, busy=busy)], now=T + 2 * H, units=units, local_only=False)
 
 
 def test_a_small_requirement_has_no_release_or_write_back_and_its_big_ones_rounds_are_the_big_ones():
@@ -802,6 +855,43 @@ def test_a_small_requirement_has_no_release_or_write_back_and_its_big_ones_round
     assert [(r["key"], r["kind"], r["label"], r["req"]) for r in b["runs"]] == [
         ("local", "local", "本机会话", None), ("parent-DEMO-1", "parent", "大需求 DEMO-1", "DEMO-1")]
     assert b["relays"] == []
+    # the check wall says the same: nothing of it is handed over, and its release is the big one's
+    cells = {c["id"]: c for c in b["checks"]["cells"]}
+    assert (cells["gate-RELEASE"]["status"], cells["gate-RELEASE"]["detail"]) == ("not_needed", "跟大需求一起发布")
+    assert [c["id"] for c in b["checks"]["cells"] if c["group"] == "handover"] == []
+    assert "发布审批" not in b["checks"]["todo"]
+
+
+def test_an_event_never_travels_to_a_stage_the_graph_draws_no_box_for():
+    """A skipped stage keeps its node, and the graph draws no box for it: what the run does after Lean skipped a stage
+    travels from the node it really was at (a commit after 拆分单元 was skipped, the hand-over after CI 流水线 was
+    skipped), 开工 goes to the first stage on the way, and a session opened as 构思 is skipped whole is at no node. A
+    run waiting after 构建测试 with CI 流水线 skipped is next at 审查."""
+    plan = "aidlc-docs/261109-x/construction/plans/app-code-generation-plan.md"
+    evs = started() + [ev(T + 10 * M, "STAGE_COMPLETED", stage="requirements"),
+                       ev(T + 11 * M, "STAGE_SKIPPED", stage="units", reason="只有一个单元"),
+                       ev(T + 12 * M, "STAGE_STARTED", stage="code-generation", unit="app", path=plan),
+                       ev(T + 20 * M, "STAGE_COMPLETED", stage="code-generation", unit="app"),
+                       ev(T + 21 * M, "VERIFY", ok=True, results=[{"cmd": "pytest -q", "exit": 0}]),
+                       ev(T + 21 * M, "STAGE_COMPLETED", stage="build-and-test"),
+                       ev(T + 22 * M, "STAGE_SKIPPED", stage="ci-pipeline", reason="现有的 CI 够用")]
+    hand = T + 30 * M
+    t = {"actions": {"commits": [{"sha": "%040x" % 3, "at": iso(T + 11 * M + 30), "by": "person", "files": 1},
+                                 {"sha": "%040x" % 4, "at": iso(hand), "by": "person", "records_only": True, "files": 1}],
+                     "handovers": [{"kind": "requested", "at": iso(hand), "commit": "%040x" % 4}]}}
+    b = snapshot(facts(evs, handoff={"requested_at": iso(hand), "by": "dana"}),
+                 row_of("handed_over", "bridge", "桥在核对交接"), t=t, local_only=False, now=hand + M,
+                 app_events=[{"at": iso(T), "label": "开了本机会话"}])
+    skipped = {n["id"] for n in b["nodes"] if n["status"] == "skipped"}
+    assert {"units", "ci-pipeline", "intent-capture"} <= skipped
+    assert [(e["kind"], e["from"], e["to"]) for e in b["events"] if e["kind"] != "stage" and {e["from"], e["to"]} & skipped] == []
+    said = {e["kind"]: e for e in b["events"]}
+    assert (said["start"]["to"], said["commit"]["node"], said["handover"]["from"]) == (
+        "requirements", "requirements", "build-and-test")
+    assert (said["session"]["node"], said["session"]["from"], said["session"]["to"]) == (None, "person", "person")
+    quiet = snapshot(facts(evs), row_of("local", "you", "会话空着：轮到你回话"), sessions=[session(T + 23 * M)],
+                     now=T + H)
+    assert quiet["runs"][0]["now"]["node"] == "review"
 
 
 def test_a_small_requirement_builds_its_own_unit_of_its_big_ones_plan():
@@ -964,3 +1054,71 @@ def test_every_board_event_kind_has_a_place_on_the_graph():
     union = re.search(r"export type BoardEventKind =([^\n]*\n(?:\s*\|[^\n]*\n)+)", src).group(1)
     kinds = set(re.findall(r"'([a-z]+)'", union))
     assert {"claim", "verify", "reflect"} <= kinds and sorted(kinds - set(board.PLACE)) == []
+    assert sorted(kinds - set(board.ANCHORS)) == []
+    assert {end for ends in board.ANCHORS.values() for end in ends} <= {
+        "person", "branch", "checks", "relay", board.NODE, board.RUN_AT}
+
+
+def test_every_event_travels_between_its_nodes_and_the_graphs_anchors():
+    """BoardEvent.from / to: a node of this board or one of the anchors (the owner box, the run branch rail, the check
+    ring, the hand-over pill), by kind as types.ts says: a verify goes from the branch to the checks, the hand-over
+    from the node this machine's run was at to the relay, the bridge's delivered answer from the relay to the runner's
+    node, a merge blips on the branch."""
+    b = handed_over("acceptance", "product", "等产品在 MR 上验收 D-3（approve / reject）", do="accept")
+    ids = {n["id"] for n in b["nodes"]}
+    assert [(e["kind"], e["from"], e["to"]) for e in b["events"]
+            if not {e["from"], e["to"]} <= ids | {"person", "branch", "checks", "relay"}] == []
+    by = {}
+    for e in b["events"]:
+        by.setdefault(e["kind"], []).append((e["from"], e["to"]))
+    assert by["verify"] == [("branch", "checks")] * 2 and by["handover"] == [("requirements", "relay")]
+    assert by["accepted"] == by["signed"] == [("relay", "relay")]
+    assert by["request"][-1] == ("release", "person") and by["approve"] == [("person", "requirements")]
+    assert by["commit"] == [("build-and-test", "branch")] and by["claim"] == [("person", "person")]
+    merged = snapshot(facts(demo3_events(), merged=True), row_of("merged", "nobody", "已合并"),
+                      t=merged_trace(T + 20 * M, T + 15 * 86400))
+    assert [(e["from"], e["to"]) for e in merged["events"] if e["kind"] == "merge"] == [("branch", "branch")]
+
+
+def test_a_finished_stage_is_merged_once_the_way_moved_past_it():
+    """A stage done or passed is drawn finished for good (merged, 完成) once a later stage's round began after it ended,
+    and only done (做完这步) while nothing after it has begun; the replay turns it at the moment that later round
+    began. A stage that ended inside a later one already at work is passed only by the next one to begin."""
+    b = snapshot(facts(demo3_events()), row_of("local", "you", "会话空着：轮到你回话"), sessions=[session(T + 16 * M)])
+    assert [(n["id"], n["status"], n["doing"]) for n in b["nodes"] if n["status"] in ("done", "merged")] == [
+        ("reverse-engineering", "merged", "做完了"), ("requirements", "merged", "你批了"),
+        ("code-generation/app", "merged", "做完了"), ("build-and-test", "done", "检查都过了")]
+    assert [(h["at"], h["status"]) for h in node(b, "reverse-engineering")["history"]] == [
+        (T + 4 * M, "running"), (T + 4 * M + 30, "done"), (T + 9 * M + 16, "merged")]
+    assert [(h["at"], h["status"]) for h in node(b, "code-generation/app")["history"]] == [
+        (T + 11 * M + 47, "running"), (T + 14 * M + 4, "done"), (T + 14 * M + 13, "merged")]
+    later = snapshot(facts(demo3_events() + [ev(T + 20 * M, "STAGE_STARTED", stage="release")]),
+                     row_of("local", "agent", "AI 在做"), sessions=[session(T + 20 * M, busy=True)], now=T + 21 * M)
+    bt = node(later, "build-and-test")
+    assert (bt["status"], bt["history"][-1]) == ("merged", {"at": T + 20 * M, "status": "merged", "doing": "检查都过了",
+                                                            "who": None})
+
+
+def test_each_run_that_waits_on_its_person_names_the_step_they_take():
+    """RunNow.do: under each run that waits on its person the page names the step they take (Waits.do's words): reply
+    to a quiet session, open one when none is here, approve a tool call, type an approval line, answer a question,
+    redo or label a hand-over; a run at work, handed over, or waiting on nobody names none."""
+    last, hand = T + 15 * M + 43, T + 30 * M
+    req = [{"kind": "REQUIREMENTS", "unit": None, "state": "pending", "sha8": "dfc1969f", "at": T + 9 * M + 50,
+            "line": "approve REQUIREMENTS dfc1969f", "path": None}]
+    handed = facts(demo3_events()[:12], handoff={"requested_at": iso(hand), "by": "dana"})
+    for f, row, sessions, do in (
+            (facts(demo3_events()), row_of("local", "you", "会话空着：轮到你回话"), [session(last)], "reply"),
+            (facts(demo3_events()), row_of("local", "you", "会话空着：轮到你回话"), [], "reply"),
+            (facts(demo3_events()), row_of("local", "you", "等你批准工具调用"), [session(last, awaiting=True)], "tool"),
+            (facts(demo3_events()[:10], approvals=req), row_of("local", "you", "等你批准需求", do="approve"),
+             [session(last)], "approve"),
+            (facts(demo3_events(), park={"kind": "clarify"}), row_of("parked", "you", "停下等你回答", do="answer"),
+             [session(last)], "answer"),
+            (handed, row_of("rejected", "you", "接手被拒：MR 是从复制出去的仓库开的", do="redo_handoff"), [], "redo_handoff"),
+            (handed, row_of("handed_over", "you", "推上去了，但 MR 上没有交接标签", do="label_handoff"), [], "label_handoff"),
+            (handed, row_of("handed_over", "bridge", "桥在核对交接"), [], None),
+            (facts(demo3_events()), row_of("local", "agent", "AI 在做"), [session(last, busy=True)], None)):
+        now = run_now(snapshot(f, row, sessions=sessions, local_only=False, now=last + H), "local")
+        assert now["do"] == do and (now["status"] == "awaiting_approval" or now["status"] == "stalled") == (do is not None), (
+            row["waits"]["text"], now)

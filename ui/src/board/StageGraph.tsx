@@ -13,16 +13,18 @@
  * yet) is a green outline; approved or merged solid green with ✓; not reached yet dashed.
  */
 import { useMemo, type KeyboardEvent, type MutableRefObject } from 'react'
-import type { BoardEvent, Gate, GateKind, Relay, RelayStep, ReqBoard, Round, Run, StageNode, WaitDo, WaitWho } from '../types'
+import type { Gate, Relay, RelayStep, ReqBoard, Round, Run, StageNode, WaitDo, WaitWho } from '../types'
 import { ExtLink } from '../ui'
 import { ACT, CHILD_STATE_NAME, DO_NAME, approvalName } from '../vocab'
-import { eventFlashes, eventItem, eventKey, type BoardDiff, type Flash } from './diff'
 import type { Item } from './engine'
-import { LIVE, WORKING, actorMeta, brief, clip, fmtCredits, fmtSpan, localOnly, otherWaits, runnerBlind, textWidth, waitsOnMe, whoThen, whoWord, wrap } from './format'
+import {
+  LIVE, ROUND_TONE, RUN_ICON, WORKING, actorMeta, brief, clip, clockAt, decider, fmtCredits, fmtHm, fmtSpan, gateVerb, gateWhat, localOnly, nodeWait,
+  openGate, otherWaits, roundWords, runShort, runnerBlind, sayWho, sessionOf, textWidth, waitsOnMe, whoOf, whoThen, wrap,
+} from './format'
 import { GraphDefs, Halo, PersonCard, Scroller, Station, useHoverCard, useParticles, type FlashMap } from './GraphFrame'
 import { useServerNow } from './hooks'
 import {
-  NODE_H, NODE_W, ORCH, RELAY_W, RUN, SCALE, ST_FOLD, ST_ORCH, TESTS, pathD, stageAnchorBox, stageCommandPath, stageHeadX, stageParticlePath,
+  NODE_H, NODE_W, ORCH, RELAY_W, SCALE, ST_FOLD, ST_ORCH, pathD, stageAnchorBox, stageCommandPath, stageHeadX, stageParticlePath,
   type RosterKind, type StageBand, type StageBox, type StageInput, type StageLayout,
 } from './layout'
 import { doOf, reviewNext } from './next'
@@ -65,91 +67,15 @@ const ORCH_EM = (ST_ORCH.w - 16) / 12
 const TASK_EM = 9.6
 
 const RELAY_SHORT: Record<RelayStep['key'], string> = { handover: '交接', bridge: '桥', signer: '签名', workspace: '工作区' }
-const RUN_ICON: Record<Run['kind'], string> = { local: 'laptop', runner: 'runner', child: 'pr', parent: 'pr' }
 
 const isDone = (s: string) => s === 'done' || s === 'merged'
 const mark = (s: RelayStep['status']) => (isDone(s) ? '✓' : actorMeta(s).icon)
-const pad2 = (v: number) => String(v).padStart(2, '0')
-
-/** 11:07 on the board's day, else 11-10 11:07. */
-function clock(t: number, today: number): string {
-  const d = new Date(t * 1000)
-  const hm = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
-  return new Date(today * 1000).toDateString() === d.toDateString() ? hm : `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${hm}`
-}
-
-/** How long a stage took, the reference's way: 0:28, 1:09 (hours and minutes). */
-function fmtHm(sec: number): string {
-  const m = Math.max(1, Math.round(sec / 60))
-  return `${Math.floor(m / 60)}:${pad2(m % 60)}`
-}
-
-/** A run in a word or two, for a box's line and a round's: 本机 · 运行机 (运行机 2 from its second run) · PAY-12. */
-function runShort(run: Run | undefined): string {
-  if (!run) return ''
-  if (run.kind === 'local') return '本机'
-  if (run.kind === 'runner') return run.n && run.n > 1 ? `运行机 ${run.n}` : '运行机'
-  return run.req ?? run.label
-}
-
-/** The gate that waits now on a node: asked (pending) or held back on the runner (queued). */
-const openGate = (n: StageNode): Gate | null => n.gates.find((g) => g.state === 'pending' || g.state === 'queued') ?? null
-/** What a gate approves, in a few words: 需求和设计 · 代码生成计划 · 发布. */
-const gateWhat = (kind: GateKind) => approvalName(kind).replace(/审批$/, '')
-const whoOf = (who: WaitWho | null, b: ReqBoard) => whoWord(who ?? 'people', b.person.owner, b.person.me)
-/** An open gate's verb: 等你批, 等产品验收, 等 carol 批. */
-function gateVerb(g: Gate, b: ReqBoard): string {
-  if (g.who === 'you') return '等你批'
-  return g.kind === 'RELEASE' && g.who === 'product' ? '等产品验收' : whoThen(whoOf(g.who, b), '批')
-}
-/** Who decided, as a round says it: 你, 产品, bob, 大需求的负责人. */
-const decider = (by: string | null) => (!by ? '有人' : by.startsWith('产品') ? '产品' : by)
 /** Who decided, as a badge on a box's top edge says it: shorter, 大需求 for 大需求的负责人. */
 const badgeWho = (by: string | null) => clip(decider(by).replace(/的负责人$/, ''), 5)
 /** An open gate's chip: 等你批 · 需求和设计, 等产品验收 · D-3. */
 const askWords = (g: Gate, b: ReqBoard) => `${gateVerb(g, b)} · ${g.mr?.decision ?? gateWhat(g.kind)}`
 /** The step an open gate's chip stands for. */
 const gateDo = (g: Gate): WaitDo => (g.line ? 'approve' : g.kind === 'RELEASE' ? 'accept' : 'answer')
-
-/** Whom a box waits on: its open gate's, else its run's wait while the run is at it; null when it does not wait. */
-function waitOf(n: StageNode, run: Run | undefined): WaitWho | null {
-  if (n.status !== 'awaiting_approval') return null
-  return openGate(n)?.who ?? (run && run.now.node === n.id ? run.now.who : null) ?? 'people'
-}
-
-/** How a round ended, in words: 产品退回（D-2）, 请批以后代码又改了（2e8d1f6「修好 CI：api 的 lint」）, 检查全过（3 项）. */
-function roundWords(r: Round, n: StageNode, b: ReqBoard): string {
-  const o = r.outcome
-  const said = o.decision ? `（${o.decision}）` : ''
-  switch (o.kind) {
-    case 'open': {
-      const g = openGate(n)
-      return g && g.round === r.n ? `${gateVerb(g, b)}${g.mr?.decision ? `（${g.mr.decision}）` : ''}` : '在做'
-    }
-    case 'done':
-      return '做完'
-    case 'approved':
-      return whoThen(decider(o.by), '批了')
-    case 'sent_back':
-      return o.by === '你' ? `你退回了${said}` : `${whoThen(decider(o.by), '退回')}${said}`
-    case 'refused':
-      return `批准的那一行没被接受${o.text ? `：${o.text}` : ''}`
-    case 'superseded':
-      return `请批以后代码又改了${o.sha ? `（${o.sha.slice(0, 7)}${o.subject ? `「${o.subject}」` : ''}）` : ''}`
-    case 'passed':
-      return `检查全过（${o.checks.length} 项）`
-    case 'failed': {
-      const bad = o.checks.filter((c) => !c.ok).map((c) => c.name)
-      return bad.length ? `${bad.join('、')} 没过` : '检查没过'
-    }
-    case 'skipped':
-      return `跳过${o.text ? `：${o.text}` : ''}`
-  }
-}
-
-const ROUND_TONE: Record<Round['outcome']['kind'], string> = {
-  open: 'run', done: 'ok', approved: 'ok', passed: 'ok', sent_back: 'fix', refused: 'warn', failed: 'bad', superseded: 'idle', skipped: 'idle',
-}
 
 /** The list under the orchestrator box: this time's runs (each hand-over before the run it hands to, a runner run's
  * id under its row), then what the Brain brought in. */
@@ -182,7 +108,7 @@ function runRow(run: Run, b: ReqBoard): RosterRow {
   const tone = waits ? (run.now.who === 'you' ? 'mine' : 'other') : WORKING.has(s) ? 'work' : s === 'failed' || s === 'stalled' ? 'bad' : isDone(s) ? 'done' : 'idle'
   const tip = [run.label, run.now.doing, run.credits !== null ? `${fmtCredits(run.credits)} credits` : '', run.readable === 'elsewhere' ? '它的会话在别的机器上' : '']
   const head = `${run.label} · `
-  return { kind: 'run', run: run.key, text: `${head}${brief(waits ? whoOf(run.now.who, b) : run.now.doing, ROW_EM - textWidth(head))}`, tone, tip: tip.filter(Boolean).join(' · ') }
+  return { kind: 'run', run: run.key, text: `${head}${brief(waits ? whoOf(run.now.who, b) : run.now.doing, ROW_EM - textWidth(head), actorMeta(s).label)}`, tone, tip: tip.filter(Boolean).join(' · ') }
 }
 
 /** The steps a hand-over shows: the workspace only until it is built, and none after the first one not through (*more*:
@@ -204,32 +130,6 @@ function relayRow(r: Relay): RosterRow {
 /** What stageLayout reads of a board. */
 export function stageInput(b: ReqBoard): StageInput {
   return { phases: b.phases, nodes: b.nodes, runs: b.runs, relays: b.relays, roster: rosterOf(b).map(({ kind, run }) => ({ kind, run })) }
-}
-
-/** The places on the graph that are no box: the owner, the rail, the check ring. */
-const PLACES: ReadonlySet<string> = new Set([ORCH, RUN, TESTS])
-
-/** A poll's particles and flashes (diff.ts *d*, of *b*) on the stage graph. An event's own from / to still name the
- * places of the graph before this one, so each event the differ lets fly (none late, the loudest within its cap) blips
- * on the box its node names; verify goes from the rail to the check ring. The owner's, the rail's and the ring's
- * flashes stay; the merge flashes every merged box. */
-export function stageEffects(d: BoardDiff, b: ReqBoard, boxes: ReadonlySet<string>): { items: Item[]; flashes: Flash[] } {
-  const flying = new Set(d.items.map((i) => i.key))
-  const cells = b.checks.cells.filter((c) => c.group === 'verify')
-  const score = cells.length ? { passed: cells.filter((c) => c.status === 'pass').length, total: cells.length } : null
-  const items: Item[] = []
-  const flashes = d.flashes.filter((f) => PLACES.has(f.target))
-  for (const e of d.fresh) {
-    if (!flying.has(eventKey(d.req, e.seq))) continue
-    const on: BoardEvent = { ...e, from: e.node, to: e.node }
-    const it = eventItem(on, d.req, boxes, e.kind === 'verify' ? score : null)
-    if (it) items.push(it)
-    flashes.push(...eventFlashes(on, d.req, boxes).filter((f) => boxes.has(f.target)))
-  }
-  if (flashes.some((f) => f.kind === 'merge' && f.target === RUN)) {
-    for (const n of b.nodes) if (n.status === 'merged' && boxes.has(n.id)) flashes.push({ key: `${d.req}#merged`, target: n.id, tone: 'ok', kind: 'merge' })
-  }
-  return { items, flashes }
 }
 
 export function StageGraph({ board, lay, focus, onNode, flashes, reducedMotion, feed, quiet = false, onSession, onAct }: StageGraphProps) {
@@ -260,12 +160,12 @@ export function StageGraph({ board, lay, focus, onNode, flashes, reducedMotion, 
   const asking = ask ? askWords(ask, board) : null
   const under = new Set<string>([...chips.keys(), ...stepWaits.map((n) => n.id), ...drawn.filter((n) => tickerOf(n, runs.get(n.run ?? ''), quiet)).map((n) => n.id)])
   const working = drawn.filter((n) => WORKING.has(n.status)).length
-  const waits = drawn.map((n) => waitOf(n, runs.get(n.run ?? ''))).filter((w): w is WaitWho => w !== null)
+  const waits = drawn.map((n) => nodeWait(n, runs.get(n.run ?? ''))).filter((w): w is WaitWho => w !== null)
   const finished = drawn.filter((n) => isDone(n.status)).length
   const waitWords = [...new Set(waits.map((w) => whoOf(w, board)))].join('、')
   const label = `需求的路：${drawn.length} 步，${working} 步在做${waits.length ? `，${waits.length} 步${waitWords}` : ''}，${finished} 步做完；检查 ${board.checks.passed}/${board.checks.total}。点一步只看它。`
   // the blue in the legend is said as the boxes and the lanes say it (等产品, 等 carol)
-  const others = [...new Set([...waits.filter((w) => w !== 'you').map((w) => whoOf(w, board)), ...otherWaits(board)])]
+  const others = [...new Set([...waits.filter((w) => sayWho(w, board) !== 'you').map((w) => whoOf(w, board)), ...otherWaits(board)])]
   const cardNode = card ? byId.get(card) : undefined
   const cardBox = card ? lay.boxes.get(card) : undefined
 
@@ -359,7 +259,7 @@ function Bands({ board, lay, runs, under }: { board: ReqBoard; lay: StageLayout;
         if (band.folded) return <FoldedBand key={band.key} band={band} n={p.n} title={p.title.split(' · ')[0]} note={p.note ?? '这次不需要'} bottom={lay.bottom} />
         const nodes = board.nodes.filter((n) => n.phase === band.key && lay.boxes.has(n.id))
         const person = band.key === 'init'
-        const mine = nodes.some((n) => waitOf(n, runs.get(n.run ?? '')) === 'you') || (person && board.person.status === 'awaiting_approval' && waitsOnMe(board))
+        const mine = nodes.some((n) => nodeWait(n, runs.get(n.run ?? '')) === 'you') || (person && board.person.status === 'awaiting_approval' && waitsOnMe(board))
         const live = nodes.some((n) => LIVE.has(n.status) && n.status !== 'awaiting_approval')
         const done = nodes.length > 0 && nodes.every((n) => isDone(n.status))
         // a repo done only here has no MR to accept on: its release is Lean's approval in the session
@@ -465,7 +365,7 @@ function Commands({ board, lay, byId }: { board: ReqBoard; lay: StageLayout; byI
         if (!c) return null
         const waits = r.now.status === 'awaiting_approval'
         const tone = waits ? (r.now.who === 'you' ? 'awaiting_approval' : 'other') : r.now.status
-        const text = `${runShort(r)} → ${byId.get(r.now.node!)?.title ?? ''}：${waits ? whoOf(r.now.who, board) : actorMeta(r.now.status).label}`
+        const text = `${runShort(r, board)} → ${byId.get(r.now.node!)?.title ?? ''}：${waits ? whoOf(r.now.who, board) : actorMeta(r.now.status).label}`
         const w = textWidth(text) * 12 + 22
         const x = Math.max(c.bus.x1 + w / 2 + 6, c.bus.x2 - w / 2 - 16)
         return (
@@ -541,7 +441,7 @@ function RelayPill({ r, x, y, today }: { r: Relay; x: number; y: number; today: 
           <tspan key={s.key}>{i ? ' · ' : ''}{RELAY_SHORT[s.key]} <tspan className={isDone(s.status) ? 'ok' : s.status === 'failed' || s.status === 'stalled' ? 'bad' : ''}>{mark(s.status)}</tspan></tspan>
         ))}
         {more && ' · …'}
-        {through && ` · ${clock(last, today).slice(-5)}`}
+        {through && ` · ${clockAt(last, today).slice(-5)}`}
       </text>
     </g>
   )
@@ -580,7 +480,7 @@ function tickerOf(n: StageNode, run: Run | undefined, quiet: boolean): string | 
 /** A box's third line: its state's mark, who did it and how long it took (✓ 本机 · 0:28), or what it waits for. */
 function stateLine(n: StageNode, run: Run | undefined, board: ReqBoard, wait: WaitWho | null): string {
   if (n.child && n.child.state !== 'merged') return `${n.child.req} · ${CHILD_STATE_NAME[n.child.state]}`
-  const who = runShort(run)
+  const who = runShort(run, board)
   if (n.status === 'waiting' || !who) return n.doing || actorMeta(n.status).label
   if (wait) return `${wait === 'you' ? '✋ ' : ''}${who} · ${whoOf(wait, board)}`
   const last = n.rounds[n.rounds.length - 1]
@@ -600,7 +500,7 @@ function StageBoxView({ n, box, board, run, focus, flash, onNode, reducedMotion,
   const w = NODE_W
   const h = NODE_H
   const working = WORKING.has(n.status)
-  const wait = waitOf(n, run)
+  const wait = nodeWait(n, run)
   const other = wait !== null && wait !== 'you'
   const g = openGate(n)
   const isFocus = focus === n.id
@@ -738,10 +638,10 @@ function StepChip({ n, box, d, review, onAct }: { n: StageNode; box: StageBox; d
  * asked here; 打开会话 when its run's session is on this machine, 看 MR for a gate asked on the MR (neither in a replay). */
 function StageCard({ n, board, runs, onSession }: { n: StageNode; board: ReqBoard; runs: Map<string, Run>; onSession?: (url: string) => void }) {
   const run = runs.get(n.run ?? '')
-  const wait = waitOf(n, run)
+  const wait = nodeWait(n, run)
   const g = openGate(n)
   const meta = actorMeta(n.status)
-  const session = run && run.readable === 'here' ? run.sessions.find((s) => s.busy) ?? run.sessions[run.sessions.length - 1] : undefined
+  const session = run && run.readable === 'here' ? sessionOf(run) : undefined
   return (
     <div className="kt-ncard-body">
       <p className="kt-ncard-head">
@@ -755,7 +655,7 @@ function StageCard({ n, board, runs, onSession }: { n: StageNode; board: ReqBoar
           {n.rounds.map((r) => (
             <li key={r.n} className={`tone-${ROUND_TONE[r.outcome.kind]}`}>
               <b>第 {r.n} 轮</b>
-              <span>{[runShort(runs.get(r.run)), clock(r.started, board.at), roundWords(r, n, board)].filter(Boolean).join(' · ')}</span>
+              <span>{[runShort(runs.get(r.run), board), clockAt(r.started, board.at), roundWords(r, n, board)].filter(Boolean).join(' · ')}</span>
             </li>
           ))}
         </ol>

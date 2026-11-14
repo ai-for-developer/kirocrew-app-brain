@@ -10,7 +10,7 @@ import type { ReqBoard, WaitDo } from '../types'
 import { ExtLink, Icon, TYPE_IT_YOURSELF } from '../ui'
 import { ACT, DO_NAME } from '../vocab'
 import { QuestionCard, ReviewButton, ReviewSay } from '../views/Question'
-import { fmtSpan } from './format'
+import { fmtSpan, sessionOf } from './format'
 import { useServerNow } from './hooks'
 import { nextOf, type Step } from './next'
 import { RoleIcon } from './RoleIcon'
@@ -106,7 +106,7 @@ function LineRow({ line, session }: { line: string; session: string | null }) {
 function StepRow({ s, onBrain, onDetail, repo, reqKey, board }: { s: Step; onBrain?: () => void; onDetail?: () => void; repo: string; reqKey: string; board: ReqBoard }) {
   const navigate = useNavigate()
   const session = s.session && !s.line ? s.session : null
-  const slot = board.actors.find((a) => a.key === 'local')?.session?.slot ?? null
+  const slot = sessionOf(board.runs.find((r) => r.kind === 'local'))?.slot ?? null
   return (
     <div className="br-next-row">
       <div className="br-next-text">

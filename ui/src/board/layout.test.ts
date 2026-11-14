@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'vitest'
 import type { ActorStatus, PhaseKey } from '../types'
-import { GW, NODE_H, NODE_W, ORCH, SCALE, ST_FOLD, ST_ORCH, pointAt, measure, stageCommandPath, stageKey, stageLayout, stageShape, type StageInput, type StageLayout } from './layout'
+import {
+  GW, NODE_H, NODE_W, ORCH, RELAY_W, SCALE, ST_FOLD, ST_ORCH, pointAt, measure, relayAnchor, stageAnchorBox, stageCommandPath, stageKey, stageLayout, stageShape,
+  type StageInput, type StageLayout,
+} from './layout'
 
 type N = StageInput['nodes'][number]
 
@@ -228,6 +231,9 @@ describe('stageLayout', () => {
     // a hand-over the bridge refused goes to nobody: its pill comes after the last dot
     const refused = stageLayout(pay9({ runs: [{ key: 'local' }], relays: [{ to: null }] }), stageShape(CARD_1280, pay9()))
     expect(refused.relayX[0]).toBeGreaterThan(refused.runX.get('local')!)
+    // a hand-over's events blip on its pill; one the rail has no pill for, nowhere
+    expect(stageAnchorBox(two, relayAnchor(1), 0)).toEqual({ x: two.relayX[1], y: two.rail.y, w: RELAY_W, h: 26, rx: 13 })
+    expect(stageAnchorBox(two, relayAnchor(2), 0)).toBeNull()
   })
 
   test('the picture holds while only states change; a stage skipped, a unit, a run more, or a run’s first round on a box changes it', () => {

@@ -940,10 +940,8 @@ class Service:
             units=self._planned_units(git, f) if git is not None else [])
         return {"at": self.now(), "row": d["row"], "branch": d["row"].get("branch"),
                 "base": str(cfg.get("default_branch") or "main"), "started_at": g["started_at"], "ended_at": g["ended_at"],
-                "live": g["live"], "person": g["person"], "actors": g["actors"],
-                "edges": [list(e) for e in board_edges([a["key"] for a in g["actors"]], g["direct"])], "direct": g["direct"],
-                "phases": g["phases"], "nodes": g["nodes"], "runs": g["runs"], "relays": g["relays"],
-                "other_runs": g["other_runs"],
+                "live": g["live"], "person": g["person"], "phases": g["phases"], "nodes": g["nodes"], "runs": g["runs"],
+                "relays": g["relays"], "other_runs": g["other_runs"],
                 "events": g["events"], "lean_steps": g["lean_steps"], "belt": g["belt"], "checks": g["checks"],
                 "accept": g["accept"], "brain": d["brain"], "decisions": d["decisions"], "questions": d["questions"],
                 "mr_desc": d["mr_desc"],
@@ -1763,16 +1761,6 @@ def runner_repo_at(path: str, cfg: dict[str, Any]) -> bool:
         return runner_repo(cfg, Repo("import", path, cfg).scan())
     except Exception:  # noqa: BLE001 - not known: the checks say it as brain-kit does (FAIL)
         return True
-
-
-def board_edges(keys: list[str], direct: bool) -> list[tuple[str, str]]:
-    """The way's edges among *keys* (the UI's board/layout.ts edgesOf draws the same)."""
-    have = set(keys)
-    all_ = [("local", "req"), ("local", "design"), ("req", "handover"), ("design", "handover"), ("handover", "bridge"),
-            ("bridge", "signer"), ("signer", "runner"), ("runner", "ci"), ("ci", "release"), ("release", "reflect")]
-    if direct:
-        all_.append(("design", "ci"))
-    return [(a, b) for a, b in all_ if a in have and b in have]
 
 
 def answer_choices(options: list[str]) -> set[str]:

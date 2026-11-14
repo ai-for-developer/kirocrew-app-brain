@@ -1349,54 +1349,22 @@ export interface RefreshResult {
 // ---------------------------------------------------------------- GET /board/{repo}/{key}: 需求看板
 
 /**
- * An actor's state on a requirement's board, in the sample team board's words and looks (the same CSS): waiting (not
- * reached yet), queued (handed to it, not picked up yet), running (at work now), stalled (stuck: needs a look),
- * awaiting_approval (waits for a person), done (did its part), merged (finished: green), fixing (at it again after a
- * no), failed (refused or failed), skipped (not on this requirement's way).
+ * The state of a node, a run or a hand-over step on a requirement's board, in the sample team board's words and looks
+ * (the same CSS): waiting (not reached yet), queued (handed to it, not picked up yet), running (at work now), stalled
+ * (stuck: needs a look), awaiting_approval (waits for a person), done (did its part), merged (finished: green), fixing
+ * (at it again after a no), failed (refused or failed), skipped (not on this requirement's way).
  */
 export type ActorStatus =
   | 'waiting' | 'queued' | 'running' | 'stalled' | 'awaiting_approval' | 'done' | 'merged' | 'fixing' | 'failed' | 'skipped'
-
-/** local (the brain-dev session) · req / design / release (Lean's approvals) · handover · bridge · signer · runner (the
- * brain-run session) · ci (verify) · reflect (the write-back into the Brain) */
-export type ActorKey = 'local' | 'req' | 'design' | 'handover' | 'bridge' | 'signer' | 'runner' | 'ci' | 'release' | 'reflect'
 
 export interface ActorSpan {
   /** epoch seconds; b null: still going */
   a: number
   b: number | null
-  /** work (the actor at it), wait (it waits for a person), fix (at it again after a no) */
+  /** work (at it), wait (it waits for a person), fix (at it again after a no) */
   kind: 'work' | 'wait' | 'fix'
 }
 export interface ActorMark { at: number; kind: string; title: string }
-
-export interface Actor {
-  key: ActorKey
-  /** 本机会话 */
-  title: string
-  /** what it is: brain-dev · AI-DLC Lean */
-  sub: string
-  /** the RoleIcon it is drawn with */
-  icon: string
-  status: ActorStatus
-  /** one short line: what it does, did, or waits for (plain Chinese) */
-  doing: string
-  /** when its status began */
-  since: number | null
-  /** its status over time, oldest first: what 回放 shows at a moment */
-  /** who: whom a wait for a person was on (Waits.who), so the replay says 等你 only for you; null otherwise */
-  history: { at: number; status: ActorStatus; doing: string; who?: WaitWho | null }[]
-  /** its lane's time track */
-  spans: ActorSpan[]
-  marks: ActorMark[]
-  /** a few plain facts for its hover card and lane: 「提交 5 次」, 「verify 12 项通过」 … */
-  facts: string[]
-  credits: number | null
-  /** its Kiro Crew session, to open */
-  session: { slot: string; url: string; busy: boolean } | null
-  /** a pending Lean approval: the exact line the person types themselves in the session (never sent by the app) */
-  line: string | null
-}
 
 /** A unit of work on the board: a Lean stage id, `stage/unit` for a per-unit stage (code-generation/api), or one of
  * the two steps brain records by other means: `review` (Lean's release review, review.md) and `reflect` (brain
@@ -1438,6 +1406,9 @@ export interface RunNow {
   who: WaitWho | null
   /** the node it is on now (the command path goes there); null: none */
   node: NodeId | null
+  /** the step its person takes while it waits on them (approve, reply, tool, answer, accept, redo_handoff,
+   * label_handoff), named under each waiting run; null when it waits on no one */
+  do: WaitDo | null
 }
 
 /** Who does the work: the roster under the orchestrator box, and each round's executor. */
@@ -1585,13 +1556,17 @@ export interface StageNode {
   sub: string
   /** the RoleIcon it is drawn with (stages.STAGES icon) */
   icon: string
-  /** the one writer is stages.node_status */
+  /** the one writer is stages.node_status. A finished stage is done (做完这步) until a later stage's round begins,
+   * then merged (完成), as it is once the requirement merged */
   status: ActorStatus
   /** one short line: what it does, did, or waits for (等批了设计 · 等你批 · 需求和设计 · 第 3 轮 · 退回以后) */
   doing: string
   since: number | null
   /** status over time, oldest first: what 回放 shows at a moment */
   history: { at: number; status: ActorStatus; doing: string; who: WaitWho | null }[]
+  /** its lane, oldest first: its rounds' work and fix, and the waits for a person inside them (a request out, the
+   * session quiet before the person's reply or now); nothing after the requirement's way is over. A quiet run between
+   * two stages is on no node's lane: Run.now says it (awaiting_approval since then) */
   spans: NodeSpan[]
   marks: ActorMark[]
   rounds: Round[]
@@ -1612,8 +1587,13 @@ export interface BoardEvent {
   seq: number
   at: number
   kind: BoardEventKind
-  /** where it travels on the graph: actor keys, 'person' (the owner), 'branch' (the run branch rail), 'checks' (the
-   * check ring); from === to: a blip on that one */
+  /** where it travels on the graph: a NodeId, or an anchor: 'person' (the owner box, with the runs' roster), 'branch'
+   * (the run branch rail), 'checks' (the check ring), 'relay' (the hand-over pill on the rail); from === to: a blip
+   * there. By kind: claim, app person → person; start person → the first node; stage, refused, blocked its node;
+   * request its gated node → person; approve, reject person → the gated node; commit its node → branch; handover the
+   * node this machine's run was at → relay; accepted, signed relay; rejected relay → person; question its node →
+   * person; answer person (the bridge's delivery: relay) → its node; verify branch → checks; merge branch; reflect,
+   * session person → its node. An event with no node for an end blips at its other end; with no node at all, null */
   from: string | null
   to: string | null
   /** plain Chinese, one line */
@@ -1639,8 +1619,6 @@ export interface BeltItem {
   files: number
   /** it changed only Lean's and the run's records */
   records_only: boolean
-  /** the actor whose lane it drops into the rail from: local, runner, handover */
-  actor: ActorKey
   /** the run that committed it, and the node whose round the commit falls in (null: outside any round) */
   run: RunKey | null
   node: NodeId | null
@@ -1667,7 +1645,6 @@ export interface CheckCell {
   at: number | null
   /** one plain line */
   detail: string
-  actor: ActorKey | null
   /** gate cells: the gated node; verify cells: build-and-test */
   node: NodeId | null
   run: RunKey | null
@@ -1714,11 +1691,6 @@ export interface ReqBoard {
   /** *me*: the one reading is the owner; *you*: the board calls the owner 你 (they are, or nobody known reads it on their
    * machine): the page says 你 and offers 开工 only then (an older backend did not say) */
   person: { status: ActorStatus; doing: string; owner: string | null; me: boolean; you?: boolean }
-  actors: Actor[]
-  /** the way's edges (from, to) */
-  edges: [string, string][]
-  /** a local-only requirement past its design: the way goes from the design approval straight to the checks */
-  direct: boolean
   /** all six, in order, `init` first (always used) */
   phases: BoardPhase[]
   /** in band order, then stage order, then unit order; at most 64; at most 40 rounds each */

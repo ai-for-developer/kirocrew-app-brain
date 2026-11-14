@@ -1,7 +1,7 @@
 /**
  * Line icons, from the sample team board: single-colour drawings (stroke only, currentColor) on a 24×24 grid, 1.6
  * stroke, round caps — they take the text colour, so both themes work. Inside the board's SVG they render as a nested
- * <svg> positioned by x/y/size. The sample's role and moment drawings are kept; BRAIN_ICONS adds the actors of a
+ * <svg> positioned by x/y/size. The sample's role and moment drawings are kept; BRAIN_ICONS adds the steps and runs of a
  * requirement's way (你, 本机会话, Lean 的审批, 交接, 桥, 签名, 运行机, CI, 发布验收, 合并, 回写 Brain) and the app's views.
  */
 import type { ReactNode } from 'react'
@@ -227,7 +227,7 @@ export const ACTION_ICONS = {
 } satisfies Record<string, ReactNode>
 export type ActionIcon = keyof typeof ACTION_ICONS
 
-/** A requirement's actors and the app's own things, drawn the same way. */
+/** A requirement's stages, runs and the app's own things, drawn the same way. */
 export const BRAIN_ICONS = {
   // 你：一个人
   person: (

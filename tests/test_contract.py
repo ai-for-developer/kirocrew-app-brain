@@ -87,7 +87,8 @@ def test_the_backend_answers_with_the_fixtures_keys(tmp_path, home):
     assert got["overview.json"]["counts"].keys() == fixture("overview.json")["counts"].keys()
     assert got["overview.json"]["cto"].keys() == fixture("overview.json")["cto"].keys()
     board = got["board.json"]
-    assert [a["key"] for a in board["actors"]] == [a["key"] for a in fixture("board.json")["actors"]]
+    # the stage graph's lists hold something, so diff_keys compared their keys with the fixture's
+    assert board["phases"] and board["nodes"] and board["runs"] and any(n["rounds"] for n in board["nodes"])
     assert board["events"] and board["checks"]["cells"] and board["accept"]["state"]
 
 

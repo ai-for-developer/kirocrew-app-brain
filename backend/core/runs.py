@@ -188,12 +188,14 @@ def attribute(evs: Sequence[Mapping[str, Any]], roles: Mapping[str, Tuple[FileRo
 
 @dataclass(frozen=True)
 class RunNow:
-    """A run's state now (wire: RunNow): for the roster, and the command path to the node it is at."""
+    """A run's state now (wire: RunNow): for the roster, and the command path to the node it is at. *do*: the step
+    (Waits.do) its person takes while it waits on them, so the page names it under each waiting run."""
     status: str
     doing: str
     since: Optional[float]
     who: Optional[str] = None
     node: Optional[str] = None
+    do: Optional[str] = None
 
 
 @dataclass
@@ -257,11 +259,12 @@ def runs(nodes: Sequence[Node], who: Attribution, *, started: bool, family: Opti
 
 
 def node_now(key: RunKey, nodes: Sequence[Node]) -> Optional[str]:
-    """The node a run is at: the one of its open round (the latest), else the next on the way after its last round."""
+    """The node a run is at: the one of its open round (the latest), else the next on the way after its last round (a
+    stage it skipped is not on the way: CI 流水线 skipped after 构建测试 leaves 审查 next)."""
     open_ = [(r.started, n.id) for n in nodes for r in n.rounds if r.run == key and r.end.outcome is Outcome.OPEN]
     if open_:
         return max(open_)[1]
-    done = [i for i, n in enumerate(nodes) if any(r.run == key for r in n.rounds)]
+    done = [i for i, n in enumerate(nodes) if any(r.run == key and r.end.outcome is not Outcome.SKIPPED for r in n.rounds)]
     after = nodes[max(done) + 1:] if done else nodes
     return next((n.id for n in after if not n.rounds and n.child is None and n.waits.status == "waiting"), None)
 
@@ -269,10 +272,10 @@ def node_now(key: RunKey, nodes: Sequence[Node]) -> Optional[str]:
 def overlay(rs: Sequence[RunView], nodes: Sequence[Node], *, row: Mapping[str, Any],
             sessions: Sequence[Mapping[str, Any]], hand_at: Optional[float], last_at: Mapping[RunKey, float],
             over: Optional[Tuple[str, float]], you: str, approvals: Sequence[Mapping[str, Any]], now: float) -> None:
-    """What each run is doing now, which is not an event (the actors' live overlay, moved to runs): the local
-    session waiting for a tool approval, busy, quiet (轮到你回话), missing; a run that stopped to ask; the runner's run
-    by the row's state; the earlier ones over. Each state is stamped with the moment it began (the row's waits.since,
-    else the record or session that says it), never this poll's time."""
+    """What each run is doing now, which is not an event: the local session waiting for a tool approval, busy,
+    quiet (轮到你回话), missing; a run that stopped to ask; the runner's run by the row's state; the earlier ones over.
+    Each state is stamped with the moment it began (the row's waits.since, else the record or session that says it),
+    never this poll's time."""
     state, waits = row.get("state"), row.get("waits") or {}
     since = waits.get("since")
     who_you = "you" if you == "你" else "people"
@@ -280,9 +283,10 @@ def overlay(rs: Sequence[RunView], nodes: Sequence[Node], *, row: Mapping[str, A
     latest = max((r for r in rs if r.kind == "runner"), key=lambda r: r.n or 0, default=None)
     nodes_by = {n.id: n for n in nodes}
 
-    def at_work(r: RunView, status: str, doing: str, at: Optional[float], who: Optional[str] = None) -> RunNow:
+    def at_work(r: RunView, status: str, doing: str, at: Optional[float], who: Optional[str] = None,
+                do: Optional[str] = None) -> RunNow:
         """A run at work, or waiting on a person, and the node it is at; one that waits on nobody is at none."""
-        return RunNow(status, doing, at, who, node_now(r.key, nodes) if status != "waiting" else None)
+        return RunNow(status, doing, at, who, node_now(r.key, nodes) if status != "waiting" else None, do)
 
     def doing_at(r: RunView) -> str:
         n = nodes_by.get(node_now(r.key, nodes) or "")
@@ -301,11 +305,12 @@ def overlay(rs: Sequence[RunView], nodes: Sequence[Node], *, row: Mapping[str, A
             r.now = RunNow("done", "这一次结束了：之后又交接了一次", last)
         elif r.kind == "runner":
             if state == "parked":
+                # once answered on the MR it waits on the bridge or on itself, not on a person (Waits.do none)
                 r.now = at_work(r, "awaiting_approval", waits.get("text") or "停下等人回答", since or last,
-                                waits.get("who") or "people")
+                                waits.get("who") or "people", "answer" if waits.get("do") == "answer" else None)
             elif state == "acceptance":
                 r.now = at_work(r, "awaiting_approval", waits.get("text") or "等产品验收", since or last,
-                                waits.get("who") or "product")
+                                waits.get("who") or "product", "accept")
             elif state == "handed_over":
                 r.now = at_work(r, "queued", waits.get("text") or "运行机在准备工作区", since or last)
             elif state == "rejected":
@@ -315,16 +320,17 @@ def overlay(rs: Sequence[RunView], nodes: Sequence[Node], *, row: Mapping[str, A
                 r.now = at_work(r, "running", "AI 在做" if r.readable == "here" and busy else doing_at(r), last)
         elif hand_at is not None:
             if state == "rejected":
-                r.now = RunNow("awaiting_approval", "接手被拒：改好以后重新交接", since or hand_at, who_you)
+                r.now = RunNow("awaiting_approval", "接手被拒：改好以后重新交接", since or hand_at, who_you, do="redo_handoff")
             elif state == "handed_over" and waits.get("who") == "you":
-                r.now = RunNow("awaiting_approval", "推上去了，但 MR 上没有交接标签", since or hand_at, who_you)
+                r.now = RunNow("awaiting_approval", "推上去了，但 MR 上没有交接标签", since or hand_at, who_you,
+                               do="label_handoff")
             else:
                 r.now = RunNow("done", "做完 · 交出去了", hand_at)
         elif state == "claimed":
             r.now = RunNow("waiting", "认领了，还没开工", since)
         elif state == "parked":
             r.now = at_work(r, "awaiting_approval", waits.get("text") or "停下等你回答", since or last,
-                            waits.get("who") or who_you)
+                            waits.get("who") or who_you, "answer")
         elif you != "你":
             r.now = at_work(r, "running", waits.get("text") or "在负责人自己的机器上做", last)
         else:
@@ -335,18 +341,18 @@ def overlay(rs: Sequence[RunView], nodes: Sequence[Node], *, row: Mapping[str, A
             quiet = since if waits.get("do") in ("reply", "tool", "approve") and since is not None else max(
                 [x for x in (seen, last) if isinstance(x, (int, float))], default=now)
             if s is not None and s.get("awaiting"):
-                r.now = at_work(r, "awaiting_approval", "会话里有一个工具调用等你批准", quiet, "you")
+                r.now = at_work(r, "awaiting_approval", "会话里有一个工具调用等你批准", quiet, "you", "tool")
             elif s is not None and s.get("busy"):
                 r.now = at_work(r, "running", "AI 在做", last)
             elif pend is not None:
                 r.now = at_work(r, "awaiting_approval", "等你批%s" % GATE_WORDS.get(str(pend.get("kind")), ""),
-                                since or pend.get("at") or quiet, "you")
+                                since or pend.get("at") or quiet, "you", "approve")
             elif waits.get("do") == "none" and waits.get("who") not in (None, "you", "agent"):
                 r.now = at_work(r, "waiting", waits.get("text") or "没有等你的事", quiet)
             elif s is not None:
-                r.now = at_work(r, "awaiting_approval", "会话空着：轮到你回话", quiet, "you")
+                r.now = at_work(r, "awaiting_approval", "会话空着：轮到你回话", quiet, "you", "reply")
             else:
-                r.now = at_work(r, "stalled", "这台机器上还没有它的会话：开一个", quiet)
+                r.now = at_work(r, "stalled", "这台机器上还没有它的会话：开一个", quiet, do="reply")
 
 
 def _step(key: str, title: str, status: str, at: Optional[float], text: str, todo: Optional[str] = None) -> Dict[str, Any]:

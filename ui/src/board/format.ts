@@ -5,8 +5,8 @@
  * A tone is a meaning, not a colour: styles.ts maps each to a colour per host mode (kiro-dark / kiro-light), so the
  * same word always has the same colour and every colour has a word next to it.
  */
-import type { Actor, ActorStatus, BoardEvent, BoardEventKind, CheckWall, LeanSummary, ReqBoard, WaitWho } from '../types'
-import { waitsOn } from '../vocab'
+import type { ActorStatus, BeltItem, BoardEvent, BoardEventKind, CheckWall, Gate, GateKind, LeanSummary, ReqBoard, Round, Run, StageNode, WaitWho } from '../types'
+import { approvalName, waitsOn } from '../vocab'
 
 export const POLL_MS = 2000
 
@@ -65,19 +65,19 @@ export const EVENT_META: Record<BoardEventKind, { icon: string; label: string; t
   app: { icon: '•', label: 'app', tone: 'idle' },
 }
 
-/** The words of the places an event travels between (actor keys are named by their actors, 'person' by personPlace). */
-export const PLACE: Record<string, string> = { branch: '运行分支', checks: '检查' }
+/** The words of the places an event travels between that are no node ('person' is said by personPlace). */
+export const PLACE: Record<string, string> = { branch: '运行分支', checks: '检查', relay: '交接' }
 
 /** what a person does that, after the hand-over, happens on the MR: the runner's questions, their answers, approvals */
 const ON_MR: ReadonlySet<string> = new Set(['approve', 'reject', 'request', 'question', 'answer'])
 
-/** Who an event's 'person' end is: on the MR (a question the bridge put there or the runner asked, its answer, an
+/** Who an event's 'person' end is: on the MR (one the bridge delivered, a question the runner asked, its answer, an
  * approval after the hand-over) whoever answers there, 产品 for the release and its acceptance, else the MR; on this
  * machine's way the owner, 「你」 only for the person looking (UI问题清单 BOARD-11). */
-export function personPlace(e: Pick<BoardEvent, 'kind' | 'from' | 'to' | 'at' | 'text'>, b: Pick<ReqBoard, 'person' | 'events'>): string {
+export function personPlace(e: Pick<BoardEvent, 'kind' | 'from' | 'to' | 'at' | 'text' | 'node'>, b: Pick<ReqBoard, 'person' | 'events'>): string {
   const hand = b.events.find((x) => x.kind === 'handover')?.at
-  const mr = e.from === 'bridge' || e.to === 'bridge' || (ON_MR.has(e.kind) && hand !== undefined && e.at > hand)
-  if (mr) return e.to === 'release' || e.from === 'release' || /验收/.test(e.text) ? '产品' : 'MR'
+  const mr = e.from === 'relay' || e.to === 'relay' || (ON_MR.has(e.kind) && hand !== undefined && e.at > hand)
+  if (mr) return e.node === 'release' || /验收/.test(e.text) ? '产品' : 'MR'
   return b.person.me ? '你' : b.person.owner ?? '负责人'
 }
 
@@ -222,11 +222,6 @@ export function brief(s: string, maxEm: number, or: string | null = null): strin
   return fit ?? clip(bare, maxEm)
 }
 
-/** The actor an event is about, for filtering: either end. */
-export function eventTouches(e: { from: string | null; to: string | null }, key: string): boolean {
-  return e.from === key || e.to === key
-}
-
 /** The cell groups of the check wall, in wall order. */
 export const CELL_GROUPS: { key: string; label: string }[] = [
   { key: 'gate', label: 'Lean 审批' },
@@ -253,58 +248,154 @@ export function whoWord(who: WaitWho, owner: string | null, me = false): string 
   return waitsOn(who) || '等人'
 }
 
+/** The board calls the requirement's owner 你 (the backend's person.you; an older backend: the owner looking, or no owner
+ * known). */
+export const ownerIsYou = (b: Pick<ReqBoard, 'person'>): boolean => b.person.you ?? (b.person.me || !b.person.owner)
+
+/** A wait said in the board's own words (UI问题清单 BOARD-11): 等你 only while the board calls the owner 你; a board
+ * read by someone else names them (等 carol), whatever the record says. */
+export const sayWho = (who: WaitWho, b: Pick<ReqBoard, 'person'>): WaitWho => (who === 'you' && !ownerIsYou(b) ? 'people' : who)
+
 /** whoWord with the board's owner and whether the person looking is the owner; *who*: the requirement's wait now. */
-export const boardWho = (b: Pick<ReqBoard, 'row' | 'person'>, who: WaitWho = b.row.waits.who): string => whoWord(who, b.person.owner, b.person.me)
+export const boardWho = (b: Pick<ReqBoard, 'row' | 'person'>, who: WaitWho = b.row.waits.who): string => whoWord(sayWho(who, b), b.person.owner, b.person.me)
 
-/** An actor's state in words: one that waits says whom it waits for. */
-export function actorLabel(status: ActorStatus, b: Pick<ReqBoard, 'row' | 'person'>, who: WaitWho = b.row.waits.who): string {
-  return status === 'awaiting_approval' ? boardWho(b, who) : actorMeta(status).label
-}
-
-/** Whom an actor's wait that began at *t* was on, by its own history (an older backend did not say: null). */
-export function waitedOn(a: Pick<Actor, 'history'>, t: number): WaitWho | null {
-  const h = [...a.history].reverse().find((x) => x.at <= t + 1 && x.status === 'awaiting_approval')
+/** Whom a node's wait that began at *t* was on, by its own history (null: its history does not say). */
+export function waitedOn(n: Pick<StageNode, 'history'>, t: number): WaitWho | null {
+  const h = [...n.history].reverse().find((x) => x.at <= t + 1 && x.status === 'awaiting_approval')
   return h?.who ?? null
 }
 
-/** Whom a wait span of *a* was on: the requirement's wait now for one that goes on, its own history for one that is
- * over (an older backend did not say: the wait now) — every wait in a lane said by the one rule (boardWho). */
-export function spanWho(a: Pick<Actor, 'status' | 'history'>, board: Pick<ReqBoard, 'row'>, s: { a: number; b: number | null }): WaitWho {
-  if (s.b === null && a.status === 'awaiting_approval') return board.row.waits.who
-  return waitedOn(a, s.a) ?? board.row.waits.who
+/** Whom a wait span of *n* was on, by its history (else the requirement's wait now): every wait in a lane said by the
+ * one rule (boardWho). */
+export function spanWho(n: Pick<StageNode, 'history'>, board: Pick<ReqBoard, 'row'>, s: { a: number }): WaitWho {
+  return waitedOn(n, s.a) ?? board.row.waits.who
 }
 
-/** The waits on someone other than the person looking that this board shows (a lane's wait span, a node or lane pill
- * that waits), in the words they are said there: 「等产品」, 「等 carol」. */
-export function otherWaits(b: Pick<ReqBoard, 'row' | 'person' | 'actors'>): string[] {
+/** The waits on someone other than the person looking that this board shows (a run that waits, a lane's wait span),
+ * in the words they are said there: 「等产品」, 「等 carol」. */
+export function otherWaits(b: Pick<ReqBoard, 'row' | 'person' | 'runs' | 'nodes'>): string[] {
   const words = new Set<string>()
-  for (const a of b.actors) {
-    if (a.status === 'awaiting_approval' && !waitsOnMe(b)) words.add(boardWho(b))
-    for (const s of a.spans) {
-      const who = s.kind === 'wait' ? spanWho(a, b, s) : 'you'
-      if (who !== 'you') words.add(boardWho(b, who))
+  const other = (who: WaitWho) => sayWho(who, b) !== 'you'
+  for (const r of b.runs) if (r.now.status === 'awaiting_approval' && other(r.now.who ?? 'people')) words.add(boardWho(b, r.now.who ?? 'people'))
+  for (const n of b.nodes) {
+    for (const s of n.spans) {
+      if (s.kind === 'wait' && other(spanWho(n, b, s))) words.add(boardWho(b, spanWho(n, b, s)))
     }
   }
   return [...words]
 }
 
+/** A run in a word or two, for a box's line, a round's and the conveyor's count: 本机 (the owner's name when their
+ * session is on another machine) · 运行机 (运行机 2 from its second run) · PAY-12. */
+export function runShort(run: Run | undefined, b: Pick<ReqBoard, 'person'>): string {
+  if (!run) return ''
+  if (run.kind === 'local') return run.readable === 'here' ? '本机' : b.person.owner ?? '负责人'
+  if (run.kind === 'runner') return run.n && run.n > 1 ? `运行机 ${run.n}` : '运行机'
+  return run.req ?? run.label
+}
+
+/** The RoleIcon a run is drawn with: this machine's session, the team runner, a small or the big requirement. */
+export const RUN_ICON: Record<Run['kind'], string> = { local: 'laptop', runner: 'runner', child: 'pr', parent: 'pr' }
+
+/** The session a run opens: the one at work, else its latest on this machine. */
+export const sessionOf = (r: Run | undefined) => r?.sessions.find((s) => s.busy) ?? r?.sessions[r.sessions.length - 1]
+
+/** The gate that waits now on a node: asked (pending) or held back on the runner (queued). */
+export const openGate = (n: Pick<StageNode, 'gates'>): Gate | null => n.gates.find((g) => g.state === 'pending' || g.state === 'queued') ?? null
+
+/** Whom a node waits on: its open gate's, else its run's wait while the run is at it; null when it does not wait. */
+export function nodeWait(n: StageNode, run: Run | undefined): WaitWho | null {
+  if (n.status !== 'awaiting_approval') return null
+  return openGate(n)?.who ?? (run && run.now.node === n.id ? run.now.who : null) ?? 'people'
+}
+
+/** whoWord with the board's owner, for a wait that may not say whom (then someone: 等别人). */
+export const whoOf = (who: WaitWho | null, b: Pick<ReqBoard, 'person'>): string => whoWord(sayWho(who ?? 'people', b), b.person.owner, b.person.me)
+
+/** A node's state in words: one that waits says whom (等你, 等产品). */
+export function nodeLabel(n: StageNode, run: Run | undefined, b: Pick<ReqBoard, 'person'>): string {
+  const wait = nodeWait(n, run)
+  return wait ? whoOf(wait, b) : actorMeta(n.status).label
+}
+
+/** What a gate approves, in a few words: 需求和设计 · 代码生成计划 · 发布. */
+export const gateWhat = (kind: GateKind): string => approvalName(kind).replace(/审批$/, '')
+
+/** An open gate's verb: 等你批, 等产品验收, 等 carol 批. */
+export function gateVerb(g: Gate, b: Pick<ReqBoard, 'person'>): string {
+  if (g.who === 'you') return '等你批'
+  return g.kind === 'RELEASE' && g.who === 'product' ? '等产品验收' : whoThen(whoOf(g.who, b), '批')
+}
+
+/** Who decided, as a round says it: 你, 产品, bob, 大需求的负责人. */
+export const decider = (by: string | null): string => (!by ? '有人' : by.startsWith('产品') ? '产品' : by)
+
+/** A round's colour by how it ended. */
+export const ROUND_TONE: Record<Round['outcome']['kind'], Tone> = {
+  open: 'run', done: 'ok', approved: 'ok', passed: 'ok', sent_back: 'fix', refused: 'warn', failed: 'bad', superseded: 'idle', skipped: 'idle',
+}
+
+/** How a round ended, in words: 产品退回（D-2）, 请批以后代码又改了（2e8d1f6「修好 CI：api 的 lint」）, 检查全过（3 项）. */
+export function roundWords(r: Round, n: Pick<StageNode, 'gates'>, b: Pick<ReqBoard, 'person'>): string {
+  const o = r.outcome
+  const said = o.decision ? `（${o.decision}）` : ''
+  switch (o.kind) {
+    case 'open': {
+      const g = openGate(n)
+      return g && g.round === r.n ? `${gateVerb(g, b)}${g.mr?.decision ? `（${g.mr.decision}）` : ''}` : '在做'
+    }
+    case 'done':
+      return '做完'
+    case 'approved':
+      return whoThen(decider(o.by), '批了')
+    case 'sent_back':
+      return o.by === '你' ? `你退回了${said}` : `${whoThen(decider(o.by), '退回')}${said}`
+    case 'refused':
+      return `批准的那一行没被接受${o.text ? `：${o.text}` : ''}`
+    case 'superseded':
+      return `请批以后代码又改了${o.sha ? `（${o.sha.slice(0, 7)}${o.subject ? `「${o.subject}」` : ''}）` : ''}`
+    case 'passed':
+      return `检查全过（${o.checks.length} 项）`
+    case 'failed': {
+      const bad = o.checks.filter((c) => !c.ok).map((c) => c.name)
+      return bad.length ? `${bad.join('、')} 没过` : '检查没过'
+    }
+    case 'skipped':
+      return `跳过${o.text ? `：${o.text}` : ''}`
+  }
+}
+
+const pad2 = (v: number) => String(v).padStart(2, '0')
+
+/** 11:07 on the board's day (*today*, epoch s), else 11-10 11:07. */
+export function clockAt(t: number, today: number): string {
+  const d = new Date(t * 1000)
+  const hm = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+  return new Date(today * 1000).toDateString() === d.toDateString() ? hm : `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${hm}`
+}
+
+/** How long a stage took, the reference's way: 0:28, 1:09 (hours and minutes). */
+export function fmtHm(sec: number): string {
+  const m = Math.max(1, Math.round(sec / 60))
+  return `${Math.floor(m / 60)}:${pad2(m % 60)}`
+}
+
+/** A person's pushes onto the runner's branch after the hand-over: the steps outside the judgment points (the backend
+ * puts such a commit in the runner's run, by a person). */
+export const outsidePushes = (b: Pick<ReqBoard, 'belt' | 'runs'>): BeltItem[] =>
+  b.belt.filter((x) => x.kind === 'commit' && x.by === 'person' && b.runs.some((r) => r.key === x.run && r.kind === 'runner'))
+
 /** The ones a requirement may wait on that are people. */
 export const PERSON: ReadonlySet<WaitWho> = new Set<WaitWho>(['you', 'product', 'people', 'builder'])
-
-/** The board calls the requirement's owner 你 (the backend's person.you; an older backend: the owner looking, or no owner
- * known). */
-export const ownerIsYou = (b: Pick<ReqBoard, 'person'>): boolean => b.person.you ?? (b.person.me || !b.person.owner)
 
 /** The board waits on the person looking at it. */
 export const waitsOnMe = (b: Pick<ReqBoard, 'row'>) => b.row.waits.who === 'you'
 
-/** Its repo has no remote: done only on this machine (an older backend: every actor of the runner's part skipped). */
-export function localOnly(b: Pick<ReqBoard, 'row' | 'actors' | 'direct'>): boolean {
-  if (typeof b.row.local_only === 'boolean') return b.row.local_only
-  const runner = b.actors.filter((a) => RUNNER_PART.has(a.key))
-  return b.direct || (runner.length > 0 && runner.every((a) => a.status === 'skipped'))
+/** Its repo has no remote: done only on this machine (a board without row.local_only: it was never handed over and no
+ * runner ran it). */
+export function localOnly(b: Pick<ReqBoard, 'row' | 'relays' | 'runs'>): boolean {
+  return b.row.local_only ?? (!b.relays.length && !b.runs.some((r) => r.kind === 'runner'))
 }
-export const RUNNER_PART: ReadonlySet<string> = new Set(['handover', 'bridge', 'signer', 'runner'])
 
 /** The team runner's page of a requirement it has no working directory for yet (the bridge took it; the signer signs, or
  * the runner prepares): nothing of its records is readable here, nor its branch (backend board.runner_blind). */
