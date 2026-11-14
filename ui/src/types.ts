@@ -1584,3 +1584,32 @@ export interface CtoNumbers {
 
 /** One of brain-kit's notes on the 交付评估 numbers: what it says, what to do, its own words (细节). */
 export interface EvalNote { text: string; todo: string; raw: string }
+
+// ---------------------------------------------------------------- POST /requirements/{repo}/{key}/handoff: 交接给运行机
+
+/** How far `brain handoff` got (backend/core/handover.py): handed (the MR has the hand-over label: the bridge checks it,
+ * then the team runner goes on); committed (the hand-over commit is made, the branch is not pushed: no remote, or the
+ * push failed); not_labelled (pushed, but the MR has no hand-over label: nothing was handed over); refused (brain-kit
+ * said why before anything changed); timeout (stopped at the time limit); failed (brain-kit could not run, or said
+ * what the app does not know). */
+export type HandoffState = 'handed' | 'committed' | 'not_labelled' | 'refused' | 'timeout' | 'failed'
+
+/** What 交接给运行机 did: `brain handoff` in the requirement's worktree on this machine. The app's own refusals (a repo
+ * done only on this machine, someone else's run, a busy session, handed over already) are error answers, in words. */
+export interface HandoffResult {
+  /** handed over: the team runner takes it from here */
+  ok: boolean
+  state: HandoffState
+  /** one short line, what happened and why: 「没交出去：交接记录还没写好（没写下一步）」 */
+  text: string
+  /** 做什么 next ('' when nothing) */
+  todo: string
+  /** the MR brain-kit named, its link from kit.json's GitLab; null when it named none */
+  mr: { iid: number; url: string | null } | null
+  /** brain-kit's WARN lines, each a row (read only: no fix) */
+  warnings: CheckRow[]
+  /** brain-kit's own output, credentials hidden (shown folded under 细节) */
+  raw: string
+  /** its exit status: 0, 1 (pushed, not labelled), 2 (refused), 124 (stopped at the time limit) */
+  code: number
+}

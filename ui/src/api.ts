@@ -28,6 +28,7 @@ export const paths = {
   childStart: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/start`,
   /** 同步: `brain sync` in a small requirement's worktree (the big one's branch merged in) */
   sync: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/sync`,
+  handoff: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/handoff`,
   intakeNext: (repo: string) => `${BASE}/intake/next?repo=${enc(repo)}`,
   intakeCheck: () => `${BASE}/intake/check`,
   intakeStart: () => `${BASE}/intake/start`,

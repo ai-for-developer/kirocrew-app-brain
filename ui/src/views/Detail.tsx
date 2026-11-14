@@ -36,6 +36,7 @@ import {
 } from '../vocab'
 import { Inline, Paths, pathPieces } from './Markdown'
 import { FamilyPanel, useFamily, type FamilyCtl } from './Family'
+import { Handover } from './Handover'
 import type { ViewProps } from './props'
 import { EntryChip, MrDescCard, QuestionCard, ReviewButton, ReviewSay, useCopy } from './Question'
 import { PART_LABEL, PART_VAR, StreamCard, splitOf, valueStream, type Part } from './Stream'
@@ -378,6 +379,7 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
           onStart={onStart} onAnswer={() => scrollTo('问题和回答')} onBrain={() => props.go({ kind: 'brain', repo: entry.repo, reflect: entry.key })} />
         {(canOpen || opened) && <OpenSession repo={entry.repo} reqKey={entry.key} opened={opened} onOpened={onOpened} />}
         {live && x.row.state === 'local' && x.row.worktree && <ReopenSession repo={entry.repo} reqKey={entry.key} live={live} onOpened={after} />}
+        <Handover x={x} repo={entry.repo} reqKey={entry.key} localOnly={localOnly} onDone={after} />
         <Facts x={x} start={startOf(x, board)} localOnly={localOnly} />
       </section>
       <Cards x={x} board={board} at={at} localOnly={localOnly} replying={now.do === 'reply'} onBoard={toBoard} onSessions={() => scrollTo('会话')} />
