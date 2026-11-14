@@ -634,7 +634,7 @@
         {
           "at": 1793629680.0,
           "kind": "commit",
-          "title": "提交 b1c99d39：PAY-2：需求初稿"
+          "title": "提交 cbf852bb：PAY-2：需求初稿"
         },
         {
           "at": 1793629860,
@@ -676,11 +676,11 @@
           "outputs": [
             {
               "path": "aidlc-docs/261102-refund-id/inception/requirements/requirements.md",
-              "sha8": "29b6dffe"
+              "sha8": "6e9d49d5"
             }
           ],
           "commits": [
-            "b1c99d394a9e"
+            "cbf852bb4756"
           ]
         }
       ],
@@ -848,6 +848,11 @@
           "title": "Lean 拦下了写 src/refund/service.py：需求和设计还没批"
         },
         {
+          "at": 1793633700.0,
+          "kind": "commit",
+          "title": "提交 8bde8a18：PAY-2：设计初稿"
+        },
+        {
           "at": 1793633760,
           "kind": "request",
           "title": "请你批准设计"
@@ -860,7 +865,7 @@
         {
           "at": 1793636460.0,
           "kind": "commit",
-          "title": "提交 622f3943：PAY-2：按意见改设计（接口加分页）"
+          "title": "提交 f843e8d2：PAY-2：按意见改设计（接口加分页）"
         },
         {
           "at": 1793636580,
@@ -875,7 +880,7 @@
         {
           "at": 1793639100.0,
           "kind": "commit",
-          "title": "提交 9d9baab4：PAY-2：交接说明"
+          "title": "提交 7755c90d：PAY-2：交接说明"
         }
       ],
       "rounds": [
@@ -907,10 +912,12 @@
           "outputs": [
             {
               "path": "aidlc-docs/261102-refund-id/inception/application-design/application-design.md",
-              "sha8": "56cd1e0a"
+              "sha8": "220d68cb"
             }
           ],
-          "commits": []
+          "commits": [
+            "8bde8a1833b8"
+          ]
         },
         {
           "n": 2,
@@ -940,7 +947,7 @@
           "outputs": [
             {
               "path": "aidlc-docs/261102-refund-id/inception/application-design/application-design.md",
-              "sha8": "0f15b6b2"
+              "sha8": "d7dcfd7f"
             }
           ],
           "commits": []
@@ -1079,22 +1086,22 @@
         {
           "at": 1793641020.0,
           "kind": "commit",
-          "title": "运行机提交 54d719b8：PAY-2：接口和数据结构（refund-api）"
+          "title": "运行机提交 0fb1f6b6：PAY-2：接口和数据结构（refund-api）"
         },
         {
           "at": 1793642880.0,
           "kind": "commit",
-          "title": "运行机提交 7bed9339：PAY-2：主流程（refund-api）"
+          "title": "运行机提交 59442ecd：PAY-2：主流程（refund-api）"
         },
         {
           "at": 1793645160.0,
           "kind": "commit",
-          "title": "运行机提交 6d408bfb：PAY-2：错误处理和重试（refund-api）"
+          "title": "运行机提交 9186c3f5：PAY-2：错误处理和重试（refund-api）"
         },
         {
           "at": 1793647860.0,
           "kind": "commit",
-          "title": "运行机提交 d287c543：PAY-2：测试（refund-api）"
+          "title": "运行机提交 8dc76725：PAY-2：测试（refund-api）"
         },
         {
           "at": 1793647980.0,
@@ -1124,7 +1131,7 @@
         {
           "at": 1793651760.0,
           "kind": "commit",
-          "title": "运行机提交 f7f76b55：PAY-2：按 D-1 的回答改"
+          "title": "运行机提交 95709823：PAY-2：按 D-1 的回答改"
         }
       ],
       "rounds": [
@@ -1156,15 +1163,15 @@
           "outputs": [
             {
               "path": "aidlc-docs/261102-refund-id/construction/plans/refund-api-code-generation-plan.md",
-              "sha8": "cbed8356"
+              "sha8": "1c2f28c5"
             }
           ],
           "commits": [
-            "54d719b8e546",
-            "7bed9339bba4",
-            "6d408bfb7601",
-            "d287c5439f62",
-            "f7f76b5503ff"
+            "0fb1f6b6e5ed",
+            "59442ecdc1d7",
+            "9186c3f5088d",
+            "8dc76725b968",
+            "957098230713"
           ]
         }
       ],
@@ -1233,7 +1240,7 @@
         {
           "at": 1793653620.0,
           "kind": "commit",
-          "title": "运行机提交 2e839630：PAY-2：修好 pytest 里没过的两个用例"
+          "title": "运行机提交 92bb8c9b：PAY-2：修好 pytest 里没过的两个用例"
         },
         {
           "at": 1793654580,
@@ -1286,7 +1293,7 @@
           "outputs": [
             {
               "path": "aidlc-docs/261102-refund-id/construction/build-and-test/build-and-test-summary.md",
-              "sha8": "54732ac4"
+              "sha8": "3b74ae52"
             }
           ],
           "commits": []
@@ -1335,11 +1342,11 @@
           "outputs": [
             {
               "path": "aidlc-docs/261102-refund-id/construction/build-and-test/build-and-test-summary.md",
-              "sha8": "fe4674c7"
+              "sha8": "4b19e3ab"
             }
           ],
           "commits": [
-            "2e839630c4b6"
+            "92bb8c9bbdeb"
           ]
         }
       ],
@@ -1378,7 +1385,7 @@
         {
           "at": 1793654650.0,
           "kind": "commit",
-          "title": "运行机提交 63c97d92：PAY-2：审查（review.md）"
+          "title": "运行机提交 867cb667：PAY-2：审查（review.md）"
         }
       ],
       "rounds": [
@@ -1409,7 +1416,7 @@
           "note": null,
           "outputs": [],
           "commits": [
-            "63c97d92f8e0"
+            "867cb66706c2"
           ]
         }
       ],
@@ -1533,6 +1540,11 @@
       ],
       "marks": [
         {
+          "at": 1793655120.0,
+          "kind": "commit",
+          "title": "运行机提交 ee4de4f7：PAY-2：请批发布"
+        },
+        {
           "at": 1793655180,
           "kind": "request",
           "title": "请产品在 MR 上批准发布"
@@ -1592,10 +1604,12 @@
           "outputs": [
             {
               "path": "aidlc-docs/261102-refund-id/operations/release.md",
-              "sha8": "1d601686"
+              "sha8": "0616faf5"
             }
           ],
-          "commits": []
+          "commits": [
+            "ee4de4f71086"
+          ]
         }
       ],
       "gates": [
@@ -2131,14 +2145,14 @@
     {
       "to": "runner-1",
       "at": 1793639340.0,
-      "sha": "a9617a94c6a9",
+      "sha": "16939065c7b7",
       "steps": [
         {
           "key": "handover",
           "title": "交接",
           "status": "merged",
           "at": 1793639340.0,
-          "text": "交接了（提交 a9617a94）",
+          "text": "交接了（提交 16939065）",
           "todo": null
         },
         {
@@ -2241,7 +2255,7 @@
       "kind": "commit",
       "from": "requirements",
       "to": "branch",
-      "text": "提交 b1c99d39：PAY-2：需求初稿",
+      "text": "提交 cbf852bb：PAY-2：需求初稿",
       "detail": false,
       "src": null,
       "node": "requirements",
@@ -2328,6 +2342,19 @@
     },
     {
       "seq": 13,
+      "at": 1793633700.0,
+      "kind": "commit",
+      "from": "application-design",
+      "to": "branch",
+      "text": "提交 8bde8a18：PAY-2：设计初稿",
+      "detail": false,
+      "src": null,
+      "node": "application-design",
+      "run": "local",
+      "round": 1
+    },
+    {
+      "seq": 14,
       "at": 1793633760,
       "kind": "request",
       "from": "application-design",
@@ -2340,7 +2367,7 @@
       "round": 1
     },
     {
-      "seq": 14,
+      "seq": 15,
       "at": 1793635080,
       "kind": "reject",
       "from": "person",
@@ -2353,12 +2380,12 @@
       "round": 1
     },
     {
-      "seq": 15,
+      "seq": 16,
       "at": 1793636460.0,
       "kind": "commit",
       "from": "application-design",
       "to": "branch",
-      "text": "提交 622f3943：PAY-2：按意见改设计（接口加分页）",
+      "text": "提交 f843e8d2：PAY-2：按意见改设计（接口加分页）",
       "detail": false,
       "src": null,
       "node": "application-design",
@@ -2366,7 +2393,7 @@
       "round": 1
     },
     {
-      "seq": 16,
+      "seq": 17,
       "at": 1793636580,
       "kind": "request",
       "from": "application-design",
@@ -2379,7 +2406,7 @@
       "round": 2
     },
     {
-      "seq": 17,
+      "seq": 18,
       "at": 1793637960,
       "kind": "approve",
       "from": "person",
@@ -2392,7 +2419,7 @@
       "round": 2
     },
     {
-      "seq": 18,
+      "seq": 19,
       "at": 1793638020,
       "kind": "stage",
       "from": "application-design",
@@ -2405,7 +2432,7 @@
       "round": 2
     },
     {
-      "seq": 19,
+      "seq": 20,
       "at": 1793638080,
       "kind": "stage",
       "from": "units",
@@ -2418,12 +2445,12 @@
       "round": 1
     },
     {
-      "seq": 20,
+      "seq": 21,
       "at": 1793639100.0,
       "kind": "commit",
       "from": "application-design",
       "to": "branch",
-      "text": "提交 9d9baab4：PAY-2：交接说明",
+      "text": "提交 7755c90d：PAY-2：交接说明",
       "detail": false,
       "src": null,
       "node": "application-design",
@@ -2431,12 +2458,12 @@
       "round": 2
     },
     {
-      "seq": 21,
+      "seq": 22,
       "at": 1793639340.0,
       "kind": "handover",
       "from": "application-design",
       "to": "relay",
-      "text": "交给运行机（提交 a9617a94）",
+      "text": "交给运行机（提交 16939065）",
       "detail": false,
       "src": null,
       "node": null,
@@ -2444,7 +2471,7 @@
       "round": null
     },
     {
-      "seq": 22,
+      "seq": 23,
       "at": 1793639460.0,
       "kind": "accepted",
       "from": "relay",
@@ -2457,7 +2484,7 @@
       "round": null
     },
     {
-      "seq": 23,
+      "seq": 24,
       "at": 1793639480.0,
       "kind": "signed",
       "from": "relay",
@@ -2470,7 +2497,7 @@
       "round": null
     },
     {
-      "seq": 24,
+      "seq": 25,
       "at": 1793639580,
       "kind": "stage",
       "from": "code-generation/refund-api",
@@ -2483,25 +2510,12 @@
       "round": 1
     },
     {
-      "seq": 25,
+      "seq": 26,
       "at": 1793641020.0,
       "kind": "commit",
       "from": "code-generation/refund-api",
       "to": "branch",
-      "text": "运行机提交 54d719b8：PAY-2：接口和数据结构（refund-api）",
-      "detail": false,
-      "src": null,
-      "node": "code-generation/refund-api",
-      "run": "runner-1",
-      "round": 1
-    },
-    {
-      "seq": 26,
-      "at": 1793642880.0,
-      "kind": "commit",
-      "from": "code-generation/refund-api",
-      "to": "branch",
-      "text": "运行机提交 7bed9339：PAY-2：主流程（refund-api）",
+      "text": "运行机提交 0fb1f6b6：PAY-2：接口和数据结构（refund-api）",
       "detail": false,
       "src": null,
       "node": "code-generation/refund-api",
@@ -2510,11 +2524,11 @@
     },
     {
       "seq": 27,
-      "at": 1793645160.0,
+      "at": 1793642880.0,
       "kind": "commit",
       "from": "code-generation/refund-api",
       "to": "branch",
-      "text": "运行机提交 6d408bfb：PAY-2：错误处理和重试（refund-api）",
+      "text": "运行机提交 59442ecd：PAY-2：主流程（refund-api）",
       "detail": false,
       "src": null,
       "node": "code-generation/refund-api",
@@ -2523,11 +2537,11 @@
     },
     {
       "seq": 28,
-      "at": 1793647860.0,
+      "at": 1793645160.0,
       "kind": "commit",
       "from": "code-generation/refund-api",
       "to": "branch",
-      "text": "运行机提交 d287c543：PAY-2：测试（refund-api）",
+      "text": "运行机提交 9186c3f5：PAY-2：错误处理和重试（refund-api）",
       "detail": false,
       "src": null,
       "node": "code-generation/refund-api",
@@ -2536,6 +2550,19 @@
     },
     {
       "seq": 29,
+      "at": 1793647860.0,
+      "kind": "commit",
+      "from": "code-generation/refund-api",
+      "to": "branch",
+      "text": "运行机提交 8dc76725：PAY-2：测试（refund-api）",
+      "detail": false,
+      "src": null,
+      "node": "code-generation/refund-api",
+      "run": "runner-1",
+      "round": 1
+    },
+    {
+      "seq": 30,
       "at": 1793647980.0,
       "kind": "question",
       "from": "code-generation/refund-api",
@@ -2548,7 +2575,7 @@
       "round": 1
     },
     {
-      "seq": 30,
+      "seq": 31,
       "at": 1793648040.0,
       "kind": "question",
       "from": "code-generation/refund-api",
@@ -2561,7 +2588,7 @@
       "round": 1
     },
     {
-      "seq": 31,
+      "seq": 32,
       "at": 1793650500.0,
       "kind": "answer",
       "from": "person",
@@ -2574,7 +2601,7 @@
       "round": 1
     },
     {
-      "seq": 32,
+      "seq": 33,
       "at": 1793650501.0,
       "kind": "answer",
       "from": "relay",
@@ -2587,7 +2614,7 @@
       "round": 1
     },
     {
-      "seq": 33,
+      "seq": 34,
       "at": 1793650560.0,
       "kind": "answer",
       "from": "person",
@@ -2600,12 +2627,12 @@
       "round": 1
     },
     {
-      "seq": 34,
+      "seq": 35,
       "at": 1793651760.0,
       "kind": "commit",
       "from": "code-generation/refund-api",
       "to": "branch",
-      "text": "运行机提交 f7f76b55：PAY-2：按 D-1 的回答改",
+      "text": "运行机提交 95709823：PAY-2：按 D-1 的回答改",
       "detail": false,
       "src": null,
       "node": "code-generation/refund-api",
@@ -2613,7 +2640,7 @@
       "round": 1
     },
     {
-      "seq": 35,
+      "seq": 36,
       "at": 1793651880,
       "kind": "stage",
       "from": "code-generation/refund-api",
@@ -2626,7 +2653,7 @@
       "round": 1
     },
     {
-      "seq": 36,
+      "seq": 37,
       "at": 1793652660,
       "kind": "verify",
       "from": "branch",
@@ -2639,12 +2666,12 @@
       "round": 1
     },
     {
-      "seq": 37,
+      "seq": 38,
       "at": 1793653620.0,
       "kind": "commit",
       "from": "build-and-test",
       "to": "branch",
-      "text": "运行机提交 2e839630：PAY-2：修好 pytest 里没过的两个用例",
+      "text": "运行机提交 92bb8c9b：PAY-2：修好 pytest 里没过的两个用例",
       "detail": false,
       "src": null,
       "node": "build-and-test",
@@ -2652,7 +2679,7 @@
       "round": 2
     },
     {
-      "seq": 38,
+      "seq": 39,
       "at": 1793654580,
       "kind": "verify",
       "from": "branch",
@@ -2665,7 +2692,7 @@
       "round": 2
     },
     {
-      "seq": 39,
+      "seq": 40,
       "at": 1793654640,
       "kind": "stage",
       "from": "build-and-test",
@@ -2678,12 +2705,12 @@
       "round": 2
     },
     {
-      "seq": 40,
+      "seq": 41,
       "at": 1793654650.0,
       "kind": "commit",
       "from": "review",
       "to": "branch",
-      "text": "运行机提交 63c97d92：PAY-2：审查（review.md）",
+      "text": "运行机提交 867cb667：PAY-2：审查（review.md）",
       "detail": false,
       "src": null,
       "node": "review",
@@ -2691,7 +2718,7 @@
       "round": 1
     },
     {
-      "seq": 41,
+      "seq": 42,
       "at": 1793654660,
       "kind": "stage",
       "from": "ci-pipeline",
@@ -2704,7 +2731,7 @@
       "round": 1
     },
     {
-      "seq": 42,
+      "seq": 43,
       "at": 1793654680,
       "kind": "stage",
       "from": null,
@@ -2717,7 +2744,7 @@
       "round": null
     },
     {
-      "seq": 43,
+      "seq": 44,
       "at": 1793654700,
       "kind": "stage",
       "from": "release",
@@ -2730,7 +2757,20 @@
       "round": 1
     },
     {
-      "seq": 44,
+      "seq": 45,
+      "at": 1793655120.0,
+      "kind": "commit",
+      "from": "release",
+      "to": "branch",
+      "text": "运行机提交 ee4de4f7：PAY-2：请批发布",
+      "detail": false,
+      "src": null,
+      "node": "release",
+      "run": "runner-1",
+      "round": 1
+    },
+    {
+      "seq": 46,
       "at": 1793655180,
       "kind": "request",
       "from": "release",
@@ -2743,7 +2783,7 @@
       "round": 1
     },
     {
-      "seq": 45,
+      "seq": 47,
       "at": 1793655240.0,
       "kind": "question",
       "from": "release",
@@ -2756,7 +2796,7 @@
       "round": 1
     },
     {
-      "seq": 46,
+      "seq": 48,
       "at": 1793656440.0,
       "kind": "question",
       "from": "release",
@@ -2769,7 +2809,7 @@
       "round": 1
     },
     {
-      "seq": 47,
+      "seq": 49,
       "at": 1793659440.0,
       "kind": "answer",
       "from": "person",
@@ -2782,7 +2822,7 @@
       "round": 1
     },
     {
-      "seq": 48,
+      "seq": 50,
       "at": 1793659441.0,
       "kind": "answer",
       "from": "relay",
@@ -2795,7 +2835,7 @@
       "round": 1
     },
     {
-      "seq": 49,
+      "seq": 51,
       "at": 1793659500,
       "kind": "approve",
       "from": "person",
@@ -2808,7 +2848,7 @@
       "round": 1
     },
     {
-      "seq": 50,
+      "seq": 52,
       "at": 1793659560,
       "kind": "stage",
       "from": "release",
@@ -2821,7 +2861,7 @@
       "round": 1
     },
     {
-      "seq": 51,
+      "seq": 53,
       "at": 1793661540.0,
       "kind": "merge",
       "from": "branch",
@@ -2834,7 +2874,7 @@
       "round": null
     },
     {
-      "seq": 52,
+      "seq": 54,
       "at": 1793715540.0,
       "kind": "reflect",
       "from": "person",
@@ -3186,7 +3226,7 @@
     {
       "kind": "commit",
       "at": 1793629680.0,
-      "sha": "b1c99d394a9e",
+      "sha": "cbf852bb4756",
       "by": "person",
       "text": "PAY-2：需求初稿",
       "files": 2,
@@ -3195,14 +3235,39 @@
       "node": "requirements",
       "changes": [
         {
-          "path": "aidlc-docs/261102-refund-id/inception/requirements/requirements.md",
-          "added": 71,
+          "path": "aidlc-docs/261102-refund-id/aidlc-state.md",
+          "added": 3,
           "removed": 0,
           "status": "A"
         },
         {
+          "path": "aidlc-docs/261102-refund-id/inception/requirements/requirements.md",
+          "added": 8,
+          "removed": 0,
+          "status": "A"
+        }
+      ]
+    },
+    {
+      "kind": "commit",
+      "at": 1793633700.0,
+      "sha": "8bde8a1833b8",
+      "by": "person",
+      "text": "PAY-2：设计初稿",
+      "files": 2,
+      "records_only": true,
+      "run": "local",
+      "node": "application-design",
+      "changes": [
+        {
+          "path": "aidlc-docs/261102-refund-id/aidlc-state.md",
+          "added": 1,
+          "removed": 1,
+          "status": "M"
+        },
+        {
           "path": "aidlc-docs/261102-refund-id/inception/application-design/application-design.md",
-          "added": 38,
+          "added": 13,
           "removed": 0,
           "status": "A"
         }
@@ -3211,26 +3276,32 @@
     {
       "kind": "commit",
       "at": 1793636460.0,
-      "sha": "622f3943f97a",
+      "sha": "f843e8d2a8f6",
       "by": "person",
       "text": "PAY-2：按意见改设计（接口加分页）",
-      "files": 1,
+      "files": 2,
       "records_only": true,
       "run": "local",
       "node": "application-design",
       "changes": [
         {
-          "path": "aidlc-docs/261102-refund-id/audit.md",
-          "added": 43,
-          "removed": 0,
-          "status": "A"
+          "path": "aidlc-docs/261102-refund-id/aidlc-state.md",
+          "added": 1,
+          "removed": 1,
+          "status": "M"
+        },
+        {
+          "path": "aidlc-docs/261102-refund-id/inception/application-design/application-design.md",
+          "added": 7,
+          "removed": 1,
+          "status": "M"
         }
       ]
     },
     {
       "kind": "commit",
       "at": 1793639100.0,
-      "sha": "9d9baab498b8",
+      "sha": "7755c90daef9",
       "by": "person",
       "text": "PAY-2：交接说明",
       "files": 1,
@@ -3239,9 +3310,9 @@
       "node": "application-design",
       "changes": [
         {
-          "path": "aidlc-docs/261102-refund-id/inception/requirements/requirements.md",
-          "added": 36,
-          "removed": 2,
+          "path": "aidlc-docs/261102-refund-id/aidlc-state.md",
+          "added": 1,
+          "removed": 1,
           "status": "M"
         }
       ]
@@ -3249,7 +3320,7 @@
     {
       "kind": "handover",
       "at": 1793639340.0,
-      "sha": "a9617a94c6a9",
+      "sha": "16939065c7b7",
       "by": "person",
       "text": "交给运行机",
       "files": 2,
@@ -3258,14 +3329,14 @@
       "node": null,
       "changes": [
         {
-          "path": "runs/PAY-2/run.json",
-          "added": 30,
+          "path": "runs/PAY-2/MR.md",
+          "added": 3,
           "removed": 0,
           "status": "A"
         },
         {
-          "path": "runs/PAY-2/MR.md",
-          "added": 63,
+          "path": "runs/PAY-2/run.json",
+          "added": 4,
           "removed": 0,
           "status": "A"
         }
@@ -3274,29 +3345,35 @@
     {
       "kind": "commit",
       "at": 1793641020.0,
-      "sha": "54d719b8e546",
+      "sha": "0fb1f6b6e5ed",
       "by": "bot",
       "text": "PAY-2：接口和数据结构（refund-api）",
-      "files": 3,
+      "files": 4,
       "records_only": false,
       "run": "runner-1",
       "node": "code-generation/refund-api",
       "changes": [
         {
-          "path": "src/refund/service.py",
-          "added": 32,
-          "removed": 0,
-          "status": "A"
-        },
-        {
-          "path": "src/refund/models.py",
-          "added": 46,
+          "path": "aidlc-docs/261102-refund-id/construction/plans/refund-api-code-generation-plan.md",
+          "added": 6,
           "removed": 0,
           "status": "A"
         },
         {
           "path": "src/refund/api.py",
-          "added": 49,
+          "added": 6,
+          "removed": 0,
+          "status": "A"
+        },
+        {
+          "path": "src/refund/models.py",
+          "added": 6,
+          "removed": 0,
+          "status": "A"
+        },
+        {
+          "path": "src/refund/service.py",
+          "added": 6,
           "removed": 0,
           "status": "A"
         }
@@ -3305,7 +3382,7 @@
     {
       "kind": "commit",
       "at": 1793642880.0,
-      "sha": "7bed9339bba4",
+      "sha": "59442ecdc1d7",
       "by": "bot",
       "text": "PAY-2：主流程（refund-api）",
       "files": 4,
@@ -3315,25 +3392,25 @@
       "changes": [
         {
           "path": "src/refund/export.py",
-          "added": 63,
+          "added": 6,
           "removed": 0,
           "status": "A"
         },
         {
           "path": "src/refund/jobs.py",
-          "added": 36,
+          "added": 6,
           "removed": 0,
           "status": "A"
         },
         {
           "path": "tests/test_refund.py",
-          "added": 29,
+          "added": 6,
           "removed": 0,
           "status": "A"
         },
         {
           "path": "tests/test_refund_api.py",
-          "added": 62,
+          "added": 6,
           "removed": 0,
           "status": "A"
         }
@@ -3342,7 +3419,7 @@
     {
       "kind": "commit",
       "at": 1793645160.0,
-      "sha": "6d408bfb7601",
+      "sha": "9186c3f5088d",
       "by": "bot",
       "text": "PAY-2：错误处理和重试（refund-api）",
       "files": 5,
@@ -3351,33 +3428,33 @@
       "node": "code-generation/refund-api",
       "changes": [
         {
-          "path": "src/refund/models.py",
-          "added": 47,
-          "removed": 8,
-          "status": "M"
-        },
-        {
           "path": "src/refund/api.py",
-          "added": 14,
-          "removed": 11,
+          "added": 5,
+          "removed": 0,
           "status": "M"
         },
         {
           "path": "src/refund/export.py",
-          "added": 41,
-          "removed": 5,
+          "added": 5,
+          "removed": 0,
           "status": "M"
         },
         {
           "path": "src/refund/jobs.py",
-          "added": 65,
-          "removed": 10,
+          "added": 5,
+          "removed": 0,
+          "status": "M"
+        },
+        {
+          "path": "src/refund/models.py",
+          "added": 5,
+          "removed": 0,
           "status": "M"
         },
         {
           "path": "tests/test_refund.py",
-          "added": 71,
-          "removed": 12,
+          "added": 5,
+          "removed": 0,
           "status": "M"
         }
       ]
@@ -3385,7 +3462,7 @@
     {
       "kind": "commit",
       "at": 1793647860.0,
-      "sha": "d287c5439f62",
+      "sha": "8dc76725b968",
       "by": "bot",
       "text": "PAY-2：测试（refund-api）",
       "files": 6,
@@ -3394,39 +3471,39 @@
       "node": "code-generation/refund-api",
       "changes": [
         {
-          "path": "tests/test_refund.py",
-          "added": 23,
-          "removed": 9,
-          "status": "M"
-        },
-        {
-          "path": "tests/test_refund_api.py",
-          "added": 8,
-          "removed": 4,
-          "status": "M"
-        },
-        {
-          "path": "src/refund/service.py",
-          "added": 40,
-          "removed": 9,
-          "status": "M"
-        },
-        {
-          "path": "src/refund/models.py",
-          "added": 13,
-          "removed": 12,
-          "status": "M"
-        },
-        {
           "path": "src/refund/api.py",
-          "added": 41,
-          "removed": 6,
+          "added": 5,
+          "removed": 0,
           "status": "M"
         },
         {
           "path": "src/refund/export.py",
-          "added": 13,
-          "removed": 3,
+          "added": 5,
+          "removed": 0,
+          "status": "M"
+        },
+        {
+          "path": "src/refund/models.py",
+          "added": 5,
+          "removed": 0,
+          "status": "M"
+        },
+        {
+          "path": "src/refund/service.py",
+          "added": 5,
+          "removed": 0,
+          "status": "M"
+        },
+        {
+          "path": "tests/test_refund.py",
+          "added": 5,
+          "removed": 0,
+          "status": "M"
+        },
+        {
+          "path": "tests/test_refund_api.py",
+          "added": 5,
+          "removed": 0,
           "status": "M"
         }
       ]
@@ -3434,7 +3511,7 @@
     {
       "kind": "commit",
       "at": 1793651760.0,
-      "sha": "f7f76b5503ff",
+      "sha": "957098230713",
       "by": "bot",
       "text": "PAY-2：按 D-1 的回答改",
       "files": 2,
@@ -3443,15 +3520,15 @@
       "node": "code-generation/refund-api",
       "changes": [
         {
-          "path": "src/refund/models.py",
+          "path": "src/refund/api.py",
           "added": 5,
-          "removed": 11,
+          "removed": 0,
           "status": "M"
         },
         {
-          "path": "src/refund/api.py",
-          "added": 39,
-          "removed": 5,
+          "path": "src/refund/models.py",
+          "added": 5,
+          "removed": 0,
           "status": "M"
         }
       ]
@@ -3459,23 +3536,29 @@
     {
       "kind": "commit",
       "at": 1793653620.0,
-      "sha": "2e839630c4b6",
+      "sha": "92bb8c9bbdeb",
       "by": "bot",
       "text": "PAY-2：修好 pytest 里没过的两个用例",
-      "files": 2,
+      "files": 3,
       "records_only": false,
       "run": "runner-1",
       "node": "build-and-test",
       "changes": [
         {
+          "path": "aidlc-docs/261102-refund-id/construction/build-and-test/build-and-test-summary.md",
+          "added": 10,
+          "removed": 0,
+          "status": "A"
+        },
+        {
           "path": "src/refund/jobs.py",
-          "added": 64,
+          "added": 5,
           "removed": 0,
           "status": "M"
         },
         {
           "path": "tests/test_refund.py",
-          "added": 54,
+          "added": 5,
           "removed": 0,
           "status": "M"
         }
@@ -3484,17 +3567,42 @@
     {
       "kind": "commit",
       "at": 1793654650.0,
-      "sha": "63c97d92f8e0",
+      "sha": "867cb66706c2",
       "by": "bot",
       "text": "PAY-2：审查（review.md）",
-      "files": 1,
+      "files": 2,
       "records_only": true,
       "run": "runner-1",
       "node": "review",
       "changes": [
         {
+          "path": "aidlc-docs/261102-refund-id/construction/build-and-test/build-and-test-summary.md",
+          "added": 2,
+          "removed": 2,
+          "status": "M"
+        },
+        {
           "path": "aidlc-docs/261102-refund-id/construction/build-and-test/review.md",
-          "added": 10,
+          "added": 8,
+          "removed": 0,
+          "status": "A"
+        }
+      ]
+    },
+    {
+      "kind": "commit",
+      "at": 1793655120.0,
+      "sha": "ee4de4f71086",
+      "by": "bot",
+      "text": "PAY-2：请批发布",
+      "files": 1,
+      "records_only": true,
+      "run": "runner-1",
+      "node": "release",
+      "changes": [
+        {
+          "path": "aidlc-docs/261102-refund-id/operations/release.md",
+          "added": 26,
           "removed": 0,
           "status": "A"
         }

@@ -36,6 +36,7 @@ import copy
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -63,6 +64,9 @@ brainview = importlib.import_module("_brainapp_backend.core.brainview")
 intake = importlib.import_module("_brainapp_backend.core.intake")
 crewcheck = importlib.import_module("_brainapp_backend.core.crewcheck")
 repo_mod = importlib.import_module("_brainapp_backend.core.repo")
+outputs = importlib.import_module("_brainapp_backend.core.outputs")
+AppError = importlib.import_module("_brainapp_backend.core.httpkit").AppError
+import preview_docs  # noqa: E402  (PAY-9's and PAY-2's documents and code, next to this file)
 store = importlib.import_module("_brainapp_backend.core.store")
 BRAINKIT = Path(os.environ.get("BRAIN_TEST_BRAINKIT") or Path.home() / "warren_ws" / "brain-kit")
 
@@ -109,6 +113,51 @@ def h64(*parts: object) -> str:
     return hashlib.sha256("/".join(map(str, parts)).encode()).hexdigest()
 
 
+class DrawerRepo:
+    """A scratch git repository holding the files a requirement's commits changed, so the 产出 drawer reads real
+    commits with the backend's own code. Every commit has fixed names and dates and no global config: its sha is the
+    same on every run."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        path.mkdir(parents=True)
+        self.git("init", "-q", "-b", "main")
+        self.commit(T0 - 30 * D, "shop-pay", {"README.md": "# shop-pay\n"})
+
+    def git(self, *a: str, env: dict | None = None) -> str:
+        e = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", **(env or {}))
+        return subprocess.run(["git", "-C", str(self.path), "-c", "commit.gpgsign=false", "-c", "core.hooksPath=" + os.devnull, *a],
+                              check=True, capture_output=True, text=True, env=e).stdout.strip()
+
+    def commit(self, at: float, subject: str, files: dict[str, str | None]) -> str:
+        for rel, text in files.items():
+            f = self.path / rel
+            if text is None:
+                f.unlink()
+                continue
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(text, encoding="utf-8")
+        self.git("add", "-A")
+        date = "@%d +0000" % int(at)
+        who = {"NAME": "alice", "EMAIL": "alice@example.com", "DATE": date}
+        self.git("commit", "-q", "--allow-empty", "-m", subject,
+                 env={"GIT_%s_%s" % (role, k): v for role in ("AUTHOR", "COMMITTER") for k, v in who.items()})
+        return self.git("rev-parse", "HEAD")
+
+
+def gen_text(path: str, n: int, key: str) -> str:
+    """A file a commit changed that the story does not spell out: its n-th version, plausible for its kind."""
+    name = path.rsplit("/", 1)[-1]
+    if name.endswith(".py"):
+        return '"""%s：%s。"""\n' % (key, name[:-3]) + "".join(
+            '\n\ndef step_%d(order):\n    """第 %d 步。"""\n    return order\n' % (i, i) for i in range(1, n + 1))
+    if name.endswith((".ts", ".tsx")):
+        return "// %s：%s\n" % (key, name) + "".join("\nexport function step%d(x: string): string {\n  return x\n}\n" % i for i in range(1, n + 1))
+    if name.endswith(".json"):
+        return json.dumps({"key": key, "version": n}, ensure_ascii=False, indent=2) + "\n"
+    return "# %s\n\n%s 的第 %d 版。\n" % (name, key, n)
+
+
 class Req:
     """One requirement's record, written in the order it happened."""
 
@@ -132,6 +181,12 @@ class Req:
         self.worktree: str | None = None    # its checkout on this machine, if it has one
         self.team: str | None = None        # a small requirement's Lean team (its unit), on each of its records
         self.release_sha: str | None = None
+        self.scratch: DrawerRepo | None = None  # the 产出 drawer's: its commits are made for real
+        self.texts: dict[str, list[tuple[float, str]]] = {}    # each document's versions, as the story writes them
+        self.code: dict[str, dict[str, str | None]] = {}       # a commit's files by its subject, when the story says them
+        self.committed: dict[str, str] = {}                     # each document as its last real commit holds it
+        # (stage, unit) -> the versions its document goes through, each a text or made from the Req when written
+        self.drafts: dict[tuple[str, str | None], list] = {}
         self.clone("%s-mbp" % (owner or "team"))
 
     def clone(self, host: str, n: int = 0) -> None:
@@ -141,6 +196,21 @@ class Req:
 
     def doc(self, sid: str, unit: str | None = None) -> str:
         return "aidlc-docs/%s/%s" % (self.intent, stage_table.BY_ID[sid].doc.format(unit=unit or ""))
+
+    def write(self, at: float, path: str, text: str) -> None:
+        """A document as it stands from *at* (its sha256 is what Lean records for it from then)."""
+        self.texts.setdefault(path, []).append((at, text))
+
+    def draft(self, at: float, sid: str, unit: str | None = None) -> None:
+        """The next version of the stage's document, from *at* (nothing when the story has none for it)."""
+        todo = self.drafts.get((sid, unit))
+        if todo:
+            x = todo.pop(0)
+            self.write(at, self.doc(sid, unit), x(self, at) if callable(x) else x)
+
+    def hash_at(self, path: str | None, at: float) -> str | None:
+        got = [x for t, x in self.texts.get(path or "", []) if t <= at]
+        return hashlib.sha256(got[-1].encode()).hexdigest() if got else None
 
     def head(self, at: float) -> str | None:
         """The newest commit of the run branch at *at*."""
@@ -164,7 +234,7 @@ class Req:
         data: dict = {"stage": sid, "unit": unit}
         path = self.doc(sid, unit)
         if state == "started" and sid == "release":
-            self.release_sha = short + h64(self.key, "release.md", at)[len(short):]
+            self.release_sha = self.hash_at(path, at) or short + h64(self.key, "release.md", at)[len(short):]
             data.update(path=path, sha256=self.release_sha, fingerprint=h64(self.key, "fp", at), head=self.head(at))
         elif state == "started":
             data.update(path=path, created=not any(e["event"] == "STAGE_STARTED" and e["data"].get("path") == path
@@ -173,7 +243,7 @@ class Req:
             verified = [e["data"] for e in self.events if e["event"] == "VERIFY" and e["_at"] <= at]
             data["outputs"] = {path: self.release_sha if sid == "release" and self.release_sha else
                                verified[-1]["summary_sha256"] if sid == "build-and-test" and verified else
-                               h64(self.key, sid, unit, at)}
+                               self.hash_at(path, at) or h64(self.key, sid, unit, at)}
             if sid == "code-generation":
                 data["fingerprint"] = h64(self.key, "fp", at)
         if note:
@@ -185,11 +255,11 @@ class Req:
         self._lean(at, "PHASE_SKIPPED", phase=phase, stages=[s.id for s in stage_table.LEAN if s.phase == phase],
                    reason=reason)
 
-    def _doc(self, kind: str, unit: str | None) -> dict:
+    def _doc(self, kind: str, unit: str | None, at: float) -> dict:
         """What Lean's approval of *kind* covers: its document (a PLAN is one unit's code-generation plan); INCEPTION
         the requirements and the design together, each file with its sha256."""
         if kind == "INCEPTION":
-            files = {self.doc(s): h64(self.key, s) for s in ("requirements", "application-design")}
+            files = {self.doc(s): self.hash_at(self.doc(s), at) or h64(self.key, s) for s in ("requirements", "application-design")}
             return {"paths": list(files), "files": files}
         sid = {"REQUIREMENTS": "requirements", "DESIGN": "application-design", "PLAN": "code-generation",
                "RELEASE": "release"}[kind]
@@ -197,9 +267,10 @@ class Req:
 
     def request(self, at: float, kind: str, unit: str | None = None, sha8: str | None = None) -> str:
         """`lean request`: a RELEASE is asked for the release.md `lean release` wrote."""
-        h = self.release_sha if kind == "RELEASE" and self.release_sha else sha(self.key, kind, at)
+        d = self._doc(kind, unit, at)
+        h = self.release_sha if kind == "RELEASE" and self.release_sha else self.hash_at(d.get("path"), at) or sha(self.key, kind, at)
         h = sha8 + h[len(sha8):] if sha8 else h
-        self._lean(at, "APPROVAL_REQUESTED", kind=kind, sha256=h, **self._doc(kind, unit))
+        self._lean(at, "APPROVAL_REQUESTED", kind=kind, sha256=h, **d)
         return h
 
     @property
@@ -215,13 +286,13 @@ class Req:
                             "after_handover": self.hand_at is not None and at > self.hand_at})
 
     def approve(self, at: float, kind: str, h: str, who: str | None = None, unit: str | None = None) -> None:
-        self._lean(at, "APPROVED", kind=kind, sha256=h, **self._doc(kind, unit))
+        self._lean(at, "APPROVED", kind=kind, sha256=h, **self._doc(kind, unit, at))
         self._human(at, "approval", kind, who)
 
     def reject(self, at: float, kind: str, h: str, who: str | None = None, words: str = "") -> None:
         """A rejection, with the words the person typed (Lean keeps them; the board never reads them)."""
         self._lean(at, "REJECTED", kind=kind, sha256=h, words=words or "reject %s %s" % (kind, h[:8]),
-                   **self._doc(kind, None))
+                   **self._doc(kind, None, at))
         self._human(at, "rejection", kind, who)
 
     def turn(self, at: float, session: str = "s-1") -> None:
@@ -234,11 +305,12 @@ class Req:
 
     def verify(self, at: float, results: list[tuple[str, int]]) -> None:
         """`lean verify`: each check's exit, time and output hash, the commit it ran on, the summary it wrote."""
+        self.draft(at, "build-and-test")
         res = [{"cmd": c, "exit": e, "secs": round(3 + int(sha(self.key, c, at)[:2], 16) / 8, 1),
                 "output_sha256": h64(self.key, c, at)} for c, e in results]
         self._lean(at, "VERIFY", ok=all(e == 0 for _, e in results), fingerprint=h64(self.key, "fp", at), results=res,
                    base_commit=self.head(at), branch=self.branch, summary=self.doc("build-and-test"),
-                   summary_sha256=h64(self.key, "summary", at))
+                   summary_sha256=self.hash_at(self.doc("build-and-test"), at) or h64(self.key, "summary", at))
 
     # git and the hand-over
     def commit(self, at: float, by: str, subject: str, files: int = 3, after: bool | None = None, records: bool = False,
@@ -247,11 +319,31 @@ class Req:
         changed, when the story names them."""
         s = sha(self.key, "commit", at, subject)
         s = short + s[len(short):]
+        if self.scratch is not None:
+            files = self._files(at, s, subject, files, records, paths)
+            s = self.scratch.commit(at, subject, files)
+            paths = tuple(files)
         self.commits.append({"sha": s, "at": iso(at), "committed_at": iso(at), "by": by, "who": None if by == "bot" else self.me,
                              "files": len(paths) or files, "records_only": records, "merge": False,
                              "after_handover": (self.hand_at is not None and at > self.hand_at) if after is None else after,
                              "subject": subject, "paths": list(paths)})
         return s
+
+    def _files(self, at: float, s: str, subject: str, n: int, records: bool, paths: tuple[str, ...]) -> dict[str, str | None]:
+        """What a real commit holds: its code when the story spells it out by subject (None: deleted), else the files
+        changes() would pick, each document at its version then; and every document changed since it was last
+        committed (as `git add -A`)."""
+        out: dict[str, str | None] = dict(self.code.get(subject) or {})
+        if subject not in self.code:
+            for p in pool_paths(self, s, subject, n, records, paths):
+                doc = [x for t, x in self.texts.get(p, []) if t <= at]
+                out[p] = doc[-1] if doc else gen_text(p, sum(1 for c in self.commits if p in c["paths"]) + 1, self.key)
+        for p, vs in self.texts.items():
+            now = [x for t, x in vs if t <= at]
+            if now and self.committed.get(p) != now[-1] and p not in out:
+                out[p] = now[-1]
+        self.committed.update({p: x for p, x in out.items() if x is not None})
+        return out
 
     def handoff(self, at: float, short: str = "") -> None:
         self.hand_at = at
@@ -361,26 +453,37 @@ def app_event(at: float, label: str, detail: str | None = None) -> dict:
     return {"at": iso(at), "kind": "app", "label": label, "detail": detail, "who": None, "src": "app"}
 
 
-def changes(r: Req) -> dict[str, list[dict]]:
-    """Each commit's files as board.changes_from_log reads them from git: the hand-over's run.json and MR.md, a
-    records-only commit's Lean records, else the requirement's code and its tests; a path's first commit adds it."""
+def pool_paths(r: Req, s: str, subject: str, n: int, records: bool, named: tuple[str, ...] | list[str]) -> list[str]:
+    """The files a commit changed when the story does not name them: the hand-over's run.json and MR.md, a
+    records-only commit's Lean records, else the requirement's code and its tests (picked by its sha)."""
     area = r.slug.split("-")[0]
+    h = int(s[:8], 16)
+    if named:
+        pool = list(named)
+    elif subject.endswith("hand off to team runner"):
+        pool = ["runs/%s/run.json" % r.key, "runs/%s/MR.md" % r.key]
+    elif records and r.scratch is not None:  # a real one: its records, and the documents changed since (Req._files)
+        pool = ["aidlc-docs/%s/aidlc-state.md" % r.intent]
+    elif records:
+        pool = ["aidlc-docs/%s/%s" % (r.intent, x) for x in (
+            "aidlc-state.md", "decisions.md", "inception/requirements/requirements.md",
+            "inception/application-design/application-design.md", "audit.md")]
+    else:
+        pool = ["src/%s/%s.py" % (area, x) for x in ("service", "models", "api", "export", "jobs")] + [
+            "tests/test_%s.py" % area, "tests/test_%s_api.py" % area]
+    return list(dict.fromkeys(pool[(h + i) % len(pool)] for i in range(max(1, int(n)))))
+
+
+def changes(r: Req) -> dict[str, list[dict]]:
+    """Each commit's files as board.changes_from_log reads them from git (a requirement with a scratch DrawerRepo:
+    from its real commits); a path's first commit adds it."""
+    if r.scratch is not None:
+        return board.changes_from_log(r.scratch.git(*board.GIT_LOG, *[c["sha"] for c in r.commits]))
     seen: set[str] = set()
     out = {}
     for c in r.commits:
         h = int(c["sha"][:8], 16)
-        if c.get("paths"):
-            pool = c["paths"]
-        elif c["subject"].endswith("hand off to team runner"):
-            pool = ["runs/%s/run.json" % r.key, "runs/%s/MR.md" % r.key]
-        elif c["records_only"]:
-            pool = ["aidlc-docs/%s/%s" % (r.intent, x) for x in (
-                "aidlc-state.md", "decisions.md", "inception/requirements/requirements.md",
-                "inception/application-design/application-design.md", "audit.md")]
-        else:
-            pool = ["src/%s/%s.py" % (area, x) for x in ("service", "models", "api", "export", "jobs")] + [
-                "tests/test_%s.py" % area, "tests/test_%s_api.py" % area]
-        paths = list(dict.fromkeys(pool[(h + i) % len(pool)] for i in range(max(1, int(c["files"])))))
+        paths = pool_paths(r, c["sha"], c["subject"], c["files"], c["records_only"], c.get("paths") or ())
         out[c["sha"]] = [{"path": p, "added": 4 + (h >> (2 * i)) % 70, "removed": 0 if p not in seen else (h >> i) % 15,
                           "status": "M" if p in seen else "A"} for i, p in enumerate(paths)]
         seen.update(paths)
@@ -553,16 +656,21 @@ def standard(r: Req, t: float, *, design_back: bool = False, units: tuple[str, .
     r.skip_phase(t + 20, "ideation", NOT_REQUESTED)
     r.stage(t + 2 * M, "reverse-engineering", "skipped", note="新功能，代码已经读过")
     r.stage(t + 3 * M, "requirements", "started")
+    r.draft(t + 3 * M, "requirements")
     r.commit(t + 28 * M, "person", "%s：需求初稿" % r.key, files=2, records=True)
     h = r.request(t + 31 * M, "REQUIREMENTS")
     r.approve(t + 52 * M, "REQUIREMENTS", h)
     r.stage(t + 53 * M, "requirements", "done", note="需求写好了，%d 条验收标准" % (4 + len(r.key) % 3))
     r.stage(t + 54 * M, "user-stories", "skipped", note="小需求")
     r.stage(t + 55 * M, "application-design", "started")
+    r.draft(t + 55 * M, "application-design")
     r.blocked(t + 70 * M, "inception", "src/%s/service.py" % r.slug.split("-")[0])
+    if r.scratch is not None:
+        r.commit(t + 95 * M, "person", "%s：设计初稿" % r.key, files=1, records=True)
     h = r.request(t + 96 * M, "DESIGN")
     if design_back:
         r.reject(t + 118 * M, "DESIGN", h)
+        r.draft(t + 130 * M, "application-design")
         r.commit(t + 141 * M, "person", "%s：按意见改设计（接口加分页）" % r.key, files=1, records=True)
         h = r.request(t + 143 * M, "DESIGN")
         r.approve(t + 166 * M, "DESIGN", h)
@@ -591,6 +699,7 @@ def runner_half(r: Req, t: float, *, iid: int, question: tuple[str, str, float, 
     r.clone("teamrunner", 1)
     u = r.slug.split("-")[0] + "-api"
     r.stage(t + 4 * M, "code-generation", "started", unit=u)
+    r.draft(t + 4 * M, "code-generation", u)
     c = t + 4 * M
     for i, subj in enumerate(("接口和数据结构", "主流程", "错误处理和重试", "测试")):
         c += (24 + 7 * i) * M
@@ -620,10 +729,14 @@ def runner_half(r: Req, t: float, *, iid: int, question: tuple[str, str, float, 
         c += 32 * M
     r.verify(c + 15 * M, checks)
     r.stage(c + 16 * M, "build-and-test", "done", note="verify PASS: %d checks on code fingerprint %s" % (len(checks), sha(r.key, "fp")[:8]))
+    r.draft(c + 16 * M, "review")
     r.commit(c + 16 * M + 10, "bot", "%s：审查（review.md）" % r.key, records=True, paths=(r.doc("review"),))
     r.stage(c + 16 * M + 20, "ci-pipeline", "skipped", note=CI_AS_IS)
     r.skip_phase(c + 16 * M + 40, "operations", OPS_BY_TEAM)
+    r.draft(c + 17 * M, "release")
     r.stage(c + 17 * M, "release", "started")
+    if r.scratch is not None:
+        r.commit(c + 24 * M, "bot", "%s：请批发布" % r.key, records=True, paths=(r.doc("release"),))
     h = r.request(c + 25 * M, "RELEASE")
     r.question_park(c + 26 * M, "waiting", "acceptance", "product")
     return c + 26 * M + accept_after, h
@@ -682,10 +795,11 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
              decisions: list | None = None, local_only: bool = False, kit_rows: list | None = None, reflect: list | None = None,
              mr: dict | None = None, me: str | None = "alice", mr_desc: dict | None = None, questions: list | None = None,
              credits: float | None = None, facts: dict | None = None, team_decisions: list | None = None,
-             bid: str | None = None, family: dict | None = None) -> dict:
+             bid: str | None = None, family: dict | None = None, keep: dict | None = None) -> dict:
     """The board snapshot the backend answers (service._board_sync), built the same way. *facts*: what the board is
     folded from when they are not *r*'s own records as this machine reads them (the team runner's workspace).
-    *family*: a big requirement's trace family (brain-kit 0d52e97's roll-up of its small ones)."""
+    *family*: a big requirement's trace family (brain-kit 0d52e97's roll-up of its small ones). *keep*: gets the
+    fold the 产出 drawer reads, as the service keeps it."""
     f = facts or r.facts(park)
     STAGES[bid or "%s/%s" % (r.repo, r.key)] = f["stages"]
     t = r.trace(brain, family) if f.get("run") else None
@@ -695,7 +809,7 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
                     changes=changes(r),
                     reflect_refs=reflect or [], default_branch="main", local_only=local_only,
                     kit_rows=board.kit_cells(kit_rows or [], "/Users/alice/workplace/%s" % {"r1": "shop-pay", "r3": "shop-order", "r4": "shop-tools"}.get(r.repo, "")),
-                    decisions=decisions or [], brain=brain, me=me, now=T0)
+                    decisions=decisions or [], brain=brain, me=me, now=T0, fold=keep)
     return {"at": T0, "row": row, "branch": row.get("branch"), "base": "main", "started_at": g["started_at"], "ended_at": g["ended_at"],
             "live": g["live"], "person": g["person"], "phases": g["phases"], "nodes": g["nodes"], "runs": g["runs"], "relays": g["relays"], "other_runs": g["other_runs"],
             "events": g["events"], "lean_steps": g["lean_steps"], "belt": g["belt"], "checks": g["checks"],
@@ -883,7 +997,51 @@ def detail_of(r: Req, row: dict, kw: dict, b: dict) -> dict:
         "credits": {"total": kw.get("credits"), "note": detail.NO_TOKENS}, "brain": b["brain"], "mr_desc": b["mr_desc"]}
 
 
+def outputs_key(path: str, q: dict) -> str:
+    """How the preview's stub finds a drawer answer: the route's path and its query, sorted, as the page sent it."""
+    return "%s?%s" % (path, "&".join("%s=%s" % kv for kv in sorted(q.items()) if kv[1]))
+
+
+def drawer_payloads(r: Req, rid: str, keep: dict) -> dict[str, dict]:
+    """The 产出 drawer's answers for *r* (GET /outputs/{repo}/{key}?node&round and …/file), made by
+    backend/core/outputs.py over its real commits from the board's own fold, for every round of every stage with a
+    lane and every way the page reads each file (源码, 改动 from each version it offers); a refusal as the route's error."""
+    f = outputs.Fold(reader=outputs.GitReader(repo_mod.Git(str(r.scratch.path))), intent=r.intent, branch=r.branch,
+                     nodes=tuple(keep["nodes"]), commits=tuple(keep["commits"]), changes=changes(r))
+    out: dict[str, dict] = {}
+    base = "/outputs/%s/%s" % (rid, r.key)
+
+    def put(path: str, q: dict, make) -> None:
+        try:
+            got = make()
+        except AppError as e:
+            got = {"__error": {"status": e.status, "code": e.code, "error": str(e)}}
+        out[outputs_key(path, q)] = service.scrub_tree(got, service.basic_scrub)
+
+    for n in f.nodes:
+        if not n.rounds or (n.status or n.waits).status == "skipped":
+            continue
+        for rnd in n.rounds:
+            listed = outputs.node_output(f, outputs.node_query(n.id, str(rnd.n)))
+            put(base, {"node": n.id, "round": str(rnd.n)}, lambda: listed)
+            for x in listed["files"]:
+                ways = [("source", None)] + [("diff", b) for b in dict.fromkeys([x["base"]] + [v["ref"] for v in x["vs"]])]
+                for view, b in ways if x["ref"] else []:
+                    q = {"ref": x["ref"], "path": x["path"], "view": view, "base": b, "pin": x["pin"]}
+                    put(base + "/file", q, lambda q=q: outputs.file_view(f, outputs.file_query(q)))
+    return out
+
+
 def main() -> None:
+    scratch = Path(tempfile.mkdtemp(prefix="brain-preview-drawer-"))
+    try:
+        world(scratch)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+def world(scratch: Path) -> None:
+    """The world and the fixtures; *scratch* holds the 产出 drawer's git repositories while they are made."""
     ov = json.loads((FIX / "overview.json").read_text(encoding="utf-8"))
     ov["eval"]["raw"] = ""                                             # deliveries.evaluate: brain-kit's own words
     for r_ in ov["funnel"]["rows"]:                                    # who settled them, in vocab.ts's words
@@ -962,6 +1120,8 @@ def main() -> None:
     # ---------------------------------------------------------------- shop-pay
     # PAY-2: merged, the whole way (a design sent back, a question on the MR, a red verify, the acceptance, the write-back)
     p2 = Req("r1", "PAY-2", "退款单号校验", "alice", "refund-id", "261102-refund-id", project="shop/shop-pay")
+    p2.scratch = DrawerRepo(scratch / "PAY-2")
+    preview_docs.pay2(p2)
     p2.claim_at = T0 - 6 * D - 2 * H
     t = standard(p2, T0 - 6 * D, design_back=True)
     end, h = runner_half(p2, t + 20 * M, iid=37, question=("D-1", "clarify", 41 * M, "A"), verify_fail=True)
@@ -1207,14 +1367,18 @@ def main() -> None:
         h_, m_ = hm.split(":")
         return T0 - ((16 * 60 + 15) - (int(h_) * 60 + int(m_))) * M
     p9 = Req("r1", "PAY-9", "退款通知短信", "alice", "refund-sms", "261108-refund-sms", project="shop/shop-pay")
+    p9.scratch = DrawerRepo(scratch / "PAY-9")
+    preview_docs.pay9(p9)
     p9.claim_at, p9.start_at = at9("09:40"), at9("10:05")
     p9.app += [app_event(p9.start_at, "在 app 里开工", "工作区 /Users/alice/workplace/brain-app/shop-pay/refund-sms，分支 %s" % p9.branch),
                app_event(p9.start_at + 20, "开了本机会话", store.TRUSTED)]
     p9.skip_phase(p9.start_at + 20, "ideation", NOT_REQUESTED)
     p9.stage(p9.start_at + 30, "requirements", "started")
+    p9.draft(p9.start_at + 30, "requirements")
     p9.turn(p9.start_at + 31)
     p9.stage(p9.start_at + 50, "reverse-engineering", "skipped", note="新功能，代码已经读过")
     p9.stage(at9("10:06") + 2, "application-design", "started")
+    p9.draft(at9("10:06") + 2, "application-design")
     p9.stage(at9("10:19"), "requirements", "done", note="需求写好了：退款成功以后给用户发短信，5 条验收标准")
     p9.stage(at9("10:19") + 30, "user-stories", "skipped", note="只有一类用户")
     p9.turn(at9("10:21"))
@@ -1225,6 +1389,7 @@ def main() -> None:
     p9.turn(at9("10:52"))
     p9.approve(at9("10:52") + 1, "INCEPTION", inc)
     p9.stage(at9("10:52") + 30, "units", "started")
+    p9.draft(at9("10:52") + 30, "units")
     p9.commit(at9("10:53"), "person", "PAY-9：拆成 api 和 web", records=True, short="6d20f4b", paths=(p9.doc("units"),))
     p9.stage(at9("10:54"), "units", "done", note="拆成 api 和 web 两个单元")
     p9.commit(at9("11:01"), "person", "PAY-9：交接说明", files=1, records=True)
@@ -1239,20 +1404,24 @@ def main() -> None:
         for j, sid in enumerate(("functional-design", "nfr-design", "infrastructure-design")):
             p9.stage(at9("11:11") + 20 * (3 * k + j), sid, "skipped", unit=u, note="这个单元没有新的设计")
     p9.stage(at9("11:14"), "code-generation", "started", unit="api")
+    p9.draft(at9("11:14"), "code-generation", "api")
     p9.question_park(at9("11:40"), "waiting", "clarify", "product")
     p9.ask("D-1", "clarify", at9("11:41"), at9("11:55"), "A", state="delivered", who="P-9E3B")
     p9.question_park(at9("11:56"), "answered", "clarify", "product")
     p9.commit(at9("12:18"), "bot", "api 的短信通知", files=6, short="5f0a3c2")
     p9.stage(at9("12:19"), "code-generation", "done", unit="api", note="api：退款成功事件里发短信，失败重试三次")
     p9.stage(at9("12:19") + 30, "code-generation", "started", unit="web")
+    p9.draft(at9("12:19") + 30, "code-generation", "web")
     p9.commit(at9("13:03"), "bot", "web 的退款短信入口", files=5, short="c41b7d9")
     p9.stage(at9("13:04"), "code-generation", "done", unit="web", note="web：退款详情页能看到短信发了没有")
     p9.verify(at9("13:08"), pass_all)
     p9.stage(at9("13:08") + 1, "build-and-test", "done", note=pass_note % sha("PAY-9", "fp", 2)[:8])
+    p9.draft(at9("13:19"), "review")
     p9.commit(at9("13:20"), "bot", "审查（review.md）", records=True, paths=(p9.doc("review"),))
     p9.stage(at9("13:22"), "ci-pipeline", "skipped", note=CI_AS_IS)
     p9.skip_phase(at9("13:23"), "operations", OPS_BY_TEAM)
     rel_files = (p9.doc("release"), "runs/PAY-9/park.json", "runs/PAY-9/MR.md")
+    p9.draft(at9("13:25"), "release")
     p9.stage(at9("13:25"), "release", "started")
     p9.commit(at9("13:26"), "bot", "请批发布", records=True, short="3b8e01f", paths=rel_files)
     h9 = p9.request(at9("13:26") + 30, "RELEASE")
@@ -1265,20 +1434,22 @@ def main() -> None:
                                                        ("15:33", "15:34", "16:08", "修好 CI：web 的类型检查", "9f3c2a8")):
         p9.verify(at9(verified), pass_all)
         p9.stage(at9(verified) + 1, "build-and-test", "done", note=pass_note % sha("PAY-9", "fp", verified)[:8])
+        p9.draft(at9(released), "release")
         p9.stage(at9(released), "release", "started")
         p9.commit(at9(released) + 50, "bot", "请批发布", records=True, paths=rel_files)
         p9.request(at9(released) + 70, "RELEASE")
         p9.commit(at9(fixed), "bot", subject, files=1 if "api" in subject else 2, short=short)
     p9.verify(at9("16:10"), pass_all)
     p9.stage(at9("16:10") + 1, "build-and-test", "done", note=pass_note % sha("PAY-9", "fp", 5)[:8])
-    p9.stage(at9("16:11"), "release", "started", short="73b5061f")
+    p9.draft(at9("16:11"), "release")
+    p9.stage(at9("16:11"), "release", "started")
     p9.commit(at9("16:12"), "bot", "请批发布", records=True, paths=rel_files)
     p9.request(at9("16:12") + 30, "RELEASE")
     p9.question_park(at9("16:13"), "waiting", "acceptance", "product")
     p9.ask("D-3", "acceptance", at9("16:14"))
     reqs["r1"].append(p9)
-    p9_park = {"status": "waiting", "kind": "acceptance", "lean_request": "RELEASE 73b5061f"}
-    p9_q = {"id": "D-3", "kind": "acceptance", "state": "open", "lean_request": "RELEASE 73b5061f", "at": iso(at9("16:14"))}
+    p9_park = {"status": "waiting", "kind": "acceptance", "lean_request": "RELEASE %s" % p9.release_sha[:8]}
+    p9_q = {"id": "D-3", "kind": "acceptance", "state": "open", "lean_request": "RELEASE %s" % p9.release_sha[:8], "at": iso(at9("16:14"))}
     p9_sess = dict(det["sessions"][0], slot="brain-PAY-9-7f2c", url="/chat?sid=brain-PAY-9-7f2c", title="PAY-9 退款通知短信",
                    credits=12.4, turns=7, busy=False, awaiting=False, last_activity=p9.hand_at, opened_at=p9.start_at)
     row = copy.deepcopy(rows["PAY-5"])
@@ -1296,7 +1467,7 @@ def main() -> None:
                 mr_desc=mrdesc(p9, row["summary"]),
                 questions=[{"source": "mr", "id": "D-3", "kind": "acceptance", "kind_label": "验收",
                             "question": "验收：退款成功以后给用户发短信，旧订单不发。", "options": [], "recommend": None,
-                            "lean_request": "RELEASE 73b5061f", "refs": [], "state": "open", "answer": None, "answerer": None,
+                            "lean_request": "RELEASE %s" % p9.release_sha[:8], "refs": [], "state": "open", "answer": None, "answerer": None,
                             "voucher_id": None, "mr_url": "%s/shop/shop-pay/-/merge_requests/53" % GL, "at": at9("16:14"),
                             "answerable_here": False, "answer_via": None}])
 
@@ -1473,8 +1644,13 @@ def main() -> None:
     crew_fail = problems.agent_missing()
     world_todo = {"ok": todo.build(entries, team=False, crew_rows=[]), "crewfail": todo.build(entries, team=False, crew_rows=[crew_fail])}
     brains, uses, reflects = brain_views(reqs, all_rows, {bid: kw.get("decisions") or [] for bid, (_, _, kw) in LATER.items()})
+    drawer: dict[str, dict] = {}
     for bid, (r_, row_, kw) in LATER.items():
-        boards[bid] = snapshot(r_, row_, brain=uses.get(bid) or no_trace_brain(r_), **{k: v for k, v in kw.items() if k != "runner_sessions"})
+        keep: dict | None = {} if r_.scratch is not None else None
+        boards[bid] = snapshot(r_, row_, brain=uses.get(bid) or no_trace_brain(r_), keep=keep,
+                               **{k: v for k, v in kw.items() if k != "runner_sessions"})
+        if keep is not None:
+            drawer.update(drawer_payloads(r_, r_.repo, keep))
     for bid, (r_, row_, kw) in LATER.items():
         if bid not in details:
             details[bid] = detail_of(r_, row_, kw, boards[bid])
@@ -1595,7 +1771,7 @@ def main() -> None:
              "crew_missing": crew_fail, "crew_not_ready": crewcheck.not_ready([crew_fail]),
              "me_token": identity.of("", GL, token=True), "boards": boards, "details": details, "stages": STAGES,
              "phases": {k: lean_view.phases(v) for k, v in STAGES.items()},
-             "brains": brains, "intake_gates": intake_gates()}
+             "brains": brains, "intake_gates": intake_gates(), "outputs": drawer}
     (ROOT / "ui" / "preview" / "world.json").write_text(json.dumps(world, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     # the contract fixtures the UI tests read: the overview's numbers for its own rows, one live board and one merged
     ov["cto"] = deliveries.cto_numbers([("r1", parts[0][1])], list(rows.values()), available=True, now=T0, names=names, repos=1)
