@@ -285,6 +285,25 @@ class Records:
     decision: Callable[[Mapping[str, Any]], Optional[str]] = lambda e: None
 
 
+@dataclass(frozen=True)
+class Turn:
+    """A session turn as Lean recorded it (HUMAN_TURN: a message its hook saw arrive, a person's or the app's): when,
+    whose run, and the sha256 of the message, which finds its row in the session's transcript. Never its words."""
+    at: float
+    run: RunKey
+    sha256: str
+
+
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def turns_of(rec: Records) -> Tuple[Turn, ...]:
+    """The session turns in *rec*'s records, oldest first."""
+    return tuple(Turn(float(e["_at"]), rec.run_of(e), str(_data(e)["sha256"])) for e in rec.events
+                 if e.get("event") == "HUMAN_TURN" and isinstance(e.get("_at"), (int, float))
+                 and SHA256_RE.match(str(_data(e).get("sha256") or "")))
+
+
 class RoundState(enum.Enum):
     IDLE = "idle"                # no round yet
     OPEN = "open"                # at work on it

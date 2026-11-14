@@ -24,8 +24,10 @@ from . import problems, stages
 from . import board as board_mod
 from . import settings as settings_mod
 from . import todo as todo_mod
+from . import turns as turns_mod
 from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_AGENT, LOCAL_FOLDER, REPO_ID_RE, TICK_S, VERSION
-from .gateway import Gateway
+from .gateway import Gateway, GatewayError
+from .gateway import said as gateway_said
 from .httpkit import AppError
 from .repo import Git, Repo, Source, read_claim, read_facts
 from .sessions import SessionManager
@@ -53,7 +55,7 @@ def scope_of(rid: str, key: str) -> str:
 SCRUB_KEYS = ("text", "why", "question", "label", "detail", "status", "next", "open_questions", "output", "reasons",
               "findings", "review", "blocking", "error", "session_error", "notes", "warnings", "problems", "summary",
               "first", "todo", "raw", "doing", "facts", "title", "name", "checks", "note", "subject", "sub", "push_why",
-              "push_cmd")
+              "push_cmd", "reply", "task", "ticker", "why_not", "also", "cause", "missing", "here", "do")
 
 
 def scrub_tree(obj: Any, scrub: Callable[[str], str], key: str = "") -> Any:
@@ -977,7 +979,8 @@ class Service:
             reader=outputs_mod.GitReader(git) if git is not None else None, intent=(f.get("run") or {}).get("intent"),
             branch=d["row"].get("branch"), nodes=tuple(kept["nodes"]), commits=tuple(kept["commits"]),
             changes=changes, units=tuple(units),
-            worktree=f.get("worktree") if rid != "runner" and f.get("where") == "worktree" else None))
+            worktree=f.get("worktree") if rid != "runner" and f.get("where") == "worktree" else None,
+            runs=tuple(kept["runs"]), turns=tuple(kept["turns"])))
         return {"at": self.now(), "row": d["row"], "branch": d["row"].get("branch"),
                 "base": str(cfg.get("default_branch") or "main"), "started_at": g["started_at"], "ended_at": g["ended_at"],
                 "live": g["live"], "person": g["person"], "phases": g["phases"], "nodes": g["nodes"], "runs": g["runs"],
@@ -1013,6 +1016,22 @@ class Service:
         snap = self._sessions_snapshot()
         return scrub_tree(await asyncio.to_thread(lambda: outputs_mod.file_view(self._fold(rid, key, snap), q)), self.scrub)
 
+    async def outputs_turns(self, rid: str, key: str, q: outputs_mod.NodeQuery) -> dict[str, Any]:
+        """产出's session tabs: the turns one round of one node was done in (turns.turn_views), each read from its
+        session's transcript on this machine."""
+        snap = self._sessions_snapshot()
+        fold = await asyncio.to_thread(self._fold, rid, key, snap)
+        slots = []
+        for s in turns_mod.sessions_to_read(fold, q):
+            try:
+                rows, whole = await self.sessions.transcript(str(s["slot"]))
+            except GatewayError as exc:
+                raise AppError("读不了这一轮的会话：%s" % gateway_said(exc), "transcript_unreadable", 502) from None
+            root = self.sessions.by_slot(str(s["slot"]))
+            slots.append(turns_mod.Slot(str(s["slot"]), str(s.get("url") or ""), root.cwd if root else "",
+                                        bool(s.get("busy")), rows, whole, self.sessions.sent(str(s["slot"]))))
+        return scrub_tree(turns_mod.turn_views(fold, q, slots, key, self.now(), self.scrub), self.scrub)
+
     # ---- sessions and answers ------------------------------------------------------------------------- #
 
     async def open_session(self, rid: str, key: str, trust: bool = True, kickoff: bool = True,
@@ -1039,7 +1058,7 @@ class Service:
             task = intake.review_task(key, branch, run.get("intent"))
             if not task:
                 raise AppError("这个需求的记录里找不到它在 Lean 里的名字：开不了审查会话", "no_intent", 409)
-            title, said = "%s · 审查" % key, "开了审查会话"
+            title, said, cause = "%s · 审查" % key, "开了审查会话", "审查会话的开工消息，只有编号"
         else:
             live = [i for i in self.sessions.roots(key=scope, kind="local") if i.slot and not
                     (self.sessions.slot_stats(i.slot) or {}).get("missing")]
@@ -1051,12 +1070,13 @@ class Service:
                     if kickoff else ""
                 if kickoff and scope_of(repo.id, key) in self._big:
                     task += "\n" + family.BIG_KICKOFF
-            title, said = "%s · 本地开发" % key, "开了本机会话"
+            title, said, cause = "%s · 本地开发" % key, "开了本机会话", "开工消息，只有编号"
         slug = branch.rsplit("/", 1)[-1][len(key) + 1:] or key.lower()
         info = await self.sessions.open_session(
             task, parent_session_key="%s:%s" % (self.name, scope), cwd=wt, title=title,
             folder="%s · %s" % (key, slug), agent=LOCAL_AGENT, root_folder=LOCAL_FOLDER, project_dir=wt,
-            strict_agent=True, resend_ok=True, nudge_ok=False, trust_ok=bool(trust), kind="local", key=scope)
+            strict_agent=True, resend_ok=True, nudge_ok=False, trust_ok=bool(trust), kind="local", key=scope,
+            shown={"by": "app", "cause": cause, "text": task} if task else None)   # task: ids only, by its builder
         if info.error or not info.slot:
             raise AppError(info.error or "会话没开成", "session_failed", 502)
         await asyncio.to_thread(self.store.append, scope, "app", said, store_mod.TRUSTED if trust else None)
@@ -1089,7 +1109,8 @@ class Service:
             if not live:
                 raise AppError("先开这个需求的 brain-dev 会话", "no_session", 409)
             text = local_answer(choice, note)
-            turn = await self.sessions.continue_conversation_async(live[-1].id, text,
+            shown = {"by": "app", "cause": "澄清问题的回答", "text": local_answer(choice, NOTE_HIDDEN if note else "")}
+            turn = await self.sessions.continue_conversation_async(live[-1].id, text, shown=shown,
                                                                    parent_session_key=live[-1].parent_session_key)
             if turn.error:
                 raise AppError(turn.error, "send_failed", 502)
@@ -1829,6 +1850,9 @@ def runner_repo_at(path: str, cfg: dict[str, Any]) -> bool:
 def answer_choices(options: list[str]) -> set[str]:
     """What counts as an answer (brain-kit's check_answer): one of the options; approve / reject when there are none."""
     return set(options) if options else {"approve", "reject"}
+
+
+NOTE_HIDDEN = "（你写的补充，没在这里显示）"   # the 产出 drawer's copy of an answer: the person's note never travels
 
 
 def local_answer(choice: str, note: str) -> str:

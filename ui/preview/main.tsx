@@ -66,14 +66,15 @@ function shift<T>(x: T): T {
   return walk(clone(x)) as T
 }
 
-/** GET /outputs/…: the world's answer for this very query (its parameters sorted, as preview_world keyed it). */
+/** GET /outputs/…: the world's answer for this very query (its parameters sorted, as preview_world keyed it); a
+ * round's turns moved to now with the board they belong to. */
 function outputsFor(path: string): unknown {
   const [route, query = ''] = path.slice(API.length).split('?')
   const q = [...new URLSearchParams(query)].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join('&')
   const got = W.outputs?.[`${route}?${q}`] as { __error?: { status: number; code: string; error: string } } | undefined
   if (!got) throw new StubApiError(404, { error: '预览里只有 PAY-9 和 PAY-2 的产出：别的需求要在真的 app 里看', code: 'not_in_preview' })
   if (got.__error) throw new StubApiError(got.__error.status, { error: got.__error.error, code: got.__error.code })
-  return clone(got)
+  return route.endsWith('/turns') ? shift(got) : clone(got)
 }
 
 let settings: Settings = fx.settings()

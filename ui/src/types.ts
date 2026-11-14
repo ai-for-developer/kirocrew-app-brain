@@ -1879,6 +1879,70 @@ export interface FileView {
   text: string
 }
 
+/** What a turn's message was (backend turns.py, default deny). A person's words never travel, the owner's included:
+ * only how long they were. The app's and the bridge's messages as they wrote them down when they sent them. */
+export type TaskView =
+  /** cause: 开工消息，只有编号 · 澄清问题的回答 (the person's note replaced) · 审查会话的开工消息 */
+  | { kind: 'app'; cause: string; text: string }
+  /** cause: 合同 · CI 没过 #n · D-n 已答 / 退回 · 问题没发出 · 问题作废; text: whole or its first line, by its kind */
+  | { kind: 'bridge'; cause: string; text: string }
+  | { kind: 'person'; chars: number; url: string }
+  | { kind: 'hidden'; why: string }
+
+export interface CallView {
+  at: number | null
+  /** 读文件 · 写文件 · 跑命令 · 搜索 · 查知识库 · 其他 */
+  tool: string
+  detail: string | null
+  /** inside the round's time (from its start to its agent's last work on it) */
+  in_round: boolean
+}
+
+/** One session turn a round was done in: its message, the agent's last reply in it and its calls. */
+export interface TurnView {
+  /** 第 n 回合 of its session; null when its message is not in a transcript here, or the transcript was cut */
+  n: number | null
+  at: number
+  until: number | null
+  slot: string | null
+  url: string | null
+  task: TaskView
+  /** the turn's last reply, at most 20 000 characters; null while it is going or when it had none */
+  reply: string | null
+  live: boolean
+  /** at most 400; more_calls left out */
+  calls: CallView[]
+  more_calls: number
+  /** the other nodes this turn also worked on: 也做了 */
+  also: string[]
+}
+
+/** A round whose session this machine cannot read: the team runner's, someone else's, a small requirement's own, brain
+ * reflect's. The page adds Lean's record of the round (its times) to `here`. */
+export interface WhyNot {
+  title: string
+  missing: string | null
+  here: string[]
+  do: string | null
+  /** when the round asked for approval; null when it did not */
+  asked: number | null
+}
+
+/** GET /outputs/{repo}/{key}/turns?node&round */
+export interface NodeTurns {
+  node: NodeId
+  round: number | null
+  run: RunKey | null
+  turns: TurnView[]
+  why_not: WhyNot | null
+  /** no turn to show and no card: why, in plain words */
+  why: string | null
+  /** the time a call is lit in: from the round's start to its agent's last work on it (its request, or its end) */
+  lit: { from: number; to: number } | null
+  /** 用时 (the round's span) always; 回合 and 工具调用 only when its turns are readable here */
+  meta: { took: number | null; turns: number | null; calls: number | null }
+}
+
 /** A trace's numbers of one run (brain-kit trace family numbers): null when not known. */
 export interface FamilyNumbers {
   stages_done: number | null

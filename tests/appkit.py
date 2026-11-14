@@ -95,6 +95,14 @@ class FakeGateway:
     async def messages(self, key, limit=120):
         return list(self.msgs[key])[-limit:]
 
+    async def page(self, key, before=None, limit=500):
+        """KiroCrew 0.11.2's paged read: at most 500 rows ending at row *before*; where the page before them ends."""
+        rows = self.msgs[key]
+        end = len(rows) if before is None else max(0, min(before, len(rows)))
+        start = max(0, end - min(limit, 500))
+        self.calls.append(("page", key, before))
+        return list(rows[start:end]), (start if start > 0 else None)
+
     async def stop(self, key):
         self.calls.append(("stop", key))
         self.slot_rows[key]["running"] = False

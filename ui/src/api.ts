@@ -22,6 +22,8 @@ export const paths = {
   outputs: (repo: string, key: string, node: string, round: number | null) =>
     `${BASE}/outputs/${enc(repo)}/${enc(key)}?node=${enc(node)}${round ? `&round=${round}` : ''}`,
   /** 产出: one file at a commit (or pinned in the worktree), its text or its change from base */
+  outputsTurns: (repo: string, key: string, node: string, round: number | null) =>
+    `${BASE}/outputs/${enc(repo)}/${enc(key)}/turns?node=${enc(node)}${round ? `&round=${round}` : ''}`,
   outputsFile: (repo: string, key: string, f: { ref: string; base: string | null; path: string; view: 'source' | 'diff'; pin: string | null }) =>
     `${BASE}/outputs/${enc(repo)}/${enc(key)}/file?${new URLSearchParams({ ref: f.ref, path: f.path, view: f.view, ...(f.base ? { base: f.base } : {}), ...(f.pin ? { pin: f.pin } : {}) })}`,
   session: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/session`,

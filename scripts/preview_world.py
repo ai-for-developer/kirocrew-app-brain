@@ -20,7 +20,9 @@ The world (times relative to 2026-11-08 14:00 UTC, the fixtures' `at`; the previ
       PAY-11 退款大需求 split into three small ones (大需求拆成小需求): PAY-12 api merged into its branch, PAY-13 web
       bob builds, PAY-14 jobs 待认领 (it waits for web). PAY-16 本机 · waits for its INCEPTION approval, the session
       quiet (the design's Scenario A). PAY-9 on the runner · its release sent back once by the product (D-2), asked
-      again after two CI fixes, waits for the product's acceptance (D-3; Scenario B, the mockup's story).
+      again after two CI fixes, waits for the product's acceptance (D-3; Scenario B, the mockup's story). Its local
+      half's session is on alice's machine (scripts/preview_session.py), so the 产出 drawer's 它的回复 · 接到的任务 ·
+      做了什么 show its turns there, and its runner rounds the card that says where theirs are.
   shop-web (r2): brain-kit not installed yet.
   shop-order (r3, GitLab shop/shop-order): ORD-1 … ORD-9 merged over ten weeks (most unattended; ORD-8 handed over
       twice: its first run stopped once its question was answered), ORD-10 running now.
@@ -29,7 +31,8 @@ The world (times relative to 2026-11-08 14:00 UTC, the fixtures' `at`; the previ
   和队友同步 (progress.py): PAY-1's push at its last checkpoint was refused (someone pushed to its branch); shop-pay
       fetched 3 minutes ago, shop-order's last fetch could not reach GitLab.
 
-Run it after changing board.py, detail.py or the fixtures it reads: `python3 scripts/preview_world.py`.
+Run it after changing board.py, detail.py, outputs.py, turns.py or the fixtures it reads:
+`python3 scripts/preview_world.py`.
 """
 
 from __future__ import annotations
@@ -73,8 +76,10 @@ crewcheck = importlib.import_module("_brainapp_backend.core.crewcheck")
 repo_mod = importlib.import_module("_brainapp_backend.core.repo")
 progress = importlib.import_module("_brainapp_backend.core.progress")
 outputs = importlib.import_module("_brainapp_backend.core.outputs")
+turns_mod = importlib.import_module("_brainapp_backend.core.turns")
 AppError = importlib.import_module("_brainapp_backend.core.httpkit").AppError
 import preview_docs  # noqa: E402  (PAY-9's and PAY-2's documents and code, next to this file)
+import preview_session  # noqa: E402  (PAY-9's session on alice's machine)
 store = importlib.import_module("_brainapp_backend.core.store")
 roster_mod = importlib.import_module("_brainapp_backend.core.roster")
 settings_mod = importlib.import_module("_brainapp_backend.core.settings")
@@ -198,6 +203,7 @@ class Req:
         self.committed: dict[str, str] = {}                     # each document as its last real commit holds it
         # (stage, unit) -> the versions its document goes through, each a text or made from the Req when written
         self.drafts: dict[tuple[str, str | None], list] = {}
+        self.session: dict | None = None    # its session's transcript on this machine (preview_session), with its cwd
         self.clone("%s-mbp" % (owner or "team"))
 
     def clone(self, host: str, n: int = 0) -> None:
@@ -306,10 +312,11 @@ class Req:
                    **self._doc(kind, None, at))
         self._human(at, "rejection", kind, who)
 
-    def turn(self, at: float, session: str = "s-1") -> None:
-        """The person typed in the session (Lean's UserPromptSubmit hook): the session's first prompt is its task."""
+    def turn(self, at: float, session: str = "s-1", text: str | None = None) -> None:
+        """A message arrived in the session (Lean's UserPromptSubmit hook: the person's, or the app's kickoff): the
+        sha256 of *text*, when the story has its transcript."""
         self._lean(at, "HUMAN_TURN", session=session, turn=sum(1 for e in self.events if e["event"] == "HUMAN_TURN") + 1,
-                   chars=40)
+                   chars=len(text) if text else 40, **({"sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()} if text else {}))
 
     def blocked(self, at: float, gate: str, path: str) -> None:
         self._lean(at, "BLOCKED", gate=gate, path=path, tool="fs_write")
@@ -1042,11 +1049,13 @@ def outputs_key(path: str, q: dict) -> str:
 
 
 def drawer_payloads(r: Req, rid: str, keep: dict) -> dict[str, dict]:
-    """The 产出 drawer's answers for *r* (GET /outputs/{repo}/{key}?node&round and …/file), made by
+    """The 产出 drawer's answers for *r* (GET /outputs/{repo}/{key}?node&round, …/file and …/turns), made by
     backend/core/outputs.py over its real commits from the board's own fold, for every round of every stage with a
-    lane and every way the page reads each file (源码, 改动 from each version it offers); a refusal as the route's error."""
+    lane and every way the page reads each file (源码, 改动 from each version it offers); and by backend/core/turns.py
+    over its session's transcript (Req.session) for the same rounds. A refusal as the route's error."""
     f = outputs.Fold(reader=outputs.GitReader(repo_mod.Git(str(r.scratch.path))), intent=r.intent, branch=r.branch,
-                     nodes=tuple(keep["nodes"]), commits=tuple(keep["commits"]), changes=changes(r))
+                     nodes=tuple(keep["nodes"]), commits=tuple(keep["commits"]), changes=changes(r),
+                     runs=tuple(keep["runs"]), turns=tuple(keep["turns"]))
     out: dict[str, dict] = {}
     base = "/outputs/%s/%s" % (rid, r.key)
 
@@ -1068,6 +1077,10 @@ def drawer_payloads(r: Req, rid: str, keep: dict) -> dict[str, dict]:
                 for view, b in ways if x["ref"] else []:
                     q = {"ref": x["ref"], "path": x["path"], "view": view, "base": b, "pin": x["pin"]}
                     put(base + "/file", q, lambda q=q: outputs.file_view(f, outputs.file_query(q)))
+            nq = outputs.node_query(n.id, str(rnd.n))
+            slots = [turns_mod.Slot(str(s["slot"]), str(s["url"]), r.session["cwd"], False, r.session["rows"], True,
+                                    r.session["sent"]) for s in turns_mod.sessions_to_read(f, nq) if r.session]
+            put(base + "/turns", {"node": n.id, "round": str(rnd.n)}, lambda: turns_mod.turn_views(f, nq, slots, r.key, T0, service.basic_scrub))
     return out
 
 
@@ -1408,26 +1421,31 @@ def world(scratch: Path) -> None:
         h_, m_ = hm.split(":")
         return T0 - ((16 * 60 + 15) - (int(h_) * 60 + int(m_))) * M
     p9 = Req("r1", "PAY-9", "退款通知短信", "alice", "refund-sms", "261108-refund-sms", project="shop/shop-pay")
+    wt9 = "/Users/alice/workplace/brain-app/shop-pay/refund-sms"
     p9.scratch = DrawerRepo(scratch / "PAY-9")
     preview_docs.pay9(p9)
     p9.claim_at, p9.start_at = at9("09:40"), at9("10:05")
-    p9.app += [app_event(p9.start_at, "在 app 里开工", "工作区 /Users/alice/workplace/brain-app/shop-pay/refund-sms，分支 %s" % p9.branch),
+    p9.app += [app_event(p9.start_at, "在 app 里开工", "工作区 %s，分支 %s" % (wt9, p9.branch)),
                app_event(p9.start_at + 20, "开了本机会话", store.TRUSTED)]
     p9.skip_phase(p9.start_at + 20, "ideation", NOT_REQUESTED)
     p9.stage(p9.start_at + 30, "requirements", "started")
     p9.draft(p9.start_at + 30, "requirements")
-    p9.turn(p9.start_at + 31)
+    kickoff9 = intake.kickoff(p9.key, p9.branch, p9.intent, [])
+    p9.turn(p9.start_at + 31, text=kickoff9)
     p9.stage(p9.start_at + 50, "reverse-engineering", "skipped", note="新功能，代码已经读过")
     p9.stage(at9("10:06") + 2, "application-design", "started")
     p9.draft(at9("10:06") + 2, "application-design")
     p9.stage(at9("10:19"), "requirements", "done", note="需求写好了：退款成功以后给用户发短信，5 条验收标准")
     p9.stage(at9("10:19") + 30, "user-stories", "skipped", note="只有一类用户")
-    p9.turn(at9("10:21"))
+    p9.turn(at9("10:21"), text=preview_session.ANSWER)
     p9.stage(at9("10:31"), "application-design", "done", note="短信走统一通知服务：退款成功事件触发，失败重试三次")
     inc = p9.request(at9("10:36"), "INCEPTION")
     p9.commit(at9("10:41"), "person", "PAY-9：需求和设计", records=True, short="a1c3e09",
               paths=(p9.doc("requirements"), p9.doc("application-design")))
-    p9.turn(at9("10:52"))
+    line9 = "approve INCEPTION %s" % inc[:8]
+    p9.turn(at9("10:52"), text=line9)
+    p9.session = dict(preview_session.pay9(lambda hms: at9(hms[:5]) + int(hms[6:8] or 0), wt9, p9.intent, kickoff9, line9),
+                      cwd=wt9)
     p9.approve(at9("10:52") + 1, "INCEPTION", inc)
     p9.stage(at9("10:52") + 30, "units", "started")
     p9.draft(at9("10:52") + 30, "units")

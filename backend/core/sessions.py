@@ -51,13 +51,36 @@ TRANSIENT = re.compile(r"transient|5\d\d|runtime failed|timed? ?out|overloaded|r
 HISTORY = 400
 STATS_EVERY = 5         # a tracked slot's whole transcript (credits, turns) is read every this many polls
 STATS_LIMIT = 1000      # rows read for a slot's stats
+TRANSCRIPT_PAGES = 40   # pages of a transcript the 产出 drawer reads (KiroCrew's 500 rows each)
 _FIELDS = ("id", "task", "parent_session_key", "slot", "title", "folder", "cwd", "model", "conv_root", "send_ids",
            "requested", "started", "sent_at", "done", "queued", "queued_reason", "result", "streaming_text", "error",
            "user_stopped", "turns", "tool_count", "last_tool", "last_activity", "stalled", "credits", "calls",
            "resends", "seen_busy", "idle", "missing", "sig", "agent", "agent_kind", "nudges", "root_folder",
            "project_dir", "slot_name", "first_send_id", "strict_agent", "resend_ok", "nudge_ok", "trust_ok", "kind",
-           "key", "memory_mode")
+           "key", "memory_mode", "shown")
 KNOWLEDGE_TOOL = "local_knowledge_search"  # kirocrew-core's knowledge search: shown as 查知识库
+
+# What a bridge message into a runner session shows on the 产出 drawer, by the words brain-kit's bridge starts each kind
+# with (bridge/handoff.py message; decisions.py answer_message and the notices): its cause, and whether it is shown
+# whole. The hand-over is ids and hashes only; an answer's later lines carry the person's note and a CI notice's quote a
+# CI log, so only their first line is shown. Any other message is not shown at all (default deny).
+TASK_KINDS: tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], str], bool], ...] = (
+    (re.compile(r"接手合同 "), lambda m: "合同", True),
+    (re.compile(r"CI 没过：MR 的流水线 #(\d+)"), lambda m: "CI 没过 #" + m.group(1), False),
+    (re.compile(r"决策 (D-\d+) 已答（[^）\n]*）：(\S+?)。"), lambda m: m.group(1) + (" 退回" if m.group(2) == "reject" else " 已答"),
+     False),
+    (re.compile(r"问题没发出："), lambda m: "问题没发出", False),
+    (re.compile(r"问题作废："), lambda m: "问题作废", False),
+)
+
+
+def bridge_shown(message: str) -> dict[str, str] | None:
+    """What the 产出 drawer shows of a bridge message (TASK_KINDS), or None."""
+    for rx, cause, whole in TASK_KINDS:
+        m = rx.match(message)
+        if m:
+            return {"by": "bridge", "cause": cause(m), "text": message if whole else message.split("\n", 1)[0]}
+    return None
 
 
 def _num(val: Any, default: float = 0) -> float:
@@ -176,6 +199,9 @@ class SessionInfo:
         self.kind = ""         # local | runner (brain sessions)
         self.key = ""          # the requirement key or run id it belongs to
         self.memory_mode = "incognito"
+        # what the 产出 drawer shows of this message, set by the code that wrote it ({by, cause, text}); None: nothing
+        # (default deny: a message nobody vouched for, a person's words inside it, a message written before this field)
+        self.shown: dict[str, str] | None = None
         for k, v in kw.items():
             setattr(self, k, v)
 
@@ -187,7 +213,7 @@ class SessionInfo:
         return cls(**{k: d[k] for k in _FIELDS if k in d})
 
 
-def _tool_call(m: dict[str, Any], scrub: Callable[[str], str]) -> dict[str, Any]:
+def tool_call(m: dict[str, Any], scrub: Callable[[str], str]) -> dict[str, Any]:
     meta = m.get("meta") if isinstance(m.get("meta"), dict) else {}
     name = str(meta.get("tool_name") or "") or "tool"
     detail = str(m.get("content") or "").replace("🔧", "").strip()
@@ -197,7 +223,8 @@ def _tool_call(m: dict[str, Any], scrub: Callable[[str], str]) -> dict[str, Any]
     except ValueError:
         args = None
     if isinstance(args, dict):
-        for k in ("command", "path", "file_path", "pattern", "query"):
+        edit = name in ("write", "fs_write") or meta.get("kind") == "edit"     # an edit's command is create / strReplace
+        for k in ("path", "file_path", "command") if edit else ("command", "path", "file_path", "pattern", "query"):
             if isinstance(args.get(k), str) and args[k].strip():
                 detail = args[k]
                 break
@@ -318,11 +345,13 @@ class SessionManager:
         self._dirty = True
         return info
 
-    async def continue_conversation_async(self, conv_id: str, task: str, *, parent_session_key: str, **_: Any) -> SessionInfo:
-        """The next turn in the session of *conv_id* (a later message keeps the session's whole conversation)."""
+    async def continue_conversation_async(self, conv_id: str, task: str, *, parent_session_key: str,
+                                          shown: dict[str, str] | None = None, **_: Any) -> SessionInfo:
+        """The next turn in the session of *conv_id* (a later message keeps the session's whole conversation). *shown*:
+        what the 产出 drawer may show of *task* (SessionInfo.shown)."""
         root = self._infos.get(conv_id)
         info = SessionInfo(id=PREFIX + secrets.token_hex(5), task=task, parent_session_key=parent_session_key,
-                           requested=self.now(), conv_root=conv_id)
+                           requested=self.now(), conv_root=conv_id, shown=shown)
         self._infos[info.id] = info
         self._dirty = True
         if root is None or not root.slot:
@@ -421,6 +450,26 @@ class SessionManager:
             if c is not None:
                 out[i.key] = round(out.get(i.key, 0.0) + c, 3)
         return out
+
+    async def transcript(self, slot: str) -> tuple[list[dict[str, Any]], bool]:
+        """A slot's whole transcript, oldest first, read a page at a time from its newest row back; and whether it is
+        whole (past TRANSCRIPT_PAGES pages its oldest rows are left out). A row added while it is read is after the
+        first page's end, so nothing is read twice or skipped."""
+        pages: list[list[dict[str, Any]]] = []
+        before: int | None = None
+        for _ in range(TRANSCRIPT_PAGES):
+            page, nxt = await self.gw.page(slot, before)
+            pages.append(page)
+            if nxt is None:
+                return [m for p in reversed(pages) for m in p], True
+            if before is not None and nxt >= before:   # a cursor that does not move back: stop rather than loop
+                break
+            before = nxt
+        return [m for p in reversed(pages) for m in p], False
+
+    def sent(self, slot: str) -> dict[str, dict[str, str] | None]:
+        """What this app showed of each message it sent into *slot*, by sendId (SessionInfo.shown; None: nothing)."""
+        return {sid: i.shown for i in self._infos.values() if i.slot == slot for sid in i.send_ids}
 
     # ---- opening, sending, watching -------------------------------------------------------------------- #
 
@@ -614,7 +663,7 @@ class SessionManager:
                 mine = idx
                 break
         after = msgs[mine + 1:] if mine is not None else []
-        calls = [_tool_call(m, self.scrub) for m in after if m.get("role") == "tool"]
+        calls = [tool_call(m, self.scrub) for m in after if m.get("role") == "tool"]
         replies = [m for m in after if m.get("role") == "assistant" and str(m.get("content") or "").strip()]
         errors = [m for m in after if m.get("role") == "error"]
         info.calls, info.tool_count, info.turns = calls[-HISTORY:], len(calls), len(replies)
@@ -716,7 +765,7 @@ class SessionManager:
         info = SessionInfo(id=PREFIX + secrets.token_hex(5), task=message, parent_session_key=root.parent_session_key,
                            requested=self.now(), conv_root=root.id, first_send_id=send_id)
         self._inherit(info, root)
-        info.resend_ok, info.nudge_ok = False, False
+        info.resend_ok, info.nudge_ok, info.shown = False, False, bridge_shown(message)
         self._infos[info.id] = info
         self._dirty = True
         await self._send(info)
