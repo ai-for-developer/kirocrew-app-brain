@@ -10,13 +10,14 @@ commit before it. ``GET /outputs/{repo}/{key}/file?ref&base&path&view&pin`` (fil
 Both read the board's own fold (Fold: what Service._board_sync folded last for the requirement), never a second one,
 and only what it names: a path none of the requirement's commits changed and Lean recorded for none of its rounds
 (_own_paths), or a ref or a base outside its commits and their parents (AllowedRefs), is 404, never fetched. Files
-are read from commits only (mrdesc_view.committed_file: a regular blob of at most 4 MB; a symlink or a submodule is
-refused). The one exception is a local run's document waiting for approval before it is committed (Lean commits
-documents with the code): read from this machine's worktree only when the path is the stage table's document of one
-of the requirement's nodes, a local round of it recorded that very sha256, no part of the path is a symlink, and the
-bytes hash to it (pinned_file). A diff never runs a diff driver or a textconv the repo's .gitattributes names. Lean's
-ledgers are never listed nor read: they hold what people typed in their sessions. Emails become brain-kit's
-pseudonyms (G-<6 hex>) before anything is shown: release.md's approval table carries git emails.
+are read from commits only (mrdesc_view.committed_file: a regular blob of at most 4 MB; a folder, a symlink or a
+submodule is refused, on either side of a diff too). The one exception is a local run's document waiting for approval
+before it is committed (Lean commits documents with the code): read from this machine's worktree only when the path
+is the stage table's document of one of the requirement's nodes, a local round of it recorded that very sha256, no
+part of the path is a symlink, and the bytes hash to it (pinned_file). A diff never runs a diff driver or a textconv
+the repo's .gitattributes names. Lean's ledgers (aidlc-docs/audit, wherever aidlc-docs is) are never listed nor read:
+they hold what people typed in their sessions. Emails become brain-kit's pseudonyms (G-<6 hex>) before anything is
+shown: release.md's approval table carries git emails.
 """
 
 from __future__ import annotations
@@ -47,7 +48,7 @@ HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 NODE_RE = re.compile(r"^[a-z][a-z-]{0,39}(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$")
 ROUND_RE = re.compile(r"^[1-9][0-9]{0,2}$")
-HIDDEN = re.compile(r"^aidlc-docs/audit/")
+HIDDEN = re.compile(r"(?:^|/)aidlc-docs/audit(?:/|$)")      # Lean's ledgers, wherever aidlc-docs is
 # brain-kit trace.EMAIL_RE and trace.pseudonym, so a person is the same G-xxxxxx here as everywhere on the board
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*")
 LANG = {"md": "markdown", "markdown": "markdown", "py": "python", "ts": "typescript", "tsx": "typescript",
@@ -87,7 +88,7 @@ def safe_path(p: Any) -> str:
     if not isinstance(p, str) or not p or len(p) > PATH_MAX or p.startswith("/") or "\\" in p \
             or any(ord(c) < 32 or ord(c) == 127 for c in p) or any(x in ("", ".", "..") for x in p.split("/")):
         raise AppError(BAD_PATH, "invalid_path")
-    if HIDDEN.match(p):
+    if HIDDEN.search(p):
         raise AppError(NOT_SHOWN, "not_shown", 403)
     return p
 
@@ -273,7 +274,7 @@ def _declared(fold: Fold, n: stages.Node, r: stages.Round) -> List[Tuple[str, Op
     if doc and doc not in got and any(doc in _paths(fold, s) for s in r.commits):
         got[doc] = None
     order = sorted(got, key=lambda p: (p != doc, p))
-    return [(p, got[p]) for p in order if not HIDDEN.match(p)]
+    return [(p, got[p]) for p in order if not HIDDEN.search(p)]
 
 
 def _in_unit(fold: Fold, n: stages.Node, path: str) -> bool:
@@ -339,7 +340,7 @@ def _others(fold: Fold, allowed: AllowedRefs, n: stages.Node, r: stages.Round, s
     for sha in r.commits:
         for ch in fold.changes.get(sha) or []:
             p = str(ch.get("path") or "")
-            if not p or p in skip or HIDDEN.match(p) or not _in_unit(fold, n, p):
+            if not p or p in skip or HIDDEN.search(p) or not _in_unit(fold, n, p):
                 continue
             had = by.get(p)
             st = str(ch.get("status") or "M")
@@ -467,25 +468,26 @@ def _text(raw: bytes) -> Tuple[str, bool, bool]:
     return s[:TEXT_MAX], False, len(s) > TEXT_MAX
 
 
-def _blob_or_refuse(rd: GitReader, sha: str, path: str) -> bytes:
+def _file_or_refuse(rd: GitReader, sha: str, path: str, absent_ok: bool = False) -> None:
+    """*path* at *sha* is a file the drawer reads: a side of a diff may lack it (added, deleted). A folder is no file
+    (its diff would show every file under it), a symlink or a submodule is refused."""
     e = rd.entry(sha, path)
+    if e is None and absent_ok:
+        return
     if e is None or e[0] == "040000":
         raise AppError(MISSING, "missing", 404)
     if e[0] == "120000":
         raise AppError(SYMLINK, "symlink", 403)
     if e[0] == "160000":
         raise AppError(SUBMODULE, "submodule", 403)
+
+
+def _blob_or_refuse(rd: GitReader, sha: str, path: str) -> bytes:
+    _file_or_refuse(rd, sha, path)
     raw = rd.blob(sha, path)
     if raw is None:
         raise AppError(TOO_BIG, "too_big", 413)
     return raw
-
-
-def _no_link(rd: GitReader, sha: str, path: str) -> None:
-    """A side of a diff may lack the file (added, deleted), never be a symlink or a submodule."""
-    e = rd.entry(sha, path)
-    if e is not None and e[0] in ("120000", "160000"):
-        raise AppError(SYMLINK if e[0] == "120000" else SUBMODULE, "symlink" if e[0] == "120000" else "submodule", 403)
 
 
 def _added_diff(path: str, raw: bytes) -> str:
@@ -522,7 +524,7 @@ def file_view(fold: Fold, q: FileQuery) -> Dict[str, Any]:
         text, binary, cut = _text(raw)
         return dict(out, text=text, binary=binary, truncated=cut, size=len(raw))
     if base is not None:
-        _no_link(rd, base, path)
+        _file_or_refuse(rd, base, path, absent_ok=True)
         if pinned:
             old = rd.blob(base, path) or b""
             if b"\0" in old[:BINARY_PROBE] or b"\0" in raw[:BINARY_PROBE]:
@@ -531,7 +533,7 @@ def file_view(fold: Fold, q: FileQuery) -> Dict[str, Any]:
                 old.decode("utf-8", "replace").splitlines(True), raw.decode("utf-8", "replace").splitlines(True),
                 "a/" + path, "b/" + path))
         else:
-            _no_link(rd, ref, path)
+            _file_or_refuse(rd, ref, path, absent_ok=True)
             got = rd.diff(base, ref, path)
             if got is None:
                 raise AppError(NO_DIFF, "no_diff", 404)

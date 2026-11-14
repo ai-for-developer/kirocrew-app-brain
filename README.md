@@ -348,15 +348,15 @@ The app runs as the same OS user as the agent sessions, and agents have a shell.
   a pin 64 hex. A `path` must be one of the requirement's files, a path its commits changed or one Lean recorded for
   its rounds: any other is 404, whatever commit holds it. A `ref` or `base` must be one of the run branch's commits or
   a first parent of one: any other is 404, never fetched. A file is read from a commit only (`mrdesc_view.tree_entry`
-  with literal pathspecs, then `committed_file`: a regular blob of at most 4 MB; a symlink or a submodule is refused).
-  A diff is `git diff --no-ext-diff --no-textconv`, so an agent-written `.gitattributes` cannot run a diff driver or a
-  textconv. The one read outside a commit is a local round's document waiting for approval: only at the stage table's
-  document path, only for a sha256 a local round of that stage recorded, each part of the path opened with
-  `O_NOFOLLOW` under the worktree's real path, and only when the bytes hash to that sha256 (else 409: 到会话里看). Lean's
-  ledgers (`aidlc-docs/audit/`) are never listed or read: they hold what people typed. Emails (release.md's approval
-  table has git emails) become brain-kit's pseudonyms (G-<6 hex>) before anything is sent, and the text goes through
-  the scrubber. `tests/test_outputs.py` and `tests/test_outputs_guard.py` prove each of these on real git
-  repositories.
+  with literal pathspecs, then `committed_file`: a regular blob of at most 4 MB; a folder, a symlink or a submodule is
+  refused, on either side of a diff too). A diff is `git diff --no-ext-diff --no-textconv`, so an agent-written
+  `.gitattributes` cannot run a diff driver or a textconv. The one read outside a commit is a local round's document
+  waiting for approval: only at the stage table's document path, only for a sha256 a local round of that stage
+  recorded, each part of the path opened with `O_NOFOLLOW` under the worktree's real path, and only when the bytes
+  hash to that sha256 (else 409: 到会话里看). Lean's ledgers (`aidlc-docs/audit` and anything under it, wherever
+  `aidlc-docs` is) are never listed or read: they hold what people typed. Emails (release.md's approval table has git
+  emails) become brain-kit's pseudonyms (G-<6 hex>) before anything is sent, and the text goes through the scrubber.
+  `tests/test_outputs.py` and `tests/test_outputs_guard.py` prove each of these on real git repositories.
 - The brain-kit checkout and the app directory run inside the gateway: in production they must not be writable by
   the agents' OS user. Team mode refuses to start unless bridge.json, runnerd.json, allowed_signers and the
   identities file are owned by another user and read-only to the app (`dev_same_user` skips this for a local trial).

@@ -133,3 +133,34 @@ def test_a_folder_s_diff_never_shows_a_ledger(tmp_path):
         if BOB_WORDS in json.dumps(resp.body, ensure_ascii=False):
             leaked[p] = (resp.status, [x for x in resp.body["text"].splitlines() if "bob" in x])
     assert leaked == {}
+
+
+# ---------------------------------------------------------------- folders and Lean's ledgers
+
+def test_a_folder_lean_recorded_for_a_round_is_never_read_nor_diffed(tmp_path):
+    repo = git_repo(tmp_path / "pay")
+    base = commit_file(repo, "README.md", "x\n")
+    c1 = commit_file(repo, "apps/pay/notes.md", "draft\n", "notes")
+    c2 = commit_file(repo, "apps/pay/" + LEDGER, '{"data":{"words":"%s"}}\n' % BOB_WORDS, "records")
+    f = fold(repo, [node("review", [rnd(1, [c1, c2], [("apps/pay", h("draft\n"))])])], [c1, c2])
+    d = drawer(tmp_path, f)
+    for q in ({"view": "source"}, {"view": "diff", "base": base}, {"view": "diff", "base": c1}, {"view": "diff"}):
+        resp = d.file(ref=c2, path="apps/pay", **q)
+        assert (resp.status, resp.body.get("code")) == (404, "missing"), (q, resp.body)
+
+
+def test_lean_ledgers_are_never_listed_nor_read_at_any_depth_with_or_without_a_slash(tmp_path):
+    repo = git_repo(tmp_path / "pay")
+    commit_file(repo, "README.md", "x\n")
+    nested = "apps/pay/" + LEDGER
+    c1 = commit_file(repo, nested, '{"data":{"words":"%s"}}\n' % BOB_WORDS, "records")
+    c2 = commit_file(repo, LEDGER, '{"data":{"words":"%s"}}\n' % BOB_WORDS, "records")
+    rounds = [rnd(1, [c1, c2], [("aidlc-docs/audit", h("x")), ("apps/pay/aidlc-docs/audit", h("x"))])]
+    f = fold(repo, [node("review", rounds)], [c1, c2])
+    d = drawer(tmp_path, f)
+    listed = d.node(node="review").body
+    assert listed["files"] == [] and BOB_WORDS not in json.dumps(listed, ensure_ascii=False), listed["files"]
+    for p in (nested, "aidlc-docs/audit", "apps/pay/aidlc-docs/audit"):
+        for v in ("source", "diff"):
+            resp = d.file(ref=c2, path=p, view=v)
+            assert (resp.status, resp.body.get("code")) == (403, "not_shown"), (p, v, resp.body)
