@@ -70,7 +70,7 @@ describe('replayClock', () => {
     expect(clk.toPlay(START)).toBe(0)
     expect(clk.toPlay(BEGIN)).toBe(GAP_S)
     expect(clk.toPlay(END) - clk.toPlay(MERGE)).toBe(GAP_S)
-    expect(clk.total).toBe(22080)
+    expect(clk.total).toBe(22140)
     expect(clk.total).toBeLessThan(END - START)
   })
 
@@ -214,7 +214,7 @@ describe('replayAt', () => {
       prev = now
     }
     expect(prev).toEqual(counts(b))
-    expect(prev).toMatchObject({ events: 52, belt: 12, passed: 9, rounds: 2, steps: 4 })
+    expect(prev).toMatchObject({ events: 54, belt: 14, passed: 9, rounds: 2, steps: 4 })
   })
 
   it('shows a check cell only once it is decided, with its final status', () => {

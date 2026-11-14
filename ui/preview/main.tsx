@@ -66,6 +66,16 @@ function shift<T>(x: T): T {
   return walk(clone(x)) as T
 }
 
+/** GET /outputs/…: the world's answer for this very query (its parameters sorted, as preview_world keyed it). */
+function outputsFor(path: string): unknown {
+  const [route, query = ''] = path.slice(API.length).split('?')
+  const q = [...new URLSearchParams(query)].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join('&')
+  const got = W.outputs?.[`${route}?${q}`] as { __error?: { status: number; code: string; error: string } } | undefined
+  if (!got) throw new StubApiError(404, { error: '预览里只有 PAY-9 和 PAY-2 的产出：别的需求要在真的 app 里看', code: 'not_in_preview' })
+  if (got.__error) throw new StubApiError(got.__error.status, { error: got.__error.error, code: got.__error.code })
+  return clone(got)
+}
+
 let settings: Settings = fx.settings()
 let crewFixed = false
 /** The world the preview shows (scripts/preview_world.py made it with the backend's own code: the rows' states and
@@ -89,6 +99,9 @@ const W = world as unknown as {
   /** 先检查's stop lines: brain-kit's own (its dry run: the picks 机密 / 不确定 / 绝密, the partner guide marked 机密,
    * gate 3) and the page's words for each, by "<pick>|<line>" (intake.gate_text) */
   intake_gates?: { raw: Record<'confidential' | 'unsure' | 'secret' | 'partner' | 'business', string>; said: Record<string, string> }
+  /** the 产出 drawer's answers (backend/core/outputs.py over PAY-9's and PAY-2's real commits), by the route's path and
+   * its query sorted (preview_world.outputs_key); a refusal as __error */
+  outputs?: Record<string, unknown>
 }
 let repos: RepoInfo[] = flags.has('norepos') ? [] : clone(W.status.repos)
 
@@ -318,6 +331,7 @@ setApiRoutes({
   [`GET ${API}/status`]: () => status(),
   [`GET ${API}/requirements/*`]: (_b, path) => shift(detailFor(path)),
   [`GET ${API}/board/*`]: (_b, path) => shift(simulated(boardFor(path))),
+  [`GET ${API}/outputs/*`]: (_b, path) => outputsFor(path),
   [`GET ${API}/settings`]: () => clone(settings),
   [`GET ${API}/crew`]: () => ({ ...status().crew }),
   [`GET ${API}/todo`]: () => shift(todo()),

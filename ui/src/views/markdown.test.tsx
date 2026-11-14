@@ -57,4 +57,19 @@ describe('Markdown as text', () => {
     expect([...cell.querySelectorAll('code')].map((c) => c.textContent)).toEqual(['multiply(0, 7)', 'multiply(0, -7)', 'multip'])
     expect(md.textContent).not.toContain('`')
   })
+
+  test('document mode: each heading level, lists inside lists, task boxes and quotes; still only React elements', () => {
+    const text = ['# 需求', '## 验收标准', '### 退款', '- [x] AC-1 退款成功发短信', '- [ ] AC-2 旧订单不发', '  - 只看 2026 年以后的', '    1. 先查订单',
+      '> 产品说：先用默认模板', '<img src=x onerror=alert(1)>'].join('\n')
+    const { container } = render(<Markdown text={text} testid="md" doc />)
+    const md = screen.getByTestId('md')
+    expect(['h3', 'h4', 'h5'].map((h) => md.querySelector(h)?.textContent)).toEqual(['需求', '验收标准', '退款'])
+    const boxes = within(md).getAllByRole('checkbox') as HTMLInputElement[]
+    expect(boxes.map((b) => [b.checked, b.disabled])).toEqual([[true, true], [false, true]])
+    expect(md.querySelector('ul > li.is-task ul > li')?.firstChild?.textContent).toBe('只看 2026 年以后的')
+    expect(md.querySelector('ul ul ol > li')?.textContent).toBe('先查订单')
+    expect(md.querySelector('blockquote')?.textContent).toBe('产品说：先用默认模板')
+    expect(container.querySelector('img')).toBeNull()
+    expect(md.textContent).toContain('<img src=x onerror=alert(1)>')
+  })
 })

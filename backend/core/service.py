@@ -19,6 +19,7 @@ from typing import Any, Callable
 
 from . import (bk, brainview, crewcheck, deliveries, detail, family, identity, importer, inplace, installer, intake,
                landing, lean_view, mrdesc_view, mrinfo, progress, roster)
+from . import outputs as outputs_mod
 from . import problems, stages
 from . import board as board_mod
 from . import settings as settings_mod
@@ -38,6 +39,7 @@ EVAL_TTL_S = 120.0
 MR_EVERY_S = 30.0
 CREW_EVERY_S = 300.0
 TRACE_TTL_S = 15.0
+FOLD_TTL_S = 10.0     # the 产出 drawer reads the board's last fold; the board polls every 2 s while it is open
 
 
 def basic_scrub(text: str) -> str:
@@ -108,6 +110,7 @@ class Service:
         self.desc = mrdesc_view.DescCache()     # each requirement's 变更说明, by the commits it is made from
         self._subj: dict[tuple, tuple] = {}     # the board's commit subjects and changed files, by the commits asked for
         self._units: dict[tuple, list] = {}     # the units unit-of-work.md plans, by the commit it is read at
+        self._folds: dict[tuple, tuple] = {}    # (repo, key) -> (when, outputs.Fold): the board's last fold, for 产出
         self.who = identity.Who(transport, log=self.log)
         self.families = family.Families()      # brain-kit's listing per repo (大需求 and their 小需求), made in the background
         self.sync = progress.Sync(self.data_dir, self.log)     # pushes at Lean's checkpoints, fetches every few minutes
@@ -959,14 +962,22 @@ class Service:
         sessions = parts["sessions"] if parts.get("sessions") is not None else snap["by"].get(parts.get("scope") or "", [])
         app_events = parts["app_events"] if parts.get("app_events") is not None else (
             self.store.events(parts["scope"]) if parts.get("scope") else [])
+        units = self._planned_units(git, f) if git is not None else []
+        kept: dict[str, Any] = {}
         g = board_mod.build(
             f, d["row"], t, mr=parts.get("mr"), sessions=sessions, app_events=app_events,
             team_decisions=parts.get("decisions") or [], subjects=subjects, changes=changes,
             reflect_refs=self._reflect_refs(git, key, str(cfg.get("default_branch") or "main")) if git is not None else [],
             default_branch=str(cfg.get("default_branch") or "main"), local_only=bool(parts.get("local_only")),
             kit_rows=board_mod.kit_cells(self.crew.get("rows") or [], parts.get("path") or ""),
-            decisions=d["decisions"], brain=d["brain"], me=parts.get("me"), now=self.now(),
-            units=self._planned_units(git, f) if git is not None else [])
+            decisions=d["decisions"], brain=d["brain"], me=parts.get("me"), now=self.now(), units=units, fold=kept)
+        if len(self._folds) > 50:
+            self._folds.clear()
+        self._folds[(rid, key)] = (time.monotonic(), outputs_mod.Fold(
+            reader=outputs_mod.GitReader(git) if git is not None else None, intent=(f.get("run") or {}).get("intent"),
+            branch=d["row"].get("branch"), nodes=tuple(kept["nodes"]), commits=tuple(kept["commits"]),
+            changes=changes, units=tuple(units),
+            worktree=f.get("worktree") if rid != "runner" and f.get("where") == "worktree" else None))
         return {"at": self.now(), "row": d["row"], "branch": d["row"].get("branch"),
                 "base": str(cfg.get("default_branch") or "main"), "started_at": g["started_at"], "ended_at": g["ended_at"],
                 "live": g["live"], "person": g["person"], "phases": g["phases"], "nodes": g["nodes"], "runs": g["runs"],
@@ -981,6 +992,26 @@ class Service:
         """需求看板: polled every 2 s; the trace, the facts and the 变更说明 come from their caches."""
         snap = self._sessions_snapshot()
         return scrub_tree(await asyncio.to_thread(self._board_sync, rid, key, snap), self.scrub)
+
+    def _fold(self, rid: str, key: str, snap: dict[str, Any]) -> outputs_mod.Fold:
+        """The board's last fold of the requirement, folded again (by the board's own code) when it is older than
+        FOLD_TTL_S: the drawer never folds on its own."""
+        got = self._folds.get((rid, key))
+        if got is None or time.monotonic() - got[0] > FOLD_TTL_S:
+            self._board_sync(rid, key, snap)
+            got = self._folds[(rid, key)]
+        return got[1]
+
+    async def outputs(self, rid: str, key: str, q: outputs_mod.NodeQuery) -> dict[str, Any]:
+        """产出: one round of one node, its files (outputs.node_output)."""
+        snap = self._sessions_snapshot()
+        return scrub_tree(await asyncio.to_thread(lambda: outputs_mod.node_output(self._fold(rid, key, snap), q)),
+                          self.scrub)
+
+    async def outputs_file(self, rid: str, key: str, q: outputs_mod.FileQuery) -> dict[str, Any]:
+        """产出: one file of it, its text or its change (outputs.file_view)."""
+        snap = self._sessions_snapshot()
+        return scrub_tree(await asyncio.to_thread(lambda: outputs_mod.file_view(self._fold(rid, key, snap), q)), self.scrub)
 
     # ---- sessions and answers ------------------------------------------------------------------------- #
 

@@ -1821,6 +1821,64 @@ export interface ReqBoard {
   rollup: FamilyRollup | null
 }
 
+/** One file a round handed in or changed, as GET /outputs/{repo}/{key}?node&round lists it (backend outputs.py). */
+export interface OutFile {
+  /** repo-relative */
+  path: string
+  /** a declared output (约定它交的: Lean recorded it for the round), else a file its commits changed (其他改动) */
+  output: boolean
+  status: 'A' | 'M' | 'D' | 'R'
+  /** lines, summed over the round's commits; null when not known (a version read from the worktree) */
+  added: number | null
+  removed: number | null
+  /** the commit to read it at (40 hex), 'worktree' for a local document not committed yet (then pin is set), null when
+   * this machine has no commit of that version (why says what to do) */
+  ref: string | null
+  /** the sha256 Lean recorded: the worktree read is refused unless the bytes hash to it */
+  pin: string | null
+  /** the version 改动 compares with: an earlier round's (base_round) or the commit before; null: a new file */
+  base: string | null
+  base_round: number | null
+  /** the versions the node's earlier rounds handed in, newest first: 和第 N 轮比 */
+  vs: { round: number; ref: string }[]
+  why: string | null
+}
+
+export interface NodeOutput {
+  node: NodeId
+  /** null: the node has no round yet */
+  round: number | null
+  run: RunKey | null
+  branch: string | null
+  /** the round's last commit (40 hex); null when it committed nothing */
+  head: string | null
+  /** declared outputs first, then the other files; at most 200 */
+  files: OutFile[]
+  /** files left out past the 200 */
+  more: number
+  /** nothing to list: why, in plain words */
+  why: string | null
+}
+
+/** One file as GET /outputs/{repo}/{key}/file?ref&base&path&view&pin reads it: emails already pseudonyms. */
+export interface FileView {
+  path: string
+  view: 'content' | 'source' | 'diff'
+  /** the commit it was read at, or 'worktree' (pinned) */
+  at: string
+  base: string | null
+  /** read from this machine's worktree because its bytes hash to the sha256 Lean recorded */
+  pinned: boolean
+  /** markdown · python · typescript · … · text */
+  lang: string
+  /** this very version is the one an approval was asked for: 就是请批的那一版 */
+  asked: { kind: GateKind; sha8: string } | null
+  binary: boolean
+  truncated: boolean
+  size: number
+  text: string
+}
+
 /** A trace's numbers of one run (brain-kit trace family numbers): null when not known. */
 export interface FamilyNumbers {
   stages_done: number | null

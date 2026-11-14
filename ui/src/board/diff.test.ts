@@ -114,10 +114,11 @@ describe('diffBoards: one poll', () => {
   })
 
   it('a hand-over flies from the stage it left to its pill on the rail; the bridge’s steps blip there', () => {
-    // board-merged.json (PAY-2): seq 21 the hand-over (from units, skipped there: no box), 22 the bridge took it
+    // board-merged.json (PAY-2): the hand-over (from units, skipped there: no box), then the bridge took it
     const merged = fx.boardMerged()
+    const hand = merged.events.find((e) => e.kind === 'handover')!.seq
     const upTo = (seq: number, from = 'units') => ({ ...merged, events: merged.events.filter((e) => e.seq <= seq).map((e) => (e.kind === 'handover' ? { ...e, from } : e)) })
-    const play = (from?: string) => effects(diffBoards(upTo(20), upTo(22, from)), upTo(22, from), boxes(merged)).items.map((i) => [i.kind, i.from, i.to, i.shape])
+    const play = (from?: string) => effects(diffBoards(upTo(hand - 1), upTo(hand + 1, from)), upTo(hand + 1, from), boxes(merged)).items.map((i) => [i.kind, i.from, i.to, i.shape])
     expect(play('application-design')).toEqual([['handover', 'application-design', 'relay:0', 'comet'], ['accepted', 'relay:0', 'relay:0', 'ring']])
     expect(play()[0]).toEqual(['handover', 'relay:0', 'relay:0', 'ring'])
   })

@@ -45,6 +45,8 @@ export interface StageGraphProps {
   onSession?: (url: string) => void
   /** a gate's open chip: takes the person to where they act (the session, the step), as the board's other chips do */
   onAct?: (node: string, d: WaitDo) => void
+  /** 看产出 from a box's hover card (a round of it: that round), 看文档 from a gate: the 产出 drawer there */
+  onOutputs?: (node: string, round?: number, file?: string) => void
 }
 
 /** A row of the list under the orchestrator box (layout.ts RosterKind), as it is drawn. */
@@ -132,7 +134,7 @@ export function stageInput(b: ReqBoard): StageInput {
   return { phases: b.phases, nodes: b.nodes, runs: b.runs, relays: b.relays, roster: rosterOf(b).map(({ kind, run }) => ({ kind, run })) }
 }
 
-export function StageGraph({ board, lay, focus, onNode, flashes, reducedMotion, feed, quiet = false, onSession, onAct }: StageGraphProps) {
+export function StageGraph({ board, lay, focus, onNode, flashes, reducedMotion, feed, quiet = false, onSession, onAct, onOutputs }: StageGraphProps) {
   const [card, hover] = useHoverCard()
   const head = stageHeadX(lay, board.belt)
   const runs = useMemo(() => new Map<string, Run>(board.runs.map((r) => [r.key, r])), [board.runs])
@@ -195,7 +197,8 @@ export function StageGraph({ board, lay, focus, onNode, flashes, reducedMotion, 
                 onNode={onNode} reducedMotion={reducedMotion} quiet={quiet} onHover={(on) => hover(on ? n.id : null, on ? 300 : 250)} />
             ))}
             {[...chips].map(([id, g]) => (
-              <GateChips key={`gate-${id}`} n={byId.get(id)!} g={g} box={lay.boxes.get(id)!} board={board} onAct={quiet ? undefined : onAct} />
+              <GateChips key={`gate-${id}`} n={byId.get(id)!} g={g} box={lay.boxes.get(id)!} board={board} onAct={quiet ? undefined : onAct}
+                onDoc={quiet || !onOutputs ? undefined : onOutputs} />
             ))}
             {stepWaits.map((n) => (
               <StepChip key={`step-${n.id}`} n={n} box={lay.boxes.get(n.id)!} d={step} review={reviewNext(board.row.waits)} onAct={onAct} />
@@ -212,7 +215,7 @@ export function StageGraph({ board, lay, focus, onNode, flashes, reducedMotion, 
         {cardNode && cardBox && (
           <div key={card} className="kt-ncard" style={cardPlace(cardBox, lay)} data-testid="kt-ncard" role="dialog" aria-label={`${cardNode.title}做了什么`}
             onMouseEnter={() => hover(card, 0)} onMouseLeave={() => hover(null, 200)}>
-            <StageCard n={cardNode} board={board} runs={runs} onSession={quiet ? undefined : onSession} />
+            <StageCard n={cardNode} board={board} runs={runs} onSession={quiet ? undefined : onSession} onOutputs={quiet ? undefined : onOutputs} />
           </div>
         )}
       </Scroller>
@@ -587,13 +590,21 @@ function WaitLine({ g }: { g: Gate }) {
 
 /** Under the box an open gate covers last: a round sent back before (✗ 退回 · D-2), then the one asked now; the open
  * one takes the person to the step (the session, the step strip), as the board's other chips do. */
-function GateChips({ n, g, box, board, onAct }: { n: StageNode; g: Gate; box: StageBox; board: ReqBoard; onAct?: (node: string, d: WaitDo) => void }) {
+function GateChips({ n, g, box, board, onAct, onDoc }: {
+  n: StageNode; g: Gate; box: StageBox; board: ReqBoard; onAct?: (node: string, d: WaitDo) => void
+  onDoc?: (node: string, round?: number, file?: string) => void
+}) {
   const back = n.rounds.filter((r) => r.outcome.kind === 'sent_back' && r.outcome.gate === g.kind).slice(-2)
-  const chips = [
+  // 看文档: the drawer on the first document the gate approves, at the round it was asked (an INCEPTION ask covers two
+  // nodes: the one of that document)
+  const doc = g.docs[0]
+  const docNode = board.nodes.find((x) => x.rounds.some((r) => r.outputs.some((o) => o.path === doc))) ?? n
+  const chips: { text: string; cls: string; tip: string; open: boolean; doc?: boolean }[] = [
     ...back.map((r) => ({ text: `✗ 退回 · ${r.outcome.decision ?? `第 ${r.n} 轮`}`, cls: 'is-back', tip: `第 ${r.n} 轮：${roundWords(r, n, board)}`, open: false })),
     g.state === 'queued'
       ? { text: `排队 · ${g.text ?? '等流水线过了才问'}`, cls: 'is-queued', tip: g.text ?? '', open: false }
       : { text: askWords(g, board), cls: g.who === 'you' ? 'is-mine' : 'is-other', tip: g.line ?? '', open: true },
+    ...(onDoc && doc ? [{ text: '看文档', cls: 'is-doc', tip: `看要批的 ${doc.slice(doc.lastIndexOf('/') + 1)}`, open: false, doc: true }] : []),
   ]
   const widths = chips.map((c) => Math.max(84, Math.round(textWidth(c.text) * 12.6) + 20))
   let x = box.x - (widths.reduce((s, v) => s + v, 0) + 6 * (chips.length - 1)) / 2
@@ -603,7 +614,8 @@ function GateChips({ n, g, box, board, onAct }: { n: StageNode; g: Gate; box: St
       {chips.map((c, i) => {
         const at = x + widths[i] / 2
         x += widths[i] + 6
-        const act = c.open && g.state === 'pending' && onAct ? () => onAct(n.id, gateDo(g)) : undefined
+        const act = c.doc && onDoc ? () => onDoc(docNode.id, docNode === n ? g.round : undefined, doc)
+          : c.open && g.state === 'pending' && onAct ? () => onAct(n.id, gateDo(g)) : undefined
         return (
           <g key={c.text} className={`kt-gate-pill ${c.cls}${act ? '' : ' is-static'}`} transform={`translate(${at},${y})`} role={act ? 'button' : undefined}
             tabIndex={act ? 0 : undefined} aria-label={act ? `${n.title}：${c.text}` : undefined} onClick={act}
@@ -636,7 +648,10 @@ function StepChip({ n, box, d, review, onAct }: { n: StageNode; box: StageBox; d
 
 /** A box's hover card: what it is, its rounds (第 1 轮 · 运行机 · 13:25 · 产品退回（D-2）), the line to type for a gate
  * asked here; 打开会话 when its run's session is on this machine, 看 MR for a gate asked on the MR (neither in a replay). */
-function StageCard({ n, board, runs, onSession }: { n: StageNode; board: ReqBoard; runs: Map<string, Run>; onSession?: (url: string) => void }) {
+function StageCard({ n, board, runs, onSession, onOutputs }: {
+  n: StageNode; board: ReqBoard; runs: Map<string, Run>; onSession?: (url: string) => void
+  onOutputs?: (node: string, round?: number, file?: string) => void
+}) {
   const run = runs.get(n.run ?? '')
   const wait = nodeWait(n, run)
   const g = openGate(n)
@@ -652,19 +667,26 @@ function StageCard({ n, board, runs, onSession }: { n: StageNode; board: ReqBoar
       {n.doing && <p className="kt-ncard-did">{n.doing}</p>}
       {n.rounds.length > 0 && (
         <ol className="kt-ncard-rounds">
-          {n.rounds.map((r) => (
-            <li key={r.n} className={`tone-${ROUND_TONE[r.outcome.kind]}`}>
-              <b>第 {r.n} 轮</b>
-              <span>{[runShort(runs.get(r.run), board), clockAt(r.started, board.at), roundWords(r, n, board)].filter(Boolean).join(' · ')}</span>
-            </li>
-          ))}
+          {n.rounds.map((r) => {
+            const words = [runShort(runs.get(r.run), board), clockAt(r.started, board.at), roundWords(r, n, board)].filter(Boolean).join(' · ')
+            return (
+              <li key={r.n} className={`tone-${ROUND_TONE[r.outcome.kind]}`}>
+                {onOutputs ? (
+                  <button type="button" className="kt-ncard-round" onClick={() => onOutputs(n.id, r.n)} title={`看第 ${r.n} 轮交了什么`}>
+                    <b>第 {r.n} 轮</b><span>{words}</span>
+                  </button>
+                ) : <><b>第 {r.n} 轮</b><span>{words}</span></>}
+              </li>
+            )
+          })}
         </ol>
       )}
       {g?.line && <p className="kt-ncard-facts">要你自己在会话里打：<code>{g.line}</code></p>}
-      {onSession && (session || g?.mr?.url) && (
+      {((onSession && (session || g?.mr?.url)) || (onOutputs && n.rounds.length > 0)) && (
         <div className="kt-ncard-actions">
-          {session && <button type="button" className="kt-btn" onClick={() => onSession(session.url)}>{ACT.openSession}</button>}
-          {g?.mr?.url && <ExtLink href={g.mr.url} className="kt-btn">{ACT.viewMr} ↗</ExtLink>}
+          {onOutputs && n.rounds.length > 0 && <button type="button" className="kt-btn" onClick={() => onOutputs(n.id)} data-testid="kt-ncard-out">看产出 ›</button>}
+          {onSession && session && <button type="button" className="kt-btn" onClick={() => onSession(session.url)}>{ACT.openSession}</button>}
+          {onSession && g?.mr?.url && <ExtLink href={g.mr.url} className="kt-btn">{ACT.viewMr} ↗</ExtLink>}
         </div>
       )}
     </div>

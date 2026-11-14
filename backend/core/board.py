@@ -614,7 +614,7 @@ def stage_graph(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None
             "runs": [_run_wire(r) for r in rs], "relays": runs.relays(bounds, t, row, who, starts),
             "other_runs": [{"branch": o.get("branch"), "state": o.get("state")} for o in (t or {}).get("other_runs") or []
                            if isinstance(o, dict)],
-            "live": bool(live), "_nodes": nodes, "_runs": rs, "_way": way}
+            "live": bool(live), "_nodes": nodes, "_runs": rs, "_way": way, "_commits": commits}
 
 
 def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any] | None,
@@ -622,12 +622,13 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
           subjects: dict[str, str], reflect_refs: list[tuple[str, float, float | None]], default_branch: str, local_only: bool,
           kit_rows: list[dict[str, Any]], decisions: list[dict[str, Any]], brain: dict[str, Any] | None,
           me: str | None, now: float, changes: dict[str, list[dict[str, Any]]] | None = None,
-          units: Any = ()) -> dict[str, Any]:
+          units: Any = (), fold: dict[str, Any] | None = None) -> dict[str, Any]:
     """The board's graph part (the stage graph: phases, nodes, runs, relays, other_runs; the events placed on it, belt,
     checks, accept, person, live, missing, and Lean's progress at each of its stage records for 回放: lean_view.steps);
     the service adds the requirement's detail (decisions, questions, 变更说明, sessions, credits). *changes*:
     changes_from_log of the commits (GIT_LOG), by full sha. *units*: the planned units (stages.UnitPlan), when the
-    service read unit-of-work.md."""
+    service read unit-of-work.md. *fold*, when given, gets the stage graph's nodes and the run branch's commits: what
+    the 产出 drawer reads (outputs.Fold)."""
     run = f.get("run") or {}
     handoff = run.get("handoff") if isinstance(run.get("handoff"), dict) else None
     hand_at = _epoch((handoff or {}).get("requested_at"))
@@ -646,6 +647,8 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
                      you, asked, handed=hand_at is not None or runner_blind(f, row))
     for i, e in enumerate(evs, 1):
         e["seq"] = i
+    if fold is not None:
+        fold.update(nodes=sg["_nodes"], commits=sg["_commits"])
     return {"events": [{k: e[k] for k in ("seq", "at", "kind", "from", "to", "text", "detail", "src", "node", "run", "round")}
                        for e in evs][-MAX_EVENTS:],
             "belt": _belt(evs, changes or {}), "checks": checks, "person": _person(row, me, f, you),

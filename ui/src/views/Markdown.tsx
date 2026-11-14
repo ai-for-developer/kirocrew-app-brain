@@ -1,7 +1,8 @@
 /**
  * The Markdown brain-kit writes (a 变更说明, Lean's notes, a decision) shown as formatted text: headings, paragraphs,
  * lists, tables, code. Built as React elements from the text, never as HTML, so nothing in it can act on the page; a
- * link stays its words.
+ * link stays its words. Document mode (a whole document a stage handed in, in the 产出 drawer) keeps what a document
+ * has besides: each heading level, lists inside lists, task boxes ([ ] / [x]) and quotes.
  */
 import type { ReactNode } from 'react'
 
@@ -62,10 +63,15 @@ export function takeRefs(text: string): { text: string; refs: string[] } {
   return { text: text.replace(REF, ''), refs: [...text.matchAll(REF)].map((m) => m[1]) }
 }
 
+/** A list as a document has it: each item with its task box (null: none) and the list inside it. */
+export type ListTree = { ordered: boolean; indent: number; items: { text: string; check: boolean | null; kids: ListTree | null }[] }
+
 type Block =
   | { kind: 'h'; level: number; text: string }
   | { kind: 'p'; lines: string[] }
   | { kind: 'ul' | 'ol'; items: string[] }
+  | { kind: 'list'; tree: ListTree }
+  | { kind: 'quote'; lines: string[] }
   | { kind: 'table'; head: string[]; rows: string[][] }
   | { kind: 'code'; text: string }
   | { kind: 'hr' }
@@ -76,8 +82,39 @@ const isRule = (l: string) => /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$
 const UL = /^\s*[-*+]\s+(.*)$/
 const OL = /^\s*\d+[.)]\s+(.*)$/
 const H = /^(#{1,6})\s+(.*)$/
+const ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/
+const TASK = /^\[([ xX])\]\s+(.*)$/
+const QUOTE = /^\s*>\s?(.*)$/
 
-export function blocks(text: string): Block[] {
+/** Consecutive list lines (and their indented continuations) as a tree: an item indented past the one before it
+ * opens a list inside that one. */
+export function listTree(lines: string[]): ListTree {
+  const first = ITEM.exec(lines[0]) as RegExpExecArray
+  const root: ListTree = { ordered: /\d/.test(first[2]), indent: first[1].length, items: [] }
+  const stack = [root]
+  for (const l of lines) {
+    const m = ITEM.exec(l)
+    let top = stack[stack.length - 1]
+    if (!m) {
+      const last = top.items[top.items.length - 1]
+      if (last) last.text += ` ${l.trim()}`
+      continue
+    }
+    const indent = m[1].length
+    while (stack.length > 1 && indent < top.indent) top = (stack.pop(), stack[stack.length - 1])
+    const last = top.items[top.items.length - 1]
+    if (indent > top.indent && last) {
+      last.kids = { ordered: /\d/.test(m[2]), indent, items: [] }
+      stack.push(last.kids)
+      top = last.kids
+    }
+    const t = TASK.exec(m[3])
+    top.items.push({ text: t ? t[2] : m[3], check: t ? t[1] !== ' ' : null, kids: null })
+  }
+  return root
+}
+
+export function blocks(text: string, doc = false): Block[] {
   const ls = text.replace(/\r\n?/g, '\n').split('\n')
   const out: Block[] = []
   let i = 0
@@ -103,6 +140,18 @@ export function blocks(text: string): Block[] {
       out.push({ kind: 'table', head, rows })
       continue
     }
+    if (doc && ITEM.test(l)) {
+      const lines: string[] = []
+      while (i < ls.length && (ITEM.test(ls[i]) || (lines.length > 0 && /^\s{2,}\S/.test(ls[i])))) lines.push(ls[i++])
+      out.push({ kind: 'list', tree: listTree(lines) })
+      continue
+    }
+    if (doc && QUOTE.test(l)) {
+      const lines: string[] = []
+      while (i < ls.length && QUOTE.test(ls[i])) lines.push((QUOTE.exec(ls[i++]) as RegExpExecArray)[1])
+      out.push({ kind: 'quote', lines })
+      continue
+    }
     for (const [re, kind] of [[UL, 'ul'], [OL, 'ol']] as const) {
       if (!re.test(l)) continue
       const items: string[] = []
@@ -112,23 +161,45 @@ export function blocks(text: string): Block[] {
     }
     if (UL.test(l) || OL.test(l)) continue
     const lines: string[] = []
-    while (i < ls.length && ls[i].trim() && !H.test(ls[i]) && !UL.test(ls[i]) && !OL.test(ls[i]) && !/^\s*```/.test(ls[i]) && !(isRow(ls[i]) && isRule(ls[i + 1] ?? ''))) lines.push(ls[i++])
+    while (i < ls.length && ls[i].trim() && !H.test(ls[i]) && !UL.test(ls[i]) && !OL.test(ls[i]) && !/^\s*```/.test(ls[i]) && !(isRow(ls[i]) && isRule(ls[i + 1] ?? '')) && !(doc && QUOTE.test(ls[i]))) lines.push(ls[i++])
     out.push({ kind: 'p', lines })
   }
   return out
 }
 
+function List({ tree }: { tree: ListTree }) {
+  const items = tree.items.map((x, j) => (
+    <li key={j} className={x.check === null ? undefined : 'is-task'}>
+      {x.check !== null && <input type="checkbox" checked={x.check} disabled aria-label={x.check ? '做完了' : '还没做'} />}
+      <Inline text={x.text} />
+      {x.kids && <List tree={x.kids} />}
+    </li>
+  ))
+  return tree.ordered ? <ol>{items}</ol> : <ul>{items}</ul>
+}
+
+/** A heading in document mode: # → h3 … ###### → h6 (the page's own h1 and h2 are above it). */
+const DOC_H = ['h3', 'h3', 'h4', 'h5', 'h6', 'h6', 'h6'] as const
+
 /** A whole Markdown text as formatted text (the 变更说明's 看全文). *foldRefs*: the material refs (「（D01#S002 · 097f2e9e）」)
- * are taken out of the lines and said once, at the end (BOARD-17). */
-export function Markdown({ text: raw, testid, foldRefs = false }: { text: string; testid?: string; foldRefs?: boolean }) {
+ * are taken out of the lines and said once, at the end (BOARD-17). *doc*: document mode. */
+export function Markdown({ text: raw, testid, foldRefs = false, doc = false }: { text: string; testid?: string; foldRefs?: boolean; doc?: boolean }) {
   const refs: string[] = []
   const text = foldRefs ? raw.split('\n').map((l) => { const t = takeRefs(l); refs.push(...t.refs); return t.text }).join('\n') : raw
   const once = [...new Set(refs)]
   return (
-    <div className="br-md" data-testid={testid}>
-      {blocks(text).map((b, i) => {
+    <div className={doc ? 'br-md kt-md is-doc' : 'br-md'} data-testid={testid}>
+      {blocks(text, doc).map((b, i) => {
         switch (b.kind) {
-          case 'h': return b.level <= 2 ? <h4 key={i}><Inline text={b.text} /></h4> : <h5 key={i}><Inline text={b.text} /></h5>
+          case 'h': {
+            if (doc) {
+              const Tag = DOC_H[b.level]
+              return <Tag key={i}><Inline text={b.text} /></Tag>
+            }
+            return b.level <= 2 ? <h4 key={i}><Inline text={b.text} /></h4> : <h5 key={i}><Inline text={b.text} /></h5>
+          }
+          case 'list': return <List key={i} tree={b.tree} />
+          case 'quote': return <blockquote key={i}>{b.lines.map((t, j) => <span key={j}>{j > 0 && <br />}<Inline text={t} /></span>)}</blockquote>
           case 'hr': return <hr key={i} />
           case 'code': return <pre key={i}><code>{b.text}</code></pre>
           case 'ul': return <ul key={i}>{b.items.map((t, j) => <li key={j}><Inline text={t} /></li>)}</ul>
