@@ -29,10 +29,13 @@ import {
 } from './layout'
 import { doOf, reviewNext } from './next'
 import { RoleGlyph, RoleIcon } from './RoleIcon'
+import { hasRound, inRun, type RunFilter } from './picker'
 import { verifyCount, wayAt } from './way'
 
 export interface StageGraphProps {
   board: ReqBoard
+  /** the run picked: the boxes it did no round of dim, the check ring counts its verify, only its command path shows */
+  run?: RunFilter
   lay: StageLayout
   /** the node looked at (a click on a box), or null */
   focus: string | null
@@ -148,7 +151,7 @@ export function stageInput(b: ReqBoard): StageInput {
   return { phases: b.phases, nodes: b.nodes, runs: b.runs, relays: b.relays, roster: rosterOf(b).map(({ kind, run }) => ({ kind, run })) }
 }
 
-export function StageGraph({ board, lay, focus, onNode, flashes, reducedMotion, feed, quiet = false, onSession, onAct, onOutputs }: StageGraphProps) {
+export function StageGraph({ board, run = 'all', lay, focus, onNode, flashes, reducedMotion, feed, quiet = false, onSession, onAct, onOutputs }: StageGraphProps) {
   const [card, hover] = useHoverCard()
   const head = stageHeadX(lay, board.belt)
   const runs = useMemo(() => new Map<string, Run>(board.runs.map((r) => [r.key, r])), [board.runs])
@@ -179,7 +182,8 @@ export function StageGraph({ board, lay, focus, onNode, flashes, reducedMotion, 
   const waits = drawn.map((n) => nodeWait(n, runs.get(n.run ?? ''))).filter((w): w is WaitWho => w !== null)
   const finished = drawn.filter((n) => isDone(n.status)).length
   const waitWords = [...new Set(waits.map((w) => whoOf(w, board)))].join('、')
-  const checks = verifyCount(board.nodes)
+  const view = useMemo(() => inRun(board, run), [board, run])
+  const checks = verifyCount(view.nodes)
   const next = wayAt(board.nodes).next?.id
   const label = `需求的路：${drawn.length} 步，${working} 步在做${waits.length ? `，${waits.length} 步${waitWords}` : ''}，${finished} 步做完；${checks.total ? `检查 ${checks.passed}/${checks.total}` : checks.say}。点一步只看它。`
   // the blue in the legend is said as the boxes and the lanes say it (等产品, 等 carol)
@@ -204,16 +208,16 @@ export function StageGraph({ board, lay, focus, onNode, flashes, reducedMotion, 
               return <path key={`${e.from}>${e.to}`} className={`kt-edge is-${state}${focus ? (hot ? ' is-hot' : ' is-dim') : ''}`} d={e.d} markerEnd={`url(#kt-arrow-${state})`} />
             })}
           </g>
-          <Commands board={board} lay={lay} byId={byId} />
-          <Rail board={board} lay={lay} head={head} focusRun={focus ? byId.get(focus)?.run ?? null : null} flash={flashes.run} />
-          <Station board={board} at={lay.station} flash={flashes.tests} />
+          <Commands board={board} lay={lay} byId={byId} run={run} />
+          <Rail board={board} lay={lay} head={head} focusRun={focus ? byId.get(focus)?.run ?? null : run === 'all' ? null : run} flash={flashes.run} />
+          <Station board={view} at={lay.station} flash={flashes.tests} />
           <g className="kt-nodes">
             {drawn.map((n) => (
-              <StageBoxView key={n.id} n={n} box={lay.boxes.get(n.id)!} board={board} run={runs.get(n.run ?? '')} focus={focus} flash={flashes[n.id]}
+              <StageBoxView key={n.id} n={n} box={lay.boxes.get(n.id)!} board={board} run={runs.get(n.run ?? '')} focus={focus} off={!hasRound(n, run)} flash={flashes[n.id]}
                 onNode={onNode} reducedMotion={reducedMotion} quiet={quiet} onHover={(on) => hover(on ? n.id : null, on ? 300 : 250)} />
             ))}
             {[...chips].map(([id, g]) => (
-              <GateChips key={`gate-${id}`} n={byId.get(id)!} g={g} box={lay.boxes.get(id)!} board={board} onAct={quiet ? undefined : onAct}
+              <GateChips key={`gate-${id}`} n={byId.get(id)!} g={g} box={lay.boxes.get(id)!} board={board} off={!hasRound(byId.get(id)!, run)} onAct={quiet ? undefined : onAct}
                 onDoc={quiet || !onOutputs ? undefined : onOutputs} />
             ))}
             {stepWaits.map((n) => (
@@ -376,8 +380,8 @@ function Roster({ rows, lay }: { rows: RosterRow[]; lay: StageLayout }) {
 
 /** The dashed line from a run at work or waiting to the box it is on (the reference's orchestrator lines), with what
  * it is: 运行机 → 发布：等产品. Magenta only when it waits for the person looking. */
-function Commands({ board, lay, byId }: { board: ReqBoard; lay: StageLayout; byId: Map<string, StageNode> }) {
-  const active = board.runs.filter((r) => r.now.node && (LIVE.has(r.now.status) || r.now.status === 'queued'))
+function Commands({ board, lay, byId, run }: { board: ReqBoard; lay: StageLayout; byId: Map<string, StageNode>; run: RunFilter }) {
+  const active = board.runs.filter((r) => r.now.node && (LIVE.has(r.now.status) || r.now.status === 'queued') && (run === 'all' || r.key === run))
   return (
     <g className="kt-cmds" aria-hidden="true">
       {active.map((r, i) => {
@@ -513,8 +517,9 @@ function stateLine(n: StageNode, run: Run | undefined, board: ReqBoard, wait: Wa
   return `${actorMeta(n.status).icon} ${who} · ${n.doing || actorMeta(n.status).label}`
 }
 
-function StageBoxView({ n, box, board, run, focus, flash, onNode, reducedMotion, quiet, onHover }: {
-  n: StageNode; box: StageBox; board: ReqBoard; run: Run | undefined; focus: string | null; flash?: { n: number; tone: string }
+/** *off*: a run is picked and this box has no round of it (dimmed, as a box not looked at is) */
+function StageBoxView({ n, box, board, run, focus, off, flash, onNode, reducedMotion, quiet, onHover }: {
+  n: StageNode; box: StageBox; board: ReqBoard; run: Run | undefined; focus: string | null; off: boolean; flash?: { n: number; tone: string }
   onNode: (id: string) => void; reducedMotion: boolean; quiet: boolean; onHover: (on: boolean) => void
 }) {
   const w = NODE_W
@@ -543,7 +548,7 @@ function StageBoxView({ n, box, board, run, focus, flash, onNode, reducedMotion,
   // with no room, a ✓ or ✕ the corner shows already is the first thing to go
   const said = textWidth(full) > room && corner && /^[✓✕] /.test(full) ? full.slice(2) : full
   return (
-    <g className={`kt-node is-${n.status}${other ? ' is-other' : ''}${n.status === 'merged' ? ' is-final' : ''}${focus ? (isFocus ? ' is-focus' : ' is-dim') : ''}`}
+    <g className={`kt-node is-${n.status}${other ? ' is-other' : ''}${n.status === 'merged' ? ' is-final' : ''}${focus ? (isFocus ? ' is-focus' : ' is-dim') : off ? ' is-dim' : ''}`}
       transform={`translate(${box.x},${box.y})`} data-node={n.id} data-status={n.status} role="button" tabIndex={0} aria-label={name} aria-pressed={isFocus}
       onClick={() => onNode(n.id)} onKeyDown={onKey} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)}>
       <title>{name}</title>
@@ -607,8 +612,8 @@ function WaitLine({ g }: { g: Gate }) {
 
 /** Under the box an open gate covers last: a round sent back before (✗ 退回 · D-2), then the one asked now; the open
  * one takes the person to the step (the session, the step strip), as the board's other chips do. */
-function GateChips({ n, g, box, board, onAct, onDoc }: {
-  n: StageNode; g: Gate; box: StageBox; board: ReqBoard; onAct?: (node: string, d: WaitDo) => void
+function GateChips({ n, g, box, board, off, onAct, onDoc }: {
+  n: StageNode; g: Gate; box: StageBox; board: ReqBoard; off: boolean; onAct?: (node: string, d: WaitDo) => void
   onDoc?: (node: string, round?: number, file?: string) => void
 }) {
   const back = n.rounds.filter((r) => r.outcome.kind === 'sent_back' && r.outcome.gate === g.kind).slice(-2)
@@ -627,7 +632,7 @@ function GateChips({ n, g, box, board, onAct, onDoc }: {
   let x = box.x - (widths.reduce((s, v) => s + v, 0) + 6 * (chips.length - 1)) / 2
   const y = box.y + NODE_H / 2 + 22
   return (
-    <g className="kt-gate-row" data-testid="kt-gate-row" data-node={n.id}>
+    <g className={`kt-gate-row${off ? ' is-dim' : ''}`} data-testid="kt-gate-row" data-node={n.id}>
       {chips.map((c, i) => {
         const at = x + widths[i] / 2
         x += widths[i] + 6

@@ -12,6 +12,8 @@
  *     &focus=accept|checks|lanes|feed             …scrolled to 验收, the check wall, the lanes or the events
  *     &from=overview|item|todo                    …opened from that view: the crumb says the way back
  *     &at=<epoch s>                               …its 回放 stands at that moment (a decision, a part of 价值流)
+ *     &run=<run>                                  …only that run's flow (local, runner-<n>, child-<KEY>, parent-<KEY>):
+ *                                                 a pick is a history entry, 后退 goes back to the run before
  *     &out=<node>&round=<n>&file=<path>           …its 产出 drawer open on that stage (code-generation/api), that
  *                                                 round (default its latest) and that file (default its first)
  *       &tab=reply|task|calls                     …on its tab 它的回复 / 接到的任务 / 做了什么 (default 产出文件)
@@ -26,7 +28,7 @@
  *
  * Anything that does not match its pattern is left out (never put into a request or the page as it came).
  */
-import { STATE_LABEL, type ReqState } from './types'
+import { STATE_LABEL, type ReqState, type RunKey } from './types'
 
 export type ViewKind = 'overview' | 'item' | 'board' | 'new' | 'brain' | 'todo' | 'team' | 'settings' | 'import'
 export type ItemFrom = 'overview' | 'todo' | 'brain' | 'board' | 'team'
@@ -43,7 +45,9 @@ export type BoardEntry = { repo: string; key: string; replay?: boolean; focus?: 
   /** a moment of it (epoch s): 需求详情's 价值流 and 决定 open the board there (?at=) */
   at?: number
   /** the 产出 drawer, open (?out=&round=&file=) */
-  out?: OutAt }
+  out?: OutAt
+  /** the run picked (?run=): the board shows that run's flow only */
+  run?: RunKey }
 /** Where the 产出 drawer stands: a node, one of its rounds (none: the latest), one of its files (none: the first). */
 /** the drawer's tabs past 产出文件 (the default): 它的回复 · 接到的任务 · 做了什么 */
 export type OutTab = 'reply' | 'task' | 'calls'
@@ -71,6 +75,8 @@ export const KEY_RE = /^[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}$/
 export const ENTRY_RE = /^[A-Z]-(?:[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}-[1-9][0-9]{0,3}|[0-9]{1,5})$/
 /** an absolute path (or ~/…) without control characters: what 导入仓库 may be opened with */
 export const PATH_RE = /^(?:\/|~\/)[^\u0000-\u001f\u007f]{0,1023}$/
+/** a run of a requirement (backend runs.py): this machine's, the team runner's n-th, a small or the big requirement's */
+export const RUN_RE = /^(?:local|runner-[1-9][0-9]{0,3}|(?:child|parent)-[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6})$/
 /** a stage's node: requirements, code-generation/api */
 export const NODE_RE = /^[a-z][a-z-]{0,39}(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$/
 /** a repo-relative file path as the backend accepts one (outputs.safe_path) */
@@ -114,6 +120,8 @@ export function parseView(search: string): View {
     if (BOARD_FROM.includes(from)) v.from = from as BoardFrom
     const at = Number(q.get('at') ?? '')
     if (Number.isInteger(at) && at > 1e9 && at < 1e10) v.at = at
+    const run = q.get('run') ?? ''
+    if (RUN_RE.test(run)) v.run = run as RunKey
     const out = q.get('out') ?? ''
     if (NODE_RE.test(out)) {
       v.out = { node: out }
@@ -181,6 +189,7 @@ export function searchOf(v: View): string {
       put('focus', v.focus)
       put('from', v.from)
       if (v.at) q.set('at', String(v.at))
+      put('run', v.run && RUN_RE.test(v.run) ? v.run : undefined)
       if (v.out && NODE_RE.test(v.out.node)) {
         q.set('out', v.out.node)
         if (v.out.round) q.set('round', String(v.out.round))

@@ -71,6 +71,22 @@ ${toneVars}
 .kt-btn.is-danger { color: var(--kt-bad); border-color: color-mix(in srgb, var(--kt-bad) 55%, var(--border)); }
 .kt-btn.is-danger.is-solid { background: var(--kt-bad-solid); border-color: var(--kt-bad-solid); color: #fff; }
 .kt-btn[aria-pressed="true"], .kt-btn.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--card)); color: var(--text-strong); }
+/* the run picker (选择运行): its menu drops under its button */
+.kt-runpick { position: relative; display: inline-flex; }
+.kt-runpick > .kt-btn b { color: var(--text-strong); }
+.kt-runpick > .kt-btn:disabled { opacity: 1; cursor: default; }
+.kt-runmenu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; width: 390px; max-width: calc(100vw - 32px); padding: 6px;
+  border-radius: 14px; border: 1px solid var(--border-strong, var(--border)); background: var(--card); box-shadow: 0 14px 40px rgba(0, 0, 0, .18); }
+.kt-runmenu button { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: 22px 1fr auto; gap: 2px 8px;
+  align-items: center; padding: 7px 10px; border-radius: 10px; cursor: pointer; color: var(--text); font-size: .93em; }
+.kt-runmenu button:hover, .kt-runmenu button.is-on { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.kt-runmenu button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.kt-runmenu button b { color: var(--text-strong); font-weight: 750; }
+.kt-runmenu button small { grid-column: 2 / 4; color: var(--muted); font-size: .88em; line-height: 1.45; }
+.kt-runmenu button.is-off { opacity: .55; cursor: default; }
+.kt-runmenu button.is-off:hover { background: none; }
+.kt-runmenu .ico { color: var(--muted); display: inline-flex; }
+.kt-runmenu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 6px; }
 .kt-select { font: inherit; font-size: .93em; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--border-strong, var(--border)); background: var(--card); color: var(--text); max-width: 360px; }
 .kt-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: 999px; font-size: .86em; font-weight: 750; white-space: nowrap;
   color: var(--kt-tone); background: color-mix(in srgb, var(--kt-tone) 14%, transparent); border: 1px solid color-mix(in srgb, var(--kt-tone) 42%, transparent); }
@@ -376,6 +392,7 @@ ${toneVars}
 
 .kt-node { cursor: pointer; outline: none; transition: opacity .3s; }
 .kt-node.is-dim { opacity: .26; }
+.kt-gate-row.is-dim { opacity: .26; }
 .kt-node-body { fill: var(--bg-elevated, var(--card)); stroke: var(--border-strong, var(--muted)); stroke-width: 2; transition: fill .5s, stroke .5s; }
 .kt-node-avatar { fill: color-mix(in srgb, var(--text) 7%, var(--card)); stroke: color-mix(in srgb, var(--muted) 40%, transparent); stroke-width: 1.5; }
 .kt-node-emoji { color: var(--text-strong); }

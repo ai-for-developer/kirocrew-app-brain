@@ -12,7 +12,10 @@
  * Click a box, a lane, a commit, a cell, a stage's dot or an event's chip to look at that stage only, everywhere on the
  * page (what has no stage looks at nothing); 跟随 scrolls to the stage that moved last; Esc lets go. 看产出 (a box's
  * card, a lane, a gate's 看文档, the top bar's 产出) opens the 产出 drawer (Outputs.tsx) on that stage: its place is in
- * the address (?out=), opened, moved and closed in place of the current history entry; Esc closes it first. 回放
+ * the address (?out=), opened, moved and closed in place of the current history entry; Esc closes it first. 运行：全部 ▾
+ * (RunPicker.tsx) picks one run: the boxes it did no round of dim, and the counters, the conveyor, the lanes, the wall,
+ * the events and the drawer show its flow only (picker.ts inRun); the pick is in the address (?run=) and is a history
+ * entry, so 后退 returns to the run before. 回放
  * (Replay.tsx) plays the requirement again from the same snapshot (timeline.ts); while it plays nothing can be done.
  * Reduced motion: nothing flies or pulses, states still change.
  *
@@ -24,7 +27,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppApi, useNavigate } from '@kirocrew/app-sdk'
-import { VIEW_NAME, type BoardEntry, type OutAt } from '../nav'
+import { VIEW_NAME, parseView, type BoardEntry, type OutAt, type View } from '../nav'
 import type { ReqBoard, WaitDo } from '../types'
 import { LoadState } from '../ui'
 import { FamilyPanel, useFamily } from '../views/Family'
@@ -47,6 +50,7 @@ import { Intro, Kpis, TopBar } from './Header'
 import { ClockContext, useReducedMotion, type SnapshotClock } from './hooks'
 import { Lanes, laneNodes } from './Lanes'
 import { stageKey, stageLayout, stageShape } from './layout'
+import { inRun, pickedRun, type RunFilter } from './picker'
 import { ReplayBar, useReplay } from './Replay'
 import { RoleIcon } from './RoleIcon'
 import { StageGraph, stageInput } from './StageGraph'
@@ -104,9 +108,12 @@ export function boardProblem(b: ReqBoard): { text: string; todo: string; raw: st
   return { text: '这个需求的运行记录没读全：图上只画了 Lean 的记录和仓库里看得到的', todo: '到需求详情看细节；一直这样的话，到设置里看 brain-kit 能不能用', raw: b.error }
 }
 
-export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, status, pollMs, reloadStatus }: {
+export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, push, status, pollMs, reloadStatus }: {
   entry: BoardEntry
   onBack?: () => void
+  /** a step inside the board a person goes back from (a run picked): a history entry, the board not opened again
+   * (default: in place of the current one) */
+  push?: (v: View) => void
   /** 切换需求: open another requirement's board here (default: a move to it) */
   onSwitch?: (repo: string, key: string) => void
   /** told whether the repo has this requirement (the app bar's other tab cannot open one it does not have) */
@@ -147,14 +154,41 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
   // moment it was opened at goes with the replay
   const said = useRef(!!entry.replay || !!entry.at)
   const entered = useRef(false)
-  // the 产出 drawer's place: the view's own, written to the address (replace only rewrites it, it opens nothing)
+  // the 产出 drawer's place and the run picked: the view's own, written to the address (replace only rewrites it, it
+  // opens nothing)
   const [out, setOut] = useState<OutAt | null>(entry.out ?? null)
   const outRef = useRef(out)
   outRef.current = out
-  const address = useCallback(() => {
-    const { replay: _r, at: _a, out: _o, ...rest } = entry
-    replace({ kind: 'board', ...rest, ...(said.current ? { replay: true } : {}), ...(outRef.current ? { out: outRef.current } : {}) })
+  const [run, setRun] = useState<RunFilter>(entry.run ?? 'all')
+  const runRef = useRef(run)
+  runRef.current = run
+  const here = useCallback((): View => {
+    const { replay: _r, at: _a, out: _o, run: _u, ...rest } = entry
+    return { kind: 'board', ...rest, ...(said.current ? { replay: true } : {}), ...(runRef.current !== 'all' ? { run: runRef.current } : {}),
+      ...(outRef.current ? { out: outRef.current } : {}) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const address = useCallback(() => replace(here()), [here]) // eslint-disable-line react-hooks/exhaustive-deps
+  const onRun = useCallback((r: RunFilter) => {
+    runRef.current = r
+    setRun(r)
+    ;(push ?? replace)(here())
+  }, [here]) // eslint-disable-line react-hooks/exhaustive-deps
+  // 后退 / 前进 between this board's entries (a run picked): the entry says the run and the drawer
+  useEffect(() => {
+    const onPop = () => {
+      const v = parseView(window.location.search)
+      if (v.kind !== 'board' || v.repo !== entry.repo || v.key !== entry.key) return
+      runRef.current = v.run ?? 'all'
+      outRef.current = v.out ?? null
+      setRun(runRef.current)
+      setOut(outRef.current)
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // a link to a run this board does not have shows the whole way
+  const picked: RunFilter = board && pickedRun(board, run) ? run : 'all'
+  const view = useMemo(() => (board ? inRun(board, picked) : null), [board, picked])
   useEffect(() => {
     if (!entered.current || rp.on === said.current) return
     said.current = rp.on
@@ -288,11 +322,11 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
               backName={onBack ? fromName : VIEW_NAME.overview} onBack={onBack ?? (() => go({ kind: 'overview', ...(entry.repo !== 'runner' ? { repo: entry.repo } : {}) }))}
               testId="br-board-missing" />
           : <LoadState loading={live.loading} error={live.error} has={!!board} />}
-        {board && lay && (
+        {board && view && lay && (
           <>
-            <TopBar board={board} replaying={rp.on} follow={follow} onReplay={() => rp.start()} onFollow={() => setFollow((v) => !v)} onDetail={toDetail}
+            <TopBar board={board} run={picked} onRun={onRun} replaying={rp.on} follow={follow} onReplay={() => rp.start()} onFollow={() => setFollow((v) => !v)} onDetail={toDetail}
               onSession={(url) => navigate(url)} onStart={onStart} onParent={toBoard} onFamily={toFamily}
-              onOutputs={rp.on || !laneNodes(board).length ? undefined : () => onOutputs(firstOutputs(board))} />
+              onOutputs={rp.on || !laneNodes(view).length ? undefined : () => onOutputs(firstOutputs(view))} />
             <ReplayBar rp={rp} />
             {problem && (
               <div className="kt-banner br-problem" role="status" data-testid="br-board-problem">
@@ -309,39 +343,39 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
             ) : (
               <>
                 {!quiet && <NextStep board={board} repo={entry.repo} reqKey={entry.key} onAnswered={live.reload} onBrain={toBrain} onDetail={toDetail} />}
-                <Kpis key={`${rp.on ? 'replay' : 'live'}`} board={board} reducedMotion={reducedMotion} onNode={onNode} replaying={rp.on} />
+                <Kpis key={`${rp.on ? 'replay' : 'live'}`} board={view} run={picked} reducedMotion={reducedMotion} onNode={onNode} replaying={rp.on} />
                 {acceptTop && <Accept board={board} onDetail={toDetail} quiet={quiet} />}
                 {fam?.role === 'big' && famCard}
                 <div className="kt-body">
                   <div className="kt-col">
                     <div ref={graphBox}>
-                      <StageGraph key={`${entry.repo}/${entry.key}${rp.on ? ':replay' : ''}`} board={board} lay={lay} focus={focus} onNode={onNode} flashes={fx.flashes}
+                      <StageGraph key={`${entry.repo}/${entry.key}${rp.on ? ':replay' : ''}`} board={board} run={picked} lay={lay} focus={focus} onNode={onNode} flashes={fx.flashes}
                         reducedMotion={reducedMotion} feed={feed} quiet={quiet} onSession={(url) => navigate(url)} onAct={quiet ? undefined : onAct}
                         onOutputs={quiet ? undefined : onOutputs} />
                     </div>
                     {focus && <FocusBar board={board} focus={focus} onClear={() => setFocus(null)} />}
-                    <Conveyor board={board} fresh={fx.belt} focus={focus} onNode={onNode} />
+                    <Conveyor board={view} fresh={fx.belt} focus={focus} onNode={onNode} />
                     {(fam?.role === 'parent' || fam?.role === 'child') && famCard}
-                    <Lanes board={board} focus={focus} bumps={fx.bumps} onNode={onNode} quiet={quiet} onOutputs={quiet ? undefined : onOutputs} />
+                    <Lanes board={view} focus={focus} bumps={fx.bumps} onNode={onNode} quiet={quiet} onOutputs={quiet ? undefined : onOutputs} />
                     {!acceptTop && <Accept board={board} onDetail={toDetail} quiet={quiet} />}
                   </div>
                   <aside className="kt-side" aria-label="检查、问题和事件">
-                    <CheckWall board={board} focus={focus} onNode={onNode} flips={fx.flips} onSettings={() => go({ kind: 'settings' })} />
+                    <CheckWall board={view} focus={focus} onNode={onNode} flips={fx.flips} onSettings={() => go({ kind: 'settings' })} />
                     {!quiet && side.length > 0 && (
                       <section className="kt-card br-board-qs" aria-label="等回答的问题" data-testid="br-board-questions">
                         <header className="kt-card-head"><h2>等回答的问题</h2><span className={`kt-badge tone-${board.row.waits.who === 'you' ? 'approve' : 'info'}`}>{side.length}</span></header>
                         {side.map((q, i) => <QuestionCard key={`${q.id ?? 'q'}-${i}`} q={q} repo={entry.repo} reqKey={entry.key} onAnswered={live.reload} waiter={waiter} />)}
                       </section>
                     )}
-                    <EventFeed board={board} focus={focus} onNode={onNode} fresh={fx.fresh} />
+                    <EventFeed board={view} focus={focus} onNode={onNode} fresh={fx.fresh} />
                   </aside>
                 </div>
               </>
             )}
           </>
         )}
-        {board && out && !rp.on && (
-          <OutputsDrawer board={board} repo={entry.repo} reqKey={entry.key} at={out} onAt={toOutputs} onClose={() => toOutputs(null)} />
+        {view && out && !rp.on && (
+          <OutputsDrawer board={view} repo={entry.repo} reqKey={entry.key} at={out} onAt={toOutputs} onClose={() => toOutputs(null)} />
         )}
         <div className="kt-sr" aria-live="polite" data-testid="kt-announce">{fx.announce}</div>
       </ClockContext.Provider>
