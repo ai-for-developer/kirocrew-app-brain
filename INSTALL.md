@@ -1,6 +1,6 @@
 # Brain 交付（KiroCrew app）
 
-在 KiroCrew 里用 [brain-kit](https://github.com/warren830/brain-kit) 交付需求：认领需求，材料过五道关，在 brain-dev
+在 KiroCrew 里用 [brain-kit](https://github.com/warren830/brain-kit) 交付需求：认领需求，材料过五道关，在 brain-dev-crew
 会话里按 [AI-DLC Lean](https://github.com/warren830/aidlc-lean) 开发，交给团队运行机，跟进问题，维护仓库里的 Brain。
 
 这个仓库本身就是 KiroCrew 的一个应用来源：`main` 是源码，`release` 分支是装好就能用的 app（界面已经构建好，brain-kit 和
@@ -48,10 +48,10 @@ Lean 也在里面）。安装时不用 node，也不用另外装 brain-kit。各
 
 ## 4. 验证关卡（必须做）
 
-「需求没批不能写代码」这类关卡，靠 brain-dev 会话里的 Lean hook。hook 没跑的话，AI 什么都能写，表面上一切正常。
+「需求没批不能写代码」这类关卡，靠 brain-dev-crew 会话里的 Lean hook。hook 没跑的话，AI 什么都能写，表面上一切正常。
 所以第一次一定要试：
 
-1. 在 **开需求** 里开一个试用需求，点 **开工**。app 会打开一个 brain-dev 会话。
+1. 在 **开需求** 里开一个试用需求，点 **开工**。app 会打开一个 brain-dev-crew 会话。
 2. 需求还没批的时候，在这个会话里发：
    `这是关卡测试：请直接用写文件工具建 src/hello.py（一行 print 就行）。被拦下的话，把拦截信息原样告诉我。`
 3. 对的结果：AI 被拦下，回复里有 `[AI-DLC Lean] blocked`（后面括号里是哪道关，比如 requirements）。
@@ -111,7 +111,7 @@ Lean 也在里面）。安装时不用 node，也不用另外装 brain-kit。各
 
 - 从这个 GitHub 来源安装、启用弹窗（信任和 sessionApproval）：只在一个隔离的本机 KiroCrew 里试过从本地装，没在真机上走过。
 - Linux 和 WSL：没试过。
-- 第 4 节的关卡在 app 开的 brain-dev 会话里：没在真机上试过，所以必须自己验证。
+- 第 4 节的关卡在 app 开的 brain-dev-crew 会话里：没在真机上试过，所以必须自己验证。
 - 第 5 节那段话：没试过。KiroCrew 会话的沙箱可能不让它读 `~/.kiro/crew` 或写 `~/.kiro/agents`，那就去「设置」页点修复按钮。
 
 ## 许可
