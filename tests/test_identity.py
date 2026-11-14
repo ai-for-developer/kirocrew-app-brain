@@ -420,6 +420,26 @@ def test_a_token_only_person_is_you_on_the_team_view_and_their_checkpoint_goes_u
     assert on_origin(w.origin) == tip, "her own run branch went up at the checkpoint"
 
 
+def test_a_token_only_person_reads_a_teammates_board_as_his_and_her_own_as_hers(teammates, monkeypatch):
+    """The stage board with GitLab's name for the token: bob's run, read from the branch he pushed, is bob's session
+    on his own machine (not 本机, and nobody calls it 你); alice's own requirement is hers, her session this machine's."""
+    w = teammates
+    svc = make_service(w.app, [w.repo], transport=WhoAmI(a_token(monkeypatch)))
+
+    async def go():
+        await status_until(svc, named("alice"))
+        return await svc.board("r1", w.theirs), await svc.board("r1", w.mine)
+
+    theirs, mine = started(svc, go)
+    local = next(r for r in theirs["runs"] if r["key"] == "local")
+    assert (local["label"], local["readable"]) == ("bob 的会话", "elsewhere"), local
+    assert (local["now"]["status"], local["now"]["doing"]) == ("running", "bob 在自己的机器上做"), local["now"]
+    assert (theirs["person"]["owner"], theirs["person"]["me"], theirs["person"]["you"]) == ("bob", False, False)
+    local = next(r for r in mine["runs"] if r["key"] == "local")
+    assert (local["label"], local["readable"]) == ("本机会话", "here"), local
+    assert (mine["person"]["owner"], mine["person"]["me"], mine["person"]["you"]) == ("alice", True, True)
+
+
 def test_with_no_token_and_no_name_a_teammates_requirement_is_not_yours_and_settings_asks(teammates):
     w = teammates
     gl = WhoAmI("no-token-here")
