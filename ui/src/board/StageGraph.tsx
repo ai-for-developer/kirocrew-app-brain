@@ -29,6 +29,7 @@ import {
 } from './layout'
 import { doOf, reviewNext } from './next'
 import { RoleGlyph, RoleIcon } from './RoleIcon'
+import { verifyCount, wayAt } from './way'
 
 export interface StageGraphProps {
   board: ReqBoard
@@ -87,7 +88,8 @@ function rosterOf(b: ReqBoard, quiet = false): RosterRow[] {
   for (const run of b.runs) {
     for (const r of b.relays) if (r.to === run.key) rows.push(relayRow(r))
     rows.push(runRow(run, b))
-    if (run.run_id) rows.push({ kind: 'sub', run: run.key, text: run.run_id, tone: null, tip: '' })
+    // the mockup's one line (RUN-PAY-9-1 · 16:12 请批发布) does not fit at 12 px: the id, then when and what
+    if (run.run_id) rows.push({ kind: 'sub', run: run.key, text: run.run_id, tone: null, tip: '' }, { kind: 'sub', run: run.key, text: runSince(run, b), tone: null, tip: '' })
   }
   for (const r of b.relays) if (r.to === null || !known.has(r.to)) rows.push(relayRow(r))
   if (!b.runs.length) rows.push({ kind: 'run', run: null, text: '还没开工', tone: 'idle', tip: '这个需求还没有一次运行' })
@@ -111,6 +113,18 @@ function runRow(run: Run, b: ReqBoard): RosterRow {
   const tip = [run.label, run.now.doing, run.credits !== null ? `${fmtCredits(run.credits)} credits` : '', run.readable === 'elsewhere' ? '它的会话在别的机器上' : '']
   const head = `${run.label} · `
   return { kind: 'run', run: run.key, text: `${head}${brief(waits ? whoOf(run.now.who, b) : run.now.doing, ROW_EM - textWidth(head), actorMeta(s).label)}`, tone, tip: tip.filter(Boolean).join(' · ') }
+}
+
+/** When a run's state began and what it is, for the line under its row: 16:12 请批发布 (the gate it asked, on the
+ * box it is on), 15:40 等产品, 11:09 起在做, 16:40 已合并. */
+function runSince(run: Run, b: ReqBoard): string {
+  const g = run.now.node ? openGate(b.nodes.find((n) => n.id === run.now.node) ?? { gates: [] }) : null
+  const at = g?.at ?? run.now.since
+  const when = at ? `${clockAt(at, b.at)} ` : ''
+  if (g) return `${when}请批${gateWhat(g.kind)}`
+  if (run.now.status === 'awaiting_approval') return `${when}${whoOf(run.now.who, b)}`
+  if (WORKING.has(run.now.status)) return `${when}起在做`
+  return `${when}${run.now.doing || actorMeta(run.now.status).label}`
 }
 
 /** The steps a hand-over shows: the workspace only until it is built, and none after the first one not through (*more*:
@@ -165,7 +179,9 @@ export function StageGraph({ board, lay, focus, onNode, flashes, reducedMotion, 
   const waits = drawn.map((n) => nodeWait(n, runs.get(n.run ?? ''))).filter((w): w is WaitWho => w !== null)
   const finished = drawn.filter((n) => isDone(n.status)).length
   const waitWords = [...new Set(waits.map((w) => whoOf(w, board)))].join('、')
-  const label = `需求的路：${drawn.length} 步，${working} 步在做${waits.length ? `，${waits.length} 步${waitWords}` : ''}，${finished} 步做完；检查 ${board.checks.passed}/${board.checks.total}。点一步只看它。`
+  const checks = verifyCount(board.nodes)
+  const next = wayAt(board.nodes).next?.id
+  const label = `需求的路：${drawn.length} 步，${working} 步在做${waits.length ? `，${waits.length} 步${waitWords}` : ''}，${finished} 步做完；${checks.total ? `检查 ${checks.passed}/${checks.total}` : checks.say}。点一步只看它。`
   // the blue in the legend is said as the boxes and the lanes say it (等产品, 等 carol)
   const others = [...new Set([...waits.filter((w) => sayWho(w, board) !== 'you').map((w) => whoOf(w, board)), ...otherWaits(board)])]
   const cardNode = card ? byId.get(card) : undefined
@@ -183,7 +199,7 @@ export function StageGraph({ board, lay, focus, onNode, flashes, reducedMotion, 
           <Roster rows={rows} lay={lay} />
           <g className="kt-edges" aria-hidden="true">
             {lay.edges.map((e) => {
-              const state = edgeState(e.from === ORCH ? (board.started_at !== null ? 'done' : 'waiting') : byId.get(e.from)?.status, byId.get(e.to)?.status)
+              const state = edgeState(e.from === ORCH ? (board.started_at !== null ? 'done' : 'waiting') : byId.get(e.from)?.status, byId.get(e.to)?.status, e.to === next)
               const hot = !!focus && (e.from === focus || e.to === focus)
               return <path key={`${e.from}>${e.to}`} className={`kt-edge is-${state}${focus ? (hot ? ' is-hot' : ' is-dim') : ''}`} d={e.d} markerEnd={`url(#kt-arrow-${state})`} />
             })}
@@ -237,10 +253,11 @@ function cardPlace(box: StageBox, lay: StageLayout) {
   }
 }
 
-/** An edge's state: used (both ends got going), ready (the first is through, the next has not started), pending. */
-function edgeState(a: string | undefined, b: string | undefined): 'used' | 'ready' | 'pending' {
+/** An edge's state: used (both ends got going), ready (the first is through and the second is the way's next box,
+ * way.ts wayAt: the one the AI-DLC Lean card names), pending. */
+function edgeState(a: string | undefined, b: string | undefined, toNext: boolean): 'used' | 'ready' | 'pending' {
   if (!a || !b || !(isDone(a) || a === 'awaiting_approval')) return 'pending'
-  return b !== 'waiting' && b !== 'skipped' ? 'used' : 'ready'
+  return b !== 'waiting' && b !== 'skipped' ? 'used' : toNext ? 'ready' : 'pending'
 }
 
 /** How many lines a band's foot note may take: the room between its lowest box (and what is drawn under it) and the

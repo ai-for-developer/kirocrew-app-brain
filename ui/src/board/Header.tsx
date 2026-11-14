@@ -12,10 +12,11 @@
 import type { ReqBoard, ReqFamily } from '../types'
 import { StateChip } from '../ui'
 import { ACT, DO_NAME, FAMILY_ACT, leanProgress, wholeSkips } from '../vocab'
-import { WORKING, actorMeta, boardWho, checksSay, fmtCredits, fmtWhen, leanOf, localOnly, nodeLabel, outsidePushes, runnerBlind, sessionOf, titleOf, waitsOnMe } from './format'
+import { WORKING, actorMeta, boardWho, fmtCredits, fmtWhen, leanOf, localOnly, nodeLabel, outsidePushes, runnerBlind, sessionOf, titleOf, waitsOnMe } from './format'
 import { useChangeCount, useTween } from './hooks'
 import { waitCount } from './next'
 import { RoleIcon } from './RoleIcon'
+import { verifyCount, wayAt } from './way'
 
 export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail, onSession, onStart, onParent, onFamily, onOutputs }: {
   board: ReqBoard
@@ -114,30 +115,29 @@ export function Kpis({ board, reducedMotion, onNode, replaying = false }: { boar
   )
 }
 
-const SEG: Record<string, string> = { pass: 'is-pass', fail: 'is-fail', wait: 'is-wait', watch: 'is-watch' }
-
 function ChecksKpi({ board, reducedMotion }: { board: ReqBoard; reducedMotion: boolean }) {
-  const w = board.checks
-  const shown = Math.round(useTween(w.passed, 900, reducedMotion))
-  const pop = useChangeCount(w.passed)
-  const say = checksSay(w, board)
+  const v = verifyCount(board.nodes)
+  const shown = Math.round(useTween(v.passed, 900, reducedMotion))
+  const pop = useChangeCount(v.passed)
+  const green = v.total > 0 && v.passed === v.total
   return (
-    <div className={`kt-kpi kt-kpi-tests${say.green ? ' is-green' : ''}`}>
+    <div className={`kt-kpi kt-kpi-tests${green ? ' is-green' : ''}`}>
       <div className="kt-kpi-label">检查通过</div>
-      <div className="kt-kpi-value" data-testid="br-checks-counter" aria-label={`检查通过 ${w.passed}/${w.total}`}>
+      <div className="kt-kpi-value" data-testid="br-checks-counter" aria-label={`检查通过 ${v.passed}/${v.total}`}>
         <span className={`kt-kpi-big${pop ? ' is-pop' : ''}`} key={pop}>{shown}</span>
-        <span className="kt-kpi-of">/{w.total}</span>
+        <span className="kt-kpi-of">/{v.total}</span>
       </div>
       <div className="kt-segs" aria-hidden="true">
-        {w.cells.filter((c) => SEG[c.status]).map((c) => <i key={c.id} className={SEG[c.status]} title={c.name} />)}
+        {Array.from({ length: v.total }, (_, i) => <i key={i} className={i < v.passed ? 'is-pass' : 'is-fail'} />)}
       </div>
-      <div className="kt-kpi-note" data-testid="br-checks-say"><b className={`tone-${say.tone}`}>{say.text}</b></div>
+      <div className="kt-kpi-note" data-testid="br-checks-say"><b className={`tone-${v.tone}`}>{v.say}</b></div>
     </div>
   )
 }
 
-/** Lean's stages on the way, the one way (vocab.leanProgress): done green, skipped grey, the next one lit; a phase
- * skipped as a whole is not a cell, it is said once under them. */
+/** Lean's stages on the way, as Lean counts them: done green, skipped grey; the box the way is at lit (way.ts wayAt, the
+ * rule the graph follows), else the next one; once the graph has nothing left, the rest grey. A phase skipped as a whole
+ * is not a cell, it is said once under them. */
 function LeanKpi({ board }: { board: ReqBoard }) {
   const ln = leanOf(board.row.lean)
   const through = ln.done_n + ln.skipped_n
@@ -146,9 +146,13 @@ function LeanKpi({ board }: { board: ReqBoard }) {
   const blocked = board.events.filter((e) => e.kind === 'blocked').length
   const blind = runnerBlind(board)
   const whole = wholeSkips(ln.skipped_phases)
-  const seg = (i: number) => (i < ln.done_n ? 'is-pass' : i < through ? 'is-skip' : !blind && ln.next && i === through ? (ln.started ? 'is-run' : 'is-next') : '')
+  const { at, next } = wayAt(board.nodes)
+  const step = at ?? next
+  const over = !step && board.nodes.some((n) => n.rounds.length > 0)
+  const said = leanProgress({ ...ln, next: step ? { id: step.stage, label: step.title, n: step.n } : null, stage: null, stage_state: at ? 'started' : null })
+  const seg = (i: number) => (i < ln.done_n ? 'is-pass' : i < through || over ? 'is-skip' : !blind && step && i === through ? (at ? 'is-run' : 'is-next') : '')
   return (
-    <div className="kt-kpi kt-kpi-gates br-kpi-lean" aria-label={`AI-DLC Lean：${blind ? '运行机还读不到 Lean 的记录' : leanProgress(ln)}`}>
+    <div className="kt-kpi kt-kpi-gates br-kpi-lean" aria-label={`AI-DLC Lean：${blind ? '运行机还读不到 Lean 的记录' : said}`}>
       <div className="kt-kpi-label">AI-DLC Lean</div>
       <div className="kt-kpi-value" data-testid="br-lean-counter">
         <span className="kt-kpi-big">{ln.done_n}</span>
@@ -159,7 +163,7 @@ function LeanKpi({ board }: { board: ReqBoard }) {
       </div>
       <div className="kt-kpi-note br-lean-next">
         {blind ? '运行机还读不到 Lean 的记录' : <>
-          {ln.next ? <>{ln.started ? '在做' : '下一步'}：<b>{ln.next.label}</b></> : through ? '全部做完' : '还没开始'}
+          {step ? <>{at ? '在做' : '下一步'}：<b>{step.title}</b></> : over || through ? '全部做完' : '还没开始'}
           {whole && <span data-testid="br-lean-whole"> · {whole}</span>}
         </>}
       </div>

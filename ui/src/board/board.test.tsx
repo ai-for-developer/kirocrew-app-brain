@@ -75,9 +75,10 @@ describe('需求看板', () => {
     await loaded()
     const b = fx.board()
     const kpis = within(screen.getByRole('group', { name: '指标' }))
-    expect(kpis.getByTestId('br-checks-counter')).toHaveAccessibleName(`检查通过 ${b.checks.passed}/${b.checks.total}`)
-    expect(kpis.getByTestId('br-checks-counter')).toHaveTextContent('2/4')
-    expect(kpis.getByTestId('br-checks-say')).toHaveTextContent('1 项没过')
+    // 检查通过 is the latest verify's checks: PAY-3 has run none (its wall's 2/4 are approvals and the hand-over)
+    expect(b.checks.total).toBe(4)
+    expect(kpis.getByTestId('br-checks-counter')).toHaveAccessibleName('检查通过 0/0')
+    expect(kpis.getByTestId('br-checks-say')).toHaveTextContent('还没跑过检查')
     const lean = kpis.getByText('AI-DLC Lean').parentElement as HTMLElement
     expect(lean).toHaveAccessibleName('AI-DLC Lean：做完 4 · 跳过 4 · 在做：代码生成 · 构思整段不需要')   // the stage it works on is 在做, not 下一步
     expect(within(lean).getByTestId('br-lean-counter')).toHaveTextContent('4做完 · 跳过 4')
@@ -210,7 +211,7 @@ describe('需求看板', () => {
     expect(roster).toHaveTextContent('这次谁在做 · 1 次运行')
     expect(said(within(roster).getAllByTestId('kt-roster-row'))).toEqual(['本机会话 · 等你'])
     expect(within(roster).getAllByTestId('kt-roster-row')[0]).toHaveClass('is-mine')
-    expect(within(graph).getByTestId('kt-station')).toHaveAccessibleName('检查 2/4')
+    expect(within(graph).getByTestId('kt-station')).toHaveAccessibleName('还没有检查结果')
     expect(within(graph).getByTestId('kt-orch')).toHaveTextContent(`你 · ${b.person.owner}`)
     expect(within(graph).getByRole('note', { name: '图例' })).toHaveTextContent('等你')
     // nothing here waits on anyone else: the blue key keeps its general word
@@ -394,7 +395,7 @@ describe('需求看板', () => {
     installFixtureRoutes()
     renderBoard()
     const graph = await loaded()
-    expect(within(graph).getByRole('group', { name: /^需求的路/ })).toHaveAccessibleName('需求的路：11 步，0 步在做，1 步等你，6 步做完；检查 2/4。点一步只看它。')
+    expect(within(graph).getByRole('group', { name: /^需求的路/ })).toHaveAccessibleName('需求的路：11 步，0 步在做，1 步等你，6 步做完；还没跑过检查。点一步只看它。')
     cleanup()
     const c = planApproved(fx.board())
     c.nodes = c.nodes.map((n) => (n.id === 'build-and-test' ? { ...n, status: 'running' as const, doing: '在做', run: 'local' as RunKey, rounds: [round(1, 'local', c.at - 120, null)] } : n))
@@ -403,7 +404,7 @@ describe('需求看板', () => {
     installFixtureRoutes(boardRoute(() => structuredClone(c)))
     renderBoard()
     const g2 = await loaded()
-    expect(within(g2).getByRole('group', { name: /^需求的路/ })).toHaveAccessibleName('需求的路：11 步，1 步在做，7 步做完；检查 2/4。点一步只看它。')
+    expect(within(g2).getByRole('group', { name: /^需求的路/ })).toHaveAccessibleName('需求的路：11 步，1 步在做，7 步做完；还没跑过检查。点一步只看它。')
   })
   test('a run is said as the 运行机 page says it (运行机 第 1 次), its id only in the graph’s list: the feed, the lanes, the conveyor', async () => {
     const b = fx.boardMerged()
@@ -987,7 +988,7 @@ describe('需求看板 · 轮到谁、做什么', () => {
     installFixtureRoutes(boardRoute(() => structuredClone(b)))
     renderBoard()
     await loaded()
-    expect(screen.getByTestId('br-checks-say')).toHaveTextContent('目前 4 项都过 · 还剩 发布审批')
+    expect(screen.getByTestId('kt-inspect')).toHaveTextContent('目前 4 项都过 · 还剩 发布审批')
     expect(screen.getByTestId('kt-station')).toBeInTheDocument()
     expect(screen.getByRole('group', { name: '指标' }).querySelector('.kt-kpi-tests')).not.toHaveClass('is-green')
     cleanup()
@@ -998,7 +999,7 @@ describe('需求看板 · 轮到谁、做什么', () => {
     renderBoard(PAY2)
     await loaded()
     // the backend's todo names the 14 days too: they are said once, as 在观察, not as something left to do
-    expect(screen.getByTestId('br-checks-say')).toHaveTextContent(/^9 项全过 · 1 项在观察$/)
+    expect(screen.getByTestId('kt-inspect')).toHaveTextContent(/^9 项全过 · 1 项在观察 · 悬停看每一格$/)
     expect(screen.getByRole('group', { name: '指标' })).not.toHaveTextContent('等人')
     expect(within(region('检查墙')).getByRole('button', { name: /^合并后 14 天没有回滚或热修：观察中，/ })).toHaveAttribute('data-status', 'watch')
   })
@@ -1020,12 +1021,14 @@ describe('需求看板 · 轮到谁、做什么', () => {
     renderBoard()
     await loaded()
     const lean = screen.getByText('AI-DLC Lean').parentElement as HTMLElement
-    expect(lean).toHaveAccessibleName('AI-DLC Lean：做完 4 · 跳过 6 · 下一步：发布 · 构思整段不需要')
+    // Lean counts its own stages and still has 发布 to do; the graph has its box reached (a round open, waiting on you):
+    // the card says what the graph draws
+    expect(lean).toHaveAccessibleName('AI-DLC Lean：做完 4 · 跳过 6 · 在做：发布 · 构思整段不需要')
     // one cell per stage on the way: Ideation, skipped as a whole by `lean new`, is said once instead of 7 grey cells
     expect(lean.querySelectorAll('.kt-segs i')).toHaveLength(11)
     expect(lean.querySelectorAll('.kt-segs .is-pass')).toHaveLength(4)
     expect(lean.querySelectorAll('.kt-segs .is-skip')).toHaveLength(6)
-    expect(lean.querySelectorAll('.kt-segs .is-next')).toHaveLength(1)
+    expect(lean.querySelectorAll('.kt-segs .is-run')).toHaveLength(1)
     expect(within(lean).getByTestId('br-lean-whole')).toHaveTextContent('构思整段不需要')
     expect(lean).not.toHaveTextContent('10/11')
   })

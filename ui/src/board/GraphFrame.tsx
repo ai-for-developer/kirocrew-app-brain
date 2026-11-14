@@ -11,6 +11,7 @@ import { useLatest } from './hooks'
 import type { Path, Pt } from './layout'
 import { Overlay, type Box } from './overlay'
 import { RoleIcon } from './RoleIcon'
+import { verifyCount } from './way'
 
 /** A one-shot flash per anchor (a node, 'orch', 'run', 'tests'): the counter replays its animation. */
 export type FlashMap = Record<string, { n: number; tone: string }>
@@ -94,9 +95,9 @@ export function PersonCard({ board, mine, who }: { board: ReqBoard; mine: boolea
   )
 }
 
-/** The check ring at the rail's end (the sample's test station): the check wall's passed / total. */
+/** The check ring at the rail's end (the sample's test station): the latest verify's checks, as 检查通过 counts them. */
 export function Station({ board, at, flash }: { board: ReqBoard; at: Pt & { r: number }; flash?: { n: number; tone: string } }) {
-  const { passed, failed, total } = board.checks
+  const { passed, failed, total } = verifyCount(board.nodes)
   const r = at.r - 5
   const c = 2 * Math.PI * r
   const pass = total ? (passed / total) * c : 0
