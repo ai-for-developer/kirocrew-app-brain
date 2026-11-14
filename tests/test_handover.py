@@ -4,7 +4,7 @@ credentials hidden. The lines are brain-kit's own, copied from cli.py."""
 
 import pytest
 
-from appkit import mod
+from appkit import BRAINKIT, mod
 
 handover, problems = mod("handover"), mod("problems")
 
@@ -201,3 +201,187 @@ def test_the_app_lets_it_run_for_a_local_run_and_for_a_hand_over_to_do_again(sta
     yet the remote has nothing: clicking again pushes and labels it."""
     f = fact(run=dict(RUN, handoff={"by": "alice"})) if state != "local" else fact()
     assert handover.why_not(f, row(state, do), me="alice", local_only=False, busy=False, pushed=pushed) is None
+
+
+# ---- through the app: a real `brain handoff` in temp repos ------------------------------------------------------- #
+
+import asyncio  # noqa: E402
+import json  # noqa: E402
+
+from brainfix import (FakeGateway, filled_notes, install_brain_dev, make_project, make_service, needs_brainkit,  # noqa: E402
+                      run, sh, start_in_worktree)
+from http_fakes import AppRoute, FakeWeb, call  # noqa: E402
+from teamfix import BRANCH, GitLab, P, Served  # noqa: E402
+
+AppError = mod("httpkit").AppError
+HANDOFF = "PAY-1: hand off to team runner"
+
+
+def project(tmp_path, home, *, base="https://gitlab.example.com", origin=True, notes=True):
+    """repo (r1) with brain-kit and, unless told otherwise, GitLab in kit.json and an origin; PAY-1 started by alice in
+    a worktree (branch BRANCH, pushed), its hand-over note filled in and committed."""
+    repo = make_project(tmp_path, name="repo", origin=origin, kit={"gitlab": {"base": base, "project": P}} if base else None)
+    if origin:
+        sh("git", "-C", repo, "push", "-q", "origin", "main")
+    wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "repo" / "refund", "refund", "退款")
+    if notes:
+        intent = json.loads((wt / "runs" / "PAY-1" / "run.json").read_text())["intent"]
+        st = wt / "aidlc-docs" / intent / "aidlc-state.md"
+        st.write_text(filled_notes(st.read_text(), "Status: Construction step 2 of 4"))
+        sh("git", "-C", wt, "commit", "-qam", "notes")
+    return repo, wt
+
+
+def head(path, ref="HEAD"):
+    return sh("git", "-C", path, "rev-parse", ref, check=False).stdout.strip()
+
+
+def subjects(wt):
+    return sh("git", "-C", wt, "log", "--format=%s", "main..HEAD").stdout.splitlines()
+
+
+def handoff(svc, *rounds):
+    """svc.handoff("r1", "PAY-1") as often as each round says, the clicks of a round at once, a round after the one
+    before it; an AppError is the answer, not raised. Returns the answers and the detail page after them."""
+    async def one():
+        try:
+            return await svc.handoff("r1", "PAY-1")
+        except AppError as exc:
+            return exc
+
+    async def go():
+        await svc.start()
+        try:
+            got = []
+            for n in rounds:
+                got += await asyncio.gather(*(one() for _ in range(n)))
+            return got, await svc.requirement("r1", "PAY-1")
+        finally:
+            await svc.stop()
+
+    return run(go())
+
+
+@needs_brainkit
+def test_handed_over_through_gitlab_once_for_two_clicks_and_not_again(tmp_path, home, monkeypatch):
+    """The whole hand-over without a terminal: brain-kit pushes the branch and labels MR !5 on a GitLab (the fake,
+    over HTTP on 127.0.0.1) as alice, by her token. Two clicks at once run it once and get the same answer; once the MR
+    has its label, a third click is refused before anything runs."""
+    for k in ("NO_PROXY", "no_proxy"):
+        monkeypatch.setenv(k, "127.0.0.1,localhost")
+    gl = GitLab(tmp_path / "repo-origin.git")
+    gl.labels, gl.events = [], []
+    gl.who["alice-tok"] = "alice"
+    srv = Served(gl)
+    try:
+        repo, wt = project(tmp_path, home, base=srv.base)
+        tok = home / ".brain" / "gitlab-token"
+        tok.parent.mkdir(parents=True, exist_ok=True)
+        tok.write_text("alice-tok\n")
+        tok.chmod(0o600)
+        svc = make_service(tmp_path, [repo])
+        (first, second, third), detail = handoff(svc, 2, 1)
+    finally:
+        srv.stop()
+    assert first == second, (first, second)
+    assert first["state"] == "handed" and first["ok"] and first["code"] == 0, first
+    assert first["mr"] == {"iid": 5, "url": srv.base + "/grp/repo/-/merge_requests/5"}
+    assert "ai-handoff" in gl.labels
+    assert subjects(wt).count(HANDOFF) == 1 and head(tmp_path / "repo-origin.git", BRANCH) == head(wt)
+    assert isinstance(third, AppError) and (third.code, third.status) == ("handed_over", 409), third
+    assert detail["row"]["state"] == "handed_over"
+    assert any(i["kind"] == "app" and i["label"] == "交接：" + first["text"] for i in detail["timeline"]["items"])
+
+
+@needs_brainkit
+def test_a_note_not_ready_is_refused_by_brain_kit_and_nothing_changes(tmp_path, home):
+    repo, wt = project(tmp_path, home, notes=False)
+    before, pushed = head(wt), head(tmp_path / "repo-origin.git", BRANCH)
+    svc = make_service(tmp_path, [repo])
+
+    async def go():
+        await svc.start()
+        try:
+            routes = mod("handlers").build_routes(svc, AppRoute, web=FakeWeb(), is_owner=lambda _r: True)
+            return await call(routes, "POST", "/requirements/r1/PAY-1/handoff")
+        finally:
+            await svc.stop()
+
+    via = run(go())
+    r = via.body
+    assert via.status == 200 and r["state"] == "refused" and r["code"] == 2, r
+    assert "交接记录" in r["text"] and r["todo"] and "hand-over note not ready" in r["raw"]
+    assert head(wt) == before and head(tmp_path / "repo-origin.git", BRANCH) == pushed
+
+
+@needs_brainkit
+def test_uncommitted_work_is_refused_and_left_as_it_is(tmp_path, home):
+    repo, wt = project(tmp_path, home)
+    (wt / "README.md").write_text("# repo\n还没提交\n")
+    before = head(wt)
+    (r,), _ = handoff(make_service(tmp_path, [repo]), 1)
+    assert r["state"] == "refused" and "1 个文件" in r["text"], r
+    assert head(wt) == before and "还没提交" in (wt / "README.md").read_text()
+
+
+@needs_brainkit
+def test_pushed_but_not_labelled_without_gitlab_in_kit_json(tmp_path, home, monkeypatch):
+    """brain-kit's exit 1: the branch is pushed with its hand-over commit, nothing is handed over. (No service here to
+    load the test's brain-kit: BRAINKIT_HOME names it, else bk's fallbacks could find an older one on this machine.)"""
+    monkeypatch.setenv("BRAINKIT_HOME", str(BRAINKIT))
+    repo, wt = project(tmp_path, home, base=None)
+    r = handover.run(str(wt))
+    assert r["state"] == "not_labelled" and r["code"] == 1 and not r["ok"] and "GitLab" in r["text"], r
+    assert subjects(wt)[0] == HANDOFF and head(tmp_path / "repo-origin.git", BRANCH) == head(wt)
+
+
+@needs_brainkit
+def test_pushed_but_not_labelled_without_a_token_says_so_through_the_app(tmp_path, home):
+    repo, wt = project(tmp_path, home)
+    (r,), detail = handoff(make_service(tmp_path, [repo]), 1)
+    assert r["state"] == "not_labelled" and r["code"] == 1 and "令牌" in r["text"] and r["todo"], r
+    assert head(tmp_path / "repo-origin.git", BRANCH) == head(wt)
+
+
+@needs_brainkit
+@pytest.mark.parametrize("how, code, status", [("no origin", "local_only", 409), ("no gitlab", "local_only", 409),
+                                               ("bob", "not_owner", 403)])
+def test_the_app_refuses_before_brain_kit_runs(tmp_path, home, monkeypatch, how, code, status):
+    repo, wt = project(tmp_path, home, origin=how != "no origin", base=None if how == "no gitlab" else
+                       "https://gitlab.example.com")
+    if how == "bob":
+        monkeypatch.setenv("BRAIN_USER", "bob")
+    before = head(wt)
+    (r,), _ = handoff(make_service(tmp_path, [repo]), 1)
+    assert isinstance(r, AppError) and (r.code, r.status) == (code, status), r
+    assert problems.chinese(str(r)) and head(wt) == before
+
+
+@needs_brainkit
+def test_a_busy_session_is_waited_for(tmp_path, home):
+    """A turn of its session could commit meanwhile: the app says to wait until it stops, and runs nothing."""
+    repo, wt = project(tmp_path, home)
+    install_brain_dev(home)
+    gw = FakeGateway()
+    gw.templates = {"brain-dev-crew"}
+    svc = make_service(tmp_path, [repo], gw=gw)
+    before = head(wt)
+
+    async def go():
+        await svc.start()
+        try:
+            got = await svc.open_session("r1", "PAY-1")
+            for _ in range(mod("sessions").STATS_EVERY):      # its first turn has not ended: busy, once read
+                await svc.sessions.poll()
+            busy = svc.sessions.slot_stats(got["slot"])["busy"]
+            try:
+                return busy, await svc.handoff("r1", "PAY-1")
+            except AppError as exc:
+                return busy, exc
+        finally:
+            await svc.stop()
+
+    busy, r = run(go())
+    assert busy is True
+    assert isinstance(r, AppError) and (r.code, r.status) == ("busy", 409), r
+    assert head(wt) == before
