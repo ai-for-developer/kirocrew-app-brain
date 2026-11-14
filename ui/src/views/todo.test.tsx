@@ -273,6 +273,9 @@ describe('待办', () => {
     const crew = await screen.findByRole('region', { name: 'KiroCrew 的问题' })
     expect(within(crew).getAllByRole('listitem').map((li) => li.dataset.level)).toEqual(['FAIL'])
     expect(crew).not.toHaveTextContent('适配文件是旧版')
+    // what a ✗ stops, as 开需求 says it (UI-16): the session, not 开工
+    expect(crew).toHaveTextContent('修好了才能开会话（不开会话也能开工）')
+    expect(crew).not.toHaveTextContent('修好了才能开工')
   })
 
   test('重装 kit 文件 in place on a team repo: its group stays while 推送 waits, even when the list no longer has the problem', async () => {

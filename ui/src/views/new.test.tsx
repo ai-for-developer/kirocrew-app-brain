@@ -348,6 +348,16 @@ describe('开需求', () => {
     expect(startBtn()).toBeEnabled()
   })
 
+  test('a ✗ with no fix button: the hint names no button (UI-16)', async () => {
+    const bad: CheckRow = { level: 'FAIL', text: 'brain-dev-crew 的设置读不懂：文件格式坏了', todo: '自己修好它，或者删掉它再装一份新的（这里不会覆盖它）', fix: null, repo: null, raw: '' }
+    const status = calmStatus()
+    status.crew = { ...status.crew, rows: [bad] }
+    const { user } = setup({ [`GET ${API}/crew`]: () => ({ ...fx.crew(), rows: [bad] }) }, status)
+    await fillBasics(user)
+    expect(screen.getByTestId('start-why')).toHaveTextContent('开不了会话：先照上面说的处理好，或者不勾「开工后开会话」')
+    expect(screen.getByTestId('start-why')).not.toHaveTextContent('修复按钮')
+  })
+
   test('KiroCrew’s checks show at once (from /status) and again from /crew; the fix button posts {what: agent}', async () => {
     let answer: () => void = () => {}
     const slow = new Promise<void>((r) => { answer = r })
