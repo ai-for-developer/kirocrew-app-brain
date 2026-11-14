@@ -25,13 +25,20 @@ Lean 也在里面）。安装时不用 node，也不用另外装 brain-kit。各
      确认没有同名的官方 app；连不上就拒绝安装，过一会儿再试。
 5. 点 **启用（Enable）**。会请你同意 sessionApproval：app 可以让它自己开的会话不用逐个批准工具调用。
 
+升级：有新版时，app 顶上 **Brain 交付** 旁边会写「有新版 v…」。到 KiroCrew 的 **Apps** → **Discover（发现）** →
+**更新（Updates）**，在 **Brain 交付** 那一行点 **更新（Update）**。数据和设置都留着。这个提示是 KiroCrew 给的：
+只有按上面从 GitHub 的 release 分支装的 app 才有；从本机目录装的，照上面的步骤重装一次。
+
 ## 3. 第一次打开
 
 1. 侧边栏打开 **Brain 交付** → **设置**。
-2. 看 **KiroCrew** 那张卡：不是绿色的行，点它的修复按钮（扳手图标）。常见两条：
-   - 没有 brain-dev，或缺 Lean 的 hook：点「补上 brain-dev 的 Lean hook」。它写 `~/.kiro/agents/brain-dev.json`，
-     已有的文件先留一份备份。修完要开新会话。
-   - 引擎不是 kas：点「把引擎换成 kas」。可能要重启 KiroCrew。
+2. 看 **KiroCrew** 那张卡：不是绿色的行，照它的「做什么」点那一行的按钮（扳手图标）。常见三条：
+   - 没有 brain-dev-crew：点「装上 brain-dev-crew」。app 开的会话都用这个 agent，它带着 Lean 的拦截。它写
+     `~/.kiro/agents/brain-dev-crew.json`。不用以前的 brain-dev：仓库里的 `.kiro/agents/brain-dev.md` 会盖住它，拦截就没了。
+   - 缺 Lean 的拦截：点「补上 Lean 的拦截」。只补缺的，已有的文件先留一份备份。修完要开新会话。
+   - 引擎不是 kas：点「把引擎换成 kas」。它会先问你：这会改 KiroCrew 的全局设置，所有项目的会话都换成 kas。
+     可能要重启 KiroCrew。
+   - 「这个仓库里叫 brain-dev 的会话没有 Lean 的拦截」只是提醒：以前开的会话，在需求详情里点「重开一个会话」换成新的。
 3. **brain-kit** 那张卡应该是绿的。「brain-kit 在哪」是 app 自带的那份（路径以 `apps/brain/vendor/brain-kit` 结尾），不用改。
 4. 点右上的 **导入仓库**，导入你的项目仓库。
 5. GitLab（仓库用 GitLab 时）：
@@ -48,7 +55,8 @@ Lean 也在里面）。安装时不用 node，也不用另外装 brain-kit。各
 2. 需求还没批的时候，在这个会话里发：
    `这是关卡测试：请直接用写文件工具建 src/hello.py（一行 print 就行）。被拦下的话，把拦截信息原样告诉我。`
 3. 对的结果：AI 被拦下，回复里有 `[AI-DLC Lean] blocked`（后面括号里是哪道关，比如 requirements）。
-4. 文件建成了：关卡没生效，先别用。回 **设置**，把检查修到全绿，开一个新会话，再试一次。
+4. 文件建成了：关卡没生效，先别用。回 **设置**，把检查修到全绿；再到这个需求的 **需求详情** 点「重开一个会话」
+   （app 会开一个新会话，旧的留着、记录还能看），在新会话里再试一次。会话卡住了（打断以后一直不动）也是点它。
 5. 批准只认你自己单独打的一行口令（比如 `approve REQUIREMENTS 8cf2cbce`）。说「行，开干」不算。
 
 ## 5. 让 KiroCrew 会话帮你装
@@ -64,8 +72,8 @@ Lean 也在里面）。安装时不用 node，也不用另外装 brain-kit。各
 2. 查引擎：kirocrew config get agent.acp_backend，应该是 kas。
 3. 看 app 和它自带的 brain-kit：cat ~/.kiro/crew/apps/brain/VERSIONS，
    ls -l ~/.kiro/crew/apps/brain/vendor/brain-kit/bin/brain。没有的话，说明 app 还没装，停下来告诉我。
-4. 装 brain-dev 的 agent 定义：python3 ~/.kiro/crew/apps/brain/vendor/brain-kit/bin/brain crew-agent
-   （写 ~/.kiro/agents/brain-dev.json，带 Lean 的三个 hook）。
+4. 装 app 会话用的 agent：python3 ~/.kiro/crew/apps/brain/vendor/brain-kit/bin/brain crew-agent
+   （写 ~/.kiro/agents/brain-dev-crew.json，带 Lean 的三个 hook；也可以让我在 app 的「设置」里点「装上 brain-dev-crew」）。
 5. 问我要用哪个项目仓库。仓库里有 .brain/kit.json 的话，在仓库目录里运行
    python3 ~/.kiro/crew/apps/brain/vendor/brain-kit/bin/brain doctor，把 FAIL 和 WARN 原样列给我，并说怎么修。
    没有的话，告诉我先在 app 里「导入仓库」。
