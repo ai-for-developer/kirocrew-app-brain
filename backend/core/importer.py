@@ -851,11 +851,9 @@ def form_defaults(top: str, origin: dict[str, str] | None, d: str | None) -> dic
             "default_branch": d or "main", "team": ""}
 
 
-def listed_id(top: str, listed: list[str]) -> str | None:
-    for i, p in enumerate(listed, 1):
-        if os.path.realpath(os.path.expanduser(p)) == top:
-            return "r%d" % i
-    return None
+def listed_id(top: str, listed: dict[str, str]) -> str | None:
+    """The id of the listed repo at *top* (*listed*: {path: id}, repoids.RepoIds.of), or None."""
+    return next((rid for p, rid in listed.items() if os.path.realpath(os.path.expanduser(p)) == top), None)
 
 
 def bounded(fn: Callable[[], Any], timeout: float, default: Any) -> Any:
@@ -870,7 +868,7 @@ def bounded(fn: Callable[[], Any], timeout: float, default: Any) -> Any:
         ex.shutdown(wait=False)
 
 
-def inspect(raw: Any, *, listed: list[str], records: Records, token: bool = False,
+def inspect(raw: Any, *, listed: dict[str, str], records: Records, token: bool = False,
             team_of: Callable[[str, dict[str, Any]], bool] | None = None) -> dict[str, Any]:
     """Every check of the 检查 step (blocking: call it in a thread). Writes nothing. *team_of(top, cfg)*: the repo is
     handed to the team runner (its runner-only KiroCrew checks FAIL; a reminder otherwise); None: not known."""

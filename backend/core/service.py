@@ -27,6 +27,7 @@ from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_FOLDER, REPO_ID_RE, TIC
 from .gateway import Gateway
 from .httpkit import AppError
 from .repo import Git, Repo, Source, read_claim, read_facts
+from .repoids import RepoIds
 from .sessions import SessionManager
 from . import store as store_mod
 from .store import Store
@@ -87,6 +88,7 @@ class Service:
         self.signer_kick, self.sign_timeout = signer_kick, sign_timeout
         self.started = False
         self.settings = settings_mod.load(self.data_dir / "settings.json")
+        self.repo_ids = RepoIds(self.data_dir / "repo_ids.json")     # each listed repo's id, kept (UI-19)
         self.sessions = sessions or SessionManager(Gateway(self.name, APP_ROOT / ".app_secret"), app=self.name,
                                                    state_file=self.data_dir / "sessions.json", log=self.log,
                                                    scrub=self.scrub)
@@ -163,8 +165,7 @@ class Service:
         self.repos, self.repo_errors, self.repo_pending = {}, {}, {}
         records = self.imports.all()
         token = None
-        for i, path in enumerate(self.settings["repos"], 1):
-            rid = "r%d" % i
+        for path, rid in self.repo_ids.of(self.settings["repos"]).items():
             try:
                 if not os.path.isdir(path):
                     raise RuntimeError("找不到这个目录")
@@ -1290,8 +1291,7 @@ class Service:
     async def status(self) -> dict[str, Any]:
         info = bk.info()
         repos = []
-        for i, path in enumerate(self.settings["repos"], 1):
-            rid = "r%d" % i
+        for path, rid in self.repo_ids.of(self.settings["repos"]).items():
             r = self.repos.get(rid)
             if r is not None:
                 repos.append({"id": rid, "path": r.path, "name": r.name, "ok": True, "error": "",
@@ -1360,7 +1360,8 @@ class Service:
     async def import_inspect(self, body: dict[str, Any]) -> dict[str, Any]:
         """检查: read only (see importer.inspect)."""
         token = await asyncio.to_thread(self._token_present)
-        got = await asyncio.to_thread(importer.inspect, body.get("path"), listed=list(self.settings["repos"]),
+        listed = self.repo_ids.of(self.settings["repos"])
+        got = await asyncio.to_thread(importer.inspect, body.get("path"), listed=listed,
                                       records=self.imports, token=token, team_of=runner_repo_at)
         return scrub_tree(got, self.scrub)
 
@@ -1453,7 +1454,7 @@ class Service:
             name = await asyncio.to_thread(identity.set_name, top, body.get("name"))
         except identity.NameRefused as exc:
             raise AppError(str(exc), "invalid_name")
-        rid = importer.listed_id(top, list(self.settings["repos"]))
+        rid = importer.listed_id(top, self.repo_ids.of(self.settings["repos"]))
         repo = self.repos.get(rid or "")
         token = await asyncio.to_thread(self._token_present)
         if repo is not None:
@@ -1613,7 +1614,7 @@ class Service:
         """加入列表: through save_settings (checked, saved atomically, reloaded). A repo whose brain-kit is only on the
         install branch is added too and shows as pending; one without brain-kit anywhere is refused."""
         top = await self._import_top(body.get("path"))
-        rid = importer.listed_id(top, self.settings["repos"])
+        rid = importer.listed_id(top, self.repo_ids.of(self.settings["repos"]))
         if rid:
             return {"ok": True, "id": rid, "text": "已经在列表里了", "status": await self.status()}
         token = await asyncio.to_thread(self._token_present)
@@ -1636,7 +1637,7 @@ class Service:
         if len(self.settings["repos"]) >= settings_mod.MAX_REPOS:
             raise AppError("最多 %d 个仓库：先移出一个" % settings_mod.MAX_REPOS, "too_many", 409)
         saved = await self.save_settings({**self.settings_view(), "repos": list(self.settings["repos"]) + [top]})
-        rid = importer.listed_id(top, self.settings["repos"]) or ""
+        rid = importer.listed_id(top, self.repo_ids.of(self.settings["repos"])) or ""
         text = "加入了（%s）" % rid + ("：%s" % pend["text"] if pend else "")
         return {"ok": True, "id": rid, "text": text, "status": saved["status"]}
 
