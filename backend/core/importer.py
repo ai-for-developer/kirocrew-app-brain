@@ -66,6 +66,7 @@ PROJECT_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+$")
 PREFIX_RE = re.compile(r"^[A-Z][A-Z0-9]{0,9}$")
 CRED_RE = re.compile(r"(?i)\b((?:https?|ssh|git)://)[^/@\s]+@")
 NOT_GITLAB = {"github.com", "www.github.com", "bitbucket.org", "codeberg.org"}
+SSH_HOST_PREFIXES = ("ssh.", "altssh.")    # a GitLab's SSH-only host name in front of its web host
 FALSE_BIN = shutil.which("false") or "/usr/bin/false"
 
 CLONE_STEPS = (("clone", "克隆"),)
@@ -425,11 +426,12 @@ def shown_url(url: str) -> str:
 
 def gitlab_of(url: str) -> dict[str, str]:
     """The GitLab an origin URL suggests: {"base": "https://host", "project": "group/repo"}; empty when it is not a
-    hosted git URL (a local path, GitHub)."""
+    hosted git URL (a local path, GitHub). An SSH URL's port is SSH's, and its host may be GitLab's own SSH name
+    (SSH_HOST_PREFIXES): the web address has neither."""
     host, path, scheme = "", "", "https"
     m = SCP_RE.match(url or "")
     if m:
-        host, path = m.group("host"), m.group("path")
+        host, path = web_host(m.group("host")), m.group("path")
     elif "://" in (url or ""):
         try:
             sp = urlsplit(url)
@@ -442,12 +444,23 @@ def gitlab_of(url: str) -> dict[str, str]:
                 scheme = "http"
             if sp.scheme in ("http", "https") and port:
                 host += ":%d" % port
+            if sp.scheme == "ssh":
+                host = web_host(host)
     path = path.strip("/")
     if path.endswith(".git"):
         path = path[:-4]
     if not host or host.lower() in NOT_GITLAB or not PROJECT_RE.match(path):
         return {"base": "", "project": ""}
     return {"base": "%s://%s" % (scheme, host), "project": path}
+
+
+def web_host(ssh_host: str) -> str:
+    """The web host of a GitLab SSH host: ssh.gitlab.example.com (GitLab's gitlab_ssh_host) is gitlab.example.com."""
+    for prefix in SSH_HOST_PREFIXES:
+        rest = ssh_host[len(prefix):]
+        if ssh_host.lower().startswith(prefix) and "." in rest:
+            return rest
+    return ssh_host
 
 
 def origin_of(g: Git) -> dict[str, str] | None:
