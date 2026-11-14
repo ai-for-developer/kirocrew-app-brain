@@ -197,6 +197,8 @@ export function TypeLine({ line, sessionUrl, said }: { line: string; sessionUrl?
 const FIX_LABEL: Record<CrewFixBody['what'], string> = { agent: '补上 Lean 的拦截', engine: '把引擎换成 kas' }
 export const KIT_FIX_LABEL = '重装 kit 文件'
 const FIX_NAMES: readonly string[] = [...Object.values(FIX_LABEL), KIT_FIX_LABEL, '装上 brain-dev-crew']
+/** 把引擎换成 kas sets KiroCrew's own setting, for every project: asked first (UI-17) */
+export const ENGINE_ASK = '这会改 KiroCrew 的全局设置：以后所有项目、所有会话都用 kas 引擎，不只是这个 app 开的会话。KiroCrew 可能要重开才生效。'
 const fixName = (r: CheckRow, fallback: string): string => {
   const named = /点「([^」]{2,20})」/.exec(r.todo ?? '')?.[1] ?? ''
   return FIX_NAMES.includes(named) ? named : fallback
@@ -229,6 +231,7 @@ export function CheckRows({ rows, fix, only, onFixed, onHold, empty }: {
 }) {
   const api = useAppApi()
   const act = useAction((body: CrewFixBody) => api.post<CrewFixResult>(paths.crewFix(), body))
+  const [asking, setAsking] = useState(false)
   const [held, setHeld] = useState<Record<string, CheckRow>>({})
   const holdRef = useLatest(onHold)
   const holding = Object.keys(held).length > 0
@@ -245,6 +248,7 @@ export function CheckRows({ rows, fix, only, onFixed, onHold, empty }: {
   const list = [...shown, ...Object.values(held).filter((r) => !kitHere.has(r.repo as string))]
   const seen = new Set<string>()
   const doFix = async (what: CrewFixBody['what']) => {
+    setAsking(false)
     const r = await act.run({ what })
     if (r) onFixed?.(r.rows)
   }
@@ -265,10 +269,20 @@ export function CheckRows({ rows, fix, only, onFixed, onHold, empty }: {
               {r.todo && <span className="br-prob-todo"><b>做什么</b>{r.todo}</span>}
               {(f || r.raw) && (
                 <span className="br-prob-acts">
-                  {(f === 'agent' || f === 'engine') && (
-                    <button type="button" className="br-btn is-small is-primary" disabled={act.busy} onClick={() => void doFix(f)}>
+                  {(f === 'agent' || f === 'engine') && !(f === 'engine' && asking) && (
+                    <button type="button" className="br-btn is-small is-primary" disabled={act.busy}
+                      onClick={() => (f === 'engine' ? setAsking(true) : void doFix(f))}>
                       <Icon name="Wrench" size={13} />{fixName(r, FIX_LABEL[f])}
                     </button>
+                  )}
+                  {f === 'engine' && asking && (
+                    <span className="br-confirm" role="group" aria-label="确认换引擎" data-testid="engine-confirm">
+                      <span>{ENGINE_ASK}</span>
+                      <span className="br-row">
+                        <button type="button" className="br-btn is-small is-primary" disabled={act.busy} onClick={() => void doFix('engine')}>换成 kas</button>
+                        <button type="button" className="br-btn is-small" disabled={act.busy} onClick={() => setAsking(false)}>先不换</button>
+                      </span>
+                    </span>
                   )}
                   {kit && <KitFix repo={r.repo as string} label={fixName(r, KIT_FIX_LABEL)} onHold={(on) => hold(r, on)} onDone={() => onFixed?.(rows)} />}
                   {r.raw && (
