@@ -59,6 +59,8 @@ FIX_BUTTON = {"agent": "补上 Lean 的拦截", "engine": "把引擎换成 kas",
 AGENT_NEW = "装上 %s" % LOCAL_AGENT    # the agent fix when ~/.kiro/agents/brain-dev-crew.json is not there at all
 REINSTALL = "点「%s」：重装 brain-kit 并提交（默认直接在当前分支上，团队仓库可以选新分支开 MR）" % FIX_BUTTON["kit"]
 AGENT_NEW_TODO = "点「%s」：装上 brain-kit 带的那一份。app 开的会话都用它，Lean 的拦截在它里面" % AGENT_NEW
+OLD_PAIR_TODO = ("app 新开的会话用 %s，不受影响；以前开的会话，在需求详情里点「重开一个会话」换成新的。都换完了，删掉细节里那份旧的"
+                 " %s 设置，这条就不再提醒" % (LOCAL_AGENT, OLD_AGENT))
 UNREADABLE_TODO = "自己修好它，或者删掉它再装一份新的（这里不会覆盖它）"
 ADAPTER = "Lean 的适配文件"         # .kiro/brain/lean-hook.py: KiroCrew sessions run Lean's hooks through it
 RECORDS = "变更说明和 AI 停下来写的问题"   # runs/<KEY>/MR.md and park.json, which Lean's code fingerprint must leave out
@@ -280,7 +282,7 @@ RULES: list[Rule] = [
     Rule(r"^KiroCrew: (?P<path>\S+) is also named (?P<n>\S+?): ", "仓库里也有一个叫 {n} 的 agent",
          "把它改个名字或者删掉：它会盖掉带 Lean 拦截的那份"),
     Rule(r"^KiroCrew: a session on agent (?P<old>\S+) runs (?P<md>\S+), not ", "这个仓库里叫 {old} 的会话没有 Lean 的拦截",
-         "app 新开的会话用 %s，不受影响；以前开的会话，在需求详情里点「重开一个会话」换成新的" % LOCAL_AGENT),
+         OLD_PAIR_TODO),
     Rule(r"^Kiro rewrites ~/\.kiro/agents/\*\.json each time kiro-cli starts", "Kiro 每次启动都会改写你的 agent 设置",
          "要保留你手改的 agent 设置，就关掉 Kiro 的「自动升级 agent」（命令在细节里）；不改也行，app 每次都按改写后的那份检查",
          how="kiro-cli settings chat.enableAutoAgentUpgrade false"),
@@ -481,7 +483,7 @@ def old_agent_shadowed(repo: str, where: str) -> dict[str, Any]:
     """The repo's brain-dev (*where*, brain install puts .kiro/agents/brain-dev.md there for kiro-cli) shadows the
     person's ~/.kiro/agents/brain-dev.json: a session opened as brain-dev there runs without Lean's hooks."""
     return mk("WARN", "这个仓库里叫 %s 的会话没有 Lean 的拦截" % OLD_AGENT,
-              "app 新开的会话用 %s，不受影响；以前开的会话，在需求详情里点「重开一个会话」换成新的" % LOCAL_AGENT, None, repo,
+              OLD_PAIR_TODO, None, repo,
               "仓库里的 %s 盖住了 ~/.kiro/agents/%s.json（KiroCrew 先用项目里的同名 agent）" % (where, OLD_AGENT))
 
 
