@@ -11,7 +11,7 @@ import type { ReqBoard } from '../types'
 import { diffBoards, type BoardDiff } from './diff'
 import { fmtSpan, fmtWhen, gateVerb, openGate } from './format'
 import type { SnapshotClock } from './hooks'
-import { decisionStops, replayAt, replayClock, replaySpan, type Choice, type DecisionStop, type ReplaySpan } from './timeline'
+import { decisionStops, momentOf, replayAt, replayClock, replaySpan, type Choice, type DecisionStop, type Moment, type ReplaySpan } from './timeline'
 
 /** The whole replay plays in about this many seconds at 1×. */
 export const PLAY_S = 60
@@ -46,6 +46,8 @@ export interface ReplayHandle {
   total: number
   /** the real time the replay stands at */
   t: number
+  /** the moment the 产出 drawer shows (null when not replaying) */
+  moment: Moment | null
   held: Held | null
   /** the requirement had ended (merged or closed) when the replay started */
   finished: boolean
@@ -136,8 +138,9 @@ export function useReplay(board: ReqBoard | null, onDiff: (d: BoardDiff, b: ReqB
 
   const clock = useMemo(() => (shown ? { at: t, receivedAt: Number.POSITIVE_INFINITY } : null), [shown, t])
   const finished = !!src && (src.ended_at !== null || src.row.state === 'merged' || src.row.state === 'closed')
+  const moment = useMemo(() => (src && shown ? momentOf(src, t) : null), [src, shown, t])
   const held = st.hold ? { ...st.hold.stop, picked: st.hold.left <= PICK_TICKS } : null
-  return { on: st.on, board: shown, clock, span, p: st.p, total, t, held, finished, speed: st.speed, playing: st.playing, start, exit, toggle, pause, seek, setSpeed }
+  return { on: st.on, board: shown, clock, span, p: st.p, total, t, moment, held, finished, speed: st.speed, playing: st.playing, start, exit, toggle, pause, seek, setSpeed }
 }
 
 /** The replay's controls, under the top bar: what is playing, how far, how fast. */

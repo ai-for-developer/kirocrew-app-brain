@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { fx } from '../test/data'
-import type { ReqBoard } from '../types'
-import { GAP_S, SAME_DECISION_S, decisionStops, replayAt, replayClock, replaySpan } from './timeline'
+import type { NodeTurns, OutFile, ReqBoard, TurnView } from '../types'
+import { GAP_S, SAME_DECISION_S, decisionStops, filesAt, momentOf, replayAt, replayClock, replaySpan, turnsAt } from './timeline'
 
 // board-merged.json (PAY-2): claimed at START, merged at MERGE, written back into the Brain at END (its last event)
 const START = 1793620800
@@ -365,5 +365,61 @@ describe('decisionStops: where the replay holds', () => {
     b.events = [ev(1, 100, 'approve', '没问过就批了'), ev(2, 200, 'request', '请产品在 MR 上批准发布'), ev(3, 300, 'answer', 'D-2 回答了：approve'),
       ev(4, 300 + SAME_DECISION_S + 1, 'approve', '产品在 MR 上批准了发布')]
     expect(decisionStops(b).map((x) => [x.at, x.choice, x.text])).toEqual([[299.99, 'answer', 'D-2 回答了：approve']])
+  })
+})
+
+describe('the 产出 drawer at a moment', () => {
+  const file = (over: Partial<OutFile>): OutFile => ({ path: 'x.md', output: false, status: 'M', added: 1, removed: 0, ref: null, pin: null, base: null,
+    base_round: null, vs: [], why: null, ...over })
+  const sha = (s12: string) => s12 + '0'.repeat(28)
+  const DESIGN_DRAFT = '8bde8a1833b8' // committed at 1793633700
+  const FIXED = 'f843e8d2a8f6' // committed at 1793636460
+
+  it('a commit is made by then from its time on the conveyor; one the conveyor does not know counts as made', () => {
+    const m = momentOf(fx.boardMerged(), 1793633700)
+    expect([m.made(sha(DESIGN_DRAFT)), m.made(sha(FIXED)), m.made('e'.repeat(40))]).toEqual([true, false, true])
+  })
+
+  it('a round over by then: every file of it, each at that round’s version', () => {
+    const r1 = replayAt(fx.boardMerged(), 1793635080 + 60).nodes.find((n) => n.id === 'application-design')!.rounds[0]
+    const files = [file({ ref: sha(DESIGN_DRAFT), output: true }), file({ path: 'later.py', ref: sha(FIXED) })]
+    expect(filesAt(files, r1, false, momentOf(fx.boardMerged(), 1793635080 + 60))).toEqual({ files, later: 0 })
+  })
+
+  it('a round still going: what its commits had by then, what it hands in once it had asked; the rest counted as later', () => {
+    const b = fx.boardMerged()
+    const doc = file({ path: 'application-design.md', output: true, ref: sha(FIXED) })
+    const draft = file({ path: 'aidlc-state.md', ref: sha(DESIGN_DRAFT) })
+    const pinned = file({ path: 'application-design.md', output: true, ref: 'worktree', pin: 'f'.repeat(64) })
+    const t = 1793633700 + 30 // the draft is committed, nothing asked yet (asked at 1793633760)
+    const r = replayAt(b, t).nodes.find((n) => n.id === 'application-design')!.rounds[0]
+    expect(r.ended).toBeNull()
+    expect(filesAt([doc, draft, pinned], r, false, momentOf(b, t))).toEqual({ files: [draft], later: 2 })
+    expect(filesAt([doc, draft, pinned], r, true, momentOf(b, t))).toEqual({ files: [doc, draft, pinned], later: 0 })
+  })
+
+  const turn = (over: Partial<TurnView>): TurnView => ({ n: 1, at: 100, until: 200, slot: 's', url: '/chat?sid=s', task: { kind: 'app', cause: '开工消息', text: '开工' },
+    reply: '做完了', live: false, calls: [], more_calls: 0, also: [], ...over })
+  const call = (at: number, inRound = true) => ({ at, tool: '读文件', detail: 'a.md', in_round: inRound })
+  const data: NodeTurns = { node: 'application-design' as NodeTurns['node'], round: 1, run: 'local' as NodeTurns['run'], why_not: null, why: null,
+    lit: { from: 100, to: 400 }, meta: { took: 300, turns: 2, calls: 4 },
+    turns: [turn({ calls: [call(110), call(150, false)] }), turn({ n: 2, at: 300, until: 400, reply: '改好了', calls: [call(310), call(350)], more_calls: 3 })] }
+
+  it('session turns: the turns begun by then; one still going has no reply yet and the calls made by then', () => {
+    expect(turnsAt(data, 400)).toBe(data)
+    const mid = turnsAt(data, 320)
+    expect(mid.turns.map((x) => [x.n, x.reply, x.live, x.calls.map((c) => c.at), x.more_calls])).toEqual([[1, '做完了', false, [110, 150], 0], [2, null, true, [310], 0]])
+    expect(mid.meta).toEqual({ took: 300, turns: 2, calls: 2 })
+    expect(mid.lit).toEqual({ from: 100, to: 320 })
+    const before = turnsAt(data, 250)
+    expect(before.turns.map((x) => x.n)).toEqual([1])
+    expect(turnsAt(data, 50)).toMatchObject({ turns: [], why: '那时这一轮还没开始哪个回合' })
+  })
+
+  it('a round this machine cannot read: its card names a request only once it was made', () => {
+    const w: NodeTurns = { ...data, turns: [], meta: { took: 300, turns: null, calls: null },
+      why_not: { title: '这一轮是运行机做的', missing: null, here: [], do: null, asked: 300 } }
+    expect(turnsAt(w, 299).why_not?.asked).toBeNull()
+    expect(turnsAt(w, 300)).toBe(w)
   })
 })

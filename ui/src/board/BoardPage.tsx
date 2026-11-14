@@ -14,7 +14,7 @@
  * card, a lane, a gate's 看文档, the top bar's 产出) opens the 产出 drawer (Outputs.tsx) on that stage: its place is in
  * the address (?out=), opened, moved and closed in place of the current history entry; Esc closes it first. 回放
  * (Replay.tsx) plays the requirement again from the same snapshot (timeline.ts), holding on each decision a person
- * made; while it plays nothing can be done.
+ * made; while it plays nothing can be done, and the drawer shows what each step had at the replayed moment.
  * Reduced motion: nothing flies or pulses, states still change.
  *
  * A big requirement split into small ones (row.family, views/Family.tsx): a small one names its big one in the crumb
@@ -293,7 +293,7 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
           <>
             <TopBar board={board} replaying={rp.on} follow={follow} onReplay={() => rp.start()} onFollow={() => setFollow((v) => !v)} onDetail={toDetail}
               onSession={(url) => navigate(url)} onStart={onStart} onParent={toBoard} onFamily={toFamily}
-              onOutputs={rp.on || !laneNodes(board).length ? undefined : () => onOutputs(firstOutputs(board))} />
+              onOutputs={!laneNodes(board).length ? undefined : () => onOutputs(firstOutputs(board))} />
             <ReplayBar rp={rp} />
             {problem && (
               <div className="kt-banner br-problem" role="status" data-testid="br-board-problem">
@@ -318,12 +318,12 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
                     <div ref={graphBox}>
                       <StageGraph key={`${entry.repo}/${entry.key}${rp.on ? ':replay' : ''}`} board={board} lay={lay} focus={focus} onNode={onNode} flashes={fx.flashes}
                         reducedMotion={reducedMotion} feed={feed} quiet={quiet} onSession={(url) => navigate(url)} onAct={quiet ? undefined : onAct}
-                        onOutputs={quiet ? undefined : onOutputs} held={rp.held} />
+                        onOutputs={onOutputs} held={rp.held} />
                     </div>
                     {focus && <FocusBar board={board} focus={focus} onClear={() => setFocus(null)} />}
                     <Conveyor board={board} fresh={fx.belt} focus={focus} onNode={onNode} />
                     {(fam?.role === 'parent' || fam?.role === 'child') && famCard}
-                    <Lanes board={board} focus={focus} bumps={fx.bumps} onNode={onNode} quiet={quiet} onOutputs={quiet ? undefined : onOutputs} />
+                    <Lanes board={board} focus={focus} bumps={fx.bumps} onNode={onNode} quiet={quiet} onOutputs={onOutputs} />
                     {!acceptTop && <Accept board={board} onDetail={toDetail} quiet={quiet} />}
                   </div>
                   <aside className="kt-side" aria-label="检查、问题和事件">
@@ -341,8 +341,10 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
             )}
           </>
         )}
-        {board && out && !rp.on && (
-          <OutputsDrawer board={board} repo={entry.repo} reqKey={entry.key} at={out} onAt={toOutputs} onClose={() => toOutputs(null)} />
+        {/* a way in that replays opens the drawer at its moment, never first at the live board */}
+        {board && out && (entered.current || !(entry.at || entry.replay)) && (
+          <OutputsDrawer board={board} repo={entry.repo} reqKey={entry.key} at={out} onAt={toOutputs} onClose={() => toOutputs(null)}
+            moment={rp.moment} bar={rp.on && <ReplayBar rp={rp} />} />
         )}
         <div className="kt-sr" aria-live="polite" data-testid="kt-announce">{fx.announce}</div>
       </ClockContext.Provider>

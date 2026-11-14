@@ -10,8 +10,11 @@
  * A requirement takes hours or days with long quiet gaps (a night, a wait for a person): the replay's clock is
  * compressed — every quiet gap plays as at most GAP_S — so what happened is what plays, and the bar still says the
  * real time. The replay holds on each decision a person made (decisionStops), as the sample's replay holds on a gate.
+ *
+ * The 产出 drawer at a moment (filesAt, turnsAt): a round over by then as it ended; one still going then, only what it
+ * had by then.
  */
-import type { ActorStatus, CheckCell, Gate, NodeId, Relay, ReqBoard, ReqState, Round, Run, StageNode, WaitWho } from '../types'
+import type { ActorStatus, CheckCell, Gate, NodeId, NodeTurns, OutFile, Relay, ReqBoard, ReqState, Round, Run, StageNode, WaitWho } from '../types'
 import { ownerIsYou } from './format'
 
 export interface ReplaySpan {
@@ -268,4 +271,40 @@ export function decisionStops(b: Pick<ReqBoard, 'events'>): DecisionStop[] {
     if (prev && e.at - prev.at <= SAME_DECISION_S && stops[prev.i].choice === 'answer' && choice !== 'answer') stops[prev.i] = { ...stops[prev.i], choice, text: e.text }
   }
   return stops
+}
+
+/** A replayed moment, as the 产出 drawer reads it: when, and whether a commit (40 hex) had been made by then. One the
+ * conveyor does not know counts as made, as replayAt counts it. */
+export interface Moment {
+  t: number
+  made: (ref: string) => boolean
+}
+
+export function momentOf(b: Pick<ReqBoard, 'belt'>, t: number): Moment {
+  const at = new Map(b.belt.map((x) => [x.sha, x.at]))
+  return { t, made: (ref) => (at.get(ref.slice(0, 12)) ?? -Infinity) <= t }
+}
+
+/** A round's files at the moment. Over by then: all of them, each at that round's version. Still going: what its commits
+ * had by then, and what it hands in once it had asked for approval with it; *later* counts the rest. */
+export function filesAt(files: OutFile[], r: Round, asked: boolean, m: Moment): { files: OutFile[]; later: number } {
+  if (r.ended !== null) return { files, later: 0 }
+  const kept = files.filter((f) => (f.output && asked) || (f.ref !== null && f.ref !== 'worktree' && m.made(f.ref)))
+  return { files: kept, later: files.length - kept.length }
+}
+
+/** A round's session turns at the moment: the turns begun by then; one still going then has no reply yet and only the
+ * calls made by then. */
+export function turnsAt(d: NodeTurns, t: number): NodeTurns {
+  const whyNot = d.why_not && d.why_not.asked !== null && d.why_not.asked > t ? { ...d.why_not, asked: null } : d.why_not
+  const turns = d.turns.filter((x) => x.at <= t).map((x) => (x.until !== null && x.until <= t ? x
+    : { ...x, until: null, reply: null, live: true, calls: x.calls.filter((c) => c.at !== null && c.at <= t), more_calls: 0 }))
+  if (turns.length === d.turns.length && turns.every((x, i) => x === d.turns[i])) return whyNot === d.why_not ? d : { ...d, why_not: whyNot }
+  return {
+    ...d, turns, why_not: whyNot,
+    why: turns.length ? d.why : '那时这一轮还没开始哪个回合',
+    lit: d.lit && { from: d.lit.from, to: Math.min(d.lit.to, t) },
+    meta: { ...d.meta, turns: d.meta.turns === null ? null : turns.length,
+      calls: d.meta.calls === null ? null : turns.flatMap((x) => x.calls).filter((c) => c.in_round).length },
+  }
 }

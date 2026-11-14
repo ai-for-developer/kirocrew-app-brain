@@ -227,7 +227,7 @@ export function StageGraph({ board, lay, focus, onNode, flashes, reducedMotion, 
         {cardNode && cardBox && (
           <div key={card} className="kt-ncard" style={cardPlace(cardBox, lay)} data-testid="kt-ncard" role="dialog" aria-label={`${cardNode.title}做了什么`}
             onMouseEnter={() => hover(card, 0)} onMouseLeave={() => hover(null, 200)}>
-            <StageCard n={cardNode} board={board} runs={runs} onSession={quiet ? undefined : onSession} onOutputs={quiet ? undefined : onOutputs} />
+            <StageCard n={cardNode} board={board} runs={runs} onSession={quiet ? undefined : onSession} onOutputs={onOutputs} />
           </div>
         )}
       </Scroller>
