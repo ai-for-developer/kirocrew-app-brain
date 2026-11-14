@@ -41,6 +41,7 @@ import { EntryChip, MrDescCard, QuestionCard, ReviewButton, ReviewSay, useCopy }
 import { PART_LABEL, PART_VAR, StreamCard, splitOf, valueStream, type Part } from './Stream'
 import { NotFound, OnRunner, ReqSwitch, useOnRunner } from './ReqSwitch'
 import { runWords } from './Team'
+import { ReopenSession } from './Reopen'
 
 export { EntryChip, MR_DESC_COPY_HINT, MrDescCard, QuestionCard, mrDescSource } from './Question'
 export { PART_LABEL, PART_VAR, valueStream, type Part, type StreamSeg } from './Stream'
@@ -299,7 +300,8 @@ export function DetailView({ entry, onBack, onSwitch, onMissing, ...props }: {
     if (missing || x) onMissing?.(missing)
   }, [missing, !!x]) // eslint-disable-line react-hooks/exhaustive-deps
   const repoInfo = props.status?.repos.find((r) => r.id === entry.repo) ?? null
-  const live = x ? x.sessions.find((s) => s.kind === 'local' && !s.error) ?? null : null
+  // the newest local one, as the backend's (service._live): 重开一个会话 adds one after the old
+  const live = x ? [...x.sessions].reverse().find((s) => s.kind === 'local' && !s.error) ?? null : null
   const toBoard = (more: Partial<BoardEntry> = {}) => props.go({ kind: 'board', repo: entry.repo, key: entry.key, from: 'item', ...more })
   // 回交付总览: back when that is where it was opened from (its filters kept), else a move there
   const back = onBack ? { name: from, go: onBack } : { name: VIEW_NAME.overview, go: () => props.go({ kind: 'overview', ...(entry.repo !== 'runner' ? { repo: entry.repo } : {}) }) }
@@ -375,6 +377,7 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
         <NowBar x={x} now={now} at={at} live={live} canOpen={canOpen} repo={entry.repo} reqKey={entry.key}
           onStart={onStart} onAnswer={() => scrollTo('问题和回答')} onBrain={() => props.go({ kind: 'brain', repo: entry.repo, reflect: entry.key })} />
         {(canOpen || opened) && <OpenSession repo={entry.repo} reqKey={entry.key} opened={opened} onOpened={onOpened} />}
+        {live && x.row.state === 'local' && x.row.worktree && <ReopenSession repo={entry.repo} reqKey={entry.key} live={live} onOpened={after} />}
         <Facts x={x} start={startOf(x, board)} localOnly={localOnly} />
       </section>
       <Cards x={x} board={board} at={at} localOnly={localOnly} replying={now.do === 'reply'} onBoard={toBoard} onSessions={() => scrollTo('会话')} />

@@ -1002,8 +1002,13 @@ export interface RequirementDetail {
 export interface OpenSessionBody { trust?: boolean; kickoff?: boolean
   /** 开审查会话: a NEW brain-dev session in the worktree to review the code (the session that wrote it may not review it,
    * Lean's next step says so), never the live one; its first message the review line Lean wrote */
-  review?: boolean }
-export interface OpenSessionResult { ok: boolean; slot: string; url: string }
+  review?: boolean
+  /** 重开一个会话: a NEW session even when one is live (the old one stopped when busy, kept); *replace*: the slot the page
+   * shows as live (when another is live by now, that one is the answer and none is opened) */
+  fresh?: boolean
+  replace?: string }
+/** reopened: 重开一个会话 opened this one now (false: it was opened by an earlier click) */
+export interface OpenSessionResult { ok: boolean; slot: string; url: string; reopened?: boolean }
 /**
  * choice: an option id (A–H), or 'approve' / 'reject' for a question without options. id: the question's D-<n> when it
  * has one (an MR question); without it the open clarify question is meant.
