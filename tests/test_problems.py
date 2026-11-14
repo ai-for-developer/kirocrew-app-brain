@@ -179,7 +179,7 @@ DOCTOR = [
      "~/.kiro/agents/brain-dev.json once nothing picks brain-dev", "这个仓库里叫 brain-dev 的会话没有 Lean 的拦截", None),
     ("WARN", "Kiro rewrites ~/.kiro/agents/*.json each time kiro-cli starts (chat.enableAutoAgentUpgrade is on) and keeps "
      "the old file as .bak; brain-kit's checks read the rewritten one. To keep your agent files as you wrote them: "
-     "`kiro-cli settings chat.enableAutoAgentUpgrade false`", "Kiro 每次启动都会改写 ~/.kiro/agents 里的 agent 设置", None),
+     "`kiro-cli settings chat.enableAutoAgentUpgrade false`", "Kiro 每次启动都会改写你的 agent 设置", None),
     ("OK", "brain on PATH: ~/.local/bin/brain", "终端里能用 brain 命令", None),
     ("WARN", "brain is not on PATH (the docs and messages say `brain ...`): `/opt/brain-kit/bin/brain link` puts it in "
      "~/.local/bin", "终端里还用不了 brain 命令", None),

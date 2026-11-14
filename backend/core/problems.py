@@ -169,6 +169,8 @@ RUNNER_HOOK = ("照 brain-kit 的 remote/agents/brain-run.json 写：<python 绝
                "<runnerd.json> <事件>")
 
 
+CREW_ROW = r"(?:agent )?(?P<n>brain-dev(?:-crew)?)"   # brain-kit's crew agent in its rows: `agent brain-dev-crew` (ux-k2), brain-dev before
+
 RULES: list[Rule] = [
     # cli.runner_kit_problems / doctor_checks (d46765f, 0d52e97: version 3): the hook adapter is too old for the runner
     Rule(r"^(?P<path>\S+) is an older adapter \(version (?P<have>\d+), needs (?P<need>\d+)\)",
@@ -265,15 +267,40 @@ RULES: list[Rule] = [
     # cli.crew_checks (brain doctor's KiroCrew lines)
     Rule(r"^KiroCrew: ~/\.kiro/agents/(?P<n>brain-dev(?:-crew)?)\.json missing", "KiroCrew 里还没有 {n}", AGENT_NEW_TODO,
          "agent"),
-    Rule(r"^KiroCrew (?P<n>brain-dev(?:-crew)?) carries Lean's 3 hooks$", "KiroCrew 的 {n} 设置里 Lean 的拦截都在"),
-    Rule(r"^KiroCrew (?P<n>brain-dev(?:-crew)?)\.json lacks Lean's (?P<t>.+?) hook\(s\)",
+    Rule(r"^KiroCrew %s carries Lean's 3 hooks$" % CREW_ROW, "KiroCrew 的 {n} 设置里 Lean 的拦截都在"),
+    Rule(r"^KiroCrew %s(?:\.json)? lacks Lean's (?P<t>.+?) hook\(s\)" % CREW_ROW,
          lambda g, lv: "%s 的设置缺 Lean 的拦截：%s" % (g["n"], _hook_names(g["t"])),
          lambda g, lv: "点「%s」：只补上缺的（%s），别的都不动" % (FIX_BUTTON["agent"], _hook_names(g["t"])),
          "agent"),
-    Rule(r"^KiroCrew brain-dev\.json has no (?P<fields>.+?) \(", "brain-dev 的设置里没有{fields}",
+    Rule(r"^KiroCrew %s(?:\.json)? has no (?P<fields>.+?) \(" % CREW_ROW, "{n} 的设置里没有{fields}",
          "让 brain-kit 在终端里补上缺的设置（你自己的设置都留着）", how="brain crew-agent --force"),
-    Rule(r"^KiroCrew brain-dev uses your own (?P<fields>.+?) \(", "brain-dev 用的是你自己的{fields}"),
-    Rule(r"^~/\.kiro/agents/brain-dev\.json is not valid JSON", "brain-dev 的设置读不懂：文件格式坏了", UNREADABLE_TODO),
+    Rule(r"^KiroCrew %s uses your own (?P<fields>.+?) \(" % CREW_ROW, "{n} 用的是你自己的{fields}"),
+    Rule(r"^~/\.kiro/agents/(?P<n>brain-dev(?:-crew)?)\.json is not valid JSON", "{n} 的设置读不懂：文件格式坏了",
+         UNREADABLE_TODO),
+    Rule(r"^KiroCrew: (?P<path>\S+) is also named (?P<n>\S+?): ", "仓库里也有一个叫 {n} 的 agent",
+         "把它改个名字或者删掉：它会盖掉带 Lean 拦截的那份"),
+    Rule(r"^KiroCrew: a session on agent (?P<old>\S+) runs (?P<md>\S+), not ", "这个仓库里叫 {old} 的会话没有 Lean 的拦截",
+         "app 新开的会话用 %s，不受影响；以前开的会话，在需求详情里点「重开一个会话」换成新的" % LOCAL_AGENT),
+    Rule(r"^Kiro rewrites ~/\.kiro/agents/\*\.json each time kiro-cli starts", "Kiro 每次启动都会改写你的 agent 设置",
+         "要保留你手改的 agent 设置，就关掉 Kiro 的「自动升级 agent」（命令在细节里）；不改也行，app 每次都按改写后的那份检查",
+         how="kiro-cli settings chat.enableAutoAgentUpgrade false"),
+    # cli.doctor_checks (ux-k2): brain on PATH, the material store (brain-intake), the Lean pin
+    Rule(r"^brain on PATH: (?P<path>\S+)$", "终端里能用 brain 命令"),
+    Rule(r"^brain is not on PATH", "终端里还用不了 brain 命令",
+         "app 里用不着它；要在终端里用 brain，就跑一次细节里那条 brain link"),
+    Rule(r"^material store (?P<store>\S+) is not a git clone of brain-intake", "材料库还不是 brain-intake 的克隆：带文档的需求交不出去",
+         "按细节里的命令克隆你们团队的 brain-intake，再告诉 brain-kit 它在哪；不带文档的需求不受影响"),
+    Rule(r"^material store (?P<store>\S+) has no origin", "材料库没有远端：带文档的需求交不出去",
+         "给材料库加上你们团队 brain-intake 的远端地址（命令在细节里）；不带文档的需求不受影响"),
+    Rule(r"^material store (?P<store>\S+) is a clone of brain-intake with an origin", "材料库是 brain-intake 的克隆：交接时会把材料发布上去"),
+    Rule(r"^AI-DLC Lean (?P<have>\S+) \(pinned (?P<want>[^)]+)\)$", "AI-DLC Lean {have}（仓库定的是 {want}）"),
+    Rule(r"^AI-DLC Lean (?P<have>.+?) \(not pinned\)$", "AI-DLC Lean {have}"),
+    Rule(r"^AI-DLC Lean (?P<have>.+?) installed, pinned (?P<want>\S+) \(\S+ pins\): `brain install --upgrade` writes this",
+         lambda g, lv: "装的 AI-DLC Lean 是 %s，仓库定的是 %s" % (g["have"].replace("of unknown version", "不知道哪一版"), g["want"]),
+         REINSTALL, "kit"),
+    Rule(r"^AI-DLC Lean (?P<have>.+?) installed, pinned (?P<want>\S+) \(\S+ pins\)",
+         lambda g, lv: "装的 AI-DLC Lean 是 %s，仓库定的是 %s" % (g["have"].replace("of unknown version", "不知道哪一版"), g["want"]),
+         "这个 brain-kit 带的 Lean 不是定的那一版：换一个带 Lean {want} 的 brain-kit，或者改仓库的 brain-kit 设置里定的版本"),
     Rule(r"^KiroCrew engine: (?P<be>default \(KAS\)|kas)$",
          lambda g, lv: "KiroCrew 引擎：%s" % ("默认（kas）" if g["be"].startswith("default") else "kas")),
     Rule(r"^KiroCrew engine: (?P<be>\S+)", "KiroCrew 引擎是 {be}，不是 kas",
