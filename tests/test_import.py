@@ -615,6 +615,24 @@ def test_the_routes_refuse_bad_paths_before_anything_runs(tmp_path, home):
     assert sh("git", "-C", repo, "branch", "--list", "brain/install").stdout == ""
 
 
+def test_gitlab_of_takes_the_web_address_from_an_ssh_origin():
+    """GitLab's SSH host is often ssh.<its web host>, on a port of its own: the web address has neither (E2E-9)."""
+    web = {"base": "https://gitlab.example.com", "project": "grp/pay"}
+    for url in ("git@gitlab.example.com:grp/pay.git", "git@ssh.gitlab.example.com:grp/pay.git",
+                "ssh://git@gitlab.example.com/grp/pay.git", "ssh://git@ssh.gitlab.example.com/grp/pay.git",
+                "ssh://git@gitlab.example.com:2222/grp/pay.git", "ssh://git@ssh.gitlab.example.com:2222/grp/pay.git",
+                "ssh://ssh.gitlab.example.com:443/grp/pay", "git@altssh.gitlab.example.com:grp/pay.git"):
+        assert importer.gitlab_of(url) == web, url
+    # scp-style has no port: git reads 2222/… as the path
+    assert importer.gitlab_of("git@ssh.gitlab.example.com:2222/grp/pay.git") == {
+        "base": "https://gitlab.example.com", "project": "2222/grp/pay"}
+    # the web address keeps its own port; a host called ssh.<…> over https is the web host itself
+    assert importer.gitlab_of("https://gitlab.example.com:8443/grp/pay.git") == {
+        "base": "https://gitlab.example.com:8443", "project": "grp/pay"}
+    assert importer.gitlab_of("http://ssh.example.com/grp/pay") == {"base": "http://ssh.example.com", "project": "grp/pay"}
+    assert importer.gitlab_of("git@ssh.example:grp/pay.git") == {"base": "https://ssh.example", "project": "grp/pay"}
+
+
 def test_pure_helpers():
     assert importer.gitlab_of("git@gitlab.example.com:grp/sub/pay.git") == {"base": "https://gitlab.example.com", "project": "grp/sub/pay"}
     assert importer.gitlab_of("https://gitlab.example.com:8443/grp/pay") == {"base": "https://gitlab.example.com:8443",
