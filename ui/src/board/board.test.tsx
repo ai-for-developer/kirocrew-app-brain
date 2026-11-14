@@ -77,7 +77,7 @@ describe('需求看板', () => {
     const kpis = within(screen.getByRole('group', { name: '指标' }))
     // 检查通过 is the latest verify's checks: PAY-3 has run none (its wall's 2/4 are approvals and the hand-over)
     expect(b.checks.total).toBe(4)
-    expect(kpis.getByTestId('br-checks-counter')).toHaveAccessibleName('检查通过 0/0')
+    expect(kpis.getByTestId('br-checks-counter')).toHaveAccessibleName('检查通过：还没跑过检查')
     expect(kpis.getByTestId('br-checks-say')).toHaveTextContent('还没跑过检查')
     const lean = kpis.getByText('AI-DLC Lean').parentElement as HTMLElement
     expect(lean).toHaveAccessibleName('AI-DLC Lean：做完 4 · 跳过 4 · 在做：代码生成 · 构思整段不需要')   // the stage it works on is 在做, not 下一步

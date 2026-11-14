@@ -74,7 +74,8 @@ describe('检查通过 counts the latest verify, not the whole wall', () => {
 
   test('PAY-16 has not run a verify yet', () => {
     page(worldBoard('r1/PAY-16'))
-    expect(screen.getByTestId('br-checks-counter')).toHaveAccessibleName('检查通过 0/0')
+    expect(screen.getByTestId('br-checks-counter')).toHaveAccessibleName('检查通过：还没跑过检查')
+    expect(screen.getByTestId('br-checks-counter')).toHaveTextContent(/^—$/)
     expect(screen.getByTestId('br-checks-say')).toHaveTextContent('还没跑过检查')
     expect(screen.getByTestId('kt-station')).toHaveAccessibleName('还没有检查结果')
   })

@@ -21,7 +21,7 @@ export interface PickRow {
 }
 
 /** The stages brain records by other means than Lean (types.ts NodeId): not counted on the AI-DLC Lean card. */
-const NOT_LEAN: ReadonlySet<string> = new Set(['review', 'reflect'])
+export const NOT_LEAN: ReadonlySet<string> = new Set(['review', 'reflect'])
 const AGENT: Partial<Record<Run['kind'], string>> = { local: 'brain-dev', runner: 'brain-run' }
 const OVER: ReadonlySet<string> = new Set(['done', 'merged', 'skipped'])
 
@@ -51,11 +51,16 @@ function runNow(run: Run, b: ReqBoard): string {
   return g ? gateVerb(g, b) : run.now.doing || actorMeta(run.now.status).label
 }
 
+/** The phases a run worked in, by name, in order (启动 · 构建 · 发布). */
+function phasesOf(b: ReqBoard, run: RunKey): string[] {
+  const names = new Map(b.phases.map((p) => [p.key, p.title.split(' · ')[0]]))
+  const did = new Set(b.nodes.filter((n) => n.rounds.some((r) => r.run === run && r.outcome.kind !== 'skipped')).map((n) => n.phase))
+  return b.phases.filter((p) => did.has(p.key)).map((p) => names.get(p.key) ?? p.key)
+}
+
 export function pickRows(b: ReqBoard): PickRow[] {
-  const rows: PickRow[] = [{
-    key: 'all', icon: 'list', title: '全部', count: `${b.runs.length} 次运行`,
-    sub: `需求的整条路${b.runs.length > 1 ? `：${b.runs.map((r) => runShort(r, b)).join(' → ')}` : ''}`,
-  }]
+  const way = b.runs.map((r, i) => `${runShort(r, b)}${i ? '接着' : ''}做${phasesOf(b, r.key).join('、') || '准备'}`)
+  const rows: PickRow[] = [{ key: 'all', icon: 'list', title: '全部', count: `${b.runs.length} 次运行`, sub: `需求的整条路${way.length > 1 ? `：${way.join('，')}` : ''}` }]
   for (const r of b.runs) {
     const did = stagesOf(b, r.key)
     const rounds = b.nodes.flatMap((n) => n.rounds.filter((x) => x.run === r.key))

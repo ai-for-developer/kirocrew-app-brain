@@ -36,6 +36,7 @@ describe('选择运行 · the menu', () => {
       ['runner-1', '运行机 第 1 次 · RUN-PAY-9-1', '4 个阶段'],      // 代码生成 of its two units is one stage
       [null, '另一条分支上的运行', '没有'],
     ])
+    expect(rows[0].sub).toBe('需求的整条路：本机做启动，运行机接着做构建、发布')
     expect(rows[1].sub).toMatch(/^(\d\d-\d\d )?\d\d:\d\d–\d\d:\d\d · 需求分析、应用设计、拆分单元 · 做完 · 交出去了$/)
     expect(rows[2].sub).toMatch(/ 起 · 代码生成、构建测试 5 轮、审查、发布 4 轮 · 等产品验收$/)
     b.other_runs = [{ branch: 'ai/alice/PAY-9-retry', state: 'parked' }]
@@ -86,7 +87,7 @@ describe('选择运行 · the board shows the picked run only', () => {
     const kpis = within(screen.getByRole('group', { name: '指标' }))
     expect(kpis.getByText('AI-DLC Lean').parentElement).toHaveAccessibleName('AI-DLC Lean（运行机 第 1 次）：做完 2 · 跳过 4 · 在做：发布 · 运维整段不需要')
     expect(kpis.getByTestId('br-steps-counter')).toHaveTextContent('4/5')
-    expect(kpis.getByText('credits').parentElement).toHaveTextContent('运行机 第 1 次的花费不在这台机器上')
+    expect(kpis.getByText('credits').parentElement).toHaveTextContent('运行机的花费在运行机上')
     // its command path only
     expect(within(graph()).getAllByTestId('kt-cmd').map((c) => c.getAttribute('data-run'))).toEqual(['runner-1'])
     pick(/^本机会话/)

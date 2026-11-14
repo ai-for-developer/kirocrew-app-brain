@@ -15,7 +15,7 @@ import { ACT, DO_NAME, FAMILY_ACT, leanProgress, wholeSkips } from '../vocab'
 import { WORKING, actorMeta, boardWho, fmtCredits, fmtWhen, leanOf, localOnly, nodeLabel, outsidePushes, runnerBlind, sessionOf, titleOf, waitsOnMe } from './format'
 import { useChangeCount, useTween } from './hooks'
 import { waitCount } from './next'
-import { pickedRun, runLean, type RunFilter } from './picker'
+import { NOT_LEAN, pickedRun, runLean, type RunFilter } from './picker'
 import { RoleIcon } from './RoleIcon'
 import { RunPicker } from './RunPicker'
 import { verifyCount, wayAt } from './way'
@@ -133,9 +133,9 @@ function ChecksKpi({ board, reducedMotion }: { board: ReqBoard; reducedMotion: b
   return (
     <div className={`kt-kpi kt-kpi-tests${green ? ' is-green' : ''}`}>
       <div className="kt-kpi-label">检查通过</div>
-      <div className="kt-kpi-value" data-testid="br-checks-counter" aria-label={`检查通过 ${v.passed}/${v.total}`}>
-        <span className={`kt-kpi-big${pop ? ' is-pop' : ''}`} key={pop}>{shown}</span>
-        <span className="kt-kpi-of">/{v.total}</span>
+      <div className="kt-kpi-value" data-testid="br-checks-counter" aria-label={v.total ? `检查通过 ${v.passed}/${v.total}` : `检查通过：${v.say}`}>
+        <span className={`kt-kpi-big${pop ? ' is-pop' : ''}`} key={pop}>{v.total ? shown : '—'}</span>
+        {v.total > 0 && <span className="kt-kpi-of">/{v.total}</span>}
       </div>
       <div className="kt-segs" aria-hidden="true">
         {Array.from({ length: v.total }, (_, i) => <i key={i} className={i < v.passed ? 'is-pass' : 'is-fail'} />)}
@@ -218,7 +218,7 @@ function RunLeanKpi({ board, run }: { board: ReqBoard; run: Run }) {
 /** The stages a run did before the one it is on, short: 代码生成（2 个单元）· 构建测试. */
 function runStages(board: ReqBoard): string {
   const did = new Map<string, number>()
-  for (const n of board.nodes) if (n.rounds.length && n.status !== 'skipped') did.set(n.title, (did.get(n.title) ?? 0) + 1)
+  for (const n of board.nodes) if (n.rounds.length && n.status !== 'skipped' && !NOT_LEAN.has(n.stage)) did.set(n.title, (did.get(n.title) ?? 0) + 1)
   const { at } = wayAt(board.nodes.filter((n) => n.rounds.length))
   return [...did].filter(([t]) => t !== at?.title).map(([t, k]) => (k > 1 ? `${t}（${k} 个单元）` : t)).join(' · ')
 }
@@ -305,7 +305,8 @@ function CreditsKpi({ board, reducedMotion, replaying, run }: { board: ReqBoard;
       <div className="kt-kpi kt-kpi-credits">
         <div className="kt-kpi-label">credits</div>
         <div className="kt-kpi-value"><span className="kt-kpi-big">—</span></div>
-        <div className="kt-kpi-note">{run.readable === 'here' ? '这次运行的会话还没报' : `${run.label}的花费不在这台机器上`}</div>
+        <div className="kt-kpi-note">{run.readable === 'here' ? '这次运行的会话还没报' : run.kind === 'runner' ? '运行机的花费在运行机上'
+          : run.kind === 'local' ? '会话不在这台机器上' : '花费记在它自己的看板上'}</div>
       </div>
     )
   }
