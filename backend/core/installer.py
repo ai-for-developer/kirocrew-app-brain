@@ -39,10 +39,10 @@ from urllib.parse import quote
 from . import bk
 from . import problems
 from .constants import GIT_BIN
-from .importer import (CTRL_RE, DEFAULT_BRANCH, GIT_TIMEOUT_S, KIT, LINKS_REFUSED, PREFIX_RE, PROJECT_RE,
-                       STATUS_TIMEOUT_S, ImportFail, Records, _status_rows, base_ref, default_branch, git_failure, has_at,
-                       last_lines, origin_of, planted_link, quiet_env, ref_word, run_quiet, short_ref,
-                       symlinks_on_targets, tail)
+from .importer import (BYTECODE_PATHSPECS, CTRL_RE, DEFAULT_BRANCH, GIT_TIMEOUT_S, KIT, LINKS_REFUSED, PREFIX_RE,
+                       PROJECT_RE, STATUS_TIMEOUT_S, ImportFail, Records, _status_rows, base_ref, bytecode,
+                       default_branch, git_failure, has_at, last_lines, origin_of, planted_link, quiet_env, ref_word,
+                       run_quiet, short_ref, symlinks_on_targets, tail)
 from .intake import brain_cmd
 from .repo import Git
 
@@ -299,8 +299,7 @@ def install(top: str, kit: dict[str, str], branch: str, work_root: str, records:
     else:
         step("doctor", "warn" if fails else "ok", "%d 项通过，%d 项注意，%d 项没过" % (len(rows) - fails - warns, warns, fails))
 
-    res["files"] = _status_rows(Git(wt).run("status", "--porcelain=v1", "-z", "--untracked-files=all",
-                                            timeout=STATUS_TIMEOUT_S).stdout)[:MAX_FILES]
+    res["files"] = installed_files(wt)
     records.put(top, {"branch": branch, "worktree": wt, "base": short_ref(ref), "base_sha": sha, "commit": None,
                       "kit": kit, "files": res["files"], "doctor": {"ok": len(rows) - fails - warns, "warn": warns,
                                                                     "fail": fails},
@@ -438,8 +437,7 @@ def upgrade(top: str, branch: str, work_root: str, records: Records, step: Calla
         else:
             step("doctor", "warn" if fails else "ok", "%d 项通过，%d 项注意，%d 项没过" % (len(rows) - fails - warns, warns,
                                                                                  fails))
-        res["files"] = _status_rows(Git(wt).run("status", "--porcelain=v1", "-z", "--untracked-files=all",
-                                                timeout=STATUS_TIMEOUT_S).stdout)[:MAX_FILES]
+        res["files"] = installed_files(wt)
     except BaseException:
         _drop(top, wt, branch, sha)
         res["worktree"] = None
@@ -489,11 +487,19 @@ def commit_failure(p: Any, where: str, purpose: str = "install") -> tuple[bool, 
         last_lines(tail(p), 15) or "（什么也没说，退出码 %d）" % p.returncode, where, lock)
 
 
+def installed_files(wt: str) -> list[dict[str, str]]:
+    """What brain install changed in its worktree (the commit takes these): every change but Python's bytecode."""
+    rows = _status_rows(Git(wt).run("status", "--porcelain=v1", "-z", "--untracked-files=all",
+                                    timeout=STATUS_TIMEOUT_S).stdout)
+    return [r for r in rows if not bytecode(r["path"])][:MAX_FILES]
+
+
 def commit(top: str, records: Records, step: Callable[..., None] | None = None, *,
            purpose: str = "install") -> dict[str, Any]:
-    """git add -A and git commit in the install (or upgrade) worktree, with the person's own identity (their git
-    config) and their hooks: a hook that says no is shown as it said it, nothing is bypassed. Again after a hook said
-    no: the same. *records*: the install records, or the upgrade records for purpose "upgrade"."""
+    """git add -A (Python's bytecode left out) and git commit in the install (or upgrade) worktree, with the person's
+    own identity (their git config) and their hooks: a hook that says no is shown as it said it, nothing is bypassed.
+    Again after a hook said no: the same. *records*: the install records, or the upgrade records for purpose
+    "upgrade"."""
     step = step or (lambda *a, **k: None)
     out = {"ok": False, "sha": None, "blocked": False, "text": "", "output": ""}
     rec = records.get(top)
@@ -512,7 +518,7 @@ def commit(top: str, records: Records, step: Callable[..., None] | None = None, 
         records.update(top, commit=head)
         step("commit", "ok", out["text"])
         return out
-    p = run_quiet([GIT_BIN, "-C", wt, "add", "-A"], wt, GIT_TIMEOUT_S * 2, brain_env())
+    p = run_quiet([GIT_BIN, "-C", wt, "add", "-A", "--", ".", *BYTECODE_PATHSPECS], wt, GIT_TIMEOUT_S * 2, brain_env())
     if p.returncode != 0:
         out.update(text="改动没能加进提交，git 说：%s" % last_lines(tail(p)), output=tail(p))
         step("commit", "fail", out["text"])

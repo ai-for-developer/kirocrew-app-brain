@@ -23,9 +23,9 @@ from typing import Any, Callable
 
 from . import bk
 from .constants import GIT_BIN
-from .importer import (GIT_TIMEOUT_S, KIT, LINKS_REFUSED, ImportFail, Records, choices, default_branch, git_failure,
-                       last_lines, origin_of, quiet_env, run_quiet, status_map, symlinks_on_targets, tail, touches,
-                       write_targets)
+from .importer import (GIT_TIMEOUT_S, KIT, LINKS_REFUSED, ImportFail, Records, bytecode, choices, default_branch,
+                       git_failure, last_lines, origin_of, quiet_env, run_quiet, status_map, symlinks_on_targets, tail,
+                       touches, write_targets)
 from .installer import (COMMIT_TIMEOUT_S, DOCTOR_TIMEOUT_S, INSTALL_TIMEOUT_S, KIT_LINK, LEAN_AUDIT, MAX_FILES,
                         PUSH_TIMEOUT_S, UP_TO_DATE, _kit_of, brain_env, commit_failure, commit_message, doctor_rows,
                         install_branch_ok, kit_data, kit_form, kit_line, worktrees_of)
@@ -195,7 +195,8 @@ def install(top: str, kit: dict[str, str] | None, records: Records, step: Callab
         step("doctor", "warn" if fails else "ok", "%d 项通过，%d 项注意，%d 项没过" % (len(rows) - fails - warns, warns, fails))
 
     after = status_map(g) or {}
-    written = sorted(x for x, ch in after.items() if before.get(x) != ch and touches(x, targets) and _safe_rel(x))
+    written = sorted(x for x, ch in after.items()
+                     if before.get(x) != ch and touches(x, targets) and _safe_rel(x) and not bytecode(x))
     res["files"] = [{"change": after[x], "path": x} for x in written][:MAX_FILES]
     moved = [x for x, st in mine.items() if _stat(top, x) != st]      # the person's own: must be as they were
     if upgrade and not [x for x in written if not x.startswith(LEAN_AUDIT)]:
@@ -272,7 +273,7 @@ def commit(top: str, records: Records, step: Callable[..., None] | None = None, 
         raise ImportFail("没有要提交的直接安装：重新检查一下", "no_install", 409)
     g = Git(top)
     targets = write_targets(_kit_of(top))
-    paths = [x for x in rec["paths"] if _safe_rel(x) and touches(x, targets)]
+    paths = [x for x in rec["paths"] if _safe_rel(x) and touches(x, targets) and not bytecode(x)]
     cur = g.out("symbolic-ref", "-q", "--short", "HEAD")
     if cur != rec.get("branch"):
         raise ImportFail("检出现在在 %s 上，不在装的时候的 %s：不提交" % (cur or "一个提交上", rec.get("branch")), "wrong_branch", 409)

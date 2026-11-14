@@ -695,6 +695,14 @@ def write_targets(cfg: dict[str, Any] | None = None) -> list[str]:
     return sorted(out)
 
 
+def bytecode(path: str) -> bool:
+    """Python's bytecode: written by whatever imported a kit file while the install ran, never a kit file (UI-18)."""
+    return "__pycache__" in path.split("/") or path.endswith((".pyc", ".pyo"))
+
+
+BYTECODE_PATHSPECS = (":(exclude,glob)**/__pycache__/**", ":(exclude,glob)**/*.pyc", ":(exclude,glob)**/*.pyo")
+
+
 def touches(path: str, targets: list[str]) -> bool:
     """*path* (a file, or a folder git lists as one) is something `brain install` writes, or holds one."""
     p = path.rstrip("/")
