@@ -291,6 +291,37 @@ def test_git_over_the_network_never_prompts(home):
 
 # ---- 安装到新分支 --------------------------------------------------------------------------------------------------- #
 
+PYC = ".kiro/brain/__pycache__/lean-hook.cpython-312.pyc"
+
+
+def bytecode_while_doctor_runs(monkeypatch, module):
+    """Python's bytecode of the hook adapter turns up while the install's self-check runs, as when a Python process
+    imports it (UI-18: one landed on a repo's main)."""
+    real = module.run_quiet
+
+    def run_quiet(cmd, cwd, *args, **kw):
+        if "doctor" in cmd:
+            junk = Path(cwd) / PYC
+            junk.parent.mkdir(parents=True, exist_ok=True)
+            junk.write_bytes(b"\x00not a kit file")
+        return real(cmd, cwd, *args, **kw)
+
+    monkeypatch.setattr(module, "run_quiet", run_quiet)
+
+
+def test_a_branch_install_commits_the_kit_files_and_not_python_bytecode(tmp_path, home, monkeypatch):
+    repo, _ = plain_repo(tmp_path)
+    bytecode_while_doctor_runs(monkeypatch, installer)
+    svc = make_service(tmp_path, [])
+    done = started(svc, lambda: install(svc, repo))
+    assert done["state"] == "done" and done["result"]["commit"]["ok"], done
+    committed = set(sh("git", "-C", repo, "show", "--name-only", "--format=", "brain/install").stdout.split())
+    assert ".kiro/brain/lean-hook.py" in committed and PYC not in committed
+    assert {f["path"] for f in done["result"]["files"]} == committed
+    wt = done["result"]["worktree"]
+    assert sh("git", "-C", wt, "status", "--porcelain", "--untracked-files=all").stdout.split() == ["??", PYC]
+
+
 def test_install_goes_on_a_new_branch_in_its_own_worktree_and_never_touches_the_checkout(tmp_path, home):
     repo, bare = plain_repo(tmp_path)
     (repo / "README.md").write_text("# pay, my edit\n")      # the person's own work in progress

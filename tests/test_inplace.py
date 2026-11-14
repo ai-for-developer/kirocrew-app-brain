@@ -13,7 +13,7 @@ import pytest
 from appkit import BRAINKIT, commit_file, git_repo, mod, sh
 from brainfix import make_project, make_service, needs_brainkit
 from http_fakes import AppRoute, FakeWeb, call
-from test_import import KIT, install, plain_repo, started
+from test_import import KIT, PYC, bytecode_while_doctor_runs, install, plain_repo, started
 from test_upgrade import ADAPTER, HAS_VERSION_CHECK, lean_json_at, older_kit
 
 pytestmark = needs_brainkit
@@ -130,6 +130,18 @@ def test_in_place_with_unrelated_changes_commits_only_what_brain_install_wrote(t
     assert sh("git", "-C", repo, "status", "--porcelain").stdout == status_before  # still theirs, still uncommitted
     assert sh("git", "-C", repo, "diff", "--cached", "--name-only").stdout.split() == ["src/pay.py"]   # still staged
     assert sh("git", "-C", repo, "show", "HEAD:src/pay.py").stdout == "x = 1\n"
+
+
+def test_in_place_commits_the_kit_files_and_not_python_bytecode(tmp_path, home, monkeypatch):
+    repo = local_repo(tmp_path)
+    bytecode_while_doctor_runs(monkeypatch, inplace)
+    svc = make_service(tmp_path, [])
+    done = started(svc, lambda: install_mode(svc, repo, "inplace"))
+    assert done["state"] == "done" and done["result"]["commit"]["ok"], done
+    committed = names_in(repo)
+    assert ".kiro/brain/lean-hook.py" in committed and PYC not in committed
+    assert committed == {f["path"] for f in done["result"]["files"]}
+    assert sh("git", "-C", repo, "status", "--porcelain", "--untracked-files=all").stdout.split() == ["??", PYC]
 
 
 def test_in_place_is_refused_when_changes_touch_what_it_writes_or_the_checkout_is_busy(tmp_path, home):
