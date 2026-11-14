@@ -288,6 +288,37 @@ describe('the app: one bar over the views', () => {
     }
   }, 20_000)
 
+  test('a repo where the app cannot tell who you are: said once above the views with 你是谁’s input, not on 设置, 导入仓库 and 开需求, which ask themselves; 保存 ends it', async () => {
+    const user = userEvent.setup()
+    const s = fx.status()
+    s.repos[0].me = { name: null, source: 'none', gitlab: 'https://gitlab.example.com', text: '', ask: true, label: '你的 GitLab 用户名',
+      why: '这个仓库用 GitLab：认领和交接都按这个名字认人，要和你在 GitLab 上的用户名一样', suggest: 'alice', error: '' }
+    const named = fx.status()
+    installFixtureRoutes({
+      [`GET ${API}/status`]: () => s,
+      [`POST ${API}/me/name`]: () => ({ ok: true, text: '你在这个仓库的名字设成了 alice', raw: 'git config brain.user alice', me: named.repos[0].me, status: named }),
+    })
+    render(<BrainApp pollMs={60_000} />)
+    const who = await screen.findByTestId('br-who')
+    expect(who).toHaveTextContent('shop-pay 里 brain-kit 还不知道你是谁，分不出哪些需求是你的')
+    expect(within(who).getByRole('textbox', { name: '你的 GitLab 用户名' })).toHaveValue('alice')
+    expect(screen.getAllByTestId('me-ask')).toHaveLength(1)
+    for (const [kind, open] of [
+      ['settings', () => user.click(bar().getByRole('button', { name: '设置' }))],
+      ['import', () => user.click(bar().getByRole('button', { name: '导入仓库' }))],
+      ['new', () => user.click(bar().getByRole('tab', { name: '开需求' }))],
+    ] as [View['kind'], () => Promise<void>][]) {
+      await open()
+      expect(parseView(window.location.search).kind).toBe(kind)
+      expect(screen.queryByTestId('br-who')).toBeNull()
+    }
+    await user.click(bar().getByRole('tab', { name: TODO_TAB }))
+    const again = await screen.findByTestId('br-who')
+    await user.click(within(again).getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(screen.queryByTestId('br-who')).toBeNull())
+    expect(apiCalls.find((c) => c.method === 'POST' && c.path === `${API}/me/name`)?.body).toEqual({ path: s.repos[0].path, name: 'alice' })
+  })
+
   test('导入仓库 is on the bar of every view; with no repo the overview and 开需求 are one big way in', async () => {
     const user = userEvent.setup()
     const s = fx.status()

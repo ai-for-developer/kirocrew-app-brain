@@ -486,7 +486,7 @@ describe('交付总览', () => {
     expect(p.go).toHaveBeenCalledTimes(2) // the button does not open the board as well
     const overlaps = screen.getByTestId('overlaps')
     expect(overlaps).toHaveTextContent('这些需求要改同一处')
-    expect(overlaps).toHaveTextContent('PAY-3alice和PAY-4carol都要改src/refund/先商量好谁先合，免得冲突')
+    expect(overlaps).toHaveTextContent('PAY-3alice和PAY-4carol都要改src/refund先商量好谁先合，免得冲突')
     await user.click(within(overlaps).getByRole('button', { name: 'PAY-3' }))
     expect(p.go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-3', from: 'overview' })
   })
@@ -1168,5 +1168,176 @@ describe('交付总览: 大需求和小需求', () => {
     expect(within(card).queryByTestId('ov-ended')).toBeNull()
     // runs before 0d52e97 (no state, no delivery): the how alone, as before
     expect(rowOf(table, 'PAY-4').querySelector('.br-how-cell [data-testid]')).toBeNull()
+  })
+})
+
+describe('交付总览: 全队卡点和按人看', () => {
+  /** every kind of stuck, the worst first, as the backend's roster says it over the fixture's rows */
+  function stuckWorld(): Overview {
+    const ov = fx.overview()
+    const overlap = ov.roster.stuck[0]
+    ov.roster.stuck = [
+      { repo: 'r1', key: 'PAY-6', kind: 'overdue', text: '等 carol 批准设计，已等 6 个工作小时（超时）', since: ov.at - 2 * 86400, other_key: null },
+      { repo: 'r1', key: 'PAY-4', kind: 'stale', text: 'carol 在自己的机器上做，12 个工作小时没有推上新进度：问问 carol 卡在哪', since: ov.at - 3 * 86400, other_key: null },
+      overlap,
+      { repo: 'r1', key: 'PAY-7', kind: 'verify_fails', text: '同一项检查 verify 连续失败 3 次，该停下来问人了', since: null, other_key: null },
+    ]
+    ov.roster.counts = { overdue: 1, stale: 1, overlap: 1, verify_fails: 1 }
+    ov.rows = ov.rows.map((r) => (r.key === 'PAY-7' ? { ...r, verify_fails: 3 } : r.key === 'PAY-5' ? { ...r, verify_fails: 1 } : r))
+    return ov
+  }
+  const lineOf = (card: HTMLElement, key: string) => card.querySelector(`li[data-key="${key}"]`) as HTMLElement
+
+  test('全队卡点 sits beside 轮到你, in its look: the counts by kind, a line per stuck requirement the worst first, each key opening its 需求看板', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => stuckWorld() })
+    const p = props()
+    render(<OverviewView entry={{}} {...p} />)
+    const card = await screen.findByTestId('team-stuck')
+    const duo = screen.getByTestId('ov-duo')
+    expect(Array.from(duo.children).map((c) => c.getAttribute('data-testid'))).toEqual(['your-turn', 'team-stuck'])
+    expect(card).toHaveClass('cto-card', 'br-yours', 'is-bad')
+    expect(within(card).getByRole('heading', { level: 3 })).toHaveTextContent('全队卡点')
+    expect(within(card).getByTestId('stuck-counts')).toHaveTextContent(/^超时 1 · 很久没动 1 · 目录撞车 1 · verify 失败 1$/)
+    expect(Array.from(card.querySelectorAll('li')).map((li) => [li.dataset.kind, li.dataset.key])).toEqual([
+      ['overdue', 'PAY-6'], ['stale', 'PAY-4'], ['overlap', 'PAY-3'], ['verify_fails', 'PAY-7']])
+    expect(lineOf(card, 'PAY-6')).toHaveTextContent('超时PAY-6商户结算周报shop-pay等 carol 批准设计，已等 6 个工作小时（超时）')
+    expect(lineOf(card, 'PAY-4')).toHaveTextContent('很久没动PAY-4对账单按商户拆分shop-paycarol 在自己的机器上做，12 个工作小时没有推上新进度：问问 carol 卡在哪')
+    expect(lineOf(card, 'PAY-7')).toHaveTextContent('verify 失败PAY-7退款原因下拉框shop-pay同一项检查 verify 连续失败 3 次，该停下来问人了')
+    // an overlap names both, and either one opens its board
+    const pair = lineOf(card, 'PAY-3')
+    expect(pair).toHaveTextContent('目录撞车PAY-3退款单导出 CSVshop-pay和 PAY-4 都要改 src/refund：先商量好谁先合')
+    await user.click(within(pair).getByRole('button', { name: 'PAY-4' }))
+    expect(p.go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-4', from: 'overview' })
+    await user.click(within(lineOf(card, 'PAY-6')).getByRole('button', { name: 'PAY-6' }))
+    expect(p.go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-6', from: 'overview' })
+    expect(card).not.toHaveTextContent(/第 ?\d|排名|最快|最慢/)
+  })
+
+  test('with nothing stuck the card says so and what it watches; with only an overlap it is a warning; alone when nothing waits on you', async () => {
+    const quiet = fx.overview()
+    quiet.roster.stuck = []
+    quiet.roster.counts = { overdue: 0, stale: 0, overlap: 0, verify_fails: 0 }
+    quiet.rows = quiet.rows.map((r) => (r.waits.who === 'you' ? { ...r, waits: { ...r.waits, who: 'people' as const } } : r))
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => quiet })
+    const { unmount } = render(<OverviewView entry={{}} {...props()} />)
+    const card = await screen.findByTestId('team-stuck')
+    expect(card).toHaveClass('is-ok')
+    expect(within(card).getByTestId('stuck-counts')).toHaveTextContent(/^没有卡住的需求$/)
+    expect(within(card).getByTestId('stuck-none')).toHaveTextContent('等人批准、回答或验收超过 4 个工作小时的，别人做着 8 个工作小时没有推上新进度的，两个需求要改同一个目录的，同一项检查 verify 连续 3 次没过的，都会列在这里。')
+    expect(screen.queryByTestId('your-turn')).toBeNull()
+    expect(screen.getByTestId('ov-duo')).toHaveClass('is-one')
+    unmount()
+    installFixtureRoutes()
+    render(<OverviewView entry={{}} {...props()} />)
+    const warn = await screen.findByTestId('team-stuck')
+    expect(warn).toHaveClass('is-warn')
+    expect(warn).not.toHaveClass('is-bad')
+    expect(within(warn).getByTestId('stuck-counts')).toHaveTextContent(/^目录撞车 1$/)
+  })
+
+  test('more than five lines: 还有 N 件 filters the ledger to every requirement listed, an overlap’s other one too', async () => {
+    const user = userEvent.setup()
+    const ov = stuckWorld()
+    const more = ['PAY-5', 'PAY-2', 'PAY-6'].map((key) => ({ repo: 'r1', key, kind: 'overdue' as const, text: '等产品在 MR 上验收 D-3，已等 5 个工作小时（超时）', since: ov.at - 86400, other_key: null }))
+    ov.roster.stuck = [...more, ...ov.roster.stuck]
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
+    render(<OverviewView entry={{}} {...props()} />)
+    const card = await screen.findByTestId('team-stuck')
+    expect(card.querySelectorAll('li')).toHaveLength(5)
+    await user.click(within(card).getByRole('button', { name: '还有 2 件：在交付清单里看全部' }))
+    expect(screen.getByTestId('ledger-pick')).toHaveTextContent('全队卡点')
+    expect(keysOf(screen.getByTestId('req-table')).sort()).toEqual(['PAY-2', 'PAY-3', 'PAY-4', 'PAY-5', 'PAY-6', 'PAY-7'])
+  })
+
+  test('需求流动 按阶段 / 按人: 按阶段 first; 按人 is a lane per person with 在做 n/上限, red at the limit, their cards, and one for what nobody has', async () => {
+    const user = userEvent.setup()
+    const ov = fx.overview()
+    const six = ov.rows.find((r) => r.key === 'PAY-6')!
+    ov.rows.push({ ...six, key: 'PAY-14', title: '每晚自动对账', owner: null, state: 'unclaimed', state_label: '待认领',
+      waits: { ...six.waits, who: 'people', text: '待认领：谁做都可以认领', do: 'start' } })
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
+    render(<OverviewView entry={{}} {...props()} />)
+    const flow = await screen.findByTestId('flow')
+    const by = within(flow).getByTestId('flow-by')
+    expect(within(by).getByRole('button', { name: '按阶段' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(flow).queryByTestId('flow-by-person')).toBeNull()
+    await user.click(within(by).getByRole('button', { name: '按人' }))
+    expect(within(by).getByRole('button', { name: '按人' })).toHaveAttribute('aria-pressed', 'true')
+    const lanes = Array.from(flow.querySelectorAll('.cto-lane')) as HTMLElement[]
+    expect(lanes.map((l) => l.querySelector('.br-lane-name')?.textContent)).toEqual(['你（alice）', 'carol', '还没人认领'])
+    const wip = (owner: string) => within(flow.querySelector(`.cto-lane[data-owner="${owner}"]`) as HTMLElement).getByTestId('lane-wip')
+    expect(wip('alice')).toHaveTextContent(/^在做 3\/3$/)
+    expect(wip('alice')).toHaveClass('br-chip', 'tone-bad')
+    expect(wip('carol')).toHaveTextContent(/^在做 2\/3$/)
+    expect(wip('carol')).not.toHaveClass('tone-bad')
+    const cellOf = (key: string) => cardOf(flow, key).closest('[data-col]') as HTMLElement
+    for (const [key, owner] of [['PAY-3', 'alice'], ['PAY-5', 'alice'], ['PAY-7', 'alice'], ['PAY-4', 'carol'], ['PAY-6', 'carol']] as const) {
+      expect([cellOf(key).dataset.lane, cellOf(key).dataset.owner, cellOf(key).dataset.col]).toEqual(['person', owner, colOf(ov.rows.find((r) => r.key === key)!)])
+    }
+    expect(cellOf('PAY-14').dataset.lane).toBe('nobody')
+    expect(within(flow).getByTestId('flow-by-person')).toHaveTextContent('按人看：每人一行，在做的需求到了 3 个标红。这里看谁手上有多少、卡在哪，不比谁快谁慢。')
+    // a person's name is the ledger of what they have open
+    await user.click(within(flow).getByRole('button', { name: /^你（alice）$/ }))
+    expect(screen.getByTestId('ledger-pick')).toHaveTextContent('需求流动 · 你在做的')
+    expect(keysOf(screen.getByTestId('req-table')).sort()).toEqual(['PAY-3', 'PAY-5', 'PAY-7'])
+    await user.click(within(by).getByRole('button', { name: '按阶段' }))
+    expect(cellOf('PAY-3').dataset.lane).toBe('you')
+  })
+
+  test('按人 with nobody holding anything open: one lane says so and what to do, and the merges still show', async () => {
+    const user = userEvent.setup()
+    const ov = fx.overview()
+    ov.rows = ov.rows.filter((r) => r.state === 'merged')
+    ov.roster = { ...ov.roster, people: [], stuck: [], counts: { overdue: 0, stale: 0, overlap: 0, verify_fails: 0 } }
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
+    render(<OverviewView entry={{}} {...props()} />)
+    const flow = await screen.findByTestId('flow')
+    await user.click(within(flow).getByRole('button', { name: '按人' }))
+    expect(Array.from(flow.querySelectorAll('.cto-lane')).map((l) => l.textContent)).toEqual(['没有人在做'])
+    expect(flow.querySelector('[data-col="需求"][data-lane="none"]')).toHaveTextContent('此刻没有人手上有在做的需求：开需求认领一个，它就在认领人的那一行。')
+    expect(flow.querySelector('[data-col="已合并"] [data-key="PAY-2"]')).toHaveTextContent('退款单号校验')
+  })
+
+  test('one repo of several: 按人 counts what each has open in this repo, without the limit or red; the card says it looks at this repo only', async () => {
+    const user = userEvent.setup()
+    const status = fx.status()
+    status.repos = status.repos.map((r) => ({ ...r, ok: true, error: '', pending: null }))
+    installFixtureRoutes()
+    render(<OverviewView entry={{ repo: 'r1' }} {...props({ status })} />)
+    const flow = await screen.findByTestId('flow')
+    expect(within(screen.getByTestId('team-stuck')).getByTestId('stuck-counts')).toHaveTextContent(/^目录撞车 1 · 只看这个仓库$/)
+    await user.click(within(flow).getByRole('button', { name: '按人' }))
+    const wip = within(flow.querySelector('.cto-lane[data-owner="alice"]') as HTMLElement).getByTestId('lane-wip')
+    expect(wip).toHaveTextContent(/^在这个仓库做 3$/)
+    expect(wip).not.toHaveClass('tone-bad')
+    expect(within(flow).getByTestId('flow-by-person')).toHaveTextContent('只算这个仓库里在做的；每人一共在做几个、到没到上限，切到「全部」看。')
+  })
+
+  test('a card past a timeout or a limit has the red mark in both views, its ledger row too; an overlap is no mark', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => stuckWorld() })
+    render(<OverviewView entry={{}} {...props()} />)
+    const flow = await screen.findByTestId('flow')
+    const marks = (key: string) => within(cardOf(flow, key)).queryAllByTestId('late-mark').map((m) => m.textContent)
+    const check = () => {
+      expect(marks('PAY-6')).toEqual(['超时'])
+      expect(marks('PAY-4')).toEqual(['很久没动'])
+      expect(marks('PAY-7')).toEqual(['verify 失败 3 次'])
+      expect(marks('PAY-3')).toEqual([])
+      for (const k of ['PAY-6', 'PAY-4', 'PAY-7']) expect(cardOf(flow, k)).toHaveClass('is-late')
+      expect(cardOf(flow, 'PAY-3')).not.toHaveClass('is-late')
+    }
+    check()
+    await user.click(within(flow).getByRole('button', { name: '按人' }))
+    check()
+    const table = screen.getByTestId('req-table')
+    expect(within(rowOf(table, 'PAY-6')).getByTestId('late-mark')).toHaveTextContent('超时')
+    expect(within(rowOf(table, 'PAY-7')).getByTestId('verify-fails')).toHaveTextContent('verify 失败 3 次')
+    expect(within(rowOf(table, 'PAY-7')).getByTestId('verify-fails')).toHaveClass('tone-bad')
+    expect(within(rowOf(table, 'PAY-5')).getByTestId('verify-fails')).toHaveClass('tone-warn')   // under the limit: said, not red
+    expect(within(rowOf(table, 'PAY-3')).queryByTestId('late-mark')).toBeNull()
+    expect(within(rowOf(table, 'PAY-3')).queryByTestId('verify-fails')).toBeNull()
+    expect(screen.getByTestId('notes-team')).toHaveTextContent('「超时」是人关（批准、回答、验收）等了 4 个工作小时以上；「很久没动」是别人在自己机器上做的需求，8 个工作小时没有推上新进度')
   })
 })

@@ -4,9 +4,9 @@ import { describe, expect, test, vi } from 'vitest'
 import { fx } from '../test/data'
 import { API, installFixtureRoutes } from '../test/routes'
 import { apiCalls, apiError } from '../test/stubs/app-sdk'
-import type { RepoMe, Settings } from '../types'
+import type { RepoInfo, RepoMe, Settings } from '../types'
 import type { ViewProps } from './props'
-import { SettingsView } from './Settings'
+import { FETCH_HINT, PUSH_HINT, SettingsView } from './Settings'
 
 const props = (over: Partial<ViewProps> = {}): ViewProps => ({
   status: fx.status(), go: vi.fn(), replace: vi.fn(), reloadStatus: vi.fn(), setStatus: vi.fn(), pollMs: 60_000, ...over,
@@ -346,5 +346,108 @@ describe('设置', () => {
     const r2 = document.querySelector('[data-repo="r2"]') as HTMLElement
     expect(within(r2).getByText('找不到目录')).toHaveClass('tone-bad')
     expect(within(r2).getByRole('button', { name: '移出列表' }).closest('.st-repo-top')).toBeTruthy()  // on the name's line, at its end
+  })
+
+  test('和队友同步: how often to fetch, and each repo done with the team pushed at checkpoints, each with what it does; saved with the form', async () => {
+    const user = userEvent.setup()
+    const s = fx.status()
+    const pay = s.repos[0]
+    const repo = (id: string, name: string, sync: RepoInfo['sync']): RepoInfo => ({ ...pay, id, name, path: `/Users/alice/workplace/${name}`, sync })
+    const cmd = 'git -C /Users/alice/workplace/shop-order config brain.user 你的GitLab用户名'
+    s.repos = [pay,
+      repo('r2', 'shop-order', { auto_push: true, push_cmd: cmd, push_why: 'app 不问 GitLab 你是谁，还不知道你在这个仓库的用户名，分不出哪些分支是你的，所以还没推过：在终端里写一次（把最后一个词换成你的 GitLab 用户名）',
+        fetch: { at: pay.sync!.fetch!.at, ok: false, text: '从远端取最新没成功：连不上远端：检查网络或 VPN，再点一次。', raw: "fatal: unable to access 'https://gitlab.example.com/shop/shop-order.git/'" } }),
+      repo('r3', 'shop-tools', { auto_push: null, push_why: '', push_cmd: '', fetch: null })]
+    installFixtureRoutes({
+      [`POST ${API}/settings`]: (body) => ({ ok: true, settings: { ...fx.settings(), ...(body as Partial<Settings>) }, status: s }),
+    })
+    render(<SettingsView {...props({ status: s })} />)
+    const sync = await screen.findByRole('group', { name: '和队友同步' })
+    const every = within(sync).getByLabelText('每隔几分钟从远端取最新')
+    expect(every).toHaveValue(5)
+    expect(every).toHaveAccessibleDescription(FETCH_HINT)
+    expect(sync).toHaveTextContent(PUSH_HINT)
+    const push = within(sync).getByRole('group', { name: '过关卡时把进度推到远端' })
+    expect(within(push).getAllByRole('checkbox').map((c) => c.closest('label')?.textContent)).toEqual(['shop-pay', 'shop-order'])
+    expect(within(push).getByRole('checkbox', { name: 'shop-pay' })).toBeChecked()
+    // the backend's why, with the line to type; the fetch that did not work, with git's words folded
+    expect(push).toHaveTextContent('app 不问 GitLab 你是谁')
+    expect(within(push).getByText(cmd)).toBeInTheDocument()
+    expect(within(sync).getByTestId('fetch-failed')).toHaveTextContent('shop-order：从远端取最新没成功：连不上远端：检查网络或 VPN，再点一次。细节')
+    expect(sync).toHaveTextContent(/上次取到最新：shop-pay \d+ \S*前/)
+    await user.click(within(push).getByRole('checkbox', { name: 'shop-order' }))
+    expect(push).not.toHaveTextContent('app 不问 GitLab 你是谁')          // off: nothing to fix for it
+    await user.clear(every)
+    await user.type(every, '10')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByText('已保存')).toBeInTheDocument()
+    const post = apiCalls.find((c) => c.method === 'POST' && c.path === `${API}/settings`)
+    expect(post?.body).toMatchObject({ fetch_every_min: 10, auto_push: { '/Users/alice/workplace/shop-order': false } })
+  })
+
+  test('和队友同步 with only repos done on this machine: no push setting, one line that says why', async () => {
+    const s = fx.status()
+    s.repos = [{ ...s.repos[0], sync: { auto_push: null, push_why: '', push_cmd: '', fetch: null } }]
+    installFixtureRoutes()
+    render(<SettingsView {...props({ status: s })} />)
+    const sync = await screen.findByRole('group', { name: '和队友同步' })
+    expect(within(sync).queryAllByRole('checkbox')).toEqual([])
+    expect(sync).toHaveTextContent('现在的仓库都只在本机做（没有远端），不用推。')
+    expect(within(sync).queryByTestId('fetch-failed')).toBeNull()
+  })
+
+  // a box's name is its sentence, with a space where its number is
+  const WIP = '每人同时在做的需求，最多 个'
+  const WAIT = '等人批准、回答或验收，超过 个工作小时算超时'
+  const STALE = '别人在自己机器上做的需求， 个工作小时没有推上新进度算很久没动'
+  const VERIFY = '同一项检查 verify 连续失败 次，就该停下来问人'
+  const limitsCard = () => screen.findByRole('group', { name: '全队视图' })
+
+  test('全队视图: four lines, each a sentence around its number, whole numbers in the backend’s bounds, after the work directory and before team mode', async () => {
+    installFixtureRoutes({})
+    render(<SettingsView {...props()} />)
+    const limits = await limitsCard()
+    const box = (name: string) => within(limits).getByRole('spinbutton', { name })
+    expect(box(WIP)).toHaveValue(3)
+    expect(box(WAIT)).toHaveValue(4)
+    expect(box(STALE)).toHaveValue(8)
+    expect(box(VERIFY)).toHaveValue(3)
+    expect(within(limits).getAllByRole('spinbutton').map((x) => [x.getAttribute('min'), x.getAttribute('max'), x.getAttribute('step')]))
+      .toEqual([['1', '20', '1'], ['1', '200', '1'], ['1', '400', '1'], ['1', '20', '1']])
+    const hint = '工作小时只算周一到周五 9 点到 18 点（这台机器的时间）。到了上限只提醒，不拦开工。'
+    expect(within(limits).getByText(hint)).toBeInTheDocument()
+    expect(box(WIP)).toHaveAccessibleDescription(hint)
+    const work = screen.getByLabelText('每个需求的工作目录放在哪')
+    expect(work.compareDocumentPosition(limits) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(limits.compareDocumentPosition(screen.getByRole('group', { name: '团队模式' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  test('a limit changed is saved as a number; the other three go as they were', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes({
+      [`POST ${API}/settings`]: (body) => ({ ok: true, settings: { ...fx.settings(), ...(body as Partial<Settings>) }, status: fx.status() }),
+    })
+    render(<SettingsView {...props()} />)
+    const box = within(await limitsCard()).getByRole('spinbutton', { name: WIP })
+    await user.clear(box)
+    await user.type(box, '5')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByText('已保存')).toBeInTheDocument()
+    const { repos: _repos, ...rest } = fx.settings()
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).toEqual({ ...rest, wip_limit: 5 })
+    expect(box).toHaveValue(5)
+  })
+
+  test('a limit out of bounds goes to the backend, and 保存 shows its refusal, which names the field', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes({ [`POST ${API}/settings`]: () => { throw apiError(400, 'invalid_settings', '「每人同时在做的需求上限」要写 1 到 20 的整数') } })
+    render(<SettingsView {...props()} />)
+    const box = within(await limitsCard()).getByRole('spinbutton', { name: WIP })
+    await user.clear(box)
+    await user.type(box, '25')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('「每人同时在做的需求上限」要写 1 到 20 的整数（400）')
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).toMatchObject({ wip_limit: 25 })
+    expect(screen.queryByText('已保存')).toBeNull()
   })
 })

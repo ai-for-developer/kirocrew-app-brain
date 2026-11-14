@@ -10,7 +10,9 @@
  * broken; ui.tsx brainkitProblem, the words 设置 says too) with the line to type and the way to 设置, but not on 设置,
  * which asks for brain-kit's place at its top, and KiroCrew's failing checks (FAIL only: a ! reminder stays in 设置 and
  * on the page it is about) with their fix buttons, except on 开需求, 设置 and 待办, which list those rows themselves.
- * Each says what it is and 做什么; the original words are folded under 细节.
+ * Each says what it is and 做什么; the original words are folded under 细节. And, once, the repos where the app cannot
+ * tell who the person is (no requirement with an owner counts as theirs there), with 你是谁's input, except on 设置,
+ * 导入仓库 and 开需求, which ask for the name themselves.
  *
  * The app root is a size container (`br-app`): a view's breakpoints follow the app's own width, not the window's
  * (inside KiroCrew the dashboard's sidebar takes ~230 px of it).
@@ -30,8 +32,8 @@ import { CTO_CSS } from './cto/styles'
 import { KIT_CSS } from './kit'
 import { parseView, searchOf, type View, type ViewKind } from './nav'
 import { APP_CSS } from './styles'
-import type { Overview, Requirement, Status } from './types'
-import { CheckRows, CommandLine, brainkitProblem } from './ui'
+import type { Overview, RepoInfo, RepoMe, Requirement, Status } from './types'
+import { CheckRows, CommandLine, MeLine, brainkitProblem } from './ui'
 import { BrainPage } from './views/Brain'
 import { DetailView } from './views/Detail'
 import { ImportView } from './views/Import'
@@ -196,6 +198,8 @@ export default function BrainApp({ pollMs }: { pollMs?: number } = {}) {
   const failing = s && s.brainkit.ok && v.kind !== 'new' && v.kind !== 'settings' && v.kind !== 'todo' ? s.crew.rows.filter((r) => r.level === 'FAIL') : []
   const off = status.error ? httpProblem(status.status) : null
   const kit = s && !s.brainkit.ok && v.kind !== 'settings' ? brainkitProblem(s.brainkit.error, s.brainkit.path) : null
+  const unnamed = s && v.kind !== 'settings' && v.kind !== 'import' && v.kind !== 'new'
+    ? s.repos.filter((r): r is RepoInfo & { me: RepoMe } => !!r.me && !r.me.name && (r.me.ask || !!r.me.error)) : []
   return (
     <div ref={rootRef} className="br-app" data-testid="br-app">
       <style>{BOARD_CSS}</style>
@@ -220,6 +224,17 @@ export default function BrainApp({ pollMs }: { pollMs?: number } = {}) {
           <div className="br-banner is-error" data-testid="br-crew-fail">
             <b className="br-strong">KiroCrew 这边有 {failing.length} 件要先处理</b>
             <CheckRows rows={failing} fix={s?.crew.fix} onFixed={() => status.reload()} />
+          </div>
+        )}
+        {unnamed.length > 0 && (
+          <div className="br-banner" role="status" data-testid="br-who">
+            <b className="br-strong">{unnamed.map((r) => r.name).join('、')} 里 brain-kit 还不知道你是谁，分不出哪些需求是你的</b>
+            {unnamed.map((r) => (
+              <div key={r.id} className="br-shell-row">
+                {unnamed.length > 1 && <span className="br-dim">{r.name}</span>}
+                <MeLine path={r.path} me={r.me} onSaved={(x) => status.set(x.status)} />
+              </div>
+            ))}
           </div>
         )}
       </div>

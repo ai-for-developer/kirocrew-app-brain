@@ -500,7 +500,7 @@ def classify(row: dict[str, Any], fam: dict[str, Any] | None, f: dict[str, Any],
     (已合进大需求), one claimed by someone else, one waiting for its dependencies, one whose MR waits for the big one's
     owner; a big one waiting for its small ones, or ready to be released. What the row says otherwise
     (deliveries.classify: an approval line, a question) stays."""
-    from .deliveries import STATE_LABEL, waits
+    from .deliveries import GATES, STATE_LABEL, owns, spaced, waits
     from . import lean_view
 
     def put(state: str, who: str, do: str, text: str, **kw: Any) -> None:
@@ -525,22 +525,24 @@ def classify(row: dict[str, Any], fam: dict[str, Any] | None, f: dict[str, Any],
             return put("unclaimed", "people", "start", "待认领：谁做都可以认领" +
                        ("（开工要等 %s合进大需求）" % blocked if blocked else ""), where="app", since=claimed_at)
         if row["state"] == "claimed":
+            if blocked:     # nobody can start it yet, whoever has it
+                held = "认领了：要等 %s合进大需求才能开工" % blocked
+                return put("claimed", "people", "none", spaced(owner, held) if owner and owner != me else held,
+                           since=claimed_at)
             if owner and owner != me:
                 return put("claimed", "people", "start", "等 %s 开工" % owner, where="app", since=claimed_at)
-            if blocked:
-                return put("claimed", "people", "none", "认领了：要等 %s合进大需求才能开工" % blocked, since=claimed_at)
             return put("claimed", "you", "start", "认领了，依赖都合进来了：可以开工", where="app", since=claimed_at)
-        if row["state"] == "local" and st == "in_progress" and owner and owner != me:
-            return put("local", "people", "none", "%s 在自己的机器上做" % owner)   # their machine, their session
-        if row["state"] == "local" and isinstance((f.get("run") or {}).get("mr"), dict) and \
-                row["waits"].get("who") in ("you", "agent") and not row["waits"].get("line"):
+        gate = row["waits"].get("do") in GATES
+        if row["state"] == "local" and isinstance((f.get("run") or {}).get("mr"), dict) and not gate:
             return put("local", "people", "none", "交了 MR：等大需求的负责人合进 %s" % (fam.get("branch") or "大需求的分支"),
                        where="mr")
+        if row["state"] == "local" and st == "in_progress" and owner and owner != me and not gate:
+            return put("local", "people", "none", "%s 在自己的机器上做" % owner)   # their machine, their session
         return
     if fam["role"] == "parent" and row["state"] == "local" and not row["waits"].get("line"):
         pr = fam.get("progress") or {}
         if fam.get("family_state") == "ready_to_release":
-            mine = not me or not owner or owner == me
+            mine = owns(me, owner)
             w = row.get("waits") or {}
             return put("local", "you" if mine else "people", "reply" if mine else "none",
                        "小需求都合进来了：%s评审，再批发布（或者交给运行机）" % ("" if mine else "等负责人"),

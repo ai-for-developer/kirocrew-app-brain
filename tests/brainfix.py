@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 
-from appkit import BRAINKIT, FakeGateway, commit_file, git_repo, mod, sh
+from appkit import BRAINKIT, FakeGateway, commit_file, git_repo, mod, no_hooks_config, sh
 
 HAVE_BRAINKIT = (BRAINKIT / "brainkit" / "__init__.py").is_file() and (
     BRAINKIT / "vendor" / "aidlc-lean" / "install.sh").is_file()
@@ -58,6 +58,16 @@ def make_project(root: Path, name: str = "pay", prefix: str = "PAY", origin: boo
         sh("git", "-C", repo, "fetch", "-q", "origin")
         sh("git", "-C", repo, "branch", "-q", "--set-upstream-to", "origin/main", "main")
     return repo
+
+
+def person(tmp: Path, origin: Path, name: str) -> Path:
+    """Someone else's clone of the project (their name is brain.user there)."""
+    path = tmp / name
+    sh("git", "clone", "-q", origin, path)
+    with open(path / ".git" / "config", "a", encoding="utf-8") as f:
+        f.write("[user]\n\tname = %s\n\temail = %s@example.com\n[commit]\n\tgpgsign = false\n[brain]\n\tuser = %s\n"
+                % (name, name, name) + no_hooks_config(path))
+    return path
 
 
 def start_in_worktree(repo: Path, wt: Path, slug: str, title: str, *extra: str) -> Path:
@@ -124,7 +134,7 @@ def install_brain_dev(home: Path) -> Path:
     return dst
 
 
-__all__ = ["needs_brainkit", "brain", "lean", "make_project", "start_in_worktree", "request_requirements",
+__all__ = ["needs_brainkit", "brain", "lean", "make_project", "person", "start_in_worktree", "request_requirements",
            "make_service", "run", "home", "install_brain_dev", "FakeGateway", "commit_file", "sh", "mod"]
 
 

@@ -1,11 +1,11 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, test, vi } from 'vitest'
 import { apiCalls, apiError, navigations } from '../test/stubs/app-sdk'
 import { fx } from '../test/data'
 import { API, installFixtureRoutes } from '../test/routes'
 import { parseView, searchOf } from '../nav'
-import type { CheckRow, CrewChecks, IntakeCheck, RepoMe, Status } from '../types'
+import type { CheckRow, CrewChecks, IntakeCheck, Overview, Person, RepoMe, Status } from '../types'
 import { NAME_RULE } from '../ui'
 import { CHECK_HINT, CREW_OK, GATE4, GATE5, HERO_LOCAL, HERO_TEXT, NO_CONFIDENTIAL, NO_SECRET, NewView, REVIEW_HINT, STARTED_NEXT, slugFrom } from './NewReq'
 import { BIG_HINT } from './Family'
@@ -631,6 +631,84 @@ describe('开需求', () => {
     await user.click(startBtn())
     await screen.findByTestId('start-result')
     expect(startBody()).not.toHaveProperty('big')
+  })
+
+  const OVERVIEW = `${API}/overview?repo=all`
+  const HINT_3 = '你手上已经有 3 个在做（上限 3）。可以先把一个交出去，再开新的。'
+  const CLAIM_PAY3 = { repo: 'r1', key: 'PAY-3', title: '退款单导出 CSV' }
+  const roster = (change: (p: Person) => Person): Overview => {
+    const o = fx.overview()
+    o.roster.people = o.roster.people.map(change)
+    return o
+  }
+  const youHold = (keys: string[], limit: number) => roster((p) => (p.you ? { ...p, open: keys.length, keys, limit } : p))
+  const answers = (o: Overview) => ({ [`GET ${API}/overview*`]: () => o })
+  async function overviewRead() {
+    await waitFor(() => expect(apiCalls.some((c) => c.path === OVERVIEW)).toBe(true))
+    await act(async () => {})
+  }
+
+  test('at the limit, one line right above 开工 says how many you have open and what you could do; nothing while the overview loads', async () => {
+    let answer: () => void = () => {}
+    const later = new Promise<void>((r) => { answer = r })
+    setup({ [`GET ${API}/overview*`]: async () => { await later; return youHold(['PAY-3', 'PAY-5', 'PAY-7'], 3) } })
+    await waitFor(() => expect(apiCalls.some((c) => c.path === OVERVIEW)).toBe(true))
+    expect(screen.queryByTestId('wip-hint')).toBeNull()
+    answer()
+    const hint = await screen.findByTestId('wip-hint')
+    expect(hint.textContent).toBe(HINT_3)
+    expect(within(screen.getByRole('region', { name: '开工' })).getByRole('note')).toBe(hint)
+    expect(hint.nextElementSibling).toContainElement(startBtn())
+  })
+
+  test.each([
+    ['under the limit (2 open of 3)', youHold(['PAY-3', 'PAY-5'], 3)],
+    ['when nobody on the roster is you', roster((p) => ({ ...p, you: false }))],
+  ])('no line %s', async (_, o) => {
+    setup(answers(o))
+    await overviewRead()
+    expect(screen.queryByTestId('wip-hint')).toBeNull()
+  })
+
+  test('starting a claim of yours adds nothing: 3 open with it, no line', async () => {
+    setup(answers(youHold(['PAY-3', 'PAY-5', 'PAY-7'], 3)), calmStatus(), CLAIM_PAY3)
+    await overviewRead()
+    expect(screen.queryByTestId('wip-hint')).toBeNull()
+  })
+
+  test.each([
+    ['a claim of yours with 4 open: the line says the 3 others', youHold(['PAY-3', 'PAY-5', 'PAY-7', 'PAY-9'], 3), CLAIM_PAY3],
+    ['a claim not among yours with 3 open: it counts like a new one', youHold(['PAY-3', 'PAY-5', 'PAY-7'], 3), { repo: 'r1', key: 'PAY-6', title: '商户结算周报' }],
+  ])('starting %s', async (_, o, entry) => {
+    setup(answers(o), calmStatus(), entry)
+    expect((await screen.findByTestId('wip-hint')).textContent).toBe(HINT_3)
+  })
+
+  test.each([
+    ['with the line', youHold(['PAY-3', 'PAY-5', 'PAY-7'], 3), true],
+    ['without it', youHold(['PAY-3', 'PAY-5'], 3), false],
+  ])('开工 is the same %s: off with its why until the form is right, then on; once started the line goes', async (_, o, shown) => {
+    const { user } = setup(answers(o))
+    await overviewRead()
+    expect(!!screen.queryByTestId('wip-hint')).toBe(shown)
+    expect(startBtn()).toBeDisabled()
+    expect(screen.getByTestId('start-why')).toHaveTextContent('先写标题')
+    await fillBasics(user)
+    expect(startBtn()).toBeEnabled()
+    expect(screen.getByTestId('start-ready')).toHaveTextContent('可以开工了')
+    await user.click(startBtn())
+    expect(within(await screen.findByTestId('start-result')).getByRole('status')).toHaveTextContent('开工了：PAY-8')
+    expect(screen.queryByTestId('wip-hint')).toBeNull()
+    expect(apiCalls.filter((c) => c.path === OVERVIEW)).toHaveLength(1)
+  })
+
+  test('the overview cannot be read: no line and no word of it; 开工 as always', async () => {
+    const { user } = setup({ [`GET ${API}/overview*`]: () => { throw apiError(500, 'overview_failed', '读不了交付总览') } })
+    await overviewRead()
+    expect(screen.queryByTestId('wip-hint')).toBeNull()
+    expect(screen.getByTestId('br-new')).not.toHaveTextContent('读不了交付总览')
+    await fillBasics(user)
+    expect(startBtn()).toBeEnabled()
   })
 })
 

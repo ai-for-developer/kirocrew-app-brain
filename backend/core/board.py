@@ -18,7 +18,7 @@ import re
 from typing import Any, Mapping, Optional, Tuple
 
 from . import lean_view, problems, runs, stages
-from .deliveries import ASK_NAME, ASK_WHO, CAT_LABEL, CAT_ORDER, KIND_LABEL, category
+from .deliveries import ASK_NAME, ASK_WHO, CAT_LABEL, CAT_ORDER, KIND_LABEL, category, owns
 
 RUNNER_NO_DESC = "运行机还没开始做：它做完提交以后才有变更说明"
 # Lean's approval kinds the board says, in words (CR-<team>-<n> is left out)
@@ -80,12 +80,9 @@ def _park_for(parks: list[dict[str, Any]], at: float | None, *, kind: Any = None
     return min(hits, key=lambda q: abs((_epoch(q.get("at")) or 0) - (at or 0)), default={})
 
 
-def _you(me: str | None, owner: str | None, *, runner: bool = False) -> str:
-    """Who the requirement's person is to the one reading the board: 你, or their name (UI问题清单 BOARD-11). On a
-    person's machine an unknown reader is the person; on the team runner's page only the owner is 你."""
-    if not owner or me == owner or (not me and not runner):
-        return "你"
-    return " %s " % owner
+def _you(me: str | None, owner: str | None) -> str:
+    """Who the requirement's person is to the one reading the board: 你, or their name (UI问题清单 BOARD-11)."""
+    return "你" if owns(me, owner) else " %s " % owner
 
 
 def _first(*xs: Any) -> float | None:
@@ -635,7 +632,7 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
     handoff = run.get("handoff") if isinstance(run.get("handoff"), dict) else None
     hand_at = _epoch((handoff or {}).get("requested_at"))
     local_only = bool(local_only or row.get("local_only"))
-    you = _you(me, f.get("owner"), runner=row.get("where") == "runner")
+    you = _you(me, f.get("owner"))
     evs = events_of(f, t, mr=mr, app_events=app_events, team_decisions=team_decisions, subjects=subjects,
                     reflect_refs=reflect_refs, default_branch=default_branch, you=you)
     proposals = ((brain or {}).get("proposals") or 0) if isinstance(brain, dict) else 0
@@ -843,9 +840,8 @@ def _checks(nodes: list[stages.Node], rs: list[runs.RunView], relays: list[dict[
 
 def _person(row: dict[str, Any], me: str | None, f: dict[str, Any], you: str = "你") -> dict[str, Any]:
     """The owner's node: it asks for the person only when the requirement waits on them (waits.who `you`); a question
-    for the product or someone else is said, not flashed at the owner (BOARD-5). `you`: the board calls the owner 你
-    (_you: the one reading is the owner, or nobody known reads it on their machine), so the page offers them 开工 and
-    says 你 where everything else on it does (BOARD-11)."""
+    for the product or someone else is said, not flashed at the owner (BOARD-5). `you`: the board calls the owner 你,
+    so the page offers them 开工 and says 你 where everything else on it does (BOARD-11)."""
     waits = row.get("waits") or {}
     owner = f.get("owner")
     st = row.get("state")

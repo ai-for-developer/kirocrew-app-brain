@@ -4,22 +4,30 @@ USER_RE, no shell, no token). Both brain-kits, made from the checkout whichever 
 rule (before 91e2fee, e.g. 48b6b97: no name, no start) and one with brain-kit 91e2fee's rule (a repo without GitLab
 uses the login name). Throwaway repos only."""
 
+import asyncio
 import json
+import re
+import secrets
 import shutil
+import threading
+import time
+from types import SimpleNamespace
 
 import pytest
 
 import brainfix
 from appkit import BRAINKIT, mod, sh
-from brainfix import make_project, make_service, needs_brainkit, run
+from brainfix import brain, make_project, make_service, needs_brainkit, person, run, start_in_worktree
 from http_fakes import AppRoute, FakeWeb, call
+from test_progress import checkpoint, on_origin, rows_of, tick
 
 pytestmark = needs_brainkit
 identity = mod("identity")
 problems = mod("problems")
 bk = mod("bk")
 
-GITLAB = {"gitlab": {"base": "https://gitlab.example.com", "project": "grp/pay"}}
+GL = "https://gitlab.example.com"
+GITLAB = {"gitlab": {"base": GL, "project": "grp/pay"}}
 OLD_ME = '''    if not who:
         raise BrainError("who are you? set GITLAB_TOKEN (preferred) or `git config brain.user <gitlab-username>`")
 '''
@@ -200,21 +208,29 @@ def test_with_gitlab_and_no_token_both_brainkits_ask_for_the_gitlab_username(tmp
         bk.unload()
 
 
-def test_with_a_token_gitlab_says_who_and_a_set_name_wins_otherwise(tmp_path, home, login, monkeypatch):
+def test_gitlabs_name_for_the_token_wins_and_a_name_set_here_answers_until_gitlab_says(tmp_path, home, login,
+                                                                                        monkeypatch):
     repo = project(tmp_path, kit=GITLAB)
-    monkeypatch.setenv("GITLAB_TOKEN", "fake-" + "0" * 20)
-    assert identity.of(str(repo), "https://gitlab.example.com", token=True) == dict(
-        identity.of(str(repo), "https://gitlab.example.com", token=True), source="token", ask=False, name=None)
-    monkeypatch.delenv("GITLAB_TOKEN")
     sh("git", "-C", repo, "config", "brain.user", "Dave")
-    got = identity.of(str(repo), "https://gitlab.example.com", token=False)
-    assert (got["name"], got["source"], got["ask"]) == ("dave", "git", False)
-    sh("git", "-C", repo, "config", "brain.user", "Bad Name")
-    bad = identity.of(str(repo), "", token=False)
-    assert bad["ask"] and bad["name"] is None and "Bad Name" in bad["error"] and bad["why"] == identity.WHY_LOCAL
     monkeypatch.setenv("BRAIN_USER", "erin")
-    env = identity.of(str(repo), "https://gitlab.example.com", token=False)
-    assert (env["name"], env["source"]) == ("erin", "env")
+    said = identity.of(str(repo), GL, identity.Said("alice"))
+    assert (said["name"], said["source"], said["ask"]) == ("alice", "token", False), "brain-kit's cli._me: GitLab first"
+    line = mod("service").me_line([{"me": said}], True, "erin")
+    assert line["user"] == "alice" and said["text"] in line["how"], "the machine's 你是谁 goes by the repo's rule"
+    asking = identity.of(str(repo), GL, identity.Asking())
+    assert (asking["name"], asking["source"]) == ("erin", "env") and identity.ASKING_TEXT in asking["text"]
+    monkeypatch.delenv("BRAIN_USER")
+    got = identity.of(str(repo), GL)
+    assert (got["name"], got["source"], got["ask"]) == ("dave", "git", False) and "brain.user" in got["text"]
+    assert identity.of(str(repo), "", identity.Said("alice"))["name"] == "dave", "no GitLab here: no token's name"
+    sh("git", "-C", repo, "config", "brain.user", "Bad Name")
+    bad = identity.of(str(repo), "")
+    assert bad["ask"] and bad["name"] is None and "Bad Name" in bad["error"] and bad["why"] == identity.WHY_LOCAL
+    sh("git", "-C", repo, "config", "--unset", "brain.user")
+    waiting = identity.of(str(repo), GL, identity.Asking())
+    assert (waiting["name"], waiting["source"], waiting["ask"]) == (None, "token", False), "GitLab will say: no input"
+    refused = identity.of(str(repo), GL, identity.NotSaid(identity.REFUSED))
+    assert refused["ask"] and refused["label"] == identity.LABEL_GITLAB and identity.REFUSED in refused["why"]
 
 
 def test_the_name_route_takes_brainkits_names_only_runs_no_shell_and_stores_no_token(tmp_path, home, login):
@@ -268,3 +284,232 @@ def test_who_are_you_in_plain_chinese_with_the_input_as_the_fix():
     assert problems.row("FAIL", old)["fix"] is None                    # no repo: nothing to set it in
     assert problems.who_row("Started nothing\n" + new + "\n", repo="/r")["text"] == rows["new"]["text"]
     assert problems.who_row("brain: no such requirement", repo="/r") is None
+
+
+class WhoAmI:
+    def __init__(self, token, username="alice", hold=None, down=False):
+        self.token, self.username, self.hold, self.down = token, username, hold, down
+        self.calls = []
+
+    def __call__(self, method, url, headers, body):
+        self.calls.append((method, url))
+        if self.hold is not None:
+            self.hold.wait(10)
+        if self.down:
+            raise bk.m("common").BrainError("cannot reach gitlab.example.com: timed out")
+        if method == "GET" and url == GL + "/api/v4/user":
+            if headers.get("PRIVATE-TOKEN") != self.token:
+                return 401, b'{"message": "401 Unauthorized"}'
+            return 200, json.dumps({"id": 7, "username": self.username, "name": "Alice A"}).encode()
+        return 404, b'{"message": "404 Not Found"}'
+
+
+def a_token(monkeypatch):
+    """A GitLab token in no shape a scrubber knows. Set it after the test's `brain` runs: with a token, brain-kit asks
+    GitLab who the person is (cli._me)."""
+    tok = "tok" + secrets.token_hex(16)
+    monkeypatch.setenv("GITLAB_TOKEN", tok)
+    return tok
+
+
+async def status_until(svc, ok, wait=5.0):
+    end = time.monotonic() + wait
+    st = await svc.status()
+    while not ok(st) and time.monotonic() < end:
+        await asyncio.sleep(0.05)
+        st = await svc.status()
+    return st
+
+
+def named(name):
+    return lambda st: st["repos"][0]["me"]["name"] == name
+
+
+@pytest.fixture
+def teammates(tmp_path, home):
+    repo = make_project(tmp_path, origin=True, kit={"gitlab": {"base": GL, "project": "shop/pay"}})
+    wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
+    bob = person(tmp_path, tmp_path / "pay-origin.git", "bob")
+    brain(bob, "start", "export", "--title", "导出")
+    claimed = re.search(r"Claimed (\S+) for bob", brain(bob, "claim", "--title", "对账").stdout).group(1)
+    sh("git", "-C", repo, "fetch", "-q", "origin")
+    sh("git", "-C", repo, "config", "--unset", "brain.user")
+
+    def key(path):
+        branch = sh("git", "-C", path, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+        return mod("repo").parse_branch(branch, "ai")["key"]
+
+    return SimpleNamespace(repo=repo, wt=wt, origin=tmp_path / "pay-origin.git", app=tmp_path / "alice-app",
+                           mine=key(wt), theirs=key(bob), claimed=claimed)
+
+
+def test_a_token_only_person_is_who_gitlab_says_and_the_token_is_in_no_answer(teammates, monkeypatch, caplog):
+    w = teammates
+    tok = a_token(monkeypatch)
+    gl = WhoAmI(tok)
+    svc = make_service(w.app, [w.repo], transport=gl)
+
+    async def go():
+        st = await status_until(svc, named("alice"))
+        return st, [st, await svc.overview("all"), await svc.todo(), await svc.requirement("r1", w.mine),
+                    await svc.board("r1", w.theirs), svc.settings_view()]
+
+    st, answers = started(svc, go)
+    me = st["repos"][0]["me"]
+    assert (me["name"], me["source"], me["ask"]) == ("alice", "token", False), me
+    assert me["text"].startswith("alice（") and "GitLab" in me["text"]
+    assert st["me"]["user"] == "alice" and me["text"] in st["me"]["how"]
+    assert gl.calls == [("GET", GL + "/api/v4/user")], "asked once, then kept"
+    said = json.dumps(answers, ensure_ascii=False)
+    assert tok not in said and tok not in caplog.text
+
+
+def test_a_token_only_persons_rows_and_todo_are_their_own_only(teammates, monkeypatch):
+    w = teammates
+    svc = make_service(w.app, [w.repo], transport=WhoAmI(a_token(monkeypatch)))
+
+    async def go():
+        await status_until(svc, named("alice"))
+        return rows_of(await svc.overview("all")), await svc.todo()
+
+    rows, todo = started(svc, go)
+    assert rows[w.mine]["owner"] == "alice" and rows[w.mine]["waits"]["who"] != "people", rows[w.mine]["waits"]
+    assert (rows[w.theirs]["waits"]["who"], rows[w.theirs]["waits"]["text"]) == ("people", "bob 在自己的机器上做")
+    assert (rows[w.claimed]["waits"]["who"], rows[w.claimed]["waits"]["text"]) == ("people", "等 bob 开工")
+    assert {i["key"] for i in todo["items"] if i["kind"] != "crew"} <= {w.mine}, todo["items"]
+
+
+def test_a_token_only_persons_checkpoint_goes_to_origin(teammates, monkeypatch):
+    w = teammates
+    svc = make_service(w.app, [w.repo], transport=WhoAmI(a_token(monkeypatch)))
+
+    async def go():
+        await status_until(svc, named("alice"))
+        tip = checkpoint(w.wt, "stage", "skip", "reverse-engineering", "--reason", "greenfield")
+        tick(svc)
+        return tip, (await svc.status())["repos"][0]["sync"]
+
+    tip, sync = started(svc, go)
+    assert on_origin(w.origin) == tip, "her own run branch went up at the checkpoint"
+    assert sync["push_why"] == "" and sync["push_cmd"] == ""
+
+
+def test_a_token_only_person_is_you_on_the_team_view_and_their_checkpoint_goes_up(teammates, monkeypatch):
+    """GitLab's name for the token is the team view's 你: alice's lane comes first with what she has open against the
+    limit 开需求 reminds her of, bob's run and claim are his lane and not hers, and her own run branch goes up at a
+    checkpoint."""
+    w = teammates
+    svc = make_service(w.app, [w.repo], transport=WhoAmI(a_token(monkeypatch)))
+
+    async def go():
+        await status_until(svc, named("alice"))
+        await svc.save_settings({"wip_limit": 1})
+        view = await svc.overview("all")
+        tip = checkpoint(w.wt, "stage", "skip", "reverse-engineering", "--reason", "greenfield")
+        tick(svc)
+        return view, tip
+
+    view, tip = started(svc, go)
+    people = view["roster"]["people"]
+    assert [(p["owner"], p["you"]) for p in people] == [("alice", True), ("bob", False)], people
+    assert (people[0]["keys"], people[0]["open"], people[0]["limit"]) == ([w.mine], 1, 1)
+    assert sorted(people[1]["keys"]) == sorted([w.theirs, w.claimed])
+    rows = rows_of(view)
+    assert rows[w.mine]["waits"]["who"] != "people", rows[w.mine]["waits"]
+    assert [rows[k]["waits"]["who"] for k in (w.theirs, w.claimed)] == ["people", "people"]
+    assert on_origin(w.origin) == tip, "her own run branch went up at the checkpoint"
+
+
+def test_with_no_token_and_no_name_a_teammates_requirement_is_not_yours_and_settings_asks(teammates):
+    w = teammates
+    gl = WhoAmI("no-token-here")
+    svc = make_service(w.app, [w.repo], transport=gl)
+
+    async def go():
+        return await svc.status(), rows_of(await svc.overview("all")), await svc.todo()
+
+    st, rows, todo = started(svc, go)
+    assert (rows[w.theirs]["waits"]["who"], rows[w.theirs]["waits"]["text"]) == ("people", "bob 在自己的机器上做")
+    assert (rows[w.claimed]["waits"]["who"], rows[w.claimed]["waits"]["text"]) == ("people", "等 bob 开工")
+    assert not [i for i in todo["items"] if i["key"] in (w.theirs, w.claimed)], todo["items"]
+    me = st["repos"][0]["me"]
+    assert (me["name"], me["ask"], me["label"], me["why"]) == (None, True, identity.LABEL_GITLAB, identity.WHY_GITLAB)
+    assert gl.calls == [], "no token: GitLab is not asked"
+
+
+@pytest.mark.parametrize("gitlab", ["slow", "down"])
+def test_with_gitlab_slow_or_down_the_name_set_here_answers_and_nothing_waits(tmp_path, home, login, monkeypatch,
+                                                                               caplog, gitlab):
+    repo = project(tmp_path, kit={"gitlab": {"base": GL, "project": "shop/pay"}})
+    sh("git", "-C", repo, "config", "brain.user", "dave")
+    tok = a_token(monkeypatch)
+    hold = threading.Event()
+    gl = WhoAmI(tok, hold=hold) if gitlab == "slow" else WhoAmI(tok, down=True)
+    svc = make_service(tmp_path, [repo], transport=gl)
+
+    async def go():
+        t0 = time.monotonic()
+        first = await svc.status()
+        took = time.monotonic() - t0
+        if gitlab == "down":
+            first = await status_until(svc, lambda st: "没认出" in st["repos"][0]["me"]["text"])
+        mine = svc.me_in(svc.repos["r1"])
+        hold.set()
+        return took, first, mine, await status_until(svc, named("alice"), wait=2.0 if gitlab == "slow" else 0.3)
+
+    took, first, mine, later = started(svc, go)
+    assert took < 2.0, "the page did not wait for GitLab (%.1f s)" % took
+    me = first["repos"][0]["me"]
+    assert (me["name"], me["source"], me["ask"]) == ("dave", "git", False), me
+    assert me["text"].startswith("dave（") and "GitLab" in me["text"] and mine == "dave"
+    if gitlab == "slow":
+        assert later["repos"][0]["me"]["name"] == "alice", "once GitLab answers, its name wins, as brain-kit's does"
+    else:
+        assert later["repos"][0]["me"]["name"] == "dave" and len(gl.calls) == 1, "a failure is not asked again at once"
+    assert tok not in json.dumps([first, later], ensure_ascii=False) and tok not in caplog.text
+
+
+def wait_for(ok, wait=5.0):
+    end = time.monotonic() + wait
+    while not ok() and time.monotonic() < end:
+        time.sleep(0.02)
+    return ok()
+
+
+def test_gitlab_is_asked_once_per_token_again_after_a_while_and_a_refused_token_is_said(home, monkeypatch):
+    bk.load(str(BRAINKIT))
+    try:
+        t = [0.0]
+        tok = a_token(monkeypatch)
+        gl = WhoAmI(tok, hold=threading.Event())
+        gl.hold.set()
+        who = identity.Who(gl, clock=lambda: t[0])
+        assert who.said("") is None, "no GitLab: nothing to ask"
+        assert who.said(GL) == identity.Asking(), "not answered yet"
+        who.want(GL)
+        assert wait_for(lambda: who.said(GL) == identity.Said("alice"))
+        for _ in range(5):
+            who.want(GL + "/")
+        assert len(gl.calls) == 1, gl.calls
+        t[0] = identity.ASK_AGAIN_S
+        gl.username = "alice.w"
+        gl.hold.clear()
+        who.want(GL)
+        assert wait_for(lambda: len(gl.calls) == 2) and who.said(GL) == identity.Said("alice"), \
+            "the last answer stands while GitLab is asked again"
+        gl.hold.set()
+        assert wait_for(lambda: who.said(GL) == identity.Said("alice.w"))
+        monkeypatch.setenv("GITLAB_TOKEN", "tok" + secrets.token_hex(16))
+        who.want(GL)
+        assert wait_for(lambda: who.said(GL) == identity.NotSaid(identity.REFUSED)) and len(gl.calls) == 3
+        t[0] += identity.RETRY_S - 1
+        who.want(GL)
+        assert len(gl.calls) == 3, "a refusal is not asked about again at once"
+        t[0] += 1
+        who.want(GL)
+        assert wait_for(lambda: len(gl.calls) == 4)
+        monkeypatch.delenv("GITLAB_TOKEN")
+        who.want(GL)
+        assert who.said(GL) is None and len(gl.calls) == 4, "no token: GitLab is not asked"
+    finally:
+        bk.unload()

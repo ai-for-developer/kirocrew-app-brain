@@ -86,6 +86,8 @@ def test_the_backend_answers_with_the_fixtures_keys(tmp_path, home):
     assert got["detail.json"]["sessions"] and got["detail.json"]["decisions"] and got["todo.json"]["items"]
     assert got["overview.json"]["counts"].keys() == fixture("overview.json")["counts"].keys()
     assert got["overview.json"]["cto"].keys() == fixture("overview.json")["cto"].keys()
+    assert got["overview.json"]["roster"]["counts"].keys() == fixture("overview.json")["roster"]["counts"].keys()
+    assert got["overview.json"]["roster"]["stuck"], "the scenario's overlap is a stuck line: its keys are compared"
     board = got["board.json"]
     # the stage graph's lists hold something, so diff_keys compared their keys with the fixture's
     assert board["phases"] and board["nodes"] and board["runs"] and any(n["rounds"] for n in board["nodes"])

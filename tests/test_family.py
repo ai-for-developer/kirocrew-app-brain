@@ -15,9 +15,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from appkit import BRAINKIT, mod, no_hooks_config, sh
-from brainfix import PY, FakeGateway, brain, install_brain_dev, lean, make_project, make_service, needs_brainkit, run, \
-    start_in_worktree
+from appkit import BRAINKIT, mod, sh
+from brainfix import PY, FakeGateway, brain, install_brain_dev, lean, make_project, make_service, needs_brainkit, person, \
+    run, start_in_worktree
 
 HAVE_SPLIT = (BRAINKIT / "brainkit" / "split.py").is_file()
 pytestmark = [needs_brainkit, pytest.mark.skipif(not HAVE_SPLIT, reason="brain-kit before 0d52e97 has no brain split")]
@@ -108,16 +108,6 @@ def inception(wt: Path, key: str = "PAY-1", design: bool = True) -> str:
     sh("git", "-C", wt, "add", "-A")
     sh("git", "-C", wt, "commit", "-q", "-m", "%s: inception" % key)
     return intent
-
-
-def person(tmp: Path, origin: Path, name: str) -> Path:
-    """Someone else's clone of the project (their name is brain.user there)."""
-    path = tmp / name
-    sh("git", "clone", "-q", origin, path)
-    with open(path / ".git" / "config", "a", encoding="utf-8") as f:
-        f.write("[user]\n\tname = %s\n\temail = %s@example.com\n[commit]\n\tgpgsign = false\n[brain]\n\tuser = %s\n"
-                % (name, name, name) + no_hooks_config(path))
-    return path
 
 
 @pytest.fixture

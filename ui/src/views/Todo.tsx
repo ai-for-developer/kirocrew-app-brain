@@ -19,6 +19,7 @@
  *   handoff_rejected    the hand-over was refused: why, and what to say to the AI   打开会话 · 看 MR
  *   handoff_unlabelled  pushed, but the MR has no hand-over label                   补上交接标签 · 看 MR
  *   closed_leftover     closed with brain intent close, its run branch or MR left   看 MR (delete it, close it)
+ *   push_failed         your progress at a Lean checkpoint, refused by origin       what to do, git's words (细节)
  *   stuck               a run on the runner that no answer can move any more        看 MR
  *   crew                KiroCrew's failing checks, with their fix buttons
  *
@@ -57,6 +58,7 @@ const GROUPS: Group[] = [
   { key: 'handoff_rejected', heading: '接手被拒', icon: 'handover', tone: 'bad', hint: '改好再交接' },
   { key: 'handoff_unlabelled', heading: '没交出去的交接', icon: 'handover', tone: 'warn', hint: 'MR 上没有交接标签' },
   { key: 'closed_leftover', heading: '关了的需求还留着分支或 MR', icon: 'settings', tone: 'warn', hint: '用不着就删掉、关掉' },
+  { key: 'push_failed', heading: '进度没推上去', icon: 'commit', tone: 'warn', hint: '队友看不到你的新进度' },
   { key: 'stuck', heading: '卡住了的运行', icon: 'blocked', tone: 'bad', hint: '这一步答不了了：找负责人' },
   { key: 'crew', heading: 'KiroCrew 的问题', icon: 'settings', tone: 'bad', hint: '修好了才能开工' },
 ]
@@ -126,7 +128,7 @@ export function TodoView(props: ViewProps) {
         <EmptyHero
           testid="todo-empty"
           title="现在没有等你做的事"
-          text={['需求走到要你动手的地方，就会出现在这里，按种类分好：会话等你回话、等你开会话审查、Lean 的审批、会话问你的澄清、认领了还没开工、交接被拒、MR 上的问题和验收，还有 KiroCrew 这边要修的；拆成小需求的，能开工的小需求、能发布的大需求，还有关了却留着分支的需求，也在这里。']}
+          text={['需求走到要你动手的地方，就会出现在这里，按种类分好：会话等你回话、等你开会话审查、Lean 的审批、会话问你的澄清、认领了还没开工、交接被拒、MR 上的问题和验收，还有 KiroCrew 这边要修的；拆成小需求的，能开工的小需求、能发布的大需求，关了却留着分支的需求，还有没推上去的进度，也在这里。']}
           punch="这一页空着，就是没有谁在等你。"
           flow={WAITS_FLOW}
         >

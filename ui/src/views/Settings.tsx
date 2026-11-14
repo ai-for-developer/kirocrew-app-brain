@@ -3,15 +3,17 @@
  * what its optional parts do), 你是谁 (a token is only said to be there, never shown), the team runner's status; each
  * repo with its state (said by its reason), path and settings, 「移出列表」 (the app's list only: no file changes, after
  * a confirm) and 「导入仓库」 (how a repo gets in); KiroCrew's checks with their fix buttons — and the settings form in
- * its own card: where brain-kit is, where worktrees go, team mode (only a checkbox until it is on; POST /settings,
- * which keeps the repo list as it is). Without a usable brain-kit, its place is asked first, at the top, with why and
- * where to get one.
+ * its own card: where brain-kit is, where worktrees go, 和队友同步 (how often every repo with a remote is fetched by
+ * itself, with the last fetch that did not work; per repo done with the team, whether its run branches are pushed at
+ * Lean's checkpoints, and why they cannot be when the backend says so), 全队视图's four limits (a sentence each around
+ * its number), team mode (only a checkbox until it is on; POST /settings, which keeps the repo list as it is). Without
+ * a usable brain-kit, its place is asked first, at the top, with why and where to get one.
  */
 import { useEffect, useRef, useState } from 'react'
 import { useAppApi } from '@kirocrew/app-sdk'
 import { paths, useAction, usePoll } from '../api'
 import { ago } from '../format'
-import type { RemoveResult, RepoInfo, Settings, Status } from '../types'
+import type { RemoveResult, RepoInfo, RepoSync, Settings, Status, TeamLimits } from '../types'
 import { CheckRows, CommandLine, Flow, IMPORT_FLOW, LEVEL_TONE, LoadState, MeLine, PendingRepo, RoleIcon, brainkitProblem } from '../ui'
 import { ACT, MODULE_NAME, TRACKER_NAME } from '../vocab'
 import type { ViewProps } from './props'
@@ -22,13 +24,27 @@ const BRIDGE_HINT = 'bridge.json：带 "signer": {"type": "spool", "spool_dir", 
 
 /** The form: everything but the repos (导入仓库 adds them, 移出列表 removes them; the backend keeps a key left out). */
 type Form = Omit<Settings, 'repos'>
-const formOf = (s: Settings): Form => ({ brainkit: s.brainkit, work_root: s.work_root, team: { ...s.team } })
-const settingsOf = (f: Form): Form => ({ brainkit: f.brainkit.trim(), work_root: f.work_root.trim(), team: { ...f.team } })
+const formOf = (s: Settings): Form => ({
+  brainkit: s.brainkit, work_root: s.work_root, fetch_every_min: s.fetch_every_min, auto_push: { ...s.auto_push }, team: { ...s.team },
+  wip_limit: s.wip_limit, wait_timeout_h: s.wait_timeout_h, stale_after_h: s.stale_after_h, verify_fail_limit: s.verify_fail_limit,
+})
+const settingsOf = (f: Form): Form => ({ ...f, brainkit: f.brainkit.trim(), work_root: f.work_root.trim(),
+  auto_push: { ...f.auto_push }, team: { ...f.team } })
+
+export const FETCH_HINT = '队友推上去的进度，app 隔这么久自己取一次，交付总览里就能看到；填 0 就只在点「从远端取最新」时取。'
+export const PUSH_HINT = 'Lean 每过一个关卡，就把你自己的 run 分支上已经提交的推到远端，队友就能看到你做到哪了；不交接，不开 MR。只在本机做的仓库不推，也不列在这里。'
 
 /** the team runner's two config files (brain-kit's bridge.json and runnerd.json): the field's label, what is typed */
 const TEAM_FIELDS: [Exclude<keyof Settings['team'], 'enabled' | 'dev_same_user'>, string, string][] = [
   ['bridge_config', '桥的配置文件', '…/bridge.json'],
   ['runnerd_config', '运行机的配置文件', '…/runnerd.json'],
+]
+
+const LIMIT_LINES: { key: keyof TeamLimits; before: string; after: string; max: number }[] = [
+  { key: 'wip_limit', before: '每人同时在做的需求，最多', after: '个', max: 20 },
+  { key: 'wait_timeout_h', before: '等人批准、回答或验收，超过', after: '个工作小时算超时', max: 200 },
+  { key: 'stale_after_h', before: '别人在自己机器上做的需求，', after: '个工作小时没有推上新进度算很久没动', max: 400 },
+  { key: 'verify_fail_limit', before: '同一项检查 verify 连续失败', after: '次，就该停下来问人', max: 20 },
 ]
 
 /** A repo's state in one word, by its reason (RepoInfo.error is the backend's sentence). */
@@ -120,7 +136,7 @@ export function SettingsView({ status, setStatus, reloadStatus, go }: ViewProps)
       </header>
       <LoadState loading={got.loading} error={got.error} has={!!form} />
       {form && (
-        <form className="br-form" onSubmit={(e) => { e.preventDefault(); void submit() }}>
+        <form className="br-form" noValidate onSubmit={(e) => { e.preventDefault(); void submit() }}>
           <div className="st-fields">
             {!kitCard && kitField}
             <div className="br-field">
@@ -129,6 +145,19 @@ export function SettingsView({ status, setStatus, reloadStatus, go }: ViewProps)
               <p className="br-hint">要在 ~/workplace 或 ~/workspace 下面：KiroCrew 的会话只能在这两个目录里干活。</p>
             </div>
           </div>
+          <SyncFields form={form} repos={status?.repos ?? []} edit={edit} />
+          <fieldset className="br-fieldset">
+            <legend>全队视图</legend>
+            {LIMIT_LINES.map(({ key, before, after, max }) => (
+              <label key={key} className="st-limit">
+                {before}
+                <input type="number" min={1} max={max} step={1} aria-describedby="set-limits-hint" value={Number.isNaN(form[key]) ? '' : form[key]}
+                  onChange={(e) => edit({ [key]: e.target.valueAsNumber })} />
+                {after}
+              </label>
+            ))}
+            <p className="br-hint" id="set-limits-hint">工作小时只算周一到周五 9 点到 18 点（这台机器的时间）。到了上限只提醒，不拦开工。</p>
+          </fieldset>
           <fieldset className={`br-fieldset st-team${form.team.enabled ? ' is-on' : ''}`}>
             <legend>团队模式</legend>
             <div className="st-toggle">
@@ -189,6 +218,58 @@ export function SettingsView({ status, setStatus, reloadStatus, go }: ViewProps)
         </div>
       </div>
     </main>
+  )
+}
+
+/** 和队友同步: the fetch interval (every repo with a remote), and per repo done with the team its push at checkpoints. */
+function SyncFields({ form, repos, edit }: { form: Form; repos: RepoInfo[]; edit: (f: Partial<Form>) => void }) {
+  const synced = repos.filter((r): r is RepoInfo & { sync: RepoSync } => !!r.sync)
+  const pushable = synced.filter((r) => r.sync.auto_push !== null)
+  const failed = synced.filter((r) => r.sync.fetch && !r.sync.fetch.ok)
+  const fetched = synced.filter((r) => r.sync.fetch?.ok)
+  const minutes = (v: string) => (v.trim() === '' ? 0 : Number.isFinite(Number(v)) ? Number(v) : form.fetch_every_min)
+  return (
+    <fieldset className="br-fieldset st-sync" data-testid="settings-sync">
+      <legend>和队友同步</legend>
+      <div className="br-field">
+        <label htmlFor="set-fetch">每隔几分钟从远端取最新</label>
+        <span className="st-minutes">
+          <input id="set-fetch" type="number" inputMode="numeric" className="br-mono" value={form.fetch_every_min}
+            aria-describedby="set-fetch-hint" onChange={(e) => edit({ fetch_every_min: minutes(e.target.value) })} />
+          <span>分钟</span>
+        </span>
+        <p className="br-hint" id="set-fetch-hint">{FETCH_HINT}</p>
+        {failed.map((r) => (
+          <div key={r.path} className="st-ask" data-testid="fetch-failed">
+            <p className="br-warn-text br-small">{r.name}：{r.sync.fetch!.text}</p>
+            {r.sync.fetch!.raw && <details className="br-raw"><summary>细节</summary><pre>{r.sync.fetch!.raw}</pre></details>}
+          </div>
+        ))}
+        {fetched.length > 0 && (
+          <p className="br-dim br-small">上次取到最新：{fetched.map((r) => `${r.name} ${ago(r.sync.fetch!.at)}`).join('、')}</p>
+        )}
+      </div>
+      <div className="br-field" role="group" aria-labelledby="set-push">
+        <span className="st-label" id="set-push">过关卡时把进度推到远端</span>
+        {pushable.map((r) => (
+          <div key={r.path} className="st-push">
+            <label className="br-check">
+              <input type="checkbox" checked={form.auto_push[r.path] ?? true}
+                onChange={(e) => edit({ auto_push: { ...form.auto_push, [r.path]: e.target.checked } })} />
+              <b>{r.name}</b>
+            </label>
+            {r.sync.push_why && (form.auto_push[r.path] ?? true) && (
+              <div className="st-ask">
+                <p className="br-warn-text br-small">{r.sync.push_why}</p>
+                {r.sync.push_cmd && <CommandLine cmd={r.sync.push_cmd} />}
+              </div>
+            )}
+          </div>
+        ))}
+        {pushable.length === 0 && <p className="br-dim br-small">现在的仓库都只在本机做（没有远端），不用推。</p>}
+        <p className="br-hint">{PUSH_HINT}</p>
+      </div>
+    </fieldset>
   )
 }
 
@@ -457,7 +538,13 @@ const ST_CSS = `
 .st-me > .br-dim { padding-top: .2em; }
 .st-norepo { display: grid; gap: .8em; }
 .st-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(18em, 1fr)); gap: .8em 1.2em; align-items: start; }
+.st-limit input { width: 5.2em; margin: 0 .4em; text-align: center; }
 .st-team { gap: .8em; }
+.st-sync { gap: .8em; }
+.st-minutes { display: inline-flex; align-items: center; gap: .5em; }
+.st-minutes input { width: 6em; }
+.st-label { font-weight: 650; color: var(--text-strong); }
+.st-push { display: grid; gap: .3em; }
 .st-team.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .st-toggle { display: grid; gap: .1em; }
 .st-toggle b { color: var(--text-strong); }

@@ -159,6 +159,17 @@ def test_overlaps_and_the_funnel_fallback():
     assert {x["id"]: x["label"] for x in f["rows"]}["unclassified"] == "没归类"         # vocab.ts DECIDED_BY
 
 
+def test_a_row_counts_the_verify_runs_failed_in_a_row_since_the_last_pass():
+    runs = lambda *oks: [{"event": "VERIFY", "data": {"ok": ok}} for ok in oks]      # Lean's ledger, oldest first
+    lv = mod("lean_view")
+    assert lv.verify_fails(runs(False, True, False, False, False)) == 3
+    assert lv.verify_fails(runs(False, False, True)) == 0
+    assert lv.verify_fails([]) == 0
+    assert lv.verify_fails(runs(False) + [{"event": "STAGE_STARTED", "data": {"stage": "build-and-test"}}] + runs(False)) == 2
+    assert deliveries.base_row("r1", {"key": "PAY-1", "events": runs(True, False, False)})["verify_fails"] == 2
+    assert deliveries.base_row("r1", {"key": "PAY-2"})["verify_fails"] == 0
+
+
 def test_the_lean_stage_of_a_row():
     """The overview row's current stage (the same stages the detail view lists) and its progress said the one way the
     app says it (vocab.leanProgress): stages done, stages skipped, the next one to do. A stage not started is never

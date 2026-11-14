@@ -25,9 +25,9 @@ describe('待办', () => {
     renderTodo()
     await screen.findByRole('region', { name: 'Lean 审批' })
     expect(screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'))).toEqual(
-      ['等审查', 'Lean 审批', '本地澄清', '运行机上的问题', '等验收', '认领了还没开工', '接手被拒', '没交出去的交接', 'KiroCrew 的问题'])
+      ['等审查', 'Lean 审批', '本地澄清', '运行机上的问题', '等验收', '认领了还没开工', '接手被拒', '没交出去的交接', '进度没推上去', 'KiroCrew 的问题'])
     // one card per item; KiroCrew's problems are its checks' rows, with their fixes
-    expect(screen.getAllByTestId('todo-item')).toHaveLength(8)
+    expect(screen.getAllByTestId('todo-item')).toHaveLength(9)
     expect(screen.queryByText(TEAM_SENTENCE)).toBeNull()
     expect(group('接手被拒')).toHaveTextContent('接手被拒：标签是 bob 打的，不是负责人 alice')
     expect(within(group('接手被拒')).getByRole('link', { name: '看 MR' })).toHaveAttribute('href', 'https://gitlab.example.com/shop/shop-pay/-/merge_requests/46')
@@ -42,15 +42,30 @@ describe('待办', () => {
   test('the count as a card: one cell per item, and each kind with its count jumps to its group', async () => {
     renderTodo()
     const count = await screen.findByTestId('todo-count')
-    expect(count).toHaveTextContent('9件')
-    expect(within(count).getByRole('img')).toHaveAccessibleName('等审查 1，Lean 审批 1，本地澄清 1，运行机上的问题 1，等验收 1，认领了还没开工 1，接手被拒 1，没交出去的交接 1，KiroCrew 的问题 1')
-    expect(Array.from(count.querySelectorAll('.td-cells i')).map((i) => i.className)).toEqual(['is-wait', 'is-wait', 'is-wait', 'is-wait', 'is-wait', 'is-wait', 'is-bad', 'is-warn', 'is-bad'])
+    expect(count).toHaveTextContent('10件')
+    expect(within(count).getByRole('img')).toHaveAccessibleName('等审查 1，Lean 审批 1，本地澄清 1，运行机上的问题 1，等验收 1，认领了还没开工 1，接手被拒 1，没交出去的交接 1，进度没推上去 1，KiroCrew 的问题 1')
+    expect(Array.from(count.querySelectorAll('.td-cells i')).map((i) => i.className)).toEqual(['is-wait', 'is-wait', 'is-wait', 'is-wait', 'is-wait', 'is-wait', 'is-bad', 'is-warn', 'is-warn', 'is-bad'])
     const jumps = within(screen.getByRole('navigation', { name: '待办的种类' })).getAllByRole('button')
-    expect(jumps.map((b) => b.textContent)).toEqual(['等审查 1', 'Lean 审批 1', '本地澄清 1', '运行机上的问题 1', '等验收 1', '认领了还没开工 1', '接手被拒 1', '没交出去的交接 1', 'KiroCrew 的问题 1'])
+    expect(jumps.map((b) => b.textContent)).toEqual(['等审查 1', 'Lean 审批 1', '本地澄清 1', '运行机上的问题 1', '等验收 1', '认领了还没开工 1', '接手被拒 1', '没交出去的交接 1', '进度没推上去 1', 'KiroCrew 的问题 1'])
     const scroll = vi.mocked(HTMLElement.prototype.scrollIntoView)
     scroll.mockClear()
     fireEvent.click(jumps[6])
     expect(scroll.mock.contexts[0]).toBe(group('接手被拒'))
+  })
+
+  test('a push of your progress that origin refused: what happened, what to do, git\'s words under 细节, and its board', async () => {
+    const user = userEvent.setup()
+    const p = renderTodo()
+    const item = within(await screen.findByRole('region', { name: '进度没推上去' })).getByTestId('todo-item')
+    expect(item).toHaveTextContent('推进度没成功：远端的这个分支上有这台机器没有的提交')
+    expect(within(item).getByTestId('todo-do')).toHaveTextContent('做什么在这个需求的工作目录里把远端的提交取下来合进来（细节里有命令），下一个关卡 app 会接着推；app 不会强推。')
+    const raw = item.querySelector('details.br-raw') as HTMLDetailsElement
+    expect(raw.open).toBe(false)
+    expect(within(raw).getByText('细节')).toBeInTheDocument()
+    expect(raw).toHaveTextContent('[rejected]')
+    expect(raw).toHaveTextContent('做法：git -C /Users/alice/workplace/brain-app/shop-pay/refund-stats pull --no-rebase origin ai/alice/PAY-1-refund-stats')
+    await user.click(within(item).getByRole('button', { name: '需求看板' }))
+    expect(p.go).toHaveBeenCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-1', from: 'todo' })
   })
 
   test('a session that waits for your reply and a claim not started yet are on the list, each with its one step', async () => {
