@@ -81,7 +81,8 @@ def pay9(tmp_path):
 
 # ---------------------------------------------------------------- the routes: the owner's only, paths checked first
 
-def routes(tmp_path, owner):
+def routes(tmp_path, owner, fold_=None):
+    """The two route handlers as the host calls them; *fold_*: the fold they read in place of the board's."""
     import backend.routes as br
     from http_fakes import FakeWeb
 
@@ -90,6 +91,8 @@ def routes(tmp_path, owner):
             self.method, self.path, self.handler = method, path, handler
 
     svc = br.service.Service(SimpleNamespace(name="brain", logger=None, data_dir=str(tmp_path / "data")))
+    if fold_ is not None:
+        svc._fold = lambda rid, key, snap: fold_
     r = {(x.method, x.path): x.handler for x in br.handlers.build_routes(svc, Route, web=FakeWeb(), is_owner=lambda _r: owner)}
     return r[("GET", "/outputs/{repo}/{key}")], r[("GET", "/outputs/{repo}/{key}/file")]
 
