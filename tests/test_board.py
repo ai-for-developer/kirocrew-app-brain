@@ -144,7 +144,7 @@ def test_an_idle_session_waits_since_one_moment_and_a_claim_has_nothing_to_trace
     wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
     brain(repo, "claim", "--title", "只认领")
     gw = FakeGateway()
-    gw.templates = {"brain-dev"}
+    gw.templates = {"brain-dev-crew"}
     svc = make_service(tmp_path, [repo], gw=gw)
 
     async def go():

@@ -1,15 +1,19 @@
-"""Is this KiroCrew ready for brain-dev? The checks of brain-kit's ``crew_checks`` / ``cmd_crew_agent`` /
+"""Is this KiroCrew ready for the app's sessions? The checks of brain-kit's ``crew_checks`` / ``cmd_crew_agent`` /
 ``runner_kit_problems`` (brainkit/cli.py), said in Chinese, and their two fixes, each only when the person clicks it:
 
-- ~/.kiro/agents/brain-dev.json carries Lean's three hooks (SessionStart, UserPromptSubmit, PreToolUse through
-  .kiro/brain/lean-hook.py) under the right triggers: KiroCrew never reads a project's .kiro/hooks/; on the kas engine
-  it runs agent-spec hooks from the user level only. Kiro rewrites the specs (2026-11-08: a hooks list and kiroUpgrade)
-  and other tools add their own hooks, so only Lean's hooks are checked (brain-kit's ``missing_lean_hooks`` reads both
-  formats); a spec that differs from brain-kit's crew/brain-dev.json is fine.
-  Fix: no file -> install brain-kit's crew/brain-dev.json. A file that lacks some of Lean's hooks -> brain-kit's
-  ``add_lean_hooks`` adds only those, in the file's own format; everything else (other tools' hooks, kiroUpgrade,
-  every other key and the order of keys and hooks) stays, and the old file is kept as brain-dev.json.bak-<time>.
+- the crew agent the app opens its sessions with (``crew_agent``: brain-dev-crew, brain-kit's ``cli.CREW_AGENT`` when
+  it has one), ~/.kiro/agents/brain-dev-crew.json, carries Lean's three hooks (SessionStart, UserPromptSubmit,
+  PreToolUse through .kiro/brain/lean-hook.py) under the right triggers: KiroCrew never reads a project's .kiro/hooks/;
+  on the kas engine it runs agent-spec hooks from the user level only. Kiro rewrites the specs (2026-11-08: a hooks
+  list and kiroUpgrade) and other tools add their own hooks, so only Lean's hooks are checked (brain-kit's
+  ``missing_lean_hooks`` reads both formats); a spec that differs from brain-kit's crew spec is fine.
+  Fix: no file -> install brain-kit's crew spec under the crew agent's name. A file that lacks some of Lean's hooks ->
+  brain-kit's ``add_lean_hooks`` adds only those, in the file's own format; everything else (other tools' hooks,
+  kiroUpgrade, every other key and the order of keys and hooks) stays, and the old file is kept as <file>.bak-<time>.
   A file that is not valid JSON (or not a spec we can extend) is never written: the person fixes or removes it.
+- no repo has an agent of its own under that name (KiroCrew prefers a project's agent of the same name, and Lean's
+  hooks would not run: E2E-1, the repo's .kiro/agents/brain-dev.md shadowing ~/.kiro/agents/brain-dev.json); the old
+  pair, a session opened as brain-dev there, is said as a reminder.
 - the engine (``agent.acp_backend``) is kas: Lean via agent hooks is tested there only. Fix:
   ``kirocrew config set agent.acp_backend kas``.
 - every repo has Lean and the hook adapter committed in git (``runner_kit_problems``): the app's worktrees are made
@@ -42,7 +46,7 @@ from typing import Any
 
 from . import bk
 from . import problems as P
-from .constants import kirocrew_bin
+from .constants import LOCAL_AGENT, OLD_AGENT, kirocrew_bin
 
 NEEDS = ("CREW_HOOK", "CREW_EVENTS", "agent_hook_commands", "missing_lean_hooks", "add_lean_hooks",
          "runner_kit_problems")
@@ -85,7 +89,7 @@ def _load(path: str) -> tuple[dict[str, Any] | None, str]:
 def _unreadable(why: str) -> str:
     """fix_agent's answer for a spec it never writes. The answer has no 细节: the OS error stays with the row the
     checks show (agent_unreadable)."""
-    return "没改：brain-dev 的设置%s。%s，细节看上面 brain-dev 那一行" % (why.split("（")[0], P.UNREADABLE_TODO)
+    return "没改：%s 的设置%s。%s，细节看上面 %s 那一行" % (LOCAL_AGENT, why.split("（")[0], P.UNREADABLE_TODO, LOCAL_AGENT)
 
 
 def _write_in_place(path: str, spec: dict[str, Any]) -> None:
@@ -106,6 +110,37 @@ def _write_in_place(path: str, spec: dict[str, Any]) -> None:
         raise
 
 
+def crew_agent() -> str:
+    """The agent of the sessions the app opens: brain-kit's cli.CREW_AGENT, else LOCAL_AGENT (an older brain-kit)."""
+    return str(getattr(bk.m("cli"), "CREW_AGENT", "") or LOCAL_AGENT) if bk.ok() else LOCAL_AGENT
+
+
+def agent_path() -> str:
+    """Its spec: brain-kit's crew_agent_path when brain-kit knows the crew agent, else ~/.kiro/agents/<name>.json (an
+    older brain-kit's crew_agent_path is brain-dev's, which a repo can shadow)."""
+    cli = bk.m("cli")
+    if getattr(cli, "CREW_AGENT", None):
+        return cli.crew_agent_path()
+    return os.path.join(os.path.expanduser("~"), ".kiro", "agents", crew_agent() + ".json")
+
+
+def project_agent(path: str, name: str) -> str | None:
+    """The agent file in the checkout at *path* that takes *name*, relative to it (brain-kit's project_agent_named when
+    it has it, else the file names), or None."""
+    fn = getattr(bk.m("cli"), "project_agent_named", None)
+    if fn is not None:
+        try:
+            got = fn(path, name)
+        except Exception:  # noqa: BLE001 - an unreadable folder: as if there were none, the session check says more
+            return None
+        return os.path.relpath(got, path) if got and os.path.isabs(str(got)) else (str(got) if got else None)
+    for ext in (".json", ".md"):
+        rel = os.path.join(".kiro", "agents", name + ext)
+        if os.path.isfile(os.path.join(path, rel)):
+            return rel
+    return None
+
+
 def checks(repo_paths: list[str], team_paths: Any = None) -> dict[str, Any]:
     """The rows (problems.py CheckRows) and which fix buttons apply. *team_paths*: the repos handed to the team runner
     (service.team_paths); None: not known, so a runner-only problem is as brain-kit says it (FAIL)."""
@@ -117,7 +152,7 @@ def checks(repo_paths: list[str], team_paths: Any = None) -> dict[str, Any]:
     lacking = [n for n in NEEDS if not hasattr(cli, n)]
     if lacking:
         return {"rows": [P.brainkit_old(lacking)], "fix": fix, "checked_at": time.time()}
-    path = cli.crew_agent_path()
+    path = agent_path()
     if not os.path.exists(path):
         rows.append(P.agent_missing())
         fix["agent"] = True
@@ -138,8 +173,15 @@ def checks(repo_paths: list[str], team_paths: Any = None) -> dict[str, Any]:
                 if custom:
                     rows.append(P.agent_custom(custom))
     team = None if team_paths is None else {os.path.realpath(p) for p in team_paths}
+    old_user = os.path.isfile(os.path.join(os.path.expanduser("~"), ".kiro", "agents", OLD_AGENT + ".json"))
     for rp in repo_paths:
         is_team = None if team is None else os.path.realpath(rp) in team
+        mine = project_agent(rp, crew_agent())
+        if mine:
+            rows.append(P.agent_shadowed(rp, mine))
+        old = project_agent(rp, OLD_AGENT) if old_user else None
+        if old:
+            rows.append(P.old_agent_shadowed(rp, old))
         try:
             probs = cli.runner_kit_problems(rp)
         except Exception as exc:  # noqa: BLE001 - one unreadable repo must not hide the other checks
@@ -193,7 +235,7 @@ def _custom_fields(cli: Any, spec: dict[str, Any]) -> list[str]:
     if fn is None:
         return []
     try:
-        return [str(k) for k in fn(spec, bk.m("common").load_json(cli.CREW_AGENT_SRC))]
+        return [str(k) for k in fn(spec, dict(bk.m("common").load_json(cli.CREW_AGENT_SRC), name=crew_agent()))]
     except Exception:  # noqa: BLE001 - informational only
         return []
 
@@ -214,30 +256,44 @@ def _records_counted(repo_path: str) -> str:
 
 
 def agent_ok(rows: list[dict[str, Any]]) -> bool:
-    """brain-dev may be opened: the checks found its spec carrying Lean's three hooks. Only that OK row counts, so a
-    missing, unreadable or incomplete spec, brain-kit not loaded, or rows from elsewhere all say no."""
+    """The crew agent may be opened: the checks found its spec carrying Lean's three hooks. Only that OK row counts, so
+    a missing, unreadable or incomplete spec, brain-kit not loaded, or rows from elsewhere all say no."""
     return any(r.get("level") == "OK" and str(r.get("text", "")).startswith(AGENT_OK) for r in rows)
 
 
+def session_problem(rows: list[dict[str, Any]], worktree: str) -> str:
+    """'' when the app may open a session in *worktree*: the checks found the crew agent ready (agent_ok) and no agent
+    of the worktree's own takes its name; else why, in the words of the row 设置's KiroCrew shows."""
+    if not agent_ok(rows):
+        return not_ready(rows)
+    mine = project_agent(worktree, crew_agent())
+    if mine:
+        r = P.agent_shadowed(worktree, mine)
+        return "%s。%s" % (r["text"], r["todo"])
+    return ""
+
+
 def not_ready(rows: list[dict[str, Any]]) -> str:
-    """Why a brain-dev session cannot be opened (agent_ok says no), in the words of the row 设置's KiroCrew shows for
-    it: its text and its 做什么, whose 点「…」 is the button that row has there (装上 brain-dev when brain-dev.json is
-    not there, 补上 Lean 的拦截 when hooks are missing), else what to do (brain-kit not loaded, the file unreadable)."""
+    """Why a session cannot be opened (agent_ok says no), in the words of the row 设置's KiroCrew shows for it: its text
+    and its 做什么, whose 点「…」 is the button that row has there (装上 brain-dev-crew when its file is not there, 补上
+    Lean 的拦截 when hooks are missing), else what to do (brain-kit not loaded, the file unreadable)."""
     r = next((r for r in rows if r.get("level") == "FAIL" and not r.get("repo")), None)
     if r is None:
-        return "brain-dev 还没准备好：到「设置」的 KiroCrew 里再检查一次"
+        return "%s 还没准备好：到「设置」的 KiroCrew 里再检查一次" % LOCAL_AGENT
     todo = str(r.get("todo") or "")
     return "%s。%s%s" % (r["text"], "在「设置」的 KiroCrew 里" if todo.startswith("点「") else "", todo)
 
 
 def fix_agent() -> str:
     cli = bk.m("cli")
-    path = cli.crew_agent_path()
+    path, name = agent_path(), crew_agent()
     if not os.path.exists(path):
         with open(cli.CREW_AGENT_SRC, encoding="utf-8") as f:
             spec = json.load(f)
+        spec["name"] = name          # an older brain-kit ships it as brain-dev
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         bk.m("common").write_json(path, spec)
-        return "装好了 brain-dev（brain-kit 带的那一份）。新开的会话才会用上它。"
+        return "装好了 %s（brain-kit 带的那一份）。新开的会话才会用上它。" % name
     spec, why = _load(path)
     if spec is None:
         raise RuntimeError(_unreadable(why))
@@ -251,8 +307,8 @@ def fix_agent() -> str:
     shutil.copy2(path, bak)
     _write_in_place(path, cli.add_lean_hooks(spec, missing))
     # the answer has no 细节: the backup's name (to put the old one back) stays after the words
-    return ("给 brain-dev 的设置补上了 Lean 的拦截：%s。别的都没动；改之前的那份留作备份：%s。新开的会话才会用上。"
-            % (P.trigger_names(missing), os.path.basename(bak)))
+    return ("给 %s 的设置补上了 Lean 的拦截：%s。别的都没动；改之前的那份留作备份：%s。新开的会话才会用上。"
+            % (name, P.trigger_names(missing), os.path.basename(bak)))
 
 
 def fix_engine() -> str:

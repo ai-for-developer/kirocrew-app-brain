@@ -26,7 +26,7 @@ def setup(tmp_path, home, park=None):
     if park:
         (wt / "runs" / "PAY-1" / "park.json").write_text(json.dumps(park, ensure_ascii=False))
     gw = FakeGateway()
-    gw.templates = {"brain-dev"}
+    gw.templates = {"brain-dev-crew"}
     return repo, wt, line, gw
 
 

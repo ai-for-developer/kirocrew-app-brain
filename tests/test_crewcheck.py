@@ -39,7 +39,7 @@ def loaded(tmp_path):
 def kiro_spec(hooks):
     """brain-kit's brain-dev as Kiro rewrites it: its keys in Kiro's order, the given hooks, kiroUpgrade last."""
     src = json.loads((BRAINKIT / "crew" / "brain-dev.json").read_text(encoding="utf-8"))
-    return {"name": src["name"], "description": src["description"], "prompt": src["prompt"], "mcpServers": {},
+    return {"name": "brain-dev-crew", "description": src["description"], "prompt": src["prompt"], "mcpServers": {},
             "tools": src["tools"], "toolAliases": {}, "allowedTools": [], "resources": src["resources"],
             "hooks": hooks, "toolsSettings": {}, "model": src["model"], "kiroUpgrade": dict(UPGRADE)}
 
@@ -59,13 +59,13 @@ def list_hooks(lean_triggers):
 
 
 def write_spec(home, spec):
-    p = home / ".kiro" / "agents" / "brain-dev.json"
+    p = home / ".kiro" / "agents" / "brain-dev-crew.json"
     p.write_text(json.dumps(spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return p
 
 
 def backups(home):
-    return sorted((home / ".kiro" / "agents").glob("brain-dev.json.bak-*"))
+    return sorted((home / ".kiro" / "agents").glob("brain-dev-crew.json.bak-*"))
 
 
 def agent_row(rows):
@@ -94,12 +94,13 @@ def test_checks_and_fixes(tmp_path, home):
     assert any(l == "FAIL" and "brain-dev" in t for l, t in levels(first["rows"]))
     assert any(l == "WARN" and "kiro" in t for l, t in levels(first["rows"]))
     assert fa["ok"] and "装好了" in fa["text"]
-    spec = json.loads((home / ".kiro" / "agents" / "brain-dev.json").read_text())
-    assert spec == json.loads((BRAINKIT / "crew" / "brain-dev.json").read_text())
+    spec = json.loads((home / ".kiro" / "agents" / "brain-dev-crew.json").read_text())
+    assert spec == dict(json.loads((BRAINKIT / "crew" / "brain-dev.json").read_text()), name="brain-dev-crew")
     assert fe["ok"] and (tmp_path / "engine").read_text().strip() == "kas"
     assert all(r["level"] == "OK" for r in fe["rows"])
     agent = next(r for r in first["rows"] if r["fix"] == "agent")
-    assert agent["text"] == "KiroCrew 里还没有 brain-dev" and "点「装上 brain-dev」" in agent["todo"] and agent["repo"] is None
+    assert agent["text"] == "KiroCrew 里还没有 brain-dev-crew" and "点「装上 brain-dev-crew」" in agent["todo"]
+    assert agent["repo"] is None
     engine = next(r for r in first["rows"] if r["fix"] == "engine")
     assert engine["level"] == "WARN" and engine["text"] == "KiroCrew 引擎是 kiro，不是 kas" and "kas" in engine["todo"]
 
@@ -115,12 +116,12 @@ def test_a_different_brain_dev_with_leans_hooks_is_left_alone(tmp_path, home):
     cc = mod("crewcheck")
     make_service(tmp_path, [repo]).reload_sync()  # brain-kit loaded, no background tasks
     got = cc.checks([str(repo)])
-    assert levels(got["rows"])[0] == ("OK", "brain-dev 的设置里 Lean 的拦截都在")
+    assert levels(got["rows"])[0] == ("OK", "brain-dev-crew 的设置里 Lean 的拦截都在")
     assert not [r for r in got["rows"] if r["level"] != "OK"]  # no drift warning: only Lean's hooks matter
     # brain-kit 72b278e: the person's own fields stay (`brain crew-agent --force` only adds what is missing): said
-    custom = next(r for r in got["rows"] if r["text"] == "brain-dev 用的是你自己的说明、提示词")
+    custom = next(r for r in got["rows"] if r["text"] == "brain-dev-crew 用的是你自己的说明、提示词")
     assert custom["level"] == "OK" and custom["todo"] == "" and custom["fix"] is None
-    assert custom["raw"] == "brain-dev 用的是你自己的 description、prompt（`brain crew-agent --reset` 换回 brain-kit 的；" \
+    assert custom["raw"] == "brain-dev-crew 用的是你自己的 description、prompt（`brain crew-agent --reset` 换回 brain-kit 的；" \
                             "--force 只补缺的）"
     assert got["fix"]["agent"] is False and cc.agent_ok(got["rows"])
     assert "什么都没改" in cc.fix_agent()
@@ -158,8 +159,8 @@ def test_kiros_list_format_with_orca_gets_only_the_missing_lean_hooks(tmp_path, 
     assert got["fix"]["agent"] is True and not cc.agent_ok(got["rows"])
 
     text = cc.fix_agent()
-    assert text.startswith("给 brain-dev 的设置补上了 Lean 的拦截：发消息、调用工具前。") and "userPromptSubmit" not in text
-    assert "改之前的那份留作备份：brain-dev.json.bak-" in text            # the one place its name is said
+    assert text.startswith("给 brain-dev-crew 的设置补上了 Lean 的拦截：发消息、调用工具前。") and "userPromptSubmit" not in text
+    assert "改之前的那份留作备份：brain-dev-crew.json.bak-" in text       # the one place its name is said
     after = json.loads(p.read_text(encoding="utf-8"))
     assert list(after) == list(before)  # every key kept, in Kiro's order
     assert {k: v for k, v in after.items() if k != "hooks"} == {k: v for k, v in before.items() if k != "hooks"}
@@ -174,7 +175,7 @@ def test_kiros_list_format_with_orca_gets_only_the_missing_lean_hooks(tmp_path, 
     again = cc.checks([])
     ok = agent_row(again["rows"])
     assert (ok["level"], ok["text"], ok["todo"], ok["fix"]) == (
-        "OK", "brain-dev 的设置里 Lean 的拦截都在（另有 3 个别的工具加的拦截，留着不动）", "", None)
+        "OK", "brain-dev-crew 的设置里 Lean 的拦截都在（另有 3 个别的工具加的拦截，留着不动）", "", None)
     assert again["fix"]["agent"] is False and cc.agent_ok(again["rows"])
     fixed = p.read_bytes()
     assert "什么都没改" in cc.fix_agent()
@@ -222,15 +223,15 @@ def test_the_dict_format_gets_only_the_missing_hook_in_the_dict_format(tmp_path,
     (b'{"hooks": {"agentSpawn": "python3 .kiro/brain/lean-hook.py SessionStart"}}\n', "读不懂：拦截那一段的写法认不出"),
 ])
 def test_a_spec_that_cannot_be_read_is_never_overwritten(tmp_path, home, raw, why):
-    p = home / ".kiro" / "agents" / "brain-dev.json"
+    p = home / ".kiro" / "agents" / "brain-dev-crew.json"
     p.write_bytes(raw)
     cc = loaded(tmp_path)
     got = cc.checks([])
     row = agent_row(got["rows"])
-    assert (row["level"], row["text"], row["fix"]) == ("FAIL", "brain-dev 的设置" + why, None)
+    assert (row["level"], row["text"], row["fix"]) == ("FAIL", "brain-dev-crew 的设置" + why, None)
     assert "自己修好它" in row["todo"] and str(p).replace(str(home), "~") in row["raw"]   # where it is: 细节
     assert got["fix"]["agent"] is False and not cc.agent_ok(got["rows"])
-    with pytest.raises(RuntimeError, match="^没改：brain-dev 的设置%s。自己修好它" % why):
+    with pytest.raises(RuntimeError, match="^没改：brain-dev-crew 的设置%s。自己修好它" % why):
         cc.fix_agent()
     assert p.read_bytes() == raw and not backups(home)
 
@@ -239,8 +240,9 @@ def test_agent_ok_needs_the_checks_to_have_found_leans_hooks():
     cc = mod("crewcheck")
     assert not cc.agent_ok([])
     assert not cc.agent_ok([{"level": "FAIL", "text": "brain-kit 没装载：先在设置里写对它的位置"}])
-    assert not cc.agent_ok([{"level": "WARN", "text": "brain-dev 的设置里 Lean 的拦截都在"}])
-    assert cc.agent_ok([{"level": "OK", "text": "brain-dev 的设置里 Lean 的拦截都在"},
+    assert not cc.agent_ok([{"level": "WARN", "text": "brain-dev-crew 的设置里 Lean 的拦截都在"}])
+    assert not cc.agent_ok([{"level": "OK", "text": "brain-dev 的设置里 Lean 的拦截都在"}])   # the old agent's: no
+    assert cc.agent_ok([{"level": "OK", "text": "brain-dev-crew 的设置里 Lean 的拦截都在"},
                         {"level": "FAIL", "text": "仓库 pay：.kiro/brain/lean-hook.py is not committed"}])
 
 
@@ -250,16 +252,16 @@ def test_a_session_refused_names_the_button_settings_shows_for_brain_dev(tmp_pat
     brain-kit not loaded → what to do, no button."""
     cc, P = mod("crewcheck"), mod("problems")
     make_service(tmp_path, [make_project(tmp_path)]).reload_sync()  # brain-kit loaded, no background tasks
-    agent = home / ".kiro" / "agents" / "brain-dev.json"
+    agent = home / ".kiro" / "agents" / "brain-dev-crew.json"
     said = cc.not_ready(cc.checks([])["rows"])
-    assert not agent.exists() and said == "KiroCrew 里还没有 brain-dev。在「设置」的 KiroCrew 里点「装上 brain-dev」：" \
-        "装上 brain-kit 带的那一份；没有它，Lean 的拦截在 KiroCrew 里不会跑", said
+    assert not agent.exists() and said == "KiroCrew 里还没有 brain-dev-crew。在「设置」的 KiroCrew 里点「装上 brain-dev-crew」：" \
+        "装上 brain-kit 带的那一份。app 开的会话都用它，Lean 的拦截在它里面", said
     agent.parent.mkdir(parents=True, exist_ok=True)
-    agent.write_text(json.dumps({"name": "brain-dev", "hooks": {}}))
+    agent.write_text(json.dumps({"name": "brain-dev-crew", "hooks": {}}))
     assert "在「设置」的 KiroCrew 里点「补上 Lean 的拦截」" in cc.not_ready(cc.checks([])["rows"])
     agent.write_text("{ not json")
     said = cc.not_ready(cc.checks([])["rows"])
-    assert said.startswith("brain-dev 的设置读不懂") and "点「" not in said and "自己修好它" in said, said
+    assert said.startswith("brain-dev-crew 的设置读不懂") and "点「" not in said and "自己修好它" in said, said
     assert cc.not_ready([P.brainkit_missing()]) == "brain-kit 没装载。在「设置」里写对 brain-kit 的位置"
 
 
@@ -408,6 +410,7 @@ def test_brain_kits_own_crew_agent_names_are_followed_when_it_has_them(tmp_path,
     """brain-kit with ux-k2's names (cli.CREW_AGENT, crew_agent_path, CREW_AGENT_SRC, project_agent_named): the app
     asks brain-kit, it does not guess."""
     repo = make_project(tmp_path)
+    (home / ".kiro" / "agents" / "brain-dev.json").write_text("{}", encoding="utf-8")   # the old pair is asked about too
     cc = loaded(tmp_path)
     cli = mod("bk").m("cli")
     src = tmp_path / "crew-src.json"

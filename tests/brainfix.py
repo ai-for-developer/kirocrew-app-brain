@@ -116,16 +116,20 @@ def home(tmp_path, monkeypatch):
     return h
 
 
+CREW_AGENT = "brain-dev-crew"
+
+
 def install_brain_dev(home: Path) -> Path:
-    """~/.kiro/agents/brain-dev.json as `brain crew-agent` writes it."""
-    src = BRAINKIT / "crew" / "brain-dev.json"
-    dst = home / ".kiro" / "agents" / "brain-dev.json"
-    dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    """~/.kiro/agents/brain-dev-crew.json, the agent the app opens its sessions with (E2E-1), as the app's fix writes it:
+    brain-kit's crew spec under that name."""
+    src = json.loads((BRAINKIT / "crew" / "brain-dev.json").read_text(encoding="utf-8"))
+    dst = home / ".kiro" / "agents" / (CREW_AGENT + ".json")
+    dst.write_text(json.dumps(dict(src, name=CREW_AGENT), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return dst
 
 
 __all__ = ["needs_brainkit", "brain", "lean", "make_project", "start_in_worktree", "request_requirements",
-           "make_service", "run", "home", "install_brain_dev", "FakeGateway", "commit_file", "sh", "mod"]
+           "make_service", "run", "home", "install_brain_dev", "CREW_AGENT", "FakeGateway", "commit_file", "sh", "mod"]
 
 
 def filled_notes(text: str, status: str, nxt: str = "把这一单元剩下的步骤写完，再跑一次自动检查") -> str:

@@ -213,17 +213,17 @@ def test_what_a_person_reads_when_kirocrew_fails_says_what_happened_and_what_to_
 
         gw.folders = down
         info = await mgr.open_session("开工", parent_session_key="brain:r1-PAY-1", cwd=str(tmp_path), title="t",
-                                      folder="PAY-1 · x", agent="brain-dev", strict_agent=True, project_dir=str(tmp_path),
+                                      folder="PAY-1 · x", agent="brain-dev-crew", strict_agent=True, project_dir=str(tmp_path),
                                       kind="local", key="r1-PAY-1")
         assert info.error == "开不了 KiroCrew 会话：连不上 KiroCrew：看它是不是还开着，再试一次"
         gw.folders, gw.templates = folders, set()
         info = await mgr.open_session("开工", parent_session_key="brain:r1-PAY-2", cwd=str(tmp_path), title="t",
-                                      folder="PAY-2 · x", agent="brain-dev", strict_agent=True, project_dir=str(tmp_path),
+                                      folder="PAY-2 · x", agent="brain-dev-crew", strict_agent=True, project_dir=str(tmp_path),
                                       kind="local", key="r1-PAY-2")
-        assert info.error == "开不了 KiroCrew 会话：KiroCrew 里没有 brain-dev：在设置里点「装上 brain-dev」，再试一次"
-        gw.templates = {"brain-dev"}
+        assert info.error == "开不了 KiroCrew 会话：KiroCrew 里没有 brain-dev-crew：在设置里点「装上 brain-dev-crew」，再试一次"
+        gw.templates = {"brain-dev-crew"}
         ok = await mgr.open_session("开工", parent_session_key="brain:r1-PAY-3", cwd=str(tmp_path), title="t",
-                                    folder="PAY-3 · x", agent="brain-dev", strict_agent=True, project_dir=str(tmp_path),
+                                    folder="PAY-3 · x", agent="brain-dev-crew", strict_agent=True, project_dir=str(tmp_path),
                                     kind="local", key="r1-PAY-3")
         await settle(mgr, gw, ok.slot)
         gw.fail_send = True

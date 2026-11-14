@@ -127,7 +127,7 @@ def world(tmp_path, home):
     wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "big", "big", "退款大需求")
     intent = inception(wt)
     gw = FakeGateway()
-    gw.templates = {"brain-dev"}
+    gw.templates = {"brain-dev-crew"}
     svc = make_service(tmp_path, [repo], gw=gw)
     return SimpleNamespace(repo=repo, wt=wt, intent=intent, origin=tmp_path / "pay-origin.git", tmp=tmp_path, home=home,
                            svc=svc, gw=gw)
@@ -318,7 +318,7 @@ def test_a_big_one_opened_here_says_so_and_its_session_is_told(tmp_path, home):
     repo = make_project(tmp_path)
     install_brain_dev(home)
     gw = FakeGateway()
-    gw.templates = {"brain-dev"}
+    gw.templates = {"brain-dev-crew"}
     svc = make_service(tmp_path, [repo], gw=gw)
 
     async def go():

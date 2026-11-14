@@ -23,7 +23,7 @@ from . import problems
 from . import board as board_mod
 from . import settings as settings_mod
 from . import todo as todo_mod
-from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_AGENT, LOCAL_FOLDER, REPO_ID_RE, TICK_S, VERSION
+from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_FOLDER, REPO_ID_RE, TICK_S, VERSION
 from .gateway import Gateway
 from .httpkit import AppError
 from .repo import Git, Repo, Source, read_claim, read_facts
@@ -945,8 +945,9 @@ class Service:
     async def _open_local(self, repo: Repo, key: str, branch: str, wt: str, run: dict[str, Any], *, trust: bool,
                           kickoff: bool, review: bool = False, task: str | None = None) -> dict[str, Any]:
         self.crew = await asyncio.to_thread(self.crew_sync)
-        if not crewcheck.agent_ok(self.crew["rows"]):
-            raise AppError(crewcheck.not_ready(self.crew["rows"]), "agent_not_ready", 409)
+        why = await asyncio.to_thread(crewcheck.session_problem, self.crew["rows"], wt)
+        if why:
+            raise AppError(why, "agent_not_ready", 409)
         scope = scope_of(repo.id, key)
         if review:
             task = intake.review_task(key, branch, run.get("intent"))
@@ -968,7 +969,7 @@ class Service:
         slug = branch.rsplit("/", 1)[-1][len(key) + 1:] or key.lower()
         info = await self.sessions.open_session(
             task, parent_session_key="%s:%s" % (self.name, scope), cwd=wt, title=title,
-            folder="%s · %s" % (key, slug), agent=LOCAL_AGENT, root_folder=LOCAL_FOLDER, project_dir=wt,
+            folder="%s · %s" % (key, slug), agent=crewcheck.crew_agent(), root_folder=LOCAL_FOLDER, project_dir=wt,
             strict_agent=True, resend_ok=True, nudge_ok=False, trust_ok=bool(trust), kind="local", key=scope)
         if info.error or not info.slot:
             raise AppError(info.error or "会话没开成", "session_failed", 502)

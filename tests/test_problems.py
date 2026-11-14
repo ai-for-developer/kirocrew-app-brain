@@ -175,8 +175,8 @@ def test_hooks_that_never_ran_right_after_an_install_are_a_note_not_a_warning():
 
 
 def test_every_fix_row_names_the_button_the_page_shows():
-    """UI问题清单 #12: 做什么 says 点「<the button's name>」, never a 「修复」 no button is called; no brain-dev.json at all is
-    「装上 brain-dev」."""
+    """UI问题清单 #12: 做什么 says 点「<the button's name>」, never a 「修复」 no button is called; no crew agent file at all
+    is 「装上 brain-dev-crew」."""
     raws = [r for _, r, _, f in DOCTOR if f] + [OLDER, WRITE_PROBLEM,
                                               ".kiro/aidlc-lean/aidlc_lean.py is not committed: AI-DLC Lean; commit it on main"
                                               " through an MR"]
@@ -186,7 +186,8 @@ def test_every_fix_row_names_the_button_the_page_shows():
     for r in (x for x in rows if x["fix"]):
         assert "「修复」" not in r["todo"], r
         named = [n for n in names if "点「%s」" % n in r["todo"]]
-        assert named == [P.AGENT_NEW if r["text"] == "KiroCrew 里还没有 brain-dev" else P.FIX_BUTTON[r["fix"]]], r
+        missing = r["text"] in ("KiroCrew 里还没有 brain-dev", "KiroCrew 里还没有 brain-dev-crew")
+        assert named == [P.AGENT_NEW if missing else P.FIX_BUTTON[r["fix"]]], r
 
 
 @pytest.mark.parametrize("level, raw, text, fix", DOCTOR)
@@ -212,23 +213,23 @@ def test_the_apps_own_rows():
     assert (old["text"], old["todo"]) == ("brain-kit 太旧", "把 brain-kit 更新到新版本")
     assert "crew_hook_problem、CREW_EVENTS" in old["raw"]                    # what it lacks: 细节
     no = ok_row(P.agent_missing())
-    assert (no["level"], no["text"], no["fix"]) == ("FAIL", "KiroCrew 里还没有 brain-dev", "agent")
-    assert no["raw"] == "没有 ~/.kiro/agents/brain-dev.json"                  # where it goes: 细节
+    assert (no["level"], no["text"], no["fix"]) == ("FAIL", "KiroCrew 里还没有 brain-dev-crew", "agent")
+    assert no["raw"] == "没有 ~/.kiro/agents/brain-dev-crew.json"                  # where it goes: 细节
     bad = ok_row(P.agent_unreadable("读不了", "Permission denied"))
-    assert bad["text"] == "brain-dev 的设置读不了" and bad["fix"] is None
-    assert bad["raw"] == "Permission denied\n文件：~/.kiro/agents/brain-dev.json"   # the OS error and the file: 细节
+    assert bad["text"] == "brain-dev-crew 的设置读不了" and bad["fix"] is None
+    assert bad["raw"] == "Permission denied\n文件：~/.kiro/agents/brain-dev-crew.json"   # the OS error and the file: 细节
     assert bad["todo"] == "自己修好它，或者删掉它再装一份新的（这里不会覆盖它）"
     unread = ok_row(P.agent_unreadable("读不懂：拦截那一段的写法认不出"))
-    assert unread["text"] == "brain-dev 的设置读不懂：拦截那一段的写法认不出" and unread["raw"] == "文件：~/.kiro/agents/brain-dev.json"
+    assert unread["text"] == "brain-dev-crew 的设置读不懂：拦截那一段的写法认不出" and unread["raw"] == "文件：~/.kiro/agents/brain-dev-crew.json"
     lacks = ok_row(P.agent_lacks([("userPromptSubmit", "UserPromptSubmit"), ("preToolUse", "PreToolUse")]))
-    assert lacks["text"] == "brain-dev 的设置缺 Lean 的拦截：发消息、调用工具前" and lacks["fix"] == "agent"
+    assert lacks["text"] == "brain-dev-crew 的设置缺 Lean 的拦截：发消息、调用工具前" and lacks["fix"] == "agent"
     assert lacks["todo"] == "点「补上 Lean 的拦截」：只补上缺的（发消息、调用工具前），别的都不动"
     assert lacks["raw"] == "缺的 hook：userPromptSubmit、preToolUse"          # the trigger names only under 细节
-    assert ok_row(P.agent_ok(0))["text"] == P.AGENT_OK == "brain-dev 的设置里 Lean 的拦截都在"
+    assert ok_row(P.agent_ok(0))["text"] == P.AGENT_OK == "brain-dev-crew 的设置里 Lean 的拦截都在"
     assert P.agent_ok(2)["text"] == P.AGENT_OK + "（另有 2 个别的工具加的拦截，留着不动）"
     custom = ok_row(P.agent_custom(["model", "resources"]))
-    assert custom["text"] == "brain-dev 用的是你自己的模型、资料" and custom["todo"] == ""
-    assert custom["raw"].startswith("brain-dev 用的是你自己的 model、resources（") and "--reset" in custom["raw"]
+    assert custom["text"] == "brain-dev-crew 用的是你自己的模型、资料" and custom["todo"] == ""
+    assert custom["raw"].startswith("brain-dev-crew 用的是你自己的 model、resources（") and "--reset" in custom["raw"]
     assert ok_row(P.engine("kas"))["text"] == "KiroCrew 引擎：kas" and P.engine("")["text"] == "KiroCrew 引擎：默认（kas）"
     other = ok_row(P.engine("kiro"))
     assert (other["level"], other["fix"]) == ("WARN", "engine") and "kas" in other["todo"]
