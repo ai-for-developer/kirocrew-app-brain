@@ -18,7 +18,7 @@ import { ExtLink } from '../ui'
 import { ACT, CHILD_STATE_NAME, DO_NAME, approvalName } from '../vocab'
 import type { Item } from './engine'
 import {
-  LIVE, ROUND_TONE, RUN_ICON, WORKING, actorMeta, brief, clip, clockAt, decider, fmtCredits, fmtHm, fmtSpan, gateVerb, gateWhat, localOnly, nodeWait,
+  LIVE, ROUND_TONE, RUN_ICON, WORKING, actorMeta, brief, clip, clockAt, decider, fmtAgo, fmtCredits, fmtHm, fmtSpan, gateVerb, gateWhat, localOnly, nodeWait,
   openGate, otherWaits, roundWords, runShort, runnerBlind, sayWho, sessionOf, textWidth, waitsOnMe, whoOf, whoThen, wrap,
 } from './format'
 import { GraphDefs, Halo, PersonCard, Scroller, Station, useHoverCard, useParticles, type FlashMap } from './GraphFrame'
@@ -29,9 +29,13 @@ import {
 } from './layout'
 import { doOf, reviewNext } from './next'
 import { RoleGlyph, RoleIcon } from './RoleIcon'
+import { hasRound, inRun, type RunFilter } from './picker'
+import { verifyCount, wayAt } from './way'
 
 export interface StageGraphProps {
   board: ReqBoard
+  /** the run picked: the boxes it did no round of dim, the check ring counts its verify, only its command path shows */
+  run?: RunFilter
   lay: StageLayout
   /** the node looked at (a click on a box), or null */
   focus: string | null
@@ -87,7 +91,8 @@ function rosterOf(b: ReqBoard, quiet = false): RosterRow[] {
   for (const run of b.runs) {
     for (const r of b.relays) if (r.to === run.key) rows.push(relayRow(r))
     rows.push(runRow(run, b))
-    if (run.run_id) rows.push({ kind: 'sub', run: run.key, text: run.run_id, tone: null, tip: '' })
+    // the mockup's one line (RUN-PAY-9-1 · 16:12 请批发布) does not fit at 12 px: the id, then when and what
+    if (run.run_id) rows.push({ kind: 'sub', run: run.key, text: run.run_id, tone: null, tip: '' }, { kind: 'sub', run: run.key, text: runSince(run, b), tone: null, tip: '' })
   }
   for (const r of b.relays) if (r.to === null || !known.has(r.to)) rows.push(relayRow(r))
   if (!b.runs.length) rows.push({ kind: 'run', run: null, text: '还没开工', tone: 'idle', tip: '这个需求还没有一次运行' })
@@ -113,6 +118,18 @@ function runRow(run: Run, b: ReqBoard): RosterRow {
   return { kind: 'run', run: run.key, text: `${head}${brief(waits ? whoOf(run.now.who, b) : run.now.doing, ROW_EM - textWidth(head), actorMeta(s).label)}`, tone, tip: tip.filter(Boolean).join(' · ') }
 }
 
+/** When a run's state began and what it is, for the line under its row: 16:12 请批发布 (the gate it asked, on the
+ * box it is on), 15:40 等产品, 11:09 起在做, 16:40 已合并. */
+function runSince(run: Run, b: ReqBoard): string {
+  const g = run.now.node ? openGate(b.nodes.find((n) => n.id === run.now.node) ?? { gates: [] }) : null
+  const at = g?.at ?? run.now.since
+  const when = at ? `${clockAt(at, b.at)} ` : ''
+  if (g) return `${when}请批${gateWhat(g.kind)}`
+  if (run.now.status === 'awaiting_approval') return `${when}${whoOf(run.now.who, b)}`
+  if (WORKING.has(run.now.status)) return `${when}起在做`
+  return `${when}${run.now.doing || actorMeta(run.now.status).label}`
+}
+
 /** The steps a hand-over shows: the workspace only until it is built, and none after the first one not through (*more*:
  * there are; its card has every step). */
 function relaySteps(r: Relay): { steps: RelayStep[]; more: boolean } {
@@ -134,7 +151,7 @@ export function stageInput(b: ReqBoard): StageInput {
   return { phases: b.phases, nodes: b.nodes, runs: b.runs, relays: b.relays, roster: rosterOf(b).map(({ kind, run }) => ({ kind, run })) }
 }
 
-export function StageGraph({ board, lay, focus, onNode, flashes, reducedMotion, feed, quiet = false, onSession, onAct, onOutputs }: StageGraphProps) {
+export function StageGraph({ board, run = 'all', lay, focus, onNode, flashes, reducedMotion, feed, quiet = false, onSession, onAct, onOutputs }: StageGraphProps) {
   const [card, hover] = useHoverCard()
   const head = stageHeadX(lay, board.belt)
   const runs = useMemo(() => new Map<string, Run>(board.runs.map((r) => [r.key, r])), [board.runs])
@@ -160,12 +177,15 @@ export function StageGraph({ board, lay, focus, onNode, flashes, reducedMotion, 
     : []
   const ask = [...chips.values()].find((g) => g.state === 'pending' && g.who === 'you')
   const asking = ask ? askWords(ask, board) : null
-  const under = new Set<string>([...chips.keys(), ...stepWaits.map((n) => n.id), ...drawn.filter((n) => tickerOf(n, runs.get(n.run ?? ''), quiet)).map((n) => n.id)])
+  const under = new Set<string>([...chips.keys(), ...stepWaits.map((n) => n.id), ...drawn.filter((n) => tickerOf(n, runs.get(n.run ?? ''), quiet, board)).map((n) => n.id)])
   const working = drawn.filter((n) => WORKING.has(n.status)).length
   const waits = drawn.map((n) => nodeWait(n, runs.get(n.run ?? ''))).filter((w): w is WaitWho => w !== null)
   const finished = drawn.filter((n) => isDone(n.status)).length
   const waitWords = [...new Set(waits.map((w) => whoOf(w, board)))].join('、')
-  const label = `需求的路：${drawn.length} 步，${working} 步在做${waits.length ? `，${waits.length} 步${waitWords}` : ''}，${finished} 步做完；检查 ${board.checks.passed}/${board.checks.total}。点一步只看它。`
+  const view = useMemo(() => inRun(board, run), [board, run])
+  const checks = verifyCount(view.nodes)
+  const next = wayAt(board.nodes).next?.id
+  const label = `需求的路：${drawn.length} 步，${working} 步在做${waits.length ? `，${waits.length} 步${waitWords}` : ''}，${finished} 步做完；${checks.total ? `检查 ${checks.passed}/${checks.total}` : checks.say}。点一步只看它。`
   // the blue in the legend is said as the boxes and the lanes say it (等产品, 等 carol)
   const others = [...new Set([...waits.filter((w) => sayWho(w, board) !== 'you').map((w) => whoOf(w, board)), ...otherWaits(board)])]
   const cardNode = card ? byId.get(card) : undefined
@@ -183,21 +203,21 @@ export function StageGraph({ board, lay, focus, onNode, flashes, reducedMotion, 
           <Roster rows={rows} lay={lay} />
           <g className="kt-edges" aria-hidden="true">
             {lay.edges.map((e) => {
-              const state = edgeState(e.from === ORCH ? (board.started_at !== null ? 'done' : 'waiting') : byId.get(e.from)?.status, byId.get(e.to)?.status)
+              const state = edgeState(e.from === ORCH ? (board.started_at !== null ? 'done' : 'waiting') : byId.get(e.from)?.status, byId.get(e.to)?.status, e.to === next)
               const hot = !!focus && (e.from === focus || e.to === focus)
               return <path key={`${e.from}>${e.to}`} className={`kt-edge is-${state}${focus ? (hot ? ' is-hot' : ' is-dim') : ''}`} d={e.d} markerEnd={`url(#kt-arrow-${state})`} />
             })}
           </g>
-          <Commands board={board} lay={lay} byId={byId} />
-          <Rail board={board} lay={lay} head={head} focusRun={focus ? byId.get(focus)?.run ?? null : null} flash={flashes.run} />
-          <Station board={board} at={lay.station} flash={flashes.tests} />
+          <Commands board={board} lay={lay} byId={byId} run={run} />
+          <Rail board={board} lay={lay} head={head} focusRun={focus ? byId.get(focus)?.run ?? null : run === 'all' ? null : run} flash={flashes.run} />
+          <Station board={view} at={lay.station} flash={flashes.tests} />
           <g className="kt-nodes">
             {drawn.map((n) => (
-              <StageBoxView key={n.id} n={n} box={lay.boxes.get(n.id)!} board={board} run={runs.get(n.run ?? '')} focus={focus} flash={flashes[n.id]}
+              <StageBoxView key={n.id} n={n} box={lay.boxes.get(n.id)!} board={board} run={runs.get(n.run ?? '')} focus={focus} off={!hasRound(n, run)} flash={flashes[n.id]}
                 onNode={onNode} reducedMotion={reducedMotion} quiet={quiet} onHover={(on) => hover(on ? n.id : null, on ? 300 : 250)} />
             ))}
             {[...chips].map(([id, g]) => (
-              <GateChips key={`gate-${id}`} n={byId.get(id)!} g={g} box={lay.boxes.get(id)!} board={board} onAct={quiet ? undefined : onAct}
+              <GateChips key={`gate-${id}`} n={byId.get(id)!} g={g} box={lay.boxes.get(id)!} board={board} off={!hasRound(byId.get(id)!, run)} onAct={quiet ? undefined : onAct}
                 onDoc={quiet || !onOutputs ? undefined : onOutputs} />
             ))}
             {stepWaits.map((n) => (
@@ -237,10 +257,11 @@ function cardPlace(box: StageBox, lay: StageLayout) {
   }
 }
 
-/** An edge's state: used (both ends got going), ready (the first is through, the next has not started), pending. */
-function edgeState(a: string | undefined, b: string | undefined): 'used' | 'ready' | 'pending' {
+/** An edge's state: used (both ends got going), ready (the first is through and the second is the way's next box,
+ * way.ts wayAt: the one the AI-DLC Lean card names), pending. */
+function edgeState(a: string | undefined, b: string | undefined, toNext: boolean): 'used' | 'ready' | 'pending' {
   if (!a || !b || !(isDone(a) || a === 'awaiting_approval')) return 'pending'
-  return b !== 'waiting' && b !== 'skipped' ? 'used' : 'ready'
+  return b !== 'waiting' && b !== 'skipped' ? 'used' : toNext ? 'ready' : 'pending'
 }
 
 /** How many lines a band's foot note may take: the room between its lowest box (and what is drawn under it) and the
@@ -359,8 +380,8 @@ function Roster({ rows, lay }: { rows: RosterRow[]; lay: StageLayout }) {
 
 /** The dashed line from a run at work or waiting to the box it is on (the reference's orchestrator lines), with what
  * it is: 运行机 → 发布：等产品. Magenta only when it waits for the person looking. */
-function Commands({ board, lay, byId }: { board: ReqBoard; lay: StageLayout; byId: Map<string, StageNode> }) {
-  const active = board.runs.filter((r) => r.now.node && (LIVE.has(r.now.status) || r.now.status === 'queued'))
+function Commands({ board, lay, byId, run }: { board: ReqBoard; lay: StageLayout; byId: Map<string, StageNode>; run: RunFilter }) {
+  const active = board.runs.filter((r) => r.now.node && (LIVE.has(r.now.status) || r.now.status === 'queued') && (run === 'all' || r.key === run))
   return (
     <g className="kt-cmds" aria-hidden="true">
       {active.map((r, i) => {
@@ -474,11 +495,64 @@ function taskLines(n: StageNode): string[] {
   return wrap(n.sub, TASK_EM, 2)
 }
 
-/** Under a box at work whose run's session is busy here: ▸ AI 在做 · 4.9 credits (none in a replay). */
-function tickerOf(n: StageNode, run: Run | undefined, quiet: boolean): string | null {
-  if (quiet || !WORKING.has(n.status) || !run?.sessions.some((s) => s.busy)) return null
-  return `▸ AI 在做${run.credits !== null ? ` · ${fmtCredits(run.credits)} credits` : ''}`
+/** What a box at work is doing right now, under it (the reference's ▸ ticker): for a run whose session is here, its
+ * last call and the end of the last line it wrote; for one elsewhere, its last recorded step, aged. None in a replay,
+ * nor on a box that waits (its wait line and chips say that). */
+type Tick =
+  | { kind: 'here'; call: string | null; said: string | null; at: number | null; credits: number | null }
+  | { kind: 'step'; text: string; at: number }
+
+function tickerOf(n: StageNode, run: Run | undefined, quiet: boolean, b: ReqBoard): Tick | null {
+  if (quiet || !WORKING.has(n.status) || !run) return null
+  if (run.readable === 'here') {
+    const t = run.ticker
+    const call = t?.tool ? `${t.tool}${t.detail ? ` ${baseName(t.detail)}` : ''}` : null
+    return { kind: 'here', call, said: t?.text ?? null, at: t?.at ?? null, credits: run.credits }
+  }
+  const last = [...b.events].reverse().find((e) => e.run === run.key)
+  return last ? { kind: 'step', text: last.text, at: last.at } : null
 }
+
+/** A path's last part (docs/plan.md → plan.md); a command stays whole. */
+const baseName = (s: string) => (/\s/.test(s) ? s : s.slice(s.lastIndexOf('/') + 1) || s)
+/** The end of *s* in about *maxEm* em, with an ellipsis before it: the newest words of a line. */
+function tailOf(s: string, maxEm: number): string {
+  if (textWidth(s) <= maxEm) return s
+  const chars = [...s]
+  let out = ''
+  for (let i = chars.length - 1; i >= 0 && textWidth(chars[i] + out) <= maxEm - 0.8; i--) out = chars[i] + out
+  return `…${out.trimStart()}`
+}
+/** A ticker's width: past its box a little, clear of the next column's (the box is 184 px, the ticker 12.5 px). */
+const TICK_EM = 17
+
+/** Under the box: its last call (▸ 写文件 application-design.md), else ▸ AI 在做 · 4.9 credits; for a run elsewhere its
+ * last step, aged (▸ 运行机提交 2949c0b1… · 4 分钟前). What the agent last wrote is the box's own second line (saidLine). */
+function Ticker({ t, h }: { t: Tick; h: number }) {
+  const now = useServerNow()
+  let line: string
+  let full: string
+  if (t.kind === 'step') {
+    const ago = fmtAgo(now - t.at)
+    line = `▸ ${clip(t.text, TICK_EM - textWidth(ago) - 2.5)} · ${ago}`
+    full = `最后一步：${t.text}（${ago}）`
+  } else if (t.call) {
+    line = `▸ ${clip(t.call, TICK_EM - 1)}`
+    full = [`正在：${t.call}`, t.said && `它刚写：${t.said}`].filter(Boolean).join('\n')
+  } else {
+    line = `▸ AI 在做${t.credits !== null ? ` · ${fmtCredits(t.credits)} credits` : ''}`
+    full = t.said ? `它刚写：${t.said}` : line
+  }
+  return (
+    <text className="kt-node-ticker" x={0} y={h / 2 + 18} textAnchor="middle" data-testid="kt-node-ticker">
+      <title>{full}</title>
+      {line}
+    </text>
+  )
+}
+
+/** A box at work whose agent is here says, in its second line, the end of the last line it wrote: 「…再一次写进价格表。」 */
+const saidLine = (t: Tick | null): string | null => (t?.kind === 'here' && t.said ? `「${tailOf(t.said, TASK_EM - 1)}」` : null)
 
 /** A box's third line: its state's mark, who did it and how long it took (✓ 本机 · 0:28), or what it waits for. */
 function stateLine(n: StageNode, run: Run | undefined, board: ReqBoard, wait: WaitWho | null): string {
@@ -496,8 +570,9 @@ function stateLine(n: StageNode, run: Run | undefined, board: ReqBoard, wait: Wa
   return `${actorMeta(n.status).icon} ${who} · ${n.doing || actorMeta(n.status).label}`
 }
 
-function StageBoxView({ n, box, board, run, focus, flash, onNode, reducedMotion, quiet, onHover }: {
-  n: StageNode; box: StageBox; board: ReqBoard; run: Run | undefined; focus: string | null; flash?: { n: number; tone: string }
+/** *off*: a run is picked and this box has no round of it (dimmed, as a box not looked at is) */
+function StageBoxView({ n, box, board, run, focus, off, flash, onNode, reducedMotion, quiet, onHover }: {
+  n: StageNode; box: StageBox; board: ReqBoard; run: Run | undefined; focus: string | null; off: boolean; flash?: { n: number; tone: string }
   onNode: (id: string) => void; reducedMotion: boolean; quiet: boolean; onHover: (on: boolean) => void
 }) {
   const w = NODE_W
@@ -516,9 +591,10 @@ function StageBoxView({ n, box, board, run, focus, flash, onNode, reducedMotion,
   }
   const corner = n.status === 'merged' || n.status === 'failed'
   let bx = w / 2 - 8
-  const ticker = tickerOf(n, run, quiet)
+  const ticker = tickerOf(n, run, quiet, board)
   const asked = !!g && g.state === 'pending' && g.at !== null && !quiet
-  const task = asked ? [] : taskLines(n)
+  const words = saidLine(ticker)
+  const task = asked ? [] : words ? [words] : taskLines(n)
   // a second line for what it hands in pushes its state down
   const stateY = task.length > 1 ? 30 : 23
   const room = corner ? 7.4 : 8.6
@@ -526,7 +602,7 @@ function StageBoxView({ n, box, board, run, focus, flash, onNode, reducedMotion,
   // with no room, a ✓ or ✕ the corner shows already is the first thing to go
   const said = textWidth(full) > room && corner && /^[✓✕] /.test(full) ? full.slice(2) : full
   return (
-    <g className={`kt-node is-${n.status}${other ? ' is-other' : ''}${n.status === 'merged' ? ' is-final' : ''}${focus ? (isFocus ? ' is-focus' : ' is-dim') : ''}`}
+    <g className={`kt-node is-${n.status}${other ? ' is-other' : ''}${n.status === 'merged' ? ' is-final' : ''}${focus ? (isFocus ? ' is-focus' : ' is-dim') : off ? ' is-dim' : ''}`}
       transform={`translate(${box.x},${box.y})`} data-node={n.id} data-status={n.status} role="button" tabIndex={0} aria-label={name} aria-pressed={isFocus}
       onClick={() => onNode(n.id)} onKeyDown={onKey} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)}>
       <title>{name}</title>
@@ -540,7 +616,9 @@ function StageBoxView({ n, box, board, run, focus, flash, onNode, reducedMotion,
       <text className={`kt-node-title${textWidth(n.title) > 4.6 ? ' is-long' : ''}`} x={-w / 2 + 66} y={-15}>
         {clip(n.title, 6.4)}{n.n !== '✓' && <tspan className="kt-node-tag" dx={5}>{n.n}</tspan>}
       </text>
-      {asked ? <WaitLine g={g} /> : task.map((l, i) => <text key={i} className="kt-node-task" x={-w / 2 + 66} y={task.length > 1 ? 1 + i * 13 : 4}>{l}</text>)}
+      {asked ? <WaitLine g={g} /> : task.map((l, i) => (
+        <text key={i} className={`kt-node-task${words ? ' is-said' : ''}`} x={-w / 2 + 66} y={task.length > 1 ? 1 + i * 13 : 4} data-testid={words ? 'kt-node-said' : undefined}>{l}</text>
+      ))}
       <text className="kt-node-sub" x={-w / 2 + 66} y={stateY}>{clip(said, room)}</text>
       {n.status === 'merged' && (
         <g className="kt-node-check" transform={`translate(${w / 2 - 14},${h / 2 - 14})`}>
@@ -566,7 +644,7 @@ function StageBoxView({ n, box, board, run, focus, flash, onNode, reducedMotion,
           </g>
         )
       })}
-      {ticker && <text className="kt-node-ticker" x={0} y={h / 2 + 18} textAnchor="middle">{ticker}</text>}
+      {ticker && <Ticker t={ticker} h={h} />}
       {flash && <rect key={flash.n} className={`kt-node-flash is-${flash.tone}`} x={-w / 2 - 5} y={-h / 2 - 5} width={w + 10} height={h + 10} rx={20} />}
       <rect className="kt-node-focus" x={-w / 2 - 5} y={-h / 2 - 5} width={w + 10} height={h + 10} rx={20} />
     </g>
@@ -590,8 +668,8 @@ function WaitLine({ g }: { g: Gate }) {
 
 /** Under the box an open gate covers last: a round sent back before (✗ 退回 · D-2), then the one asked now; the open
  * one takes the person to the step (the session, the step strip), as the board's other chips do. */
-function GateChips({ n, g, box, board, onAct, onDoc }: {
-  n: StageNode; g: Gate; box: StageBox; board: ReqBoard; onAct?: (node: string, d: WaitDo) => void
+function GateChips({ n, g, box, board, off, onAct, onDoc }: {
+  n: StageNode; g: Gate; box: StageBox; board: ReqBoard; off: boolean; onAct?: (node: string, d: WaitDo) => void
   onDoc?: (node: string, round?: number, file?: string) => void
 }) {
   const back = n.rounds.filter((r) => r.outcome.kind === 'sent_back' && r.outcome.gate === g.kind).slice(-2)
@@ -610,7 +688,7 @@ function GateChips({ n, g, box, board, onAct, onDoc }: {
   let x = box.x - (widths.reduce((s, v) => s + v, 0) + 6 * (chips.length - 1)) / 2
   const y = box.y + NODE_H / 2 + 22
   return (
-    <g className="kt-gate-row" data-testid="kt-gate-row" data-node={n.id}>
+    <g className={`kt-gate-row${off ? ' is-dim' : ''}`} data-testid="kt-gate-row" data-node={n.id}>
       {chips.map((c, i) => {
         const at = x + widths[i] / 2
         x += widths[i] + 6
@@ -657,6 +735,7 @@ function StageCard({ n, board, runs, onSession, onOutputs }: {
   const g = openGate(n)
   const meta = actorMeta(n.status)
   const session = run && run.readable === 'here' ? sessionOf(run) : undefined
+  const tick = tickerOf(n, run, false, board)
   return (
     <div className="kt-ncard-body">
       <p className="kt-ncard-head">
@@ -665,6 +744,7 @@ function StageCard({ n, board, runs, onSession, onOutputs }: {
       </p>
       <p className="kt-ncard-task"><span className="kt-dim">交什么</span> {n.sub}</p>
       {n.doing && <p className="kt-ncard-did">{n.doing}</p>}
+      {tick && <NowLines t={tick} />}
       {n.rounds.length > 0 && (
         <ol className="kt-ncard-rounds">
           {n.rounds.map((r) => {
@@ -690,6 +770,19 @@ function StageCard({ n, board, runs, onSession, onOutputs }: {
         </div>
       )}
     </div>
+  )
+}
+
+/** A box at work in its hover card: what its run is doing right now, whole. */
+function NowLines({ t }: { t: Tick }) {
+  const now = useServerNow()
+  if (t.kind === 'step') return <p className="kt-ncard-facts" data-testid="kt-ncard-now">最后一步：{t.text} · {fmtAgo(now - t.at)}</p>
+  if (!t.call && !t.said) return null
+  return (
+    <ul className="kt-ncard-facts" data-testid="kt-ncard-now">
+      {t.call && <li>正在：<code>{t.call}</code></li>}
+      {t.said && <li>它刚写：{t.said}</li>}
+    </ul>
   )
 }
 

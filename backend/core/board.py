@@ -18,6 +18,7 @@ import re
 from typing import Any, Mapping, Optional, Tuple
 
 from . import lean_view, problems, runs, stages
+from . import outputs as outputs_mod
 from .deliveries import ASK_NAME, ASK_WHO, CAT_LABEL, CAT_ORDER, KIND_LABEL, category, owns
 
 RUNNER_NO_DESC = "运行机还没开始做：它做完提交以后才有变更说明"
@@ -27,6 +28,7 @@ GATE_KIND_LABEL = {"REQUIREMENTS": "需求", "INCEPTION": "需求和设计", "DE
 FINAL = ("merged", "skipped", "failed")
 MAX_EVENTS = 400
 MAX_BELT = 80
+TICKER_TEXT = 200   # characters of the agent's last line a ticker carries
 NOT_NEEDED = "这次不需要"
 KIT_LABEL = "kit 文件"   # a kit row's short name on the check wall, as the button 重装 kit 文件 says it
 # brainkit.trace's `missing` sources (trace.py): the ones a repo done only on this machine, or a requirement not handed
@@ -435,12 +437,27 @@ def _node_wire(n: stages.Node, marks: list[dict[str, Any]]) -> dict[str, Any]:
             "child": {"req": n.child[0], "state": n.child[1]} if n.child is not None else None}
 
 
+def ticker(tail: Any) -> dict[str, Any] | None:
+    """The working box's ticker of a run whose session is here: its last call, and the last line the agent wrote, cut
+    at a line end and its emails pseudonyms (outputs.shown_text, as the drawer's replies): a line longer than
+    TICKER_TEXT is left out, not cut through. The route scrubs both (SCRUB_KEYS text, detail)."""
+    if not isinstance(tail, dict):
+        return None
+    call = tail.get("call") if isinstance(tail.get("call"), dict) else None
+    said = outputs_mod.shown_text(str(tail.get("said") or ""), TICKER_TEXT)[0].strip() or None
+    if call is None and said is None:
+        return None
+    ats = [x for x in ((call or {}).get("at"), tail.get("said_at") if said else None) if isinstance(x, (int, float))]
+    return {"at": max(ats) if ats else None, "tool": call["tool"] if call else None,
+            "detail": call.get("detail") if call else None, "text": said}
+
+
 def _run_wire(r: runs.RunView) -> dict[str, Any]:
     now = r.now or runs.RunNow("waiting", "", None)
     return {"key": r.key, "kind": r.kind, "label": r.label, "readable": r.readable, "n": r.n, "run_id": r.run_id,
             "req": r.req, "unit": r.unit, "now": {"status": now.status, "doing": _clip(now.doing, 80), "since": now.since,
                                                   "who": now.who, "node": now.node, "do": now.do},
-            "credits": r.credits, "sessions": r.sessions}
+            "credits": r.credits, "sessions": r.sessions, "ticker": ticker(r.tail) if r.readable == "here" else None}
 
 
 def _over(f: dict[str, Any], row: dict[str, Any], merged_at: float | None, now: float) -> tuple[str, float] | None:

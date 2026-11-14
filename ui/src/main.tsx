@@ -49,6 +49,8 @@ export const STATUS_POLL_MS = 30_000
 
 type Held = { repo: string; key: string } | null
 
+const sameBoard = (a: View, b: View): boolean => a.kind === 'board' && b.kind === 'board' && a.repo === b.repo && a.key === b.key
+
 export default function BrainApp({ pollMs }: { pollMs?: number } = {}) {
   const [view, setView] = useState<View & { n: number }>(() => ({ ...parseView(window.location.search), n: 0 }))
   const [held, setHeld] = useState<Held>(() => heldOf(parseView(window.location.search), loadHeld()))
@@ -92,12 +94,11 @@ export default function BrainApp({ pollMs }: { pollMs?: number } = {}) {
       /* too many rewrites in a short time (Safari): the last one stands */
     }
   }, [remember])
-  // a move to another view: a new history entry made by the host's router; the entry then says how many moves deep
-  // into the app it is (the router may make it a moment later), so ← 返回 can go back to it
-  const go = useCallback((v: View) => {
+  // a new history entry made by the host's router; the entry then says how many moves deep into the app it is (the
+  // router may make it a moment later), so ← 返回 can go back to it
+  const enter = useCallback((v: View) => {
     const d = depth() + 1, to = href(v)
     remember(v)
-    setView((cur) => ({ ...v, n: cur.n + 1 }))
     navigate(to)
     const mark = () => {
       const st = window.history.state as { brDepth?: number } | null
@@ -109,12 +110,18 @@ export default function BrainApp({ pollMs }: { pollMs?: number } = {}) {
     setTimeout(mark, 0)
     setTimeout(mark, 60)
   }, [remember, navigate])
-  // back and forward: the view the entry says
+  // a move to another view
+  const go = useCallback((v: View) => {
+    setView((cur) => ({ ...v, n: cur.n + 1 }))
+    enter(v)
+  }, [enter])
+  // back and forward: the view the entry says; an entry of the board on screen (a run picked there) is the board's to
+  // follow, it is not opened again
   useEffect(() => {
     const onPop = () => {
       const v = parseView(window.location.search)
       remember(v)
-      setView((cur) => ({ ...v, n: cur.n + 1 }))
+      setView((cur) => (sameBoard(cur, v) ? cur : { ...v, n: cur.n + 1 }))
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
@@ -170,7 +177,7 @@ export default function BrainApp({ pollMs }: { pollMs?: number } = {}) {
   } else if (v.kind === 'board') {
     const { kind: _k, ...entry } = v
     const fallback: View = entry.from === 'todo' ? { kind: 'todo' } : entry.from === 'item' ? { kind: 'item', repo: entry.repo, key: entry.key } : overviewFilters.current
-    body = <BoardPage key={n} entry={entry} onBack={entry.from ? () => back(fallback) : undefined} {...props}
+    body = <BoardPage key={n} entry={entry} onBack={entry.from ? () => back(fallback) : undefined} {...props} push={enter}
       onSwitch={(repo, key) => swap({ kind: 'board', repo, key, ...(entry.from ? { from: entry.from } : {}) })}
       onMissing={(m) => onMissing(entry.repo, entry.key, m)} />
   } else if (v.kind === 'new') {

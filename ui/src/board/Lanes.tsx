@@ -20,6 +20,7 @@ import {
   sessionOf, spanWho,
 } from './format'
 import { useServerNow } from './hooks'
+import { lastRound } from './picker'
 import { RoleIcon } from './RoleIcon'
 
 export interface LanesProps {
@@ -257,7 +258,7 @@ function LaneId({ n, run, board, title, focused, onNode, quiet }: LaneProps & { 
           </span>
           {run && <span className="kt-pill tone-handoff br-run-pill" title={run.readable === 'elsewhere' ? `${run.label}：它的会话在别的机器上` : run.label}><RoleIcon role={RUN_ICON[run.kind]} size={12} /> {run.label}</span>}
         </div>
-        <div className="kt-lane-doing">{n.sub}{n.rounds.length > 1 ? ` · 第 ${n.rounds.length} 轮` : ''}</div>
+        <div className="kt-lane-doing">{n.sub}{(lastRound(n)?.n ?? 0) > 1 ? ` · 第 ${lastRound(n)!.n} 轮` : ''}</div>
       </div>
       <p className="kt-lane-stats">
         {wait && n.since !== null

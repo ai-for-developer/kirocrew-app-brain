@@ -30,6 +30,7 @@ export const BOARD_EXTRA_CSS = `
 .br-board .kt-cell-ac { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .kt-segs i.is-wait { background: var(--kt-approve); box-shadow: 0 0 8px color-mix(in srgb, var(--kt-approve) 50%, transparent); }
 .kt-segs i.is-run { background: var(--kt-run); box-shadow: 0 0 8px color-mix(in srgb, var(--kt-run) 55%, transparent); }
+.kt-segs i.is-other { background: var(--kt-info); box-shadow: 0 0 8px color-mix(in srgb, var(--kt-info) 50%, transparent); }
 
 /* the lanes: work, waits for a person, work done again */
 .br-board .kt-track-span.is-wait { background: color-mix(in srgb, var(--kt-approve) 60%, transparent); }

@@ -9,16 +9,22 @@
  * unit; a big one says how many of its small ones merged (a jump to its family card), or that it is not split yet. A
  * small one's introduction is its own way: 认领, 开工 from the big one's branch, 同步, its MR to the big one's owner.
  */
-import type { ReqBoard, ReqFamily } from '../types'
+import type { ReqBoard, ReqFamily, Run, StageNode } from '../types'
 import { StateChip } from '../ui'
 import { ACT, DO_NAME, FAMILY_ACT, leanProgress, wholeSkips } from '../vocab'
-import { WORKING, actorMeta, boardWho, checksSay, fmtCredits, fmtWhen, leanOf, localOnly, nodeLabel, outsidePushes, runnerBlind, sessionOf, titleOf, waitsOnMe } from './format'
+import { WORKING, actorMeta, boardWho, fmtCredits, fmtWhen, leanOf, localOnly, nodeLabel, nodeWait, outsidePushes, runnerBlind, sessionOf, titleOf, waitsOnMe } from './format'
 import { useChangeCount, useTween } from './hooks'
 import { waitCount } from './next'
+import { NOT_LEAN, pickedRun, runLean, type RunFilter } from './picker'
 import { RoleIcon } from './RoleIcon'
+import { RunPicker } from './RunPicker'
+import { verifyCount, wayAt } from './way'
 
-export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail, onSession, onStart, onParent, onFamily, onOutputs }: {
+export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail, onSession, onStart, onParent, onFamily, onOutputs, run = 'all', onRun }: {
   board: ReqBoard
+  /** the run picked, and picking one (运行：全部 ▾) */
+  run?: RunFilter
+  onRun?: (run: RunFilter) => void
   replaying: boolean
   follow: boolean
   onReplay?: () => void
@@ -59,6 +65,7 @@ export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail,
         </span>
       </div>
       <div className="kt-actions">
+        {onRun && !replaying && <RunPicker board={board} value={run} onPick={onRun} />}
         {onReplay && !replaying && board.events.length > 1 && (
           <button type="button" className="kt-btn" onClick={onReplay} title={finished ? '按记录从头重放：谁在什么时候做了什么，哪里等人、哪里被退回' : '把到现在为止的经过重放一遍'}>
             ▶ 回放
@@ -102,42 +109,45 @@ function FamilyPills({ f, onParent, onFamily }: { f: ReqFamily; onParent?: (key:
   ) : <span className="kt-pill tone-handoff">{text}</span>
 }
 
-export function Kpis({ board, reducedMotion, onNode, replaying = false }: { board: ReqBoard; reducedMotion: boolean; onNode?: (id: string) => void; replaying?: boolean }) {
+/** *board*: as the picked run saw it (picker.ts inRun), *run* the one picked: every card counts that run only. */
+export function Kpis({ board, reducedMotion, onNode, replaying = false, run = 'all' }: {
+  board: ReqBoard; reducedMotion: boolean; onNode?: (id: string) => void; replaying?: boolean; run?: RunFilter
+}) {
+  const picked = pickedRun(board, run)
   return (
     <div className="kt-kpis br-kpis" role="group" aria-label="指标">
       <ChecksKpi board={board} reducedMotion={reducedMotion} />
-      <LeanKpi board={board} />
+      {picked ? <RunLeanKpi board={board} run={picked} /> : <LeanKpi board={board} />}
       <PeopleKpi board={board} />
-      <StepsKpi board={board} onNode={onNode} replaying={replaying} />
-      <CreditsKpi board={board} reducedMotion={reducedMotion} replaying={replaying} />
+      <StepsKpi board={board} onNode={onNode} replaying={replaying} picked={!!picked} />
+      <CreditsKpi board={board} reducedMotion={reducedMotion} replaying={replaying} run={picked} />
     </div>
   )
 }
-
-const SEG: Record<string, string> = { pass: 'is-pass', fail: 'is-fail', wait: 'is-wait', watch: 'is-watch' }
 
 function ChecksKpi({ board, reducedMotion }: { board: ReqBoard; reducedMotion: boolean }) {
-  const w = board.checks
-  const shown = Math.round(useTween(w.passed, 900, reducedMotion))
-  const pop = useChangeCount(w.passed)
-  const say = checksSay(w, board)
+  const v = verifyCount(board.nodes)
+  const shown = Math.round(useTween(v.passed, 900, reducedMotion))
+  const pop = useChangeCount(v.passed)
+  const green = v.total > 0 && v.passed === v.total
   return (
-    <div className={`kt-kpi kt-kpi-tests${say.green ? ' is-green' : ''}`}>
+    <div className={`kt-kpi kt-kpi-tests${green ? ' is-green' : ''}`}>
       <div className="kt-kpi-label">检查通过</div>
-      <div className="kt-kpi-value" data-testid="br-checks-counter" aria-label={`检查通过 ${w.passed}/${w.total}`}>
-        <span className={`kt-kpi-big${pop ? ' is-pop' : ''}`} key={pop}>{shown}</span>
-        <span className="kt-kpi-of">/{w.total}</span>
+      <div className="kt-kpi-value" data-testid="br-checks-counter" aria-label={v.total ? `检查通过 ${v.passed}/${v.total}` : `检查通过：${v.say}`}>
+        <span className={`kt-kpi-big${pop ? ' is-pop' : ''}`} key={pop}>{v.total ? shown : '—'}</span>
+        {v.total > 0 && <span className="kt-kpi-of">/{v.total}</span>}
       </div>
       <div className="kt-segs" aria-hidden="true">
-        {w.cells.filter((c) => SEG[c.status]).map((c) => <i key={c.id} className={SEG[c.status]} title={c.name} />)}
+        {Array.from({ length: v.total }, (_, i) => <i key={i} className={i < v.passed ? 'is-pass' : 'is-fail'} />)}
       </div>
-      <div className="kt-kpi-note" data-testid="br-checks-say"><b className={`tone-${say.tone}`}>{say.text}</b></div>
+      <div className="kt-kpi-note" data-testid="br-checks-say"><b className={`tone-${v.tone}`}>{v.say}</b></div>
     </div>
   )
 }
 
-/** Lean's stages on the way, the one way (vocab.leanProgress): done green, skipped grey, the next one lit; a phase
- * skipped as a whole is not a cell, it is said once under them. */
+/** Lean's stages on the way, as Lean counts them: done green, skipped grey; the box the way is at lit (way.ts wayAt, the
+ * rule the graph follows), else the next one; once the graph has nothing left, the rest grey. A phase skipped as a whole
+ * is not a cell, it is said once under them. */
 function LeanKpi({ board }: { board: ReqBoard }) {
   const ln = leanOf(board.row.lean)
   const through = ln.done_n + ln.skipped_n
@@ -146,9 +156,13 @@ function LeanKpi({ board }: { board: ReqBoard }) {
   const blocked = board.events.filter((e) => e.kind === 'blocked').length
   const blind = runnerBlind(board)
   const whole = wholeSkips(ln.skipped_phases)
-  const seg = (i: number) => (i < ln.done_n ? 'is-pass' : i < through ? 'is-skip' : !blind && ln.next && i === through ? (ln.started ? 'is-run' : 'is-next') : '')
+  const { at, next } = wayAt(board.nodes)
+  const step = at ?? next
+  const over = !step && board.nodes.some((n) => n.rounds.length > 0)
+  const said = leanProgress({ ...ln, next: step ? { id: step.stage, label: step.title, n: step.n } : null, stage: null, stage_state: at ? 'started' : null })
+  const seg = (i: number) => (i < ln.done_n ? 'is-pass' : i < through || over ? 'is-skip' : !blind && step && i === through ? (at ? litSeg(at, board) : 'is-next') : '')
   return (
-    <div className="kt-kpi kt-kpi-gates br-kpi-lean" aria-label={`AI-DLC Lean：${blind ? '运行机还读不到 Lean 的记录' : leanProgress(ln)}`}>
+    <div className="kt-kpi kt-kpi-gates br-kpi-lean" aria-label={`AI-DLC Lean：${blind ? '运行机还读不到 Lean 的记录' : said}`}>
       <div className="kt-kpi-label">AI-DLC Lean</div>
       <div className="kt-kpi-value" data-testid="br-lean-counter">
         <span className="kt-kpi-big">{ln.done_n}</span>
@@ -159,7 +173,7 @@ function LeanKpi({ board }: { board: ReqBoard }) {
       </div>
       <div className="kt-kpi-note br-lean-next">
         {blind ? '运行机还读不到 Lean 的记录' : <>
-          {ln.next ? <>{ln.started ? '在做' : '下一步'}：<b>{ln.next.label}</b></> : through ? '全部做完' : '还没开始'}
+          {step ? <>{at ? '在做' : '下一步'}：<b>{step.title}</b></> : over || through ? '全部做完' : '还没开始'}
           {whole && <span data-testid="br-lean-whole"> · {whole}</span>}
         </>}
       </div>
@@ -170,6 +184,50 @@ function LeanKpi({ board }: { board: ReqBoard }) {
       </div>
     </div>
   )
+}
+
+/** The cell of the box the way is at, in its box's colour: at work blue, waiting for you magenta, for anyone else the
+ * calm blue that says whom. */
+function litSeg(n: StageNode, b: ReqBoard): string {
+  if (n.status !== 'awaiting_approval') return 'is-run'
+  return nodeWait(n, b.runs.find((r) => r.key === n.run)) === 'you' ? 'is-wait' : 'is-other'
+}
+
+/** The AI-DLC Lean card of one run: the Lean stages it did (a unit's stage once), the one it is on, else where it is. */
+function RunLeanKpi({ board, run }: { board: ReqBoard; run: Run }) {
+  const l = runLean(board)
+  const whole = wholeSkips(l.whole)
+  const said = [`做完 ${l.done}`, ...(l.skipped ? [`跳过 ${l.skipped}`] : []), l.at ? `在做：${l.at.title}` : run.now.doing, ...(whole ? [whole] : [])].filter(Boolean)
+  const lit = l.done + l.skipped
+  return (
+    <div className="kt-kpi kt-kpi-gates br-kpi-lean" aria-label={`AI-DLC Lean（${run.label}）：${said.join(' · ')}`}>
+      <div className="kt-kpi-label">AI-DLC Lean</div>
+      <div className="kt-kpi-value" data-testid="br-lean-counter">
+        <span className="kt-kpi-big">{l.done}</span>
+        <span className="kt-kpi-of">做完{l.skipped ? ` · 跳过 ${l.skipped}` : ''}{l.at ? ` · 在做：${l.at.title}` : ''}</span>
+      </div>
+      <div className="kt-segs" aria-hidden="true">
+        {Array.from({ length: l.total }, (_, i) => <i key={i} className={i < l.done ? 'is-pass' : i < lit ? 'is-skip' : l.at && i === lit ? litSeg(l.at, board) : ''} />)}
+      </div>
+      <div className="kt-kpi-note br-lean-next">
+        {l.at ? runStages(board) : run.now.doing}
+        {whole && <span data-testid="br-lean-whole"> · {whole}</span>}
+      </div>
+      <div className="kt-gates-rows">
+        <span>批准 <b>{board.events.filter((e) => e.kind === 'approve').length}</b></span>
+        <span className={board.events.some((e) => e.kind === 'reject') ? 'is-hit' : ''}>退回 <b>{board.events.filter((e) => e.kind === 'reject').length}</b></span>
+        <span className={board.events.some((e) => e.kind === 'blocked') ? 'is-hit' : ''}>拦下 <b>{board.events.filter((e) => e.kind === 'blocked').length}</b></span>
+      </div>
+    </div>
+  )
+}
+
+/** The stages a run did before the one it is on, short: 代码生成（2 个单元）· 构建测试. */
+function runStages(board: ReqBoard): string {
+  const did = new Map<string, number>()
+  for (const n of board.nodes) if (n.rounds.length && n.status !== 'skipped' && !NOT_LEAN.has(n.stage)) did.set(n.title, (did.get(n.title) ?? 0) + 1)
+  const { at } = wayAt(board.nodes.filter((n) => n.rounds.length))
+  return [...did].filter(([t]) => t !== at?.title).map(([t, k]) => (k > 1 ? `${t}（${k} 个单元）` : t)).join(' · ')
 }
 
 /** A person's acts: at the judgment points (approvals, the questions they answered: in the session or on the MR,
@@ -205,9 +263,10 @@ function PeopleKpi({ board }: { board: ReqBoard }) {
   )
 }
 
-/** The stages on this way (Lean skipped none of them), one icon each, done green; a click looks at that stage. */
-function StepsKpi({ board, onNode, replaying }: { board: ReqBoard; onNode?: (id: string) => void; replaying: boolean }) {
-  const on = board.nodes.filter((n) => n.status !== 'skipped')
+/** The stages on this way (Lean skipped none of them), one icon each, done green; a click looks at that stage. *picked*:
+ * a run is picked, the stages it did. */
+function StepsKpi({ board, onNode, replaying, picked }: { board: ReqBoard; onNode?: (id: string) => void; replaying: boolean; picked: boolean }) {
+  const on = board.nodes.filter((n) => n.status !== 'skipped' && (!picked || n.rounds.length > 0))
   const runs = new Map(board.runs.map((r) => [r.key as string, r]))
   const done = on.filter((n) => n.status === 'merged' || n.status === 'done').length
   const working = on.filter((n) => WORKING.has(n.status)).length
@@ -243,10 +302,21 @@ function StepsKpi({ board, onNode, replaying }: { board: ReqBoard; onNode?: (id:
   )
 }
 
-function CreditsKpi({ board, reducedMotion, replaying }: { board: ReqBoard; reducedMotion: boolean; replaying: boolean }) {
-  const c = replaying ? null : board.credits.total
+/** *run*: the run picked, its sessions' credits on this machine (never per stage). */
+function CreditsKpi({ board, reducedMotion, replaying, run }: { board: ReqBoard; reducedMotion: boolean; replaying: boolean; run: Run | null }) {
+  const c = replaying ? null : run ? run.credits : board.credits.total
   const shown = useTween(c ?? 0, 900, reducedMotion)
-  const n = board.sessions.length
+  const n = run ? run.sessions.length : board.sessions.length
+  if (run && c === null && !replaying) {
+    return (
+      <div className="kt-kpi kt-kpi-credits">
+        <div className="kt-kpi-label">credits</div>
+        <div className="kt-kpi-value"><span className="kt-kpi-big">—</span></div>
+        <div className="kt-kpi-note">{run.readable === 'here' ? '这次运行的会话还没报' : run.kind === 'runner' ? '运行机的花费在运行机上'
+          : run.kind === 'local' ? '会话不在这台机器上' : '花费记在它自己的看板上'}</div>
+      </div>
+    )
+  }
   return (
     <div className="kt-kpi kt-kpi-credits">
       <div className="kt-kpi-label">credits</div>

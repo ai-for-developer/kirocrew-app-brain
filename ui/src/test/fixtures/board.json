@@ -1716,7 +1716,8 @@
           "busy": false,
           "title": "PAY-3 退款单导出 CSV"
         }
-      ]
+      ],
+      "ticker": null
     }
   ],
   "relays": [],

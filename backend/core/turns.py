@@ -30,8 +30,6 @@ MATCH_S = 900.0        # a turn's row: the one with its sha256 nearest Lean's re
 REPLY_MAX = 20_000     # characters of a reply sent to the page
 CALLS_MAX = 400        # calls of a turn sent to the page
 AGENT_ENDS = (stages.Outcome.DONE, stages.Outcome.SKIPPED, stages.Outcome.PASSED, stages.Outcome.FAILED)
-CALL_KIND = {"read": "读文件", "edit": "写文件", "execute": "跑命令", "search": "搜索"}   # KiroCrew's meta.kind
-KNOWLEDGE = ("查知识库", "看知识库来源")
 
 HIDDEN = "这条消息没有在这里显示：它不是 app 发的，说不清是谁写的"
 NOT_FOUND = "找不到这一回合的消息（会话可能被删了）：到 KiroCrew 里看"
@@ -106,8 +104,7 @@ def _call(m: Mapping[str, Any], s: Slot, lo: float, hi: float, scrub: Callable[[
     """A call, its detail said relative to the worktree and scrubbed before tool_call cuts it to 120 characters."""
     c = sessions.tool_call(dict(m), lambda x: scrub(pseudonymize(x.replace(s.cwd.rstrip("/") + "/", "") if s.cwd else x)))
     at = c["at"] or None
-    return {"at": at, "tool": c["tool"] if c["tool"] in KNOWLEDGE else CALL_KIND.get(c["kind"] or "", "其他"),
-            "detail": c["detail"], "in_round": at is not None and lo <= at <= hi}
+    return {"at": at, "tool": sessions.call_name(c), "detail": c["detail"], "in_round": at is not None and lo <= at <= hi}
 
 
 def _found(t: stages.Turn, s: Slot, i: int, n: Optional[int], lo: float, hi: float, also: List[str],

@@ -79,7 +79,7 @@ const skipped = (id: string, run: string, at: number) => stage(id, 'skipped', [r
 export function run(key: string, kind: Run['kind'], label: string, now: Partial<Run['now']>, over: Partial<Run> = {}): Run {
   return {
     key: key as RunKey, kind, label, readable: kind === 'local' ? 'here' : 'elsewhere', n: null, run_id: null, req: null, unit: null,
-    now: { status: 'done', doing: '', since: null, who: null, node: null, do: null, ...now }, credits: null, sessions: [], ...over,
+    now: { status: 'done', doing: '', since: null, who: null, node: null, do: null, ...now }, credits: null, sessions: [], ticker: null, ...over,
   }
 }
 

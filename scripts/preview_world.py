@@ -77,6 +77,7 @@ repo_mod = importlib.import_module("_brainapp_backend.core.repo")
 progress = importlib.import_module("_brainapp_backend.core.progress")
 outputs = importlib.import_module("_brainapp_backend.core.outputs")
 turns_mod = importlib.import_module("_brainapp_backend.core.turns")
+sessions_mod = importlib.import_module("_brainapp_backend.core.sessions")
 AppError = importlib.import_module("_brainapp_backend.core.httpkit").AppError
 import preview_docs  # noqa: E402  (PAY-9's and PAY-2's documents and code, next to this file)
 import preview_session  # noqa: E402  (PAY-9's session on alice's machine)
@@ -1622,8 +1623,19 @@ def world(scratch: Path) -> None:
                credits=4.9, updated_at=T0 - 1 * M, summary=None, waits={"who": "agent", "text": "agent 在做", "line": None, "raw": ""}, mr=None, run_ids=[],
                where="worktree", open_questions=[], overlap=[], expected_paths=["tools/price"],
                worktree="/Users/alice/workplace/brain-app/shop-tools/price-import")
+    # what its session did last, read by the app's own code (sessions.tail) off the end of its transcript: a line alice
+    # typed is the newest row, and the ticker still says the agent's
+    wt = row["worktree"]
+    tool_rows_tail = [
+        {"role": "assistant", "content": "需求批了。现在写应用设计：\n导入分两步：先校验整张表，再一次写进价格表。", "meta": {}, "ts": iso(T0 - 3 * M)},
+        {"role": "tool", "content": "🔧 Writing", "meta": {"tool_name": "fs_write", "kind": "edit", "input": json.dumps(
+            {"command": "create", "path": wt + "/aidlc-docs/" + r.intent + "/inception/application-design/application-design.md"})},
+         "ts": iso(T0 - 1 * M)},
+        {"role": "user", "content": "表头要兼容旧模板", "meta": {"human": True}, "ts": iso(T0 - 1 * M + 20)},
+    ]
     tool_sess = dict(det["sessions"][0], slot="brain-TOOL-1-5a2c", url="/chat?sid=brain-TOOL-1-5a2c", title="TOOL-1 价格表批量导入",
-                     credits=4.9, turns=11, busy=True, awaiting=False, last_activity=T0 - 1 * M)
+                     credits=4.9, turns=11, busy=True, awaiting=False, last_activity=T0 - 1 * M,
+                     tail=sessions_mod.tail(tool_rows_tail, lambda x: x, wt))
     tool_rows = [classified(r, row, slot=tool_sess, local_only=True)]
     tool_kit = [r_ for r_ in status["crew"]["rows"] if r_.get("fix") == "kit"]
     for k in tool_kit:

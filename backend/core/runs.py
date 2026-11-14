@@ -211,12 +211,16 @@ class RunView:
     now: Optional[RunNow] = None
     credits: Optional[float] = None
     sessions: List[Dict[str, Any]] = field(default_factory=list)
+    tail: Optional[Mapping[str, Any]] = None     # what its session here did last (sessions.tail): the busy one's, else the latest's
 
 
-def _here(sessions: Sequence[Mapping[str, Any]]) -> Tuple[List[Dict[str, Any]], Optional[float]]:
+def _here(sessions: Sequence[Mapping[str, Any]]
+          ) -> Tuple[List[Dict[str, Any]], Optional[float], Optional[Mapping[str, Any]]]:
     rows = [{"slot": s["slot"], "url": s["url"], "busy": bool(s.get("busy")), "title": str(s.get("title") or "")}
             for s in sessions]
-    return rows, (round(sum(s.get("credits") or 0 for s in sessions), 3) or None) if sessions else None
+    last = next((s for s in sessions if s.get("busy")), sessions[-1] if sessions else None)
+    return rows, (round(sum(s.get("credits") or 0 for s in sessions), 3) or None) if sessions else None, \
+        (last or {}).get("tail")
 
 
 def runs(nodes: Sequence[Node], who: Attribution, *, started: bool, family: Optional[Family],
@@ -239,16 +243,16 @@ def runs(nodes: Sequence[Node], who: Attribution, *, started: bool, family: Opti
         if key == LOCAL:
             mine_here = [s for s in live if s.get("kind", "local") == "local"] if not team else []
             here = not team and (mine or bool(mine_here))
-            rows, credits = _here(mine_here)
+            rows, credits, tail = _here(mine_here)
             out.append(RunView(LOCAL, "local", "本机会话" if here else _line(_name(owner or "负责人"), "的会话"),
-                               "here" if here else "elsewhere", sessions=rows, credits=credits))
+                               "here" if here else "elsewhere", sessions=rows, credits=credits, tail=tail))
         elif key.startswith("runner-"):
             x = next(r for r in who.runners if r.key == key)
             theirs = [s for s in live if s.get("kind") == "runner" and (
                 x.run_id in "%s %s" % (s.get("slot"), s.get("title")) if x.run_id else x is who.runners[-1])] if team else []
-            rows, credits = _here(theirs)
+            rows, credits, tail = _here(theirs)
             out.append(RunView(key, "runner", "运行机 第 %d 次" % x.n, "here" if team else "elsewhere", n=x.n,
-                               run_id=x.run_id, sessions=rows, credits=credits))
+                               run_id=x.run_id, sessions=rows, credits=credits, tail=tail))
         else:
             kind, _, req = key.partition("-")
             unit = next((c.unit for c in (family.children if family else ()) if c.key == req), None)
