@@ -141,11 +141,12 @@ class GitReader:
         return {s: self._parents[(self.git.repo, s)] for s in shas}
 
     def diff(self, base: str, ref: str, rel: str) -> Optional[str]:
-        """`git diff base ref -- rel` as plain text: no external diff, no textconv, whatever .gitattributes says."""
+        """`git diff base ref -- rel` as plain text: no external diff, no textconv, whatever .gitattributes says; a
+        file that is not UTF-8 decoded as its source is (a character it cannot be becomes �)."""
         p = self.git.run("-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--no-textconv",
                          "--src-prefix=a/", "--dst-prefix=b/", base, ref, "--", rel, timeout=DIFF_TIMEOUT_S,
-                         env=mrdesc_view.LITERAL)
-        return p.stdout if p.returncode == 0 else None
+                         text=False, env=mrdesc_view.LITERAL)
+        return p.stdout.decode("utf-8", "replace") if p.returncode == 0 else None
 
 
 @dataclass(frozen=True)

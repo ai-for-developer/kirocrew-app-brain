@@ -191,3 +191,24 @@ def test_an_email_becomes_the_pseudonym_brain_kit_gives_it(tmp_path):
             "a@b..c@d e@f+g@h -x@y.z %s@example.com 邮箱：zhang_san@公司.cn\n" % ("q" * 64))
     want = trace.EMAIL_RE.sub(lambda m: trace.pseudonym(m.group(0)), text)
     assert outputs.pseudonymize(text) == want and "@" not in want.replace("@公司", ""), want
+
+
+# ---------------------------------------------------------------- what a diff answers
+
+def test_a_diff_of_a_file_that_is_not_utf8_answers_its_change_not_a_crash(tmp_path):
+    repo = git_repo(tmp_path / "pay")
+    a = commit_file(repo, "README.md", "x\n")
+    (repo / "gbk.txt").write_bytes("退款\n".encode("gbk"))
+    sh("git", "-C", repo, "add", "gbk.txt")
+    sh("git", "-C", repo, "commit", "-qm", "gbk")
+    b = sh("git", "-C", repo, "rev-parse", "HEAD").stdout.strip()
+    (repo / "gbk.txt").write_bytes("退款成功\n".encode("gbk"))
+    sh("git", "-C", repo, "commit", "-qam", "gbk 2")
+    c = sh("git", "-C", repo, "rev-parse", "HEAD").stdout.strip()
+    f = fold(repo, [node("review", [rnd(1, [b, c])])], [a, b, c])
+    try:
+        resp = drawer(tmp_path, f).file(ref=c, base=b, path="gbk.txt", view="diff")
+        got = (resp.status, resp.body.get("text", "").splitlines()[:1], resp.body.get("binary"))
+    except Exception as exc:  # noqa: BLE001  (what the host would answer as a 500)
+        got = ("raised out of the route", type(exc).__name__)
+    assert got == (200, ["diff --git a/gbk.txt b/gbk.txt"], False), got
