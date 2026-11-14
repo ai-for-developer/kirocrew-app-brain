@@ -131,9 +131,12 @@ def project_agent(path: str, name: str) -> str | None:
     if fn is not None:
         try:
             got = fn(path, name)
-        except Exception:  # noqa: BLE001 - an unreadable folder: as if there were none, the session check says more
+        except Exception:  # noqa: BLE001 - a folder brain-kit cannot read has no agent it could tell of
             return None
-        return os.path.relpath(got, path) if got and os.path.isabs(str(got)) else (str(got) if got else None)
+        if not got:
+            return None
+        got = str(got)
+        return os.path.relpath(got, path) if os.path.isabs(got) else got
     for ext in (".json", ".md"):
         rel = os.path.join(".kiro", "agents", name + ext)
         if os.path.isfile(os.path.join(path, rel)):
