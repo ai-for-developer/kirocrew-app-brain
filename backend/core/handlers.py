@@ -213,7 +213,11 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
     async def team_loop(request: Any) -> Any:
         return kit.json(await svc.team_loop())
 
+    async def handoff(request: Any) -> Any:
+        return kit.json(await svc.handoff(_rid(request), _key(request)))
+
     return [
+        AppRoute("POST", "/requirements/{repo}/{key}/handoff", kit.guarded(handoff)),
         AppRoute("GET", "/health", health),
         AppRoute("GET", "/status", kit.guarded(status)),
         AppRoute("GET", "/settings", kit.guarded(get_settings)),

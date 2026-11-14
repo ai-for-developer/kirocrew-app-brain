@@ -113,6 +113,7 @@ class Service:
         self._me: str | None = None
         self.families = family.Families()      # brain-kit's listing per repo (大需求 and their 小需求), made in the background
         self._reopening: dict[str, asyncio.Lock] = {}   # 重开一个会话, one at a time per requirement
+        self._handing: dict[str, asyncio.Future] = {}   # 交接给运行机, one at a time per requirement
         self._big_file = self.data_dir / "big.json"
         self._big = self._load_big()           # scopes opened here as 「大需求：先拆成小需求」
 
@@ -1224,6 +1225,51 @@ class Service:
         await asyncio.to_thread(self._after_family, repo)
         await asyncio.to_thread(self.store.append, scope_of(rid, key), "app", "同步大需求的分支：%s" % out["text"][:80], None)
         return scrub_tree(out, self.scrub)
+
+    # ---- 交接给运行机 --------------------------------------------------------------------------------- #
+
+    async def handoff(self, rid: str, key: str) -> dict[str, Any]:
+        """交接给运行机: `brain handoff` in the requirement's worktree on this machine (handover.run), its answer in plain
+        words (HandoffResult). Refused in words before anything runs when the app can tell (handover.why_not). One at a
+        time per requirement: a second click while it runs gets the same answer."""
+        from . import handover
+        repo = self._repo(rid)
+        scope = scope_of(rid, key)
+        running = self._handing.get(scope)
+        if running is None:
+            async def go() -> dict[str, Any]:
+                f = await asyncio.to_thread(self._facts, repo, key)
+                base, project = self._gitlab_of(repo)
+                branch, bridge = f.get("branch") or "", str(repo.cfg.get("bridge_user") or "") or None
+
+                def mr_now() -> None:     # GitLab's MR now: whether a hand-over made before still waits for its label
+                    try:
+                        self.mr.refresh(base, project, branch, transport=self.transport, bridge_user=bridge)
+                    except Exception as exc:  # noqa: BLE001 - a token file others can read: brain-kit says so itself
+                        self.log.info("brain: reading the MR of %s: %s", branch, exc)
+
+                if (f.get("run") or {}).get("handoff") and branch and base and project and self.mr.due(project, branch):
+                    await asyncio.to_thread(mr_now)
+                snap = self._sessions_snapshot()
+                row = await asyncio.to_thread(self._row, repo, f, snap)
+                tip, up = f.get("tip"), f.get("origin_sha")
+                pushed = bool(tip and up and (tip == up or await asyncio.to_thread(
+                    repo.git.ok, "merge-base", "--is-ancestor", tip, up)))
+                busy = any(s["busy"] for s in snap["by"].get(scope, []) if s["kind"] == "local" and not s["missing"])
+                why = handover.why_not(f, row, me=await asyncio.to_thread(self.me_in, repo),
+                                       local_only=row["local_only"], busy=busy, pushed=pushed)
+                if why:
+                    raise AppError(*why)
+                out = await asyncio.to_thread(handover.run, f["worktree"], base=base, project=project)
+                await asyncio.to_thread(repo.invalidate)
+                if branch and base and project:
+                    await asyncio.to_thread(mr_now)
+                await asyncio.to_thread(self.store.append, scope, "app", "交接：%s" % out["text"], None)
+                return scrub_tree(out, self.scrub)
+
+            running = self._handing[scope] = asyncio.ensure_future(go())
+            running.add_done_callback(lambda _t: self._handing.pop(scope, None))
+        return await asyncio.shield(running)
 
     # ---- KiroCrew checks ------------------------------------------------------------------------------ #
 
