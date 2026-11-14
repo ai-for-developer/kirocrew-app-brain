@@ -53,6 +53,8 @@ describe('the AI-DLC Lean card and the graph say the same next step', () => {
     const p = page(worldBoard('r1/PAY-9'))
     expect(p.status('release')).toBe('awaiting_approval')
     expect(p.lean.querySelector('.br-lean-next')).toHaveTextContent(/^在做：发布/)
+    // its cell is in its box's colour: it waits on the product, not on you
+    expect(p.lean.querySelectorAll('.kt-segs .is-other')).toHaveLength(1)
   })
 })
 

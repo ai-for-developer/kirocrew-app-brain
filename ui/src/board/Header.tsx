@@ -9,10 +9,10 @@
  * unit; a big one says how many of its small ones merged (a jump to its family card), or that it is not split yet. A
  * small one's introduction is its own way: 认领, 开工 from the big one's branch, 同步, its MR to the big one's owner.
  */
-import type { ReqBoard, ReqFamily, Run } from '../types'
+import type { ReqBoard, ReqFamily, Run, StageNode } from '../types'
 import { StateChip } from '../ui'
 import { ACT, DO_NAME, FAMILY_ACT, leanProgress, wholeSkips } from '../vocab'
-import { WORKING, actorMeta, boardWho, fmtCredits, fmtWhen, leanOf, localOnly, nodeLabel, outsidePushes, runnerBlind, sessionOf, titleOf, waitsOnMe } from './format'
+import { WORKING, actorMeta, boardWho, fmtCredits, fmtWhen, leanOf, localOnly, nodeLabel, nodeWait, outsidePushes, runnerBlind, sessionOf, titleOf, waitsOnMe } from './format'
 import { useChangeCount, useTween } from './hooks'
 import { waitCount } from './next'
 import { NOT_LEAN, pickedRun, runLean, type RunFilter } from './picker'
@@ -160,7 +160,7 @@ function LeanKpi({ board }: { board: ReqBoard }) {
   const step = at ?? next
   const over = !step && board.nodes.some((n) => n.rounds.length > 0)
   const said = leanProgress({ ...ln, next: step ? { id: step.stage, label: step.title, n: step.n } : null, stage: null, stage_state: at ? 'started' : null })
-  const seg = (i: number) => (i < ln.done_n ? 'is-pass' : i < through || over ? 'is-skip' : !blind && step && i === through ? (at ? 'is-run' : 'is-next') : '')
+  const seg = (i: number) => (i < ln.done_n ? 'is-pass' : i < through || over ? 'is-skip' : !blind && step && i === through ? (at ? litSeg(at, board) : 'is-next') : '')
   return (
     <div className="kt-kpi kt-kpi-gates br-kpi-lean" aria-label={`AI-DLC Lean：${blind ? '运行机还读不到 Lean 的记录' : said}`}>
       <div className="kt-kpi-label">AI-DLC Lean</div>
@@ -186,6 +186,13 @@ function LeanKpi({ board }: { board: ReqBoard }) {
   )
 }
 
+/** The cell of the box the way is at, in its box's colour: at work blue, waiting for you magenta, for anyone else the
+ * calm blue that says whom. */
+function litSeg(n: StageNode, b: ReqBoard): string {
+  if (n.status !== 'awaiting_approval') return 'is-run'
+  return nodeWait(n, b.runs.find((r) => r.key === n.run)) === 'you' ? 'is-wait' : 'is-other'
+}
+
 /** The AI-DLC Lean card of one run: the Lean stages it did (a unit's stage once), the one it is on, else where it is. */
 function RunLeanKpi({ board, run }: { board: ReqBoard; run: Run }) {
   const l = runLean(board)
@@ -200,7 +207,7 @@ function RunLeanKpi({ board, run }: { board: ReqBoard; run: Run }) {
         <span className="kt-kpi-of">做完{l.skipped ? ` · 跳过 ${l.skipped}` : ''}{l.at ? ` · 在做：${l.at.title}` : ''}</span>
       </div>
       <div className="kt-segs" aria-hidden="true">
-        {Array.from({ length: l.total }, (_, i) => <i key={i} className={i < l.done ? 'is-pass' : i < lit ? 'is-skip' : l.at && i === lit ? (l.at.status === 'awaiting_approval' ? 'is-wait' : 'is-run') : ''} />)}
+        {Array.from({ length: l.total }, (_, i) => <i key={i} className={i < l.done ? 'is-pass' : i < lit ? 'is-skip' : l.at && i === lit ? litSeg(l.at, board) : ''} />)}
       </div>
       <div className="kt-kpi-note br-lean-next">
         {l.at ? runStages(board) : run.now.doing}

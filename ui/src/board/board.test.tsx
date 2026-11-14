@@ -1028,7 +1028,7 @@ describe('需求看板 · 轮到谁、做什么', () => {
     expect(lean.querySelectorAll('.kt-segs i')).toHaveLength(11)
     expect(lean.querySelectorAll('.kt-segs .is-pass')).toHaveLength(4)
     expect(lean.querySelectorAll('.kt-segs .is-skip')).toHaveLength(6)
-    expect(lean.querySelectorAll('.kt-segs .is-run')).toHaveLength(1)
+    expect(lean.querySelectorAll('.kt-segs .is-wait')).toHaveLength(1)        // it waits on you: magenta, as its box
     expect(within(lean).getByTestId('br-lean-whole')).toHaveTextContent('构思整段不需要')
     expect(lean).not.toHaveTextContent('10/11')
   })
