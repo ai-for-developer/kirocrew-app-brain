@@ -177,6 +177,28 @@ describe('设置', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('work_root 必须在 ~/workplace 或 ~/workspace 下面（400）')
   })
 
+  test('把引擎换成 kas asks first: it changes KiroCrew for every project (UI-17)', async () => {
+    const user = userEvent.setup()
+    const engine = { level: 'WARN' as const, text: 'KiroCrew 引擎是 kiro，不是 kas', todo: '点「把引擎换成 kas」：Lean 的拦截只在 kas 上测过。KiroCrew 可能要重开才生效', fix: 'engine' as const, repo: null, raw: '' }
+    installFixtureRoutes({
+      [`POST ${API}/crew/fix`]: () => ({ ok: true, text: '引擎设成了 kas。KiroCrew 可能要重开才生效。', rows: [{ ...engine, level: 'OK', text: 'KiroCrew 引擎：kas', todo: '', fix: null }] }),
+    })
+    const status = fx.status()
+    render(<SettingsView {...props({ status: { ...status, crew: { ...status.crew, rows: [engine], fix: { agent: false, engine: true } } } })} />)
+    const crew = await screen.findByRole('region', { name: 'KiroCrew' })
+    await user.click(await within(crew).findByRole('button', { name: '把引擎换成 kas' }))
+    const ask = within(crew).getByTestId('engine-confirm')
+    expect(ask).toHaveTextContent('这会改 KiroCrew 的全局设置：以后所有项目、所有会话都用 kas 引擎')
+    expect(apiCalls.filter((c) => c.method === 'POST')).toEqual([])                      // nothing sent yet
+    await user.click(within(ask).getByRole('button', { name: '先不换' }))
+    expect(within(crew).queryByTestId('engine-confirm')).toBeNull()
+    expect(apiCalls.filter((c) => c.method === 'POST')).toEqual([])
+    await user.click(within(crew).getByRole('button', { name: '把引擎换成 kas' }))
+    await user.click(within(crew).getByRole('button', { name: '换成 kas' }))
+    expect(await within(crew).findByText('引擎设成了 kas。KiroCrew 可能要重开才生效。')).toBeInTheDocument()
+    expect(apiCalls.filter((c) => c.method === 'POST')).toEqual([{ method: 'POST', path: `${API}/crew/fix`, body: { what: 'engine' } }])
+  })
+
   test('the status: brain-kit and its modules, each repo, who I am (a token is only 有/没有), KiroCrew’s checks with a fix', async () => {
     const user = userEvent.setup()
     installFixtureRoutes({ [`POST ${API}/crew/fix`]: () => ({ ok: true, text: '给 brain-dev 的设置补上了 Lean 的拦截：调用工具前。别的都没动；改之前的那份留作备份：brain-dev.json.bak-20261110-091500。新开的会话才会用上。', rows: fx.crew().rows.slice(0, 2) }) })
