@@ -242,6 +242,64 @@ def test_start_makes_a_worktree_runs_brain_start_and_opens_brain_dev_there(tmp_p
     assert again["slot"] == out["slot"]  # a live session is reused, not opened twice
 
 
+def test_reopen_opens_a_new_session_keeps_the_old_one_and_is_safe_to_click_twice(tmp_path, home):
+    """E2E-7, E2E-12: 打开会话 hands the live session back, so a session KiroCrew left stuck (busy for good after an
+    interrupted turn) could only be deleted. 重开一个会话 opens a new one in the worktree; the old one is stopped, not
+    deleted (its record stays readable); the same click again (a double click, a second tab) gets that new one."""
+    repo = make_project(tmp_path)
+    install_brain_dev(home)
+    gw = FakeGateway()
+    gw.templates = {"brain-dev-crew"}
+    svc = make_service(tmp_path, [repo], gw=gw)
+
+    async def go():
+        await svc.start()
+        try:
+            out = await svc.intake_start(dict(body(tmp_path, business="mask"), paths=[], open_session=True, trust=True))
+            await svc.sessions.poll()                       # its first turn never ends: busy, as a stuck one is
+            same = await svc.open_session("r1", out["key"])
+            first, second = await asyncio.gather(svc.reopen_session("r1", out["key"], out["slot"]),
+                                                 svc.reopen_session("r1", out["key"], out["slot"]))
+            third = await svc.reopen_session("r1", out["key"], out["slot"])
+            detail = await svc.requirement("r1", out["key"])
+            return out, same, first, second, third, detail
+        finally:
+            await svc.stop()
+
+    out, same, first, second, third, detail = run(go())
+    old = out["slot"]
+    assert same["slot"] == old                                            # 打开会话: the live one, as before
+    new = [r for r in (first, second) if r["reopened"]]
+    assert len(new) == 1 and new[0]["slot"] != old and new[0]["url"] == "/chat?sid=%s" % new[0]["slot"]
+    assert {first["slot"], second["slot"], third["slot"]} == {new[0]["slot"]} and not third["reopened"]
+    assert ("stop", old) in gw.calls and old in gw.slot_rows             # stopped, not deleted
+    assert len([c for c in gw.calls if c[0] == "slot"]) == 2
+    assert [s["slot"] for s in detail["sessions"]] == [old, new[0]["slot"]]
+    assert [c for c in gw.calls if c[0] == "agent"][-1] == ("agent", "brain-dev-crew", "template")
+    kick = gw.msgs[new[0]["slot"]][0]["content"]
+    assert "PAY-1" in kick and "重开" in kick and "approve" not in kick.lower()
+    assert gw.slot_rows[new[0]["slot"]]["trust"]
+    assert any(i.get("label") == "重开了本机会话" for i in detail["timeline"]["items"]), detail["timeline"]["items"]
+
+
+def test_reopen_is_only_for_a_requirement_in_local_development_here(tmp_path, home):
+    repo = make_project(tmp_path)
+    install_brain_dev(home)
+    svc = make_service(tmp_path, [repo])
+
+    async def go():
+        await svc.start()
+        try:
+            with pytest.raises(AppError) as nothing:
+                await svc.reopen_session("r1", "PAY-9", None)
+            return nothing.value
+        finally:
+            await svc.stop()
+
+    nothing = run(go())
+    assert nothing.status == 404
+
+
 def test_a_repo_agent_with_the_crew_agents_name_keeps_the_session_closed(tmp_path, home):
     """E2E-1: KiroCrew prefers a project's agent of the same name, and Lean's hooks would not run in it."""
     repo = make_project(tmp_path)
