@@ -193,10 +193,11 @@ describe('需求看板', () => {
     expect(stageBox(graph, 'requirements').querySelector('.kt-node-sub')).toHaveTextContent(/^✓ 本机 · \d+:\d\d$/)
     expect(said(stageBox(graph, 'requirements').querySelectorAll('.kt-node-badge'))).toEqual(['✓ 你批了'])
     expect(stageBox(graph, 'build-and-test').querySelector('.kt-node-sub')).toHaveTextContent(/^等代码生成$/)
-    // the approval asked of you: one chip under its box; it brings the step strip, where the line to type is
+    // the approval asked of you: one chip under its box (and 看文档, the plan it asks for); it brings the step strip,
+    // where the line to type is
     const scroll = vi.mocked(HTMLElement.prototype.scrollIntoView)
     scroll.mockClear()
-    expect(said(within(graph).getAllByTestId('kt-gate-pill'))).toEqual(['等你批 · 代码生成计划'])
+    expect(said(within(graph).getAllByTestId('kt-gate-pill'))).toEqual(['等你批 · 代码生成计划', '看文档'])
     fireEvent.click(within(graph).getByRole('button', { name: '代码生成：等你批 · 代码生成计划' }))
     expect(scroll.mock.contexts).toContain(screen.getByTestId('br-next'))
     expect(plan).toHaveAttribute('aria-pressed', 'true')

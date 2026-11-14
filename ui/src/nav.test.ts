@@ -77,6 +77,15 @@ describe('nav: the URL of every view', () => {
     expect(parseView('?view=board&repo=r1&key=PAY-2&from=evil&focus=%3Cb%3E&replay=yes')).toEqual(bare)
   })
 
+  test('需求看板’s 产出 drawer: a stage, a round and a file of its own, else left out', () => {
+    const v: View = { kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'code-generation/api', round: 2, file: 'services/api/notify.py' } }
+    expect(parseView(searchOf(v))).toEqual(v)
+    const bad = parseView('?view=board&repo=r1&key=PAY-9&out=release&round=0&file=../etc/passwd')
+    expect(bad).toEqual({ kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'release' } })
+    for (const file of ['/etc/passwd', 'a//b', 'a\\b', './x']) expect(parseView(`?view=board&repo=r1&key=PAY-9&out=release&file=${encodeURIComponent(file)}`)).toEqual(bad)
+    expect(parseView('?view=board&repo=r1&key=PAY-9&out=Release%3Cx%3E&round=2')).toEqual({ kind: 'board', repo: 'r1', key: 'PAY-9' })
+  })
+
   test('an entry id says its Brain file by its side letter', () => {
     expect(fileOfEntry('P-PAY-2-1')).toBe('PRODUCT')
     expect(fileOfEntry('T-12')).toBe('TECH')

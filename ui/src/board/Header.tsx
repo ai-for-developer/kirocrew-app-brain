@@ -17,7 +17,7 @@ import { useChangeCount, useTween } from './hooks'
 import { waitCount } from './next'
 import { RoleIcon } from './RoleIcon'
 
-export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail, onSession, onStart, onParent, onFamily }: {
+export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail, onSession, onStart, onParent, onFamily, onOutputs }: {
   board: ReqBoard
   replaying: boolean
   follow: boolean
@@ -29,6 +29,8 @@ export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail,
   onStart?: () => void
   /** a small one: its big one's board */
   onParent?: (key: string) => void
+  /** 产出: the drawer of each step's files */
+  onOutputs?: () => void
   /** a big one: its family card */
   onFamily?: () => void
 }) {
@@ -71,6 +73,7 @@ export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail,
         {!replaying && onStart && r.state === 'claimed' && (
           <button type="button" className="kt-btn is-primary" onClick={onStart}>{DO_NAME.start} {r.key}</button>
         )}
+        {onOutputs && <button type="button" className="kt-btn" onClick={onOutputs} title="每一步每一轮交了什么：文档、代码和改动">产出</button>}
         <button type="button" className="kt-btn" aria-pressed={follow} onClick={onFollow} title="自动滚到正在动的那一环">跟随</button>
         {onDetail && <button type="button" className="kt-btn" onClick={onDetail}>需求详情 ↗</button>}
       </div>

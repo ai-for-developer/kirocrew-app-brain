@@ -30,6 +30,8 @@ export interface LanesProps {
   onNode: (id: string) => void
   /** in a replay: nothing to type, nothing to open */
   quiet?: boolean
+  /** 看产出: the drawer on that stage (a file of its last round: that file) */
+  onOutputs?: (node: string, round?: number, file?: string) => void
 }
 
 const isDone = (s: string) => s === 'done' || s === 'merged'
@@ -48,7 +50,7 @@ function askers(nodes: StageNode[]): Set<string> {
   return new Set(by.values())
 }
 
-export function Lanes({ board, focus, bumps, onNode, quiet = false }: LanesProps) {
+export function Lanes({ board, focus, bumps, onNode, quiet = false, onOutputs }: LanesProps) {
   const ax = axisOf(board, useServerNow())
   const runs = new Map<string, Run>(board.runs.map((r) => [r.key, r]))
   const lanes = laneNodes(board)
@@ -58,7 +60,7 @@ export function Lanes({ board, focus, bumps, onNode, quiet = false }: LanesProps
       <LanesAxis board={board} ax={ax} />
       {lanes.map((n) => (
         <LaneRow key={n.id} n={n} run={runs.get(n.run ?? '')} runs={runs} board={board} ax={ax} focused={focus === n.id} dim={!!focus && focus !== n.id}
-          bump={bumps[n.id] ?? 0} onNode={onNode} quiet={quiet} asks={asks.has(n.id)} />
+          bump={bumps[n.id] ?? 0} onNode={onNode} quiet={quiet} asks={asks.has(n.id)} onOutputs={onOutputs} />
       ))}
       {!lanes.length && <p className="kt-dim kt-lanes-out" data-testid="kt-lanes-empty">还没有哪一步开始：开工以后，每做一步，这里多一条泳道</p>}
     </section>
@@ -199,9 +201,10 @@ interface LaneProps {
   quiet: boolean
   /** this lane is the one that holds its open gate's line (askers) */
   asks?: boolean
+  onOutputs?: (node: string, round?: number, file?: string) => void
 }
 
-function LaneRow({ n, run, runs, board, ax, focused, dim, bump, onNode, quiet, asks }: LaneProps & { ax: Axis; focused: boolean; dim: boolean; bump: number; onNode: (id: string) => void }) {
+function LaneRow({ n, run, runs, board, ax, focused, dim, bump, onNode, quiet, asks, onOutputs }: LaneProps & { ax: Axis; focused: boolean; dim: boolean; bump: number; onNode: (id: string) => void }) {
   const meta = actorMeta(n.status)
   const wait = nodeWait(n, run)
   const title = n.unit ? `${n.title} · ${n.unit}` : n.title
@@ -214,7 +217,10 @@ function LaneRow({ n, run, runs, board, ax, focused, dim, bump, onNode, quiet, a
         <Situation n={n} run={run} runs={runs} board={board} quiet={quiet} asks={asks} />
         {n.rounds.length > 1 && <RoundsStrip n={n} runs={runs} board={board} />}
       </div>
-      <div className="kt-lane-work"><Work n={n} board={board} /></div>
+      <div className="kt-lane-work">
+        <Work n={n} board={board} onFile={onOutputs && ((file, round) => onOutputs(n.id, round, file))} />
+        {onOutputs && <button type="button" className="kt-out-btn" onClick={() => onOutputs(n.id)} data-testid="kt-lane-out">看产出 ›</button>}
+      </div>
       <LaneTrack n={n} title={title} board={board} ax={ax} />
     </article>
   )
@@ -333,7 +339,11 @@ function RoundsStrip({ n, runs, board }: Omit<LaneProps, 'run' | 'quiet'>) {
 
 /** What it changed: 构建测试 the checks of its last round; the others the files its commits touched, else the files it
  * declared, else that nothing is committed yet. */
-function Work({ n, board }: { n: StageNode; board: ReqBoard }) {
+/** The round of *n* a commit (*sha*, any length) is in. */
+const roundOf = (n: StageNode, sha: string): number | undefined =>
+  sha ? n.rounds.find((r) => r.commits.some((c) => c.startsWith(sha) || sha.startsWith(c)))?.n : undefined
+
+function Work({ n, board, onFile }: { n: StageNode; board: ReqBoard; onFile?: (file: string, round?: number) => void }) {
   const commits = board.belt.filter((x) => x.node === n.id && x.kind !== 'merge')
   const checked = [...n.rounds].reverse().find((r) => r.outcome.checks.length)?.outcome.checks ?? []
   const outputs = [...n.rounds].reverse().find((r) => r.outputs.length)?.outputs ?? []
@@ -347,7 +357,7 @@ function Work({ n, board }: { n: StageNode; board: ReqBoard }) {
           {checked.map((c) => <span key={c.name} className={`kt-owned-case is-${c.ok ? 'pass' : 'fail'}`}>{c.name} {c.ok ? '✓' : '✕'}{c.secs !== null ? ` ${Math.round(c.secs)}s` : ''}</span>)}
         </div>
       )}
-      {commits.length > 0 ? <Changes commits={commits} /> : outputs.length > 0 && (
+      {commits.length > 0 ? <Changes commits={commits} onFile={onFile && ((file, sha) => onFile(file, roundOf(n, sha)))} /> : outputs.length > 0 && (
         <div className="br-changes" data-testid="kt-outputs">
           <div className="kt-files-head"><span>交的文件</span><span className="kt-dim">{outputs.length} 个 · 还没提交</span></div>
           <ul className="kt-commits">
@@ -381,8 +391,12 @@ export function filesOf(commits: BeltItem[]): FileChange[] {
   return [...by.values()].sort((x, y) => y.added + y.removed - (x.added + x.removed))
 }
 
+/** The newest of *commits* that changed *path*. */
+const lastTouch = (commits: BeltItem[], path: string): string =>
+  [...commits].reverse().find((c) => c.changes?.some((x) => x.path === path))?.sha ?? ''
+
 /** 改动 (the sample's change block): the files and their +/− bars when the backend reads them, and the commits. */
-function Changes({ commits }: { commits: BeltItem[] }) {
+function Changes({ commits, onFile }: { commits: BeltItem[]; onFile?: (file: string, sha: string) => void }) {
   const files = filesOf(commits)
   const added = files.reduce((n, f) => n + f.added, 0)
   const removed = files.reduce((n, f) => n + f.removed, 0)
@@ -409,10 +423,17 @@ function Changes({ commits }: { commits: BeltItem[] }) {
             <li key={f.path} title={`${f.path}  +${f.added} −${f.removed}`}>
               <span className={`kt-file-st is-${f.status}`}>{f.status}</span>
               {/* a narrow lane cuts the directory, never the file's own name */}
-              <span className="kt-file-path kt-mono is-split">
-                <span className="kt-file-dir">{f.path.slice(0, f.path.lastIndexOf('/') + 1)}</span>
-                <span className="kt-file-base">{f.path.slice(f.path.lastIndexOf('/') + 1)}</span>
-              </span>
+              {onFile ? (
+                <button type="button" className="kt-file-path kt-mono is-split kt-file-open" onClick={() => onFile(f.path, lastTouch(commits, f.path))} title={`看 ${f.path} 这一轮的样子`}>
+                  <span className="kt-file-dir">{f.path.slice(0, f.path.lastIndexOf('/') + 1)}</span>
+                  <span className="kt-file-base">{f.path.slice(f.path.lastIndexOf('/') + 1)}</span>
+                </button>
+              ) : (
+                <span className="kt-file-path kt-mono is-split">
+                  <span className="kt-file-dir">{f.path.slice(0, f.path.lastIndexOf('/') + 1)}</span>
+                  <span className="kt-file-base">{f.path.slice(f.path.lastIndexOf('/') + 1)}</span>
+                </span>
+              )}
               <span className="kt-file-bar" aria-hidden="true">
                 <i className="kt-bar-add" style={{ width: `${(f.added / scale) * 100}%` }} />
                 <i className="kt-bar-del" style={{ width: `${(f.removed / scale) * 100}%` }} />

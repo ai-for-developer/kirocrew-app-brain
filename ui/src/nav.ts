@@ -12,6 +12,8 @@
  *     &focus=accept|checks|lanes|feed             …scrolled to 验收, the check wall, the lanes or the events
  *     &from=overview|item|todo                    …opened from that view: the crumb says the way back
  *     &at=<epoch s>                               …its 回放 stands at that moment (a decision, a part of 价值流)
+ *     &out=<node>&round=<n>&file=<path>           …its 产出 drawer open on that stage (code-generation/api), that
+ *                                                 round (default its latest) and that file (default its first)
  *   ?view=new&repo=<id>                           开需求
  *     &key=<KEY>&title=<title>                    …开工 of a requirement claimed already: its key fixed, its title filled
  *   ?view=brain&repo=<id>&file=<FILE>&id=<entry>&reflect=<KEY>   Brain: that file, that entry picked out, that
@@ -38,7 +40,11 @@ export type ItemEntry = { repo: string; key: string; from?: ItemFrom
   decision?: string }
 export type BoardEntry = { repo: string; key: string; replay?: boolean; focus?: BoardFocus; from?: BoardFrom
   /** a moment of it (epoch s): 需求详情's 价值流 and 决定 open the board there (?at=) */
-  at?: number }
+  at?: number
+  /** the 产出 drawer, open (?out=&round=&file=) */
+  out?: OutAt }
+/** Where the 产出 drawer stands: a node, one of its rounds (none: the latest), one of its files (none: the first). */
+export type OutAt = { node: string; round?: number; file?: string }
 /** 开需求; with key (and title): 开工 of a requirement claimed already, its key fixed (?view=new&repo=&key=&title=) */
 export type NewEntry = { repo?: string; key?: string; title?: string }
 export type BrainEntryRef = { repo?: string; file?: BrainFile; id?: string; reflect?: string }
@@ -61,6 +67,11 @@ export const KEY_RE = /^[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}$/
 export const ENTRY_RE = /^[A-Z]-(?:[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}-[1-9][0-9]{0,3}|[0-9]{1,5})$/
 /** an absolute path (or ~/…) without control characters: what 导入仓库 may be opened with */
 export const PATH_RE = /^(?:\/|~\/)[^\u0000-\u001f\u007f]{0,1023}$/
+/** a stage's node: requirements, code-generation/api */
+export const NODE_RE = /^[a-z][a-z-]{0,39}(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$/
+/** a repo-relative file path as the backend accepts one (outputs.safe_path) */
+export const isRelPath = (p: string): boolean => p.length > 0 && p.length <= 400 && !p.startsWith('/') && !/[\\\u0000-\u001f\u007f]/.test(p)
+  && p.split('/').every((x) => x !== '' && x !== '.' && x !== '..')
 /** a decision of decisions.md: D-<n> */
 export const DECISION_RE = /^D-[0-9]{1,4}$/
 const STATES = Object.keys(STATE_LABEL) as ReqState[]
@@ -99,6 +110,14 @@ export function parseView(search: string): View {
     if (BOARD_FROM.includes(from)) v.from = from as BoardFrom
     const at = Number(q.get('at') ?? '')
     if (Number.isInteger(at) && at > 1e9 && at < 1e10) v.at = at
+    const out = q.get('out') ?? ''
+    if (NODE_RE.test(out)) {
+      v.out = { node: out }
+      const round = Number(q.get('round') ?? '')
+      if (Number.isInteger(round) && round >= 1 && round <= 999) v.out.round = round
+      const file = q.get('file') ?? ''
+      if (isRelPath(file)) v.out.file = file
+    }
     return v
   }
   if (view === 'new') {
@@ -156,6 +175,11 @@ export function searchOf(v: View): string {
       put('focus', v.focus)
       put('from', v.from)
       if (v.at) q.set('at', String(v.at))
+      if (v.out && NODE_RE.test(v.out.node)) {
+        q.set('out', v.out.node)
+        if (v.out.round) q.set('round', String(v.out.round))
+        put('file', v.out.file && isRelPath(v.out.file) ? v.out.file : undefined)
+      }
       break
     case 'new':
       q.set('view', 'new')

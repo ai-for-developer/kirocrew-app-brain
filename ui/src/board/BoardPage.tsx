@@ -10,7 +10,9 @@
  * cells flip, changed lanes and new commits get a one-time highlight. The first snapshot is history and never animates.
  *
  * Click a box, a lane, a commit, a cell, a stage's dot or an event's chip to look at that stage only, everywhere on the
- * page (what has no stage looks at nothing); 跟随 scrolls to the stage that moved last; Esc lets go. 回放
+ * page (what has no stage looks at nothing); 跟随 scrolls to the stage that moved last; Esc lets go. 看产出 (a box's
+ * card, a lane, a gate's 看文档, the top bar's 产出) opens the 产出 drawer (Outputs.tsx) on that stage: its place is in
+ * the address (?out=), opened, moved and closed in place of the current history entry; Esc closes it first. 回放
  * (Replay.tsx) plays the requirement again from the same snapshot (timeline.ts); while it plays nothing can be done.
  * Reduced motion: nothing flies or pulses, states still change.
  *
@@ -22,7 +24,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppApi, useNavigate } from '@kirocrew/app-sdk'
-import { VIEW_NAME, type BoardEntry } from '../nav'
+import { VIEW_NAME, type BoardEntry, type OutAt } from '../nav'
 import type { ReqBoard, WaitDo } from '../types'
 import { LoadState } from '../ui'
 import { FamilyPanel, useFamily } from '../views/Family'
@@ -39,10 +41,11 @@ import { EventFeed } from './EventFeed'
 import { BOARD_EXTRA_CSS } from './extra'
 import { PERSON, WORKING, boardWho, sessionOf } from './format'
 import { NextStep } from './NextStep'
+import { OutputsDrawer } from './Outputs'
 import { openHere, reviewNext } from './next'
 import { Intro, Kpis, TopBar } from './Header'
 import { ClockContext, useReducedMotion, type SnapshotClock } from './hooks'
-import { Lanes } from './Lanes'
+import { Lanes, laneNodes } from './Lanes'
 import { stageKey, stageLayout, stageShape } from './layout'
 import { ReplayBar, useReplay } from './Replay'
 import { RoleIcon } from './RoleIcon'
@@ -78,6 +81,13 @@ export function mostActive(b: ReqBoard): string | null {
   const live = b.nodes.filter((n) => WORKING.has(n.status) || n.status === 'awaiting_approval')
   live.sort((x, y) => (y.since ?? 0) - (x.since ?? 0))
   return live[0]?.id ?? null
+}
+
+/** The stage the top bar's 产出 opens on: the one at work or waiting, else the last one a run did. */
+export function firstOutputs(b: ReqBoard): string {
+  const lanes = laneNodes(b)
+  const live = mostActive(b)
+  return lanes.find((n) => n.id === live)?.id ?? lanes[lanes.length - 1]?.id ?? b.nodes[0].id
 }
 
 /** The stage looked at, for the crumb and the focus bar. */
@@ -182,16 +192,29 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
   const clock = rp.clock ?? liveClock
 
   const onNode = useCallback((id: string) => setFocus((f) => (f === id ? null : id)), [])
+  // the drawer's place is the address's: opened, moved and closed in place of the current entry (后退 leaves the board)
+  const entryRef = useRef(entry)
+  entryRef.current = entry
+  const toOutputs = useCallback((at: OutAt | null) => {
+    const { out: _o, ...rest } = entryRef.current
+    replace({ kind: 'board', ...rest, ...(at ? { out: at } : {}) })
+  }, [replace])
+  const onOutputs = useCallback((node: string, round?: number, file?: string) =>
+    toOutputs({ node, ...(round ? { round } : {}), ...(file ? { file } : {}) }), [toOutputs])
   const followKey = follow && board ? mostActive(board) : null
   useEffect(() => {
     if (!followKey) return
     rootRef.current?.querySelector(`[data-testid="kt-lane"][data-node="${followKey}"]`)?.scrollIntoView?.({ block: 'nearest', behavior: reducedMotion ? 'auto' : 'smooth' })
   }, [followKey, reducedMotion])
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setFocus(null)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (entryRef.current.out) toOutputs(null)
+      else setFocus(null)
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [toOutputs])
   const toDetail = () => go({ kind: 'item', repo: entry.repo, key: entry.key, from: 'board' })
   // the crumb's first step and ← 返回 name the view it was opened from (the way back)
   const fromName = VIEW_NAME[entry.from ?? 'overview']
@@ -262,7 +285,8 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
         {board && lay && (
           <>
             <TopBar board={board} replaying={rp.on} follow={follow} onReplay={() => rp.start()} onFollow={() => setFollow((v) => !v)} onDetail={toDetail}
-              onSession={(url) => navigate(url)} onStart={onStart} onParent={toBoard} onFamily={toFamily} />
+              onSession={(url) => navigate(url)} onStart={onStart} onParent={toBoard} onFamily={toFamily}
+              onOutputs={rp.on || !laneNodes(board).length ? undefined : () => onOutputs(firstOutputs(board))} />
             <ReplayBar rp={rp} />
             {problem && (
               <div className="kt-banner br-problem" role="status" data-testid="br-board-problem">
@@ -286,12 +310,13 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
                   <div className="kt-col">
                     <div ref={graphBox}>
                       <StageGraph key={`${entry.repo}/${entry.key}${rp.on ? ':replay' : ''}`} board={board} lay={lay} focus={focus} onNode={onNode} flashes={fx.flashes}
-                        reducedMotion={reducedMotion} feed={feed} quiet={quiet} onSession={(url) => navigate(url)} onAct={quiet ? undefined : onAct} />
+                        reducedMotion={reducedMotion} feed={feed} quiet={quiet} onSession={(url) => navigate(url)} onAct={quiet ? undefined : onAct}
+                        onOutputs={quiet ? undefined : onOutputs} />
                     </div>
                     {focus && <FocusBar board={board} focus={focus} onClear={() => setFocus(null)} />}
                     <Conveyor board={board} fresh={fx.belt} focus={focus} onNode={onNode} />
                     {(fam?.role === 'parent' || fam?.role === 'child') && famCard}
-                    <Lanes board={board} focus={focus} bumps={fx.bumps} onNode={onNode} quiet={quiet} />
+                    <Lanes board={board} focus={focus} bumps={fx.bumps} onNode={onNode} quiet={quiet} onOutputs={quiet ? undefined : onOutputs} />
                     {!acceptTop && <Accept board={board} onDetail={toDetail} quiet={quiet} />}
                   </div>
                   <aside className="kt-side" aria-label="检查、问题和事件">
@@ -308,6 +333,9 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
               </>
             )}
           </>
+        )}
+        {board && entry.out && !rp.on && (
+          <OutputsDrawer board={board} repo={entry.repo} reqKey={entry.key} at={entry.out} onAt={toOutputs} onClose={() => toOutputs(null)} />
         )}
         <div className="kt-sr" aria-live="polite" data-testid="kt-announce">{fx.announce}</div>
       </ClockContext.Provider>
