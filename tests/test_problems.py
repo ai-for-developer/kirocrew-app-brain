@@ -160,6 +160,46 @@ DOCTOR = [
     ("OK", "KiroCrew brain-dev uses your own description, prompt (`brain crew-agent --reset` takes brain-kit's)",
      "brain-dev 用的是你自己的说明、提示词", None),
     ("FAIL", "~/.kiro/agents/brain-dev.json is not valid JSON", "brain-dev 的设置读不懂：文件格式坏了", None),
+    # brain-kit with the crew agent (ux-k2): the same rows under its name, and the rows that came with it
+    ("WARN", "KiroCrew: ~/.kiro/agents/brain-dev-crew.json missing; KiroCrew sessions would run without Lean's hooks (run "
+     "`brain crew-agent`)", "KiroCrew 里还没有 brain-dev-crew", "agent"),
+    ("OK", "KiroCrew agent brain-dev-crew carries Lean's 3 hooks", "KiroCrew 的 brain-dev-crew 设置里 Lean 的拦截都在", None),
+    ("FAIL", "KiroCrew agent brain-dev-crew lacks Lean's preToolUse hook(s) as Lean needs them (run `brain crew-agent "
+     "--force`)", "brain-dev-crew 的设置缺 Lean 的拦截：调用工具前", "agent"),
+    ("WARN", "KiroCrew agent brain-dev-crew has no model (`brain crew-agent --force` adds brain-kit's)",
+     "brain-dev-crew 的设置里没有模型", None),
+    ("OK", "KiroCrew agent brain-dev-crew uses your own prompt (`brain crew-agent --reset` takes brain-kit's)",
+     "brain-dev-crew 用的是你自己的提示词", None),
+    ("FAIL", "~/.kiro/agents/brain-dev-crew.json is not valid JSON", "brain-dev-crew 的设置读不懂：文件格式坏了", None),
+    ("FAIL", "KiroCrew: .kiro/agents/brain-dev-crew.md is also named brain-dev-crew: on KiroCrew's kiro-cli engine it runs "
+     "instead of ~/.kiro/agents/brain-dev-crew.json, without Lean's hooks; rename it or remove it",
+     "仓库里也有一个叫 brain-dev-crew 的 agent", None),
+    ("WARN", "KiroCrew: a session on agent brain-dev runs .kiro/agents/brain-dev.md, not ~/.kiro/agents/brain-dev.json, on "
+     "KiroCrew's kiro-cli engine: no Lean hooks. Open KiroCrew sessions with brain-dev-crew (the Brain app does); remove "
+     "~/.kiro/agents/brain-dev.json once nothing picks brain-dev", "这个仓库里叫 brain-dev 的会话没有 Lean 的拦截", None),
+    ("WARN", "Kiro rewrites ~/.kiro/agents/*.json each time kiro-cli starts (chat.enableAutoAgentUpgrade is on) and keeps "
+     "the old file as .bak; brain-kit's checks read the rewritten one. To keep your agent files as you wrote them: "
+     "`kiro-cli settings chat.enableAutoAgentUpgrade false`", "Kiro 每次启动都会改写 ~/.kiro/agents 里的 agent 设置", None),
+    ("OK", "brain on PATH: ~/.local/bin/brain", "终端里能用 brain 命令", None),
+    ("WARN", "brain is not on PATH (the docs and messages say `brain ...`): `/opt/brain-kit/bin/brain link` puts it in "
+     "~/.local/bin", "终端里还用不了 brain 命令", None),
+    ("WARN", "material store ~/.brain/intake is not a git clone of brain-intake: a run with documents (--doc, --package) "
+     "cannot be handed to the team runner (the bridge refuses it). Clone it and point brain at it: `git clone <your "
+     "team's brain-intake URL> ~/brain-intake && git config --global brain.intake ~/brain-intake`",
+     "材料库还不是 brain-intake 的克隆：带文档的需求交不出去", None),
+    ("WARN", "material store ~/brain-intake has no origin: its packages stay on this machine and the bridge refuses a "
+     "hand-over that uses them: `git -C /home/a/brain-intake remote add origin <your team's brain-intake URL>`",
+     "材料库没有远端：带文档的需求交不出去", None),
+    ("OK", "material store ~/brain-intake is a clone of brain-intake with an origin: brain handoff publishes packages "
+     "there", "材料库是 brain-intake 的克隆：交接时会把材料发布上去", None),
+    ("OK", "AI-DLC Lean 0.3.1 (pinned 0.3)", "AI-DLC Lean 0.3.1（仓库定的是 0.3）", None),
+    ("OK", "AI-DLC Lean 0.3.1 (not pinned)", "AI-DLC Lean 0.3.1", None),
+    ("FAIL", "AI-DLC Lean 0.2.0 installed, pinned 0.3 (.brain/kit.json pins): `brain install --upgrade` writes this "
+     "brain-kit's Lean 0.3.1 on a branch from main for an MR", "装的 AI-DLC Lean 是 0.2.0，仓库定的是 0.3", "kit"),
+    ("FAIL", "AI-DLC Lean 0.2.0 installed, pinned 0.4 (.brain/kit.json pins): `brain install --upgrade --lean <AI-DLC Lean "
+     "0.4 checkout>` writes it on a branch from main for an MR", "装的 AI-DLC Lean 是 0.2.0，仓库定的是 0.4", None),
+    ("FAIL", "AI-DLC Lean 0.2.0 installed, pinned 0.4 (.brain/kit.json pins): install that one (`brain install --lean "
+     "<AI-DLC Lean 0.4 checkout>`) and commit it", "装的 AI-DLC Lean 是 0.2.0，仓库定的是 0.4", None),
     ("OK", "KiroCrew engine: kas", "KiroCrew 引擎：kas", None),
     ("OK", "KiroCrew engine: default (KAS)", "KiroCrew 引擎：默认（kas）", None),
     ("WARN", "KiroCrew engine: kiro (Lean via agent hooks is tested on kas / v3 only)", "KiroCrew 引擎是 kiro，不是 kas",
