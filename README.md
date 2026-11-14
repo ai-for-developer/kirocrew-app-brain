@@ -88,7 +88,11 @@ true: the split), `POST /requirements/{repo}/{key}/claim {release?}` (认领, fi
 /requirements/{repo}/{key}/start {on?, open_session?, trust?}` (开工 on a small one: `brain start --key`, `--on` one
 unmerged dependency's branch, then its brain-dev session) and `POST /requirements/{repo}/{key}/sync` (`brain sync`);
 every row of `GET /overview` (and 需求详情 / 需求看板's) carries `family` (`ReqFamily`: its role, state, owner, unit,
-dependencies and what blocks it, a big one's small ones and roll-up, and what this person can do on it now). Every
+dependencies and what blocks it, a big one's small ones and roll-up, and what this person can do on it now). 交接给运行机:
+`POST /requirements/{repo}/{key}/handoff` runs `brain handoff` in the requirement's worktree and answers `HandoffResult`
+(how far it got, why, 做什么, the MR, its warnings, brain-kit's own words: `backend/core/handover.py`); it refuses in
+words before anything runs for a repo done only on this machine, someone else's run, a busy session, or a hand-over
+already taken, and two clicks at once get one answer. Every
 check row (`CheckRow`) is said in plain short Chinese with a 做什么 line, its fix and brain-kit's own words (`raw`,
 shown folded): `backend/core/problems.py`.
 
