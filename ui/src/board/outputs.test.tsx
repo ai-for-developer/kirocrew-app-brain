@@ -2,12 +2,14 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { describe, expect, test, vi } from 'vitest'
 import { fx } from '../test/data'
 import { API, installFixtureRoutes } from '../test/routes'
-import { pay16, pay9 } from '../test/stageBoards'
+import { pay16, pay9, pay9ci } from '../test/stageBoards'
 import { apiCalls } from '../test/stubs/app-sdk'
 import type { BoardEntry } from '../nav'
 import type { FileView, NodeOutput, NodeTurns, OutFile, ReqBoard, TurnView } from '../types'
 import type { ViewProps } from '../views/props'
 import { BoardPage } from './BoardPage'
+import { roundWords } from './format'
+import { replayAt } from './timeline'
 
 const PAY9: BoardEntry = { repo: 'r1', key: 'PAY-9' }
 const RELEASE = 'aidlc-docs/261111-refund-sms/operations/release.md'
@@ -226,5 +228,66 @@ describe('产出', () => {
     expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'release', round: 1, tab: 'reply' } })
     fireEvent.click(screen.getAllByTestId('out-step')[1])
     expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'application-design', tab: 'reply' } })
+  })
+})
+
+describe('CI 没过: the MR’s pipelines read on this machine', () => {
+  const PAGE = 'https://gitlab.example.com/shop/shop-pay/-/pipelines/'
+  const strip = (id: string) => {
+    const lane = screen.getAllByTestId('kt-lane').find((l) => l.dataset.node === id) as HTMLElement
+    return within(within(lane).getByTestId('kt-rounds')).getAllByRole('listitem').map((li) => li.textContent ?? '')
+  }
+
+  test('the lanes say which pipeline each round was for, once', async () => {
+    renderBoard(PAY9, pay9ci)
+    await screen.findByTestId('kt-graph')
+    const rel = strip('release')
+    expect(rel[1]).toContain('↻ CI 没过 #1234')
+    expect(rel[2]).toContain('↻ CI 没过 #1240')
+    expect(rel[2]).not.toContain('#1234')          // its cause is round 2's end, said there
+    const bt = strip('build-and-test')
+    expect(bt[3]).toMatch(/^第 4 轮 CI 没过 #1234 以后 ✓ 检查全过/)
+    expect(bt[4]).toMatch(/^第 5 轮 CI 没过 #1240 以后 ✓ 检查全过/)
+    expect(bt.slice(0, 3).some((x) => x.includes('CI'))).toBe(false)
+  })
+
+  test('the drawer says why the round was done, links the pipeline, and the runner round’s card says it too', async () => {
+    renderBoard({ ...PAY9, out: { node: 'release', round: 3 } }, pay9ci)
+    const pane = await screen.findByTestId('out-pane')
+    expect(within(pane).getByTestId('out-rounds').textContent).toBe('第几轮第 1 轮退回第 2 轮CI 没过 #1234第 3 轮CI 没过 #1240第 4 轮等验收')
+    const cause = within(pane).getByTestId('out-cause')
+    expect(cause.textContent).toContain('↻ 这一轮是因为 CI 没过 #1234')
+    expect(within(cause).getByRole('link').getAttribute('href')).toBe(PAGE + '1234')
+    const banner = within(pane).getByTestId('out-banner')
+    expect(banner.textContent).toContain('↻ CI 没过 #1240：请批以后代码又改了')
+    expect(within(banner).getByRole('link').getAttribute('href')).toBe(PAGE + '1240')
+    expect(within(pane).getByTestId('out-scope').textContent).toContain('CI 没过 #1240，代码又改了（9f3c2a8「修好 CI：web 的类型检查」）')
+    fireEvent.click(within(pane).getAllByTestId('out-tab').find((t) => t.textContent === '接到的任务') as HTMLElement)
+    const card = await within(pane).findByTestId('out-whynot-cause')
+    expect(card.textContent).toMatch(/^这一轮的起因：CI 没过 #1234（MR 的流水线，\d\d:\d\d 没过）/)
+    expect(within(card).getByRole('link').getAttribute('href')).toBe(PAGE + '1234')
+  })
+
+  test('构建测试’s round after a CI fix says its cause', async () => {
+    renderBoard({ ...PAY9, out: { node: 'build-and-test', round: 4 } }, pay9ci)
+    const pane = await screen.findByTestId('out-pane')
+    expect(within(pane).getByTestId('out-cause').textContent).toContain('↻ 这一轮是因为 CI 没过 #1234')
+  })
+
+  test('not read here: the rounds say what they said before, and no cause', async () => {
+    renderBoard({ ...PAY9, out: { node: 'release', round: 3 } })
+    const pane = await screen.findByTestId('out-pane')
+    expect(within(pane).queryByTestId('out-cause')).toBeNull()
+    expect(within(pane).getByTestId('out-banner').textContent).toContain('↻ 请批以后代码又改了')
+    expect(strip('build-and-test').some((x) => x.includes('CI'))).toBe(false)
+  })
+
+  test('the replay says a round ended for CI in the same words', () => {
+    const b = pay9ci()
+    const rel = b.nodes.find((n) => n.id === 'release')!
+    const then = replayAt(b, (rel.rounds[1].ended as number) + 60)
+    const was = then.nodes.find((n) => n.id === 'release')!
+    expect(roundWords(was.rounds[1], was, then)).toBe(roundWords(rel.rounds[1], rel, b))
+    expect(roundWords(was.rounds[1], was, then)).toMatch(/^CI 没过 #1234，代码又改了/)
   })
 })

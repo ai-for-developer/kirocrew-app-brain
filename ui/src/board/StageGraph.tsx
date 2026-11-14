@@ -18,8 +18,8 @@ import { ExtLink } from '../ui'
 import { ACT, CHILD_STATE_NAME, DO_NAME, approvalName } from '../vocab'
 import type { Item } from './engine'
 import {
-  LIVE, ROUND_TONE, RUN_ICON, WORKING, actorMeta, brief, clip, clockAt, decider, fmtCredits, fmtHm, fmtSpan, gateVerb, gateWhat, localOnly, nodeWait,
-  openGate, otherWaits, roundWords, runShort, runnerBlind, sayWho, sessionOf, textWidth, waitsOnMe, whoOf, whoThen, wrap,
+  LIVE, ROUND_TONE, RUN_ICON, WORKING, actorMeta, brief, causeWords, clip, clockAt, decider, fmtCredits, fmtHm, fmtSpan, gateVerb, gateWhat, localOnly,
+  nodeWait, openGate, otherWaits, roundWords, runShort, runnerBlind, sayWho, sessionOf, textWidth, waitsOnMe, whoOf, whoThen, wrap,
 } from './format'
 import { GraphDefs, Halo, PersonCard, Scroller, Station, useHoverCard, useParticles, type FlashMap } from './GraphFrame'
 import { useServerNow } from './hooks'
@@ -668,7 +668,7 @@ function StageCard({ n, board, runs, onSession, onOutputs }: {
       {n.rounds.length > 0 && (
         <ol className="kt-ncard-rounds">
           {n.rounds.map((r) => {
-            const words = [runShort(runs.get(r.run), board), clockAt(r.started, board.at), roundWords(r, n, board)].filter(Boolean).join(' · ')
+            const words = [runShort(runs.get(r.run), board), clockAt(r.started, board.at), causeWords(r, n), roundWords(r, n, board)].filter(Boolean).join(' · ')
             return (
               <li key={r.n} className={`tone-${ROUND_TONE[r.outcome.kind]}`}>
                 {onOutputs ? (

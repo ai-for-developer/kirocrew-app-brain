@@ -2,7 +2,7 @@
  * One lane per stage a run did, in the order of the way (the sample team board's Lanes.tsx, a lane per node): the
  * stage, its state and who did it (本机, 运行机 第 1 次), what it hands in and in how many rounds, how long it took; what
  * it waits for (the line a person types) or what it handed in (✔ 交付: its own note, else how its round ended); its
- * rounds (第 1 轮 ✕ 产品退回 · D-2 → 第 2 轮 ↻ 请批以后代码又改了 …); what it changed (the sample's 改动 block: its
+ * rounds (第 1 轮 ✕ 产品退回 · D-2 → 第 2 轮 ↻ CI 没过 #1234，代码又改了 …); what it changed (the sample's 改动 block: its
  * commits and the files they touched) or, for 构建测试, the checks of its last round; and its time track.
  *
  * Every lane ends in a time track on one shared axis, the requirement's start → its last activity (or its merge): its
@@ -16,8 +16,8 @@ import type { ActorSpan, BeltItem, ReqBoard, Round, Run, StageNode } from '../ty
 import { TypeLine } from '../ui'
 import { ACT } from '../vocab'
 import {
-  ROUND_TONE, RUN_ICON, WORKING, actorMeta, boardWho, clip, clockAt, fmtAgo, fmtHm, fmtSpan, fmtWhen, nodeLabel, nodeWait, openGate, roundWords, runShort,
-  sessionOf, spanWho,
+  ROUND_TONE, RUN_ICON, WORKING, actorMeta, boardWho, causeWords, clip, clockAt, fmtAgo, fmtHm, fmtSpan, fmtWhen, nodeLabel, nodeWait, openGate,
+  roundWords, runShort, sessionOf, spanWho,
 } from './format'
 import { useServerNow } from './hooks'
 import { RoleIcon } from './RoleIcon'
@@ -318,7 +318,8 @@ const ROUND_GLYPH: Record<Round['outcome']['kind'], string> = {
   open: '⏳', done: '✓', approved: '✓', passed: '✓', sent_back: '✕', refused: '⚠', failed: '✕', superseded: '↻', skipped: '–',
 }
 
-/** Its rounds, oldest first: 第 1 轮 ✕ 产品退回（D-2）· 14:41 (who did each when more than one run did). */
+/** Its rounds, oldest first: 第 1 轮 ✕ 产品退回（D-2）· 14:41 (who did each when more than one run did). A round done
+ * because a pipeline failed says so first (CI 没过 #1234 以后), unless the round before already ends with it. */
 function RoundsStrip({ n, runs, board }: Omit<LaneProps, 'run' | 'quiet'>) {
   const many = new Set(n.rounds.map((r) => r.run)).size > 1
   return (
@@ -327,9 +328,11 @@ function RoundsStrip({ n, runs, board }: Omit<LaneProps, 'run' | 'quiet'>) {
         const words = roundWords(r, n, board)
         const who = runShort(runs.get(r.run), board)
         const at = clockAt(r.started, board.at)
+        const cause = causeWords(r, n)
         return (
-          <li key={r.n} className={`br-round tone-${ROUND_TONE[r.outcome.kind]}${i === n.rounds.length - 1 ? ' is-now' : ''}`} title={`第 ${r.n} 轮 · ${who} · ${at} 起 · ${words}`}>
-            <b>第 {r.n} 轮</b> {ROUND_GLYPH[r.outcome.kind]} {clip(words, 14)}{many ? ` · ${who}` : ''} · {at}
+          <li key={r.n} className={`br-round tone-${ROUND_TONE[r.outcome.kind]}${i === n.rounds.length - 1 ? ' is-now' : ''}`}
+            title={`第 ${r.n} 轮 · ${who} · ${at} 起 · ${cause ? `${cause} · ` : ''}${words}`}>
+            <b>第 {r.n} 轮</b>{cause && <span className="br-round-cause"> {cause}</span>} {ROUND_GLYPH[r.outcome.kind]} {clip(words, 14)}{many ? ` · ${who}` : ''} · {at}
           </li>
         )
       })}
