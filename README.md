@@ -344,19 +344,23 @@ The app runs as the same OS user as the agent sessions, and agents have a shell.
 - **产出 reads only what the fold names.** Both `/outputs/` routes are the owner's only (`kit.guarded`: 401 without a
   login, 403 for an app token or someone else) and read the board's own fold, the last one `GET /board` made (folded
   again only when older than 10 s), never a fold of their own. The query is checked before anything is read: a path
-  must be repo-relative (absolute, `..`, `.`, an empty part, a backslash or a control character is 400), a sha 40 hex,
-  a pin 64 hex. A `path` must be one of the requirement's files, a path its commits changed or one Lean recorded for
-  its rounds: any other is 404, whatever commit holds it. A `ref` or `base` must be one of the run branch's commits or
-  a first parent of one: any other is 404, never fetched. A file is read from a commit only (`mrdesc_view.tree_entry`
-  with literal pathspecs, then `committed_file`: a regular blob of at most 4 MB; a folder, a symlink or a submodule is
-  refused, on either side of a diff too). A diff is `git diff --no-ext-diff --no-textconv`, so an agent-written
-  `.gitattributes` cannot run a diff driver or a textconv. The one read outside a commit is a local round's document
-  waiting for approval: only at the stage table's document path, only for a sha256 a local round of that stage
-  recorded, each part of the path opened with `O_NOFOLLOW` under the worktree's real path, and only when the bytes
-  hash to that sha256 (else 409: 到会话里看). Lean's ledgers (`aidlc-docs/audit` and anything under it, wherever
-  `aidlc-docs` is) are never listed or read: they hold what people typed. Emails (release.md's approval table has git
-  emails) become brain-kit's pseudonyms (G-<6 hex>) before anything is sent, and the text goes through the scrubber.
-  `tests/test_outputs.py` and `tests/test_outputs_guard.py` prove each of these on real git repositories.
+  must be repo-relative (absolute, `..`, `.`, an empty part, a backslash or a control character is 400), a sha exactly
+  40 hex (a trailing new line is 400 too), a pin exactly 64 hex. A `path` must be one of the requirement's files, a
+  path its commits changed or one Lean recorded for its rounds: any other is 404, whatever commit holds it. A `ref` or
+  `base` must be one of the run branch's commits or a first parent of one: any other is 404, never fetched. A file is
+  read from a commit only (`mrdesc_view.tree_entry` with literal pathspecs, then `committed_file`: a regular blob of
+  at most 4 MB, else 413; a folder, a symlink or a submodule is refused, on either side of a diff too). A diff is `git
+  diff --no-ext-diff --no-textconv`, so an agent-written `.gitattributes` cannot run a diff driver or a textconv, and
+  with `GIT_NO_REPLACE_OBJECTS=1` a replace ref cannot swap what a commit holds. The one read outside a commit is a
+  local round's document waiting for approval: only at the stage table's document path, only for a sha256 a local
+  round of that stage recorded, each part of the path opened with `O_NOFOLLOW` under the worktree's real path, and
+  only when the bytes hash to that sha256 (else 409: 到会话里看). Lean's ledgers (`aidlc-docs/audit` and anything under it,
+  wherever `aidlc-docs` is) are never listed or read: they hold what people typed. Emails (release.md's approval table
+  has git emails) become brain-kit's pseudonyms (G-<6 hex>) before anything is sent, and the text goes through the
+  scrubber; a text over 300 000 characters is cut at a line end first (a longer first line shows nothing), so the
+  scrubber never gets part of a secret. Each refusal says why and what to do, in plain Chinese, and carries none of
+  the file's content. `tests/test_outputs.py` and `tests/test_outputs_guard.py` prove each of these on real git
+  repositories.
 - The brain-kit checkout and the app directory run inside the gateway: in production they must not be writable by
   the agents' OS user. Team mode refuses to start unless bridge.json, runnerd.json, allowed_signers and the
   identities file are owned by another user and read-only to the app (`dev_same_user` skips this for a local trial).

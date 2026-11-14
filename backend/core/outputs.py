@@ -17,7 +17,9 @@ is the stage table's document of one of the requirement's nodes, a local round o
 part of the path is a symlink, and the bytes hash to it (pinned_file). A diff never runs a diff driver or a textconv
 the repo's .gitattributes names. Lean's ledgers (aidlc-docs/audit, wherever aidlc-docs is) are never listed nor read:
 they hold what people typed in their sessions. Emails become brain-kit's pseudonyms (G-<6 hex>) before anything is
-shown: release.md's approval table carries git emails.
+shown: release.md's approval table carries git emails. A text over TEXT_MAX is cut at a line end first, so the
+scrubber never gets part of a secret. git runs with GIT_NO_REPLACE_OBJECTS: a replace ref never swaps a commit's
+bytes.
 """
 
 from __future__ import annotations
@@ -44,10 +46,10 @@ MAX_FILES = 200             # files listed for a round
 MAX_TRIES = 24              # commits whose blob is hashed to find the version Lean recorded
 DIFF_TIMEOUT_S = 20
 VIEWS = ("content", "source", "diff")
-HEX40 = re.compile(r"^[0-9a-f]{40}$")
-HEX64 = re.compile(r"^[0-9a-f]{64}$")
-NODE_RE = re.compile(r"^[a-z][a-z-]{0,39}(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$")
-ROUND_RE = re.compile(r"^[1-9][0-9]{0,2}$")
+HEX40 = re.compile(r"[0-9a-f]{40}")             # these four: whole strings only (fullmatch)
+HEX64 = re.compile(r"[0-9a-f]{64}")
+NODE_RE = re.compile(r"[a-z][a-z-]{0,39}(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?")
+ROUND_RE = re.compile(r"[1-9][0-9]{0,2}")
 HIDDEN = re.compile(r"(?:^|/)aidlc-docs/audit(?:/|$)")      # Lean's ledgers, wherever aidlc-docs is
 # brain-kit trace.EMAIL_RE and trace.pseudonym, so a person is the same G-xxxxxx here as everywhere on the board; the
 # part before the @ held to 64 characters (RFC 5321; the same matches up to it): unbounded, a 60 000-letter run took 4 s
@@ -67,15 +69,16 @@ NO_NODE = "看板上没有这一步：刷新看板再看"
 NO_ROUND = "这一步没有这一轮：刷新看板再看"
 NOT_OURS = "这个提交不是这个需求的：刷新看板，从看板上点开文件"
 NOT_OURS_FILE = "这个文件不是这个需求的：刷新看板，从看板上点开文件"
-NOT_SHOWN = "Lean 的账本不在这里显示：里面有人在会话里打的字"
+NOT_SHOWN = "Lean 的账本不在这里显示，里面有人在会话里打的字：到看板的「事件」里看它记下的事"
 NOT_RECORDED = "Lean 没有为这一步记下这个文件的这一版：从看板上点开文件"
 NO_WORKTREE = "这台机器上没有这个需求的工作区：这一版只能等提交以后看"
 CHANGED = "这一版还没提交，工作区里的文件也和 Lean 记下的不一样了：到会话里看"
-SYMLINK = "这是一个符号链接（或路径里有符号链接）：这里不读它指向的东西"
-SUBMODULE = "这是一个子模块：这里不显示"
+SYMLINK = "这是一个符号链接（或者路径里有符号链接），这里不读它指向的东西：到会话里看"
+SUBMODULE = "这是一个子模块，这里不显示：到它自己的仓库里看"
+NOT_A_FILE = "这不是一个普通文件（是文件夹或者特殊文件），这里不读它：到会话里看"
 MISSING = "这一版里没有这个文件（可能这一轮删掉了它）：看「改动」"
 GONE = "工作区里没有这个文件了：到会话里看"
-TOO_BIG = "文件太大（超过 4 MB）：这里不显示"
+TOO_BIG = "文件太大（超过 4 MB），这里不显示：到会话里看"
 NO_DIFF = "这两版比不出来：刷新看板再试"
 
 
@@ -98,6 +101,14 @@ def _lang(path: str) -> str:
     return LANG.get(path.rsplit(".", 1)[-1].lower() if "." in path.rsplit("/", 1)[-1] else "", "text")
 
 
+class _NoReplaceGit(Git):
+    """git with GIT_NO_REPLACE_OBJECTS: a replace ref (refs/replace/, anyone with the repo can add one) cannot swap
+    what a commit holds."""
+
+    def run(self, *args: str, env: Optional[dict] = None, **kw: Any) -> Any:
+        return super().run(*args, env=dict(env or {}, GIT_NO_REPLACE_OBJECTS="1"), **kw)
+
+
 class GitReader:
     """The drawer's reads of the requirement's git repository: tree entries, blobs, parents, diffs."""
 
@@ -105,7 +116,7 @@ class GitReader:
     _parents: Dict[Tuple[str, str], Optional[str]] = {}
 
     def __init__(self, git: Git) -> None:
-        self.git = git
+        self.git = _NoReplaceGit(git.repo)
 
     def entry(self, sha: str, rel: str) -> Optional[Tuple[str, str, int]]:
         return mrdesc_view.tree_entry(self.git, sha, rel)
@@ -196,9 +207,9 @@ class NodeQuery:
 
 
 def node_query(node: Any, rnd: Any) -> NodeQuery:
-    if not isinstance(node, str) or not NODE_RE.match(node):
+    if not isinstance(node, str) or not NODE_RE.fullmatch(node):
         raise AppError(BAD_NODE, "invalid_node")
-    if rnd not in (None, "") and (not isinstance(rnd, str) or not ROUND_RE.match(rnd)):
+    if rnd not in (None, "") and (not isinstance(rnd, str) or not ROUND_RE.fullmatch(rnd)):
         raise AppError(BAD_ROUND, "invalid_round")
     return NodeQuery(node, int(rnd) if rnd else None)
 
@@ -219,10 +230,10 @@ def file_query(q: Mapping[str, Any]) -> FileQuery:
     if view not in VIEWS:
         raise AppError(BAD_VIEW, "invalid_view")
     ref, base, pin = q.get("ref"), q.get("base") or None, q.get("pin") or None
-    if not isinstance(ref, str) or not (ref == "worktree" or HEX40.match(ref)) or \
-            base is not None and (not isinstance(base, str) or not HEX40.match(base)):
+    if not isinstance(ref, str) or not (ref == "worktree" or HEX40.fullmatch(ref)) or \
+            base is not None and (not isinstance(base, str) or not HEX40.fullmatch(base)):
         raise AppError(BAD_SHA, "invalid_ref")
-    if ref == "worktree" and (not isinstance(pin, str) or not HEX64.match(pin)):
+    if ref == "worktree" and (not isinstance(pin, str) or not HEX64.fullmatch(pin)):
         raise AppError(BAD_PIN, "invalid_pin")
     return FileQuery(path, view, ref, base, pin if ref == "worktree" else None)
 
@@ -438,7 +449,7 @@ def pinned_file(worktree: str, rel: str, sha256: str) -> bytes:
         try:
             st = os.fstat(ffd)
             if not stat.S_ISREG(st.st_mode):
-                raise AppError(SYMLINK, "not_a_file", 403)
+                raise AppError(NOT_A_FILE, "not_a_file", 403)
             if st.st_size > mrdesc_view.MAX_RAW:
                 raise AppError(TOO_BIG, "too_big", 413)
             chunks, left = [], mrdesc_view.MAX_RAW + 1
@@ -462,17 +473,26 @@ def pinned_file(worktree: str, rel: str, sha256: str) -> bytes:
     return data
 
 
+def _shown(text: str) -> Tuple[str, bool]:
+    """(text, truncated): cut at its last line end within TEXT_MAX, then emails pseudonymized. Cut first, at a line
+    end: the pattern reads at most TEXT_MAX characters, and the scrubber after it never sees part of a secret."""
+    if len(text) <= TEXT_MAX:
+        return pseudonymize(text), False
+    cut = text[:TEXT_MAX]
+    return pseudonymize(cut[:cut.rfind("\n") + 1]), True
+
+
 def _text(raw: bytes) -> Tuple[str, bool, bool]:
-    """(text, binary, truncated): decoded, emails pseudonymized, cut to TEXT_MAX."""
+    """(text, binary, truncated): decoded, then _shown."""
     if b"\0" in raw[:BINARY_PROBE]:
         return "", True, False
-    s = pseudonymize(raw.decode("utf-8", "replace"))
-    return s[:TEXT_MAX], False, len(s) > TEXT_MAX
+    s, cut = _shown(raw.decode("utf-8", "replace"))
+    return s, False, cut
 
 
 def _file_or_refuse(rd: GitReader, sha: str, path: str, absent_ok: bool = False) -> None:
     """*path* at *sha* is a file the drawer reads: a side of a diff may lack it (added, deleted). A folder is no file
-    (its diff would show every file under it), a symlink or a submodule is refused."""
+    (its diff would show every file under it), a symlink or a submodule is refused, a file over 4 MB too."""
     e = rd.entry(sha, path)
     if e is None and absent_ok:
         return
@@ -482,6 +502,8 @@ def _file_or_refuse(rd: GitReader, sha: str, path: str, absent_ok: bool = False)
         raise AppError(SYMLINK, "symlink", 403)
     if e[0] == "160000":
         raise AppError(SUBMODULE, "submodule", 403)
+    if e[2] > mrdesc_view.MAX_RAW:
+        raise AppError(TOO_BIG, "too_big", 413)
 
 
 def _blob_or_refuse(rd: GitReader, sha: str, path: str) -> bytes:
@@ -544,5 +566,5 @@ def file_view(fold: Fold, q: FileQuery) -> Dict[str, Any]:
         if b"\0" in raw[:BINARY_PROBE]:
             return dict(out, text="", binary=True, truncated=False, size=len(raw))
         text = _added_diff(path, raw)
-    s = pseudonymize(text)
-    return dict(out, text=s[:TEXT_MAX], binary=False, truncated=len(s) > TEXT_MAX, size=len(text))
+    s, cut = _shown(text)
+    return dict(out, text=s, binary=False, truncated=cut, size=len(text))

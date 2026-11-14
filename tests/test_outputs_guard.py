@@ -4,6 +4,8 @@ query check, scrubber)."""
 
 import json
 import os
+import re
+import subprocess
 import time
 from types import SimpleNamespace
 
@@ -183,7 +185,7 @@ def test_a_file_well_under_4_mb_answers_in_a_second_whatever_its_characters(tmp_
 
 
 @needs_brainkit
-def test_an_email_becomes_the_pseudonym_brain_kit_gives_it(tmp_path):
+def test_an_email_becomes_the_pseudonym_brain_kit_gives_it():
     bk = mod("bk")
     assert bk.load(str(BRAINKIT))["ok"]
     trace = bk.m("trace")
@@ -212,3 +214,79 @@ def test_a_diff_of_a_file_that_is_not_utf8_answers_its_change_not_a_crash(tmp_pa
     except Exception as exc:  # noqa: BLE001  (what the host would answer as a 500)
         got = ("raised out of the route", type(exc).__name__)
     assert got == (200, ["diff --git a/gbk.txt b/gbk.txt"], False), got
+
+
+def test_a_diff_of_a_file_over_4_mb_is_refused_like_its_source(tmp_path):
+    repo = git_repo(tmp_path / "pay")
+    a = commit_file(repo, "big.txt", ("y" * 99 + "\n") * 50_000, "big")
+    b = commit_file(repo, "big.txt", ("w" * 99 + "\n") * 50_000, "bigger")
+    f = fold(repo, [node("review", [rnd(1, [a, b])])], [a, b])
+    assert outcome(lambda: view(f, ref=b, path="big.txt")) == (413, "too_big")      # 5 MB: its source is refused
+    got = outcome(lambda: view(f, ref=b, base=a, path="big.txt", view="diff"))
+    assert got == (413, "too_big"), "diff answered %d characters" % len(got)
+
+
+def test_a_cut_at_the_size_limit_is_at_a_line_end_and_never_leaves_part_of_a_secret(tmp_path):
+    repo = git_repo(tmp_path / "pay")
+    line = "x" * 99 + "\n"
+    pad = line * ((outputs.TEXT_MAX - 12) // len(line))
+    text = pad + "y" * (outputs.TEXT_MAX - 12 - len(pad)) + " ghp_" + "A" * 36 + "\n"
+    r1 = commit_file(repo, "notes.md", text, "long")
+    f = fold(repo, [node("review", [rnd(1, [r1])])], [r1])
+    d = drawer(tmp_path, f)
+    for v in ("source", "diff"):
+        body = d.file(ref=r1, path="notes.md", view=v).body
+        assert body["truncated"] is True and body["text"].endswith("\n"), (v, body["text"][-12:])
+        assert "ghp_" not in body["text"], (v, body["text"][-12:])
+
+
+def test_a_replace_ref_cannot_swap_the_committed_bytes(tmp_path):
+    repo = git_repo(tmp_path / "pay")
+    sha = commit_file(repo, "doc.md", "what the commit holds\n", "v1")
+    blob = sh("git", "-C", repo, "rev-parse", "%s:doc.md" % sha).stdout.strip()
+    swap = subprocess.run(["git", "-C", str(repo), "hash-object", "-w", "--stdin"], input="planted by a replace ref\n",
+                          capture_output=True, text=True, check=True).stdout.strip()
+    sh("git", "-C", repo, "replace", blob, swap)
+    f = fold(repo, [node("review", [rnd(1, [sha])])], [sha])
+    assert view(f, ref=sha, path="doc.md")["text"] == "what the commit holds\n"
+    assert "planted" not in view(f, ref=sha, path="doc.md", view="diff")["text"]
+
+
+# ---------------------------------------------------------------- the query, and what a refusal says
+
+def test_short_relative_named_or_newline_ended_ids_are_400(tmp_path, waiting):
+    sha = waiting.fold.commits[0]["sha"]
+    d = drawer(tmp_path, waiting.fold)
+    got = {}
+    for ref in (sha[:7], sha + "^", sha + "~1", sha.upper(), "@", "HEAD~1", "ai/alice/PAY-9-refund-sms", sha + "\n"):
+        resp = d.file(ref=ref, path="README.md")
+        got[repr(ref[-3:])] = (resp.status, resp.body.get("code"))
+    resp = d.file(ref=sha, base=sha + "\n", path="README.md", view="diff")
+    got["base"] = (resp.status, resp.body.get("code"))
+    resp = d.file(ref="worktree", pin=h(waiting.text) + "\n", path=REQS)
+    got["pin"] = (resp.status, resp.body.get("code"))
+    assert got == dict({k: (400, "invalid_ref") for k in got if k != "pin"}, pin=(400, "invalid_pin")), got
+    for q, code in (({"node": "requirements\n"}, "invalid_node"), ({"node": "requirements", "round": "1\n"}, "invalid_round")):
+        resp = d.node(**q)
+        assert (resp.status, resp.body.get("code")) == (400, code), (q, resp.body)
+
+
+def test_each_refusal_says_why_and_what_to_do(tmp_path, waiting):
+    repo = git_repo(tmp_path / "links")
+    base = commit_file(repo, "README.md", "x\n")
+    os.symlink("/etc/hosts", str(repo / "link.md"))
+    sh("git", "-C", repo, "add", "link.md")
+    sh("git", "-C", repo, "update-index", "--add", "--cacheinfo", "160000,%s,vendor/kit" % base)
+    sh("git", "-C", repo, "commit", "-qm", "a link and a submodule")
+    c1 = sh("git", "-C", repo, "rev-parse", "HEAD").stdout.strip()
+    c2 = commit_file(repo, "big.txt", "y" * (4 * 1024 * 1024 + 1), "big")
+    f = fold(repo, [node("review", [rnd(1, [c1, c2])])], [c1, c2])
+    d = drawer(tmp_path, f)
+    said = {code: d.file(ref=sha, path=p).body for code, sha, p in (
+        ("not_shown", c2, LEDGER), ("symlink", c1, "link.md"), ("submodule", c1, "vendor/kit"), ("too_big", c2, "big.txt"))}
+    (waiting.repo / REQS).unlink()
+    (waiting.repo / REQS).mkdir()
+    said["not_a_file"] = drawer(tmp_path, waiting.fold).file(ref="worktree", pin=h(waiting.text), path=REQS).body
+    for code, body in said.items():
+        why, _, todo = body.get("error", "").rpartition("：")
+        assert body.get("code") == code and why and re.match(r"(到|在|从|刷新|等)", todo), (code, body)
