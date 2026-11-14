@@ -34,6 +34,7 @@ describe('the bar says the app’s version, and how to update when KiroCrew know
     await user.click(within(note).getByText('有新版 v0.2.0'))
     expect(note).toHaveTextContent('你装的是 v0.1.0。到 KiroCrew 的 Apps → Discover（发现）→ 更新（Updates），在 Brain 交付 那一行点「更新」')
     expect(note).toHaveTextContent('数据和设置都留着')
+    expect(note).toHaveTextContent(/KiroCrew .+查的/)
   })
 
   test('nothing newer, or KiroCrew has not said: the version only, no claim either way', () => {
