@@ -366,7 +366,7 @@ class Service:
                 "awaiting": bool(st.get("awaiting")), "last_activity": st.get("last_activity") or info.last_activity,
                 "opened_at": st.get("opened_at") or info.started, "project": info.cwd or None,
                 "url": "/chat?sid=%s" % info.slot, "error": info.error, "missing": bool(st.get("missing")),
-                "id": info.id})
+                "id": info.id, "tail": self.sessions.slot_tail(info.slot)})
         return {"by": by, "credits": self.sessions.credits_by_key()}
 
     @staticmethod

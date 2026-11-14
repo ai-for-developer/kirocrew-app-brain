@@ -240,6 +240,30 @@ def tool_call(m: dict[str, Any], scrub: Callable[[str], str]) -> dict[str, Any]:
             "detail": (detail[:119] + "…") if len(detail) > 120 else (detail or None)}
 
 
+CALL_KIND = {"read": "读文件", "edit": "写文件", "execute": "跑命令", "search": "搜索"}   # KiroCrew's meta.kind
+KNOWLEDGE = ("查知识库", "看知识库来源")
+
+
+def call_name(c: dict[str, Any]) -> str:
+    """A call (tool_call's) in a word a person reads: 读文件 · 写文件 · 跑命令 · 搜索 · 查知识库, else 其他."""
+    return c["tool"] if c["tool"] in KNOWLEDGE else CALL_KIND.get(c["kind"] or "", "其他")
+
+
+def tail(msgs: list[dict[str, Any]], scrub: Callable[[str], str], cwd: str = "") -> dict[str, Any] | None:
+    """What a session did last, for the board's ticker: its newest tool call (its path said relative to the session's
+    project *cwd*, scrubbed and cut by tool_call) and the last line of the agent's newest text, uncut (the board cuts it
+    at a line end and the route scrubs it). Only tool and assistant rows are read: a person's typed words are user
+    rows, never here."""
+    call = next((m for m in reversed(msgs) if m.get("role") == "tool"), None)
+    said = next((m for m in reversed(msgs) if m.get("role") == "assistant" and str(m.get("content") or "").strip()), None)
+    if call is None and said is None:
+        return None
+    c = tool_call(call, lambda x: scrub(x.replace(cwd.rstrip("/") + "/", "") if cwd else x)) if call is not None else None
+    line = next((x.strip() for x in reversed(str(said.get("content")).splitlines()) if x.strip()), "") if said else ""
+    return {"call": {"at": c["at"] or None, "tool": call_name(c), "detail": c["detail"]} if c else None,
+            "said": line or None, "said_at": (_epoch(said.get("ts")) or None) if said else None}
+
+
 def _epoch(stamp: Any) -> float:
     from datetime import datetime
 
@@ -262,6 +286,7 @@ class SessionManager:
         self._infos: dict[str, SessionInfo] = {}
         self._folders: dict[str, dict[str, Any]] = {}  # parent → {"id", "name", "root"}
         self._stats: dict[str, dict[str, Any]] = {}    # slot → what slot_stats() answers
+        self._tails: dict[str, dict[str, Any] | None] = {}   # slot → what it did last (tail): live only, never saved
         self._folder_lock: asyncio.Lock | None = None  # made on the loop (Python 3.9 binds a Lock at creation)
         self._tasks: set[asyncio.Task[Any]] = set()
         self._dirty = False
@@ -424,6 +449,10 @@ class SessionManager:
     def slot_stats(self, slot: str | None) -> dict[str, Any] | None:
         """{credits, turns, busy, awaiting, last_activity, missing, error} of a slot this app opened (None: unknown)."""
         return dict(self._stats[slot]) if slot and slot in self._stats else None
+
+    def slot_tail(self, slot: str | None) -> dict[str, Any] | None:
+        """What a slot this app opened did last (tail), as of its latest read; None before one."""
+        return self._tails.get(slot or "")
 
     def slot_credits(self, slot: str | None) -> float | None:
         """The credits of one session (slot): its whole transcript's (slot_stats) once read, else the sum of the turns
@@ -638,6 +667,7 @@ class SessionManager:
         stamps = [_epoch(m.get("ts")) for m in msgs if m.get("ts")]
         st.update(credits=round(sum(vals), 3) if vals else st.get("credits"), turns=len(replies),
                   last_activity=max(stamps) if stamps else st.get("last_activity"), error=None)
+        self._tails[slot] = tail(msgs, self.scrub, (self.by_slot(slot) or SessionInfo()).cwd)
         self._dirty = True
 
     async def _update(self, info: SessionInfo, row: dict[str, Any] | None) -> None:
@@ -663,6 +693,7 @@ class SessionManager:
                 mine = idx
                 break
         after = msgs[mine + 1:] if mine is not None else []
+        self._tails[str(info.slot)] = tail(msgs, self.scrub, info.cwd)
         calls = [tool_call(m, self.scrub) for m in after if m.get("role") == "tool"]
         replies = [m for m in after if m.get("role") == "assistant" and str(m.get("content") or "").strip()]
         errors = [m for m in after if m.get("role") == "error"]

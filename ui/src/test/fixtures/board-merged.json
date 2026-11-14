@@ -2118,7 +2118,8 @@
           "busy": false,
           "title": "PAY-2 退款单号校验"
         }
-      ]
+      ],
+      "ticker": null
     },
     {
       "key": "runner-1",
@@ -2138,7 +2139,8 @@
         "do": null
       },
       "credits": null,
-      "sessions": []
+      "sessions": [],
+      "ticker": null
     }
   ],
   "relays": [

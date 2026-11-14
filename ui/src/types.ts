@@ -1431,6 +1431,10 @@ export interface Run {
   credits: number | null
   /** its KiroCrew sessions on this machine, to open; [] when none here */
   sessions: { slot: string; url: string; busy: boolean; title: string }[]
+  /** what its session here did last (readable here only; null otherwise or before it did anything): its last call
+   * (读文件 · 写文件 · 跑命令 · 搜索 · 查知识库 · 其他, and the path or command), and the last line the agent wrote, scrubbed,
+   * its emails pseudonyms; never a person's typed words */
+  ticker: { at: number | null; tool: string | null; detail: string | null; text: string | null } | null
 }
 
 /** One hand-over: 交接 → 桥 → 签名 → 运行机建工作区. A row in the roster and a pill on the rail at the hand-over commit. */
