@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { fx } from '../test/data'
 import type { ReqBoard } from '../types'
-import { GAP_S, replayAt, replayClock, replaySpan } from './timeline'
+import { GAP_S, SAME_DECISION_S, decisionStops, replayAt, replayClock, replaySpan } from './timeline'
 
 // board-merged.json (PAY-2): claimed at START, merged at MERGE, written back into the Brain at END (its last event)
 const START = 1793620800
@@ -327,5 +327,43 @@ describe('replayAt: what was there then', () => {
     const hand = m.events.find((e) => e.kind === 'handover')!.at
     expect(replayAt(m, hand - 1).row.mr).toBeNull()
     expect(replayAt(m, hand + 1).row.mr).toEqual(m.row.mr)
+  })
+})
+
+describe('decisionStops: where the replay holds', () => {
+  const DESIGN_BACK = 1793635080
+
+  it('holds on each decision a person made, once per ask: approve, reject, answer, the product’s acceptance', () => {
+    const stops = decisionStops(fx.boardMerged())
+    expect(stops.map((x) => [x.node, x.choice, x.text])).toEqual([
+      ['requirements', 'approve', '你批准了需求'],
+      ['application-design', 'reject', '你退回了设计'],
+      ['application-design', 'approve', '你批准了设计'],
+      ['code-generation/refund-api', 'answer', 'D-1 回答了：A'],
+      ['release', 'accept', '产品在 MR 上批准了发布'],
+    ])
+    // just before the decision, while what was asked is still open
+    expect(stops.map((x) => x.at)).toEqual([1793631120, DESIGN_BACK, 1793637960, 1793650500, 1793659440].map((t) => t - 0.01))
+    const held = replayAt(fx.boardMerged(), stops[1].at).nodes.find((n) => n.id === 'application-design')!
+    expect(held).toMatchObject({ status: 'awaiting_approval', gates: [{ state: 'pending', who: 'you' }] })
+  })
+
+  it('never on what is no decision of a person: the bridge passing an answer on, commits, checks, stages, the write-back', () => {
+    const b = fx.boardMerged()
+    const at = new Set(decisionStops(b).map((x) => Math.round(x.at)))
+    const not = b.events.filter((e) => !at.has(e.at))
+    expect(not.filter((e) => e.from === 'person' && (e.kind === 'approve' || e.kind === 'reject' || e.kind === 'answer')).map((e) => e.text))
+      .toEqual(['澄清的问题回答了，接着做', '产品在 MR 上批准了发布'])
+    expect(new Set(b.events.filter((e) => at.has(e.at)).map((e) => e.kind))).toEqual(new Set(['approve', 'reject', 'answer']))
+  })
+
+  it('a decision with nothing asked, or one told again long after, does not hold', () => {
+    const b = fx.boardMerged()
+    const ev = (seq: number, at: number, kind: 'request' | 'approve' | 'answer', text: string) =>
+      ({ seq, at, kind, from: kind === 'request' ? 'release' : 'person', to: kind === 'request' ? 'person' : 'release', text, detail: false, src: null,
+        node: 'release' as ReqBoard['events'][number]['node'], run: null, round: null })
+    b.events = [ev(1, 100, 'approve', '没问过就批了'), ev(2, 200, 'request', '请产品在 MR 上批准发布'), ev(3, 300, 'answer', 'D-2 回答了：approve'),
+      ev(4, 300 + SAME_DECISION_S + 1, 'approve', '产品在 MR 上批准了发布')]
+    expect(decisionStops(b).map((x) => [x.at, x.choice, x.text])).toEqual([[299.99, 'answer', 'D-2 回答了：approve']])
   })
 })

@@ -13,7 +13,8 @@
  * page (what has no stage looks at nothing); 跟随 scrolls to the stage that moved last; Esc lets go. 看产出 (a box's
  * card, a lane, a gate's 看文档, the top bar's 产出) opens the 产出 drawer (Outputs.tsx) on that stage: its place is in
  * the address (?out=), opened, moved and closed in place of the current history entry; Esc closes it first. 回放
- * (Replay.tsx) plays the requirement again from the same snapshot (timeline.ts); while it plays nothing can be done.
+ * (Replay.tsx) plays the requirement again from the same snapshot (timeline.ts), holding on each decision a person
+ * made; while it plays nothing can be done.
  * Reduced motion: nothing flies or pulses, states still change.
  *
  * A big requirement split into small ones (row.family, views/Family.tsx): a small one names its big one in the crumb
@@ -317,7 +318,7 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
                     <div ref={graphBox}>
                       <StageGraph key={`${entry.repo}/${entry.key}${rp.on ? ':replay' : ''}`} board={board} lay={lay} focus={focus} onNode={onNode} flashes={fx.flashes}
                         reducedMotion={reducedMotion} feed={feed} quiet={quiet} onSession={(url) => navigate(url)} onAct={quiet ? undefined : onAct}
-                        onOutputs={quiet ? undefined : onOutputs} />
+                        onOutputs={quiet ? undefined : onOutputs} held={rp.held} />
                     </div>
                     {focus && <FocusBar board={board} focus={focus} onClear={() => setFocus(null)} />}
                     <Conveyor board={board} fresh={fx.belt} focus={focus} onNode={onNode} />
