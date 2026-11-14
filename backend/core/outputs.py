@@ -49,8 +49,9 @@ HEX64 = re.compile(r"^[0-9a-f]{64}$")
 NODE_RE = re.compile(r"^[a-z][a-z-]{0,39}(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$")
 ROUND_RE = re.compile(r"^[1-9][0-9]{0,2}$")
 HIDDEN = re.compile(r"(?:^|/)aidlc-docs/audit(?:/|$)")      # Lean's ledgers, wherever aidlc-docs is
-# brain-kit trace.EMAIL_RE and trace.pseudonym, so a person is the same G-xxxxxx here as everywhere on the board
-EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*")
+# brain-kit trace.EMAIL_RE and trace.pseudonym, so a person is the same G-xxxxxx here as everywhere on the board; the
+# part before the @ held to 64 characters (RFC 5321; the same matches up to it): unbounded, a 60 000-letter run took 4 s
+EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*")
 LANG = {"md": "markdown", "markdown": "markdown", "py": "python", "ts": "typescript", "tsx": "typescript",
         "js": "javascript", "jsx": "javascript", "mjs": "javascript", "json": "json", "jsonl": "json", "yml": "yaml",
         "yaml": "yaml", "toml": "toml", "sh": "shell", "css": "css", "html": "html", "sql": "sql", "go": "go",

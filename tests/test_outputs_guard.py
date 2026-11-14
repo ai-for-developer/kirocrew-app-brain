@@ -4,9 +4,11 @@ query check, scrubber)."""
 
 import json
 import os
+import time
 from types import SimpleNamespace
 
-from appkit import commit_file, git_repo, mod, sh
+from appkit import BRAINKIT, commit_file, git_repo, mod, sh
+from brainfix import needs_brainkit
 from test_outputs import RELEASE, REQS, call, fold, h, node, rnd, routes, view, waiting  # noqa: F401  (waiting: a fixture)
 
 outputs = mod("outputs")
@@ -164,3 +166,28 @@ def test_lean_ledgers_are_never_listed_nor_read_at_any_depth_with_or_without_a_s
         for v in ("source", "diff"):
             resp = d.file(ref=c2, path=p, view=v)
             assert (resp.status, resp.body.get("code")) == (403, "not_shown"), (p, v, resp.body)
+
+
+# ---------------------------------------------------------------- emails
+
+def test_a_file_well_under_4_mb_answers_in_a_second_whatever_its_characters(tmp_path):
+    """One 60 000-character run of letters (a long hash, a generated id list) and no @: the email pattern tried each
+    of its characters as the start of an address to the end of the run (4 s)."""
+    repo = git_repo(tmp_path / "pay")
+    r1 = commit_file(repo, "ids.txt", "a" * 60_000 + "\n", "ids")
+    f = fold(repo, [node("review", [rnd(1, [r1])])], [r1])
+    t = time.perf_counter()
+    view(f, ref=r1, path="ids.txt")
+    took = time.perf_counter() - t
+    assert took < 1.0, "a 60 kB file took %.1f s" % took
+
+
+@needs_brainkit
+def test_an_email_becomes_the_pseudonym_brain_kit_gives_it(tmp_path):
+    bk = mod("bk")
+    assert bk.load(str(BRAINKIT))["ok"]
+    trace = bk.m("trace")
+    text = ("| RELEASE | Bob.Smith@Example.COM |\nalice+pay@mail.example.co.uk,carol@x;dave@host\n"
+            "a@b..c@d e@f+g@h -x@y.z %s@example.com 邮箱：zhang_san@公司.cn\n" % ("q" * 64))
+    want = trace.EMAIL_RE.sub(lambda m: trace.pseudonym(m.group(0)), text)
+    assert outputs.pseudonymize(text) == want and "@" not in want.replace("@公司", ""), want
