@@ -41,7 +41,7 @@ const turn = (over: Partial<TurnView>): TurnView => ({
 /** application-design's round 1 on this machine: the kickoff, then what alice typed */
 const designTurns: NodeTurns = {
   node: 'application-design' as NodeTurns['node'], round: 1, run: 'local' as NodeTurns['run'], why_not: null, why: null,
-  meta: { took: 1920, turns: 2, calls: 25 },
+  meta: { took: 1920, turns: 2, calls: 25 }, lit: { from: at('10:06'), to: at('10:36') },
   turns: [
     turn({ calls: [call('10:05:31', '读文件', 'AGENTS.md', false), call('10:06:02', '跑命令', 'python3 .kiro/aidlc-lean/aidlc_lean.py stage start application-design')] }),
     turn({ n: 2, at: at('10:21'), until: at('10:52'), task: { kind: 'person', chars: 64, url: '/chat?sid=brain-PAY-9-7f2c' },
@@ -51,10 +51,11 @@ const designTurns: NodeTurns = {
   ],
 }
 const releaseTurns: NodeTurns = {
-  node: 'release' as NodeTurns['node'], round: 1, run: 'runner-1' as NodeTurns['run'], turns: [], why: null,
+  node: 'release' as NodeTurns['node'], round: 1, run: 'runner-1' as NodeTurns['run'], turns: [], why: null, lit: null,
   meta: { took: 4560, turns: null, calls: null },
   why_not: { title: '这一轮是运行机做的（RUN-PAY-9-1）', missing: '它的回复、接到的消息和工具调用留在运行机上，这台机器读不到。',
-    here: ['它的 2 次提交（「产出文件」里都能看）', '它在 MR 上问的 D-2'], do: '要看它的回复和工具调用：请管运行机的人在运行机上的 Brain 交付里打开 PAY-9。' },
+    here: ['它的 2 次提交（「产出文件」里都能看）', '它在 MR 上问的 D-2'], do: '要看它的回复和工具调用：请管运行机的人在运行机上的 Brain 交付里打开 PAY-9。',
+    asked: at('13:26') },
 }
 
 function routes(board: () => ReqBoard) {
@@ -178,7 +179,8 @@ describe('产出', () => {
     expect(within(pane).getByTestId('out-reply-meta').textContent).toBe(
       '本机会话 brain-PAY-9-7f2c · 这一轮的最后一个回合（第 2 回合 · 10:21–10:52）的回复 · 这一轮里 25 次工具调用 · 这一回合也做了：需求分析、拆分单元')
     expect(within(pane).getAllByTestId('out-tab').map((x) => x.textContent)).toEqual(['产出文件3', '它的回复', '接到的任务2', '做了什么25'])
-    fireEvent.click(within(pane).getByRole('button', { name: '第 1 回合' }))
+    expect(within(pane).getAllByRole('button', { name: /回合 ·/ }).map((b) => b.textContent)).toEqual(['第 1 回合 · 开工消息', '第 2 回合 · 你打的'])
+    fireEvent.click(within(pane).getByRole('button', { name: '第 1 回合 · 开工消息' }))
     expect(within(pane).getByTestId('out-reply').textContent).toBe('先读了 AGENTS.md。')
 
     fireEvent.click(within(pane).getByRole('tab', { name: /接到的任务/ }))
@@ -191,6 +193,8 @@ describe('产出', () => {
 
     fireEvent.click(within(pane).getByRole('tab', { name: /做了什么/ }))
     const calls = await within(pane).findByTestId('out-calls')
+    expect(within(pane).getByTestId('out-calls-meta').textContent).toBe(
+      '这一轮做在第 1、2 回合里（Lean 的回合记录对上了会话里的 2 条消息）。亮着的是这一轮（10:06–10:36）里的调用，暗的在这一轮以外')
     const rows = Array.from(calls.querySelectorAll('li')).map((li) => [li.className, li.textContent])
     expect(rows).toEqual([
       ['kt-calls-turn', '10:05:20第 1 回合app 发的（开工消息，只有编号）'],
@@ -208,7 +212,7 @@ describe('产出', () => {
     const card = await within(pane).findByTestId('out-whynot')
     expect(within(card).getByRole('heading', { level: 4 }).textContent).toBe('这一轮是运行机做的（RUN-PAY-9-1）')
     expect(within(card).getAllByRole('listitem').map((li) => li.textContent)).toEqual(
-      ['它的 2 次提交（「产出文件」里都能看）', '它在 MR 上问的 D-2', 'Lean 记下的这一轮：13:25 开始、14:41 产品退回（D-2）'])
+      ['它的 2 次提交（「产出文件」里都能看）', '它在 MR 上问的 D-2', 'Lean 记下的这一轮：13:25 开始、13:26 请批、14:41 产品退回（D-2）'])
     expect(card.querySelector('.do')?.textContent).toBe('做什么要看它的回复和工具调用：请管运行机的人在运行机上的 Brain 交付里打开 PAY-9。')
     expect(within(pane).getAllByTestId('out-tab').map((x) => x.textContent)).toEqual(['产出文件3', '它的回复', '接到的任务', '做了什么'])
     fireEvent.click(within(pane).getByRole('tab', { name: '它的回复' }))

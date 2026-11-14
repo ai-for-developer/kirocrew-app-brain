@@ -223,7 +223,8 @@ def tool_call(m: dict[str, Any], scrub: Callable[[str], str]) -> dict[str, Any]:
     except ValueError:
         args = None
     if isinstance(args, dict):
-        for k in ("command", "path", "file_path", "pattern", "query"):
+        edit = name in ("write", "fs_write") or meta.get("kind") == "edit"     # an edit's command is create / strReplace
+        for k in ("path", "file_path", "command") if edit else ("command", "path", "file_path", "pattern", "query"):
             if isinstance(args.get(k), str) and args[k].strip():
                 detail = args[k]
                 break

@@ -1822,7 +1822,14 @@ export interface TurnView {
 
 /** A round whose session this machine cannot read: the team runner's, someone else's, a small requirement's own, brain
  * reflect's. The page adds Lean's record of the round (its times) to `here`. */
-export interface WhyNot { title: string; missing: string | null; here: string[]; do: string | null }
+export interface WhyNot {
+  title: string
+  missing: string | null
+  here: string[]
+  do: string | null
+  /** when the round asked for approval; null when it did not */
+  asked: number | null
+}
 
 /** GET /outputs/{repo}/{key}/turns?node&round */
 export interface NodeTurns {
@@ -1833,6 +1840,8 @@ export interface NodeTurns {
   why_not: WhyNot | null
   /** no turn to show and no card: why, in plain words */
   why: string | null
+  /** the time a call is lit in: from the round's start to its agent's last work on it (its request, or its end) */
+  lit: { from: number; to: number } | null
   /** 用时 (the round's span) always; 回合 and 工具调用 only when its turns are readable here */
   meta: { took: number | null; turns: number | null; calls: number | null }
 }

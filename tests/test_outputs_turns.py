@@ -259,7 +259,8 @@ def test_a_runner_round_on_the_owners_machine_says_where_its_session_is_and_show
     assert got["why_not"] == {"title": "这一轮是运行机做的（RUN-PAY-9-1）",
                               "missing": "它的回复、接到的消息和工具调用留在运行机上，这台机器读不到。",
                               "here": ["它的 2 次提交（「产出文件」里都能看）", "它在 MR 上问的 D-2"],
-                              "do": "要看它的回复和工具调用：请管运行机的人在运行机上的 Brain 交付里打开 PAY-9。"}
+                              "do": "要看它的回复和工具调用：请管运行机的人在运行机上的 Brain 交付里打开 PAY-9。",
+                              "asked": T + 60}
     assert got["meta"] == {"took": 3600.0, "turns": None, "calls": None}
 
 
@@ -309,11 +310,15 @@ def test_a_turn_whose_message_is_in_no_transcript_here_says_so_and_calls_outside
     stamp = lambda s: datetime.fromtimestamp(T + s, timezone.utc).isoformat()
     rows = [{"role": "user", "content": kept, "meta": {"sendId": "s-1-0"}, "ts": stamp(150)},
             dict(tool("execute", {"command": "git status"}), ts=stamp(160)),
+            dict(tool("edit", {"command": "strReplace", "path": "/w/aidlc-docs/x/requirements.md"}), ts=stamp(170)),
             dict(tool("execute", {"command": "git log"}), ts=stamp(260))]
     slot = turns.Slot("s1", "/chat?sid=s1", "/w", True, rows, True, {"s-1-0": {"by": "app", "cause": "澄清问题的回答", "text": kept}})
-    first, answer = turns.turn_views(f, outputs.node_query("requirements", "1"), [slot], "PAY-9", T + 300)["turns"]
+    got = turns.turn_views(f, outputs.node_query("requirements", "1"), [slot], "PAY-9", T + 300)
+    first, answer = got["turns"]
     assert first["task"] == {"kind": "hidden", "why": turns.NOT_FOUND} and first["slot"] is None
-    assert [(c["detail"], c["in_round"]) for c in answer["calls"]] == [("git status", True), ("git log", False)]
+    assert [(c["tool"], c["detail"], c["in_round"]) for c in answer["calls"]] == [
+        ("跑命令", "git status", True), ("写文件", "aidlc-docs/x/requirements.md", True), ("跑命令", "git log", False)]
+    assert got["lit"] == {"from": T + 100, "to": T + 200}     # from its start to its request: what is lit
     assert answer["live"] and answer["reply"] is None
 
 

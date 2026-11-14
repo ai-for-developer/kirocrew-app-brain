@@ -129,7 +129,7 @@ def _missing(t: stages.Turn, also: List[str]) -> Dict[str, Any]:
             "reply": None, "live": False, "calls": [], "more_calls": 0, "also": also}
 
 
-def _views(fold: Fold, n: stages.Node, r: stages.Round, slots: Sequence[Slot], now: float) -> List[Dict[str, Any]]:
+def _views(fold: Fold, n: stages.Node, r: stages.Round, slots: Sequence[Slot], lo: float, hi: float) -> List[Dict[str, Any]]:
     own = round_turns(fold.turns, r)
     others: Dict[stages.Turn, List[str]] = {}     # the other nodes a turn also worked on (也做了); a skip is no work
     for x in fold.nodes:
@@ -144,7 +144,6 @@ def _views(fold: Fold, n: stages.Node, r: stages.Round, slots: Sequence[Slot], n
             if m.get("role") == "user":
                 k += 1
                 rows.setdefault(_sha(m.get("content")), []).append((_epoch(m.get("ts")) or 0.0, s, i, k))
-    lo, hi = r.started, _work_end(r) or now
     used: set = set()
     out = []
     for t in own:
@@ -161,41 +160,43 @@ def _views(fold: Fold, n: stages.Node, r: stages.Round, slots: Sequence[Slot], n
 
 
 def why_not(n: stages.Node, r: stages.Round, run: Optional[RunView], key: str) -> Optional[Dict[str, Any]]:
-    """A round whose session this machine cannot read: where it is, what is here instead, what to do; None when it is
-    here. A list item for Lean's record of the round is the page's (it has the round's times)."""
+    """A round whose session this machine cannot read: where it is, what is here instead, what to do, and when it asked
+    for approval (*asked*); None when it is here. The page words Lean's record of the round from its times."""
     if n.stage.rounds == "reflect":
         return {"title": "这一步是 brain reflect 程序做的，没有 AI 会话", "missing": None,
-                "here": ["它写进 Brain 的条目：在「产出文件」里"], "do": None}
+                "here": ["它写进 Brain 的条目：在「产出文件」里"], "do": None, "asked": None}
     if run is not None and run.readable == "here":
         return None
     decided = next((e.decision for e in (r.decided, r.end) if e is not None and e.decision), None)
     here = (["它的 %d 次提交（「产出文件」里都能看）" % len(r.commits)] if r.commits else []) + \
         (["它自己写的说明（在上面）"] if r.note else []) + (["它在 MR 上问的 %s" % decided] if decided else [])
+    asked = r.ask.at if r.ask is not None else None
     if run is None or run.kind in ("child", "parent"):
         who = run.label if run is not None else "别的需求"
         return {"title": "这一轮是%s做的" % who, "missing": "它的回复、接到的消息和工具调用在它自己的需求看板上。",
-                "here": here, "do": "在%s的需求看板上打开这一步。" % who}
+                "here": here, "do": "在%s的需求看板上打开这一步。" % who, "asked": asked}
     if run.kind == "runner":
         return {"title": "这一轮是运行机做的（%s）" % (run.run_id or run.label),
                 "missing": "它的回复、接到的消息和工具调用留在运行机上，这台机器读不到。", "here": here,
-                "do": "要看它的回复和工具调用：请管运行机的人在运行机上的 Brain 交付里打开 %s。" % key}
+                "do": "要看它的回复和工具调用：请管运行机的人在运行机上的 Brain 交付里打开 %s。" % key, "asked": asked}
     return {"title": "这一轮在%s里做的" % run.label, "missing": "它的回复、接到的消息和工具调用在那台机器上，这台机器读不到。",
-            "here": here, "do": "要看：在做这一轮的那台机器上的 Brain 交付里打开 %s。" % key}
+            "here": here, "do": "要看：在做这一轮的那台机器上的 Brain 交付里打开 %s。" % key, "asked": asked}
 
 
 def turn_views(fold: Fold, q: NodeQuery, slots: Sequence[Slot], key: str, now: float) -> Dict[str, Any]:
     """One round of one node: the turns it was done in, each with its message, reply and calls; or why_not."""
     n, r = round_of(fold, q)
     if r is None:
-        return {"node": n.id, "round": None, "run": None, "turns": [], "why_not": None, "why": NOT_STARTED,
+        return {"node": n.id, "round": None, "run": None, "turns": [], "why_not": None, "why": NOT_STARTED, "lit": None,
                 "meta": {"took": None, "turns": None, "calls": None}}
     run = next((x for x in fold.runs if x.key == r.run), None)
     card = why_not(n, r, run, key)
     took = (r.ended or now) - r.started
     if card is not None:
-        return {"node": n.id, "round": r.n, "run": r.run, "turns": [], "why_not": card, "why": None,
+        return {"node": n.id, "round": r.n, "run": r.run, "turns": [], "why_not": card, "why": None, "lit": None,
                 "meta": {"took": took, "turns": None, "calls": None}}
-    views = _views(fold, n, r, slots, now)
+    lo, hi = r.started, _work_end(r) or now       # a call is lit from the round's start to its agent's last work on it
+    views = _views(fold, n, r, slots, lo, hi)
     return {"node": n.id, "round": r.n, "run": r.run, "turns": views, "why_not": None,
-            "why": None if views else NO_TURNS,
+            "why": None if views else NO_TURNS, "lit": {"from": lo, "to": hi},
             "meta": {"took": took, "turns": len(views), "calls": sum(len(v["calls"]) + v["more_calls"] for v in views)}}

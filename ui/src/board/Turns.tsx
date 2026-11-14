@@ -19,11 +19,9 @@ const clockS = (t: number) => {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
 }
 
-/** Lean's record of the round, from the board: 13:25 开始、14:41 产品退回（D-2）; a request still open says when it was
- * asked (a decided gate keeps only when it was decided). */
-function leanLine(r: Round, n: StageNode, board: ReqBoard): string {
-  const asked = n.gates.find((g) => g.round === r.n && (g.state === 'pending' || g.state === 'queued'))
-  return [`${clockAt(r.started, board.at)} 开始`, asked?.at ? `${clockAt(asked.at, board.at)} 请批` : '',
+/** Lean's record of the round: 13:25 开始、13:26 请批、14:41 产品退回（D-2）. */
+function leanLine(r: Round, n: StageNode, asked: number | null, board: ReqBoard): string {
+  return [`${clockAt(r.started, board.at)} 开始`, asked ? `${clockAt(asked, board.at)} 请批` : '',
     r.ended !== null ? `${clockAt(r.ended, board.at)} ${roundWords(r, n, board)}` : ''].filter(Boolean).join('、')
 }
 
@@ -35,7 +33,7 @@ export function WhyNotCard({ w, r, n, board }: { w: WhyNot; r: Round; n: StageNo
       <p>这台机器上有：</p>
       <ul>
         {w.here.map((x) => <li key={x}>{x}</li>)}
-        {n.stage !== 'reflect' && <li>Lean 记下的这一轮：{leanLine(r, n, board)}</li>}
+        {n.stage !== 'reflect' && <li>Lean 记下的这一轮：{leanLine(r, n, w.asked, board)}</li>}
       </ul>
       {w.do && <p className="do"><b>做什么</b>{w.do}</p>}
     </div>
@@ -53,6 +51,14 @@ function sender(t: TaskView, run: Run | undefined): string {
 }
 
 const turnName = (t: TurnView) => (t.n ? `第 ${t.n} 回合` : '一个回合')
+
+/** A turn's pill, the reference's 第 1 轮 · 开工: 第 1 回合 · 开工消息 · 第 2 回合 · 你打的 · 第 3 回合 · D-2 退回. */
+function pillName(t: TurnView, run: Run | undefined): string {
+  const m = t.task
+  const said = m.kind === 'app' ? m.cause.split('，')[0] : m.kind === 'bridge' ? m.cause
+    : m.kind === 'person' ? (run?.kind === 'local' ? '你打的' : '有人打的') : '说不清是谁发的'
+  return `${turnName(t)} · ${said}`
+}
 
 function TaskBody({ t, run }: { t: TaskView; run: Run | undefined }) {
   const navigate = useNavigate()
@@ -79,7 +85,7 @@ function TaskTab({ turns, run, board }: { turns: TurnView[]; run: Run | undefine
   )
 }
 
-function ReplyTab({ turns, data, board }: { turns: TurnView[]; data: NodeTurns; board: ReqBoard }) {
+function ReplyTab({ turns, data, run, board }: { turns: TurnView[]; data: NodeTurns; run: Run | undefined; board: ReqBoard }) {
   const [pick, setPick] = useState(turns.length - 1)
   const t = turns[Math.min(pick, turns.length - 1)]
   const last = t === turns[turns.length - 1]
@@ -90,7 +96,7 @@ function ReplyTab({ turns, data, board }: { turns: TurnView[]; data: NodeTurns; 
         <div className="kt-turn-pick" role="group" aria-label="哪一回合的回复">
           {turns.map((x, i) => (
             <button key={i} type="button" className={`kt-btn is-small${x === t ? ' is-on' : ''}`} aria-pressed={x === t} onClick={() => setPick(i)}>
-              {turnName(x)}
+              {pillName(x, run)}
             </button>
           ))}
         </div>
@@ -119,15 +125,14 @@ function CallRow({ c }: { c: CallView }) {
   )
 }
 
-function CallsTab({ turns, r, run, board }: { turns: TurnView[]; r: Round; run: Run | undefined; board: ReqBoard }) {
+function CallsTab({ turns, lit, run, board }: { turns: TurnView[]; lit: NodeTurns['lit']; run: Run | undefined; board: ReqBoard }) {
   const found = turns.filter((t) => t.slot)
   const named = turns.map((t) => (t.n ? String(t.n) : '?')).join('、')
-  const end = r.ended ?? null
+  const span = lit ? `（${clockAt(lit.from, board.at)}–${clockAt(lit.to, board.at)}）` : ''
   return (
     <div data-testid="out-calls-tab">
-      <p className="kt-attempt-meta">
-        这一轮做在第 {named} 回合里（Lean 的回合记录对上了会话里的 {found.length} 条消息）。亮着的是这一轮
-        （{clockAt(r.started, board.at)}–{end ? clockAt(end, board.at) : '现在'}）里的调用，暗的在这一轮以外
+      <p className="kt-attempt-meta" data-testid="out-calls-meta">
+        {`这一轮做在第 ${named} 回合里（Lean 的回合记录对上了会话里的 ${found.length} 条消息）。亮着的是这一轮${span}里的调用，暗的在这一轮以外`}
       </p>
       <ul className="kt-calls" data-testid="out-calls">
         {turns.map((t, i) => [
@@ -149,7 +154,7 @@ export function SessionPane({ tab, data, error, r, n, run, board }: {
   if (!data) return <p className="kt-pad kt-dim">读取中…</p>
   if (data.why_not) return <WhyNotCard w={data.why_not} r={r} n={n} board={board} />
   if (!data.turns.length) return <p className="kt-pad kt-dim" data-testid="out-turns-none">{data.why}</p>
-  if (tab === 'reply') return <ReplyTab key={`${r.n}`} turns={data.turns} data={data} board={board} />
+  if (tab === 'reply') return <ReplyTab key={`${r.n}`} turns={data.turns} data={data} run={run} board={board} />
   if (tab === 'task') return <TaskTab turns={data.turns} run={run} board={board} />
-  return <CallsTab turns={data.turns} r={r} run={run} board={board} />
+  return <CallsTab turns={data.turns} lit={data.lit} run={run} board={board} />
 }
