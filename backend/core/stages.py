@@ -219,6 +219,17 @@ class CheckResult:
 
 
 @dataclass(frozen=True)
+class Pipeline:
+    """A pipeline of the requirement's MR, as this machine read it from GitLab (person mode, mrinfo.parse_pipelines):
+    its number, GitLab's status, the commit it ran on (full sha), when it finished (None while it runs), its page."""
+    id: int
+    status: str
+    sha: str
+    at: Optional[float]
+    url: Optional[str]
+
+
+@dataclass(frozen=True)
 class RoundEnd:
     """How a round ended, or the decision on its request, with what only that end has (wire: RoundOutcome)."""
     outcome: Outcome
@@ -231,6 +242,7 @@ class RoundEnd:
     sha: Optional[str] = None               # superseded: the commit after the request (12 hex)
     subject: Optional[str] = None
     checks: Tuple[CheckResult, ...] = ()    # passed, failed
+    pipeline: Optional[Pipeline] = None     # superseded: the pipeline that failed before that commit (ci_failure)
 
 
 @dataclass(frozen=True)
@@ -238,7 +250,7 @@ class Why:
     """Why a round happened (wire: RoundWhy)."""
     kind: Literal["first", "sent_back", "verify_failed", "ci_failed", "code_changed", "reopened"]
     round: Optional[int] = None             # sent_back, verify_failed: the round it follows
-    pipeline: Optional[int] = None          # ci_failed (team mode): the pipeline
+    pipeline: Optional[Pipeline] = None     # ci_failed: the pipeline that failed
     sha: Optional[str] = None               # code_changed: the commit (12 hex)
     subject: Optional[str] = None
     at: Optional[float] = None
@@ -275,7 +287,8 @@ class Records:
     """What one requirement's rounds are cut from, gathered once per board: Lean's records of the intent, oldest first
     (lean_view.events: each with _at and _file); the run branch's commits, oldest first (sha, at, by, records_only,
     subject, paths: the files it changed); brain reflect's branches (ref, made, merged); who did a record
-    (runs.attribute); who decided an approval (你 · a user name · 产品在 MR 上); the MR question a decision answered."""
+    (runs.attribute); who decided an approval (你 · a user name · 产品在 MR 上); the MR question a decision answered;
+    the MR's pipelines when this machine read them (person mode), else none."""
     events: Sequence[Mapping[str, Any]]
     intent: Optional[str]
     run_of: Callable[[Mapping[str, Any]], RunKey]
@@ -283,6 +296,16 @@ class Records:
     reflect: Sequence[Tuple[str, float, Optional[float]]] = ()
     who: Callable[[Mapping[str, Any]], Optional[str]] = lambda e: None
     decision: Callable[[Mapping[str, Any]], Optional[str]] = lambda e: None
+    pipelines: Sequence[Pipeline] = ()
+
+
+def ci_failure(rec: Records, run: RunKey, after: float, until: float) -> Optional[Pipeline]:
+    """What made *run* change its code by *until*: the newest pipeline that failed on one of its commits and finished
+    in (*after*, *until*]. None when none did, or the MR's pipelines were not read here."""
+    mine = {str(c["sha"]) for c in rec.commits if rec.run_of(c) == run}
+    hits = [p for p in rec.pipelines if p.status == "failed" and p.at is not None and after < p.at <= until
+            and p.sha in mine]
+    return max(hits, key=lambda p: (p.at, p.id), default=None)
 
 
 @dataclass(frozen=True)
@@ -429,6 +452,8 @@ def _why(prev: Optional[_Draft]) -> Why:
     end = prev.end
     if end.outcome is Outcome.SENT_BACK:
         return Why("sent_back", round=prev.n, at=end.at)
+    if end.outcome is Outcome.SUPERSEDED and end.pipeline is not None:
+        return Why("ci_failed", pipeline=end.pipeline, sha=end.sha, subject=end.subject, at=end.pipeline.at)
     if end.outcome is Outcome.SUPERSEDED and end.sha:
         return Why("code_changed", sha=end.sha, subject=end.subject, at=end.at)
     return Why("reopened", at=end.at)
@@ -492,7 +517,8 @@ def _end_sent_back(rs: List[_Draft], e: Mapping[str, Any], at: float, rec: Recor
 def _end_superseded(rs: List[_Draft], e: Mapping[str, Any], at: float, rec: Records, doc: Optional[str]) -> None:
     r = rs[-1]
     if "event" not in e:       # the commit that superseded it
-        r.end, r.ended = RoundEnd(Outcome.SUPERSEDED, at, sha=str(e["sha"])[:12], subject=e.get("subject") or None), at
+        r.end, r.ended = RoundEnd(Outcome.SUPERSEDED, at, sha=str(e["sha"])[:12], subject=e.get("subject") or None,
+                                  pipeline=ci_failure(rec, r.run, r.started, at)), at
     elif r.refused is not None:
         r.end, r.ended = r.refused, r.refused.at
     else:
@@ -572,8 +598,9 @@ def _secs(x: Any) -> Optional[float]:
 
 
 def _verify_rounds(stage: StageDef, unit: Optional[str], rec: Records) -> List[Round]:
-    """A round per VERIFY: passed or failed, with its checks. After a failed one the next round is the fix and the
-    check again, so it starts at the failure; otherwise it is the check itself (its run time)."""
+    """A round per VERIFY: passed or failed, with its checks. After a failed one, or a pipeline of its run that failed
+    since the one before (ci_failure), the next round is the fix and the check again, so it starts at the failure;
+    otherwise it is the check itself (its run time)."""
     verifies = [e for e in rec.events if ROUTE.get(str(e.get("event"))) == "verify" and isinstance(e.get("_at"), (int, float))]
     dones = [e for e in rec.events if e.get("event") == "STAGE_COMPLETED" and _data(e).get("stage") == stage.id
              and isinstance(e.get("_at"), (int, float))]
@@ -584,6 +611,7 @@ def _verify_rounds(stage: StageDef, unit: Optional[str], rec: Records) -> List[R
                        for x in d.get("results") or [] if isinstance(x, dict))
         prev = out[-1] if out else None
         after_red = prev is not None and prev.end.outcome is Outcome.FAILED
+        ci = ci_failure(rec, run, prev.ended, at) if prev is not None and prev.ended is not None and not after_red else None
         nxt = verifies[i + 1]["_at"] if i + 1 < len(verifies) else float("inf")
         done = next((x for x in dones if at <= x["_at"] < nxt and rec.run_of(x) == run), None)
         outputs: Dict[str, str] = {}
@@ -594,10 +622,11 @@ def _verify_rounds(stage: StageDef, unit: Optional[str], rec: Records) -> List[R
         note = _data(done).get("note") if done is not None else None
         out.append(Round(
             n=i + 1, run=run, ended=at, outputs=tuple(outputs.items()), note=note if isinstance(note, str) and note else None,
-            started=prev.ended if after_red and prev.ended is not None else at - sum(c.secs or 0 for c in checks),
+            started=prev.ended if after_red and prev.ended is not None else ci.at if ci is not None and ci.at is not None
+            else at - sum(c.secs or 0 for c in checks),
             end=RoundEnd(Outcome.PASSED if d.get("ok") else Outcome.FAILED, at, checks=checks),
             why=Why("first") if prev is None else Why("verify_failed", round=prev.n, at=prev.ended) if after_red
-            else Why("reopened", at=prev.ended)))
+            else Why("ci_failed", pipeline=ci, at=ci.at) if ci is not None else Why("reopened", at=prev.ended)))
     return out
 
 
@@ -755,6 +784,15 @@ WAITS = {"requirements": "等开工", "application-design": "等需求分析", "
          "release": "等审查和自动检查", "reflect": "等合并以后"}
 AGAIN = {"sent_back": "退回以后", "verify_failed": "检查没过以后", "ci_failed": "CI 没过以后",
          "code_changed": "代码改了以后", "reopened": "又做一遍", "first": "又做一遍"}
+
+
+def ci_words(p: Pipeline) -> str:
+    """A failed pipeline, as every round that names it says it: CI 没过 #1234."""
+    return "CI 没过 #%d" % p.id
+
+
+def _again(w: Why) -> str:
+    return ci_words(w.pipeline) + " 以后" if w.kind == "ci_failed" and w.pipeline is not None else AGAIN[w.kind]
 DONE_WORDS = {"doc": "做完了", "release": "做完了", "verify": "检查都过了", "review": "写好了审查",
               "reflect": "写好了回写分支：等合进 Brain"}
 
@@ -810,9 +848,11 @@ def node_status(kind: str, rounds: Sequence[Round], gates: Sequence[GateView], r
             return run_now
         if last.n == 1:
             return NodeStatus("running", "在做", last.started)
-        return NodeStatus("fixing", "第 %d 轮 · %s" % (last.n, AGAIN[last.why.kind]), last.started)
+        return NodeStatus("fixing", "第 %d 轮 · %s" % (last.n, _again(last.why)), last.started)
     if end.outcome is Outcome.SENT_BACK:
         return NodeStatus("fixing", _line(_name(end.by or "有人"), "退回了：等它改好再请批"), end.at)
+    if end.outcome is Outcome.SUPERSEDED and end.pipeline is not None:
+        return NodeStatus("fixing", "%s，代码又改了：等它重新请批" % ci_words(end.pipeline), end.at)
     if end.outcome is Outcome.SUPERSEDED:
         return NodeStatus("fixing", "请批以后代码又改了：等它重新请批", end.at)
     if end.outcome is Outcome.REFUSED:

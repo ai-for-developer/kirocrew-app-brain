@@ -1577,6 +1577,16 @@ export interface RoundOutcome {
   subject: string | null
   /** passed / failed: the checks of that VERIFY */
   checks: CheckResult[]
+  /** superseded: the MR pipeline that failed before that commit (person mode, read from GitLab); null when none */
+  pipeline: PipelineRef | null
+}
+
+/** A pipeline of the MR that failed, as this machine read it from GitLab with the person's token (Python:
+ * stages.Pipeline): its number, its page, when it finished. */
+export interface PipelineRef {
+  id: number
+  url: string | null
+  at: number | null
 }
 
 /** Why the round happened (Python: stages.Why). */
@@ -1584,8 +1594,8 @@ export interface RoundWhy {
   kind: 'first' | 'sent_back' | 'verify_failed' | 'ci_failed' | 'code_changed' | 'reopened'
   /** sent_back / verify_failed: the round it follows */
   round: number | null
-  /** ci_failed (team mode only): the pipeline number */
-  pipeline: number | null
+  /** ci_failed: the pipeline that failed (read from GitLab on a person's machine) */
+  pipeline: PipelineRef | null
   /** code_changed: the commit (12 hex) and its subject */
   sha: string | null
   subject: string | null

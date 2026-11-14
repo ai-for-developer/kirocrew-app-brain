@@ -21,6 +21,10 @@ not start (it also gets the rejected label), KiroCrew not opening the session, q
 sends that keep failing, an acceptance question held until the head pipeline is green (running, red, or waiting for a
 person), a question nobody may answer. The newest such note since the last 「AI 已接手」 is ``runner``: {kind, text in
 short Chinese, raw, at}.
+
+The same refresh reads the MR's newest pipelines (``pipelines``, parse_pipelines): one more GET with the same token, so
+the 需求看板 can say a round happened because CI failed (「CI 没过 #1234」). None when they could not be read (CI off, no
+access): the board then says what it said before.
 """
 
 from __future__ import annotations
@@ -34,6 +38,9 @@ from urllib.parse import quote
 from . import bk, problems
 
 TTL_S = 60.0
+MAX_PIPELINES = 20     # the MR's newest pipelines read per refresh (one page)
+FINISHED = ("success", "failed", "canceled", "skipped")
+SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 # the answerer: a GitLab username (brain-kit's decisions.USER), as the bridge writes it (lower case)
 DELIVERED_FMT = r"^(D-[1-9][0-9]*) 已收到 @(%s) 的回答：([A-Za-z]+)[^（(]*[（(]凭证 (V-[0-9a-f]{10})"
 VOID_RE = re.compile(r"^(D-[1-9][0-9]*) 作废(：|（)")      # 作废：a new push (stale); 作废（why）: not bound (void)
@@ -185,8 +192,31 @@ def parse_notes(notes: list[dict[str, Any]], bridge_user: str | None = None) -> 
             "rejected_raw": rejected_raw, "rejected_at": rejected_at, "runner": runner}
 
 
+def parse_pipelines(rows: Any, base: str, project: str) -> list[dict[str, Any]]:
+    """The MR's pipelines (GET /projects/:id/merge_requests/:iid/pipelines) as the board reads them, newest first, at most
+    MAX_PIPELINES: {id, status, sha, at, url}. *at*: when it finished, GitLab's finished_at, else its updated_at once it
+    has finished (the MR's list has no finish time; a finished pipeline was last updated when it finished), else None.
+    *url*: its page, GitLab's web_url when it is on *base*, else made from *base*. A row without a number or a full
+    commit sha is left out."""
+    when = bk.m("rest").gl_time
+    home = base.rstrip("/")
+    out = []
+    for r in rows if isinstance(rows, list) else []:
+        if not isinstance(r, dict) or isinstance(r.get("id"), bool) or not isinstance(r.get("id"), int) or r["id"] <= 0:
+            continue
+        sha, status = str(r.get("sha") or "").lower(), str(r.get("status") or "")[:20]
+        if not SHA40_RE.match(sha):
+            continue
+        done = when(r.get("finished_at") or (r.get("updated_at") if status in FINISHED else None))
+        web = str(r.get("web_url") or "")
+        out.append({"id": r["id"], "status": status, "sha": sha, "at": done.timestamp() if done else None,
+                    "url": web if web.startswith(home + "/") else "%s/%s/-/pipelines/%d" % (home, project, r["id"])})
+    return sorted(out, key=lambda p: -p["id"])[:MAX_PIPELINES]
+
+
 class MrCache:
-    """Per (project, branch): {at, mr: {iid, url, state, labels, questions, rejected_reason, rejected_raw}} or an error."""
+    """Per (project, branch): {at, mr: {iid, url, state, labels, questions, rejected_reason, rejected_raw, pipelines}}
+    or an error."""
 
     def __init__(self) -> None:
         self._rows: dict[tuple, dict[str, Any]] = {}
@@ -202,12 +232,15 @@ class MrCache:
 
     def refresh(self, base: str, project: str, branch: str, *, transport: Any = None,
                 bridge_user: str | None = None) -> dict[str, Any] | None:
-        """Read the branch's MR (blocking: call it in a thread). None when GitLab is not set up here."""
+        """Read the branch's MR, its notes and its newest pipelines (blocking: call it in a thread). None when GitLab is
+        not set up here."""
         rest = bk.m("rest")
         tok = rest.read_token()
         if not base or not project or not tok:
             return None
         gl = rest.GitLab(base, tok, transport)
+        with self._lock:
+            old = self._rows.get((project, branch)) or {}
         try:
             rows = gl.call("GET", "/projects/%s/merge_requests" % quote(str(project), safe=""),
                            {"source_branch": branch, "state": "all", "per_page": 5}) or []
@@ -217,16 +250,29 @@ class MrCache:
             if mr:
                 parsed = parse_notes(gl.mr_notes(project, mr["iid"]), bridge_user)
                 info = {"iid": int(mr["iid"]), "url": mr.get("web_url"), "state": mr.get("state"),
-                        "labels": list(mr.get("labels") or []), "sha": mr.get("sha"), **parsed}
+                        "labels": list(mr.get("labels") or []), "sha": mr.get("sha"), **parsed,
+                        "pipelines": self._pipelines(gl, base, project, int(mr["iid"]), old.get("mr"))}
             with self._lock:
                 self._rows[(project, branch)] = {"at": time.monotonic(), "mr": info}
             return info
         except Exception as exc:  # noqa: BLE001 - GitLab down or SSO expired: keep the last copy
             with self._lock:
-                old = self._rows.get((project, branch)) or {}
                 self._rows[(project, branch)] = {"at": time.monotonic(), "mr": old.get("mr"),
                                                  "error": str(exc).split("\n", 1)[0][:200]}
             return old.get("mr")
+
+    @staticmethod
+    def _pipelines(gl: Any, base: str, project: str, iid: int, last: dict[str, Any] | None) -> list[dict[str, Any]] | None:
+        """The MR's newest pipelines (parse_pipelines). None when GitLab serves none for it (403, 404: CI off, or the
+        token may not read them); any other failure keeps the last copy of the same MR's: the MR and its notes still
+        count."""
+        try:
+            rows = gl.call("GET", "/projects/%s/merge_requests/%d/pipelines" % (quote(str(project), safe=""), iid),
+                           {"per_page": MAX_PIPELINES})
+        except Exception as exc:  # noqa: BLE001 - GitLab down halfway through the refresh
+            kept = (last or {}).get("pipelines") if (last or {}).get("iid") == iid else None
+            return None if getattr(exc, "status", None) in (403, 404) else kept
+        return parse_pipelines(rows, base, str(project))
 
     def post_answer(self, base: str, project: str, iid: int, did: str, choice: str, note: str, *,
                     transport: Any = None) -> dict[str, Any]:

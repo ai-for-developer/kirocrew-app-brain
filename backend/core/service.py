@@ -778,7 +778,7 @@ class Service:
             "questions": questions,
             "timeline": {"source": tl["source"], "items": tl["items"], "error": tl["error"],
                          "missing": board_mod.missing_sources(tl["missing"], local_only=row["local_only"],
-                                                              handed=bool(run.get("handoff"))),
+                                                              handed=bool(run.get("handoff")), ci_read=board_mod.pipelines_read(mr)),
                          "other_runs": tl.get("other_runs") or []},
             "sessions": [{k: s[k] for k in ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting",
                                              "last_activity", "opened_at", "project", "url", "error")}

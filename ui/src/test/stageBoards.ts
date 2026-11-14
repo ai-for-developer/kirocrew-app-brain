@@ -6,7 +6,8 @@
  * of design.md on board.json's day, PAY-16's count back from board.json's `at`.
  */
 import type {
-  ActorStatus, BeltItem, BoardPhase, CheckCell, Gate, NodeId, PhaseKey, Relay, RelayStep, ReqBoard, Round, RoundOutcome, Run, RunKey, StageNode,
+  ActorStatus, BeltItem, BoardPhase, CheckCell, Gate, NodeId, PhaseKey, PipelineRef, Relay, RelayStep, ReqBoard, Round, RoundOutcome, Run, RunKey,
+  StageNode,
 } from '../types'
 import { fx } from './data'
 
@@ -50,7 +51,7 @@ const STAGE: Record<string, [string, string, PhaseKey, string, string]> = {
 }
 export const OPERATIONS = Object.keys(STAGE).filter((s) => STAGE[s][2] === 'operations' && s !== 'reflect')
 
-const OUTCOME: RoundOutcome = { kind: 'open', at: null, gate: null, by: null, decision: null, text: null, sha: null, subject: null, checks: [] }
+const OUTCOME: RoundOutcome = { kind: 'open', at: null, gate: null, by: null, decision: null, text: null, sha: null, subject: null, checks: [], pipeline: null }
 
 export function round(n: number, run: string, started: number, ended: number | null, outcome: Partial<RoundOutcome> = {}, why: Partial<Round['why']> = {}): Round {
   return {
@@ -168,6 +169,22 @@ export function pay9(): ReqBoard {
     checks: { cells, passed: 3, failed: 0, total: 3, todo: [], at: t('16:10'), history: [] },
     brain: { ...b.brain, loaded: 6, cited: ['P-7', 'T-12'], stale: [] },
   }
+}
+
+/** PAY-9 once alice's machine read the MR's pipelines: #1234 failed on round 2's release, #1240 on round 3's; 构建测试's
+ * rounds 4 and 5 are the checks after each CI fix. */
+export function pay9ci(): ReqBoard {
+  const b = pay9()
+  const page = (id: number, at: number): PipelineRef => ({ id, url: `https://gitlab.example.com/shop/shop-pay/-/pipelines/${id}`, at })
+  const rel = b.nodes.find((n) => n.id === 'release') as StageNode
+  const red = page(1234, rel.rounds[1].started + 10 * 60)
+  const red2 = page(1240, rel.rounds[2].started + 11 * 60)
+  const failed = (r: Round, p: PipelineRef): Round => ({ ...r, why: { ...r.why, kind: 'ci_failed', round: null, pipeline: p } })
+  rel.rounds = rel.rounds.map((r) => (r.n === 2 ? { ...r, outcome: { ...r.outcome, pipeline: red } }
+    : r.n === 3 ? failed({ ...r, outcome: { ...r.outcome, pipeline: red2 } }, red) : r.n === 4 ? failed(r, red2) : r))
+  const bt = b.nodes.find((n) => n.id === 'build-and-test') as StageNode
+  bt.rounds = bt.rounds.map((r) => (r.n === 4 ? failed({ ...r, started: red.at as number }, red) : r.n === 5 ? failed({ ...r, started: red2.at as number }, red2) : r))
+  return b
 }
 
 /** design.md's Scenario A: PAY-16 退款进度查询, waiting 12 minutes for alice's INCEPTION approval on her machine. */
