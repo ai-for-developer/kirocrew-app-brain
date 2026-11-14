@@ -5,7 +5,7 @@ import { API, installFixtureRoutes } from '../test/routes'
 import { pay16, pay9 } from '../test/stageBoards'
 import { apiCalls } from '../test/stubs/app-sdk'
 import type { BoardEntry } from '../nav'
-import type { FileView, NodeOutput, OutFile, ReqBoard } from '../types'
+import type { FileView, NodeOutput, NodeTurns, OutFile, ReqBoard, TurnView } from '../types'
 import type { ViewProps } from '../views/props'
 import { BoardPage } from './BoardPage'
 
@@ -26,11 +26,43 @@ const listed: NodeOutput = {
 
 const DOC = '# Release: 退款通知短信\n\n## 检查\n\n- [x] pytest\n- [ ] 产品验收\n  - D-3 在 MR 上\n'
 
+const KICKOFF = '这是需求 PAY-9 的本地开发会话。分支 ai/alice/PAY-9-refund-sms，Lean intent 261111-refund-sms。\n有问题一次问完，每题带推荐答案。'
+const at = (hm: string) => {
+  const d = new Date(pay9().at * 1000)
+  const [h, m, s = 0] = hm.split(':').map(Number)
+  d.setHours(h, m, s, 0)
+  return d.getTime() / 1000
+}
+const call = (hm: string, tool: string, detail: string, inRound = true) => ({ at: at(hm), tool, detail, in_round: inRound })
+const turn = (over: Partial<TurnView>): TurnView => ({
+  n: 1, at: at('10:05:20'), until: at('10:20'), slot: 'brain-PAY-9-7f2c', url: '/chat?sid=brain-PAY-9-7f2c',
+  task: { kind: 'app', cause: '开工消息，只有编号', text: KICKOFF }, reply: '先读了 AGENTS.md。', live: false, calls: [], more_calls: 0, also: [], ...over,
+})
+/** application-design's round 1 on this machine: the kickoff, then what alice typed */
+const designTurns: NodeTurns = {
+  node: 'application-design' as NodeTurns['node'], round: 1, run: 'local' as NodeTurns['run'], why_not: null, why: null,
+  meta: { took: 1920, turns: 2, calls: 25 },
+  turns: [
+    turn({ calls: [call('10:05:31', '读文件', 'AGENTS.md', false), call('10:06:02', '跑命令', 'python3 .kiro/aidlc-lean/aidlc_lean.py stage start application-design')] }),
+    turn({ n: 2, at: at('10:21'), until: at('10:52'), task: { kind: 'person', chars: 64, url: '/chat?sid=brain-PAY-9-7f2c' },
+      reply: '需求和设计都写好了，等你批：\n\n- `requirements.md`：7 条验收标准\n\n请在会话里打这一行：`approve INCEPTION 3fa2c1d0`',
+      calls: [call('10:24:05', '写文件', 'aidlc-docs/261111-refund-sms/inception/application-design/application-design.md')], more_calls: 21,
+      also: ['需求分析', '拆分单元'] }),
+  ],
+}
+const releaseTurns: NodeTurns = {
+  node: 'release' as NodeTurns['node'], round: 1, run: 'runner-1' as NodeTurns['run'], turns: [], why: null,
+  meta: { took: 4560, turns: null, calls: null },
+  why_not: { title: '这一轮是运行机做的（RUN-PAY-9-1）', missing: '它的回复、接到的消息和工具调用留在运行机上，这台机器读不到。',
+    here: ['它的 2 次提交（「产出文件」里都能看）', '它在 MR 上问的 D-2'], do: '要看它的回复和工具调用：请管运行机的人在运行机上的 Brain 交付里打开 PAY-9。' },
+}
+
 function routes(board: () => ReqBoard) {
   installFixtureRoutes({
     [`GET ${API}/board/*`]: () => board(),
     [`GET ${API}/outputs/*`]: (_b, path) => {
       const q = new URLSearchParams(path.split('?')[1])
+      if (path.includes('/turns?')) return q.get('node') === 'release' ? { ...releaseTurns, round: Number(q.get('round') ?? 1) } : designTurns
       if (!path.includes('/file?')) return { ...listed, round: Number(q.get('round') ?? 4) }
       const v: FileView = { path: q.get('path') ?? '', view: q.get('view') as FileView['view'], at: q.get('ref') ?? '', base: q.get('base'), pinned: false,
         lang: (q.get('path') ?? '').endsWith('.md') ? 'markdown' : 'python', asked: q.get('ref') === R4 ? { kind: 'RELEASE', sha8: '73b5061f' } : null,
@@ -135,5 +167,60 @@ describe('产出', () => {
     expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9' })
     expect(screen.queryByTestId('out-drawer')).toBeNull()
     expect(p.go).not.toHaveBeenCalled()
+  })
+
+  test('a local round: 它的回复 is its last turn’s reply, 接到的任务 the app’s message as sent and a person’s only by its length, 做了什么 every call', async () => {
+    const p = renderBoard({ ...PAY9, out: { node: 'application-design', round: 1, tab: 'reply' } })
+    const pane = await screen.findByTestId('out-pane')
+    const reply = await within(pane).findByTestId('out-reply')
+    expect(reply.textContent).toContain('需求和设计都写好了，等你批')
+    expect(within(reply).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['requirements.md：7 条验收标准'])
+    expect(within(pane).getByTestId('out-reply-meta').textContent).toBe(
+      '本机会话 brain-PAY-9-7f2c · 这一轮的最后一个回合（第 2 回合 · 10:21–10:52）的回复 · 这一轮里 25 次工具调用 · 这一回合也做了：需求分析、拆分单元')
+    expect(within(pane).getAllByTestId('out-tab').map((x) => x.textContent)).toEqual(['产出文件3', '它的回复', '接到的任务2', '做了什么25'])
+    fireEvent.click(within(pane).getByRole('button', { name: '第 1 回合' }))
+    expect(within(pane).getByTestId('out-reply').textContent).toBe('先读了 AGENTS.md。')
+
+    fireEvent.click(within(pane).getByRole('tab', { name: /接到的任务/ }))
+    expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'application-design', round: 1, tab: 'task' } })
+    const tasks = await within(pane).findByTestId('out-tasks')
+    expect(within(tasks).getAllByText(/^第 \d 回合/).map((h) => h.textContent)).toEqual(
+      ['第 1 回合 · 10:05 · app 发的（开工消息，只有编号）', '第 2 回合 · 10:21 · 你在会话里打的'])
+    expect(within(tasks).getByTestId('out-task-text').textContent).toBe(KICKOFF)
+    expect(within(tasks).getByTestId('out-task-person').textContent).toBe('你打的话（64 字）不在这里显示：看板上不放有人写的话。在会话里看 ↗')
+
+    fireEvent.click(within(pane).getByRole('tab', { name: /做了什么/ }))
+    const calls = await within(pane).findByTestId('out-calls')
+    const rows = Array.from(calls.querySelectorAll('li')).map((li) => [li.className, li.textContent])
+    expect(rows).toEqual([
+      ['kt-calls-turn', '10:05:20第 1 回合app 发的（开工消息，只有编号）'],
+      ['is-out', '10:05:31读文件AGENTS.md'],
+      ['', '10:06:02跑命令python3 .kiro/aidlc-lean/aidlc_lean.py stage start application-design'],
+      ['kt-calls-turn', '10:21:00第 2 回合你在会话里打的'],
+      ['', '10:24:05写文件aidlc-docs/261111-refund-sms/inception/application-design/application-design.md'],
+      ['', '…还有 21 次没列出来'],
+    ])
+  })
+
+  test('a runner round: each session tab is the card that says where its session is and what is here instead', async () => {
+    renderBoard({ ...PAY9, out: { node: 'release', round: 1, tab: 'calls' } })
+    const pane = await screen.findByTestId('out-pane')
+    const card = await within(pane).findByTestId('out-whynot')
+    expect(within(card).getByRole('heading', { level: 4 }).textContent).toBe('这一轮是运行机做的（RUN-PAY-9-1）')
+    expect(within(card).getAllByRole('listitem').map((li) => li.textContent)).toEqual(
+      ['它的 2 次提交（「产出文件」里都能看）', '它在 MR 上问的 D-2', 'Lean 记下的这一轮：13:25 开始、14:41 产品退回（D-2）'])
+    expect(card.querySelector('.do')?.textContent).toBe('做什么要看它的回复和工具调用：请管运行机的人在运行机上的 Brain 交付里打开 PAY-9。')
+    expect(within(pane).getAllByTestId('out-tab').map((x) => x.textContent)).toEqual(['产出文件3', '它的回复', '接到的任务', '做了什么'])
+    fireEvent.click(within(pane).getByRole('tab', { name: '它的回复' }))
+    expect(await within(pane).findByTestId('out-whynot')).toBeInTheDocument()
+  })
+
+  test('the tab stays when a round pill or a step moves the drawer', async () => {
+    const p = renderBoard({ ...PAY9, out: { node: 'release', round: 4, tab: 'reply' } })
+    const pane = await screen.findByTestId('out-pane')
+    fireEvent.click(within(within(pane).getByTestId('out-rounds')).getByRole('button', { name: /第 1 轮/ }))
+    expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'release', round: 1, tab: 'reply' } })
+    fireEvent.click(screen.getAllByTestId('out-step')[1])
+    expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'application-design', tab: 'reply' } })
   })
 })

@@ -14,6 +14,7 @@
  *     &at=<epoch s>                               …its 回放 stands at that moment (a decision, a part of 价值流)
  *     &out=<node>&round=<n>&file=<path>           …its 产出 drawer open on that stage (code-generation/api), that
  *                                                 round (default its latest) and that file (default its first)
+ *       &tab=reply|task|calls                     …on its tab 它的回复 / 接到的任务 / 做了什么 (default 产出文件)
  *   ?view=new&repo=<id>                           开需求
  *     &key=<KEY>&title=<title>                    …开工 of a requirement claimed already: its key fixed, its title filled
  *   ?view=brain&repo=<id>&file=<FILE>&id=<entry>&reflect=<KEY>   Brain: that file, that entry picked out, that
@@ -44,7 +45,10 @@ export type BoardEntry = { repo: string; key: string; replay?: boolean; focus?: 
   /** the 产出 drawer, open (?out=&round=&file=) */
   out?: OutAt }
 /** Where the 产出 drawer stands: a node, one of its rounds (none: the latest), one of its files (none: the first). */
-export type OutAt = { node: string; round?: number; file?: string }
+/** the drawer's tabs past 产出文件 (the default): 它的回复 · 接到的任务 · 做了什么 */
+export type OutTab = 'reply' | 'task' | 'calls'
+export const OUT_TABS: readonly OutTab[] = ['reply', 'task', 'calls']
+export type OutAt = { node: string; round?: number; file?: string; tab?: OutTab }
 /** 开需求; with key (and title): 开工 of a requirement claimed already, its key fixed (?view=new&repo=&key=&title=) */
 export type NewEntry = { repo?: string; key?: string; title?: string }
 export type BrainEntryRef = { repo?: string; file?: BrainFile; id?: string; reflect?: string }
@@ -117,6 +121,8 @@ export function parseView(search: string): View {
       if (Number.isInteger(round) && round >= 1 && round <= 999) v.out.round = round
       const file = q.get('file') ?? ''
       if (isRelPath(file)) v.out.file = file
+      const tab = q.get('tab') ?? ''
+      if ((OUT_TABS as readonly string[]).includes(tab)) v.out.tab = tab as OutTab
     }
     return v
   }
@@ -179,6 +185,7 @@ export function searchOf(v: View): string {
         q.set('out', v.out.node)
         if (v.out.round) q.set('round', String(v.out.round))
         put('file', v.out.file && isRelPath(v.out.file) ? v.out.file : undefined)
+        put('tab', v.out.tab && OUT_TABS.includes(v.out.tab) ? v.out.tab : undefined)
       }
       break
     case 'new':

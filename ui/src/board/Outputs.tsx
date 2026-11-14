@@ -15,14 +15,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { paths, usePoll } from '../api'
 import type { OutAt } from '../nav'
-import type { FileView, Gate, NodeOutput, OutFile, ReqBoard, Round, Run, StageNode } from '../types'
+import type { FileView, Gate, NodeOutput, NodeTurns, OutFile, ReqBoard, Round, Run, StageNode } from '../types'
 import { ExtLink, TYPE_IT_YOURSELF } from '../ui'
 import { Markdown } from '../views/Markdown'
 import { laneNodes } from './Lanes'
 import { ROUND_TONE, actorMeta, clockAt, decider, gateVerb, nodeLabel, roundWords, whoOf } from './format'
 import { RoleIcon } from './RoleIcon'
+import { SessionPane } from './Turns'
 
 type Mode = 'content' | 'source' | 'diff'
+
+const TURNS_LIVE_MS = 4000
 
 /** A round in two words, for its pill: 退回 · 代码又改了 · 等验收 · 批了. */
 function roundShort(r: Round, n: StageNode, b: ReqBoard): string {
@@ -191,11 +194,18 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt }: {
 }) {
   const runs = useMemo(() => new Map(board.runs.map((x) => [x.key, x])), [board.runs])
   const out = usePoll<NodeOutput>(paths.outputs(repo, reqKey, n.id, r?.n ?? null), 0)
-  // the round moved on (a commit, its end): its files again
+  const [live, setLive] = useState(false)
+  // a turn still going: its reply and calls as they come
+  const turns = usePoll<NodeTurns>(r ? paths.outputsTurns(repo, reqKey, n.id, r.n) : null, live ? TURNS_LIVE_MS : 0)
+  useEffect(() => setLive(!!turns.data?.turns.some((t) => t.live)), [turns.data])
+  // the round moved on (a commit, its end): its files and turns again
   const sig = r ? `${r.n}:${r.commits.length}:${r.outcome.kind}:${r.outputs.map((o) => o.sha8).join(',')}` : ''
   const seen = useRef(sig)
   useEffect(() => {
-    if (seen.current !== sig) out.reload()
+    if (seen.current !== sig) {
+      out.reload()
+      turns.reload()
+    }
     seen.current = sig
   }, [sig]) // eslint-disable-line react-hooks/exhaustive-deps
   const run = r ? runs.get(r.run) : undefined
@@ -206,6 +216,10 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt }: {
   const meta = actorMeta(n.status)
   const head = out.data?.head
   const title = n.unit ? `${n.title} · ${n.unit}` : n.title
+  const tab = at.tab ?? 'files'
+  const t = turns.data && !turns.data.why_not ? turns.data : null
+  const tabs: [OutAt['tab'], string, number | null][] = [[undefined, '产出文件', out.data ? files.length : null], ['reply', '它的回复', null],
+    ['task', '接到的任务', t?.turns.length || null], ['calls', '做了什么', t?.meta.calls || null]]
   return (
     <section className="kt-pane" aria-label={`${title}的产出`} data-testid="out-pane" data-node={n.id}>
       <div className="kt-pane-head">
@@ -226,7 +240,7 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt }: {
             <span className="lbl">第几轮</span>
             {n.rounds.map((x) => (
               <button key={x.n} type="button" className={`kt-round tone-${openAsk(n, x) ? 'approve' : ROUND_TONE[x.outcome.kind]}${x.n === r?.n ? ' is-on' : ''}`} aria-pressed={x.n === r?.n}
-                onClick={() => onAt({ node: n.id, round: x.n })} title={roundWords(x, n, board)}>
+                onClick={() => onAt({ node: n.id, round: x.n, tab: at.tab })} title={roundWords(x, n, board)}>
                 <b>第 {x.n} 轮</b>{roundShort(x, n, board)}
               </button>
             ))}
@@ -235,11 +249,17 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt }: {
         {r && <RoundBanner n={n} r={r} board={board} />}
         {r?.note && <p className="kt-note-box"><b>它自己写的说明</b>{r.note}</p>}
         <div className="kt-tabs" role="tablist">
-          <button type="button" role="tab" className="kt-tab" aria-selected="true">产出文件{out.data && <sub>{files.length}</sub>}</button>
+          {tabs.map(([k, label, count]) => (
+            <button key={label} type="button" role="tab" className="kt-tab" aria-selected={(k ?? 'files') === tab} onClick={() => onAt({ ...at, tab: k })} data-testid="out-tab">
+              {label}{count !== null && <sub>{count}</sub>}
+            </button>
+          ))}
         </div>
       </div>
       <div className="kt-pane-body">
-        {out.error ? <p className="kt-pad" role="alert">{out.error}</p>
+        {tab !== 'files' ? (r ? <SessionPane tab={tab} data={turns.data} error={turns.error} r={r} n={n} run={run} board={board} />
+          : <p className="kt-pad kt-dim">这一步还没开始：开始以后，这里有它每一回合的回复、接到的消息和工具调用</p>)
+          : out.error ? <p className="kt-pad" role="alert">{out.error}</p>
           : !out.data ? <p className="kt-pad kt-dim">读取中…</p>
           : !files.length ? <p className="kt-pad kt-dim" data-testid="out-none">{out.data.why ?? '这一轮没有提交文件'}</p>
           : (
@@ -292,7 +312,7 @@ export function OutputsDrawer({ board, repo, reqKey, at, onAt, onClose }: {
         <nav className="kt-steps" aria-label="每一步">
           {steps.map((x, k) => (
             <button key={x.id} type="button" className={`kt-step tone-${actorMeta(x.status).tone}${x.id === at.node ? ' is-on' : ''}`} aria-current={x.id === at.node ? 'step' : undefined}
-              onClick={() => onAt({ node: x.id })} data-testid="out-step">
+              onClick={() => onAt({ node: x.id, tab: at.tab })} data-testid="out-step">
               <span className="kt-step-n">{k + 1}</span>
               <RoleIcon role={x.icon} size={14} />
               {x.unit ? `${x.title} · ${x.unit}` : x.title}

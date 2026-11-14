@@ -86,6 +86,15 @@ describe('nav: the URL of every view', () => {
     expect(parseView('?view=board&repo=r1&key=PAY-9&out=Release%3Cx%3E&round=2')).toEqual({ kind: 'board', repo: 'r1', key: 'PAY-9' })
   })
 
+  test('the drawer’s tab: 它的回复, 接到的任务 or 做了什么, else 产出文件', () => {
+    for (const tab of ['reply', 'task', 'calls'] as const) {
+      const v: View = { kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'application-design', round: 1, tab } }
+      expect(parseView(searchOf(v))).toEqual(v)
+    }
+    expect(parseView('?view=board&repo=r1&key=PAY-9&out=release&tab=files')).toEqual({ kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'release' } })
+    expect(parseView('?view=board&repo=r1&key=PAY-9&tab=reply')).toEqual({ kind: 'board', repo: 'r1', key: 'PAY-9' })
+  })
+
   test('an entry id says its Brain file by its side letter', () => {
     expect(fileOfEntry('P-PAY-2-1')).toBe('PRODUCT')
     expect(fileOfEntry('T-12')).toBe('TECH')
