@@ -1041,7 +1041,7 @@ def drawer_payloads(r: Req, rid: str, keep: dict) -> dict[str, dict]:
             nq = outputs.node_query(n.id, str(rnd.n))
             slots = [turns_mod.Slot(str(s["slot"]), str(s["url"]), r.session["cwd"], False, r.session["rows"], True,
                                     r.session["sent"]) for s in turns_mod.sessions_to_read(f, nq) if r.session]
-            put(base + "/turns", {"node": n.id, "round": str(rnd.n)}, lambda: turns_mod.turn_views(f, nq, slots, r.key, T0))
+            put(base + "/turns", {"node": n.id, "round": str(rnd.n)}, lambda: turns_mod.turn_views(f, nq, slots, r.key, T0, service.basic_scrub))
     return out
 
 

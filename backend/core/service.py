@@ -1002,7 +1002,7 @@ class Service:
             root = self.sessions.by_slot(str(s["slot"]))
             slots.append(turns_mod.Slot(str(s["slot"]), str(s.get("url") or ""), root.cwd if root else "",
                                         bool(s.get("busy")), rows, whole, self.sessions.sent(str(s["slot"]))))
-        return scrub_tree(turns_mod.turn_views(fold, q, slots, key, self.now()), self.scrub)
+        return scrub_tree(turns_mod.turn_views(fold, q, slots, key, self.now(), self.scrub), self.scrub)
 
     # ---- sessions and answers ------------------------------------------------------------------------- #
 

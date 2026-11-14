@@ -20,10 +20,10 @@ import bisect
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from . import sessions, stages
-from .outputs import Fold, NodeQuery, round_of
+from .outputs import Fold, NodeQuery, pseudonymize, round_of, shown_text
 from .runs import RunView
 
 MATCH_S = 900.0        # a turn's row: the one with its sha256 nearest Lean's record in time, at most 15 minutes off
@@ -98,28 +98,31 @@ def _task(m: Mapping[str, Any], s: Slot) -> Dict[str, Any]:
     shown = s.sent.get(str(meta.get("sendId") or ""))
     if shown:
         return {"kind": "bridge" if shown.get("by") == "bridge" else "app", "cause": shown.get("cause") or "",
-                "text": shown.get("text") or ""}
+                "text": shown_text(shown.get("text") or "", REPLY_MAX)[0]}
     return {"kind": "hidden", "why": HIDDEN}
 
 
-def _call(m: Mapping[str, Any], s: Slot, lo: float, hi: float) -> Dict[str, Any]:
-    c = sessions.tool_call(dict(m), lambda x: x.replace(s.cwd.rstrip("/") + "/", "") if s.cwd else x)
+def _call(m: Mapping[str, Any], s: Slot, lo: float, hi: float, scrub: Callable[[str], str]) -> Dict[str, Any]:
+    """A call, its detail said relative to the worktree and scrubbed before tool_call cuts it to 120 characters."""
+    c = sessions.tool_call(dict(m), lambda x: scrub(pseudonymize(x.replace(s.cwd.rstrip("/") + "/", "") if s.cwd else x)))
     at = c["at"] or None
     return {"at": at, "tool": c["tool"] if c["tool"] in KNOWLEDGE else CALL_KIND.get(c["kind"] or "", "其他"),
             "detail": c["detail"], "in_round": at is not None and lo <= at <= hi}
 
 
-def _found(t: stages.Turn, s: Slot, i: int, n: Optional[int], lo: float, hi: float, also: List[str]) -> Dict[str, Any]:
-    """The turn whose message is row *i* of *s*: the rows after it, up to the next message."""
+def _found(t: stages.Turn, s: Slot, i: int, n: Optional[int], lo: float, hi: float, also: List[str],
+           scrub: Callable[[str], str]) -> Dict[str, Any]:
+    """The turn whose message is row *i* of *s*: the rows after it, up to the next message. Its reply is cut at a line
+    end and its emails are pseudonyms (outputs.shown_text), as the drawer's files are."""
     j = next((k for k in range(i + 1, len(s.rows)) if s.rows[k].get("role") == "user"), len(s.rows))
     body = s.rows[i + 1:j]
     said = [str(m.get("content")) for m in body if m.get("role") == "assistant" and str(m.get("content") or "").strip()]
-    reply = said[-1] if said else None
-    calls = [_call(m, s, lo, hi) for m in body if m.get("role") == "tool"]
+    reply, cut = shown_text(said[-1], REPLY_MAX) if said else (None, False)
+    calls = [_call(m, s, lo, hi, scrub) for m in body if m.get("role") == "tool"]
     stamps = [x for x in (_epoch(m.get("ts")) for m in body) if x is not None]
     return {"n": n, "at": _epoch(s.rows[i].get("ts")) or t.at, "until": max(stamps) if stamps else None, "slot": s.key,
             "url": s.url, "task": _task(s.rows[i], s),
-            "reply": reply[:REPLY_MAX] + LONG if reply and len(reply) > REPLY_MAX else reply,
+            "reply": reply + LONG if cut else reply,
             "live": s.busy and j == len(s.rows), "calls": calls[:CALLS_MAX], "more_calls": max(0, len(calls) - CALLS_MAX),
             "also": also}
 
@@ -129,7 +132,8 @@ def _missing(t: stages.Turn, also: List[str]) -> Dict[str, Any]:
             "reply": None, "live": False, "calls": [], "more_calls": 0, "also": also}
 
 
-def _views(fold: Fold, n: stages.Node, r: stages.Round, slots: Sequence[Slot], lo: float, hi: float) -> List[Dict[str, Any]]:
+def _views(fold: Fold, n: stages.Node, r: stages.Round, slots: Sequence[Slot], lo: float, hi: float,
+           scrub: Callable[[str], str]) -> List[Dict[str, Any]]:
     own = round_turns(fold.turns, r)
     others: Dict[stages.Turn, List[str]] = {}     # the other nodes a turn also worked on (也做了); a skip is no work
     for x in fold.nodes:
@@ -155,7 +159,7 @@ def _views(fold: Fold, n: stages.Node, r: stages.Round, slots: Sequence[Slot], l
             continue
         _, s, i, k = hit
         used.add((s.key, i))
-        out.append(_found(t, s, i, k if s.whole else None, lo, hi, also))
+        out.append(_found(t, s, i, k if s.whole else None, lo, hi, also, scrub))
     return out
 
 
@@ -183,8 +187,10 @@ def why_not(n: stages.Node, r: stages.Round, run: Optional[RunView], key: str) -
             "here": here, "do": "要看：在做这一轮的那台机器上的 Brain 交付里打开 %s。" % key, "asked": asked}
 
 
-def turn_views(fold: Fold, q: NodeQuery, slots: Sequence[Slot], key: str, now: float) -> Dict[str, Any]:
-    """One round of one node: the turns it was done in, each with its message, reply and calls; or why_not."""
+def turn_views(fold: Fold, q: NodeQuery, slots: Sequence[Slot], key: str, now: float,
+               scrub: Callable[[str], str]) -> Dict[str, Any]:
+    """One round of one node: the turns it was done in, each with its message, reply and calls; or why_not. *scrub*:
+    the app's scrubber, run on a call's detail before it is cut (the route's scrub_tree runs on the rest after)."""
     n, r = round_of(fold, q)
     if r is None:
         return {"node": n.id, "round": None, "run": None, "turns": [], "why_not": None, "why": NOT_STARTED, "lit": None,
@@ -196,7 +202,7 @@ def turn_views(fold: Fold, q: NodeQuery, slots: Sequence[Slot], key: str, now: f
         return {"node": n.id, "round": r.n, "run": r.run, "turns": [], "why_not": card, "why": None, "lit": None,
                 "meta": {"took": took, "turns": None, "calls": None}}
     lo, hi = r.started, _work_end(r) or now       # a call is lit from the round's start to its agent's last work on it
-    views = _views(fold, n, r, slots, lo, hi)
+    views = _views(fold, n, r, slots, lo, hi, scrub)
     return {"node": n.id, "round": r.n, "run": r.run, "turns": views, "why_not": None,
             "why": None if views else NO_TURNS, "lit": {"from": lo, "to": hi},
             "meta": {"took": took, "turns": len(views), "calls": sum(len(v["calls"]) + v["more_calls"] for v in views)}}

@@ -476,12 +476,12 @@ def pinned_file(worktree: str, rel: str, sha256: str) -> bytes:
     return data
 
 
-def _shown(text: str) -> Tuple[str, bool]:
-    """(text, truncated): cut at its last line end within TEXT_MAX, then emails pseudonymized. Cut first, at a line
-    end: the pattern reads at most TEXT_MAX characters, and the scrubber after it never sees part of a secret."""
-    if len(text) <= TEXT_MAX:
+def shown_text(text: str, limit: int = TEXT_MAX) -> Tuple[str, bool]:
+    """(text, truncated): cut at its last line end within *limit*, then emails pseudonymized. Cut first, at a line
+    end: the pattern reads at most *limit* characters, and the scrubber after it never sees part of a secret."""
+    if len(text) <= limit:
         return pseudonymize(text), False
-    cut = text[:TEXT_MAX]
+    cut = text[:limit]
     return pseudonymize(cut[:cut.rfind("\n") + 1]), True
 
 
@@ -489,7 +489,7 @@ def _text(raw: bytes) -> Tuple[str, bool, bool]:
     """(text, binary, truncated): decoded, then _shown."""
     if b"\0" in raw[:BINARY_PROBE]:
         return "", True, False
-    s, cut = _shown(raw.decode("utf-8", "replace"))
+    s, cut = shown_text(raw.decode("utf-8", "replace"))
     return s, False, cut
 
 
@@ -569,5 +569,5 @@ def file_view(fold: Fold, q: FileQuery) -> Dict[str, Any]:
         if b"\0" in raw[:BINARY_PROBE]:
             return dict(out, text="", binary=True, truncated=False, size=len(raw))
         text = _added_diff(path, raw)
-    s, cut = _shown(text)
+    s, cut = shown_text(text)
     return dict(out, text=s, binary=False, truncated=cut, size=len(text))

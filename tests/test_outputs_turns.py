@@ -7,6 +7,7 @@ allows; anything else is hidden. Transcripts are read whole, a page of 500 rows 
 import asyncio
 import hashlib
 import json
+import re
 import subprocess
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -254,7 +255,7 @@ def test_a_runner_round_on_the_owners_machine_says_where_its_session_is_and_show
                       {"V-7": sessions.bridge_shown(HAND)})
     q = outputs.node_query("release", "1")
     assert turns.sessions_to_read(f, q) == []
-    got = turns.turn_views(f, q, [here], "PAY-9", T + 7200)
+    got = turns.turn_views(f, q, [here], "PAY-9", T + 7200, str)
     assert got["turns"] == [] and got["why"] is None
     assert got["why_not"] == {"title": "这一轮是运行机做的（RUN-PAY-9-1）",
                               "missing": "它的回复、接到的消息和工具调用留在运行机上，这台机器读不到。",
@@ -283,7 +284,7 @@ def test_on_the_runner_a_bridge_answer_shows_only_its_first_line():
     q = outputs.node_query("release", None)
     assert turns.sessions_to_read(f, q) == [rows]
     slot = turns.Slot("RUN-PAY-9-1", rows["url"], "", False, gw.msgs["RUN-PAY-9-1"], True, mgr.sent("RUN-PAY-9-1"))
-    got = turns.turn_views(f, q, [slot], "PAY-9", T + 60)
+    got = turns.turn_views(f, q, [slot], "PAY-9", T + 60, str)
     assert [t["task"] for t in got["turns"]] == [{"kind": "bridge", "cause": "合同", "text": HAND},
                                                  {"kind": "bridge", "cause": "D-2 退回",
                                                   "text": "决策 D-2 已答（凭证 V-9，答复人 G-1a2b3c）：reject。"}]
@@ -313,7 +314,7 @@ def test_a_turn_whose_message_is_in_no_transcript_here_says_so_and_calls_outside
             dict(tool("edit", {"command": "strReplace", "path": "/w/aidlc-docs/x/requirements.md"}), ts=stamp(170)),
             dict(tool("execute", {"command": "git log"}), ts=stamp(260))]
     slot = turns.Slot("s1", "/chat?sid=s1", "/w", True, rows, True, {"s-1-0": {"by": "app", "cause": "澄清问题的回答", "text": kept}})
-    got = turns.turn_views(f, outputs.node_query("requirements", "1"), [slot], "PAY-9", T + 300)
+    got = turns.turn_views(f, outputs.node_query("requirements", "1"), [slot], "PAY-9", T + 300, str)
     first, answer = got["turns"]
     assert first["task"] == {"kind": "hidden", "why": turns.NOT_FOUND} and first["slot"] is None
     assert [(c["tool"], c["detail"], c["in_round"]) for c in answer["calls"]] == [
@@ -322,11 +323,32 @@ def test_a_turn_whose_message_is_in_no_transcript_here_says_so_and_calls_outside
     assert answer["live"] and answer["reply"] is None
 
 
+def test_a_turns_text_takes_the_drawers_own_path_cut_at_a_line_end_emails_as_pseudonyms_scrubbed_before_a_cut():
+    local = runs.RunView("local", "local", "本机会话", "here", sessions=[{"slot": "s1", "url": "/chat?sid=s1", "busy": False}])
+    msg = "（本地）澄清问题已答：A。"
+    f = fold_of("requirements", [rnd(1, "local", T, ask_at=T + 100)], [local], [stages.Turn(T, "local", sha(msg))])
+    stamp = lambda s: datetime.fromtimestamp(T + s, timezone.utc).isoformat()
+    long_reply = "".join("第 %d 行，问 alice@example.com\n" % i for i in range(2000))
+    command = "echo " + "a" * 91 + " PRIVATE-TOKEN: SECRETTOKENabcdefgh -o out.json"
+    assert command.index("SECRETTOKEN") == 112      # a detail is cut at 119 characters: inside the token
+    rows = [{"role": "user", "content": msg, "meta": {"sendId": "s-1-0"}, "ts": stamp(1)},
+            dict(tool("execute", {"command": command}), ts=stamp(5)), dict(said(long_reply), ts=stamp(9))]
+    sent = {"s-1-0": {"by": "app", "cause": "澄清问题的回答", "text": msg + "\n抄送 bob@example.com"}}
+    hide = lambda s: re.sub(r"SECRETTOKEN[a-z]+", "[已隐藏]", s)
+    got = turns.turn_views(f, outputs.node_query("requirements", "1"), [turns.Slot("s1", "/chat?sid=s1", "/w", False, rows, True, sent)],
+                           "PAY-9", T + 60, hide)
+    (one,) = got["turns"]
+    body, note = one["reply"].split(turns.LONG)
+    assert note == "" and body.endswith("\n") and len(body) <= turns.REPLY_MAX and body.startswith("第 0 行")
+    assert "example.com" not in json.dumps(got, ensure_ascii=False) and "G-" in body and "G-" in one["task"]["text"]
+    assert "[已隐藏]" in one["calls"][0]["detail"] and "SECRET" not in one["calls"][0]["detail"]
+
+
 def test_brain_reflect_has_no_ai_session():
     f = fold_of("reflect", [rnd(1, "local", T, ended=T + 9, outcome=stages.Outcome.DONE)],
                 [runs.RunView("local", "local", "本机会话", "here")], [stages.Turn(T, "local", "1" * 64)])
     q = outputs.node_query("reflect", "1")
-    got = turns.turn_views(f, q, [], "PAY-2", T + 60)
+    got = turns.turn_views(f, q, [], "PAY-2", T + 60, str)
     assert turns.sessions_to_read(f, q) == [] and got["turns"] == []
     assert got["why_not"]["title"] == "这一步是 brain reflect 程序做的，没有 AI 会话"
 
