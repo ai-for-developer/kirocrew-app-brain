@@ -333,16 +333,16 @@ describe('开需求', () => {
   })
 
   test('KiroCrew cannot open the session (a ✗): 开工 is off and names the fix button; without a session it may start', async () => {
-    const bad: CheckRow = { level: 'FAIL', text: 'KiroCrew 里还没有 brain-dev', todo: '点「装上 brain-dev」：装上 brain-kit 带的那一份；没有它，Lean 的拦截在 KiroCrew 里不会跑', fix: 'agent', repo: null, raw: '没有 ~/.kiro/agents/brain-dev.json' }
+    const bad: CheckRow = { level: 'FAIL', text: 'KiroCrew 里还没有 brain-dev-crew', todo: '点「装上 brain-dev-crew」：装上 brain-kit 带的那一份。app 开的会话都用它，Lean 的拦截在它里面', fix: 'agent', repo: null, raw: '没有 ~/.kiro/agents/brain-dev-crew.json' }
     const crew = { ...fx.crew(), rows: [bad] }
     const status = calmStatus()
     status.crew = { ...status.crew, rows: [bad] }
     const { user } = setup({ [`GET ${API}/crew`]: () => crew }, status)
     await fillBasics(user)
     const card = screen.getByRole('region', { name: 'KiroCrew 的检查' })
-    expect(within(card).getByRole('button', { name: '装上 brain-dev' })).toBeInTheDocument()   // the name the text says
+    expect(within(card).getByRole('button', { name: '装上 brain-dev-crew' })).toBeInTheDocument()   // the name the text says
     expect(startBtn()).toBeDisabled()
-    expect(screen.getByTestId('start-why')).toHaveTextContent('开不了会话：先点上面的「装上 brain-dev」')
+    expect(screen.getByTestId('start-why')).toHaveTextContent('开不了会话：先点上面的「装上 brain-dev-crew」')
     expect(screen.queryByTestId('start-ready')).toBeNull()
     await user.click(screen.getByLabelText(/开工后开会话/))
     expect(startBtn()).toBeEnabled()
@@ -432,7 +432,7 @@ describe('开需求', () => {
 
   test('a KiroCrew fix that leaves only another repo’s rows: the card goes and says so (that repo’s rows stay in 设置)', async () => {
     const status = fx.status()
-    const fail: CheckRow = { level: 'FAIL', text: '没有 ~/.kiro/agents/brain-dev.json', todo: '点「装上 brain-dev」：装上 brain-kit 带的那一份', fix: 'agent', repo: null, raw: '' }
+    const fail: CheckRow = { level: 'FAIL', text: '没有 ~/.kiro/agents/brain-dev-crew.json', todo: '点「装上 brain-dev-crew」：装上 brain-kit 带的那一份', fix: 'agent', repo: null, raw: '' }
     const other: CheckRow = { level: 'WARN', text: '.kiro/brain/lean-hook.py 是旧版', todo: '点「重装 kit 文件」', fix: 'kit', repo: '/Users/alice/workplace/shop-tools', raw: '' }
     status.crew = { ...status.crew, rows: [fail, other] }
     const { user } = setup({
@@ -441,7 +441,7 @@ describe('开需求', () => {
     }, status)
     const card = await screen.findByRole('region', { name: 'KiroCrew 的检查' })
     expect(card).not.toHaveTextContent('lean-hook.py')                                  // shop-tools' row: not this requirement's
-    await user.click(within(card).getByRole('button', { name: '装上 brain-dev' }))
+    await user.click(within(card).getByRole('button', { name: '装上 brain-dev-crew' }))
     expect(await screen.findByText(CREW_OK)).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'KiroCrew 的检查' })).toBeNull()
   })
