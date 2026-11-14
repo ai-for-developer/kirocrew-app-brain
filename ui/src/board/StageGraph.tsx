@@ -18,7 +18,7 @@ import { ExtLink } from '../ui'
 import { ACT, CHILD_STATE_NAME, DO_NAME, approvalName } from '../vocab'
 import type { Item } from './engine'
 import {
-  LIVE, ROUND_TONE, RUN_ICON, WORKING, actorMeta, brief, clip, clockAt, decider, fmtCredits, fmtHm, fmtSpan, gateVerb, gateWhat, localOnly, nodeWait,
+  LIVE, ROUND_TONE, RUN_ICON, WORKING, actorMeta, brief, clip, clockAt, decider, fmtAgo, fmtCredits, fmtHm, fmtSpan, gateVerb, gateWhat, localOnly, nodeWait,
   openGate, otherWaits, roundWords, runShort, runnerBlind, sayWho, sessionOf, textWidth, waitsOnMe, whoOf, whoThen, wrap,
 } from './format'
 import { GraphDefs, Halo, PersonCard, Scroller, Station, useHoverCard, useParticles, type FlashMap } from './GraphFrame'
@@ -177,7 +177,7 @@ export function StageGraph({ board, run = 'all', lay, focus, onNode, flashes, re
     : []
   const ask = [...chips.values()].find((g) => g.state === 'pending' && g.who === 'you')
   const asking = ask ? askWords(ask, board) : null
-  const under = new Set<string>([...chips.keys(), ...stepWaits.map((n) => n.id), ...drawn.filter((n) => tickerOf(n, runs.get(n.run ?? ''), quiet)).map((n) => n.id)])
+  const under = new Set<string>([...chips.keys(), ...stepWaits.map((n) => n.id), ...drawn.filter((n) => tickerOf(n, runs.get(n.run ?? ''), quiet, board)).map((n) => n.id)])
   const working = drawn.filter((n) => WORKING.has(n.status)).length
   const waits = drawn.map((n) => nodeWait(n, runs.get(n.run ?? ''))).filter((w): w is WaitWho => w !== null)
   const finished = drawn.filter((n) => isDone(n.status)).length
@@ -495,11 +495,64 @@ function taskLines(n: StageNode): string[] {
   return wrap(n.sub, TASK_EM, 2)
 }
 
-/** Under a box at work whose run's session is busy here: ▸ AI 在做 · 4.9 credits (none in a replay). */
-function tickerOf(n: StageNode, run: Run | undefined, quiet: boolean): string | null {
-  if (quiet || !WORKING.has(n.status) || !run?.sessions.some((s) => s.busy)) return null
-  return `▸ AI 在做${run.credits !== null ? ` · ${fmtCredits(run.credits)} credits` : ''}`
+/** What a box at work is doing right now, under it (the reference's ▸ ticker): for a run whose session is here, its
+ * last call and the end of the last line it wrote; for one elsewhere, its last recorded step, aged. None in a replay,
+ * nor on a box that waits (its wait line and chips say that). */
+type Tick =
+  | { kind: 'here'; call: string | null; said: string | null; at: number | null; credits: number | null }
+  | { kind: 'step'; text: string; at: number }
+
+function tickerOf(n: StageNode, run: Run | undefined, quiet: boolean, b: ReqBoard): Tick | null {
+  if (quiet || !WORKING.has(n.status) || !run) return null
+  if (run.readable === 'here') {
+    const t = run.ticker
+    const call = t?.tool ? `${t.tool}${t.detail ? ` ${baseName(t.detail)}` : ''}` : null
+    return { kind: 'here', call, said: t?.text ?? null, at: t?.at ?? null, credits: run.credits }
+  }
+  const last = [...b.events].reverse().find((e) => e.run === run.key)
+  return last ? { kind: 'step', text: last.text, at: last.at } : null
 }
+
+/** A path's last part (docs/plan.md → plan.md); a command stays whole. */
+const baseName = (s: string) => (/\s/.test(s) ? s : s.slice(s.lastIndexOf('/') + 1) || s)
+/** The end of *s* in about *maxEm* em, with an ellipsis before it: the newest words of a line. */
+function tailOf(s: string, maxEm: number): string {
+  if (textWidth(s) <= maxEm) return s
+  const chars = [...s]
+  let out = ''
+  for (let i = chars.length - 1; i >= 0 && textWidth(chars[i] + out) <= maxEm - 0.8; i--) out = chars[i] + out
+  return `…${out.trimStart()}`
+}
+/** A ticker's width: past its box a little, clear of the next column's (the box is 184 px, the ticker 12.5 px). */
+const TICK_EM = 17
+
+/** Under the box: its last call (▸ 写文件 application-design.md), else ▸ AI 在做 · 4.9 credits; for a run elsewhere its
+ * last step, aged (▸ 运行机提交 2949c0b1… · 4 分钟前). What the agent last wrote is the box's own second line (saidLine). */
+function Ticker({ t, h }: { t: Tick; h: number }) {
+  const now = useServerNow()
+  let line: string
+  let full: string
+  if (t.kind === 'step') {
+    const ago = fmtAgo(now - t.at)
+    line = `▸ ${clip(t.text, TICK_EM - textWidth(ago) - 2.5)} · ${ago}`
+    full = `最后一步：${t.text}（${ago}）`
+  } else if (t.call) {
+    line = `▸ ${clip(t.call, TICK_EM - 1)}`
+    full = [`正在：${t.call}`, t.said && `它刚写：${t.said}`].filter(Boolean).join('\n')
+  } else {
+    line = `▸ AI 在做${t.credits !== null ? ` · ${fmtCredits(t.credits)} credits` : ''}`
+    full = t.said ? `它刚写：${t.said}` : line
+  }
+  return (
+    <text className="kt-node-ticker" x={0} y={h / 2 + 18} textAnchor="middle" data-testid="kt-node-ticker">
+      <title>{full}</title>
+      {line}
+    </text>
+  )
+}
+
+/** A box at work whose agent is here says, in its second line, the end of the last line it wrote: 「…再一次写进价格表。」 */
+const saidLine = (t: Tick | null): string | null => (t?.kind === 'here' && t.said ? `「${tailOf(t.said, TASK_EM - 1)}」` : null)
 
 /** A box's third line: its state's mark, who did it and how long it took (✓ 本机 · 0:28), or what it waits for. */
 function stateLine(n: StageNode, run: Run | undefined, board: ReqBoard, wait: WaitWho | null): string {
@@ -538,9 +591,10 @@ function StageBoxView({ n, box, board, run, focus, off, flash, onNode, reducedMo
   }
   const corner = n.status === 'merged' || n.status === 'failed'
   let bx = w / 2 - 8
-  const ticker = tickerOf(n, run, quiet)
+  const ticker = tickerOf(n, run, quiet, board)
   const asked = !!g && g.state === 'pending' && g.at !== null && !quiet
-  const task = asked ? [] : taskLines(n)
+  const words = saidLine(ticker)
+  const task = asked ? [] : words ? [words] : taskLines(n)
   // a second line for what it hands in pushes its state down
   const stateY = task.length > 1 ? 30 : 23
   const room = corner ? 7.4 : 8.6
@@ -562,7 +616,9 @@ function StageBoxView({ n, box, board, run, focus, off, flash, onNode, reducedMo
       <text className={`kt-node-title${textWidth(n.title) > 4.6 ? ' is-long' : ''}`} x={-w / 2 + 66} y={-15}>
         {clip(n.title, 6.4)}{n.n !== '✓' && <tspan className="kt-node-tag" dx={5}>{n.n}</tspan>}
       </text>
-      {asked ? <WaitLine g={g} /> : task.map((l, i) => <text key={i} className="kt-node-task" x={-w / 2 + 66} y={task.length > 1 ? 1 + i * 13 : 4}>{l}</text>)}
+      {asked ? <WaitLine g={g} /> : task.map((l, i) => (
+        <text key={i} className={`kt-node-task${words ? ' is-said' : ''}`} x={-w / 2 + 66} y={task.length > 1 ? 1 + i * 13 : 4} data-testid={words ? 'kt-node-said' : undefined}>{l}</text>
+      ))}
       <text className="kt-node-sub" x={-w / 2 + 66} y={stateY}>{clip(said, room)}</text>
       {n.status === 'merged' && (
         <g className="kt-node-check" transform={`translate(${w / 2 - 14},${h / 2 - 14})`}>
@@ -588,7 +644,7 @@ function StageBoxView({ n, box, board, run, focus, off, flash, onNode, reducedMo
           </g>
         )
       })}
-      {ticker && <text className="kt-node-ticker" x={0} y={h / 2 + 18} textAnchor="middle">{ticker}</text>}
+      {ticker && <Ticker t={ticker} h={h} />}
       {flash && <rect key={flash.n} className={`kt-node-flash is-${flash.tone}`} x={-w / 2 - 5} y={-h / 2 - 5} width={w + 10} height={h + 10} rx={20} />}
       <rect className="kt-node-focus" x={-w / 2 - 5} y={-h / 2 - 5} width={w + 10} height={h + 10} rx={20} />
     </g>
@@ -679,6 +735,7 @@ function StageCard({ n, board, runs, onSession, onOutputs }: {
   const g = openGate(n)
   const meta = actorMeta(n.status)
   const session = run && run.readable === 'here' ? sessionOf(run) : undefined
+  const tick = tickerOf(n, run, false, board)
   return (
     <div className="kt-ncard-body">
       <p className="kt-ncard-head">
@@ -687,6 +744,7 @@ function StageCard({ n, board, runs, onSession, onOutputs }: {
       </p>
       <p className="kt-ncard-task"><span className="kt-dim">交什么</span> {n.sub}</p>
       {n.doing && <p className="kt-ncard-did">{n.doing}</p>}
+      {tick && <NowLines t={tick} />}
       {n.rounds.length > 0 && (
         <ol className="kt-ncard-rounds">
           {n.rounds.map((r) => {
@@ -712,6 +770,19 @@ function StageCard({ n, board, runs, onSession, onOutputs }: {
         </div>
       )}
     </div>
+  )
+}
+
+/** A box at work in its hover card: what its run is doing right now, whole. */
+function NowLines({ t }: { t: Tick }) {
+  const now = useServerNow()
+  if (t.kind === 'step') return <p className="kt-ncard-facts" data-testid="kt-ncard-now">最后一步：{t.text} · {fmtAgo(now - t.at)}</p>
+  if (!t.call && !t.said) return null
+  return (
+    <ul className="kt-ncard-facts" data-testid="kt-ncard-now">
+      {t.call && <li>正在：<code>{t.call}</code></li>}
+      {t.said && <li>它刚写：{t.said}</li>}
+    </ul>
   )
 }
 
