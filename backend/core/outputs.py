@@ -33,7 +33,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from . import mrdesc_view, stages
 from .httpkit import AppError
 from .repo import Git
-from .runs import LOCAL
+from .runs import LOCAL, RunView
 
 PATH_MAX = 400
 TEXT_MAX = 300_000          # characters of a file or a diff sent to the page
@@ -150,7 +150,8 @@ class Fold:
     board._branch_commits (full shas, oldest first); *changes*: board.changes_from_log of them; *units*: the planned
     units with their Paths; *worktree*: this machine's checkout of the run branch, the only place a pinned document is
     read from (None on the team runner's page, or when it is not checked out here). *reader*: None when this machine
-    has no copy of the repository."""
+    has no copy of the repository. *runs*: who did the rounds, which of them this machine can read and their sessions
+    here; *turns*: the session turns Lean recorded (the session tabs, turns.py)."""
     reader: Optional[GitReader]
     intent: Optional[str]
     branch: Optional[str]
@@ -159,6 +160,8 @@ class Fold:
     changes: Mapping[str, Sequence[Mapping[str, Any]]]
     units: Tuple[stages.UnitPlan, ...] = ()
     worktree: Optional[str] = None
+    runs: Tuple[RunView, ...] = ()
+    turns: Tuple[stages.Turn, ...] = ()
 
 
 class AllowedRefs:
@@ -222,7 +225,7 @@ def file_query(q: Mapping[str, Any]) -> FileQuery:
     return FileQuery(path, view, ref, base, pin if ref == "worktree" else None)
 
 
-def _node(fold: Fold, q: NodeQuery) -> Tuple[stages.Node, Optional[stages.Round]]:
+def round_of(fold: Fold, q: NodeQuery) -> Tuple[stages.Node, Optional[stages.Round]]:
     n = next((x for x in fold.nodes if x.id == q.node), None)
     if n is None:
         raise AppError(NO_NODE, "no_node", 404)
@@ -359,7 +362,7 @@ def _others(fold: Fold, allowed: AllowedRefs, n: stages.Node, r: stages.Round, s
 
 def node_output(fold: Fold, q: NodeQuery) -> Dict[str, Any]:
     """One round of one node: its files (declared first), the branch and its last commit; at most MAX_FILES files."""
-    n, r = _node(fold, q)
+    n, r = round_of(fold, q)
     if r is None:
         return {"node": n.id, "round": None, "run": None, "branch": fold.branch, "head": None, "files": [], "more": 0,
                 "why": "这一步还没开始：开始以后，它每一轮交的文件都在这里"}

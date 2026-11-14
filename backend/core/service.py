@@ -24,8 +24,10 @@ from . import problems, stages
 from . import board as board_mod
 from . import settings as settings_mod
 from . import todo as todo_mod
+from . import turns as turns_mod
 from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_AGENT, LOCAL_FOLDER, REPO_ID_RE, TICK_S, VERSION
-from .gateway import Gateway
+from .gateway import Gateway, GatewayError
+from .gateway import said as gateway_said
 from .httpkit import AppError
 from .repo import Git, Repo, Source, read_claim, read_facts
 from .sessions import SessionManager
@@ -52,7 +54,8 @@ def scope_of(rid: str, key: str) -> str:
 
 SCRUB_KEYS = ("text", "why", "question", "label", "detail", "status", "next", "open_questions", "output", "reasons",
               "findings", "review", "blocking", "error", "session_error", "notes", "warnings", "problems", "summary",
-              "first", "todo", "raw", "doing", "facts", "title", "name", "checks", "note", "subject", "sub")
+              "first", "todo", "raw", "doing", "facts", "title", "name", "checks", "note", "subject", "sub",
+              "reply", "task", "ticker", "why_not", "also", "cause", "missing", "here", "do")
 
 
 def scrub_tree(obj: Any, scrub: Callable[[str], str], key: str = "") -> Any:
@@ -948,7 +951,8 @@ class Service:
             reader=outputs_mod.GitReader(git) if git is not None else None, intent=(f.get("run") or {}).get("intent"),
             branch=d["row"].get("branch"), nodes=tuple(kept["nodes"]), commits=tuple(kept["commits"]),
             changes=changes, units=tuple(units),
-            worktree=f.get("worktree") if rid != "runner" and f.get("where") == "worktree" else None))
+            worktree=f.get("worktree") if rid != "runner" and f.get("where") == "worktree" else None,
+            runs=tuple(kept["runs"]), turns=tuple(kept["turns"])))
         return {"at": self.now(), "row": d["row"], "branch": d["row"].get("branch"),
                 "base": str(cfg.get("default_branch") or "main"), "started_at": g["started_at"], "ended_at": g["ended_at"],
                 "live": g["live"], "person": g["person"], "phases": g["phases"], "nodes": g["nodes"], "runs": g["runs"],
@@ -983,6 +987,22 @@ class Service:
         """产出: one file of it, its text or its change (outputs.file_view)."""
         snap = self._sessions_snapshot()
         return scrub_tree(await asyncio.to_thread(lambda: outputs_mod.file_view(self._fold(rid, key, snap), q)), self.scrub)
+
+    async def outputs_turns(self, rid: str, key: str, q: outputs_mod.NodeQuery) -> dict[str, Any]:
+        """产出's session tabs: the turns one round of one node was done in (turns.turn_views), each read from its
+        session's transcript on this machine."""
+        snap = self._sessions_snapshot()
+        fold = await asyncio.to_thread(self._fold, rid, key, snap)
+        slots = []
+        for s in turns_mod.sessions_to_read(fold, q):
+            try:
+                rows, whole = await self.sessions.transcript(str(s["slot"]))
+            except GatewayError as exc:
+                raise AppError("读不了这一轮的会话：%s" % gateway_said(exc), "transcript_unreadable", 502) from None
+            root = self.sessions.by_slot(str(s["slot"]))
+            slots.append(turns_mod.Slot(str(s["slot"]), str(s.get("url") or ""), root.cwd if root else "",
+                                        bool(s.get("busy")), rows, whole, self.sessions.sent(str(s["slot"]))))
+        return scrub_tree(turns_mod.turn_views(fold, q, slots, key, self.now()), self.scrub)
 
     # ---- sessions and answers ------------------------------------------------------------------------- #
 

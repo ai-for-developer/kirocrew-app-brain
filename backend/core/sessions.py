@@ -213,7 +213,7 @@ class SessionInfo:
         return cls(**{k: d[k] for k in _FIELDS if k in d})
 
 
-def _tool_call(m: dict[str, Any], scrub: Callable[[str], str]) -> dict[str, Any]:
+def tool_call(m: dict[str, Any], scrub: Callable[[str], str]) -> dict[str, Any]:
     meta = m.get("meta") if isinstance(m.get("meta"), dict) else {}
     name = str(meta.get("tool_name") or "") or "tool"
     detail = str(m.get("content") or "").replace("🔧", "").strip()
@@ -662,7 +662,7 @@ class SessionManager:
                 mine = idx
                 break
         after = msgs[mine + 1:] if mine is not None else []
-        calls = [_tool_call(m, self.scrub) for m in after if m.get("role") == "tool"]
+        calls = [tool_call(m, self.scrub) for m in after if m.get("role") == "tool"]
         replies = [m for m in after if m.get("role") == "assistant" and str(m.get("content") or "").strip()]
         errors = [m for m in after if m.get("role") == "error"]
         info.calls, info.tool_count, info.turns = calls[-HISTORY:], len(calls), len(replies)

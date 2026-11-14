@@ -617,7 +617,8 @@ def stage_graph(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None
             "runs": [_run_wire(r) for r in rs], "relays": runs.relays(bounds, t, row, who, starts),
             "other_runs": [{"branch": o.get("branch"), "state": o.get("state")} for o in (t or {}).get("other_runs") or []
                            if isinstance(o, dict)],
-            "live": bool(live), "_nodes": nodes, "_runs": rs, "_way": way, "_commits": commits}
+            "live": bool(live), "_nodes": nodes, "_runs": rs, "_way": way, "_commits": commits,
+            "_turns": stages.turns_of(rec)}
 
 
 def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any] | None,
@@ -630,8 +631,8 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
     checks, accept, person, live, missing, and Lean's progress at each of its stage records for 回放: lean_view.steps);
     the service adds the requirement's detail (decisions, questions, 变更说明, sessions, credits). *changes*:
     changes_from_log of the commits (GIT_LOG), by full sha. *units*: the planned units (stages.UnitPlan), when the
-    service read unit-of-work.md. *fold*, when given, gets the stage graph's nodes and the run branch's commits: what
-    the 产出 drawer reads (outputs.Fold)."""
+    service read unit-of-work.md. *fold*, when given, gets the stage graph's nodes and runs, the run branch's commits
+    and Lean's session turns: what the 产出 drawer reads (outputs.Fold)."""
     run = f.get("run") or {}
     handoff = run.get("handoff") if isinstance(run.get("handoff"), dict) else None
     hand_at = _epoch((handoff or {}).get("requested_at"))
@@ -651,7 +652,7 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
     for i, e in enumerate(evs, 1):
         e["seq"] = i
     if fold is not None:
-        fold.update(nodes=sg["_nodes"], commits=sg["_commits"])
+        fold.update(nodes=sg["_nodes"], commits=sg["_commits"], turns=sg["_turns"], runs=sg["_runs"])
     return {"events": [{k: e[k] for k in ("seq", "at", "kind", "from", "to", "text", "detail", "src", "node", "run", "round")}
                        for e in evs][-MAX_EVENTS:],
             "belt": _belt(evs, changes or {}), "checks": checks, "person": _person(row, me, f, you),

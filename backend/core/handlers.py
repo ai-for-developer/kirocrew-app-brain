@@ -76,6 +76,11 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
         rid, key = _rid(request), _key(request)
         return kit.json(await svc.outputs_file(rid, key, outputs_mod.file_query(request.query)))
 
+    async def outputs_turns(request: Any) -> Any:
+        rid, key = _rid(request), _key(request)
+        return kit.json(await svc.outputs_turns(rid, key, outputs_mod.node_query(request.query.get("node"),
+                                                                                 request.query.get("round"))))
+
     async def open_session(request: Any) -> Any:
         body = await kit.body(request)
         return kit.json(await svc.open_session(_rid(request), _key(request), trust=body.get("trust", True) is not False,
@@ -231,6 +236,7 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
         AppRoute("GET", "/board/{repo}/{key}", kit.guarded(board)),
         AppRoute("GET", "/outputs/{repo}/{key}", kit.guarded(outputs)),
         AppRoute("GET", "/outputs/{repo}/{key}/file", kit.guarded(outputs_file)),
+        AppRoute("GET", "/outputs/{repo}/{key}/turns", kit.guarded(outputs_turns)),
         AppRoute("POST", "/requirements/{repo}/{key}/session", kit.guarded(open_session)),
         AppRoute("POST", "/requirements/{repo}/{key}/answer", kit.guarded(answer)),
         AppRoute("POST", "/requirements/{repo}/{key}/split", kit.guarded(split)),
