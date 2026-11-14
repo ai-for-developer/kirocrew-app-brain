@@ -7,7 +7,7 @@ import { AppBar } from './AppBar'
 import { parseView, type View } from './nav'
 import { fx } from './test/data'
 import { API, installFixtureRoutes } from './test/routes'
-import { apiCalls, apiError, badges, navigations } from './test/stubs/app-sdk'
+import { apiCalls, apiError, badges, navigations, setAppInfo } from './test/stubs/app-sdk'
 
 const bar = () => within(screen.getByTestId('br-appbar'))
 const FIX = '补上 Lean 的拦截'
@@ -21,6 +21,33 @@ const ledgerRow = async (key: string) => {
   expect(row).not.toBeNull()
   return row as HTMLElement
 }
+
+describe('the bar says the app’s version, and how to update when KiroCrew knows a newer one (UI-1)', () => {
+  const bar = () => render(<AppBar view="overview" onView={() => {}} todo={0} team={false} />)
+
+  test('a newer version: said with the one step that updates it, and when KiroCrew looked', async () => {
+    const user = userEvent.setup()
+    setAppInfo({ version: '0.1.0', update: { available: true, latestVersion: '0.2.0', checkedAt: '2026-11-15T01:00:00Z' } })
+    bar()
+    expect(screen.getByTestId('app-version')).toHaveTextContent('v0.1.0')
+    const note = screen.getByTestId('app-update')
+    await user.click(within(note).getByText('有新版 v0.2.0'))
+    expect(note).toHaveTextContent('你装的是 v0.1.0。到 KiroCrew 的 Apps → Discover（发现）→ 更新（Updates），在 Brain 交付 那一行点「更新」')
+    expect(note).toHaveTextContent('数据和设置都留着')
+  })
+
+  test('nothing newer, or KiroCrew has not said: the version only, no claim either way', () => {
+    setAppInfo({ version: '0.2.0', update: { available: false, latestVersion: '0.2.0', checkedAt: null } })
+    const { unmount } = bar()
+    expect(screen.getByTestId('app-version')).toHaveTextContent('v0.2.0')
+    expect(screen.queryByTestId('app-update')).toBeNull()
+    unmount()
+    setAppInfo({ version: '0.2.0' })
+    bar()
+    expect(screen.getByTestId('app-version')).toHaveTextContent('v0.2.0')
+    expect(screen.queryByTestId('app-update')).toBeNull()
+  })
+})
 
 describe('the app: one bar over the views', () => {
   test('it opens on 交付总览; the bar has the name once, the tabs, the 待办 count, and 设置', async () => {

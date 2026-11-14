@@ -30,6 +30,13 @@ export const notifications: { message: string; type?: string }[] = []
 export const chatLaunches: { agent?: string; message?: string; slotKey?: string; autoSend?: boolean }[] = []
 let rawSupported = true
 let chatListFails = false
+const INFO = { name: 'brain', version: '0.1.0', permissions: { api: ['/api/apps/brain'], events: [] as string[] } }
+let appInfo: typeof INFO & { update?: { available: boolean; latestVersion: string; checkedAt: string | null } } = INFO
+
+/** What useAppInfo answers: the installed version, and KiroCrew's update answer when it has one (reset per test). */
+export function setAppInfo(over: Partial<typeof appInfo>): void {
+  appInfo = { ...INFO, ...over }
+}
 let navigateHook: ((path: string) => boolean) | null = null
 
 /** The preview's say over a navigation: return true to take it (the stub then leaves the URL alone). */
@@ -65,6 +72,7 @@ export function resetStubs(): void {
   rawSupported = true
   chatListFails = false
   navigateHook = null
+  appInfo = INFO
 }
 
 export class StubApiError extends Error {
@@ -136,7 +144,7 @@ export function useNotify() {
 }
 
 export function useAppInfo() {
-  return { name: 'brain', version: '0.1.0', permissions: { api: ['/api/apps/brain'], events: [] } }
+  return appInfo
 }
 
 export function useTheme() {
