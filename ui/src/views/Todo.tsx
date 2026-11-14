@@ -58,7 +58,7 @@ const GROUPS: Group[] = [
   { key: 'handoff_unlabelled', heading: '没交出去的交接', icon: 'handover', tone: 'warn', hint: 'MR 上没有交接标签' },
   { key: 'closed_leftover', heading: '关了的需求还留着分支或 MR', icon: 'settings', tone: 'warn', hint: '用不着就删掉、关掉' },
   { key: 'stuck', heading: '卡住了的运行', icon: 'blocked', tone: 'bad', hint: '这一步答不了了：找负责人' },
-  { key: 'crew', heading: 'KiroCrew 的问题', icon: 'settings', tone: 'bad', hint: '修好了才能开工' },
+  { key: 'crew', heading: 'KiroCrew 的问题', icon: 'settings', tone: 'bad', hint: '修好了才能开会话（不开会话也能开工）' },
 ]
 const TONE_WORD: Record<GroupTone, string> = { wait: '等你', bad: '被拒或卡住', warn: '看一眼' }
 
