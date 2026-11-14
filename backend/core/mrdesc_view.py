@@ -31,7 +31,10 @@ ONE_LINE = "**一句话**："      # render()'s summary line
 # what the page says when brain-kit cannot make it (its own words go to the app's log: the answer has no 细节)
 NO_MODULE = "这个 brain-kit 写不出变更说明（它太旧，或者没装好）：在设置里换新一点的 brain-kit"
 NOT_MADE = "变更说明这次生成不了：brain-kit 读不出它的记录。在设置里看 brain-kit 能不能用"
-TREE_RE = re.compile(r"^(100644|100755) blob ([0-9a-f]{40,64})\s+([0-9]+)\t")
+ENTRY_RE = re.compile(r"^([0-7]{6}) (blob|tree|commit) ([0-9a-f]{40,64})\s+(-|[0-9]+)\t(.*)$", re.S)
+REGULAR = ("100644", "100755")
+# a path is a name, never a pattern: `*`, `:(glob)` or `:!x` in it match only themselves
+LITERAL = {"GIT_LITERAL_PATHSPECS": "1"}
 
 
 def empty(error: str = "") -> dict[str, Any]:
@@ -47,13 +50,23 @@ def target(git: Git, rev: str | None) -> str | None:
     return sha if re.match(r"^[0-9a-f]{40,64}$", sha or "") else None
 
 
+def tree_entry(git: Git, sha: str, rel: str) -> tuple[str, str, int] | None:
+    """(mode, object id, size) of exactly *rel* in commit *sha*'s tree, or None when it has no such entry. Mode 120000
+    is a symlink, 160000 a submodule, 040000 a folder; their size is 0."""
+    p = git.run("ls-tree", "-l", "-z", sha, "--", rel, env=LITERAL)
+    for line in (p.stdout.split("\0") if p.returncode == 0 else []):
+        m = ENTRY_RE.match(line)
+        if m and m.group(5) == rel:
+            return m.group(1), m.group(3), int(m.group(4)) if m.group(4).isdigit() else 0
+    return None
+
+
 def committed_file(git: Git, sha: str, rel: str) -> bytes | None:
     """*rel* at commit *sha*: a regular file of at most MAX_RAW bytes, or None (a symlink in the tree is not read)."""
-    line = git.out("ls-tree", "-l", sha, "--", rel)
-    m = TREE_RE.match(line)
-    if not m or int(m.group(3)) > MAX_RAW:
+    e = tree_entry(git, sha, rel)
+    if e is None or e[0] not in REGULAR or e[2] > MAX_RAW:
         return None
-    p = git.run("cat-file", "blob", m.group(2), text=False)
+    p = git.run("cat-file", "blob", e[1], text=False)
     return p.stdout if p.returncode == 0 else None
 
 
