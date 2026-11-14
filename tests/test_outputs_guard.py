@@ -103,3 +103,33 @@ def test_refusals_are_plain_chinese_and_carry_no_file_content(tmp_path, waiting)
         resp = d.file(**q)
         assert set(resp.body) == {"error", "code"} and "：" in resp.body["error"], resp.body
         assert "秘密" not in resp.body["error"] and "AC-1" not in resp.body["error"]
+
+
+# ---------------------------------------------------------------- the requirement's files only
+
+def test_a_file_no_commit_of_the_requirement_touched_is_not_shown(tmp_path):
+    repo = git_repo(tmp_path / "pay")
+    other = "aidlc-docs/260101-points/inception/requirements/requirements.md"
+    base = commit_file(repo, other, "# 会员积分\n\n- carol 的需求：积分翻倍\n", "carol 的需求，早就合进 main 了")
+    r1 = commit_file(repo, RELEASE, "# Release\n", "请批发布")
+    f = fold(repo, [node("release", [rnd(1, [r1], [(RELEASE, h("# Release\n"))])])], [r1])
+    d = drawer(tmp_path, f)
+    got = {ref[:7]: d.file(ref=ref, path=other) for ref in (r1, base)}
+    assert {k: (v.status, v.body.get("code")) for k, v in got.items()} == {r1[:7]: (404, "unknown_file"), base[:7]: (404, "unknown_file")}
+    assert all("carol" not in json.dumps(v.body, ensure_ascii=False) for v in got.values())
+    assert d.file(ref=r1, path=RELEASE).body["text"] == "# Release\n"
+
+
+def test_a_folder_s_diff_never_shows_a_ledger(tmp_path):
+    repo = git_repo(tmp_path / "pay")
+    base = commit_file(repo, "README.md", "x\n")
+    c1 = commit_file(repo, LEDGER, '{"event":"REJECTED","data":{"words":"%s"}}\n' % BOB_WORDS, "records")
+    c2 = commit_file(repo, RELEASE, "# Release\n", "release")
+    f = fold(repo, [node("release", [rnd(1, [c1, c2], [(RELEASE, h("# Release\n"))])])], [c1, c2])
+    d = drawer(tmp_path, f)
+    leaked = {}
+    for p in ("aidlc-docs", "aidlc-docs/audit"):
+        resp = d.file(ref=c2, base=base, path=p, view="diff")
+        if BOB_WORDS in json.dumps(resp.body, ensure_ascii=False):
+            leaked[p] = (resp.status, [x for x in resp.body["text"].splitlines() if "bob" in x])
+    assert leaked == {}

@@ -8,14 +8,15 @@ commit before it. ``GET /outputs/{repo}/{key}/file?ref&base&path&view&pin`` (fil
 (view source or content) or its change (view diff).
 
 Both read the board's own fold (Fold: what Service._board_sync folded last for the requirement), never a second one,
-and only what it names: a ref or a base outside the requirement's commits and their parents (AllowedRefs) is 404,
-never fetched. Files are read from commits only (mrdesc_view.committed_file: a regular blob of at most 4 MB; a symlink
-or a submodule is refused). The one exception is a local run's document waiting for approval before it is committed
-(Lean commits documents with the code): read from this machine's worktree only when the path is the stage table's
-document of one of the requirement's nodes, a local round of it recorded that very sha256, no part of the path is a
-symlink, and the bytes hash to it (pinned_file). A diff never runs a diff driver or a textconv the repo's
-.gitattributes names. Lean's ledgers are never listed nor read: they hold what people typed in their sessions. Emails
-become brain-kit's pseudonyms (G-<6 hex>) before anything is shown: release.md's approval table carries git emails.
+and only what it names: a path none of the requirement's commits changed and Lean recorded for none of its rounds
+(_own_paths), or a ref or a base outside its commits and their parents (AllowedRefs), is 404, never fetched. Files
+are read from commits only (mrdesc_view.committed_file: a regular blob of at most 4 MB; a symlink or a submodule is
+refused). The one exception is a local run's document waiting for approval before it is committed (Lean commits
+documents with the code): read from this machine's worktree only when the path is the stage table's document of one
+of the requirement's nodes, a local round of it recorded that very sha256, no part of the path is a symlink, and the
+bytes hash to it (pinned_file). A diff never runs a diff driver or a textconv the repo's .gitattributes names. Lean's
+ledgers are never listed nor read: they hold what people typed in their sessions. Emails become brain-kit's
+pseudonyms (G-<6 hex>) before anything is shown: release.md's approval table carries git emails.
 """
 
 from __future__ import annotations
@@ -63,6 +64,7 @@ BAD_PIN = "页面说的文件指纹不对：刷新页面再试"
 NO_NODE = "看板上没有这一步：刷新看板再看"
 NO_ROUND = "这一步没有这一轮：刷新看板再看"
 NOT_OURS = "这个提交不是这个需求的：刷新看板，从看板上点开文件"
+NOT_OURS_FILE = "这个文件不是这个需求的：刷新看板，从看板上点开文件"
 NOT_SHOWN = "Lean 的账本不在这里显示：里面有人在会话里打的字"
 NOT_RECORDED = "Lean 没有为这一步记下这个文件的这一版：从看板上点开文件"
 NO_WORKTREE = "这台机器上没有这个需求的工作区：这一版只能等提交以后看"
@@ -374,6 +376,15 @@ def node_output(fold: Fold, q: NodeQuery) -> Dict[str, Any]:
 
 # ---------------------------------------------------------------- one file
 
+def _own_paths(fold: Fold) -> set:
+    """The requirement's files: the paths its commits changed and the ones Lean recorded for its rounds."""
+    out = {p for c in fold.commits for p in _paths(fold, str(c["sha"]))}
+    for n in fold.nodes:
+        for r in n.rounds:
+            out |= {p for p, _ in r.outputs + (r.ask.files if r.ask else ())}
+    return out
+
+
 def _pins(fold: Fold, path: str) -> set:
     """The sha256s a local round of a node recorded for its own document *path*: what a pinned read may match."""
     out = set()
@@ -489,6 +500,8 @@ def file_view(fold: Fold, q: FileQuery) -> Dict[str, Any]:
     added)."""
     path, view, ref, pin = q.path, q.view, q.ref, q.pin
     rd = _reader(fold)
+    if path not in _own_paths(fold):
+        raise AppError(NOT_OURS_FILE, "unknown_file", 404)
     allowed = AllowedRefs(fold)
     base = allowed.need(q.base) if q.base else None
     pinned = ref == "worktree"

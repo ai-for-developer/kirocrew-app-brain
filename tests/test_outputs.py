@@ -166,8 +166,10 @@ def test_a_commit_outside_the_requirement_is_404_never_read(pay9):
     other = sh("git", "-C", pay9.repo, "commit-tree", "-m", "x", sh("git", "-C", pay9.repo, "write-tree").stdout.strip()).stdout.strip()
     refused(lambda: view(pay9.fold, ref=other, path=RELEASE), 404, "unknown_commit")
     refused(lambda: view(pay9.fold, ref=pay9.r2, base=other, path=RELEASE, view="diff"), 404, "unknown_commit")
-    # the commit before the branch's first is the version before it: readable
-    assert view(pay9.fold, ref=pay9.base, path="README.md")["text"] == "shop\n"
+    # the commit before the branch's first is the version before it: a file of the requirement is compared with it
+    assert "+| INCEPTION |" in view(pay9.fold, ref=pay9.r1, base=pay9.base, path=RELEASE, view="diff")["text"]
+    # a file only that commit has is not the requirement's: never read
+    refused(lambda: view(pay9.fold, ref=pay9.base, path="README.md"), 404, "unknown_file")
 
 
 def test_a_symlink_in_a_commit_is_refused_not_followed(tmp_path):
@@ -266,7 +268,8 @@ def test_a_pinned_read_is_refused_when_the_file_itself_is_a_symlink(waiting, tmp
 
 def test_a_pinned_read_is_refused_at_a_path_that_is_not_the_stage_tables_document(waiting):
     # the same bytes, the same sha256, another path: never read
-    refused(lambda: view(waiting.fold, ref="worktree", pin=h(waiting.text), path="notes.md"), 404, "not_recorded")
+    refused(lambda: view(waiting.fold, ref="worktree", pin=h(waiting.text), path="notes.md"), 404, "unknown_file")
+    refused(lambda: view(waiting.fold, ref="worktree", pin=h("x\n"), path="README.md"), 404, "not_recorded")
     refused(lambda: view(waiting.fold, ref="worktree", pin=h("other"), path=REQS), 404, "not_recorded")
 
 
