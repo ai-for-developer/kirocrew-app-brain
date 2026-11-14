@@ -334,9 +334,9 @@ export function KitFix({ repo, label = KIT_FIX_LABEL, onDone, onHold }: { repo: 
   const r = j?.result ?? null
   const commit = again.result ?? r?.commit
   const go = async (mode: InstallMode) => {
-    const got = await start.run(mode)
-    if (!got) return
     onHold?.(true)
+    const got = await start.run(mode)
+    if (!got) return onHold?.(false)
     job.start(got.job as ImportJob<UpgradeOut>)
   }
   const commitAgain = async () => {

@@ -303,7 +303,8 @@ describe('待办', () => {
     installFixtureRoutes({
       [`GET ${API}/todo`]: () => (fixed ? later : todo),
       [`POST ${API}/import/choices`]: () => fx.importChoices(),
-      [`POST ${API}/import/upgrade`]: () => { fixed = true; return { job } },
+      // answered late: the list drops the problem while the POST is still on its way
+      [`POST ${API}/import/upgrade`]: async () => { fixed = true; await new Promise((r) => setTimeout(r, 100)); return { job } },
     })
     const { reloadStatus } = renderTodo({ pollMs: 20, status })
     const crew = await screen.findByRole('region', { name: 'KiroCrew 的问题' })
