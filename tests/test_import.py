@@ -515,6 +515,32 @@ def test_remove_from_the_list_touches_no_file(tmp_path, home):
     assert json.loads((tmp_path / "data" / "settings.json").read_text())["repos"] == [str(b.resolve())]
 
 
+def test_a_repos_id_stays_when_another_is_removed_and_comes_back_when_it_is_added_again(tmp_path, home):
+    """UI-19: ids were list positions, so removing a repo pointed the records of every repo after it (sessions,
+    events, credits: all keyed by id) at another repo. An id is given once per path and kept; the ids an app from
+    before has on disk (r1, r2 … in the list's order) stay what they were."""
+    pay, shop, oms = (make_project(tmp_path, name=n, prefix=p) for n, p in (("pay", "PAY"), ("shop", "SHOP"), ("oms", "OMS")))
+    crm = make_project(tmp_path, name="crm", prefix="CRM")
+    svc = make_service(tmp_path, [pay, shop, oms])        # settings.json only, as an app from before left it
+    ids = lambda st: {r["name"]: r["id"] for r in st["repos"]}  # noqa: E731
+
+    async def go():
+        before = await svc.status()
+        removed = await svc.repo_remove({"path": str(pay)})
+        added = await svc.import_add({"path": str(crm)})
+        back = await svc.import_add({"path": str(pay)})
+        return before, removed, added, back
+
+    before, removed, added, back = started(svc, go)
+    assert ids(before) == {"pay": "r1", "shop": "r2", "oms": "r3"}
+    assert ids(removed["status"]) == {"shop": "r2", "oms": "r3"}
+    assert added["id"] == "r4" and "r4" in added["text"] and ids(added["status"]) == {"shop": "r2", "oms": "r3", "crm": "r4"}
+    assert back["id"] == "r1" and ids(back["status"]) == {"shop": "r2", "oms": "r3", "crm": "r4", "pay": "r1"}
+    again = make_service(tmp_path, [crm, oms, pay, shop])   # read again later, the list in another order
+    st = started(again, again.status)
+    assert ids(st) == {"crm": "r4", "oms": "r3", "pay": "r1", "shop": "r2"} and all(r["ok"] for r in st["repos"])
+
+
 # ---- 推送并开 MR ------------------------------------------------------------------------------------------------------ #
 
 def test_publish_pushes_the_branch_and_opens_the_mr_with_the_persons_token(tmp_path, home, monkeypatch, caplog):
