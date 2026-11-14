@@ -1275,7 +1275,7 @@ export interface TeamConfigRow { file: 'bridge.json' | 'runnerd.json'; key: stri
  * off, as `brain handoff` does while it labels again), waiting (this very hand-over is being signed elsewhere), error
  * (it could not be checked this round: error says why). Another value is shown as it is.
  */
-export type HandoverResult = 'accepted' | 'rejected' | 'seen' | 'unlabelled' | 'waiting' | 'error'
+export type HandoverResult = 'accepted' | 'rejected' | 'seen' | 'unlabelled' | 'waiting' | 'skipped' | 'error'
 export interface TeamHandover {
   project: string
   iid: number
