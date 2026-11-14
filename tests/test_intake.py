@@ -8,6 +8,7 @@ import pytest
 
 from appkit import BRAINKIT, commit_file, mod
 from brainfix import FakeGateway, brain, install_brain_dev, make_project, make_service, needs_brainkit, run, sh
+from http_fakes import AppRoute, FakeWeb, call
 
 pytestmark = needs_brainkit
 AppError = mod("httpkit").AppError
@@ -261,17 +262,21 @@ def test_reopen_opens_a_new_session_keeps_the_old_one_and_is_safe_to_click_twice
             first, second = await asyncio.gather(svc.reopen_session("r1", out["key"], out["slot"]),
                                                  svc.reopen_session("r1", out["key"], out["slot"]))
             third = await svc.reopen_session("r1", out["key"], out["slot"])
+            routes = mod("handlers").build_routes(svc, AppRoute, web=FakeWeb(), is_owner=lambda _r: True)
+            via = await call(routes, "POST", "/requirements/r1/%s/session" % out["key"],
+                             json_body={"fresh": True, "replace": out["slot"]})
             detail = await svc.requirement("r1", out["key"])
-            return out, same, first, second, third, detail
+            return out, same, first, second, third, detail, via
         finally:
             await svc.stop()
 
-    out, same, first, second, third, detail = run(go())
+    out, same, first, second, third, detail, via = run(go())
     old = out["slot"]
     assert same["slot"] == old                                            # 打开会话: the live one, as before
     new = [r for r in (first, second) if r["reopened"]]
     assert len(new) == 1 and new[0]["slot"] != old and new[0]["url"] == "/chat?sid=%s" % new[0]["slot"]
-    assert {first["slot"], second["slot"], third["slot"]} == {new[0]["slot"]} and not third["reopened"]
+    assert {first["slot"], second["slot"], third["slot"], via.body["slot"]} == {new[0]["slot"]}
+    assert not third["reopened"] and via.status == 200 and via.body["reopened"] is False
     assert ("stop", old) in gw.calls and old in gw.slot_rows             # stopped, not deleted
     assert len([c for c in gw.calls if c[0] == "slot"]) == 2
     assert [s["slot"] for s in detail["sessions"]] == [old, new[0]["slot"]]

@@ -112,6 +112,7 @@ class Service:
         self._subj: dict[tuple, tuple] = {}     # the board's commit subjects and changed files, by the commits asked for
         self._me: str | None = None
         self.families = family.Families()      # brain-kit's listing per repo (大需求 and their 小需求), made in the background
+        self._reopening: dict[str, asyncio.Lock] = {}   # 重开一个会话, one at a time per requirement
         self._big_file = self.data_dir / "big.json"
         self._big = self._load_big()           # scopes opened here as 「大需求：先拆成小需求」
 
@@ -944,7 +945,8 @@ class Service:
                                       review=review)
 
     async def _open_local(self, repo: Repo, key: str, branch: str, wt: str, run: dict[str, Any], *, trust: bool,
-                          kickoff: bool, review: bool = False, task: str | None = None) -> dict[str, Any]:
+                          kickoff: bool, review: bool = False, task: str | None = None, fresh: bool = False
+                          ) -> dict[str, Any]:
         self.crew = await asyncio.to_thread(self.crew_sync)
         why = await asyncio.to_thread(crewcheck.session_problem, self.crew["rows"], wt)
         if why:
@@ -958,7 +960,7 @@ class Service:
         else:
             live = [i for i in self.sessions.roots(key=scope, kind="local") if i.slot and not
                     (self.sessions.slot_stats(i.slot) or {}).get("missing")]
-            if live:
+            if live and not fresh:
                 return {"ok": True, "slot": live[-1].slot, "url": "/chat?sid=%s" % live[-1].slot}
             if task is None:     # a small requirement's start brings its own first message (family.kickoff)
                 task = intake.kickoff(key, branch, run.get("intent"),
@@ -967,6 +969,9 @@ class Service:
                 if kickoff and scope_of(repo.id, key) in self._big:
                     task += "\n" + family.BIG_KICKOFF
             title, said = "%s · 本地开发" % key, "开了本机会话"
+            if fresh:
+                task += "\n" + intake.RESUME_KICKOFF
+                title, said = "%s · 本地开发（重开）" % key, "重开了本机会话"
         slug = branch.rsplit("/", 1)[-1][len(key) + 1:] or key.lower()
         info = await self.sessions.open_session(
             task, parent_session_key="%s:%s" % (self.name, scope), cwd=wt, title=title,
@@ -977,6 +982,38 @@ class Service:
         await asyncio.to_thread(self.store.append, scope, "app", said, store_mod.TRUSTED if trust else None)
         await self.sessions.save()
         return {"ok": True, "slot": info.slot, "url": "/chat?sid=%s" % info.slot}
+
+    async def reopen_session(self, rid: str, key: str, replace: Any, trust: bool = True) -> dict[str, Any]:
+        """重开一个会话: a new session for the requirement in its worktree, whatever the live one is doing (E2E-12: one
+        KiroCrew left stuck after an interrupted turn). The old one stays, its record readable; still busy, it is
+        stopped first, so two sessions never work in one worktree. *replace*: the slot the page showed as live; when
+        another one is live by now (the same click twice, another tab) that one is the answer and none is opened."""
+        repo = self._repo(rid)
+        f = await asyncio.to_thread(self._facts, repo, key)
+        run = f.get("run") or {}
+        if not run or run.get("handoff") or f.get("merged"):
+            raise AppError("只有本地开发中的需求能在这里开会话", "not_local", 409)
+        if not f.get("worktree"):
+            raise AppError("这台机器上没有检出 %s 的分支：先在开需求里开工" % f.get("branch"), "no_worktree", 409)
+        scope = scope_of(repo.id, key)
+        async with self._reopening.setdefault(scope, asyncio.Lock()):
+            live = [i.slot for i in self.sessions.roots(key=scope, kind="local") if i.slot and not
+                    (self.sessions.slot_stats(i.slot) or {}).get("missing")]
+            cur = live[-1] if live else None
+            if cur and cur != (replace if isinstance(replace, str) and replace else None):
+                return {"ok": True, "slot": cur, "url": "/chat?sid=%s" % cur, "reopened": False}
+            if cur:
+                turns = [i.id for i in self.sessions.all_agents if i.slot == cur and not i.done]
+                for t in turns:
+                    await self.sessions.cancel(t)     # stops the slot; the turn counts as stopped by the person
+                if not turns and (self.sessions.slot_stats(cur) or {}).get("busy"):
+                    try:
+                        await self.sessions.gw.stop(cur)
+                    except Exception as exc:  # noqa: BLE001 - a stuck slot may not stop: the new one opens anyway
+                        self.log.info("brain: stopping session %s before reopening: %s", cur, exc)
+            got = await self._open_local(repo, key, f["branch"], f["worktree"], run, trust=trust, kickoff=True,
+                                         fresh=True)
+        return dict(got, reopened=True)
 
     async def answer(self, rid: str, key: str, choice: Any, note: Any, did: Any = None) -> dict[str, Any]:
         """A clarify question of the person's own run: into its local session, or as their own MR comment. Never a Lean

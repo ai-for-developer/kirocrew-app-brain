@@ -452,6 +452,10 @@ def kickoff(key: str, branch: str, intent: str | None, materials: list[str]) -> 
     return "\n".join(l for l in lines if not APPROVAL_LINE_RE.match(l))
 
 
+# the first message's last line in a session opened by 重开一个会话 (service.reopen_session): where the last one stopped
+RESUME_KICKOFF = "这是重开的会话：上一个会话停下了。先读 Lean 的 aidlc-state.md 里的 Session notes，从那里接着做。"
+
+
 def review_task(key: str, branch: str, intent: str | None) -> str:
     """The first message to a requirement's review session: Lean's review line for its intent (lean_view.review_line),
     ids only, checked like kickoff's (no approval line can get in). '' when run.json names no usable intent."""
