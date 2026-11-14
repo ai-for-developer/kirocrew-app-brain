@@ -76,6 +76,7 @@ function RoundBanner({ n, r, board }: { n: StageNode; r: Round; board: ReqBoard 
         <strong>✗ {o.by === '你' ? '你退回了这一轮' : o.by?.startsWith('产品') ? '产品在 MR 上退回了这一轮' : `${decider(o.by)}退回了这一轮`}</strong>
         <span>{[o.decision, when(o.at)].filter(Boolean).join(' · ')}</span>
         <span className="kt-dim">退回的原话没在这里显示（有人写的话不上看板）</span>
+        {o.decision && board.row.mr?.url && <ExtLink href={board.row.mr.url} className="kt-btn is-small">在 MR 上看 ↗</ExtLink>}
       </div>
     )
   }
@@ -98,11 +99,14 @@ function RoundBanner({ n, r, board }: { n: StageNode; r: Round; board: ReqBoard 
 }
 
 function FileRow({ f, on, onPick }: { f: OutFile; on: boolean; onPick: () => void }) {
+  const p = shortPath(f.path)
+  const cut = p.lastIndexOf('/') + 1
   return (
     <li>
       <button type="button" className={`kt-frow${on ? ' is-on' : ''}${f.ref ? '' : ' is-missing'}`} onClick={onPick} title={f.path} aria-pressed={on} data-testid="out-file">
         <span className={`kt-file-st is-${f.status}`}>{f.status}</span>
-        <span className="kt-frow-path">{shortPath(f.path)}</span>
+        {/* a long path cuts its folders, never the file's own name */}
+        <span className="kt-frow-path kt-file-path is-split"><span className="kt-file-dir">{p.slice(0, cut)}</span><span className="kt-file-base">{p.slice(cut)}</span></span>
         <span className="kt-frow-num">
           {f.added !== null && <span className="kt-add">+{f.added}</span>}
           {!!f.removed && <span className="kt-del"> −{f.removed}</span>}
@@ -221,7 +225,7 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt }: {
           <div className="kt-rounds" role="group" aria-label="第几轮" data-testid="out-rounds">
             <span className="lbl">第几轮</span>
             {n.rounds.map((x) => (
-              <button key={x.n} type="button" className={`kt-round tone-${ROUND_TONE[x.outcome.kind]}${x.n === r?.n ? ' is-on' : ''}`} aria-pressed={x.n === r?.n}
+              <button key={x.n} type="button" className={`kt-round tone-${openAsk(n, x) ? 'approve' : ROUND_TONE[x.outcome.kind]}${x.n === r?.n ? ' is-on' : ''}`} aria-pressed={x.n === r?.n}
                 onClick={() => onAt({ node: n.id, round: x.n })} title={roundWords(x, n, board)}>
                 <b>第 {x.n} 轮</b>{roundShort(x, n, board)}
               </button>
@@ -231,7 +235,7 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt }: {
         {r && <RoundBanner n={n} r={r} board={board} />}
         {r?.note && <p className="kt-note-box"><b>它自己写的说明</b>{r.note}</p>}
         <div className="kt-tabs" role="tablist">
-          <button type="button" role="tab" className="kt-tab" aria-selected="true">产出文件<sub>{files.length}</sub></button>
+          <button type="button" role="tab" className="kt-tab" aria-selected="true">产出文件{out.data && <sub>{files.length}</sub>}</button>
         </div>
       </div>
       <div className="kt-pane-body">

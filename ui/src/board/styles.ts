@@ -914,6 +914,7 @@ ${legendSwatches}
 .kt-vs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 12px; border-bottom: 1px solid var(--border); font-size: .9em; }
 .kt-frow { font-family: var(--mono, monospace); }
 .kt-frow.is-missing { opacity: .7; }
+.kt-frow .kt-file-dir { color: inherit; }
 .kt-flist-foot { margin: 4px 0 0; font-size: .82em; line-height: 1.5; }
 .kt-attempt-meta { margin: 0 0 10px; font-size: .86em; }
 .kt-task { margin: 0; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12.5px; line-height: 1.6; }

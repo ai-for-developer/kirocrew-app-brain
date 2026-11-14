@@ -147,11 +147,18 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
   // moment it was opened at goes with the replay
   const said = useRef(!!entry.replay || !!entry.at)
   const entered = useRef(false)
+  // the 产出 drawer's place: the view's own, written to the address (replace only rewrites it, it opens nothing)
+  const [out, setOut] = useState<OutAt | null>(entry.out ?? null)
+  const outRef = useRef(out)
+  outRef.current = out
+  const address = useCallback(() => {
+    const { replay: _r, at: _a, out: _o, ...rest } = entry
+    replace({ kind: 'board', ...rest, ...(said.current ? { replay: true } : {}), ...(outRef.current ? { out: outRef.current } : {}) })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!entered.current || rp.on === said.current) return
     said.current = rp.on
-    const { replay: _r, at: _a, ...rest } = entry
-    replace({ kind: 'board', ...rest, ...(rp.on ? { replay: true } : {}) })
+    address()
   }, [rp.on]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // the way in: ?replay=1 starts the replay once the board is here, ?at= stops it at that moment; ?focus= scrolls to
@@ -192,13 +199,12 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
   const clock = rp.clock ?? liveClock
 
   const onNode = useCallback((id: string) => setFocus((f) => (f === id ? null : id)), [])
-  // the drawer's place is the address's: opened, moved and closed in place of the current entry (后退 leaves the board)
-  const entryRef = useRef(entry)
-  entryRef.current = entry
+  // opened, moved and closed in place of the current history entry (后退 leaves the board, not the drawer)
   const toOutputs = useCallback((at: OutAt | null) => {
-    const { out: _o, ...rest } = entryRef.current
-    replace({ kind: 'board', ...rest, ...(at ? { out: at } : {}) })
-  }, [replace])
+    outRef.current = at
+    setOut(at)
+    address()
+  }, [address])
   const onOutputs = useCallback((node: string, round?: number, file?: string) =>
     toOutputs({ node, ...(round ? { round } : {}), ...(file ? { file } : {}) }), [toOutputs])
   const followKey = follow && board ? mostActive(board) : null
@@ -209,7 +215,7 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      if (entryRef.current.out) toOutputs(null)
+      if (outRef.current) toOutputs(null)
       else setFocus(null)
     }
     window.addEventListener('keydown', onKey)
@@ -334,8 +340,8 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, sta
             )}
           </>
         )}
-        {board && entry.out && !rp.on && (
-          <OutputsDrawer board={board} repo={entry.repo} reqKey={entry.key} at={entry.out} onAt={toOutputs} onClose={() => toOutputs(null)} />
+        {board && out && !rp.on && (
+          <OutputsDrawer board={board} repo={entry.repo} reqKey={entry.key} at={out} onAt={toOutputs} onClose={() => toOutputs(null)} />
         )}
         <div className="kt-sr" aria-live="polite" data-testid="kt-announce">{fx.announce}</div>
       </ClockContext.Provider>

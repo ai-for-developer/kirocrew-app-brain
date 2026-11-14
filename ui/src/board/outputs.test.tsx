@@ -57,9 +57,15 @@ describe('产出', () => {
     const lane = screen.getAllByTestId('kt-lane').find((l) => l.dataset.node === 'release') as HTMLElement
     fireEvent.click(within(lane).getByTestId('kt-lane-out'))
     expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'release' } })
+    // the app's replace only rewrites the address: the board opens the drawer itself
+    expect((await screen.findByTestId('out-pane')).dataset.node).toBe('release')
+    fireEvent.click(screen.getByRole('button', { name: '关掉产出' }))
+    expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9' })
+    expect(screen.queryByTestId('out-drawer')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '产出' }))
     // the stage the run waits at
     expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'release' } })
+    expect(await screen.findByTestId('out-pane')).toBeInTheDocument()
     expect(p.go).not.toHaveBeenCalled()
   })
 
@@ -70,6 +76,7 @@ describe('产出', () => {
     fireEvent.click(doc)
     const at = (p.replace as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]
     expect(at.out.file).toMatch(/requirements\.md$/)
+    expect((await screen.findByTestId('out-pane')).dataset.node).toBe(at.out.node)
   })
 
   test('the drawer: the steps, the rounds, what the round was about, its files; a document rendered, the version asked for marked', async () => {
@@ -115,14 +122,18 @@ describe('产出', () => {
   test('a round pill, a step and a file move the drawer in place; Esc closes it before anything else', async () => {
     const p = renderBoard({ ...PAY9, out: { node: 'release', round: 4 } })
     const pane = await screen.findByTestId('out-pane')
-    fireEvent.click(within(within(pane).getByTestId('out-rounds')).getByRole('button', { name: /第 1 轮/ }))
-    expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'release', round: 1 } })
-    fireEvent.click(screen.getAllByTestId('out-step')[1])
-    expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'application-design' } })
     fireEvent.click((await within(pane).findAllByTestId('out-file'))[1])
     expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'release', round: 4, file: 'runs/PAY-9/MR.md' } })
+    expect(await screen.findByText('runs/PAY-9/MR.md', { selector: '.kt-fview-path' })).toBeInTheDocument()
+    fireEvent.click(within(within(pane).getByTestId('out-rounds')).getByRole('button', { name: /第 1 轮/ }))
+    expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'release', round: 1 } })
+    await waitFor(() => expect(screen.getByTestId('out-scope').textContent).toMatch(/^第 1 轮/))
+    fireEvent.click(screen.getAllByTestId('out-step')[1])
+    expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'application-design' } })
+    expect((await screen.findByTestId('out-pane')).dataset.node).toBe('application-design')
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9' })
+    expect(screen.queryByTestId('out-drawer')).toBeNull()
     expect(p.go).not.toHaveBeenCalled()
   })
 })
