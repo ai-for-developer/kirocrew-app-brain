@@ -43,6 +43,15 @@ describe('选择运行 · the menu', () => {
     expect(pickRows(b).slice(-1)).toEqual([{ key: null, icon: 'merge', title: '在 ai/alice/PAY-9-retry 上', count: 'parked', sub: '在另一条分支上，没读进这张看板' }])
   })
 
+  test('a local run names the agent its session boots: brain-dev-crew since brain-kit renamed it, brain-dev before', () => {
+    const b = worldBoard('r1/PAY-9')
+    const local = b.runs.find((r) => r.kind === 'local')!
+    local.sessions = local.sessions.map((s) => ({ ...s, agent: 'brain-dev-crew' }))
+    expect(pickRows(b).find((r) => r.key === 'local')?.title).toBe('本机会话 · brain-dev-crew')
+    local.sessions = []
+    expect(pickRows(b).find((r) => r.key === 'local')?.title).toBe('本机会话')
+  })
+
   test('a run on another branch cannot be picked; one run only: the button says it and has no menu', async () => {
     const b = worldBoard('r1/PAY-9')
     b.other_runs = [{ branch: 'ai/alice/PAY-9-retry', state: null }]

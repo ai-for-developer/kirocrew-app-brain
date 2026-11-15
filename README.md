@@ -189,18 +189,22 @@ shown folded): `backend/core/problems.py`.
   table is copied once, in `backend/core/stages.py`; `tests/test_stages_contract.py` parses brain-kit's vendored
   `aidlc_lean.py` with `ast` and fails when an id, phase, per-unit flag, document or approval kind differs, or a name
   differs from brain-kit's own (`mrdesc.py`).
-- **Startup checks** (and fixes on click), with brain-kit's own functions: `~/.kiro/agents/brain-dev.json` carries
-  Lean's three hooks (SessionStart, UserPromptSubmit, PreToolUse via `.kiro/brain/lean-hook.py`) under the right
+- **Startup checks** (and fixes on click), with brain-kit's own functions: the agent's spec (`cli.crew_agent_path`)
+  carries Lean's three hooks (SessionStart, UserPromptSubmit, PreToolUse via `.kiro/brain/lean-hook.py`) under the right
   triggers (`cli.missing_lean_hooks`, which reads both the original `{"hooks": {"agentSpawn": [...]}}` and the list Kiro
   rewrote every spec into on 2026-11-08, `[{"name", "trigger", "action": {"type": "command", "command"}, ...}]` with a
   top-level `kiroUpgrade`); the engine `agent.acp_backend` is `kas`; every repo has Lean and the hook adapter committed
   (`cli.runner_kit_problems`: worktrees are made from main). The agent fix never rewrites a spec: no file, brain-kit's
-  `crew/brain-dev.json` is installed; a file that lacks some of Lean's hooks gets only those (`cli.add_lean_hooks`, in
+  `cli.CREW_AGENT_SRC` is installed; a file that lacks some of Lean's hooks gets only those (`cli.add_lean_hooks`, in
   the file's own format), and everything else stays (other tools' hooks such as Orca's, `kiroUpgrade`, every other
-  key), with the old file kept as `brain-dev.json.bak-<time>`; a file that is not valid JSON is left for the person to
+  key), with the old file kept as `<agent>.json.bak-<time>`; a file that is not valid JSON is left for the person to
   fix or remove. A spec that differs from brain-kit's in other ways is fine (72b278e: an OK row names the fields you set
   yourself; `brain crew-agent --reset` takes brain-kit's, `--force` only adds what is missing). The engine fix runs
-  `kirocrew config set agent.acp_backend kas`. Per repo, the check also FAILs when Lean counts `runs/**` as code
+  `kirocrew config set agent.acp_backend kas`. The agent is read in one place, `crewcheck.agent_name`: brain-kit's
+  `cli.CREW_AGENT` (`brain-dev-crew`, so that no project's `.kiro/agents/brain-dev.md` runs in its place on KiroCrew's
+  kiro-cli engine); with a brain-kit from before that rename, the spec its `crew_agent_path` names (`brain-dev`). Every
+  new brain-dev session boots that agent, and the checks, their fix and their words name it. A session opened on
+  `brain-dev` before the rename stays the requirement's session, and the board names the agent each session boots. Per repo, the check also FAILs when Lean counts `runs/**` as code
   (`mrdesc.write_problem`: lean.json `fingerprint_exclude`) and (d46765f) when the committed adapter is too old for the
   team runner (`crew_hook_problem`). Those two matter to the runner only: FAIL for a repo handed to it (kit.json
   `bridge_user`, or a requirement with a hand-over), a reminder (WARN, no 待办 item) for a local-only one; not

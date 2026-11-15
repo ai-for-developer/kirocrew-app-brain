@@ -460,10 +460,10 @@ class Req:
 
 
 def crew_rows() -> list[dict]:
-    """KiroCrew's checks of the fixtures' machine as crewcheck makes them (problems.py's words): brain-dev.json lacks
+    """KiroCrew's checks of the fixtures' machine as crewcheck makes them (problems.py's words): the agent's spec lacks
     Lean's hook before a tool call; shop-pay's committed hook adapter is the old one (a reminder there: it is not handed
     to the runner); the engine is kas."""
-    return [problems.agent_lacks([("preToolUse", "PreToolUse")]),
+    return [problems.agent_lacks(AGENT, [("preToolUse", "PreToolUse")]),
             problems.row("FAIL", ADAPTER_OLD, repo="/Users/alice/workplace/shop-pay", team=False), problems.engine("kas")]
 
 
@@ -827,6 +827,8 @@ def classified(r: Req, row: dict, *, park: dict | None = None, mr: dict | None =
 LATER: dict[str, tuple] = {}   # each board's makings by "<repo>/<key>", made once every run's Brain block is known
 
 
+# the fixtures' machine has a brain-kit from before it renamed the agent (crewcheck.agent_name), as its sessions boot
+AGENT = "brain-dev"
 SESSION_KEYS = ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting", "last_activity", "opened_at",
                 "project", "url", "error")   # a session row of 需求详情 (service._detail_sync)
 
@@ -1792,7 +1794,7 @@ def world(scratch: Path) -> None:
                 "session": {k: sessions[r_["key"]][k] for k in ("slot", "title", "url")} if r_["key"] in sessions else None,
                 "push_error": pushed_over(r_) if (r_["repo"], r_["key"]) == ("r1", "PAY-1") else None}
                for r_ in all_rows if r_["state"] != "closed" and (r_["state"] != "merged" or r_["waits"]["who"] == "you")]
-    crew_fail = problems.agent_missing()
+    crew_fail = problems.agent_missing(AGENT, "~/.kiro/agents/%s.json" % AGENT)
     world_todo = {"ok": todo.build(entries, team=False, crew_rows=[]), "crewfail": todo.build(entries, team=False, crew_rows=[crew_fail])}
     brains, uses, reflects = brain_views(reqs, all_rows, {bid: kw.get("decisions") or [] for bid, (_, _, kw) in LATER.items()})
     drawer: dict[str, dict] = {}
@@ -1907,7 +1909,7 @@ def world(scratch: Path) -> None:
          "me": {"name": "alice", "source": "login", "gitlab": "", "text": "alice（这台机器的登录名：这个仓库不用 GitLab）",
                 "ask": False, "label": "", "why": "", "suggest": "", "error": ""}}]
     # KiroCrew is fine in the world (the 「KiroCrew 有 FAIL」 switch shows a failing row); shop-tools keeps its ! reminder
-    world_status["crew"]["rows"] = [problems.agent_ok(0) if r_["level"] == "FAIL" else r_ for r_ in status["crew"]["rows"]
+    world_status["crew"]["rows"] = [problems.agent_ok(AGENT, 0) if r_["level"] == "FAIL" else r_ for r_ in status["crew"]["rows"]
                                     if r_.get("fix") != "kit"] + tool_kit
     world_status["crew"]["fix"] = {"agent": any(r_.get("fix") == "agent" for r_ in world_status["crew"]["rows"]),
                                    "engine": any(r_.get("fix") == "engine" for r_ in world_status["crew"]["rows"])}

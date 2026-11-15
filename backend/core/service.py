@@ -25,7 +25,7 @@ from . import board as board_mod
 from . import settings as settings_mod
 from . import todo as todo_mod
 from . import turns as turns_mod
-from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_AGENT, LOCAL_FOLDER, REPO_ID_RE, TICK_S, VERSION
+from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_FOLDER, REPO_ID_RE, TICK_S, VERSION
 from .gateway import Gateway, GatewayError
 from .gateway import said as gateway_said
 from .httpkit import AppError
@@ -1112,7 +1112,7 @@ class Service:
         slug = branch.rsplit("/", 1)[-1][len(key) + 1:] or key.lower()
         info = await self.sessions.open_session(
             task, parent_session_key="%s:%s" % (self.name, scope), cwd=wt, title=title,
-            folder="%s · %s" % (key, slug), agent=LOCAL_AGENT, root_folder=LOCAL_FOLDER, project_dir=wt,
+            folder="%s · %s" % (key, slug), agent=crewcheck.agent_name(), root_folder=LOCAL_FOLDER, project_dir=wt,
             strict_agent=True, resend_ok=True, nudge_ok=False, trust_ok=bool(trust), kind="local", key=scope,
             shown={"by": "app", "cause": cause, "text": task} if task else None)   # task: ids only, by its builder
         if info.error or not info.slot:

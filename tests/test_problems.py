@@ -30,7 +30,7 @@ BRAIN_MD = re.compile(r"^(?:[\w-]+/)*(?:PRODUCT|TECH|IMPROVEMENT|PROJECT|PURGED)
 
 
 def code_words(s):
-    for name in list(P.FIX_BUTTON.values()) + [P.AGENT_NEW]:
+    for name in list(P.FIX_BUTTON.values()) + [P.AGENT_NEW.format(a=a) for a in ("brain-dev", "brain-dev-crew")]:
         s = s.replace("「%s」" % name, "")
     return CODE_WORD.findall(s) + [w for w in re.findall(r"[\w./-]+\.md\b", s) if not BRAIN_MD.match(w)]
 
@@ -160,6 +160,23 @@ DOCTOR = [
     ("OK", "KiroCrew brain-dev uses your own description, prompt (`brain crew-agent --reset` takes brain-kit's)",
      "brain-dev 用的是你自己的说明、提示词", None),
     ("FAIL", "~/.kiro/agents/brain-dev.json is not valid JSON", "brain-dev 的设置读不懂：文件格式坏了", None),
+    # brain-kit d8c5ffe on: KiroCrew's agent is brain-dev-crew
+    ("WARN", "KiroCrew: ~/.kiro/agents/brain-dev-crew.json missing; KiroCrew sessions would run without Lean's hooks "
+     "(run `brain crew-agent`)", "KiroCrew 里还没有 brain-dev-crew", "agent"),
+    ("OK", "KiroCrew agent brain-dev-crew carries Lean's 3 hooks", "KiroCrew 的 brain-dev-crew 设置里 Lean 的拦截都在", None),
+    ("FAIL", "KiroCrew agent brain-dev-crew lacks Lean's preToolUse hook(s) as Lean needs them (run `brain crew-agent "
+     "--force`)", "brain-dev-crew 的设置缺 Lean 的拦截：调用工具前", "agent"),
+    ("WARN", "KiroCrew agent brain-dev-crew has no model (`brain crew-agent --force` adds brain-kit's)",
+     "brain-dev-crew 的设置里没有模型", None),
+    ("OK", "KiroCrew agent brain-dev-crew uses your own prompt (`brain crew-agent --reset` takes brain-kit's)",
+     "brain-dev-crew 用的是你自己的提示词", None),
+    ("FAIL", "KiroCrew: .kiro/agents/brain-dev-crew.md is also named brain-dev-crew: on KiroCrew's kiro-cli engine it "
+     "runs instead of ~/.kiro/agents/brain-dev-crew.json, without Lean's hooks; rename it or remove it",
+     "仓库里有个 agent 也叫 brain-dev-crew：KiroCrew 会用它，Lean 的拦截就不跑了", None),
+    ("WARN", "KiroCrew: a session on agent brain-dev runs .kiro/agents/brain-dev.md, not ~/.kiro/agents/brain-dev.json, "
+     "on KiroCrew's kiro-cli engine: no Lean hooks. Open KiroCrew sessions with brain-dev-crew (the Brain app does); "
+     "remove ~/.kiro/agents/brain-dev.json once nothing picks brain-dev",
+     "选 brain-dev 开的会话用的是仓库里同名的 agent，没有 Lean 的拦截", None),
     ("OK", "KiroCrew engine: kas", "KiroCrew 引擎：kas", None),
     ("OK", "KiroCrew engine: default (KAS)", "KiroCrew 引擎：默认（kas）", None),
     ("WARN", "KiroCrew engine: kiro (Lean via agent hooks is tested on kas / v3 only)", "KiroCrew 引擎是 kiro，不是 kas",
@@ -180,13 +197,14 @@ def test_every_fix_row_names_the_button_the_page_shows():
     raws = [r for _, r, _, f in DOCTOR if f] + [OLDER, WRITE_PROBLEM,
                                               ".kiro/aidlc-lean/aidlc_lean.py is not committed: AI-DLC Lean; commit it on main"
                                               " through an MR"]
-    rows = [P.agent_missing(), P.agent_lacks([("preToolUse", "PreToolUse")]), P.engine("kiro")] + \
+    rows = [P.agent_missing("brain-dev", "~/.kiro/agents/brain-dev.json"), P.agent_lacks("brain-dev", [("preToolUse", "PreToolUse")]), P.engine("kiro")] + \
         [P.row("FAIL", raw, repo=REPO, team=team) for raw in raws for team in (True, False)]
-    names = set(P.FIX_BUTTON.values()) | {P.AGENT_NEW}
+    names = set(P.FIX_BUTTON.values()) | {P.AGENT_NEW.format(a=a) for a in ("brain-dev", "brain-dev-crew")}
     for r in (x for x in rows if x["fix"]):
         assert "「修复」" not in r["todo"], r
         named = [n for n in names if "点「%s」" % n in r["todo"]]
-        assert named == [P.AGENT_NEW if r["text"] == "KiroCrew 里还没有 brain-dev" else P.FIX_BUTTON[r["fix"]]], r
+        missing = r["text"].startswith("KiroCrew 里还没有 ")
+        assert named == [P.AGENT_NEW.format(a=r["text"].split()[-1]) if missing else P.FIX_BUTTON[r["fix"]]], r
 
 
 @pytest.mark.parametrize("level, raw, text, fix", DOCTOR)
@@ -201,7 +219,7 @@ def test_brain_doctors_lines(level, raw, text, fix):
 def test_doctor_rows_never_start_with_the_agent_ok_text():
     """crewcheck.agent_ok trusts only its own OK row: no doctor line may look like it."""
     for level, raw, _, _ in DOCTOR:
-        assert not P.row(level, raw)["text"].startswith(P.AGENT_OK)
+        assert not P.row(level, raw)["text"].startswith(tuple(P.AGENT_OK.format(a=a) for a in ("brain-dev", "brain-dev-crew")))
 
 
 # ---- crewcheck's own rows -------------------------------------------------------------------------------------------- #
@@ -211,22 +229,22 @@ def test_the_apps_own_rows():
     old = ok_row(P.brainkit_old(["crew_hook_problem", "CREW_EVENTS"]))
     assert (old["text"], old["todo"]) == ("brain-kit 太旧", "把 brain-kit 更新到新版本")
     assert "crew_hook_problem、CREW_EVENTS" in old["raw"]                    # what it lacks: 细节
-    no = ok_row(P.agent_missing())
+    no = ok_row(P.agent_missing("brain-dev", "~/.kiro/agents/brain-dev.json"))
     assert (no["level"], no["text"], no["fix"]) == ("FAIL", "KiroCrew 里还没有 brain-dev", "agent")
     assert no["raw"] == "没有 ~/.kiro/agents/brain-dev.json"                  # where it goes: 细节
-    bad = ok_row(P.agent_unreadable("读不了", "Permission denied"))
+    bad = ok_row(P.agent_unreadable("brain-dev", "~/.kiro/agents/brain-dev.json", "读不了", "Permission denied"))
     assert bad["text"] == "brain-dev 的设置读不了" and bad["fix"] is None
     assert bad["raw"] == "Permission denied\n文件：~/.kiro/agents/brain-dev.json"   # the OS error and the file: 细节
     assert bad["todo"] == "自己修好它，或者删掉它再装一份新的（这里不会覆盖它）"
-    unread = ok_row(P.agent_unreadable("读不懂：拦截那一段的写法认不出"))
+    unread = ok_row(P.agent_unreadable("brain-dev", "~/.kiro/agents/brain-dev.json", "读不懂：拦截那一段的写法认不出"))
     assert unread["text"] == "brain-dev 的设置读不懂：拦截那一段的写法认不出" and unread["raw"] == "文件：~/.kiro/agents/brain-dev.json"
-    lacks = ok_row(P.agent_lacks([("userPromptSubmit", "UserPromptSubmit"), ("preToolUse", "PreToolUse")]))
+    lacks = ok_row(P.agent_lacks("brain-dev", [("userPromptSubmit", "UserPromptSubmit"), ("preToolUse", "PreToolUse")]))
     assert lacks["text"] == "brain-dev 的设置缺 Lean 的拦截：发消息、调用工具前" and lacks["fix"] == "agent"
     assert lacks["todo"] == "点「补上 Lean 的拦截」：只补上缺的（发消息、调用工具前），别的都不动"
     assert lacks["raw"] == "缺的 hook：userPromptSubmit、preToolUse"          # the trigger names only under 细节
-    assert ok_row(P.agent_ok(0))["text"] == P.AGENT_OK == "brain-dev 的设置里 Lean 的拦截都在"
-    assert P.agent_ok(2)["text"] == P.AGENT_OK + "（另有 2 个别的工具加的拦截，留着不动）"
-    custom = ok_row(P.agent_custom(["model", "resources"]))
+    assert ok_row(P.agent_ok("brain-dev", 0))["text"] == "brain-dev 的设置里 Lean 的拦截都在"
+    assert P.agent_ok("brain-dev-crew", 2)["text"] == "brain-dev-crew 的设置里 Lean 的拦截都在（另有 2 个别的工具加的拦截，留着不动）"
+    custom = ok_row(P.agent_custom("brain-dev", ["model", "resources"]))
     assert custom["text"] == "brain-dev 用的是你自己的模型、资料" and custom["todo"] == ""
     assert custom["raw"].startswith("brain-dev 用的是你自己的 model、resources（") and "--reset" in custom["raw"]
     assert ok_row(P.engine("kas"))["text"] == "KiroCrew 引擎：kas" and P.engine("")["text"] == "KiroCrew 引擎：默认（kas）"

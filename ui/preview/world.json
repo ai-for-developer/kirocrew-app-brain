@@ -30664,7 +30664,8 @@
        "slot": "brain-PAY-2-1c4e",
        "url": "/chat?sid=brain-PAY-2-1c4e",
        "busy": false,
-       "title": "PAY-2 退款单号校验"
+       "title": "PAY-2 退款单号校验",
+       "agent": "brain-dev"
       }
      ],
      "ticker": null
@@ -34164,7 +34165,8 @@
        "slot": "brain-PAY-3-7f3a",
        "url": "/chat?sid=brain-PAY-3-7f3a",
        "busy": false,
-       "title": "PAY-3 退款单导出 CSV"
+       "title": "PAY-3 退款单导出 CSV",
+       "agent": "brain-dev"
       }
      ],
      "ticker": null
@@ -39403,7 +39405,8 @@
        "slot": "brain-PAY-5-8a1d",
        "url": "/chat?sid=brain-PAY-5-8a1d",
        "busy": false,
-       "title": "PAY-5 退款回调失败重试"
+       "title": "PAY-5 退款回调失败重试",
+       "agent": "brain-dev"
       }
      ],
      "ticker": null
@@ -42024,7 +42027,8 @@
        "slot": "brain-PAY-7-2b9f",
        "url": "/chat?sid=brain-PAY-7-2b9f",
        "busy": false,
-       "title": "PAY-7 退款原因下拉框"
+       "title": "PAY-7 退款原因下拉框",
+       "agent": "brain-dev"
       }
      ],
      "ticker": null
@@ -47260,7 +47264,8 @@
        "slot": "brain-PAY-1-3d8e",
        "url": "/chat?sid=brain-PAY-1-3d8e",
        "busy": false,
-       "title": "PAY-1 退款原因统计"
+       "title": "PAY-1 退款原因统计",
+       "agent": "brain-dev"
       }
      ],
      "ticker": null
@@ -49174,7 +49179,8 @@
        "slot": "brain-PAY-16-4c7d",
        "url": "/chat?sid=brain-PAY-16-4c7d",
        "busy": false,
-       "title": "PAY-16 退款进度查询"
+       "title": "PAY-16 退款进度查询",
+       "agent": "brain-dev"
       }
      ],
      "ticker": null
@@ -52547,7 +52553,8 @@
        "slot": "brain-PAY-9-7f2c",
        "url": "/chat?sid=brain-PAY-9-7f2c",
        "busy": false,
-       "title": "PAY-9 退款通知短信"
+       "title": "PAY-9 退款通知短信",
+       "agent": "brain-dev"
       }
      ],
      "ticker": null
@@ -56096,7 +56103,8 @@
        "slot": "brain-PAY-11-6d1e",
        "url": "/chat?sid=brain-PAY-11-6d1e",
        "busy": false,
-       "title": "PAY-11 退款大需求"
+       "title": "PAY-11 退款大需求",
+       "agent": "brain-dev"
       }
      ],
      "ticker": null
@@ -94559,7 +94567,8 @@
        "slot": "brain-TOOL-1-5a2c",
        "url": "/chat?sid=brain-TOOL-1-5a2c",
        "busy": true,
-       "title": "TOOL-1 价格表批量导入"
+       "title": "TOOL-1 价格表批量导入",
+       "agent": "brain-dev"
       }
      ],
      "ticker": {
@@ -102126,7 +102135,8 @@
        "slot": "brain-run-RUN-PAY-4-1",
        "url": "/chat?sid=brain-run-RUN-PAY-4-1",
        "busy": false,
-       "title": "RUN-PAY-4-1"
+       "title": "RUN-PAY-4-1",
+       "agent": "brain-run"
       }
      ],
      "ticker": null
@@ -104897,7 +104907,8 @@
        "slot": "brain-run-RUN-PAY-5-1",
        "url": "/chat?sid=brain-run-RUN-PAY-5-1",
        "busy": false,
-       "title": "RUN-PAY-5-1"
+       "title": "RUN-PAY-5-1",
+       "agent": "brain-run"
       }
      ],
      "ticker": null
@@ -108369,7 +108380,8 @@
        "slot": "brain-run-RUN-PAY-2-1",
        "url": "/chat?sid=brain-run-RUN-PAY-2-1",
        "busy": false,
-       "title": "RUN-PAY-2-1"
+       "title": "RUN-PAY-2-1",
+       "agent": "brain-run"
       }
      ],
      "ticker": null
@@ -111351,7 +111363,8 @@
        "slot": "brain-run-RUN-ORD-10-1",
        "url": "/chat?sid=brain-run-RUN-ORD-10-1",
        "busy": true,
-       "title": "RUN-ORD-10-1"
+       "title": "RUN-ORD-10-1",
+       "agent": "brain-run"
       }
      ],
      "ticker": null

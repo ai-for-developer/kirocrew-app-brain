@@ -1537,8 +1537,8 @@ export interface Run {
   now: RunNow
   /** summed over its sessions on this machine; null when none here (never per stage) */
   credits: number | null
-  /** its KiroCrew sessions on this machine, to open; [] when none here */
-  sessions: { slot: string; url: string; busy: boolean; title: string }[]
+  /** its KiroCrew sessions on this machine, to open; [] when none here. *agent*: the one it boots ('' when not known) */
+  sessions: { slot: string; url: string; busy: boolean; title: string; agent: string }[]
   /** what its session here did last (readable here only; null otherwise or before it did anything): its last call
    * (读文件 · 写文件 · 跑命令 · 搜索 · 查知识库 · 其他, and the path or command), and the last line the agent wrote, scrubbed,
    * its emails pseudonyms; never a person's typed words */

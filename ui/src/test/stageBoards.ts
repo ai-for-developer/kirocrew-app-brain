@@ -137,7 +137,7 @@ export function pay9(): ReqBoard {
   ]
   const runs = [
     run('local', 'local', '本机会话', { status: 'done', doing: '做完 · 11:05 交出去', since: t('11:05') }, {
-      credits: 12.4, sessions: [{ slot: 'brain-PAY-9-7f2c', url: '/chat?sid=brain-PAY-9-7f2c', busy: false, title: 'PAY-9 退款通知短信' }],
+      credits: 12.4, sessions: [{ slot: 'brain-PAY-9-7f2c', url: '/chat?sid=brain-PAY-9-7f2c', busy: false, title: 'PAY-9 退款通知短信', agent: 'brain-dev' }],
     }),
     run('runner-1', 'runner', '运行机 第 1 次', { status: 'awaiting_approval', doing: '等产品验收（D-3）', since: t('16:14'), who: 'product', node: 'release' as NodeId },
       { n: 1, run_id: 'RUN-PAY-9-1' }),
@@ -200,7 +200,7 @@ export function pay16(): ReqBoard {
       phase('operations', 'used', '运维 7 个阶段：这次不需要')],
     nodes,
     runs: [run('local', 'local', '本机会话', { status: 'awaiting_approval', doing: '等你批', since: ago(12), who: 'you', node: 'application-design' as NodeId }, {
-      credits: 3.1, sessions: [{ slot: 'brain-PAY-16-2b9d', url: '/chat?sid=brain-PAY-16-2b9d', busy: false, title: 'PAY-16 退款进度查询' }],
+      credits: 3.1, sessions: [{ slot: 'brain-PAY-16-2b9d', url: '/chat?sid=brain-PAY-16-2b9d', busy: false, title: 'PAY-16 退款进度查询', agent: 'brain-dev' }],
     })],
     relays: [], other_runs: [], events: [],
     belt: [commit('8c1f0aa', ago(14), 'local', 'PAY-16：需求和设计', { records_only: true })],

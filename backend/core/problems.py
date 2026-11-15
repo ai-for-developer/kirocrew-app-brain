@@ -32,9 +32,9 @@ LEVELS = ("OK", "WARN", "FAIL")
 FIXES = ("agent", "engine", "kit", "me")
 ME_TODO = "在下面填上，点「保存」（记在这个仓库的 git 设置里）"
 ME_GITLAB = "要你在 GitLab 上的用户名：认领和交接都按它认人。" + ME_TODO
-AGENT_OK = "brain-dev 的设置里 Lean 的拦截都在"   # crewcheck.agent_ok accepts the OK row whose text starts with it
-AGENT_MISSING = "KiroCrew 里还没有 brain-dev"
-AGENT_PATH = "~/.kiro/agents/brain-dev.json"
+# {a}: the agent (crewcheck.agent_name): brain-dev-crew, or brain-dev with a brain-kit from before the rename
+AGENT_OK = "{a} 的设置里 Lean 的拦截都在"   # crewcheck.agent_ok accepts the OK row whose text starts with it
+AGENT_MISSING = "KiroCrew 里还没有 {a}"
 TRIGGER_NAMES = {"agentSpawn": "会话开始", "userPromptSubmit": "发消息", "preToolUse": "调用工具前"}
 TRACKER_NAME = {"none": "不用 Jira", "jira": "用 Jira"}
 EVENT_TRIGGER = {"SessionStart": "agentSpawn", "UserPromptSubmit": "userPromptSubmit", "PreToolUse": "preToolUse"}
@@ -51,10 +51,12 @@ VALUE_NAMES: dict[str, dict[str, str]] = {
     "fields": {"name": "名字", "description": "说明", "model": "模型", "prompt": "提示词", "tools": "工具", "resources": "资料"},
 }
 
+_AGENT = r"(?P<a>brain-dev(?:-crew)?)"   # brain-kit's CREW_AGENT, and brain-dev before the rename
+
 # the fix buttons' names (ui.tsx CheckRows shows the name a row's 做什么 gives in 点「…」, these): every text that
 # points at a button says its name
 FIX_BUTTON = {"agent": "补上 Lean 的拦截", "engine": "把引擎换成 kas", "kit": "重装 kit 文件"}
-AGENT_NEW = "装上 brain-dev"      # the agent fix when ~/.kiro/agents/brain-dev.json is not there at all
+AGENT_NEW = "装上 {a}"      # the agent fix when its spec is not there at all
 REINSTALL = "点「%s」：重装 brain-kit 并提交（默认直接在当前分支上，团队仓库可以选新分支开 MR）" % FIX_BUTTON["kit"]
 AGENT_NEW_TODO = "点「%s」：装上 brain-kit 带的那一份；没有它，Lean 的拦截在 KiroCrew 里不会跑" % AGENT_NEW
 UNREADABLE_TODO = "自己修好它，或者删掉它再装一份新的（这里不会覆盖它）"
@@ -261,16 +263,21 @@ RULES: list[Rule] = [
     Rule(r"^(?P<tool>kiro-cli|kirocrew) (?P<have>.+?)(?: \(not pinned\))?$",
          lambda g, lv: "%s %s" % (_tool_name(g["tool"]), _version(g, "have"))),
     # cli.crew_checks (brain doctor's KiroCrew lines)
-    Rule(r"^KiroCrew: ~/\.kiro/agents/brain-dev\.json missing", AGENT_MISSING, AGENT_NEW_TODO, "agent"),
-    Rule(r"^KiroCrew brain-dev carries Lean's 3 hooks$", "KiroCrew 的 brain-dev 设置里 Lean 的拦截都在"),
-    Rule(r"^KiroCrew brain-dev\.json lacks Lean's (?P<t>.+?) hook\(s\)",
-         lambda g, lv: "brain-dev 的设置缺 Lean 的拦截：%s" % _hook_names(g["t"]),
+    Rule(r"^KiroCrew: ~/\.kiro/agents/%s\.json missing" % _AGENT, AGENT_MISSING, AGENT_NEW_TODO, "agent"),
+    Rule(r"^KiroCrew (?:agent )?%s carries Lean's 3 hooks$" % _AGENT, "KiroCrew 的 {a} 设置里 Lean 的拦截都在"),
+    Rule(r"^KiroCrew (?:agent )?%s(?:\.json)? lacks Lean's (?P<t>.+?) hook\(s\)" % _AGENT,
+         lambda g, lv: "%s 的设置缺 Lean 的拦截：%s" % (g["a"], _hook_names(g["t"])),
          lambda g, lv: "点「%s」：只补上缺的（%s），别的都不动" % (FIX_BUTTON["agent"], _hook_names(g["t"])),
          "agent"),
-    Rule(r"^KiroCrew brain-dev\.json has no (?P<fields>.+?) \(", "brain-dev 的设置里没有{fields}",
+    Rule(r"^KiroCrew (?:agent )?%s(?:\.json)? has no (?P<fields>.+?) \(" % _AGENT, "{a} 的设置里没有{fields}",
          "让 brain-kit 在终端里补上缺的设置（你自己的设置都留着）", how="brain crew-agent --force"),
-    Rule(r"^KiroCrew brain-dev uses your own (?P<fields>.+?) \(", "brain-dev 用的是你自己的{fields}"),
-    Rule(r"^~/\.kiro/agents/brain-dev\.json is not valid JSON", "brain-dev 的设置读不懂：文件格式坏了", UNREADABLE_TODO),
+    Rule(r"^KiroCrew (?:agent )?%s uses your own (?P<fields>.+?) \(" % _AGENT, "{a} 用的是你自己的{fields}"),
+    Rule(r"^~/\.kiro/agents/%s\.json is not valid JSON" % _AGENT, "{a} 的设置读不懂：文件格式坏了", UNREADABLE_TODO),
+    Rule(r"^KiroCrew: \S+ is also named %s: " % _AGENT, "仓库里有个 agent 也叫 {a}：KiroCrew 会用它，Lean 的拦截就不跑了",
+         "把仓库里那个 agent 改个名字，或者删掉（它在哪看细节）"),
+    Rule(r"^KiroCrew: a session on agent (?P<old>\S+) runs \S+, not ",
+         "选 {old} 开的会话用的是仓库里同名的 agent，没有 Lean 的拦截",
+         "在 KiroCrew 里选 brain-dev-crew 开会话（app 就是这样开的）；没人再选 {old} 以后，删掉 {old} 的旧设置（在哪看细节）"),
     Rule(r"^KiroCrew engine: (?P<be>default \(KAS\)|kas)$",
          lambda g, lv: "KiroCrew 引擎：%s" % ("默认（kas）" if g["be"].startswith("default") else "kas")),
     Rule(r"^KiroCrew engine: (?P<be>\S+)", "KiroCrew 引擎是 {be}，不是 kas",
@@ -407,34 +414,35 @@ def brainkit_old(lacking: list[str]) -> dict[str, Any]:
     return mk("FAIL", "brain-kit 太旧", "把 brain-kit 更新到新版本", raw="这个版本的 brain-kit 缺：%s" % "、".join(lacking))
 
 
-def agent_missing() -> dict[str, Any]:
-    return mk("FAIL", AGENT_MISSING, AGENT_NEW_TODO, "agent", raw="没有 %s" % AGENT_PATH)
+def agent_missing(a: str, path: str) -> dict[str, Any]:
+    """*a*: the agent; *path*: its spec, ~/ for the home folder."""
+    return mk("FAIL", AGENT_MISSING.format(a=a), AGENT_NEW_TODO.format(a=a), "agent", raw="没有 %s" % path)
 
 
-def agent_unreadable(why: str, detail: str = "") -> dict[str, Any]:
+def agent_unreadable(a: str, path: str, why: str, detail: str = "") -> dict[str, Any]:
     """*why*: 读不了 or 读不懂：<what> (crewcheck._load); *detail*: the OS error, if any."""
-    return mk("FAIL", "brain-dev 的设置" + why, UNREADABLE_TODO, None, None,
-              "\n".join(x for x in (detail, "文件：" + AGENT_PATH) if x))
+    return mk("FAIL", "%s 的设置%s" % (a, why), UNREADABLE_TODO, None, None,
+              "\n".join(x for x in (detail, "文件：" + path) if x))
 
 
 def trigger_names(missing: list[tuple[str, str]]) -> str:
     return "、".join(TRIGGER_NAMES.get(t, t) for t, _ in missing)
 
 
-def agent_lacks(missing: list[tuple[str, str]]) -> dict[str, Any]:
-    return mk("FAIL", "brain-dev 的设置缺 Lean 的拦截：%s" % trigger_names(missing),
+def agent_lacks(a: str, missing: list[tuple[str, str]]) -> dict[str, Any]:
+    return mk("FAIL", "%s 的设置缺 Lean 的拦截：%s" % (a, trigger_names(missing)),
               "点「%s」：只补上缺的（%s），别的都不动" % (FIX_BUTTON["agent"], trigger_names(missing)), "agent",
               raw="缺的 hook：%s" % "、".join(t for t, _ in missing))
 
 
-def agent_ok(others: int) -> dict[str, Any]:
-    return mk("OK", AGENT_OK + ("（另有 %d 个别的工具加的拦截，留着不动）" % others if others else ""))
+def agent_ok(a: str, others: int) -> dict[str, Any]:
+    return mk("OK", AGENT_OK.format(a=a) + ("（另有 %d 个别的工具加的拦截，留着不动）" % others if others else ""))
 
 
-def agent_custom(fields: list[str]) -> dict[str, Any]:
+def agent_custom(a: str, fields: list[str]) -> dict[str, Any]:
     names = "、".join(fields)
-    return mk("OK", "brain-dev 用的是你自己的%s" % said("fields", ",".join(fields)),
-              raw="brain-dev 用的是你自己的 %s（`brain crew-agent --reset` 换回 brain-kit 的；--force 只补缺的）" % names)
+    return mk("OK", "%s 用的是你自己的%s" % (a, said("fields", ",".join(fields))),
+              raw="%s 用的是你自己的 %s（`brain crew-agent --reset` 换回 brain-kit 的；--force 只补缺的）" % (a, names))
 
 
 def engine(be: str | None, why: str = "", detail: str = "") -> dict[str, Any]:

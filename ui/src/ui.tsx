@@ -169,10 +169,11 @@ export function TypeLine({ line, sessionUrl, said }: { line: string; sessionUrl?
 }
 
 /** The fix buttons' names (backend/core/problems.py FIX_BUTTON): a row's 做什么 names its button, 点「…」, and the button
- * shows that name (「装上 brain-dev」 when the file is not there at all); these when it names none. */
+ * shows that name (「装上 brain-dev-crew」, or 「装上 brain-dev」 with a brain-kit before the rename, when the file is not
+ * there at all); these when it names none. */
 const FIX_LABEL: Record<CrewFixBody['what'], string> = { agent: '补上 Lean 的拦截', engine: '把引擎换成 kas' }
 export const KIT_FIX_LABEL = '重装 kit 文件'
-const FIX_NAMES: readonly string[] = [...Object.values(FIX_LABEL), KIT_FIX_LABEL, '装上 brain-dev']
+const FIX_NAMES: readonly string[] = [...Object.values(FIX_LABEL), KIT_FIX_LABEL, '装上 brain-dev-crew', '装上 brain-dev']
 const fixName = (r: CheckRow, fallback: string): string => {
   const named = /点「([^」]{2,20})」/.exec(r.todo ?? '')?.[1] ?? ''
   return FIX_NAMES.includes(named) ? named : fallback

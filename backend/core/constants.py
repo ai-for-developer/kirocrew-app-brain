@@ -12,7 +12,9 @@ VERSION = "0.2.0"
 LOCAL_FOLDER = "Brain 需求"        # brain-dev sessions on this machine, one subfolder per requirement
 RUNNER_FOLDER = "Brain 运行机"     # brain-run sessions the team runner dispatches, one subfolder per run
 
-LOCAL_AGENT = "brain-dev"          # ~/.kiro/agents/brain-dev.json (brain crew-agent), carries Lean's three hooks
+# ~/.kiro/agents/<name>.json (brain crew-agent), carries Lean's three hooks: brain-kit's CREW_AGENT (crewcheck.agent_name),
+# and its name before brain-kit renamed it so that no project's .kiro/agents/brain-dev.md runs in its place
+LOCAL_AGENTS = ("brain-dev-crew", "brain-dev")
 RUNNER_AGENT = "brain-run"         # ~/.kiro/agents/brain-run.json on the team runner
 
 # KiroCrew lets an agent work only under ~/workspace(s) or ~/workplace(s): every requirement's worktree lives here.
