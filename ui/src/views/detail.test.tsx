@@ -709,6 +709,24 @@ describe('需求详情', () => {
     noLineSent()
   })
 
+  test('开会话 answered with the session already there (its first message did not go in): the card says so, not 会话开好了', async () => {
+    const user = userEvent.setup()
+    const said = '这个需求已经有一个会话，只是它的第一条消息没发进去：打开它，在里面说一句接着做；要换一个新的，点「重开一个会话」'
+    const d = fx.detail()
+    d.sessions = []
+    installFixtureRoutes({
+      [`GET ${API}/requirements/*`]: () => d,
+      [`POST ${API}/requirements/r1/PAY-3/session`]: () => ({ ok: true, slot: 'brain-PAY-3-9e1d', url: '/chat?sid=brain-PAY-3-9e1d', said }),
+    })
+    renderDetail()
+    const card = await screen.findByRole('region', { name: '开会话' })
+    await user.click(within(card).getByRole('button', { name: '开会话' }))
+    expect(await within(card).findByText(said)).toBeInTheDocument()
+    expect(within(card).queryByText('会话开好了。')).toBeNull()
+    await user.click(within(card).getByRole('button', { name: '打开会话' }))
+    expect(navigations).toEqual(['/chat?sid=brain-PAY-3-9e1d'])
+  })
+
   test('no 开会话 for a requirement that is not local', async () => {
     withDetail((d) => {
       d.sessions = []
