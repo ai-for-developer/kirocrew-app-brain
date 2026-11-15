@@ -62,6 +62,10 @@ CTRL_RE = re.compile(r"[\x00-\x1f\x7f\u2028\u2029]")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 SCP_RE = re.compile(r"^(?P<user>[A-Za-z0-9._-]+)@(?P<host>[A-Za-z0-9][A-Za-z0-9.-]*)"
                     r":(?P<path>[A-Za-z0-9._~][A-Za-z0-9._~/-]*)$")
+# git's host:path with no user (the user comes from ~/.ssh/config): a host name with a dot, not a word
+HOST_PATH_RE = re.compile(r"^(?P<host>[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+)+)"
+                          r":(?P<path>[A-Za-z0-9._~][A-Za-z0-9._~/-]*)$")
+SSH_SCHEMES = ("ssh", "git+ssh", "ssh+git")
 PROJECT_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+$")
 PREFIX_RE = re.compile(r"^[A-Z][A-Z0-9]{0,9}$")
 CRED_RE = re.compile(r"(?i)\b((?:https?|ssh|git)://)[^/@\s]+@")
@@ -429,7 +433,7 @@ def gitlab_of(url: str) -> dict[str, str]:
     hosted git URL (a local path, GitHub). An SSH URL's port is SSH's, and its host may be GitLab's own SSH name
     (SSH_HOST_PREFIXES): the web address has neither."""
     host, path, scheme = "", "", "https"
-    m = SCP_RE.match(url or "")
+    m = SCP_RE.match(url or "") or HOST_PATH_RE.match(url or "")
     if m:
         host, path = web_host(m.group("host")), m.group("path")
     elif "://" in (url or ""):
@@ -438,13 +442,13 @@ def gitlab_of(url: str) -> dict[str, str]:
             port = sp.port
         except ValueError:
             return {"base": "", "project": ""}
-        if sp.scheme in ("ssh", "git", "https", "http") and sp.hostname:
+        if sp.scheme in SSH_SCHEMES + ("git", "https", "http") and sp.hostname:
             host, path = sp.hostname, sp.path
             if sp.scheme == "http":
                 scheme = "http"
             if sp.scheme in ("http", "https") and port:
                 host += ":%d" % port
-            if sp.scheme == "ssh":
+            if sp.scheme in SSH_SCHEMES:
                 host = web_host(host)
     path = path.strip("/")
     if path.endswith(".git"):
