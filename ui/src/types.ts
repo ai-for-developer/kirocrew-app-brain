@@ -726,6 +726,7 @@ export interface PushBody { path: string; branch: string; remote_url: string; co
 export interface PushResult { ok: boolean; pushed: boolean; branch: string; remote_url: string; text: string; output: string }
 
 export interface AddResult { ok: boolean; id: string; text: string; status: Status }
+/** 移出列表 and 按记录重建编号: what was done, in words, and the status after it */
 export interface RemoveResult { ok: boolean; text: string; status: Status }
 
 // ---------------------------------------------------------------- GET/POST /settings

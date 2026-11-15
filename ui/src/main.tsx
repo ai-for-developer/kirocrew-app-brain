@@ -8,8 +8,10 @@
  * tab's count and the sidebar badge). Above every view: a banner when /status cannot be read (what it is in words: the
  * login, the backend; api.ts httpProblem) with 再试一次, when brain-kit cannot be used (by its cause: not found, too old,
  * broken; ui.tsx brainkitProblem, the words 设置 says too) with the line to type and the way to 设置, but not on 设置,
- * which asks for brain-kit's place at its top, and KiroCrew's failing checks (FAIL only: a ! reminder stays in 设置 and
- * on the page it is about) with their fix buttons, except on 开需求, 设置 and 待办, which list those rows themselves.
+ * which asks for brain-kit's place at its top, when repo_ids.json is damaged without a good copy (no repo is read until
+ * 设置's 按记录重建编号) with the way to 设置, but not on 设置, and KiroCrew's failing checks (FAIL only: a ! reminder
+ * stays in 设置 and on the page it is about) with their fix buttons, except on 开需求, 设置 and 待办, which list those
+ * rows themselves.
  * Each says what it is and 做什么; the original words are folded under 细节.
  *
  * The app root is a size container (`br-app`): a view's breakpoints follow the app's own width, not the window's
@@ -196,6 +198,7 @@ export default function BrainApp({ pollMs }: { pollMs?: number } = {}) {
   const failing = s && s.brainkit.ok && v.kind !== 'new' && v.kind !== 'settings' && v.kind !== 'todo' ? s.crew.rows.filter((r) => r.level === 'FAIL') : []
   const off = status.error ? httpProblem(status.status) : null
   const kit = s && !s.brainkit.ok && v.kind !== 'settings' ? brainkitProblem(s.brainkit.error, s.brainkit.path) : null
+  const ids = s?.repo_ids_problem && v.kind !== 'settings' ? s.repo_ids_problem : ''
   return (
     <div ref={rootRef} className="br-app" data-testid="br-app">
       <style>{BOARD_CSS}</style>
@@ -214,6 +217,11 @@ export default function BrainApp({ pollMs }: { pollMs?: number } = {}) {
           <Banner text={kit.text} todo={kit.todo} raw={kit.raw} bad testid="br-no-brainkit">
             {kit.cmd && <CommandLine cmd={kit.cmd} />}
             <button type="button" className="br-btn is-small is-primary" onClick={() => go({ kind: 'settings' })}>{kit.kind === 'missing' ? '去填位置' : '去设置'}</button>
+          </Banner>
+        )}
+        {ids && (
+          <Banner text="仓库编号的记录坏了：这次没认仓库" todo="在设置里点「按记录重建编号」" raw={ids} bad testid="br-repo-ids">
+            <button type="button" className="br-btn is-small is-primary" onClick={() => go({ kind: 'settings' })}>去设置</button>
           </Banner>
         )}
         {failing.length > 0 && (

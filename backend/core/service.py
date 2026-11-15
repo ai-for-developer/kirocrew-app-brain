@@ -27,7 +27,7 @@ from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_FOLDER, REPO_ID_RE, TIC
 from .gateway import Gateway
 from .httpkit import AppError
 from .repo import Git, Repo, Source, read_claim, read_facts
-from .repoids import RepoIds
+from .repoids import RepoIds, from_records
 from .sessions import SessionManager
 from . import store as store_mod
 from .store import Store
@@ -48,6 +48,9 @@ def basic_scrub(text: str) -> str:
 
 def scope_of(rid: str, key: str) -> str:
     return "%s-%s" % (rid, key)
+
+
+RECORD_SCOPE_RE = re.compile(r"^(r[1-9][0-9]{0,2})-([A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6})$")   # a local scope_of
 
 
 SCRUB_KEYS = ("text", "why", "question", "label", "detail", "status", "next", "open_questions", "output", "reasons",
@@ -1749,6 +1752,45 @@ class Service:
         rid = importer.listed_id(top, self.repo_ids.of(self.settings["repos"])) or ""
         text = "加入了（%s）" % rid + ("：%s" % pend["text"] if pend else "")
         return {"ok": True, "id": rid, "text": text, "status": saved["status"]}
+
+    async def repo_ids_rebuild(self) -> dict[str, Any]:
+        """按记录重建编号: a damaged repo_ids.json without a good copy, rebuilt from the ids the records on disk carry
+        (repoids.from_records); the repos are loaded with them."""
+        if not self.repo_ids.problem:
+            raise AppError("仓库编号的记录是好的：不用重建", "ids_fine", 409)
+        listed = list(self.settings["repos"])
+        found = await asyncio.to_thread(self._recorded_ids)
+        keys_of = await asyncio.to_thread(lambda: {p: self._keys_at(p) for p in listed})
+        ids, n, fresh = from_records(listed, keys_of, found)
+        await asyncio.to_thread(self.repo_ids.rebuild, ids, n)
+        await asyncio.to_thread(self.reload_sync)
+        kept = "、".join(os.path.basename(os.path.normpath(p)) for p in listed if p not in fresh)
+        new = "、".join(os.path.basename(os.path.normpath(p)) for p in fresh)
+        text = "按记录重建了编号" + ("：%s 接上了原来的记录" % kept if kept else "")
+        if new:
+            text += "；%s 在这里没有能认准的记录，给了新编号（brain-kit 的记录都在，只是这里以前的会话和时间线不显示）" % new
+        return {"ok": True, "text": text, "status": await self.status()}
+
+    def _recorded_ids(self) -> dict[str, set[str]]:
+        """{repo id: requirement keys} of the records this app keeps by scope: events, hand-over locks, sessions,
+        big.json. Blocking."""
+        scopes = [f.stem for d in ("events", "handoff") if (self.data_dir / d).is_dir()
+                  for f in (self.data_dir / d).iterdir() if f.is_file()]
+        scopes += [i.key for i in self.sessions.roots() if i.key] + sorted(self._big)
+        found: dict[str, set[str]] = {}
+        for s in scopes:
+            m = RECORD_SCOPE_RE.match(str(s))
+            if m:
+                found.setdefault(m.group(1), set()).add(m.group(2))
+        return found
+
+    @staticmethod
+    def _keys_at(path: str) -> set[str] | None:
+        """The requirement keys of the repo at *path* (claims, run branches, merged runs); None: it cannot be read."""
+        try:
+            return {f["key"] for f in Repo("r0", path, bk.m("config").load(path)).scan()}
+        except Exception:  # noqa: BLE001 - a repo that cannot be read keeps no id (from_records)
+            return None
 
     async def repo_remove(self, body: dict[str, Any]) -> dict[str, Any]:
         """移出列表: the app's list only. No file, branch or worktree is touched; a folder that is gone can be removed."""

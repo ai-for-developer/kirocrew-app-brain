@@ -284,6 +284,7 @@ function ReposCard({ repos, idsProblem, kitOk, onImport, onRemoved, onChanged }:
   onChanged: () => void
 }) {
   const ok = repos.filter((r) => r.ok).length
+  const [rebuilt, setRebuilt] = useState('')
   return (
     <section className="br-card" aria-label="仓库">
       <header>
@@ -293,8 +294,9 @@ function ReposCard({ repos, idsProblem, kitOk, onImport, onRemoved, onChanged }:
         <span className="br-grow" />
         <button type="button" className="br-btn is-small is-primary" onClick={() => onImport()}><RoleIcon role="import" size={14} />导入仓库</button>
       </header>
-      {idsProblem && <p className="br-error" role="alert">{idsProblem}</p>}
-      {repos.length === 0 ? (
+      {idsProblem && <IdsProblem text={idsProblem} onRebuilt={(x) => { setRebuilt(x.text); onRemoved(x.status) }} />}
+      {rebuilt && !idsProblem && <p className="br-ok-text" role="status">{rebuilt}</p>}
+      {repos.length === 0 && !idsProblem ? (
         <div className="st-norepo">
           <p className="br-note">还没有仓库：点「导入仓库」。</p>
           <Flow steps={IMPORT_FLOW} label="导入仓库的步骤" />
@@ -305,6 +307,24 @@ function ReposCard({ repos, idsProblem, kitOk, onImport, onRemoved, onChanged }:
         </ul>
       )}
     </section>
+  )
+}
+
+/** A damaged repo_ids.json without a good copy: no repo is numbered until 按记录重建编号 rebuilds it from the ids the
+ * records carry (a repo it cannot match gets a new id). */
+function IdsProblem({ text, onRebuilt }: { text: string; onRebuilt: (x: RemoveResult) => void }) {
+  const api = useAppApi()
+  const act = useAction(() => api.post<RemoveResult>(paths.repoIdsRebuild(), {}))
+  const run = async () => {
+    const x = await act.run()
+    if (x) onRebuilt(x)
+  }
+  return (
+    <div className="br-error" role="alert">
+      <p>{text}</p>
+      <button type="button" className="br-btn is-small is-primary" disabled={act.busy} onClick={() => void run()}>{act.busy ? '正在重建…' : '按记录重建编号'}</button>
+      {act.error && <p>{act.error}</p>}
+    </div>
   )
 }
 

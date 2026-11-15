@@ -55,6 +55,8 @@ export const paths = {
   importPublish: () => `${BASE}/import/publish`,
   importAdd: () => `${BASE}/import/add`,
   repoRemove: () => `${BASE}/repos/remove`,
+  /** 按记录重建编号: a damaged repo_ids.json without a good copy, from the ids the records carry */
+  repoIdsRebuild: () => `${BASE}/repos/ids/rebuild`,
   meName: () => `${BASE}/me/name`,
 }
 
