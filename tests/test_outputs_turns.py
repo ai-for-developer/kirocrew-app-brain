@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from appkit import FakeGateway, mod
-from brainfix import PY, install_brain_dev, lean, make_project, make_service, needs_brainkit, run, start_in_worktree
+from brainfix import CREW_AGENT, PY, install_brain_dev, lean, make_project, make_service, needs_brainkit, run, start_in_worktree
 
 gateway = mod("gateway")
 sessions = mod("sessions")
@@ -172,7 +172,7 @@ def test_a_local_round_shows_each_turn_and_never_what_a_person_typed(tmp_path, h
     intent = json.loads((wt / "runs" / "PAY-1" / "run.json").read_text())["intent"]
     (wt / "runs" / "PAY-1" / "park.json").write_text(json.dumps(PARK, ensure_ascii=False))
     gw = NowGateway()
-    gw.templates = {"brain-dev"}
+    gw.templates = {CREW_AGENT}
     gw.script = [[tool("read", {"path": str(wt / "AGENTS.md")}), said("有一个问题：退款要不要人工审核？")]]
     svc = make_service(tmp_path, [repo], gw=gw)
 
