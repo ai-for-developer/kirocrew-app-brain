@@ -267,6 +267,19 @@ describe('交付总览', () => {
     expect(p.go).not.toHaveBeenCalled()
   })
 
+  test('credits that leave something out say 至少 wherever 交付总览 says them, as 需求详情 does: 交付清单 and 需求流动 (E2E-14)', async () => {
+    installFixtureRoutes()
+    render(<OverviewView entry={{}} {...props()} />)
+    const flow = await screen.findByTestId('flow')
+    const table = within(screen.getByTestId('ledger')).getByRole('table')
+    const pay2 = fx.overview().rows.find((r) => r.key === 'PAY-2')!
+    expect([pay2.credits, pay2.credits_whole]).toEqual([22.7, false])
+    expect(flow.querySelector('[data-col="已合并"] [data-key="PAY-2"]')).toHaveTextContent('至少 22.7 credits')
+    expect(rowOf(table, 'PAY-2')).toHaveTextContent('至少 22.7')
+    expect(cardOf(flow, 'PAY-3')).toHaveTextContent(/alice · 12\.4 credits/)
+    expect(cardOf(flow, 'PAY-3')).not.toHaveTextContent('至少')
+  })
+
   test('需求流动: every open card sits in the column colOf and the lane laneOf (waits.who) say; merged ones in 已合并', async () => {
     installFixtureRoutes()
     render(<OverviewView entry={{}} {...props()} />)

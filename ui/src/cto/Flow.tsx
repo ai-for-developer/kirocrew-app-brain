@@ -277,7 +277,7 @@ function Card({ r, at, hl, repoName, late = [], h }: { r: Requirement; at: numbe
           <Kids f={parent} />
         </div>
       )}
-      <div className="cto-kmeta">{[repoName, owner, r.credits !== null ? `${fmtCredits(r.credits)} credits` : ''].filter(Boolean).join(' · ')}</div>
+      <div className="cto-kmeta">{[repoName, owner, r.credits !== null ? `${r.credits_whole ? '' : '至少 '}${fmtCredits(r.credits)} credits` : ''].filter(Boolean).join(' · ')}</div>
       {step && <StepButton step={step} onGo={h.onGo} />}
     </div>
   )
@@ -426,7 +426,7 @@ function LaneRow({ spec, first, span, cols, cell, at, hl, repoName, merged, loca
               <button type="button" key={`${r.repo}/${r.key}`} data-key={r.key} className={`cto-kcard is-real${hl === r.key ? ' is-hl' : ''}`} title="打开它的需求看板（可以回放）" onClick={() => h.onOpen(r)}>
                 <span className="cto-ktop"><b className="kt-mono">{r.key}</b><span>{ago(r.updated_at, at)}</span></span>
                 <span className="cto-ktitle">{r.title}</span>
-                <span className="cto-kmeta">{[r.owner, p ? `小需求 ${p.merged}/${p.total}` : '', r.credits !== null ? `${fmtCredits(r.credits)} credits` : ''].filter(Boolean).join(' · ')}</span>
+                <span className="cto-kmeta">{[r.owner, p ? `小需求 ${p.merged}/${p.total}` : '', r.credits !== null ? `${r.credits_whole ? '' : '至少 '}${fmtCredits(r.credits)} credits` : ''].filter(Boolean).join(' · ')}</span>
               </button>
             )
           })}
