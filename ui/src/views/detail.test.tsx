@@ -1126,7 +1126,7 @@ function childDetail() {
 
 describe('需求详情 · 重开一个会话 (E2E-7, E2E-12)', () => {
   const second = { slot: 'brain-PAY-3-9c1d', kind: 'local' as const, title: 'PAY-3 · 本地开发（重开）', agent: 'brain-dev-crew', credits: null, turns: 0,
-    busy: false, awaiting: false, last_activity: null, opened_at: null, project: null, url: '/chat?sid=brain-PAY-3-9c1d', error: null }
+    busy: false, awaiting: false, last_activity: null, opened_at: null, project: null, url: '/chat?sid=brain-PAY-3-9c1d', error: null, missing: false }
 
   test('it asks first, then opens a new session with the live one named (one per click), and opens it', async () => {
     const user = userEvent.setup()
@@ -1144,13 +1144,40 @@ describe('需求详情 · 重开一个会话 (E2E-7, E2E-12)', () => {
     expect(navigations).toContain(second.url)
   })
 
-  test('the session to open is the newest one, as the backend says it', async () => {
+  test('the session to open is the one the backend says is live', async () => {
     const user = userEvent.setup()
-    withDetail((d) => { d.sessions = [...d.sessions, second] })
+    withDetail((d) => {
+      d.sessions = [...d.sessions, second]
+      d.live_slot = second.slot
+    })
     renderDetail()
     const now = await screen.findByTestId('detail-waits')
     await user.click(within(now).getByRole('button', { name: /会话|回话/ }))
     expect(navigations).toEqual([second.url])
+  })
+
+  test('with a review session open after it, 重开 replaces the live dev session the backend names', async () => {
+    const user = userEvent.setup()
+    const review = { ...second, slot: 'brain-PAY-3-r3v1', title: 'PAY-3 · 审查', url: '/chat?sid=brain-PAY-3-r3v1' }
+    withDetail((d) => { d.sessions = [...d.sessions, review] }, {
+      [`POST ${API}/requirements/r1/PAY-3/session`]: () => ({ ok: true, slot: second.slot, url: second.url, reopened: true }) })
+    renderDetail()
+    const box = await screen.findByTestId('reopen')
+    await user.click(within(box).getByRole('button', { name: '重开一个会话' }))
+    await user.click(within(box).getByRole('button', { name: '重开' }))
+    expect(apiCalls.filter((c) => c.method === 'POST')).toEqual([
+      { method: 'POST', path: `${API}/requirements/r1/PAY-3/session`, body: { fresh: true, replace: 'brain-PAY-3-7f3a', trust: true } }])
+  })
+
+  test('a session KiroCrew no longer has says so and is not offered to open; the live one is the backend’s', async () => {
+    const user = userEvent.setup()
+    withDetail((d) => { d.sessions = [...d.sessions, { ...second, missing: true }] })
+    renderDetail()
+    const rows = await screen.findAllByTestId('session')
+    expect(rows[1]).toHaveTextContent('不在 KiroCrew 里了')
+    expect(within(rows[1]).queryByRole('button', { name: '打开会话' })).toBeNull()
+    await user.click(within(screen.getByTestId('detail-waits')).getByRole('button', { name: /会话|回话/ }))
+    expect(navigations).toEqual(['/chat?sid=brain-PAY-3-7f3a'])
   })
 })
 
