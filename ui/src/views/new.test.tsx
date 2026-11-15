@@ -33,7 +33,7 @@ function setup(routes: Parameters<typeof installFixtureRoutes>[0] = {}, status: 
   return { user: userEvent.setup(), props }
 }
 
-const PATHS = '预计会改的路径（用逗号、空格或换行分开）'
+const PATHS = '这次大概改哪些代码目录（选填）'
 const SLUG = '英文短名（用在分支名里）'
 const EXCLUDE = '不收这些文件（按文件名，可以用 *，一行一个）'
 const startBtn = () => screen.getByRole('button', { name: '开工' })
@@ -277,9 +277,11 @@ describe('开需求', () => {
     expect(apiCalls.find((c) => c.path === `${API}/intake/start`)?.body).toMatchObject({ slug: 'refund-v2', title: '退款 refund v2' })
   })
 
-  test('the expected paths may be separated by commas, spaces or new lines: the start sends them as a list', async () => {
+  test('the expected paths say what they are for and that they are optional; commas, spaces or new lines: the start sends them as a list', async () => {
     const { user } = setup()
     await fillBasics(user)
+    expect(screen.getByLabelText(PATHS)).toHaveAccessibleDescription('填了，别的需求也改这些目录时会提醒你们，免得撞车。比如 src/refund/，多个用逗号或换行分开。')
+    expect(startBtn()).toBeEnabled()   // left empty, nothing waits for it
     await user.type(screen.getByLabelText(PATHS), 'calc.py, tests')
     await user.click(startBtn())
     await screen.findByTestId('start-result')
