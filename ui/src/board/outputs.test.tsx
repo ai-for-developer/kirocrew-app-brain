@@ -4,12 +4,13 @@ import { fx } from '../test/data'
 import { API, installFixtureRoutes } from '../test/routes'
 import { pay16, pay9, pay9ci } from '../test/stageBoards'
 import { apiCalls } from '../test/stubs/app-sdk'
+import { worldBoard } from '../test/world'
 import type { BoardEntry } from '../nav'
 import type { FileView, NodeOutput, NodeTurns, OutFile, ReqBoard, TurnView } from '../types'
 import type { ViewProps } from '../views/props'
 import { BoardPage } from './BoardPage'
-import { roundWords } from './format'
-import { replayAt } from './timeline'
+import { causeWords, roundWords } from './format'
+import { replayAt, replaySpan } from './timeline'
 
 const PAY9: BoardEntry = { repo: 'r1', key: 'PAY-9' }
 const RELEASE = 'aidlc-docs/261111-refund-sms/operations/release.md'
@@ -289,5 +290,49 @@ describe('CI 没过: the MR’s pipelines read on this machine', () => {
     const was = then.nodes.find((n) => n.id === 'release')!
     expect(roundWords(was.rounds[1], was, then)).toBe(roundWords(rel.rounds[1], rel, b))
     expect(roundWords(was.rounds[1], was, then)).toMatch(/^CI 没过 #1234，代码又改了/)
+  })
+
+  test('at every moment of the replay: a round over says its CI words, a round says its cause, and no pipeline shows before it failed', () => {
+    const b = worldBoard('r1/PAY-9')
+    const live = new Map(b.nodes.map((n) => [n.id, n]))
+    const red = new Map(b.nodes.flatMap((n) => n.rounds.flatMap((r) => [r.why.pipeline, r.outcome.pipeline])).filter((p) => p !== null).map((p) => [p.id, p.at as number]))
+    expect([...red.keys()].sort()).toEqual([1234, 1240])
+    const { start, end } = replaySpan(b)
+    const marks = b.nodes.flatMap((n) => n.rounds.flatMap((r) => [r.started, r.ended ?? r.started])).concat([...red.values()])
+    const moments = [...new Set(marks.flatMap((x) => [x - 1, x, x + 1]))].filter((t) => t >= start && t < end).sort((x, y) => x - y)
+    expect(moments.length).toBeGreaterThan(50)
+    const said = new Set<string>()
+    for (const t of moments) {
+      const then = replayAt(b, t)
+      expect(then).not.toBe(b)
+      for (const n of then.nodes) {
+        const was = live.get(n.id)!
+        for (const r of n.rounds) {
+          const w = was.rounds.find((x) => x.n === r.n)!
+          const before = was.rounds.find((x) => x.n === r.n - 1)
+          const words = `${causeWords(r, n)} ${roundWords(r, n, then)}`
+          if (w.ended !== null && w.ended <= t) expect(roundWords(r, n, then)).toBe(roundWords(w, was, b))
+          if (!before || (before.ended !== null && before.ended <= t)) expect(causeWords(r, n)).toBe(causeWords(w, was))
+          for (const [id, at] of red) if (at > t) expect(words).not.toContain(`#${id}`)
+          for (const m of words.match(/CI 没过 #\d+(，代码又改了| 以后)/g) ?? []) said.add(`${n.id}:${r.n}:${m}`)
+        }
+      }
+    }
+    expect([...said].sort()).toEqual(['build-and-test:4:CI 没过 #1234 以后', 'build-and-test:5:CI 没过 #1240 以后', 'release:2:CI 没过 #1234，代码又改了',
+      'release:3:CI 没过 #1240，代码又改了'])
+  })
+
+  test('the drawer in a replay says the cause at the moment: #1234 once round 3 began, #1240 not yet', async () => {
+    const pay9world = () => worldBoard('r1/PAY-9')
+    const rel = pay9world().nodes.find((n) => n.id === 'release')!
+    renderBoard({ ...PAY9, at: rel.rounds[2].started + 60, out: { node: 'release', round: 3 } }, pay9world)
+    const pane = await screen.findByTestId('out-pane', {}, { timeout: 5000 })
+    expect(screen.getByTestId('out-replay')).toHaveTextContent('回放：这是')
+    expect(within(pane).getByTestId('out-cause')).toHaveTextContent('↻ 这一轮是因为 CI 没过 #1234')
+    expect(within(pane).getByTestId('out-rounds').textContent).toBe('第几轮第 1 轮退回第 2 轮CI 没过 #1234第 3 轮在做')
+    expect(screen.getByRole('dialog').textContent).not.toContain('#1240')
+    expect(strip('release').join(' ')).not.toContain('#1240')
+    expect(strip('build-and-test')).toHaveLength(4)
+    expect(strip('build-and-test')[3]).toMatch(/^第 4 轮 CI 没过 #1234 以后 ✓ 检查全过/)
   })
 })
