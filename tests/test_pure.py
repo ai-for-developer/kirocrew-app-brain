@@ -548,6 +548,22 @@ def test_a_refused_hand_over_in_todo_says_the_reasons_own_todo_and_keeps_the_bri
     assert not re.search(r"label|brain_commit|rebase|ai-handoff|git ", item["text"] + item["todo"]), item
 
 
+def test_a_hand_over_whose_push_failed_is_in_todo_with_its_words():
+    """The hand-over commit is on this machine only (its push failed): 待办 lists it (交接没推上去), says what
+    happened and how to do it in a terminal, as the row does; its button is on 需求详情."""
+    todo = mod("todo")
+    f = {"key": "PAY-8", "owner": "alice", "claim": {"owner": "alice", "title": "t"}, "approvals": [], "park": None,
+         "run": {"intent": "i", "branch": "ai/alice/PAY-8-x", "handoff": {"local_head": "a" * 40}}, "stages": [],
+         "tip_at": 7.0}
+    row = deliveries.base_row("r1", f)
+    deliveries.classify(row, f, cfg={}, me="alice", now=1794186500.0, mr=None, slot=None, pushed=False)
+    assert (row["state"], row["waits"]["do"]) == ("local", "push_handoff"), row["waits"]
+    (item,) = todo.build([{"row": row, "facts": f, "own": True, "has_session": False, "can_post": False, "mr": None,
+                           "session": None}], team=False, crew_rows=[])["items"]
+    assert item["kind"] == "handoff_unpushed" and item["key"] == "PAY-8" and item["since"] == 7.0, item
+    assert item["text"] == deliveries.NOT_PUSHED and item["raw"] == deliveries.NOT_PUSHED_RAW, item
+
+
 def test_team_todo_says_a_runner_question_as_the_detail_does_its_kind_in_words():
     """Team 待办's question cards said 「design」 / 「acceptance」: the ledger has no kind_label. They are the ones
     需求详情 shows for the same decisions (detail.ledger_questions)."""

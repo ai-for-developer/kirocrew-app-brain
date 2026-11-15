@@ -133,6 +133,22 @@ describe('交接给运行机', () => {
     await waitFor(() => expect(posts()).toHaveLength(2))
   })
 
+  test('a hand-over commit whose push failed is not handed over on any card: approvals in the session, no 交接以后 notes', async () => {
+    withDetail((d) => {
+      d.row.state = 'local'
+      d.row.state_label = '本地开发中'
+      d.run!.handoff = { requested_at: '2026-11-08T10:00:00+08:00', by: 'alice' }
+      d.row.waits = { ...d.row.waits, who: 'you', text: NOT_PUSHED, line: null, do: 'push_handoff', where: 'app' }
+      d.timeline.missing = ['桥的账本：这台机器上读不到，交接以后桥的核对和转的问题看不全']
+    })
+    renderDetail()
+    const lean = await screen.findByRole('region', { name: 'Lean 进度' })
+    expect(lean).toHaveTextContent('审批的那一行由你在会话里自己打')
+    expect(lean).not.toHaveTextContent('交接以后')
+    expect(screen.getByRole('region', { name: '时间线' })).not.toHaveTextContent('交接以后')
+    expect(within(await card()).getByRole('button', { name: '交接给运行机' })).toBeEnabled()
+  })
+
   test('a refusal says why and what to do; the button is there again for after the fix', async () => {
     const user = userEvent.setup()
     withDetail(() => {}, { [`POST ${POST}`]: () => REFUSED })
