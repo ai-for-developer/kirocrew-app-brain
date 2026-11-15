@@ -24,7 +24,8 @@ bridge's KiroCrew surface (`adapter_create / set_project / send / slot / stop`).
 `before`) at a time until the app's own message (its `sendId`), however long the turn; a message the app sent is sent
 again only when the whole transcript has no row of it, so a session that took it never gets it twice. A slot's
 credits are read the same way, every page to its first row (KiroCrew answers at most 500 rows a call; up to 40 pages,
-past which the stats say they are not whole).
+past which the stats say they are not whole). A slot's 轮 are its turns as 产出 cuts them: a message and the agent's
+work up to the next message, not its replies (one turn often has several).
 
 ## Views (UI text is Chinese)
 

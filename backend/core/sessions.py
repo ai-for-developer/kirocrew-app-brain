@@ -263,6 +263,12 @@ def tail(msgs: list[dict[str, Any]], scrub: Callable[[str], str], cwd: str = "")
             "said": line or None, "said_at": (_epoch(said.get("ts")) or None) if said else None}
 
 
+def turn_count(rows: list[dict[str, Any]]) -> int:
+    """The turns in *rows*, as 产出 cuts them (turns.py): a user row and the agent's work after it, up to the next user
+    row. Not its replies: one turn often has several."""
+    return sum(1 for m in rows if m.get("role") == "user")
+
+
 def _epoch(stamp: Any) -> float:
     from datetime import datetime
 
@@ -669,7 +675,7 @@ class SessionManager:
         spent = [((m.get("meta") or {}).get("turn_stats") or {}).get("credits") for m in replies]
         vals = [float(v) for v in spent if isinstance(v, (int, float)) and not isinstance(v, bool)]
         stamps = [_epoch(m.get("ts")) for m in msgs if m.get("ts")]
-        st.update(credits=round(sum(vals), 3) if vals else st.get("credits"), turns=len(replies), whole=whole,
+        st.update(credits=round(sum(vals), 3) if vals else st.get("credits"), turns=turn_count(msgs), whole=whole,
                   last_activity=max(stamps) if stamps else st.get("last_activity"), error=None)
         self._tails[slot] = tail(msgs, self.scrub, (self.by_slot(slot) or SessionInfo()).cwd)
         self._dirty = True
@@ -701,7 +707,8 @@ class SessionManager:
         calls = [tool_call(m, self.scrub) for m in after if m.get("role") == "tool"]
         replies = [m for m in after if m.get("role") == "assistant" and str(m.get("content") or "").strip()]
         errors = [m for m in after if m.get("role") == "error"]
-        info.calls, info.tool_count, info.turns = calls[-HISTORY:], len(calls), len(replies)
+        info.calls, info.tool_count = calls[-HISTORY:], len(calls)
+        info.turns = turn_count(msgs[mine:]) if mine is not None else 0
         if calls:
             info.last_tool = f"{calls[-1]['tool']} {calls[-1]['detail'] or ''}".strip()
         spent = [((m.get("meta") or {}).get("turn_stats") or {}).get("credits") for m in replies]

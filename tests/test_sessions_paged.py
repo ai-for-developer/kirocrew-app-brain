@@ -153,3 +153,25 @@ def test_a_session_too_long_to_read_whole_says_so(tmp_path, monkeypatch):
 
     asyncio.run(go())
 
+def test_a_turn_is_a_message_and_the_agent_s_work_up_to_the_next_one(tmp_path):
+    """UI-8: 「轮」 counted the agent's replies: 3 turns with 11 replies showed as 11 轮. The 产出 drawer's rule
+    (turns.py): a turn is a user row and the rows after it, up to the next user row."""
+    async def go():
+        gw = FakeGateway()
+        mgr, _ = manager(tmp_path, gw)
+        gw.script = [[tool(0), reply("a", 1.0), tool(1), reply("b", 1.0), reply("c", 1.0), reply("d", 1.0)]]
+        info = await opened(mgr, gw)
+        gw.finish(info.slot)
+        for _ in range(3):
+            await mgr.poll()
+        assert info.done and info.turns == 1
+        for t in (1, 2):
+            gw.msgs[info.slot] += [{"role": "user", "content": "u%d" % t, "meta": {"human": True}}] + [
+                x for a in range(4 if t == 1 else 3) for x in (tool(a), reply("r%d" % a, 1.0))]
+        assert sum(1 for m in gw.msgs[info.slot] if m["role"] == "assistant") == 11
+        st = await stats_of(mgr, gw, info.slot)
+        assert st["turns"] == 3 and st["credits"] == 11.0
+        snap = mod("service").Service._sessions_snapshot(type("S", (), {"sessions": mgr})())
+        assert [r["turns"] for r in snap["by"]["r1:PAY-1"]] == [3]
+
+    asyncio.run(go())
