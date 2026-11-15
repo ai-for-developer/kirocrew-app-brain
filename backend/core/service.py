@@ -766,10 +766,13 @@ class Service:
         mr = self.mr.get(project, f["branch"]) if (base and project and f.get("branch")) else None
         can_post = own and bool(base and project) and self._token_present()
         questions = []
-        pq = detail.park_question(f.get("park"), answerable=own and not run.get("handoff") and bool(
-            self._live(snap["by"].get(scope, []))), via="session")
-        if pq:
-            questions.append(pq)
+        handed = bool(run.get("handoff"))
+        pq = detail.park_question(f.get("park"), answerable=own and not handed and bool(
+            self._live(snap["by"].get(scope, []))), via="session", handed=handed,
+            mr_url=(row.get("mr") or {}).get("url"))
+        posted = str(f.get("park_sha") or "")[:12]
+        if pq and not (handed and posted and any(q.get("park") == posted for q in (mr or {}).get("questions") or [])):
+            questions.append(pq)    # once the bridge posted it, its D-n on the MR is the same question
         questions += detail.mr_questions(mr, own=own, can_post=can_post)
         tl = self._timeline(repo, f, snap, scope)
         if parts is not None:

@@ -59,7 +59,11 @@ team runner's dashboard no question is answered (answers are made on GitLab, whe
 person's machine, a clarify question of their own run may be answered in the app: into the local session (a local
 run), or as their own MR comment `answer D-n X` with their own token (a handed-over run; the bridge checks it as any
 other). X is one of the question's options, or `approve` / `reject` for a question without options (brain-kit counts
-nothing else). A question that carries a Lean request is never answerable in the app.
+nothing else). A question that carries a Lean request is never answerable in the app. After the hand-over a Lean
+approval is answered on the MR, never typed in a session: the runner's park.json is shown as the runner's question
+(named by its approval, 代码生成计划审批, not by the clarify it was asked as), and once the bridge posted it as D-n, 此刻,
+the Lean card and 需求看板's step give the comment to write there (`answer D-n approve`, 复制那一行; the app never
+posts it).
 
 The routes' JSON is `ui/src/types.ts`. Every requirement (a row of `GET /overview`, the board's `row`, `GET
 /requirements/{repo}/{key}`) carries `waits`, the one judgment of whose turn it is that every view reads: `who` (`you`,

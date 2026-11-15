@@ -717,7 +717,7 @@ def test_the_timeline_says_who_did_what_and_why_without_record_codes(tmp_path):
          "outcome": {"merged_at": {"value": "2026-11-09T04:00:00Z", "commit": "c" * 40, "how": "squash merge (the branch is still here)",
                                    "note": "the squash commit carries exactly the branch's changes"}}}
     said = [(i["label"], i["detail"]) for i in detail.trace_timeline(t)]
-    assert said == [("Lean 拦下了一个不该做的改动：代码生成计划还没批", "跑命令"), ("停下问人：设计", "要批准设计"),
+    assert said == [("Lean 拦下了一个不该做的改动：代码生成计划还没批", "跑命令"), ("停下问人：设计审批", None),
                     ("回答了澄清问题", None), ("回答 D-2：通过", "凭证 V-0123456789"),
                     ("批准的那一行没被接受（需求）", "那一行的编号和请求对不上（文件改过了，或者没带编号）"), ("退回设计", None),
                     ("在 KiroCrew 上手动操作了一次", None), ("桥拒绝接手", "MR 是从复制出去的仓库开的"), ("D-3 回答了", "退回"),

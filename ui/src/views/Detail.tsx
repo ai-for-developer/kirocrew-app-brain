@@ -37,7 +37,7 @@ import {
 import { Inline, Paths, pathPieces } from './Markdown'
 import { FamilyPanel, useFamily, type FamilyCtl } from './Family'
 import type { ViewProps } from './props'
-import { EntryChip, MrDescCard, QuestionCard, ReviewButton, ReviewSay, useCopy } from './Question'
+import { EntryChip, MrComment, MrDescCard, QuestionCard, ReviewButton, ReviewSay, useCopy } from './Question'
 import { PART_LABEL, PART_VAR, StreamCard, splitOf, valueStream, type Part } from './Stream'
 import { NotFound, OnRunner, ReqSwitch, useOnRunner } from './ReqSwitch'
 import { runWords } from './Team'
@@ -222,6 +222,8 @@ interface Now {
   /** the open MR question (D-n) it waits on, and how it is answered: its options (A / B …), else approve / reject */
   question: string | null
   choices: string
+  /** what to write on the MR to answer it (`answer D-3 approve`): the board's step */
+  comment: string | null
   /** a refused hand-over: how to hand it over again, as the board's step says it (its reason line is the text already) */
   how: string | null
   /** Lean's next step is its review in a new session, and the line 开审查会话 says to it */
@@ -243,6 +245,7 @@ function nowOf(x: RequirementDetail, board: ReqBoard | null, live: SessionRow | 
     mrUrl: board?.accept.step.mr_url ?? open?.mr_url ?? x.row.mr?.url ?? null,
     question: open?.id ?? null,
     choices: open?.options.length ? `选 ${open.options.map((o) => o.id).join(' / ')}` : 'approve / reject',
+    comment: board?.accept.step.comment ?? null,
     how: step === 'redo_handoff' && board?.row.waits.do === 'redo_handoff' ? board.accept.step.text.split('\n').filter((l) => l && !l.startsWith('接手被拒')).join(' ') || null : null,
     review: step === 'reply' ? reviewOf(x, board) : null,
   }
@@ -565,7 +568,14 @@ function NowBar({ x, now, at, live, canOpen, repo, reqKey, onStart, onAnswer, on
     case 'answer':
       if (onMr) {
         body = mine
-          ? <p>{now.do === 'answer' ? '问题已经发到 MR 上了' : '交接以后，批准在 MR 上回答'}{now.question ? `：回答 ${now.question}` : ''}（{now.choices}）。</p>
+          ? (
+            <>
+              <p>{now.question
+                ? `${now.do === 'answer' ? '问题已经发到 MR 上了' : '交接以后，批准在 MR 上回答'}：回答 ${now.question}（${now.choices}）。`
+                : `桥把它贴到 MR 上以后，在那里回答（${now.choices}）。`}</p>
+              {now.comment && <MrComment comment={now.comment} />}
+            </>
+          )
           : <p>{whoThen(now.whoSay, `在 MR 上${verb}${now.question ? ` ${now.question}` : ''}`)}，你不用做什么；{verb}以后运行机接着做。</p>
         acts = mrLink
       } else if (now.line) {
@@ -921,10 +931,13 @@ function LeanCard({ x, sessionUrl, mrUrl, waiter }: { x: RequirementDetail; sess
                 </div>
                 {a.state === 'pending' && (onMr
                   ? (
-                    <p className="br-note">
-                      {whoThen(waiter ?? '', `在 MR 上${accept ? '验收' : '回答'}${q?.id ? ` ${q.id}` : ''}`)}（approve / reject），{waiter ? '你不用做什么' : '这里不能回答'}。
-                      {url && /^https?:\/\//i.test(url) && <> <a className="br-link" href={url} target="_blank" rel="noopener noreferrer">{waiter ? ACT.viewMr : accept ? ACT.acceptOnMr : ACT.answerOnMr} <Icon name="ExternalLink" size={12} /></a></>}
-                    </p>
+                    <>
+                      <p className="br-note">
+                        {whoThen(waiter ?? '', `在 MR 上${accept ? '验收' : '回答'}${q?.id ? ` ${q.id}` : ''}`)}（approve / reject），{waiter ? '你不用做什么' : '这里不能回答'}。
+                        {url && /^https?:\/\//i.test(url) && <> <a className="br-link" href={url} target="_blank" rel="noopener noreferrer">{waiter ? ACT.viewMr : accept ? ACT.acceptOnMr : ACT.answerOnMr} <Icon name="ExternalLink" size={12} /></a></>}
+                      </p>
+                      {!waiter && q?.id && isOpenQuestion(q) && <MrComment comment={`answer ${q.id} approve`} />}
+                    </>
                   )
                   : a.line && <ApprovalLine line={a.line} sessionUrl={sessionUrl} onOpen={(u) => navigate(u)} />)}
               </li>

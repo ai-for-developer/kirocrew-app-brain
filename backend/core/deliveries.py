@@ -55,6 +55,17 @@ def park_is_acceptance(park: dict[str, Any]) -> bool:
     return park.get("kind") == "acceptance" or lr.startswith("RELEASE ")
 
 
+def question_label(kind: Any, lean_request: Any = None) -> str:
+    """What a question asks, in a word: a Lean request names its approval (代码生成计划审批; the runner asks for one as
+    a clarify, and the bridge labels it so), the release's is the acceptance (验收), any other its kind (澄清, 设计)."""
+    lean = str(lean_request or "").split(" ")[0]
+    if kind == "acceptance" or lean == "RELEASE":
+        return KIND_LABEL["acceptance"]
+    if lean:
+        return "%s审批" % lean_view.KIND_LABEL.get(lean, lean)
+    return KIND_LABEL.get(str(kind), str(kind or "问题"))
+
+
 HAN_RE, LATIN_RE = re.compile(r"[\u3400-\u9fff]"), re.compile(r"[A-Za-z0-9]")
 
 
@@ -173,7 +184,8 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
         if park_waiting(park):
             kind = str(park.get("kind") or "other")
             here = mine and slot is not None and kind == "clarify" and not park.get("lean_request")
-            return put("parked", you, "answer", spaced("AI 停下等", them, "回答（%s）" % KIND_LABEL.get(kind, "问题")),
+            what = question_label(kind, park.get("lean_request"))
+            return put("parked", you, "answer", spaced("AI 停下等", them, "回答（%s）" % what),
                        where="app" if here else "session", since=f.get("park_at"))
         if not mine:
             return put("local", "people", "none", "%s 在自己的机器上做" % owner, since=f.get("tip_at"))

@@ -1016,6 +1016,30 @@ def handed_over(state="running", who="runner", text="运行机在跑", **waits):
     return snapshot(f, row, t=t, mr=mr, local_only=False, now=T + 90 * M)
 
 
+def test_an_approval_on_the_mr_gives_the_comment_to_write_there_not_a_session_line():
+    """UI-23: after the hand-over Lean's approval is a question on the MR, answered with the comment
+    `answer D-n approve` (reject sends it back). The step names the MR, gives that comment to copy and the MR to open,
+    and no session; the runner asks for the code-generation plan's approval as a clarify, and the board names the
+    approval, not 澄清."""
+    b = handed_over("acceptance", "product", "等产品在 MR 上验收 D-3（approve / reject）", do="accept", where="mr")
+    step = b["accept"]["step"]
+    assert (step["comment"], step["line"], step["session_url"]) == ("answer D-3 approve", None, None)
+    assert step["mr_url"] == "https://gitlab.example.com/p/-/merge_requests/41" and "会话" not in step["text"]
+
+    hand = T + 30 * M
+    f = facts(demo3_events()[:12], handoff={"requested_at": iso(hand), "by": "dana"})
+    mr = {"url": "https://gitlab.example.com/p/-/merge_requests/41",
+          "questions": [{"id": "D-4", "kind": "clarify", "kind_label": "澄清", "state": "open", "at": iso(hand + H),
+                         "lean_request": "PLAN 5d1e7a90", "options": []}]}
+    row = dict(row_of("parked", "you", "等你在 MR 上回答 D-4（approve / reject）", do="answer", where="mr"),
+               mr={"iid": 41, "url": mr["url"], "state": "opened"})
+    b = snapshot(f, row, mr=mr, local_only=False, now=hand + 2 * H)
+    step = b["accept"]["step"]
+    assert step["text"] == "在 MR 上回答 D-4（approve 通过 / reject 退回）：桥会把回答带回运行机"
+    assert (step["comment"], step["line"], step["session_url"]) == ("answer D-4 approve", None, None)
+    assert "D-4 在 MR 上问人：代码生成计划审批" in [e["text"] for e in b["events"]]
+
+
 def test_a_round_says_who_did_it_and_each_event_its_node_run_and_round():
     """Rule 7 on the board: build-and-test's two rounds are the runner's (the second because the first was red),
     each verify event says which; the fix commit falls in round 2 on the conveyor; the hand-over is this machine's run

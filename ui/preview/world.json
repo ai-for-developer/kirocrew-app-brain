@@ -32005,6 +32005,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -34910,6 +34911,7 @@
      "text": "在会话里自己打这一行，批准代码生成计划",
      "who": "你",
      "line": "approve PLAN 5d1e7a90",
+     "comment": null,
      "mr_url": null,
      "session_url": "/chat?sid=brain-PAY-3-7f3a"
     },
@@ -37106,6 +37108,7 @@
      "text": "在 MR 上回答 D-2（选一个答案）：桥会把回答带回运行机",
      "who": "产品",
      "line": null,
+     "comment": null,
      "mr_url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/41",
      "session_url": null
     },
@@ -40272,6 +40275,7 @@
      "text": "在 MR 上回答 D-3（approve 通过 / reject 退回）：桥会把回答带回运行机",
      "who": "产品",
      "line": null,
+     "comment": "answer D-3 approve",
      "mr_url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/44",
      "session_url": null
     },
@@ -42480,6 +42484,7 @@
      "text": "接手被拒：标签是 bob 打的，不是负责人 alice\n改好后，在这个需求的分支上重新交接（交接会提交、推送、打标签）",
      "who": "你",
      "line": null,
+     "comment": null,
      "mr_url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/46",
      "session_url": null
     },
@@ -42913,6 +42918,7 @@
      "text": "carol 认领的，等 carol 开工",
      "who": "carol",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -43305,6 +43311,7 @@
      "text": "认领了，还没开工：在开需求里开工 PAY-8",
      "who": "你",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -45393,6 +45400,7 @@
      "text": "推上去了，但 MR 上没有交接标签：什么也没交出去。看一眼 MR，再交接一次",
      "who": "你",
      "line": null,
+     "comment": null,
      "mr_url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/52",
      "session_url": null
     },
@@ -47715,6 +47723,7 @@
      "text": "会话空着，轮到你回话。Lean 做完了「构建测试」，下一步是「发布」。\n先开一个新会话做审查（这个会话写了代码，不能自己审），审查写好再回这个会话接着发布",
      "who": "你",
      "line": "Review intent 261107-refund-stats against its requirements, design and plans, using the diff, and write construction/build-and-test/review.md.",
+     "comment": null,
      "mr_url": null,
      "session_url": "/chat?sid=brain-PAY-1-3d8e"
     },
@@ -49250,6 +49259,7 @@
      "text": "在会话里自己打这一行，批准需求和设计",
      "who": "你",
      "line": "approve INCEPTION 3fa2c1d0",
+     "comment": null,
      "mr_url": null,
      "session_url": "/chat?sid=brain-PAY-16-4c7d"
     },
@@ -54090,6 +54100,7 @@
      "text": "在 MR 上回答 D-3（approve 通过 / reject 退回）：桥会把回答带回运行机",
      "who": "产品",
      "line": null,
+     "comment": "answer D-3 approve",
      "mr_url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/53",
      "session_url": null
     },
@@ -56532,6 +56543,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -58825,6 +58837,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -61048,6 +61061,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -61428,6 +61442,7 @@
      "text": "认领了，还没开工：在开需求里开工 PAY-14",
      "who": "你",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -64638,6 +64653,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -68040,6 +68056,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -71452,6 +71469,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -74728,6 +74746,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -77429,6 +77448,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -80974,6 +80994,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -84204,6 +84225,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -87753,6 +87775,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -91129,6 +91152,7 @@
      "text": "去 Brain 页回写这次的 1 条新知识：先预览，再写到新分支",
      "who": "别人",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -93164,6 +93188,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -94460,6 +94485,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -95924,6 +95950,7 @@
      "text": "在会话里自己打这一行，批准设计",
      "who": "别人",
      "line": "approve DESIGN db94cea5",
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -97728,6 +97755,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -99934,6 +99962,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -100351,6 +100380,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -102432,6 +102462,7 @@
      "text": "在 MR 上回答 D-2（选一个答案）：桥会把回答带回运行机",
      "who": "产品",
      "line": null,
+     "comment": null,
      "mr_url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/41",
      "session_url": null
     },
@@ -105603,6 +105634,7 @@
      "text": "在 MR 上回答 D-3（approve 通过 / reject 退回）：桥会把回答带回运行机",
      "who": "产品",
      "line": null,
+     "comment": "answer D-3 approve",
      "mr_url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/44",
      "session_url": null
     },
@@ -109487,6 +109519,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -111671,6 +111704,7 @@
      "text": "在 MR 上回答（选一个答案）：桥会把回答带回运行机",
      "who": "别人",
      "line": null,
+     "comment": null,
      "mr_url": "https://gitlab.example.com/shop/shop-order/-/merge_requests/19",
      "session_url": null
     },

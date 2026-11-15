@@ -141,6 +141,50 @@ def test_after_the_hand_over_the_page_follows_the_runner_on_origin_and_keeps_the
     assert any(x["id"] == "D-9" for x in d["decisions"]), "her own edit, not committed, is still in her view"
 
 
+def test_an_approval_the_runner_asks_for_is_answered_on_the_mr_not_in_a_session(tmp_path, home):
+    """UI-23: after the hand-over the runner stops for a Lean approval (park.json with a Lean request, asked as a
+    clarify). It is answered on the MR, approve / reject, once the bridge posts it: 需求详情's question is the runner's
+    and names the approval (never 澄清, never 「在会话里打那一行」), and 需求看板's step points at the MR with no
+    session line."""
+    repo = make_project(tmp_path, origin=True, kit={"bot_emails": ["bot@example.com"]})
+    wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
+    intent = json.loads((wt / "runs" / "PAY-1" / "run.json").read_text())["intent"]
+    state = wt / "aidlc-docs" / intent / "aidlc-state.md"
+    state.write_text(filled_notes(state.read_text(), "Status: Construction step 1 of 4"))
+    sh("git", "-C", wt, "commit", "-qam", "notes")
+    brain(wt, "handoff", "--no-push")
+    branch = sh("git", "-C", wt, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    sh("git", "-C", wt, "push", "-q", "origin", branch)
+    runner = tmp_path / "runner"
+    sh("git", "clone", "-q", "-b", branch, tmp_path / "pay-origin.git", runner)
+    (runner / "runs" / "PAY-1" / "park.json").write_text(json.dumps(
+        {"status": "waiting", "kind": "clarify", "ask": "owner", "lean_request": "PLAN 0c9a7e21",
+         "question": "请批准 app 的代码生成计划"}, ensure_ascii=False))
+    sh("git", "-C", runner, "add", "-A")
+    sh("git", "-C", runner, "commit", "-qm", "PAY-1: ask for the plan's approval", env=BOT)
+    sh("git", "-C", runner, "push", "-q", "origin", branch)
+    sh("git", "-C", repo, "fetch", "-q", "origin")
+    svc = make_service(tmp_path, [repo])
+
+    async def go():
+        await svc.start()
+        try:
+            return await svc.overview("r1"), await svc.requirement("r1", "PAY-1"), await svc.board("r1", "PAY-1")
+        finally:
+            await svc.stop()
+
+    view, d, b = run(go())
+    w = rows_by_key(view)["PAY-1"]["waits"]
+    assert (w["who"], w["do"], w["where"]) == ("you", "answer", "mr") and "会话" not in w["text"]
+    [q] = d["questions"]
+    assert (q["source"], q["lean_request"], q["answerable_here"]) == ("runner", "PLAN 0c9a7e21", False), \
+        "the runner's park.json: answered on the MR, not in this machine's session"
+    assert q["kind_label"] == "代码生成计划审批"
+    step = b["accept"]["step"]
+    assert step["text"] == "等桥把它贴到 MR 上，再在那里回答（approve 通过 / reject 退回）：桥会把回答带回运行机"
+    assert (step["line"], step["session_url"], step["comment"]) == (None, None, None), "no D-n yet: nothing to write"
+
+
 def test_detail_lists_stages_approvals_decisions_with_brain_citations(tmp_path, home):
     repo = make_project(tmp_path)
     wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
