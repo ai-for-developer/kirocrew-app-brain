@@ -252,7 +252,8 @@ def _taken_none(listed: str) -> str:
 
 
 GATE_ZH += [(re.compile(rx), fn) for rx, fn in (
-    (r"^门 2：材料按机密处理（(?P<w>.*)），而 intake\.allow_confidential 是 false",
+    # brain-kit 2053939 names the file: 「…），而 .brain/kit.json 的 intake.allow_confidential 是 false（不收机密）」
+    (r"^门 2：材料按机密处理（(?P<w>.*)），而 (?:\.brain/kit\.json 的 )?intake\.allow_confidential 是 false",
      lambda g, b: _gate2(g["w"], "confidential", b.get("classification") or "")),
     # brain-kit dac1856: 门 2：材料按绝密处理（你选的是 secret / a.pdf=secret）：绝密材料不收，不写材料包。…; before it:
     # 门 2：材料是绝密（a.pdf），不收，只留哈希
