@@ -394,6 +394,11 @@ class Repo:
             return Source(self.git, ref=facts["ref"])
         return None
 
+    def on_remote(self, facts: dict[str, Any]) -> bool:
+        """The requirement's branch tip is on the remote: the remote branch is at it or past it."""
+        tip, up = facts.get("tip"), facts.get("origin_sha")
+        return bool(tip and up and (tip == up or self.git.ok("merge-base", "--is-ancestor", tip, up)))
+
     def is_handover_tip(self, facts: dict[str, Any]) -> bool:
         """The requirement's branch tip is the hand-over commit `brain handoff` made: one commit on top of run.json's
         handoff.local_head."""

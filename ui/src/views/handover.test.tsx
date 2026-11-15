@@ -96,6 +96,38 @@ describe('交接给运行机', () => {
     expect(screen.queryByRole('region', { name: '交接' })).toBeNull()
   })
 
+  // what the backend answered and the row it read next, after a push that failed once the hand-over commit was made,
+  // and after one stopped at the time limit (tests/test_handover.py, a real brain handoff)
+  const NOT_PUSHED = '交接提交了，但没推上去：什么也没交出去。弄好以后再点「交接给运行机」'
+  test.each<[string, HandoffResult]>([
+    ['a failed push', { ok: false, state: 'committed', text: '交接记录提交了，但没推上去：推送失败',
+      todo: '看细节里 git 的原话，弄好以后再点一次「交接给运行机」', mr: null, warnings: [], raw: 'error: failed to push some refs', code: 2 }],
+    ['a push stopped at the time limit', { ok: false, state: 'timeout', text: '交接没做完：超过 900 秒，停掉了',
+      todo: '看一眼 MR 上有没有交接标签：没有就再点一次「交接给运行机」（点两次没关系）', mr: null, warnings: [], raw: '', code: 124 }],
+  ])('after %s nothing went out: the page says so and 交接给运行机 is there for the next click, also after 收起', async (_, answer) => {
+    const user = userEvent.setup()
+    const d = withDetail(() => {}, { [`POST ${POST}`]: () => {
+      d.row.state = 'local'
+      d.row.state_label = '本地开发中'
+      d.run!.handoff = { requested_at: '2026-11-08T10:00:00+08:00', by: 'alice' }
+      d.row.waits = { ...d.row.waits, who: 'you', text: NOT_PUSHED, line: null, do: 'push_handoff', where: 'app' }
+      return answer
+    } })
+    renderDetail()
+    await user.click(within(await card()).getByRole('button', { name: '交接给运行机' }))
+    await user.click(screen.getByRole('button', { name: '确定交接' }))
+    const out = await screen.findByTestId('handover-result')
+    expect(out).toHaveTextContent(answer.text)
+    await waitFor(() => expect(screen.getByRole('region', { name: '此刻' })).toHaveTextContent(NOT_PUSHED))
+    expect(screen.getByRole('region', { name: '此刻' })).not.toHaveTextContent('等桥')
+    await user.click(within(out).getByRole('button', { name: '收起' }))
+    const again = within(await card()).getByRole('button', { name: '交接给运行机' })
+    expect(again).toBeEnabled()
+    await user.click(again)
+    await user.click(screen.getByRole('button', { name: '确定交接' }))
+    await waitFor(() => expect(posts()).toHaveLength(2))
+  })
+
   test('a refusal says why and what to do; the button is there again for after the fix', async () => {
     const user = userEvent.setup()
     withDetail(() => {}, { [`POST ${POST}`]: () => REFUSED })

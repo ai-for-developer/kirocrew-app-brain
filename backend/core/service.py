@@ -406,7 +406,8 @@ class Service:
         merged = bool(f.get("merged") or (mr or {}).get("state") == "merged")
         deliveries.classify(row, f, mr=mr, slot=live, cfg=repo.cfg, bot_commits=bot,
                             at_handover=bool(mr) and repo.is_handover_tip(f), me=self.me_in(repo),
-                            reflected=merged and f["key"] in repo.reflected(), now=self.now())
+                            reflected=merged and f["key"] in repo.reflected(), now=self.now(),
+                            pushed=not run.get("handoff") or row["local_only"] or repo.on_remote(f))
         fams = self._families_of(repo) if fams is None else fams
         row["family"] = fams.get(f["key"])
         family.classify(row, row["family"], f, self.me_in(repo) if row["family"] else None)
@@ -1252,9 +1253,7 @@ class Service:
                     await asyncio.to_thread(mr_now)
                 snap = self._sessions_snapshot()
                 row = await asyncio.to_thread(self._row, repo, f, snap)
-                tip, up = f.get("tip"), f.get("origin_sha")
-                pushed = bool(tip and up and (tip == up or await asyncio.to_thread(
-                    repo.git.ok, "merge-base", "--is-ancestor", tip, up)))
+                pushed = await asyncio.to_thread(repo.on_remote, f)
                 busy = any(s["busy"] for s in snap["by"].get(scope, []) if s["kind"] == "local" and not s["missing"])
                 why = handover.why_not(f, row, me=await asyncio.to_thread(self.me_in, repo),
                                        local_only=row["local_only"], busy=busy, pushed=pushed)

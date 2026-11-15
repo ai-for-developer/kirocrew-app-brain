@@ -75,11 +75,12 @@ export type WaitWho = 'you' | 'agent' | 'runner' | 'bridge' | 'product' | 'build
  * lanes, the board): approve (a Lean approval line, in the session), reply (the local session is idle: your turn to
  * talk), tool (a tool call in the session waits for approval), start (claimed, no run yet: 开工), answer (a question:
  * in the session for a local run, on the MR for a handed-over one), accept (acceptance), redo_handoff (the hand-over
- * was refused), label_handoff (pushed without its label), write_back (merged with new knowledge to write back into
+ * was refused), label_handoff (pushed without its label), push_handoff (the hand-over commit is on this machine
+ * only: its push failed, nothing went out; 交接给运行机 again), write_back (merged with new knowledge to write back into
  * the Brain), watch (merged, in its 14 days: nobody's turn), none (nothing to do: AI or the runner at work, or done).
  */
 export type WaitDo = 'approve' | 'reply' | 'tool' | 'start' | 'answer' | 'accept' | 'redo_handoff' | 'label_handoff'
-  | 'write_back' | 'watch' | 'none'
+  | 'push_handoff' | 'write_back' | 'watch' | 'none'
 
 export interface Waits {
   who: WaitWho
