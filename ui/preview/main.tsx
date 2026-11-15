@@ -31,7 +31,7 @@ import { API, fixtureRoutes } from '../src/test/routes'
 import { StubApiError, setApiRoutes, setNavigateHook } from '../src/test/stubs/app-sdk'
 import { simulated } from './simulate'
 import type {
-  BrainView, CheckRow, CrewFixBody, ImportInspect, ImportJob, InstallResult, IntakeBody, IntakeNext, KitForm, OpenSessionBody, Overview, ReflectApplyBody, ReflectApplyResult, ReflectPreview, RepoInfo, ReqBoard, RequirementDetail, Settings, SplitResult, StartBody, Status, TeamView, Todo,
+  BrainView, CheckRow, CrewFixBody, ImportInspect, ImportJob, InstallResult, IntakeBody, IntakeNext, KitForm, OpenSessionBody, Overview, PickKind, PickResult, ReflectApplyBody, ReflectApplyResult, ReflectPreview, RepoInfo, ReqBoard, RequirementDetail, Settings, SplitResult, StartBody, Status, TeamView, Todo,
 } from '../src/types'
 
 const FLAGS = ['team', 'nokit', 'crewfail', 'noeval', 'norepos', 'race', 'light'] as const
@@ -399,6 +399,10 @@ setApiRoutes({
     if (flags.has('crewfail') && !crewFixed) return { ...r, slot: null, url: null, session_error: W.crew_not_ready ?? '' }
     return r
   },
+  // 选文件… / 选文件夹…: no dialog in the preview; it answers as if the export folder or one more file was chosen
+  [`POST ${API}/pick`]: (body): PickResult => ({
+    paths: (body as { kind: PickKind }).kind === 'folder' ? ['/Users/alice/Downloads/结算周报需求'] : ['/Users/alice/Downloads/样例.xlsx'],
+  }),
   [`POST ${API}/crew/fix`]: (body) => {
     crewFixed = true
     return { ok: true, text: `预览：${(body as CrewFixBody).what === 'agent' ? '装好了 brain-dev（brain-kit 带的那一份）' : '引擎设成了 kas'}（没有真的改）`, rows: status().crew.rows }

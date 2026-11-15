@@ -32,6 +32,8 @@ export const paths = {
   intakeNext: (repo: string) => `${BASE}/intake/next?repo=${enc(repo)}`,
   intakeCheck: () => `${BASE}/intake/check`,
   intakeStart: () => `${BASE}/intake/start`,
+  /** 选文件… / 选文件夹…: this machine's own file dialog */
+  pick: () => `${BASE}/pick`,
   crew: () => `${BASE}/crew`,
   crewFix: () => `${BASE}/crew/fix`,
   brain: (repo: string) => `${BASE}/brain?repo=${enc(repo)}`,

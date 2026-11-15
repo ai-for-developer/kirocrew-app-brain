@@ -1026,7 +1026,7 @@ export interface OpenSessionResult { ok: boolean; slot: string; url: string; reo
 export interface AnswerBody { choice: string; note?: string; id?: string }
 export interface AnswerResult { ok: boolean; via: 'session' | 'mr'; text: string }
 
-// ---------------------------------------------------------------- 开需求: /intake/next, /intake/check, /intake/start
+// ---------------------------------------------------------------- 开需求: /intake/next, /intake/check, /intake/start, /pick
 
 export type Classification = 'public' | 'internal' | 'confidential' | 'secret' | 'unsure'
 export const CLASS_LABEL: Record<Classification, string> = {
@@ -1047,6 +1047,10 @@ export interface IntakeNext {
   /** 「大需求：先拆成小需求」 can be chosen here (tracker none, a brain-kit with brain split), and why not */
   big: { ok: boolean; why: string }
 }
+
+/** POST /pick {kind}: this machine's own dialog (选文件… / 选文件夹…) answers the absolute paths chosen, [] for a cancel */
+export type PickKind = 'file' | 'folder'
+export interface PickResult { paths: string[] }
 
 export interface IntakeBody {
   repo: string
