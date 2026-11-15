@@ -165,5 +165,17 @@ export function useHoverCard(): [string | null, (key: string | null, delay: numb
     timer.current = setTimeout(() => setCard(key), delay)
   }, [])
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), [])
+  // Esc hides the card first: the board's own Esc (产出, the box looked at) waits for the next one
+  useEffect(() => {
+    if (!card) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      if (timer.current) clearTimeout(timer.current)
+      setCard(null)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [card])
   return [card, hover]
 }
