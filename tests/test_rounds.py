@@ -468,5 +468,5 @@ def test_the_review_is_next_once_lean_is_done_with_build_and_test():
         return n.status.status, n.status.doing, [(h["at"], h["status"], h["doing"]) for h in n.history]
 
     assert review(stages.Way(next="release", next_at=turned)) == (
-        "waiting", "构建测试过了，该审查了", [(turned, "waiting", "构建测试过了，该审查了")])
+        "waiting", "等开审查会话", [(turned, "waiting", "等开审查会话")])
     assert review(stages.Way(next="build-and-test")) == ("waiting", "等构建测试", [])

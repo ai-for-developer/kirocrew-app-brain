@@ -784,8 +784,9 @@ WAITS = {"requirements": "等开工", "application-design": "等需求分析", "
          "release": "等审查和自动检查", "reflect": "等合并以后"}
 # with the design skipped (Size: small), Lean asks for no design approval: what comes after the design waits on these
 NO_DESIGN_WAITS = {"units": "等需求分析", "code-generation": "等批了需求"}
-# Lean releases only after a review made in a new session: with 发布 Lean's next stage, the review not made yet is next
-REVIEW_NEXT = "构建测试过了，该审查了"
+# Lean releases only after a review made in a new session: with 发布 Lean's next stage, the review not made yet waits
+# on that session
+REVIEW_NEXT = "等开审查会话"
 AGAIN = {"sent_back": "退回以后", "verify_failed": "检查没过以后", "ci_failed": "CI 没过以后",
          "code_changed": "代码改了以后", "reopened": "又做一遍", "first": "又做一遍"}
 

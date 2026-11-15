@@ -41998,13 +41998,13 @@
      "sub": "review.md",
      "icon": "review",
      "status": "waiting",
-     "doing": "构建测试过了，该审查了",
+     "doing": "等开审查会话",
      "since": 1794128100,
      "history": [
       {
        "at": 1794128100,
        "status": "waiting",
-       "doing": "构建测试过了，该审查了",
+       "doing": "等开审查会话",
        "who": null
       }
      ],
@@ -44976,13 +44976,13 @@
      "sub": "review.md",
      "icon": "review",
      "status": "waiting",
-     "doing": "构建测试过了，该审查了",
+     "doing": "等开审查会话",
      "since": 1794118020,
      "history": [
       {
        "at": 1794118020,
        "status": "waiting",
-       "doing": "构建测试过了，该审查了",
+       "doing": "等开审查会话",
        "who": null
       }
      ],
@@ -47286,13 +47286,13 @@
      "sub": "review.md",
      "icon": "review",
      "status": "waiting",
-     "doing": "构建测试过了，该审查了",
+     "doing": "等开审查会话",
      "since": 1794133500,
      "history": [
       {
        "at": 1794133500,
        "status": "waiting",
-       "doing": "构建测试过了，该审查了",
+       "doing": "等开审查会话",
        "who": null
       }
      ],

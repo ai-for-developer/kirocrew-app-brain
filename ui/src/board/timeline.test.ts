@@ -458,9 +458,9 @@ describe('replayAt: the 审查 box follows Lean', () => {
   it.each(['r1/PAY-1', 'r1/PAY-7', 'r1/PAY-10'])('%s: 构建测试 done, the review is next from the moment Lean turned to 发布, not before', (k) => {
     const b = worldBoard(k)
     expect(b.nodes.find((n) => n.id === 'build-and-test')!.doing).toBe('检查都过了')
-    expect([review(b).status, review(b).doing]).toEqual(['waiting', '构建测试过了，该审查了'])
+    expect([review(b).status, review(b).doing]).toEqual(['waiting', '等开审查会话'])
     const turned = review(b).history[0].at
-    expect(review(replayAt(b, turned)).doing).toBe('构建测试过了，该审查了')
+    expect(review(replayAt(b, turned)).doing).toBe('等开审查会话')
     expect(review(replayAt(b, turned - 1)).doing).toBe('还没轮到')
   })
 
