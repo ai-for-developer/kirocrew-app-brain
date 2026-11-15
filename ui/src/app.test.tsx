@@ -233,6 +233,22 @@ describe('the app: one bar over the views', () => {
     expect(bar().getByRole('tab', { name: '交付总览' })).toHaveAttribute('aria-selected', 'true')
   })
 
+  test('a damaged repo_ids.json without a good copy: a banner on every view but 设置, with the way to 设置', async () => {
+    const user = userEvent.setup()
+    const s = fx.status()
+    s.repos = []
+    s.repo_ids_problem = '仓库编号的记录 /data/repo_ids.json 坏了，也没有好的备份：这次先不认列表里的仓库，免得记录记到别的仓库上。在设置里点「按记录重建编号」'
+    installFixtureRoutes({ [`GET ${API}/status`]: () => s })
+    render(<BrainApp pollMs={60_000} />)
+    const b = await screen.findByTestId('br-repo-ids')
+    expect(b).toHaveTextContent('仓库编号的记录坏了')
+    expect(b).toHaveTextContent('按记录重建编号')
+    await user.click(within(b).getByRole('button', { name: '去设置' }))
+    expect(parseView(window.location.search)).toEqual({ kind: 'settings' })
+    await screen.findByRole('region', { name: '仓库' })
+    expect(screen.queryByTestId('br-repo-ids')).toBeNull()
+  })
+
   test('no brain-kit: one banner for it on every view but 设置 (where to get it, 去填位置); 设置 says it at its top, and its KiroCrew row points at that card', async () => {
     const user = userEvent.setup()
     const s = fx.status()

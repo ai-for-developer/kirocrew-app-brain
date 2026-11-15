@@ -53,12 +53,21 @@ describe('设置', () => {
     expect(apiCalls.find((c) => c.path === `${API}/repos/remove`)?.body).toEqual({ path: '/Users/alice/workplace/shop-pay' })
   })
 
-  test('仓库: a damaged repo_ids.json is said in words, with what to do', async () => {
+  test('仓库: a damaged repo_ids.json without a good copy is said in words; 按记录重建编号 rebuilds it and says what each repo got', async () => {
+    const user = userEvent.setup()
     const s = fx.status()
-    s.repo_ids_problem = '仓库编号的记录 /data/repo_ids.json 坏了，读不出来：这次先按设置里的顺序编号，那个文件没动。修好它，再重启 Brain 交付（KiroCrew 的「应用」里先停再启动）'
-    render(<SettingsView {...props({ status: s })} />)
+    s.repos = []
+    s.repo_ids_problem = '仓库编号的记录 /data/repo_ids.json 坏了，也没有好的备份：这次先不认列表里的仓库，免得记录记到别的仓库上。在设置里点「按记录重建编号」'
+    const rebuilt = { ok: true, text: '按记录重建了编号：shop-pay 接上了原来的记录', status: fx.status() }
+    installFixtureRoutes({ [`POST ${API}/repos/ids/rebuild`]: () => rebuilt })
+    const p = props({ status: s })
+    render(<SettingsView {...p} />)
     const card = screen.getByRole('region', { name: '仓库' })
     expect(within(card).getByRole('alert')).toHaveTextContent(s.repo_ids_problem)
+    expect(card).not.toHaveTextContent('还没有仓库')
+    await user.click(within(card).getByRole('button', { name: '按记录重建编号' }))
+    await waitFor(() => expect(p.setStatus).toHaveBeenCalledWith(rebuilt.status))
+    expect(apiCalls.filter((c) => c.method === 'POST')).toEqual([{ method: 'POST', path: `${API}/repos/ids/rebuild`, body: {} }])
   })
 
   test('仓库: no word about the ids while their file reads fine', () => {
