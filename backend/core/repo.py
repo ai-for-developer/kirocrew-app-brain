@@ -2,8 +2,10 @@
 
 Each requirement key is found in up to four places, and the facts are read where the newest state is:
   claim/<KEY>                       the claim (or intent): owner, title, source, closed
-  <prefix>/<owner>/<KEY>-<slug>     the run branch: a worktree on this machine that has it checked out (its files,
-                                    committed or not), else the newer of the local branch and origin's
+  <prefix>/<owner>/<KEY>-<slug>     the run branch: the newer of the local branch and origin's; a worktree on this
+                                    machine that has it checked out reads its own files (committed or not), and once
+                                    origin is ahead of it (the runner pushed) origin's, but the files the person
+                                    changed there and has not committed
   runs/<KEY>/run.json on main       merged: the default branch has it
 In each place: runs/<KEY>/run.json, runs/<KEY>/park.json, aidlc-docs/<intent>/aidlc-state.md and decisions.md, and
 the Lean ledger aidlc-docs/audit/*.jsonl.
@@ -99,17 +101,19 @@ class Git:
 
 
 class Source:
-    """Files of one place: a worktree's files, or a git ref."""
+    """Files of one place: a worktree's files, or a git ref. Both: the ref's files, but *mine* (the ones the person
+    changed in the worktree and has not committed) from the worktree."""
 
-    def __init__(self, git: Git, *, ref: str | None = None, path: str | None = None) -> None:
-        self.git, self.ref, self.path = git, ref, path
+    def __init__(self, git: Git, *, ref: str | None = None, path: str | None = None,
+                 mine: frozenset[str] = frozenset()) -> None:
+        self.git, self.ref, self.path, self.mine = git, ref, path, mine
 
-    @property
-    def label(self) -> str:
-        return self.path if self.path else (self.ref or "")
+    def here(self, rel: str) -> bool:
+        """*rel* is read from the worktree."""
+        return bool(self.path) and (self.ref is None or rel in self.mine)
 
     def read(self, rel: str) -> bytes | None:
-        if self.path:
+        if self.here(rel):
             p = os.path.join(self.path, rel)
             try:
                 if not os.path.isfile(p) or os.path.getsize(p) > MAX_FILE:
@@ -134,18 +138,22 @@ class Source:
             return None
 
     def ls(self, prefix: str) -> list[str]:
-        if self.path:
+        if self.path and self.ref is None:
             out = []
             for d, dirs, names in os.walk(os.path.join(self.path, prefix)):
                 dirs.sort()
                 out += [os.path.relpath(os.path.join(d, n), self.path).replace(os.sep, "/") for n in names]
             return sorted(out)
-        return self.git.ls(self.ref or "HEAD", prefix)
+        out = set(self.git.ls(self.ref or "HEAD", prefix))
+        for rel in self.mine if self.path else ():
+            if rel.startswith(prefix.rstrip("/") + "/"):
+                (out.add if os.path.isfile(os.path.join(self.path, rel)) else out.discard)(rel)
+        return sorted(out)
 
     def changed_at(self, rel: str) -> float | None:
         """When *rel* last changed here: a worktree file's mtime, else the time of the last commit on the ref that
         touched it. None when it is not there."""
-        if self.path:
+        if self.here(rel):
             try:
                 return os.path.getmtime(os.path.join(self.path, rel))
             except OSError:
@@ -212,7 +220,7 @@ def read_facts(src: Source, key: str, runs_dir: str) -> dict[str, Any]:
         out["approvals"] = lean_view.approvals(out["events"], src.read)
         rel = "%s/%s/%s" % (lean_view.DOCS, intent, lean_view.REVIEW_DOC)
         if src.read(rel) is not None:   # Lean's release review: a worktree's file has a time, a commit's does not
-            out["review"] = {"at": src.changed_at(rel) if src.path else None}
+            out["review"] = {"at": src.changed_at(rel) if src.here(rel) else None}
     return out
 
 
@@ -332,20 +340,20 @@ class Repo:
 
     def _key_facts(self, key: str, claim_ref: str | None, b: dict[str, Any] | None, wt: str | None,
                    main: str | None, sig: tuple) -> dict[str, Any]:
+        runs = self.cfg["runs_dir"]
+        rels = ["%s/%s" % (runs, key), lean_view.DOCS + "/audit"]
+        ahead = bool(b) and not main and self._origin_ahead(b)     # the runner (or a teammate) pushed more
         if main:
             src, where, ref = Source(self.git, ref=main), "main", main
         elif wt:
-            src, where, ref = Source(self.git, path=wt), "worktree", None
+            ref = b["origin"] if ahead else None
+            src, where = Source(self.git, path=wt, ref=ref, mine=self._uncommitted(wt, [rels[0], lean_view.DOCS])
+                                if ahead else frozenset()), "worktree"
         elif b:
-            ref = b.get("local") or b.get("origin")
-            if b.get("local") and b.get("origin") and b["local_sha"] != b["origin_sha"] and \
-                    self.git.ok("merge-base", "--is-ancestor", b["local_sha"], b["origin_sha"]):
-                ref = b["origin"]  # the runner pushed more than this machine has
+            ref = b["origin"] if ahead else b.get("local") or b.get("origin")
             src, where = Source(self.git, ref=ref), "branch"
         else:
             src, where, ref = None, "claim", None
-        runs = self.cfg["runs_dir"]
-        rels = ["%s/%s" % (runs, key), lean_view.DOCS + "/audit"]
         cached = self._facts.get(key)
         fsig = sig + (src.sig(rels) if src else ())
         if cached and cached[0] == fsig:
@@ -360,8 +368,7 @@ class Repo:
                                                        got["approvals"])
         tip = None
         if b:
-            tip = b.get("local_sha") if where == "worktree" else (b.get("origin_sha") if ref == b.get("origin") else
-                                                                     b.get("local_sha"))
+            tip = b.get("origin_sha") if ref and ref == b.get("origin") else b.get("local_sha")
         facts = {
             "key": key, "claim": claim, "claim_ref": claim_ref, "where": where, "ref": ref,
             "worktree": wt, "branch": (b or {}).get("branch") or ((run or {}).get("branch") if run else None),
@@ -388,12 +395,15 @@ class Repo:
         d = "%s/%s" % (lean_view.DOCS, intent)
         return [d, "%s/%s" % (d, lean_view.REVIEW_DOC.rsplit("/", 1)[0])]
 
-    def source_for(self, facts: dict[str, Any]) -> Source | None:
-        if facts.get("worktree"):
-            return Source(self.git, path=facts["worktree"])
-        if facts.get("ref"):
-            return Source(self.git, ref=facts["ref"])
-        return None
+    def _origin_ahead(self, b: dict[str, Any]) -> bool:
+        """origin's run branch has every commit of the local one, and more."""
+        return bool(b.get("local") and b.get("origin")) and b["local_sha"] != b["origin_sha"] and \
+            self.git.ok("merge-base", "--is-ancestor", b["local_sha"], b["origin_sha"])
+
+    def _uncommitted(self, wt: str, rels: list[str]) -> frozenset[str]:
+        """The files under *rels* the person changed in the worktree and has not committed (new ones too)."""
+        p = self.git.run("status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames", "--", *rels, cwd=wt)
+        return frozenset(x[3:] for x in p.stdout.split("\0") if len(x) > 3) if p.returncode == 0 else frozenset()
 
     def is_handover_tip(self, facts: dict[str, Any]) -> bool:
         """The requirement's branch tip is the hand-over commit `brain handoff` made: one commit on top of run.json's

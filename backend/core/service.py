@@ -800,7 +800,8 @@ class Service:
         if got and time.monotonic() - got[0] < TRACE_TTL_S:
             tl = dict(got[1])
         else:
-            src_repo, ref = (f["worktree"], None) if f.get("worktree") else (repo.path, f.get("ref"))
+            behind = f.get("where") == "worktree" and f.get("ref")      # origin's run branch is ahead of the worktree
+            src_repo, ref = (f["worktree"], None) if f.get("worktree") and not behind else (repo.path, f.get("ref"))
             c = snap["credits"].get(scope)
             tl = detail.timeline(src_repo, repo.cfg, f["key"], ref=ref, events=f.get("events") or [],
                                  credits={"runs": {f["key"]: {"credits": c}}} if c is not None else None,

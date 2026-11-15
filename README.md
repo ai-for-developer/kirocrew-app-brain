@@ -297,6 +297,10 @@ shown folded): `backend/core/problems.py`.
   lists a small one the person claimed whose dependencies have all merged (开工 now), and a big one of theirs whose
   small ones have all merged (review, `lean release`, RELEASE; or `brain handoff`). Without brain-kit's split (older
   than 0d52e97) the features are off and say why.
+- **After the hand-over the runner's work is read from origin** (`repo.py`). A worktree here shows its own files, until
+  origin's run branch has every commit of the local one and more (the runner, or a teammate, pushed): then the page
+  reads origin's branch, so a run that went on to ask for its acceptance is shown at that ask, not frozen at
+  「等桥核对交接」. The files the person changed in the worktree and has not committed are still read from there.
 - **A hand-over without its label** (person mode): run.json has the hand-over, the branch tip is the hand-over commit
   (one commit on top of `handoff.local_head`), and the MR at that tip carries none of the hand-over, running or
   rejected labels. Nothing was handed over (`brain handoff` exits 1 then, 72b278e): the row says so and 待办 lists it.

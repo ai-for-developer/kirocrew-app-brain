@@ -96,6 +96,51 @@ def test_a_handed_over_run_and_a_merged_one(tmp_path, home):
     assert d2["row"]["state"] == "merged" and d2["where_label"].startswith("默认分支")
 
 
+BOT = {"GIT_AUTHOR_NAME": "brain-bot", "GIT_AUTHOR_EMAIL": "bot@example.com", "GIT_COMMITTER_NAME": "brain-bot",
+       "GIT_COMMITTER_EMAIL": "bot@example.com"}
+
+
+def test_after_the_hand_over_the_page_follows_the_runner_on_origin_and_keeps_the_persons_own_edits(tmp_path, home):
+    repo = make_project(tmp_path, origin=True, kit={"bot_emails": ["bot@example.com"]})
+    wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
+    intent = json.loads((wt / "runs" / "PAY-1" / "run.json").read_text())["intent"]
+    state = wt / "aidlc-docs" / intent / "aidlc-state.md"
+    state.write_text(filled_notes(state.read_text(), "Status: Construction step 2 of 4"))
+    sh("git", "-C", wt, "commit", "-qam", "notes")
+    brain(wt, "handoff", "--no-push")
+    branch = sh("git", "-C", wt, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    sh("git", "-C", wt, "push", "-q", "origin", branch)
+    # the runner's clone: it worked on, and stopped for the product's acceptance of the release
+    runner = tmp_path / "runner"
+    sh("git", "clone", "-q", "-b", branch, tmp_path / "pay-origin.git", runner)
+    (runner / "runs" / "PAY-1" / "park.json").write_text(json.dumps(
+        {"status": "waiting", "kind": "acceptance", "lean_request": "RELEASE 0c9a7e21"}))
+    sh("git", "-C", runner, "add", "-A")
+    sh("git", "-C", runner, "commit", "-qm", "PAY-1: ask for the acceptance", env=BOT)
+    sh("git", "-C", runner, "push", "-q", "origin", branch)
+    sh("git", "-C", repo, "fetch", "-q", "origin")      # progress.py's loop, every few minutes
+    # alice wrote a line in her worktree after the hand-over and has not committed it
+    dec = wt / "aidlc-docs" / intent / "decisions.md"
+    dec.write_text(dec.read_text() + "| D-9 | 2026-11-08 | release | 交接后补一句 | 我自己记的 | owner |\n")
+    svc = make_service(tmp_path, [repo])
+
+    async def go():
+        await svc.start()
+        try:
+            return await svc.overview("r1"), await svc.requirement("r1", "PAY-1"), await svc.board("r1", "PAY-1")
+        finally:
+            await svc.stop()
+
+    view, d, b = run(go())
+    row = rows_by_key(view)["PAY-1"]
+    assert (row["state"], row["waits"]["who"], row["waits"]["do"]) == ("acceptance", "product", "accept"), \
+        "the runner's commit on origin is read: no longer 等桥核对交接"
+    assert row["worktree"] == str(wt)
+    assert d["row"]["state"] == b["row"]["state"] == "acceptance" and not d["timeline"]["error"]
+    assert any(c["text"].endswith("ask for the acceptance") for c in b["belt"]), "the runner's commit is on the belt"
+    assert any(x["id"] == "D-9" for x in d["decisions"]), "her own edit, not committed, is still in her view"
+
+
 def test_detail_lists_stages_approvals_decisions_with_brain_citations(tmp_path, home):
     repo = make_project(tmp_path)
     wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
