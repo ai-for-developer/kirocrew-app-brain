@@ -252,7 +252,8 @@ def _taken_none(listed: str) -> str:
 
 
 GATE_ZH += [(re.compile(rx), fn) for rx, fn in (
-    (r"^门 2：材料按机密处理（(?P<w>.*)），而 intake\.allow_confidential 是 false",
+    # brain-kit 2053939 names the file: 「…），而 .brain/kit.json 的 intake.allow_confidential 是 false（不收机密）」
+    (r"^门 2：材料按机密处理（(?P<w>.*)），而 (?:\.brain/kit\.json 的 )?intake\.allow_confidential 是 false",
      lambda g, b: _gate2(g["w"], "confidential", b.get("classification") or "")),
     # brain-kit dac1856: 门 2：材料按绝密处理（你选的是 secret / a.pdf=secret）：绝密材料不收，不写材料包。…; before it:
     # 门 2：材料是绝密（a.pdf），不收，只留哈希
@@ -449,6 +450,10 @@ def kickoff(key: str, branch: str, intent: str | None, materials: list[str]) -> 
              + ("" if not pkgs else "，然后读材料包 .brain-materials/%s/toc.md" % pkgs[0]) + "。",
              "有问题一次问完，每题带推荐答案。"]
     return "\n".join(l for l in lines if not APPROVAL_LINE_RE.match(l))
+
+
+# the first message's last line in a session opened by 重开一个会话 (service.reopen_session): where the last one stopped
+RESUME_KICKOFF = "这是重开的会话：上一个会话停下了。先读 Lean 的 aidlc-state.md 里的 Session notes，从那里接着做。"
 
 
 def review_task(key: str, branch: str, intent: str | None) -> str:

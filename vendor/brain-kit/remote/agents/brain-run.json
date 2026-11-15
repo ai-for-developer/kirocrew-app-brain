@@ -12,11 +12,45 @@
   ],
   "allowedTools": [
     "fs_read",
+    "fs_write",
+    "execute_bash",
     "grep",
     "glob",
     "web_search",
     "web_fetch"
   ],
+  "permissions": {
+    "rules": [
+      {
+        "capability": "fs_read",
+        "effect": "allow"
+      },
+      {
+        "capability": "fs_write",
+        "effect": "allow"
+      },
+      {
+        "capability": "shell",
+        "effect": "allow"
+      },
+      {
+        "capability": "web_search",
+        "effect": "allow"
+      },
+      {
+        "capability": "web_fetch",
+        "effect": "allow"
+      },
+      {
+        "capability": "subagent",
+        "effect": "allow"
+      },
+      {
+        "capability": "skill",
+        "effect": "allow"
+      }
+    ]
+  },
   "resources": [
     "file://AGENTS.md",
     "file://brain/PRODUCT.md",
@@ -25,7 +59,7 @@
     "file://brain/PROJECT.md",
     "file://.kiro/steering/*.md"
   ],
-  "_notes": "Install at user level on the team runner: ~/.kiro/agents/brain-run.json (KiroCrew on kas/v3 reads agent specs and their hooks from the user level only, and never reads a project's .kiro/hooks/). Lean's hooks run through the hooks field above via the INSTALLED brain-kit's adapter (/opt/brain-kit/kit/.kiro/brain/lean-hook.py, run with /usr/bin/python3 -I), never the workspace's .kiro/brain/lean-hook.py, which the run could change. --runner names runnerd's config (spool_dir, runs_root, allowed_signers; hook_path, the PATH for git and ssh-keygen, default /usr/bin:/bin): the adapter takes the hand-over commit from the bridge-signed request in the spool and refuses every tool call while the workspace's kit files (.kiro/brain/, .kiro/agents/, .kiro/hooks/, .kiro/aidlc-lean/, .kiro/steering/, .kiro/skills/, .brain/kit.json, gates/) differ from it. With brain-kit installed elsewhere, change the three paths (and prompt) to that folder. Set runnerd.json agent_spec to this file: runnerd then refuses to prepare a workspace while its hooks do not run that kit's adapter this way. A session runs as brainbot: keep /opt/brain-kit and /etc/brain-kit (runnerd.json, allowed_signers) not writable by it, and this file too where KiroCrew allows (root-owned in a root-owned ~/.kiro/agents/). Messages the bridge sends count as human turns for Lean; that is by design (the bridge verified them). Still to confirm on the runner (V1): resources load from the workspace, the model is honoured, subagents also carry the hooks, KiroCrew writes nothing into a workspace's .kiro/agents/ or .kiro/hooks/ (the adapter would take that for a changed kit file).",
+  "_notes": "Do not copy this file by hand: `brain-runnerd --config <runnerd.json> setup` writes it where runnerd.json agent_spec says (default ~/.kiro/agents/brain-run.json, user level: KiroCrew on kas/v3 reads agent specs and their hooks from the user level only, and never reads a project's .kiro/hooks/). Lean's hooks run through the hooks field above via the INSTALLED brain-kit's adapter (<kit_dir>/kit/.kiro/brain/lean-hook.py, run isolated with -I by an absolute Python), never the workspace's .kiro/brain/lean-hook.py, which the run could change. --runner names runnerd's config (spool_dir, runs_root, allowed_signers; hook_path, the PATH for git and ssh-keygen, default /usr/bin:/bin): the adapter takes the hand-over commit from the bridge-signed request in the spool and refuses every tool call while the workspace's kit files (.kiro/brain/, .kiro/agents/, .kiro/hooks/, .kiro/aidlc-lean/, .kiro/steering/, .kiro/skills/, .brain/kit.json, gates/) differ from it. This copy is for brain-kit in /opt/brain-kit and runnerd's config in /etc/brain-kit/runnerd.json; setup fills in this machine's (runnerd.json kit_dir, the config it was given, the Python running it) and checks the result as runnerd does before each workspace. Run it again after changing runnerd.json or moving brain-kit. Set runnerd.json agent_spec to this file: runnerd then refuses to prepare a workspace while its hooks do not run that kit's adapter this way. A session runs as brainbot: keep the installed brain-kit and runnerd's config (runnerd.json, allowed_signers) not writable by it, and this file too where KiroCrew allows (root-owned in a root-owned ~/.kiro/agents/). Nobody is at the runner to approve a tool call: permissions and allowedTools let the run read, write, run commands, search and fetch without asking, and the bridge sets each run session to trust (its KiroCrew app needs permissions.sessionApproval: remote/kirocrew-app/brain-bridge). Messages the bridge sends count as human turns for Lean; that is by design (the bridge verified them). Still to confirm on the runner (V1): resources load from the workspace, the model is honoured, subagents also carry the hooks, KiroCrew writes nothing into a workspace's .kiro/agents/ or .kiro/hooks/ (the adapter would take that for a changed kit file).",
   "hooks": {
     "agentSpawn": [
       {

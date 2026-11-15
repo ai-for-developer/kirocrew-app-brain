@@ -2,6 +2,7 @@
 workspace, so the bridge never needs the bot's git credentials and never switches user.
 
   brain-runnerd --config runnerd.json once|loop
+  brain-runnerd --config runnerd.json setup     write the runner's agent spec (brain-run) from runnerd.json, check it
 
 For each spool/requests/<RUN-ID>.json not yet handled:
   verify the bridge signature and expiry -> fetch the project into a bare cache -> git worktree at the
@@ -20,24 +21,32 @@ config: {"spool_dir", "cache_dir", "runs_root", "allowed_signers", "clone_url": 
          "interval": 30 (seconds; "30" too), "git_timeout": 300 (seconds for one fetch or pull), "clone_timeout": 3600,
          "tries": 3,
          "branch_prefix": "" (only this branch prefix; default: the one the signed voucher names),
-         "kit_dir": the installed brain-kit whose kit/.kiro/brain/lean-hook.py the sessions' hooks run (default: this
-         one), "agent_spec": "~/.kiro/agents/brain-run.json" (its hooks must run that adapter: cli.runner_hook_problems)}
+         "kit_dir": the installed brain-kit whose kit/.kiro/brain/lean-hook.py the sessions' hooks run (default: the
+         one bin/brain-runnerd is in, by the path it was run from), "agent_spec": "~/.kiro/agents/brain-run.json"
+         (its hooks must run that adapter: cli.runner_hook_problems; `setup` writes it), "git_name", "git_email": the
+         bot account's git identity, set in every workspace (one of kit.json bot_emails; without them the workspaces
+         commit as this user's own identity)}
 """
 from __future__ import annotations
 
 import argparse
 import os
 import re
+import shlex
 import shutil
+import subprocess
 import sys
 import time
 
 from .. import sign
 from ..common import (BRANCH_RE, BrainError, NetworkError, git, git_net, git_out, iso, load_json, parse_branch,
-                      parse_iso, utcnow, write_json)
+                      parse_iso, plain, utcnow, write_json)
 
 RUN_ID_RE = re.compile(r"^RUN-[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}-[1-9][0-9]{0,5}$")
 TRIES = 3
+AGENT_SPEC = "~/.kiro/agents/brain-run.json"
+SPEC_TEMPLATE = os.path.join("remote", "agents", "brain-run.json")     # in an installed brain-kit
+RUN_PROMPT = os.path.join("remote", "prompts", "brain-run.md")
 
 
 def _timeout(cfg, key, default) -> float:
@@ -176,6 +185,12 @@ def prepare(cfg, req, out=None) -> dict:
     if hooks:
         raise BrainError("the runner's Lean hooks are not set up: %s" % "; ".join(hooks))
     cache = _cache(cfg, v["project"])
+    ident = dict(bot_identity(cfg))
+    for key in ("user.name", "user.email"):     # every workspace of the cache commits as runnerd.json says now
+        if key in ident:
+            git(cache, "config", key, ident[key])
+        else:
+            git(cache, "config", "--unset", key, check=False)   # taken out: the runner user's own identity
     if git(cache, "cat-file", "-e", v["sha"] + "^{commit}", check=False).returncode != 0:
         raise BrainError("commit %s not found in %s" % (v["sha"][:12], v["project"]))
     remote_ref = "refs/remotes/origin/" + v["branch"]
@@ -229,6 +244,71 @@ def copy_materials(cfg, materials, workspace):
         if bad:
             raise BrainError("material %s does not match the contract" % m["package"])
         _readonly_copy(src, os.path.join(workspace, MATERIALS_DIR, m["package"]))
+
+
+def bot_identity(cfg) -> list:
+    """[("user.name", ...), ("user.email", ...)] from runnerd.json git_name / git_email (those it names)."""
+    out = []
+    for key, name in (("user.name", "git_name"), ("user.email", "git_email")):
+        value = cfg.get(name)
+        if value in (None, ""):
+            continue
+        if not plain(value) or not value.strip():
+            raise BrainError("runnerd.json %s must be one line of text" % name)
+        out.append((key, value.strip()))
+    return out
+
+
+def runner_spec(kit, config_path, python) -> dict:
+    """The team runner's agent spec for the brain-kit installed at `kit` and runnerd's config `config_path`: the shipped
+    one (written for /opt/brain-kit and /etc/brain-kit/runnerd.json) with its prompt in `kit`, and Lean's three hooks
+    running `kit`'s adapter in runner mode under `python`, as cli.runner_hook_problems wants them."""
+    from ..cli import CREW_EVENTS, RUNNER_HOOK
+    spec = load_json(os.path.join(kit, SPEC_TEMPLATE))
+    adapter = os.path.join(kit, RUNNER_HOOK)
+    spec["prompt"] = "file://" + os.path.join(kit, RUN_PROMPT)
+    spec["hooks"] = {}
+    for trig, ev in CREW_EVENTS:
+        cmd = " ".join(shlex.quote(x) for x in (python, "-I", adapter, "--runner", config_path, ev))
+        spec["hooks"][trig] = [{"matcher": "*", "command": cmd} if trig == "preToolUse" else {"command": cmd}]
+    spec["_notes"] = ("Written by `brain-runnerd --config %s setup` for the brain-kit in %s: run it again after changing "
+                      "runnerd.json or moving brain-kit (edits here are lost then). Why it is so: the _notes of %s."
+                      % (config_path, kit, os.path.join(kit, SPEC_TEMPLATE)))
+    return spec
+
+
+def setup(cfg, config_path, out=print) -> int:
+    """`brain-runnerd --config runnerd.json setup`: write the runner's agent spec where agent_spec says (default
+    ~/.kiro/agents/brain-run.json) for kit_dir and this config, and check it as runnerd does before each workspace. A
+    spec that is right already is left as it is. -> 0, or 1 when the check still finds a problem."""
+    from ..cli import KIT_ROOT, runner_hook_problems
+    kit = os.path.abspath(os.path.expanduser(cfg.get("kit_dir") or KIT_ROOT))      # a symlink an upgrade swaps stays
+    dest = os.path.abspath(os.path.expanduser(cfg.get("agent_spec") or AGENT_SPEC))
+    spec = runner_spec(kit, os.path.realpath(config_path), sys.executable)
+    try:
+        same = load_json(dest) == spec
+    except (OSError, ValueError):
+        same = False
+    if same:
+        out("%s is up to date" % dest)
+    else:
+        write_json(dest, spec)
+        out("wrote %s: brain-run's hooks run %s with %s" % (dest, kit, os.path.realpath(config_path)))
+    probs = runner_hook_problems(kit, dest)
+    for p in probs:
+        out("problem: " + p)
+    if not cfg.get("agent_spec"):
+        out("runnerd.json has no agent_spec: runnerd does not check this spec before each workspace; add "
+            "\"agent_spec\": \"%s\"" % dest)
+    ident = dict(bot_identity(cfg))
+    if "user.email" in ident:
+        out("workspaces commit as %s <%s> (runnerd.json git_name / git_email): it must be one of each project's "
+            "kit.json bot_emails" % (ident.get("user.name", "?"), ident["user.email"]))
+    else:
+        own = subprocess.run(["git", "config", "--global", "user.email"], capture_output=True, text=True).stdout.strip()
+        out("runnerd.json has no git_email: workspaces commit as this user's own git identity (%s); set git_name and "
+            "git_email to the bot account's (one of kit.json bot_emails)" % (own or "none set"))
+    return 1 if probs else 0
 
 
 def _attempt(doc) -> int:
@@ -286,16 +366,25 @@ def once(cfg, out=print) -> int:
     return done
 
 
-def main(argv=None):
+def main(argv=None, kit_dir=None):
+    """`kit_dir`: the brain-kit bin/brain-runnerd was run from (no symlink resolved), when runnerd.json names none."""
     ap = argparse.ArgumentParser(prog="brain-runnerd")
     ap.add_argument("--config", required=True)
-    ap.add_argument("cmd", choices=("once", "loop"))
+    ap.add_argument("cmd", choices=("once", "loop", "setup"))
     a = ap.parse_args(argv)
     try:
         cfg = load_json(a.config)
     except (OSError, ValueError) as e:
         print("brain-runnerd: %s cannot be read: %s" % (a.config, e), file=sys.stderr)
         return 2
+    if kit_dir and not cfg.get("kit_dir"):
+        cfg["kit_dir"] = kit_dir
+    if a.cmd == "setup":
+        try:
+            return setup(cfg, a.config)
+        except (BrainError, OSError, ValueError) as e:
+            print("brain-runnerd: setup: %s" % e, file=sys.stderr)
+            return 2
     while True:
         try:
             once(cfg)

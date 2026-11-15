@@ -9,7 +9,7 @@ A CheckRow is ``{"level", "text", "todo", "fix", "repo", "raw"}``:
   level  OK | WARN | FAIL (WARN: a reminder, stops nothing)
   text   what is wrong (or right), short plain Chinese: file names, fields, values and commands go in raw
   todo   做什么, one line ('' for an OK row, or when there is nothing to do), in words too
-  fix    'agent' (add Lean's hooks to ~/.kiro/agents/brain-dev.json), 'engine' (kirocrew engine kas), 'kit'
+  fix    'agent' (add Lean's hooks to ~/.kiro/agents/brain-dev-crew.json), 'engine' (kirocrew engine kas), 'kit'
          (reinstall brain-kit and commit it, POST /import/upgrade: in the checkout on its branch by default, or on a
          new branch for an MR), 'me' (the name brain-kit goes by in the repo: the page's input, POST /me/name, which
          sets git config brain.user there), or None
@@ -28,13 +28,15 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable
 
+from .constants import LOCAL_AGENT, OLD_AGENT
+
 LEVELS = ("OK", "WARN", "FAIL")
 FIXES = ("agent", "engine", "kit", "me")
 ME_TODO = "在下面填上，点「保存」（记在这个仓库的 git 设置里）"
 ME_GITLAB = "要你在 GitLab 上的用户名：认领和交接都按它认人。" + ME_TODO
-AGENT_OK = "brain-dev 的设置里 Lean 的拦截都在"   # crewcheck.agent_ok accepts the OK row whose text starts with it
-AGENT_MISSING = "KiroCrew 里还没有 brain-dev"
-AGENT_PATH = "~/.kiro/agents/brain-dev.json"
+AGENT_OK = "%s 的设置里 Lean 的拦截都在" % LOCAL_AGENT   # crewcheck.agent_ok accepts the OK row starting with it
+AGENT_MISSING = "KiroCrew 里还没有 %s" % LOCAL_AGENT
+AGENT_PATH = "~/.kiro/agents/%s.json" % LOCAL_AGENT
 TRIGGER_NAMES = {"agentSpawn": "会话开始", "userPromptSubmit": "发消息", "preToolUse": "调用工具前"}
 TRACKER_NAME = {"none": "不用 Jira", "jira": "用 Jira"}
 EVENT_TRIGGER = {"SessionStart": "agentSpawn", "UserPromptSubmit": "userPromptSubmit", "PreToolUse": "preToolUse"}
@@ -47,16 +49,18 @@ VALUE_NAMES: dict[str, dict[str, str]] = {
     "side": {"product": "产品", "builder": "开发", "shared": "共用"},
     "rels": {"new": "新", "same": "只加来源", "adds-to": "补充", "replaces": "取代", "repeats": "又出现", "withdraws": "撤回"},
     "file": {"PRODUCT": "产品知识", "TECH": "技术知识", "IMPROVEMENT": "改进知识", "PROJECT": "项目知识"},
-    # brain-dev.json's fields brain-kit owns (cli.CREW_OWNED_FIELDS)
+    # the crew agent's fields brain-kit owns (cli.CREW_OWNED_FIELDS)
     "fields": {"name": "名字", "description": "说明", "model": "模型", "prompt": "提示词", "tools": "工具", "resources": "资料"},
 }
 
 # the fix buttons' names (ui.tsx CheckRows shows the name a row's 做什么 gives in 点「…」, these): every text that
 # points at a button says its name
 FIX_BUTTON = {"agent": "补上 Lean 的拦截", "engine": "把引擎换成 kas", "kit": "重装 kit 文件"}
-AGENT_NEW = "装上 brain-dev"      # the agent fix when ~/.kiro/agents/brain-dev.json is not there at all
+AGENT_NEW = "装上 %s" % LOCAL_AGENT    # the agent fix when ~/.kiro/agents/brain-dev-crew.json is not there at all
 REINSTALL = "点「%s」：重装 brain-kit 并提交（默认直接在当前分支上，团队仓库可以选新分支开 MR）" % FIX_BUTTON["kit"]
-AGENT_NEW_TODO = "点「%s」：装上 brain-kit 带的那一份；没有它，Lean 的拦截在 KiroCrew 里不会跑" % AGENT_NEW
+AGENT_NEW_TODO = "点「%s」：装上 brain-kit 带的那一份。app 开的会话都用它，Lean 的拦截在它里面" % AGENT_NEW
+OLD_PAIR_TODO = ("app 新开的会话用 %s，不受影响；以前开的会话，在需求详情里点「重开一个会话」换成新的。都换完了，删掉细节里那份旧的"
+                 " %s 设置，这条就不再提醒" % (LOCAL_AGENT, OLD_AGENT))
 UNREADABLE_TODO = "自己修好它，或者删掉它再装一份新的（这里不会覆盖它）"
 ADAPTER = "Lean 的适配文件"         # .kiro/brain/lean-hook.py: KiroCrew sessions run Lean's hooks through it
 RECORDS = "变更说明和 AI 停下来写的问题"   # runs/<KEY>/MR.md and park.json, which Lean's code fingerprint must leave out
@@ -167,6 +171,8 @@ RUNNER_HOOK = ("照 brain-kit 的 remote/agents/brain-run.json 写：<python 绝
                "<runnerd.json> <事件>")
 
 
+CREW_ROW = r"(?:agent )?(?P<n>brain-dev(?:-crew)?)"   # brain-kit's crew agent in its rows: `agent brain-dev-crew` (ux-k2), brain-dev before
+
 RULES: list[Rule] = [
     # cli.runner_kit_problems / doctor_checks (d46765f, 0d52e97: version 3): the hook adapter is too old for the runner
     Rule(r"^(?P<path>\S+) is an older adapter \(version (?P<have>\d+), needs (?P<need>\d+)\)",
@@ -261,16 +267,42 @@ RULES: list[Rule] = [
     Rule(r"^(?P<tool>kiro-cli|kirocrew) (?P<have>.+?)(?: \(not pinned\))?$",
          lambda g, lv: "%s %s" % (_tool_name(g["tool"]), _version(g, "have"))),
     # cli.crew_checks (brain doctor's KiroCrew lines)
-    Rule(r"^KiroCrew: ~/\.kiro/agents/brain-dev\.json missing", AGENT_MISSING, AGENT_NEW_TODO, "agent"),
-    Rule(r"^KiroCrew brain-dev carries Lean's 3 hooks$", "KiroCrew 的 brain-dev 设置里 Lean 的拦截都在"),
-    Rule(r"^KiroCrew brain-dev\.json lacks Lean's (?P<t>.+?) hook\(s\)",
-         lambda g, lv: "brain-dev 的设置缺 Lean 的拦截：%s" % _hook_names(g["t"]),
+    Rule(r"^KiroCrew: ~/\.kiro/agents/(?P<n>brain-dev(?:-crew)?)\.json missing", "KiroCrew 里还没有 {n}", AGENT_NEW_TODO,
+         "agent"),
+    Rule(r"^KiroCrew %s carries Lean's 3 hooks$" % CREW_ROW, "KiroCrew 的 {n} 设置里 Lean 的拦截都在"),
+    Rule(r"^KiroCrew %s(?:\.json)? lacks Lean's (?P<t>.+?) hook\(s\)" % CREW_ROW,
+         lambda g, lv: "%s 的设置缺 Lean 的拦截：%s" % (g["n"], _hook_names(g["t"])),
          lambda g, lv: "点「%s」：只补上缺的（%s），别的都不动" % (FIX_BUTTON["agent"], _hook_names(g["t"])),
          "agent"),
-    Rule(r"^KiroCrew brain-dev\.json has no (?P<fields>.+?) \(", "brain-dev 的设置里没有{fields}",
+    Rule(r"^KiroCrew %s(?:\.json)? has no (?P<fields>.+?) \(" % CREW_ROW, "{n} 的设置里没有{fields}",
          "让 brain-kit 在终端里补上缺的设置（你自己的设置都留着）", how="brain crew-agent --force"),
-    Rule(r"^KiroCrew brain-dev uses your own (?P<fields>.+?) \(", "brain-dev 用的是你自己的{fields}"),
-    Rule(r"^~/\.kiro/agents/brain-dev\.json is not valid JSON", "brain-dev 的设置读不懂：文件格式坏了", UNREADABLE_TODO),
+    Rule(r"^KiroCrew %s uses your own (?P<fields>.+?) \(" % CREW_ROW, "{n} 用的是你自己的{fields}"),
+    Rule(r"^~/\.kiro/agents/(?P<n>brain-dev(?:-crew)?)\.json is not valid JSON", "{n} 的设置读不懂：文件格式坏了",
+         UNREADABLE_TODO),
+    Rule(r"^KiroCrew: (?P<path>\S+) is also named (?P<n>\S+?): ", "仓库里也有一个叫 {n} 的 agent",
+         "把它改个名字或者删掉：它会盖掉带 Lean 拦截的那份"),
+    Rule(r"^KiroCrew: a session on agent (?P<old>\S+) runs (?P<md>\S+), not ", "这个仓库里叫 {old} 的会话没有 Lean 的拦截",
+         OLD_PAIR_TODO),
+    Rule(r"^Kiro rewrites ~/\.kiro/agents/\*\.json each time kiro-cli starts", "Kiro 每次启动都会改写你的 agent 设置",
+         "要保留你手改的 agent 设置，就关掉 Kiro 的「自动升级 agent」（命令在细节里）；不改也行，app 每次都按改写后的那份检查",
+         how="kiro-cli settings chat.enableAutoAgentUpgrade false"),
+    # cli.doctor_checks (ux-k2): brain on PATH, the material store (brain-intake), the Lean pin
+    Rule(r"^brain on PATH: (?P<path>\S+)$", "终端里能用 brain 命令"),
+    Rule(r"^brain is not on PATH", "终端里还用不了 brain 命令",
+         "app 里用不着它；要在终端里用 brain，就跑一次细节里那条 brain link"),
+    Rule(r"^material store (?P<store>\S+) is not a git clone of brain-intake", "材料库还不是 brain-intake 的克隆：带文档的需求交不出去",
+         "按细节里的命令克隆你们团队的 brain-intake，再告诉 brain-kit 它在哪；不带文档的需求不受影响"),
+    Rule(r"^material store (?P<store>\S+) has no origin", "材料库没有远端：带文档的需求交不出去",
+         "给材料库加上你们团队 brain-intake 的远端地址（命令在细节里）；不带文档的需求不受影响"),
+    Rule(r"^material store (?P<store>\S+) is a clone of brain-intake with an origin", "材料库是 brain-intake 的克隆：交接时会把材料发布上去"),
+    Rule(r"^AI-DLC Lean (?P<have>\S+) \(pinned (?P<want>[^)]+)\)$", "AI-DLC Lean {have}（仓库定的是 {want}）"),
+    Rule(r"^AI-DLC Lean (?P<have>.+?) \(not pinned\)$", "AI-DLC Lean {have}"),
+    Rule(r"^AI-DLC Lean (?P<have>.+?) installed, pinned (?P<want>\S+) \(\S+ pins\): `brain install --upgrade` writes this",
+         lambda g, lv: "装的 AI-DLC Lean 是 %s，仓库定的是 %s" % (g["have"].replace("of unknown version", "不知道哪一版"), g["want"]),
+         REINSTALL, "kit"),
+    Rule(r"^AI-DLC Lean (?P<have>.+?) installed, pinned (?P<want>\S+) \(\S+ pins\)",
+         lambda g, lv: "装的 AI-DLC Lean 是 %s，仓库定的是 %s" % (g["have"].replace("of unknown version", "不知道哪一版"), g["want"]),
+         "这个 brain-kit 带的 Lean 不是定的那一版：换一个带 Lean {want} 的 brain-kit，或者改仓库的 brain-kit 设置里定的版本"),
     Rule(r"^KiroCrew engine: (?P<be>default \(KAS\)|kas)$",
          lambda g, lv: "KiroCrew 引擎：%s" % ("默认（kas）" if g["be"].startswith("default") else "kas")),
     Rule(r"^KiroCrew engine: (?P<be>\S+)", "KiroCrew 引擎是 {be}，不是 kas",
@@ -413,7 +445,7 @@ def agent_missing() -> dict[str, Any]:
 
 def agent_unreadable(why: str, detail: str = "") -> dict[str, Any]:
     """*why*: 读不了 or 读不懂：<what> (crewcheck._load); *detail*: the OS error, if any."""
-    return mk("FAIL", "brain-dev 的设置" + why, UNREADABLE_TODO, None, None,
+    return mk("FAIL", "%s 的设置" % LOCAL_AGENT + why, UNREADABLE_TODO, None, None,
               "\n".join(x for x in (detail, "文件：" + AGENT_PATH) if x))
 
 
@@ -422,7 +454,7 @@ def trigger_names(missing: list[tuple[str, str]]) -> str:
 
 
 def agent_lacks(missing: list[tuple[str, str]]) -> dict[str, Any]:
-    return mk("FAIL", "brain-dev 的设置缺 Lean 的拦截：%s" % trigger_names(missing),
+    return mk("FAIL", "%s 的设置缺 Lean 的拦截：%s" % (LOCAL_AGENT, trigger_names(missing)),
               "点「%s」：只补上缺的（%s），别的都不动" % (FIX_BUTTON["agent"], trigger_names(missing)), "agent",
               raw="缺的 hook：%s" % "、".join(t for t, _ in missing))
 
@@ -433,8 +465,26 @@ def agent_ok(others: int) -> dict[str, Any]:
 
 def agent_custom(fields: list[str]) -> dict[str, Any]:
     names = "、".join(fields)
-    return mk("OK", "brain-dev 用的是你自己的%s" % said("fields", ",".join(fields)),
-              raw="brain-dev 用的是你自己的 %s（`brain crew-agent --reset` 换回 brain-kit 的；--force 只补缺的）" % names)
+    return mk("OK", "%s 用的是你自己的%s" % (LOCAL_AGENT, said("fields", ",".join(fields))),
+              raw="%s 用的是你自己的 %s（`brain crew-agent --reset` 换回 brain-kit 的；--force 只补缺的）" % (LOCAL_AGENT, names))
+
+
+AGENT_SHADOWED = "仓库里也有一个叫 %s 的 agent" % LOCAL_AGENT   # crewcheck.session_problem refuses a session for it
+
+
+def agent_shadowed(repo: str, where: str) -> dict[str, Any]:
+    """A repo agent (*where*, its path in the repo) that takes the crew agent's name: KiroCrew prefers it, Lean's hooks
+    would not run in a session there."""
+    return mk("FAIL", AGENT_SHADOWED, "把它改个名字或者删掉：它会盖掉带 Lean 拦截的那份，这个仓库里 app 开不了会话", None,
+              repo, "仓库里的 %s 也叫 %s（KiroCrew 先用项目里的同名 agent）" % (where, LOCAL_AGENT))
+
+
+def old_agent_shadowed(repo: str, where: str) -> dict[str, Any]:
+    """The repo's brain-dev (*where*, brain install puts .kiro/agents/brain-dev.md there for kiro-cli) shadows the
+    person's ~/.kiro/agents/brain-dev.json: a session opened as brain-dev there runs without Lean's hooks."""
+    return mk("WARN", "这个仓库里叫 %s 的会话没有 Lean 的拦截" % OLD_AGENT,
+              OLD_PAIR_TODO, None, repo,
+              "仓库里的 %s 盖住了 ~/.kiro/agents/%s.json（KiroCrew 先用项目里的同名 agent）" % (where, OLD_AGENT))
 
 
 def engine(be: str | None, why: str = "", detail: str = "") -> dict[str, Any]:

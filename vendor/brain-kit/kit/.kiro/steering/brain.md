@@ -58,6 +58,12 @@ This repo has a team Brain. Local runs (your machine) and team-runner runs read 
 Dangerous permissions, anything external, anything irreversible, and anything touching customer data need a person,
 in any stage. Ask; do not work around a block.
 
+## A server you start for a test
+- Start it with a time limit and its output in a file, and note its pid: `timeout 600 <command> > /tmp/<name>.log
+  2>&1 & echo $!`. Without the redirect the tool call waits until the server ends.
+- Stop it with plain `kill <pid>`, then check `kill -0 <pid>` fails. Not `kill -INT`: a job a non-interactive shell
+  starts in the background ignores SIGINT and keeps running. Never `wait` for a server.
+
 ## Hand-over (local -> team runner)
 When the person says to hand over, or you must wait more than a working day:
 1. Bring `aidlc-docs/<intent>/aidlc-state.md` Session notes up to date: Status, Next (numbered, concrete),

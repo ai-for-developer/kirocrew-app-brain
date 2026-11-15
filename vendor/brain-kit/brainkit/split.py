@@ -1007,7 +1007,9 @@ def _start_worktree(repo, cfg, a, doc, fields, me, version, key, pkey, unit, tea
     print("Started %s (unit %s of %s) on %s from %s (Lean intent %s, team %s, Brain %s)%s." % (
         key, unit, pkey, br, built_on and "%s's branch" % built_on or sp["branch"], sp["intent"], team,
         brain_commit[:10], ", pushed" if pushed else ""))
-    print("Worktree: %s (its own Lean clone). Open Kiro there with the brain-dev agent." % wt)
+    from .cli import CREW_AGENT
+    print("Worktree: %s (its own Lean clone). Open it in KiroCrew with agent %s (in Kiro CLI: brain-dev)."
+          % (wt, CREW_AGENT))
     print("Intent: %s (the unit, its paths, ACs and contracts; the agent reads it first)" % md)
     if built_on:
         print("Built on %s, which has not merged yet: your MR carries its commits until it does; `brain sync` brings "

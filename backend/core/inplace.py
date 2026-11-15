@@ -23,12 +23,12 @@ from typing import Any, Callable
 
 from . import bk
 from .constants import GIT_BIN
-from .importer import (GIT_TIMEOUT_S, KIT, LINKS_REFUSED, ImportFail, Records, choices, default_branch, git_failure,
-                       last_lines, origin_of, quiet_env, run_quiet, status_map, symlinks_on_targets, tail, touches,
-                       write_targets)
+from .importer import (GIT_TIMEOUT_S, KIT, LINKS_REFUSED, ImportFail, Records, bytecode, choices, default_branch,
+                       git_failure, last_lines, origin_of, quiet_env, run_quiet, status_map, symlinks_on_targets, tail,
+                       touches, write_targets)
 from .installer import (COMMIT_TIMEOUT_S, DOCTOR_TIMEOUT_S, INSTALL_TIMEOUT_S, KIT_LINK, LEAN_AUDIT, MAX_FILES,
-                        PUSH_TIMEOUT_S, UP_TO_DATE, _kit_of, brain_env, commit_failure, commit_message, doctor_rows,
-                        install_branch_ok, kit_data, kit_form, kit_line, worktrees_of)
+                        PUSH_TIMEOUT_S, UP_TO_DATE, _kit_of, _safe_rel, brain_env, commit_failure, commit_message,
+                        doctor_rows, install_branch_ok, kit_data, kit_form, kit_line, take_back, worktrees_of)
 from .intake import brain_cmd
 from .repo import Git
 
@@ -59,41 +59,6 @@ def _links_in_tree(top: str, targets: list[str]) -> list[str]:
             if not os.path.exists(cur):
                 break
     return sorted(set(out))
-
-
-def _safe_rel(p: Any) -> bool:
-    return isinstance(p, str) and bool(p) and not p.startswith("/") and "\0" not in p and ".." not in p.split("/")
-
-
-def take_back(top: str, before: dict[str, str], targets: list[str]) -> bool:
-    """Undo what an install wrote in the checkout: paths within *targets* whose state differs from *before* (they were
-    clean then, so nothing of the person's is lost). Tracked ones come back from HEAD, new files are removed, and the
-    folders that only held them. True when there was something to undo."""
-    g = Git(top)
-    after = status_map(g) or {}
-    changed = sorted(p for p, ch in after.items() if before.get(p) != ch and touches(p, targets) and _safe_rel(p))
-    if not changed:
-        return False
-    in_head = [p for p in changed if g.ok("cat-file", "-e", "HEAD:%s" % p)]
-    if in_head:
-        run_quiet([GIT_BIN, "-C", top, "checkout", "-q", "HEAD", "--", *in_head], top, GIT_TIMEOUT_S * 2, brain_env())
-    for p in changed:
-        if p in in_head:
-            continue
-        full = os.path.join(top, p)
-        if os.path.islink(full) or os.path.isfile(full):
-            try:
-                os.remove(full)
-            except OSError:
-                continue
-        d = os.path.dirname(full)
-        while d.startswith(top + os.sep) and touches(os.path.relpath(d, top), targets):
-            try:
-                os.rmdir(d)          # only an empty one
-            except OSError:
-                break
-            d = os.path.dirname(d)
-    return True
 
 
 def install(top: str, kit: dict[str, str] | None, records: Records, step: Callable[..., None], *,
@@ -194,6 +159,7 @@ def install(top: str, kit: dict[str, str] | None, records: Records, step: Callab
     else:
         step("doctor", "warn" if fails else "ok", "%d 项通过，%d 项注意，%d 项没过" % (len(rows) - fails - warns, warns, fails))
 
+    take_back(top, before, targets, only=bytecode)
     after = status_map(g) or {}
     written = sorted(x for x, ch in after.items() if before.get(x) != ch and touches(x, targets) and _safe_rel(x))
     res["files"] = [{"change": after[x], "path": x} for x in written][:MAX_FILES]

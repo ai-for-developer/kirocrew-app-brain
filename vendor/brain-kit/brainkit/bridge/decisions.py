@@ -649,8 +649,9 @@ class DecisionLoop(Delivery):
 
     def watch(self):
         """Post new park.json questions from dispatched runs (an acceptance question with the run's 变更说明 before
-        it), keep the 变更说明 comments current, and tell a run when its CI failed. One run that fails (its MR gone,
-        its project's kit.json broken) does not hold up the others: the errors are raised together at the end."""
+        it), keep the 变更说明 comments current, tell a run when its CI failed, and tell the MR when a run's session has
+        not moved for stall_minutes (tell_if_stalled). One run that fails (its MR gone, its project's kit.json broken)
+        does not hold up the others: the errors are raised together at the end."""
         db = self._ddb()
         posted, errors = 0, []
         for row in self.ledger.runs_in("dispatched"):
@@ -658,6 +659,10 @@ class DecisionLoop(Delivery):
                 posted += self._watch_one(db, row)
             except Exception as e:  # noqa: BLE001 - logged by the caller; this run is looked at again next round
                 errors.append("%s: %s" % (row["run_id"], e))
+            try:
+                self.tell_if_stalled(row)
+            except Exception as e:  # noqa: BLE001 - the watchdog never holds up a question
+                errors.append("%s: watchdog: %s" % (row["run_id"], e))
         if errors:
             raise BrainError("watch: not done this round: " + "; ".join(errors))
         return posted
@@ -1598,7 +1603,8 @@ class DecisionLoop(Delivery):
         ob = self.ledger.outbox(vid)
         if ob is not None and ob["state"] == "sending" and not self._stale(ob["updated"]):
             return False                                   # another bridge process sends it right now
-        landed = True if ob is not None and ob["state"] == "sent" else self._landed(run["slot"], vid)
+        st = ob["state"] if ob is not None else None
+        landed = True if st == "sent" else False if st == "held" else self._landed(run["slot"], vid)
         if landed:
             if ob is not None:
                 self.ledger.outbox_set(vid, (ob["state"],), "sent")
@@ -1626,7 +1632,7 @@ class DecisionLoop(Delivery):
         if self.ledger.db.execute("UPDATE decisions SET state='closed', updated=? WHERE id=? AND state IN "
                                   "('answered', 'delivery_unknown')", (iso(utcnow()), d["id"])).rowcount:
             if d["voucher_id"]:
-                self.ledger.outbox_set(d["voucher_id"], ("sending", "interrupted", "unknown"), "dropped")
+                self.ledger.outbox_set(d["voucher_id"], ("sending", "interrupted", "unknown", "held"), "dropped")
             self.out("%s closed: %s" % (d["id"], why))
 
     def _reopen(self, d):

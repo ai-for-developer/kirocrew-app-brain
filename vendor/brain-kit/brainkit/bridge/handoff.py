@@ -41,9 +41,12 @@ from ..common import (BrainError, NetworkError, git, git_net, iso, later, load_j
                       paths_overlap, plain, utcnow, write_json)
 from ..rest import DEFAULT_TOKEN_FILE, GitLab, HttpError, Jira, gl_time, head_pushed_at, jira_user_id, read_token
 from .decisions import DecisionLoop
-from .delivery import one_line
-from .kirocrew import KiroCrew
+from .delivery import TRUST_ADVICE, one_line
+from .kirocrew import KiroCrew, TrustRefused
 from .ledger import OPEN_RUN_STATES, Ledger
+
+# the `brain` of this brain-kit: the run writes runs/<KEY>/MR.md with the copy the bridge reads it with
+BRAIN_CLI = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "bin", "brain")
 
 BRIDGE_DEFAULTS = {
     "projects": [],
@@ -73,6 +76,9 @@ BRIDGE_DEFAULTS = {
     "runnerd_wait_minutes": 90,
     # an acceptance question waits for the MR head's pipeline to pass; one still running after this long: the MR hears
     "acceptance_ci_wait_minutes": 60,
+    # a run's session at work that has written nothing new for this long (a hung test server, a click nobody makes),
+    # or that cannot be read for this long (KiroCrew restarted): the MR hears once; the session is not stopped. 0: off
+    "stall_minutes": 15,
     "intake_dir": "",
     "runner_runs_root": "",
     "kirocrew": {"base": "http://127.0.0.1:5476", "app": "brain-bridge", "secret_file": "",
@@ -91,7 +97,28 @@ def load_bridge_config(path) -> dict:
         raise BrainError("bridge config: " + "; ".join(probs))
     if not cfg["projects"]:
         raise BrainError("bridge config: projects is empty")
+    seen = []
+    for proj in cfg["projects"]:
+        if isinstance(proj, dict) and not (isinstance(proj.get("project"), str) and proj["project"]):
+            raise BrainError("bridge config: a projects entry written as an object needs \"project\"")
+        name = proj["project"] if isinstance(proj, dict) else proj
+        if name in seen:
+            raise BrainError("bridge config: projects: %s is listed twice: give it one entry (all its mrs in it)"
+                             % name)
+        seen.append(name)
+        mrs = proj.get("mrs") if isinstance(proj, dict) else None
+        if mrs == []:
+            raise BrainError("bridge config: projects: %s has \"mrs\": []: leave mrs out to take every MR with the "
+                             "hand-over label there" % name)
+        if mrs is not None and not (isinstance(mrs, list) and all(type(x) is int and x > 0 for x in mrs)):
+            raise BrainError("bridge config: projects: %s mrs must be a list of MR numbers, e.g. [7]" % name)
     return cfg
+
+
+def taken_mrs(cfg) -> dict:
+    """{project: the only MR numbers the bridge takes there} for the projects entries that list them ("mrs"): a
+    trial in a project others hand over in too. A project without a list: every MR with the hand-over label."""
+    return {p["project"]: set(p["mrs"]) for p in cfg["projects"] if isinstance(p, dict) and p.get("mrs") is not None}
 
 
 # runnerd could not prepare a workspace (spool/failed/<RUN>.json): how often the bridge asks it again after a failure
@@ -147,6 +174,8 @@ class Bridge(DecisionLoop):
         self.roles = authz.get("roles", {})
         self._kit = {}
         self._kit_at = {}
+        self._told_no_label_rights = set()
+        self.only_mrs, self._told_skipped = taken_mrs(cfg), set()
         self.clock = time.monotonic        # the kit cache's clock (tests set their own)
         try:
             self._ids_mtime = os.stat(cfg["identities"]).st_mtime
@@ -158,6 +187,18 @@ class Bridge(DecisionLoop):
         """Seconds a hand-over KiroCrew does not take is sent again before its run is failed (bridge.json
         send_give_up_minutes)."""
         return sign.seconds(self.cfg.get("send_give_up_minutes"), 60.0) * 60
+
+    @property
+    def stall_s(self) -> float:
+        """Seconds a run's session at work may go without a new row before the MR hears (bridge.json stall_minutes);
+        0: the watchdog is off."""
+        raw = self.cfg.get("stall_minutes")
+        try:
+            if not isinstance(raw, bool) and float(str(raw)) == 0:
+                return 0.0
+        except ValueError:
+            pass
+        return sign.seconds(raw, 15.0) * 60
 
     @property
     def reservation_ttl(self) -> float:
@@ -473,16 +514,28 @@ class Bridge(DecisionLoop):
     def process(self, project, kit, mr):
         """-> "accepted", "rejected", "seen" (this head and label event were checked before), "unlabelled" (the
         newest event on the hand-over label takes it off: nothing to do, e.g. `brain handoff` re-adding it right
-        now) or "waiting" (this very hand-over is being signed elsewhere: looked at again next round)."""
-        iid, sha = int(mr["iid"]), mr.get("sha", "")
+        now), "waiting" (this very hand-over is being signed elsewhere: looked at again next round) or "skipped"
+        (bridge.json lists the MRs it takes in this project, and not this one: not looked at). The MR head checked is
+        the one GitLab shows after the label event, not the one in `mr`: the round's MR list may predate a push and
+        a new label (`brain handoff` labels once GitLab shows its push)."""
+        iid = int(mr["iid"])
+        if project in self.only_mrs and iid not in self.only_mrs[project]:
+            if (project, iid) not in self._told_skipped:
+                self._told_skipped.add((project, iid))
+                self.out("%s!%d: not in bridge.json's mrs for this project: not looked at" % (project, iid))
+            return "skipped"
         ev = self.last_label_event(project, iid, kit["handoff_label"])
         if ev is not None and ev.get("action") == "remove":
             return "unlabelled"
+        sha = (self.gl.mr(project, iid) or {}).get("sha") or ""
+        mr = dict(mr, sha=sha)
         adder, event = self._adder(ev)
-        # One check per (head commit, label event): re-adding the label after fixing Jira re-checks the same commit.
-        # A check left 'checking' by a bridge that stopped mid-way is taken over once it is stale.
+        # One verdict per label event: re-adding the label after fixing Jira re-checks the same commit, while a commit
+        # pushed under a label event that has its verdict (the runner's, when GitLab kept the label on) is no new
+        # hand-over. A check left 'checking' by a bridge that stopped mid-way is taken over once it is stale.
         key = "%s#%s" % (sha, event)
-        if not self.ledger.claim_handoff(project, iid, key, stale_after=self.reservation_ttl):
+        if self.ledger.handoff_decided(project, iid, event) is not None or \
+                not self.ledger.claim_handoff(project, iid, key, stale_after=self.reservation_ttl):
             for row in self.ledger.notes_due():   # checked before, but its comment may still be owed
                 if row["project"] == project and int(row["iid"]) == iid:
                     try:
@@ -508,27 +561,30 @@ class Bridge(DecisionLoop):
         return str((ev or {}).get("id", "")) == key.rsplit("#", 1)[-1]
 
     def _reject(self, project, kit, iid, sha, key, probs):
-        self.ledger.set_handoff(project, iid, key, "checking", "rejected", reason="; ".join(probs)[:2000])
-        self.out("rejected %s!%d @%s: %s" % (project, iid, sha[:12], "; ".join(probs)))
-        if not self._label_event_is_current(project, iid, kit, key):
-            return "rejected"
+        # a verdict of a label event that a newer one replaced meanwhile is not posted (_post_due)
         self.tell_mr_due("rejected:%s!%d:%s" % (project, iid, key), project, iid,
                          "AI 接手被拒（%s）：\n" % sha[:12] + "\n".join("- " + x for x in probs) + "\n\n" +
-                         self.retry_advice(kit), add=["rejected_label"], remove=["handoff_label"], check_key=key)
+                         self.retry_advice(kit), lambda: self.ledger.set_handoff(
+                             project, iid, key, "checking", "rejected", reason="; ".join(probs)[:2000]),
+                         add=["rejected_label"], remove=["handoff_label"], check_key=key)
+        self.out("rejected %s!%d @%s: %s" % (project, iid, sha[:12], "; ".join(probs)))
         return "rejected"
 
     # ---------- MR comments owed after a verdict ----------
 
-    def tell_mr_due(self, key, project, iid, body, add=(), remove=(), run_id=None, check_key=None) -> bool:
-        """Post `body` on the MR once for `key` and change its labels (kit label keys: rejected_label, ...), after
-        the verdict was recorded. It is written down first (mr_notes_due): when GitLab fails (a 502, a timeout) it
-        is posted on a later round (notes_due_round), not lost behind the recorded verdict. check_key: the sha#event
-        of the hand-over check it is about. -> True when done now."""
-        row = self.ledger.note_due(key, project, iid, body, {"add": list(add), "remove": list(remove)},
-                                   run_id=run_id, check_key=check_key)
+    def tell_mr_due(self, key, project, iid, body, verdict, add=(), remove=(), run_id=None, check_key=None) -> bool:
+        """Record `verdict` (a callable: the ledger change the comment reports, False when another bridge process
+        made it first) and the comment it owes as one ledger step, then post `body` on the MR once for `key` and
+        change its labels (kit label keys: rejected_label, ...). A stop never leaves a verdict nobody hears of, and
+        when GitLab fails (a 502, a timeout) the comment is posted on a later round (notes_due_round). check_key:
+        the sha#event of the hand-over check it is about. -> True when posted now."""
+        with self.ledger.step():
+            if not verdict():
+                return False
+            row = self.ledger.note_due(key, project, iid, body, {"add": list(add), "remove": list(remove)},
+                                       run_id=run_id, check_key=check_key)
         try:
-            self._post_due(row)
-            return True
+            return self._post_due(row)
         except Exception as e:  # noqa: BLE001 - kept; posted next round
             self.out("%s!%s: comment not posted yet (next round): %s" % (project, iid, one_line(e, 200)))
             return False
@@ -543,18 +599,39 @@ class Bridge(DecisionLoop):
                 errors.append("%s!%s: %s" % (row["project"], row["iid"], one_line(e, 200)))
         return errors
 
-    def _post_due(self, row):
+    def _post_due(self, row) -> bool:
+        """-> True when done: posted (once) and labels changed, or moot. False: still owed, posted on a later round."""
         project, iid, key = row["project"], int(row["iid"]), row["key"]
         kit = self.kit(project)
         if row["check_key"] and not self._label_event_is_current(project, iid, kit, row["check_key"]):
             self.ledger.note_done(key)      # a newer label event is checked on its own: this verdict is moot
-            return
-        self.tell_mr_once(key, project, iid, row["body"], run_id=row["run_id"])   # once, also when labels failed
+            return True
+        if not self.tell_mr_once(key, project, iid, row["body"], run_id=row["run_id"]):  # once, also when labels failed
+            told = self.ledger.notice(key)
+            if told is None or told["state"] != "told":
+                return False                # another bridge process is posting it, or was stopped doing so
         labels = json.loads(row["labels"] or "{}")
         add, remove = [kit[k] for k in labels.get("add", [])], [kit[k] for k in labels.get("remove", [])]
         if add or remove:
-            self.gl.edit_labels(project, iid, add=add, remove=remove)
+            try:
+                self.gl.edit_labels(project, iid, add=add, remove=remove)
+            except HttpError as e:
+                if e.status != 403:
+                    raise                           # a 502, a timeout: changed on a later round
+                self._no_label_rights(project)
         self.ledger.note_done(key)
+        return True
+
+    def _no_label_rights(self, project):
+        """GitLab answered 403 to a label change: the bridge's account may comment but not change labels. Said once
+        per project; the comment stands and the labels stay as they are (a hand-over label left on is not checked
+        again: one verdict per label event)."""
+        if project in self._told_no_label_rights:
+            return
+        self._told_no_label_rights.add(project)
+        self.out("%s: GitLab refuses the bridge's label changes (HTTP 403). Give the bridge's GitLab account the "
+                 "Developer role in this project: a Reporter may comment but not change labels. Until then the bridge "
+                 "comments as usual and leaves the labels as they are." % project)
 
     @staticmethod
     def retry_advice(kit) -> str:
@@ -571,6 +648,7 @@ class Bridge(DecisionLoop):
         overlap_note = ""
         for other, both in self.overlaps(project, f["key"], f["expected_paths"]):
             overlap_note += "\n\n注意：和 %s 预计改动重叠（%s），合并时留意顺序。" % (other, ", ".join(both[:5]))
+        hits = self._risk_hits_quietly(project, kit, f["key"], f["expected_paths"])     # GitLab: before the run id
         # The run id is taken before signing, as one step with the check that the requirement has no open run:
         # two hand-overs of one requirement (two MRs, two threads) never both get a contract.
         run_id = self.ledger.reserve_run(f["key"], project, iid, sha, stale_after=self.reservation_ttl)
@@ -601,17 +679,29 @@ class Bridge(DecisionLoop):
         except sign.SignerRefused as e:
             self.ledger.release_run(run_id)
             why = "; ".join(e.reasons)
-            self.ledger.set_handoff(project, iid, key, "checking", "rejected", reason=("signer: " + why)[:2000])
+            self.tell_mr_due("rejected:%s!%d:%s" % (project, iid, key), project, iid,
+                             "AI 接手被拒（%s）：交接的检查都过了，但签名服务没有签这份合同：\n%s\n\n请负责人看一下签名服务的"
+                             "记录。%s" % (sha[:12], "\n".join("- " + x for x in e.reasons), self.retry_advice(kit)),
+                             lambda: self.ledger.set_handoff(project, iid, key, "checking", "rejected",
+                                                             reason=("signer: " + why)[:2000]),
+                             add=["rejected_label"], remove=["handoff_label"], check_key=key)
             self.out("signer refused %s!%d @%s: %s" % (project, iid, sha[:12], why))
-            if self._label_event_is_current(project, iid, kit, key):
-                self.tell_mr_due("rejected:%s!%d:%s" % (project, iid, key), project, iid,
-                                 "AI 接手被拒（%s）：交接的检查都过了，但签名服务没有签这份合同：\n%s\n\n请负责人看一下签名服务的"
-                                 "记录。%s" % (sha[:12], "\n".join("- " + x for x in e.reasons), self.retry_advice(kit)),
-                                 add=["rejected_label"], remove=["handoff_label"], check_key=key)
             return "rejected"
         except BaseException:
             self.ledger.release_run(run_id)
             raise
+        note = "AI 已接手：%s，凭证 %s，从 %s 继续。" % (run_id, voucher["voucher_id"], sha[:12]) + overlap_note
+        if hits:
+            note += ("\n\n注意：预计改动碰到风险路径（%s），还没有桥签的设计审批（DESIGN）：run 改这些路径之前会先在这里请求设计"
+                     "审批；本地 Lean 里的设计审批不算。" % "、".join(one_line(x, 100) for x in hits[:5]))
+
+        def accepted():
+            self.ledger.add_run(run_id, project, f["key"], iid, sha, voucher["voucher_id"],
+                                paths=f["expected_paths"], owner=f["owner"], voucher=voucher)
+            self.ledger.drop_pending_voucher(ref)
+            self.ledger.set_handoff(project, iid, key, "checking", "accepted", run_id=run_id,
+                                    voucher_id=voucher["voucher_id"])
+            return True
         try:
             write_json(os.path.join(self.cfg["vouchers_dir"], run_id, voucher["voucher_id"] + ".json"),
                        {"voucher": voucher, "sig": sig})
@@ -619,22 +709,12 @@ class Bridge(DecisionLoop):
                 self.publish(run_id, voucher["voucher_id"])
             write_json(os.path.join(self.cfg["spool_dir"], "requests", run_id + ".json"),
                        {"voucher": voucher, "sig": sig}, mode=0o640)
-            self.ledger.add_run(run_id, project, f["key"], iid, sha, voucher["voucher_id"],
-                                paths=f["expected_paths"], owner=f["owner"], voucher=voucher)
+            # the comment first, then the labels: a label change GitLab refuses must not keep the person from hearing
+            self.tell_mr_due("accepted:%s!%d:%s" % (project, iid, key), project, iid, note, accepted,
+                             add=["running_label"], remove=["handoff_label", "rejected_label"], run_id=run_id)
         except BaseException:
             self.ledger.release_run(run_id)     # not recorded: the next round checks again, with this voucher
             raise
-        self.ledger.drop_pending_voucher(ref)
-        self.ledger.set_handoff(project, iid, key, "checking", "accepted", run_id=run_id,
-                                voucher_id=voucher["voucher_id"])
-        self.gl.edit_labels(project, iid, add=[kit["running_label"]], remove=[kit["handoff_label"],
-                                                                                kit["rejected_label"]])
-        note = "AI 已接手：%s，凭证 %s，从 %s 继续。" % (run_id, voucher["voucher_id"], sha[:12]) + overlap_note
-        hits = self._risk_hits_quietly(project, kit, f["key"], f["expected_paths"])
-        if hits:
-            note += ("\n\n注意：预计改动碰到风险路径（%s），还没有桥签的设计审批（DESIGN）：run 改这些路径之前会先在这里请求设计"
-                     "审批；本地 Lean 里的设计审批不算。" % "、".join(one_line(x, 100) for x in hits[:5]))
-        self._learn_me(self.gl.comment(project, iid, note))
         if kit["tracker"] == "jira" and self.jira:
             self.jira.comment(f["key"], note + " MR !%d" % iid)
         self.out("accepted %s!%d @%s -> %s" % (project, iid, sha[:12], run_id))
@@ -724,16 +804,18 @@ class Bridge(DecisionLoop):
     # ---------- dispatch ----------
 
     def message(self, v, extra=()) -> str:
-        """Numbers and hashes only: no requirement text, no approval lines, nothing that can break a line. `extra`:
-        lines the bridge adds (the risk paths the run is about to meet), from main only."""
+        """Numbers and hashes only, and the path of the bridge's own `brain`: no requirement text, no approval lines,
+        nothing that can break a line. `extra`: lines the bridge adds (the risk paths the run is about to meet), from
+        main only."""
         for k in ("voucher_id", "run_id", "branch", "sha", "key", "intent"):
             if not plain(v.get(k)):
                 raise BrainError("voucher field %s is not a plain one-line value" % k)
+        brain = "\nbrain 命令：`%s`（运行机这份 brain-kit，和桥是同一份）。" % BRAIN_CLI if plain(BRAIN_CLI) else ""
         return ("接手合同 %s（%s，摘要 sha256:%s）。工作区已检出 %s @ %s。\n"
                 "按 brain-run 的接手步骤继续：先读 runs/%s/run.json 和 %s/%s/aidlc-state.md；"
                 "本地记录里写的结果一律重新验证。"
                 % (v["voucher_id"], v["run_id"], sign.digest(v)[:16], v["branch"], v["sha"][:12], v["key"],
-                   lean.DOCS, v["intent"])) + "".join("\n" + x for x in extra if plain(x))
+                   lean.DOCS, v["intent"])) + brain + "".join("\n" + x for x in extra if plain(x))
 
     def dispatch(self):
         """Send ready runs into KiroCrew (admission limits apply). First, what a stop, a crash or a KiroCrew error
@@ -805,7 +887,13 @@ class Bridge(DecisionLoop):
         except Exception as e:  # noqa: BLE001 - nothing was sent: retried next round
             self.ledger.set_run(rid, "ready", "spooled")
             self.out("%s: session setup failed, will retry: %s" % (rid, e))
-            if self.ledger.bump("setup:" + rid, rid) >= SETUP_TELL_AFTER:
+            if isinstance(e, TrustRefused):             # a missing permission: no retry heals it, the MR hears now
+                app = getattr(self.kc, "app", None) or "brain-bridge"         # the app the bridge signs in as
+                self.tell_mr_once("setup:" + rid, row["project"], row["iid"], (
+                    "%s 还没开始：KiroCrew 不让桥把运行机会话设成信任（桥的 KiroCrew app %s 没有 sessionApproval 权限），"
+                    "没人点批准，run 会停在第一条命令。" % (rid, app)) + TRUST_ADVICE % app + "装好后桥自动开始，不用重新交接。",
+                    run_id=rid)
+            elif self.ledger.bump("setup:" + rid, rid) >= SETUP_TELL_AFTER:
                 self.tell_mr_once("setup:" + rid, row["project"], row["iid"], "%s 还没开始：KiroCrew 开会话失败（%s）。桥每轮"
                                   "重试；一直不行的话请负责人看一下 KiroCrew 和 agent %s。"
                                   % (rid, one_line(e, 200), self.cfg["kirocrew"].get("agent")), run_id=rid)
@@ -995,13 +1083,17 @@ class Bridge(DecisionLoop):
             "runnerd.json）。") % (rid, wait), run_id=rid)
 
     def _fail_run(self, row, why, frm="spooled"):
-        """The run cannot start: failed (from state `frm`), and the MR is told once (labels: rejected instead of
-        running)."""
+        """The run cannot start, or a dispatched one cannot go on: failed (from state `frm`), and the MR is told once
+        (labels: rejected instead of running). Its requirement is free for a new hand-over then."""
         rid = row["run_id"]
-        if not self.ledger.set_run(rid, frm, "failed"):
-            return
-        self.tell_mr_due("failed:" + rid, row["project"], row["iid"], "%s 没能开始：%s。处理好以后在分支上重新运行 "
-                         "`brain handoff`（它提交交接、推送并打标签），桥会重新接手。" % (rid, why),
+        if frm == "dispatched":         # it had started: its commits are on the branch
+            text = ("%s 停了：%s。拉下分支（`git pull`）后重新运行 `brain handoff`（它提交交接、推送并打标签），桥就开一个新的 "
+                    "run 接着做。" % (rid, why))
+        else:
+            text = ("%s 没能开始：%s。处理好以后在分支上重新运行 `brain handoff`（它提交交接、推送并打标签），桥会重新接手。"
+                    % (rid, why))
+        self.tell_mr_due("failed:" + rid, row["project"], row["iid"], text,
+                         lambda: self.ledger.set_run(rid, frm, "failed"),
                          add=["rejected_label"], remove=["running_label"], run_id=rid)
 
     # ---------- reconcile ----------

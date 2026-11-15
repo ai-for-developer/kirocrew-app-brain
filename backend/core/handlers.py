@@ -68,6 +68,9 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
 
     async def open_session(request: Any) -> Any:
         body = await kit.body(request)
+        if body.get("fresh") is True:      # 重开一个会话
+            return kit.json(await svc.reopen_session(_rid(request), _key(request), body.get("replace"),
+                                                     trust=body.get("trust", True) is not False))
         return kit.json(await svc.open_session(_rid(request), _key(request), trust=body.get("trust", True) is not False,
                                                kickoff=body.get("kickoff", True) is not False,
                                                review=body.get("review") is True))
@@ -204,13 +207,20 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
     async def repo_remove(request: Any) -> Any:
         return kit.json(await svc.repo_remove(await kit.body(request)))
 
+    async def repo_ids_rebuild(request: Any) -> Any:
+        return kit.json(await svc.repo_ids_rebuild())
+
     async def me_name(request: Any) -> Any:
         return kit.json(await svc.me_name(await kit.body(request)))
 
     async def team_loop(request: Any) -> Any:
         return kit.json(await svc.team_loop())
 
+    async def handoff(request: Any) -> Any:
+        return kit.json(await svc.handoff(_rid(request), _key(request)))
+
     return [
+        AppRoute("POST", "/requirements/{repo}/{key}/handoff", kit.guarded(handoff)),
         AppRoute("GET", "/health", health),
         AppRoute("GET", "/status", kit.guarded(status)),
         AppRoute("GET", "/settings", kit.guarded(get_settings)),
@@ -250,5 +260,6 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
         AppRoute("POST", "/import/publish", kit.guarded(import_publish)),
         AppRoute("POST", "/import/add", kit.guarded(import_add)),
         AppRoute("POST", "/repos/remove", kit.guarded(repo_remove)),
+        AppRoute("POST", "/repos/ids/rebuild", kit.guarded(repo_ids_rebuild)),
         AppRoute("POST", "/me/name", kit.guarded(me_name)),
     ]

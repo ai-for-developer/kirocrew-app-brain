@@ -1,7 +1,9 @@
 """`brain`: the local half. Start a run on your own machine, hand it to the team runner.
 
   brain install <repo> [--lean PATH] [--team NAME] [--prefix OMS]   copy the kit (and AI-DLC Lean) into a project
+  brain install --upgrade [repo] [--lean PATH]    this brain-kit's kit on a new branch from main, for an MR (no push)
   brain doctor                                    check this machine and repo before work
+  brain link                                      put `brain` on PATH (~/.local/bin/brain, a link to this one)
   brain claim [--key KEY] --title T               claim a requirement key (tracker "none": next free <prefix>-<n>)
   brain claim KEY [--release]                     take a requirement filed for others (待认领; first push wins),
                                                   or give yours back
@@ -17,7 +19,7 @@
   brain handoff [--no-push] [--no-label]          publish materials, commit the hand-over (with runs/<KEY>/MR.md),
                                                   set the MR description, label the MR
                                                   (exit 1: pushed but NOT labelled, nothing handed over)
-  brain crew-agent [--force | --reset]            install the KiroCrew version of brain-dev (~/.kiro/agents/brain-dev.json)
+  brain crew-agent [--force | --reset]            install KiroCrew's agent brain-dev-crew (~/.kiro/agents/brain-dev-crew.json)
                                                   KiroCrew does not read .kiro/hooks/: Lean's hooks ride on this spec;
                                                   --force adds what is missing (Lean's hooks, absent fields) and keeps
                                                   your model, tools, resources and prompt; --reset takes brain-kit's
@@ -51,7 +53,7 @@ from .rest import GitLab, HttpError, Jira, jira_user_id, read_token
 
 KIT_SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "kit")
 TEMPLATES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates")
-CREW_AGENT_SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "crew", "brain-dev.json")
+CREW_AGENT_SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "crew", "brain-dev-crew.json")
 CREW_HOOK = ".kiro/brain/lean-hook.py"
 # The adapter version brain-kit needs (kit/.kiro/brain/lean-hook.py, ADAPTER_VERSION): 2 lets a run write its own
 # runs/<KEY>/park.json in every Lean approval state; 3 refuses every tool call while the kit's own files differ from
@@ -69,15 +71,37 @@ def crew_hook_version(text) -> int:
     return int(m.group(1)) if m else 0
 
 
-def crew_hook_problem(text) -> str:
-    """Why this adapter source is too old, or ''."""
+UPGRADE_FIX = "`brain install --upgrade` writes the new kit on a branch from main for an MR"
+
+
+def crew_hook_problem(text, fix=UPGRADE_FIX) -> str:
+    """Why this adapter source is too old, ending with `fix`, the command that brings the new one; or ''."""
     have = crew_hook_version(text)
     if have >= CREW_HOOK_VERSION:
         return ""
     return ("%s is an older adapter (version %d, needs %d): it does not refuse tool calls after the kit's own files "
-            "(.kiro/, .brain/kit.json, gates/) were changed%s; run `brain install` and commit it on main through an MR"
-            % (CREW_HOOK, have, CREW_HOOK_VERSION, "" if have >= 2 else ", and the team runner could not write "
-               "runs/<KEY>/park.json, its only way to ask a person, before the Lean approvals"))
+            "(.kiro/, .brain/kit.json, gates/) were changed%s; %s" % (
+                CREW_HOOK, have, CREW_HOOK_VERSION, "" if have >= 2 else ", and the team runner could not write "
+                "runs/<KEY>/park.json, its only way to ask a person, before the Lean approvals", fix))
+
+
+def _on_main(repo, cfg, path):
+    """(ref, text) of `path` on the default branch as this clone knows it (origin/<d>, else <d>) while this checkout
+    has not merged that branch; (None, '') when it has, or the file is not there. A file that is current there
+    comes in with `git merge <ref>`, no upgrade needed."""
+    d = cfg["default_branch"]
+    for ref in ("origin/" + d, d):
+        if git(repo, "rev-parse", "-q", "--verify", ref + "^{commit}", check=False).returncode != 0:
+            continue
+        if git(repo, "merge-base", "--is-ancestor", ref, "HEAD", check=False).returncode == 0:
+            return None, ""
+        p = git(repo, "show", "%s:%s" % (ref, path), check=False)
+        return (ref, p.stdout) if p.returncode == 0 else (None, "")
+    return None, ""
+
+
+def _merge_fix(ref) -> str:
+    return "%s has the new kit: `git merge %s` brings it into this branch" % (ref, ref)
 
 
 def _runner_command_problem(command, ev, adapter) -> str:
@@ -141,8 +165,56 @@ def runner_hook_problems(kit_dir=None, spec_path=None) -> list:
     return probs
 
 
-def crew_agent_path():
-    return os.path.join(os.path.expanduser("~"), ".kiro", "agents", "brain-dev.json")
+# KiroCrew's agent has a name no project agent has: on KiroCrew's kiro-cli engine a project's .kiro/agents/<name>.md
+# runs instead of ~/.kiro/agents/<name>.json, without its hooks, and every repo with the kit has brain-dev.md.
+CREW_AGENT = "brain-dev-crew"
+LEGACY_CREW_AGENT = "brain-dev"     # the name `brain crew-agent` installed before
+
+
+def crew_agent_path(name=CREW_AGENT):
+    return os.path.join(os.path.expanduser("~"), ".kiro", "agents", name + ".json")
+
+
+def kiro_setting(key):
+    """A kiro-cli setting from its settings file (<KIRO_HOME or ~/.kiro>/settings/cli.json), read only; None when it
+    is not set or the file cannot be read."""
+    home = os.environ.get("KIRO_HOME") or os.path.join(os.path.expanduser("~"), ".kiro")
+    try:
+        settings = load_json(os.path.join(home, "settings", "cli.json"))
+    except (OSError, ValueError):
+        return None
+    return settings.get(key) if isinstance(settings, dict) else None
+
+
+def _tilde(path) -> str:
+    home = os.path.expanduser("~")
+    return "~" + path[len(home):] if path.startswith(home + os.sep) else path
+
+
+def project_agent_named(repo, name) -> str:
+    """The file in the repo's .kiro/agents/ (*.json or *.md) that declares agent `name` as KiroCrew reads it (the
+    declared name, else the file name; a spec it cannot read declares nothing), or ''. On KiroCrew's kiro-cli engine
+    that file runs instead of the user-level agent of that name."""
+    d = os.path.join(repo, ".kiro", "agents")
+    try:
+        files = sorted(os.listdir(d))
+    except OSError:
+        return ""
+    for f in files:
+        stem, ext = os.path.splitext(f)
+        p = os.path.join(d, f)
+        if ext not in (".json", ".md") or f.startswith("._") or not os.path.isfile(p):
+            continue
+        try:
+            declared = (load_json(p) if ext == ".json" else _frontmatter(p)).get("name")
+        except (OSError, ValueError, AttributeError):
+            continue
+        declared = declared.strip("\"'") if isinstance(declared, str) else ""
+        if (declared or stem) == name:
+            return p
+    return ""
+
+
 MATERIALS_DIR = ".brain-materials"
 GITIGNORE_LINES = (MATERIALS_DIR + "/",)
 
@@ -205,6 +277,45 @@ def _store(repo, override=None, create=True) -> str:
     if create:
         os.makedirs(os.path.join(s, "packages"), exist_ok=True)
     return s
+
+
+GLOBAL_STORE = "then `git config --global brain.intake ~/brain-intake`"
+
+
+def _store_setting(repo, override=None) -> str:
+    """How to point brain at another material store, by what decides it here (_store reads --store, then
+    BRAIN_INTAKE_DIR, then git config brain.intake)."""
+    if override:
+        return "then pass `--store ~/brain-intake`"
+    if os.environ.get("BRAIN_INTAKE_DIR"):
+        return "then `export BRAIN_INTAKE_DIR=~/brain-intake` (it is set here, so it decides)"
+    if git(repo, "config", "--local", "--get", "brain.intake", check=False).stdout.strip():
+        return "then `git config brain.intake ~/brain-intake` (this repo sets its own)"
+    return GLOBAL_STORE
+
+
+def intake_store_problem(store, setting=GLOBAL_STORE) -> str:
+    """'' when the material store is a clone of brain-intake with an origin: `brain handoff` publishes a run's
+    packages there and the bridge takes them from it. Else what is wrong and what to set (`setting`: _store_setting).
+    kit.json does not name the team's brain-intake repo, so brain cannot clone it by itself."""
+    url = "<your team's brain-intake URL>"
+    if not _is_clone_root(store):
+        held = os.path.isdir(os.path.join(store, "packages")) and os.listdir(os.path.join(store, "packages"))
+        return ("material store %s is not a git clone of brain-intake: a run with documents (--doc, --package) cannot "
+                "be handed to the team runner (the bridge refuses it). Clone it and point brain at it: `git clone %s "
+                "~/brain-intake`, %s%s" % (_tilde(store), url, setting,
+                                           "; then move the packages in %s/packages/ into it" % _tilde(store)
+                                           if held else ""))
+    if git(store, "remote", "get-url", "origin", check=False).returncode != 0:
+        return ("material store %s has no origin: its packages stay on this machine and the bridge refuses a hand-over "
+                "that uses them: `git -C %s remote add origin %s`" % (_tilde(store), store, url))
+    return ""
+
+
+def _warn_store(store, setting):
+    why = intake_store_problem(store, setting)
+    if why:
+        print("WARN: " + why)
 
 
 def _check_jira_claim(cfg, key):
@@ -316,6 +427,10 @@ def _print_report(rep):
 # ---------- install ----------
 
 def cmd_install(a):
+    if getattr(a, "upgrade", False):
+        return _install_upgrade(a)
+    if not a.repo:
+        raise BrainError("name the project: `brain install <repo>` (`brain install --upgrade` inside one updates it)")
     repo = os.path.abspath(a.repo)
     if not os.path.isdir(repo):
         raise BrainError("not a directory: %s" % repo)
@@ -369,6 +484,170 @@ def cmd_install(a):
             f.write(("\n" if text and not text.endswith("\n") else "") + "".join(line + "\n" for line in missing))
     print("brain-kit %s installed in %s. Next: `brain doctor`." % (__version__, repo))
     return 0
+
+
+UPGRADE_BRANCH = "brain/upgrade-kit"        # the Brain app's name for the same branch (its installer.UPGRADE_BRANCH)
+
+
+def _install_upgrade(a):
+    """`brain install --upgrade`: this brain-kit's kit and Lean, installed on a new branch from the default branch
+    in a worktree of its own and committed there for an MR; nothing is pushed and the person's checkout is not
+    touched. Nothing to change: no branch. An upgrade branch that already holds the same kit: that one. Lean's install
+    adds an INIT row to the ledger of each clone it is installed in (aidlc-docs/audit/): committed as Lean's record,
+    but no change of its own, so a run that changes nothing else makes no branch."""
+    import io
+    from contextlib import redirect_stdout
+    from .common import NetworkError
+    ledger = ":(exclude)%s/audit" % lean.DOCS
+    repo = repo_root(os.path.abspath(a.repo) if a.repo else None)
+    cfg = config.load(repo)
+    d = cfg["default_branch"]
+    known = _has_origin(repo) and git(repo, "rev-parse", "-q", "--verify", "origin/%s^{commit}" % d,
+                                      check=False).returncode == 0
+    if _has_origin(repo):
+        try:
+            # origin's upgrade branches too: names this one may not take, and the kits they already hold
+            p = git_net(repo, "fetch", "-q", "origin", d, "+refs/heads/%s*:refs/remotes/origin/%s*"
+                        % (UPGRADE_BRANCH, UPGRADE_BRANCH), check=False)
+            failed = "" if p.returncode == 0 else ((p.stderr or p.stdout).strip().splitlines() or ["git fetch failed"])[-1]
+        except NetworkError as e:
+            failed = str(e)
+        if failed:
+            print("WARN: could not fetch origin/%s (%s): starting from %s" % (
+                d, failed[:200], "origin/%s as last fetched" % d if known else "the local %s" % d))
+        known = known or not failed
+    base = "origin/" + d if known else d
+    sha = git(repo, "rev-parse", "-q", "--verify", base + "^{commit}", check=False).stdout.strip()
+    if not sha:
+        raise BrainError("there is no %s to start the upgrade from" % base)
+    if git(repo, "cat-file", "-e", "%s:%s" % (sha, config.KIT_CONFIG), check=False).returncode != 0:
+        raise BrainError("%s has no brain-kit yet (no %s): `brain install <repo>` first" % (base, config.KIT_CONFIG))
+    refs = git_out(repo, "for-each-ref", "--format=%(refname)", "refs/heads/%s*" % UPGRADE_BRANCH,
+                   "refs/remotes/origin/%s*" % UPGRADE_BRANCH).split()
+    taken = {r[len("refs/heads/"):] if r.startswith("refs/heads/") else r[len("refs/remotes/origin/"):] for r in refs}
+    br, n = UPGRADE_BRANCH, 1
+    while br in taken:
+        n += 1
+        br = "%s-%d" % (UPGRADE_BRANCH, n)
+    wt = os.path.join(reflect.worktree_root(repo), br.replace("/", "-"))
+    if os.path.exists(wt):
+        raise BrainError("%s is in the way: `git worktree remove %s` (or delete the folder), then run this again"
+                         % (wt, wt))
+    os.makedirs(os.path.dirname(wt), exist_ok=True)
+    git(repo, "worktree", "add", "-q", "--no-track", "-b", br, wt, sha)
+
+    def drop():
+        git(repo, "worktree", "remove", "--force", wt, check=False)
+        git(repo, "branch", "-q", "-D", br, check=False)
+
+    try:
+        said = io.StringIO()
+        with redirect_stdout(said):      # its "Next: brain doctor" is about the worktree; its warnings still show
+            cmd_install(argparse.Namespace(repo=wt, lean=a.lean, team=None, prefix=None, upgrade=False))
+        for line in said.getvalue().splitlines():
+            if line.startswith("WARN"):
+                print(line)
+        moved = _lean_pin_follows(wt)
+        if moved:
+            print("%s: the Lean it installs; the MR shows it to the reviewers." % moved)
+        git(wt, "add", "-A", "--", ".", ":(exclude,glob)**/__pycache__/**", ":(exclude,glob)**/*.pyc")
+        if git(wt, "diff", "--cached", "--quiet", "--", ".", ledger, check=False).returncode == 0:
+            drop()
+            ref, _ = _on_main(repo, cfg, CREW_HOOK)
+            print("The kit on %s is up to date with brain-kit %s: nothing to upgrade.%s" % (
+                base, __version__, " This branch has not taken it yet: `git merge %s`." % ref if ref else ""))
+            return 0
+        git(wt, "commit", "-q", "-m", "Update the kit to brain-kit %s (brain install --upgrade)" % __version__)
+    except BaseException:
+        drop()
+        raise
+    same = next((r for r in refs if git(repo, "diff", "--quiet", r, br, "--", ".", ledger, check=False).returncode == 0),
+                None)
+    if same and same.startswith("refs/remotes/"):
+        drop()
+        print("origin's %s already holds this kit: open its MR into %s (nothing to push)."
+              % (same[len("refs/remotes/origin/"):], d))
+        return 0
+    if same:
+        drop()
+        same = same[len("refs/heads/"):]
+        where = next((p for p, b in reflect.brain_worktrees(repo) if b == same), None)
+        print("Branch %s%s already holds this kit, from %s: push it and open its MR into %s%s."
+              % (same, " (worktree %s)" % where if where else "", base, d,
+                 ": `git -C %s push -u origin %s`" % (where, same) if where else ""))
+        return 0
+    files = git_out(repo, "diff", "--name-only", sha, br).splitlines()
+    print("Committed brain-kit %s's kit on branch %s (worktree %s), from %s: %d file(s), %s%s."
+          % (__version__, br, wt, base, len(files), ", ".join(files[:8]), ", ..." if len(files) > 8 else ""))
+    print("Nothing was pushed. Look it over, then push it and open an MR into %s: `git -C %s push -u origin %s`. "
+          "Once it is merged, a run branch takes the new kit with `git merge origin/%s`." % (d, wt, br, d))
+    return 0
+
+
+LOCAL_BIN = os.path.join("~", ".local", "bin")
+
+
+def _brain_command() -> str:
+    return os.path.realpath(os.path.join(KIT_ROOT, "bin", "brain"))
+
+
+def cmd_link(a):
+    """`brain link`: ~/.local/bin/brain, a link to this brain-kit's bin/brain, so `brain` works in every terminal.
+    Safe to repeat: the right link stays, a link to another brain is pointed here, a file it did not make is left."""
+    target, d = _brain_command(), os.path.expanduser(LOCAL_BIN)
+    link = os.path.join(d, "brain")
+    if os.path.islink(link) and os.path.realpath(link) == target:
+        print("%s already runs this brain-kit (%s)." % (_tilde(link), target))
+    elif os.path.islink(link):
+        was, tmp = os.readlink(link), link + ".brain-link"
+        if os.path.lexists(tmp):
+            os.remove(tmp)
+        os.symlink(target, tmp)
+        os.replace(tmp, link)
+        print("%s now runs this brain-kit (%s); it pointed to %s." % (_tilde(link), target, was))
+    elif os.path.lexists(link):
+        raise BrainError("%s is a file brain-kit did not make: move it away, then run `%s link` again"
+                         % (_tilde(link), target))
+    else:
+        os.makedirs(d, exist_ok=True)
+        os.symlink(target, link)
+        print("Linked %s to %s." % (_tilde(link), target))
+    if not any(os.path.realpath(p) == os.path.realpath(d) for p in os.environ.get("PATH", "").split(os.pathsep) if p):
+        rc = {"zsh": "~/.zshrc", "bash": "~/.bashrc"}.get(os.path.basename(os.environ.get("SHELL", "")),
+                                                          "your shell's startup file")
+        print("%s is not on PATH yet. Add it, then open a new terminal: echo 'export PATH=\"$HOME/.local/bin:$PATH\"' "
+              ">> %s" % (LOCAL_BIN, rc))
+    elif shutil.which("brain") and os.path.realpath(shutil.which("brain")) != target:
+        print("WARN: %s comes first on PATH, so `brain` runs that one" % shutil.which("brain"))
+    return 0
+
+
+def _later_release(have, pin) -> bool:
+    """`have` ("0.3.1") is a later release than the pin ("0.2"): `brain install --upgrade` moves the pin to it.
+    False when either is not a dotted number."""
+    try:
+        return tuple(map(int, have.split("."))) > tuple(map(int, pin.split(".")))
+    except (AttributeError, ValueError):
+        return False
+
+
+def _lean_pin_follows(repo) -> str:
+    """After `brain install --upgrade` installed its Lean in `repo`: when .brain/kit.json pins an older release, the
+    pin moves to the installed one, as precise as it was ("0.2" -> "0.3"), the file's key order kept. Says what moved,
+    or ''. A pin newer than the installed Lean is refused: the upgrade would take Lean back."""
+    p = os.path.join(repo, config.KIT_CONFIG)
+    kit = load_json(p)
+    want, have = str((kit.get("pins") or {}).get("lean") or ""), lean.version(repo)
+    if not want or not have or lean.version_matches(have, want):
+        return ""
+    if not _later_release(have, want):
+        raise BrainError("%s pins AI-DLC Lean %s and this brain-kit's is %s: `brain install --upgrade --lean <AI-DLC "
+                         "Lean %s checkout>`" % (config.KIT_CONFIG, want, have or "of unknown version", want))
+    kit["pins"]["lean"] = ".".join(have.split(".")[:len(want.split("."))])
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump(kit, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    return "%s pins.lean %s -> %s" % (config.KIT_CONFIG, want, kit["pins"]["lean"])
 
 
 BRAIN_DEV_MD = os.path.join(".kiro", "agents", "brain-dev.md")
@@ -471,9 +750,21 @@ def doctor_checks(repo, cfg, fetch=True) -> list:
         elif lean.version_matches(have, want):
             add(("OK", "AI-DLC Lean %s (pinned %s)" % (have, want)))
         else:
-            add(("FAIL", "AI-DLC Lean %s installed, pinned %s (%s pins): install that one (`brain install --lean "
-                         "<AI-DLC Lean %s checkout>`) and commit it" % (have or "of unknown version", want,
-                                                                       config.KIT_CONFIG, want)))
+            ours = lean.version(os.path.join(VENDORED_LEAN, "kit"))
+            ref, there = _on_main(repo, cfg, lean.SCRIPT)
+            on_main = re.search(r'^VERSION = "([^"\n]+)"', there, re.M)
+            if ref and on_main and lean.version_matches(on_main.group(1), want):
+                how = _merge_fix(ref)
+            elif lean.version_matches(ours, want):
+                how = "`brain install --upgrade` writes this brain-kit's Lean %s on a branch from main for an MR" % ours
+            elif _later_release(ours, want):
+                how = ("`brain install --upgrade` writes this brain-kit's Lean %s on a branch from main for an MR, the "
+                       "pin moved to it" % ours)
+            else:
+                how = ("`brain install --upgrade --lean <AI-DLC Lean %s checkout>` writes it on a branch from main for "
+                       "an MR" % want)
+            add(("FAIL", "AI-DLC Lean %s installed, pinned %s (%s pins): %s" % (have or "of unknown version", want,
+                                                                             config.KIT_CONFIG, how)))
         why = mrdesc.write_problem(repo, cfg)
         add(("FAIL", "%s fingerprint_exclude: %s。%s" % (lean.CONFIG, why, mrdesc.exclude_fix(cfg))) if why else
             ("OK", "Lean does not count %s/ as code (%s fingerprint_exclude)" % (cfg["runs_dir"], lean.CONFIG)))
@@ -486,8 +777,10 @@ def doctor_checks(repo, cfg, fetch=True) -> list:
                                                                                                ", ".join(kinds))))
         hook = os.path.join(repo, CREW_HOOK)
         if os.path.isfile(hook):
+            ref, there = _on_main(repo, cfg, CREW_HOOK)
             with open(hook, encoding="utf-8", errors="replace") as f:
-                why = crew_hook_problem(f.read())
+                why = crew_hook_problem(f.read(), _merge_fix(ref) if ref and not crew_hook_problem(there) else
+                                        UPGRADE_FIX)
             add(("FAIL", why) if why else
                 ("OK", "%s lets a run write its own %s/<KEY>/park.json whatever Lean's approvals, and refuses tool "
                        "calls while the kit's own files differ from the commit (version %d)"
@@ -535,6 +828,19 @@ def doctor_checks(repo, cfg, fetch=True) -> list:
             add(("FAIL", "%s version %s, pinned %s" % (tool, have, want)))
         else:
             add(("OK", "%s %s%s" % (tool, have, "" if want else " (not pinned)")))
+    found = shutil.which("brain")
+    if found and os.path.realpath(found) == _brain_command():
+        add(("OK", "brain on PATH: %s" % _tilde(found)))
+    elif found:
+        add(("WARN", "brain on PATH is %s, another brain-kit than this one (%s): `%s link` points it here"
+             % (found, _brain_command(), _brain_command())))
+    else:
+        add(("WARN", "brain is not on PATH (the docs and messages say `brain ...`): `%s link` puts it in %s"
+             % (_brain_command(), LOCAL_BIN)))
+    store = _store(repo, create=False)
+    why = intake_store_problem(store, _store_setting(repo))
+    add(("WARN", why) if why else ("OK", "material store %s is a clone of brain-intake with an origin: brain handoff "
+                                         "publishes packages there" % _tilde(store)))
     return out
 
 
@@ -626,8 +932,15 @@ CREW_OWNED_FIELDS = ("name", "description", "model", "prompt", "tools", "resourc
 
 
 def crew_agent_custom(have, ship) -> list:
-    """brain-kit's fields the installed spec sets to its own values (kept unless `--reset`)."""
-    return [k for k in CREW_OWNED_FIELDS if k in ship and k in have and have[k] != ship[k]]
+    """brain-kit's fields the installed spec sets to its own values (kept unless `--reset`). Tools are the owner's
+    when one of brain-kit's is gone or an MCP tool (@server) was added: Kiro's agent upgrade only reorders the list
+    and adds built-in tools of its own (web_search, web_fetch, web)."""
+    def same(k):
+        if k == "tools" and isinstance(have[k], list) and isinstance(ship[k], list):
+            added = [t for t in have[k] if t not in ship[k]]
+            return set(ship[k]) <= set(have[k]) and not any(str(t).startswith("@") for t in added)
+        return have[k] == ship[k]
+    return [k for k in CREW_OWNED_FIELDS if k in ship and k in have and not same(k)]
 
 
 def crew_agent_update(have, ship, reset=False) -> tuple:
@@ -656,30 +969,45 @@ def crew_checks(repo) -> list:
         return out
     p = crew_agent_path()
     if not os.path.exists(p):
-        out.append(("WARN", "KiroCrew: ~/.kiro/agents/brain-dev.json missing; Lean's hooks will not run in KiroCrew "
-                            "(run `brain crew-agent`)"))
+        out.append(("WARN", "KiroCrew: %s missing; KiroCrew sessions would run without Lean's hooks (run `brain "
+                            "crew-agent`)" % _tilde(p)))
     else:
         try:
             have = load_json(p)
             missing = missing_lean_hooks(have)
-            add = ("OK", "KiroCrew brain-dev carries Lean's 3 hooks") if not missing else \
-                ("FAIL", "KiroCrew brain-dev.json lacks Lean's %s hook(s) as Lean needs them (run `brain crew-agent "
-                         "--force`)" % ", ".join(t for t, _ in missing))
+            add = ("OK", "KiroCrew agent %s carries Lean's 3 hooks" % CREW_AGENT) if not missing else \
+                ("FAIL", "KiroCrew agent %s lacks Lean's %s hook(s) as Lean needs them (run `brain crew-agent "
+                         "--force`)" % (CREW_AGENT, ", ".join(t for t, _ in missing)))
             out.append(add)
             ship = load_json(CREW_AGENT_SRC)
             _, changed = crew_agent_update(have, ship)
             fields = [c for c in changed if c in CREW_OWNED_FIELDS]
             if fields:
-                out.append(("WARN", "KiroCrew brain-dev.json has no %s (`brain crew-agent --force` adds brain-kit's)"
-                                    % ", ".join(fields)))
+                out.append(("WARN", "KiroCrew agent %s has no %s (`brain crew-agent --force` adds brain-kit's)"
+                                    % (CREW_AGENT, ", ".join(fields))))
             custom = crew_agent_custom(have, ship)
             if custom:
-                out.append(("OK", "KiroCrew brain-dev uses your own %s (`brain crew-agent --reset` takes brain-kit's)"
-                                  % ", ".join(custom)))
+                out.append(("OK", "KiroCrew agent %s uses your own %s (`brain crew-agent --reset` takes brain-kit's)"
+                                  % (CREW_AGENT, ", ".join(custom))))
         except ValueError:
-            out.append(("FAIL", "~/.kiro/agents/brain-dev.json is not valid JSON"))
+            out.append(("FAIL", "%s is not valid JSON" % _tilde(p)))
+    shadow = project_agent_named(repo, CREW_AGENT)
+    if shadow:
+        out.append(("FAIL", "KiroCrew: %s is also named %s: on KiroCrew's kiro-cli engine it runs instead of %s, "
+                            "without Lean's hooks; rename it or remove it" % (os.path.relpath(shadow, repo),
+                                                                             CREW_AGENT, _tilde(p))))
+    legacy, md = crew_agent_path(LEGACY_CREW_AGENT), project_agent_named(repo, LEGACY_CREW_AGENT)
+    if os.path.exists(legacy) and md:
+        out.append(("WARN", "KiroCrew: a session on agent %s runs %s, not %s, on KiroCrew's kiro-cli engine: no Lean "
+                            "hooks. Open KiroCrew sessions with %s (the Brain app does); remove %s once nothing picks %s"
+                    % (LEGACY_CREW_AGENT, os.path.relpath(md, repo), _tilde(legacy), CREW_AGENT, _tilde(legacy),
+                       LEGACY_CREW_AGENT)))
     if not os.path.exists(os.path.join(repo, CREW_HOOK)) and not lean.installed(repo):   # else doctor_checks says it
         out.append(("FAIL", "%s missing in this repo (run `brain install`)" % CREW_HOOK))
+    if kiro_setting("chat.enableAutoAgentUpgrade") is True:
+        out.append(("WARN", "Kiro rewrites ~/.kiro/agents/*.json each time kiro-cli starts (chat.enableAutoAgentUpgrade "
+                            "is on) and keeps the old file as .bak; brain-kit's checks read the rewritten one. To keep "
+                            "your agent files as you wrote them: `kiro-cli settings chat.enableAutoAgentUpgrade false`"))
     be = run(["kirocrew", "config", "get", "agent.acp_backend"], check=False).stdout.strip().splitlines()
     be = be[-1].strip() if be else ""
     out.append(("OK" if be in ("kas", "") else "WARN",
@@ -714,9 +1042,27 @@ def cmd_crew_agent(a):
               % ("Reset" if reset else "Updated", p, ", ".join(changed), kept))
         return 0
     os.makedirs(os.path.dirname(p), exist_ok=True)
-    write_json(p, ship)
-    print("Installed %s. In KiroCrew pick agent brain-dev; use engine kas (v3): "
-          "`kirocrew config set agent.acp_backend kas`." % p)
+    legacy = crew_agent_path(LEGACY_CREW_AGENT)
+    try:
+        old = load_json(legacy) if os.path.exists(legacy) else None
+    except (OSError, ValueError):
+        old = None
+    if isinstance(old, dict):
+        # the owner's model, tools, prompt and other tools' hooks move over to the new name
+        new, _ = crew_agent_update(dict(old, name=ship["name"], description=ship["description"]), ship)
+        custom = crew_agent_custom(new, ship)
+        write_json(p, new)
+        print("Installed %s from your %s%s, with Lean's hooks." % (
+            p, _tilde(legacy), " (your own %s kept; `brain crew-agent --reset` takes brain-kit's)" % ", ".join(custom)
+            if custom else ""))
+    else:
+        write_json(p, ship)
+        print("Installed %s." % p)
+    print("In KiroCrew pick agent %s; use engine kas (v3): `kirocrew config set agent.acp_backend kas`." % CREW_AGENT)
+    if os.path.exists(legacy):
+        print("%s (the old name) is not used any more: in a repo with brain-kit KiroCrew can run the project's "
+              "brain-dev.md under that name, without Lean's hooks. Remove it once nothing picks %s."
+              % (_tilde(legacy), LEGACY_CREW_AGENT))
     return 0
 
 
@@ -812,6 +1158,7 @@ def cmd_intake(a):
     cfg = config.load(repo)
     if not JIRA_RE.match(a.key or ""):
         raise BrainError("--key must be a requirement key like %s-1" % cfg["req_prefix"])
+    _warn_store(_store(repo, a.store, create=False), _store_setting(repo, a.store))
     rep = _intake(repo, cfg, a, a.key, _me(repo, cfg))
     return 1 if rep.get("blocking") else 0
 
@@ -1002,6 +1349,8 @@ def cmd_start(a):
             print("Claimed %s for %s." % (key, me))
         materials = []
         store = _store(repo, a.store)
+        if a.doc or a.package:
+            _warn_store(store, _store_setting(repo, a.store))
         if a.doc:
             rep = _intake(repo, cfg, a, key, me)
             a.package = rep["package"]
@@ -1039,8 +1388,8 @@ def cmd_start(a):
         print("Materials: %s/%s/ (read-only; start from toc.md)" % (MATERIALS_DIR, materials[0]["package"]))
     if intent_md:
         print("Intent: %s (source %s; the agent reads it first)" % (intent_md[0], doc.get("source", "product")))
-    print("Next: open Kiro here with the brain-dev agent; keep %s/%s/aidlc-state.md current;"
-          " `brain handoff` when the runner should take over." % (lean.DOCS, intent))
+    print("Next: open this folder in KiroCrew with agent %s (in Kiro CLI: brain-dev); keep %s/%s/aidlc-state.md "
+          "current; `brain handoff` when the runner should take over." % (CREW_AGENT, lean.DOCS, intent))
     return 0
 
 
@@ -1068,7 +1417,7 @@ def _is_clone_root(path) -> bool:
     return p.returncode == 0 and os.path.realpath(p.stdout.strip()) == os.path.realpath(path)
 
 
-def publish_materials(store, rec) -> list:
+def publish_materials(store, rec, setting=GLOBAL_STORE) -> list:
     """Make sure each package is intact and in the shared intake repo. Returns warnings (empty when all published and
     none is an old-version package)."""
     warn = []
@@ -1086,8 +1435,7 @@ def publish_materials(store, rec) -> list:
     if not _is_clone_root(store):
         # only the store's own clone: inside an enclosing repo (a dotfiles repo in $HOME holding ~/.brain/intake)
         # a commit and push would publish the masked materials to that repo's remote
-        return warn + ["intake store %s is not a git clone of brain-intake: the team runner cannot get the materials"
-                       % store]
+        return warn + [intake_store_problem(store, setting)]
     for m in rec["materials"]:
         pkg = "packages/" + m["package"]
         git(store, "add", "--", pkg, *[":(exclude,glob)%s/**/%s" % (pkg, n) for n in sorted(intake.SKIP_NAMES)])
@@ -1107,7 +1455,7 @@ def publish_materials(store, rec) -> list:
             if git_net(store, "push", "-q", "origin", "HEAD", check=attempt == 2).returncode == 0:
                 break
     else:
-        warn.append("intake store has no origin: packages are committed locally only")
+        warn.append(intake_store_problem(store, setting))
     return warn
 
 
@@ -1313,7 +1661,9 @@ def cmd_handoff(a):
         raise BrainError("commit your work first:\n  " + "\n  ".join(dirty))
     missing = runner_kit_problems(repo)
     if missing:
-        raise BrainError("the team runner could not run this branch: " + "; ".join(missing))
+        raise BrainError("the team runner could not run this branch: %s. Once main has the kit, bring it into this "
+                         "branch (`git merge origin/%s`) and run `brain handoff` again"
+                         % ("; ".join(missing), cfg["default_branch"]))
     why = mrdesc.write_problem(repo, cfg, rec["key"])
     if why:
         raise BrainError("not handed over: Lean would refuse this run's RELEASE approval later. %s。%s"
@@ -1325,7 +1675,7 @@ def cmd_handoff(a):
     for w in warnings:
         print("WARN: " + w)
     if not a.no_push:
-        for w in publish_materials(_store(repo, a.store), rec):
+        for w in publish_materials(_store(repo, a.store), rec, _store_setting(repo, a.store)):
             print("WARN: " + w)
     rec["handoff"] = {"requested_at": iso(utcnow()), "by": me, "local_head": git_out(repo, "rev-parse", "HEAD")}
     write_json(rp, rec)
@@ -1760,11 +2110,14 @@ def main(argv=None):
     ap.add_argument("--version", action="version", version="brain-kit " + __version__)
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("install")
-    s.add_argument("repo")
+    s.add_argument("repo", nargs="?", help="the project (with --upgrade: default the one you are in)")
+    s.add_argument("--upgrade", action="store_true", help="write this brain-kit's kit on a new branch from main, in "
+                                                          "its own worktree, for an MR (nothing is pushed)")
     s.add_argument("--lean", help="path to an AI-DLC Lean checkout (default: brain-kit's vendor/aidlc-lean)")
     s.add_argument("--team")
     s.add_argument("--prefix", help="requirement key prefix, e.g. OMS")
     s.set_defaults(fn=cmd_install)
+    sub.add_parser("link", help="put brain on PATH: ~/.local/bin/brain").set_defaults(fn=cmd_link)
     s = sub.add_parser("doctor")
     s.add_argument("--offline", action="store_true", help="skip git fetch")
     s.set_defaults(fn=cmd_doctor)

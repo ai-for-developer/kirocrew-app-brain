@@ -23,10 +23,11 @@ from . import problems
 from . import board as board_mod
 from . import settings as settings_mod
 from . import todo as todo_mod
-from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_AGENT, LOCAL_FOLDER, REPO_ID_RE, TICK_S, VERSION
+from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_FOLDER, REPO_ID_RE, TICK_S, VERSION
 from .gateway import Gateway
 from .httpkit import AppError
 from .repo import Git, Repo, Source, read_claim, read_facts
+from .repoids import RepoIds, from_records
 from .sessions import SessionManager
 from . import store as store_mod
 from .store import Store
@@ -35,6 +36,7 @@ _REGISTRY: dict[str, "Service"] = {}
 _SECRETS = re.compile(r"(?i)((?:password|passwd|secret|token|api[_-]?key|authorization)\s*[=:]\s*|bearer\s+)\S+"
                       r"|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{16,}")
 EVAL_TTL_S = 120.0
+REVIEW_TITLE = " · 审查"     # a review session's title ends so (开审查会话): it is never the live dev session
 MR_EVERY_S = 30.0
 CREW_EVERY_S = 300.0
 TRACE_TTL_S = 15.0
@@ -46,6 +48,9 @@ def basic_scrub(text: str) -> str:
 
 def scope_of(rid: str, key: str) -> str:
     return "%s-%s" % (rid, key)
+
+
+RECORD_SCOPE_RE = re.compile(r"^(r[1-9][0-9]{0,2})-([A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6})$")   # a local scope_of
 
 
 SCRUB_KEYS = ("text", "why", "question", "label", "detail", "status", "next", "open_questions", "output", "reasons",
@@ -74,6 +79,26 @@ def me_line(repos: list[dict[str, Any]], token: bool, env: str) -> dict[str, Any
     return {"user": env or (first["name"] if first else None), "token": token, "how": how}
 
 
+def session_row(mgr: SessionManager, info: Any) -> dict[str, Any]:
+    """A session this app opened, as the pages list it (and service._live picks from)."""
+    st = mgr.slot_stats(info.slot) or {}
+    return {
+        "slot": info.slot, "title": info.title, "agent": info.agent, "kind": info.kind or "local",
+        "credits": mgr.slot_credits(info.slot),   # the very number credits_by_key adds up
+        "turns": int(st.get("turns") or info.turns or 0), "busy": bool(st.get("busy")),
+        "awaiting": bool(st.get("awaiting")), "last_activity": st.get("last_activity") or info.last_activity,
+        "opened_at": st.get("opened_at") or info.started, "project": info.cwd or None,
+        "url": "/chat?sid=%s" % info.slot, "error": info.error, "missing": bool(st.get("missing")),
+        "id": info.id, "opened": info.started is not None, "review": str(info.title or "").endswith(REVIEW_TITLE)}
+
+
+def live_said(live: dict[str, Any]) -> str:
+    """What 开会话 says when it hands back the requirement's session instead of opening one ('' when it simply is)."""
+    if live["error"]:
+        return "这个需求已经有一个会话，只是它的第一条消息没发进去：打开它，在里面说一句接着做；要换一个新的，点「重开一个会话」"
+    return "" if live["opened"] else "这个需求的会话刚开，第一条消息还在发：打开它看一眼"
+
+
 class Service:
     def __init__(self, ctx: Any, *, sessions: Any = None, transport: Any = None, now: Callable[[], float] = time.time,
                  signer_kick: Callable[[], Any] | None = None, sign_timeout: float | None = None) -> None:
@@ -87,6 +112,7 @@ class Service:
         self.signer_kick, self.sign_timeout = signer_kick, sign_timeout
         self.started = False
         self.settings = settings_mod.load(self.data_dir / "settings.json")
+        self.repo_ids = RepoIds(self.data_dir / "repo_ids.json")     # each listed repo's id, kept (UI-19)
         self.sessions = sessions or SessionManager(Gateway(self.name, APP_ROOT / ".app_secret"), app=self.name,
                                                    state_file=self.data_dir / "sessions.json", log=self.log,
                                                    scrub=self.scrub)
@@ -110,6 +136,8 @@ class Service:
         self._subj: dict[tuple, tuple] = {}     # the board's commit subjects and changed files, by the commits asked for
         self._me: str | None = None
         self.families = family.Families()      # brain-kit's listing per repo (大需求 and their 小需求), made in the background
+        self._opening: dict[str, asyncio.Lock] = {}     # 开会话 and 重开, one at a time per requirement
+        self._handing: dict[str, asyncio.Future] = {}   # 交接给运行机, one at a time per requirement
         self._big_file = self.data_dir / "big.json"
         self._big = self._load_big()           # scopes opened here as 「大需求：先拆成小需求」
 
@@ -163,8 +191,7 @@ class Service:
         self.repos, self.repo_errors, self.repo_pending = {}, {}, {}
         records = self.imports.all()
         token = None
-        for i, path in enumerate(self.settings["repos"], 1):
-            rid = "r%d" % i
+        for path, rid in self.repo_ids.of(self.settings["repos"]).items():
             try:
                 if not os.path.isdir(path):
                     raise RuntimeError("找不到这个目录")
@@ -349,23 +376,21 @@ class Service:
         """{scope: [session rows]} and credits per scope, read on the event loop."""
         by: dict[str, list[dict[str, Any]]] = {}
         for info in self.sessions.roots():
-            if not info.key or not info.slot:
-                continue
-            st = self.sessions.slot_stats(info.slot) or {}
-            by.setdefault(info.key, []).append({
-                "slot": info.slot, "title": info.title, "agent": info.agent, "kind": info.kind or "local",
-                "credits": self.sessions.slot_credits(info.slot),   # the very number credits_by_key adds up
-                "turns": int(st.get("turns") or info.turns or 0), "busy": bool(st.get("busy")),
-                "awaiting": bool(st.get("awaiting")), "last_activity": st.get("last_activity") or info.last_activity,
-                "opened_at": st.get("opened_at") or info.started, "project": info.cwd or None,
-                "url": "/chat?sid=%s" % info.slot, "error": info.error, "missing": bool(st.get("missing")),
-                "id": info.id})
+            if info.key and info.slot:
+                by.setdefault(info.key, []).append(session_row(self.sessions, info))
         return {"by": by, "credits": self.sessions.credits_by_key()}
 
     @staticmethod
     def _live(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
-        live = [r for r in rows if not r.get("missing") and r["kind"] == "local"]
+        """The requirement's live brain-dev session on this machine, the one 打开会话 opens, 重开一个会话 replaces and
+        an answer goes into: the newest that KiroCrew still has, also while its first message is being sent or when it
+        did not go in (the session is there, in the worktree: one session per worktree). Never a review session:
+        开审查会话 opens one beside it."""
+        live = [r for r in rows if r["kind"] == "local" and not r["missing"] and not r["review"]]
         return live[-1] if live else None
+
+    def _live_of(self, scope: str) -> dict[str, Any] | None:
+        return self._live([session_row(self.sessions, i) for i in self.sessions.roots(key=scope) if i.slot])
 
     def _gitlab_of(self, repo: Repo) -> tuple[str, str]:
         g = repo.cfg.get("gitlab") or {}
@@ -403,7 +428,8 @@ class Service:
         merged = bool(f.get("merged") or (mr or {}).get("state") == "merged")
         deliveries.classify(row, f, mr=mr, slot=live, cfg=repo.cfg, bot_commits=bot,
                             at_handover=bool(mr) and repo.is_handover_tip(f), me=self.me_in(repo),
-                            reflected=merged and f["key"] in repo.reflected(), now=self.now())
+                            reflected=merged and f["key"] in repo.reflected(), now=self.now(),
+                            pushed=not run.get("handoff") or row["local_only"] or repo.on_remote(f))
         fams = self._families_of(repo) if fams is None else fams
         row["family"] = fams.get(f["key"])
         family.classify(row, row["family"], f, self.me_in(repo) if row["family"] else None)
@@ -745,8 +771,9 @@ class Service:
                                                               handed=bool(run.get("handoff"))),
                          "other_runs": tl.get("other_runs") or []},
             "sessions": [{k: s[k] for k in ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting",
-                                             "last_activity", "opened_at", "project", "url", "error")}
+                                             "last_activity", "opened_at", "project", "url", "error", "missing")}
                          for s in snap["by"].get(scope, [])],
+            "live_slot": (self._live(snap["by"].get(scope, [])) or {}).get("slot"),
             "credits": {"total": snap["credits"].get(scope), "note": detail.NO_TOKENS},
             "brain": detail.brain_block(tl.get("brain"), None, f.get("decisions_text")),
             "mr_desc": self._desc_now(self._desc_job(repo, f, snap["credits"].get(scope))),
@@ -939,25 +966,27 @@ class Service:
             raise AppError("只有本地开发中的需求能在这里开会话", "not_local", 409)
         if not f.get("worktree"):
             raise AppError("这台机器上没有检出 %s 的分支：先在开需求里开工" % f.get("branch"), "no_worktree", 409)
-        return await self._open_local(repo, key, f["branch"], f["worktree"], run, trust=trust, kickoff=kickoff,
-                                      review=review)
+        async with self._opening.setdefault(scope_of(repo.id, key), asyncio.Lock()):
+            return await self._open_local(repo, key, f["branch"], f["worktree"], run, trust=trust, kickoff=kickoff,
+                                          review=review)
 
     async def _open_local(self, repo: Repo, key: str, branch: str, wt: str, run: dict[str, Any], *, trust: bool,
-                          kickoff: bool, review: bool = False, task: str | None = None) -> dict[str, Any]:
+                          kickoff: bool, review: bool = False, task: str | None = None, fresh: bool = False
+                          ) -> dict[str, Any]:
         self.crew = await asyncio.to_thread(self.crew_sync)
-        if not crewcheck.agent_ok(self.crew["rows"]):
-            raise AppError(crewcheck.not_ready(self.crew["rows"]), "agent_not_ready", 409)
+        why = await asyncio.to_thread(crewcheck.session_problem, self.crew["rows"], wt)
+        if why:
+            raise AppError(why, "agent_not_ready", 409)
         scope = scope_of(repo.id, key)
         if review:
             task = intake.review_task(key, branch, run.get("intent"))
             if not task:
                 raise AppError("这个需求的记录里找不到它在 Lean 里的名字：开不了审查会话", "no_intent", 409)
-            title, said = "%s · 审查" % key, "开了审查会话"
+            title, said = key + REVIEW_TITLE, "开了审查会话"
         else:
-            live = [i for i in self.sessions.roots(key=scope, kind="local") if i.slot and not
-                    (self.sessions.slot_stats(i.slot) or {}).get("missing")]
-            if live:
-                return {"ok": True, "slot": live[-1].slot, "url": "/chat?sid=%s" % live[-1].slot}
+            live = self._live_of(scope)
+            if live and not fresh:
+                return {"ok": True, "slot": live["slot"], "url": live["url"], "said": live_said(live)}
             if task is None:     # a small requirement's start brings its own first message (family.kickoff)
                 task = intake.kickoff(key, branch, run.get("intent"),
                                       [str(m.get("package")) for m in run.get("materials") or [] if isinstance(m, dict)]) \
@@ -965,16 +994,51 @@ class Service:
                 if kickoff and scope_of(repo.id, key) in self._big:
                     task += "\n" + family.BIG_KICKOFF
             title, said = "%s · 本地开发" % key, "开了本机会话"
+            if fresh:
+                task += "\n" + intake.RESUME_KICKOFF
+                title, said = "%s · 本地开发（重开）" % key, "重开了本机会话"
         slug = branch.rsplit("/", 1)[-1][len(key) + 1:] or key.lower()
         info = await self.sessions.open_session(
             task, parent_session_key="%s:%s" % (self.name, scope), cwd=wt, title=title,
-            folder="%s · %s" % (key, slug), agent=LOCAL_AGENT, root_folder=LOCAL_FOLDER, project_dir=wt,
+            folder="%s · %s" % (key, slug), agent=crewcheck.crew_agent(), root_folder=LOCAL_FOLDER, project_dir=wt,
             strict_agent=True, resend_ok=True, nudge_ok=False, trust_ok=bool(trust), kind="local", key=scope)
         if info.error or not info.slot:
             raise AppError(info.error or "会话没开成", "session_failed", 502)
         await asyncio.to_thread(self.store.append, scope, "app", said, store_mod.TRUSTED if trust else None)
         await self.sessions.save()
-        return {"ok": True, "slot": info.slot, "url": "/chat?sid=%s" % info.slot}
+        return {"ok": True, "slot": info.slot, "url": "/chat?sid=%s" % info.slot, "said": ""}
+
+    async def reopen_session(self, rid: str, key: str, replace: Any, trust: bool = True) -> dict[str, Any]:
+        """重开一个会话: a new session for the requirement in its worktree, whatever the live one is doing (E2E-12: one
+        KiroCrew left stuck after an interrupted turn). The old one stays, its record readable; still busy, it is
+        stopped first, so two sessions never work in one worktree. *replace*: the slot the page showed as live; when
+        another one is live by now (the same click twice, another tab) that one is the answer and none is opened,
+        unless its first message did not go in (that click failed: this one replaces it)."""
+        repo = self._repo(rid)
+        f = await asyncio.to_thread(self._facts, repo, key)
+        run = f.get("run") or {}
+        if not run or run.get("handoff") or f.get("merged"):
+            raise AppError("只有本地开发中的需求能在这里开会话", "not_local", 409)
+        if not f.get("worktree"):
+            raise AppError("这台机器上没有检出 %s 的分支：先在开需求里开工" % f.get("branch"), "no_worktree", 409)
+        scope = scope_of(repo.id, key)
+        async with self._opening.setdefault(scope, asyncio.Lock()):
+            live = self._live_of(scope)
+            cur = (live or {}).get("slot")
+            if cur and cur != (replace if isinstance(replace, str) and replace else None) and not live["error"]:
+                return {"ok": True, "slot": cur, "url": "/chat?sid=%s" % cur, "reopened": False, "said": live_said(live)}
+            if cur:
+                turns = [i.id for i in self.sessions.all_agents if i.slot == cur and not i.done]
+                for t in turns:
+                    await self.sessions.cancel(t)     # stops the slot; the turn counts as stopped by the person
+                if not turns and (self.sessions.slot_stats(cur) or {}).get("busy"):
+                    try:
+                        await self.sessions.gw.stop(cur)
+                    except Exception as exc:  # noqa: BLE001 - a stuck slot may not stop: the new one opens anyway
+                        self.log.info("brain: stopping session %s before reopening: %s", cur, exc)
+            got = await self._open_local(repo, key, f["branch"], f["worktree"], run, trust=trust, kickoff=True,
+                                         fresh=True)
+        return dict(got, reopened=True)
 
     async def answer(self, rid: str, key: str, choice: Any, note: Any, did: Any = None) -> dict[str, Any]:
         """A clarify question of the person's own run: into its local session, or as their own MR comment. Never a Lean
@@ -998,12 +1062,12 @@ class Service:
                 raise AppError("这个需求没有等你回答的澄清问题", "no_question", 409)
             if choice not in answer_choices([str(o.get("id")) for o in park.get("options") or [] if isinstance(o, dict)]):
                 raise AppError("没有选项 %s" % choice, "invalid_choice")
-            live = [i for i in self.sessions.roots(key=scope, kind="local") if i.slot]
+            live = self._live_of(scope)
             if not live:
                 raise AppError("先开这个需求的 brain-dev 会话", "no_session", 409)
             text = local_answer(choice, note)
-            turn = await self.sessions.continue_conversation_async(live[-1].id, text,
-                                                                   parent_session_key=live[-1].parent_session_key)
+            turn = await self.sessions.continue_conversation_async(live["id"], text, parent_session_key=self.sessions.get(
+                live["id"]).parent_session_key)
             if turn.error:
                 raise AppError(turn.error, "send_failed", 502)
             await asyncio.to_thread(self.store.append, scope, "app", "在 app 里回答了澄清问题：%s" % choice, None)
@@ -1186,6 +1250,60 @@ class Service:
         await asyncio.to_thread(self.store.append, scope_of(rid, key), "app", "同步大需求的分支：%s" % out["text"][:80], None)
         return scrub_tree(out, self.scrub)
 
+    # ---- 交接给运行机 --------------------------------------------------------------------------------- #
+
+    async def handoff(self, rid: str, key: str) -> dict[str, Any]:
+        """交接给运行机: `brain handoff` in the requirement's worktree on this machine (handover.run), its answer in plain
+        words (HandoffResult). Refused in words before anything runs when the app can tell (handover.why_not). One at a
+        time per requirement: a second click while it runs gets the same answer."""
+        from . import handover
+        repo = self._repo(rid)
+        scope = scope_of(rid, key)
+        running = self._handing.get(scope)
+        if running is None:
+            async def go() -> dict[str, Any]:
+                f = await asyncio.to_thread(self._facts, repo, key)
+                base, project = self._gitlab_of(repo)
+                branch, bridge = f.get("branch") or "", str(repo.cfg.get("bridge_user") or "") or None
+
+                def mr_now() -> None:     # GitLab's MR now: whether a hand-over made before still waits for its label
+                    try:
+                        self.mr.refresh(base, project, branch, transport=self.transport, bridge_user=bridge)
+                    except Exception as exc:  # noqa: BLE001 - a token file others can read: brain-kit says so itself
+                        self.log.info("brain: reading the MR of %s: %s", branch, exc)
+
+                if (f.get("run") or {}).get("handoff") and branch and base and project and self.mr.due(project, branch):
+                    await asyncio.to_thread(mr_now)
+                snap = self._sessions_snapshot()
+                row = await asyncio.to_thread(self._row, repo, f, snap)
+                pushed = await asyncio.to_thread(repo.on_remote, f)
+                busy = any(s["busy"] for s in snap["by"].get(scope, []) if s["kind"] == "local" and not s["missing"])
+                why = handover.why_not(f, row, me=await asyncio.to_thread(self.me_in, repo),
+                                       local_only=row["local_only"], busy=busy, pushed=pushed)
+                if why:
+                    raise AppError(*why)
+                lock = self.data_dir / "handoff" / ("%s.lock" % scope.replace(":", "-"))
+                try:
+                    with handover.guard(lock) as held:
+                        out = await asyncio.to_thread(handover.run, f["worktree"], base=base, project=project,
+                                                      hold=held, lock=lock)
+                except handover.Busy:
+                    ran = await asyncio.to_thread(handover.stop_stale, lock)
+                    if ran:
+                        raise AppError("上一次点的交接跑了 %d 分钟没做完（Brain 交付重启前开始的），停掉了：再点一次「%s」"
+                                       % (ran, handover.BUTTON), "handing_stopped", 409) from None
+                    raise AppError("上一次点的交接还在跑（Brain 交付重启前开始的）：等它做完，再刷新这一页看结果；过了 %d 分钟"
+                                   "还没做完，再点一次就会停掉它" % (handover.TIMEOUT_S // 60), "handing", 409) from None
+                await asyncio.to_thread(repo.invalidate)
+                if branch and base and project:
+                    await asyncio.to_thread(mr_now)
+                await asyncio.to_thread(self.store.append, scope, "app", "交接：%s" % out["text"], None)
+                return scrub_tree(out, self.scrub)
+
+            running = self._handing[scope] = asyncio.ensure_future(go())
+            running.add_done_callback(lambda _t: self._handing.pop(scope, None))
+        return await asyncio.shield(running)
+
     # ---- KiroCrew checks ------------------------------------------------------------------------------ #
 
     async def crew_checks(self) -> dict[str, Any]:
@@ -1289,8 +1407,7 @@ class Service:
     async def status(self) -> dict[str, Any]:
         info = bk.info()
         repos = []
-        for i, path in enumerate(self.settings["repos"], 1):
-            rid = "r%d" % i
+        for path, rid in self.repo_ids.of(self.settings["repos"]).items():
             r = self.repos.get(rid)
             if r is not None:
                 repos.append({"id": rid, "path": r.path, "name": r.name, "ok": True, "error": "",
@@ -1316,7 +1433,8 @@ class Service:
                              "modules": info["modules"]},
                 "repos": repos, "crew": self.crew,
                 "me": me_line(repos, token, os.environ.get("BRAIN_USER", "").strip().lower()),
-                "team": self._team_status(), "counts": {"todo": len(todo["items"])}}
+                "team": self._team_status(), "counts": {"todo": len(todo["items"])},
+                "repo_ids_problem": self.repo_ids.problem}
 
     def settings_view(self) -> dict[str, Any]:
         return {**self.settings, "team": dict(self.settings["team"])}
@@ -1359,7 +1477,8 @@ class Service:
     async def import_inspect(self, body: dict[str, Any]) -> dict[str, Any]:
         """检查: read only (see importer.inspect)."""
         token = await asyncio.to_thread(self._token_present)
-        got = await asyncio.to_thread(importer.inspect, body.get("path"), listed=list(self.settings["repos"]),
+        listed = self.repo_ids.of(self.settings["repos"])
+        got = await asyncio.to_thread(importer.inspect, body.get("path"), listed=listed,
                                       records=self.imports, token=token, team_of=runner_repo_at)
         return scrub_tree(got, self.scrub)
 
@@ -1452,7 +1571,7 @@ class Service:
             name = await asyncio.to_thread(identity.set_name, top, body.get("name"))
         except identity.NameRefused as exc:
             raise AppError(str(exc), "invalid_name")
-        rid = importer.listed_id(top, list(self.settings["repos"]))
+        rid = importer.listed_id(top, self.repo_ids.of(self.settings["repos"]))
         repo = self.repos.get(rid or "")
         token = await asyncio.to_thread(self._token_present)
         if repo is not None:
@@ -1612,7 +1731,7 @@ class Service:
         """加入列表: through save_settings (checked, saved atomically, reloaded). A repo whose brain-kit is only on the
         install branch is added too and shows as pending; one without brain-kit anywhere is refused."""
         top = await self._import_top(body.get("path"))
-        rid = importer.listed_id(top, self.settings["repos"])
+        rid = importer.listed_id(top, self.repo_ids.of(self.settings["repos"]))
         if rid:
             return {"ok": True, "id": rid, "text": "已经在列表里了", "status": await self.status()}
         token = await asyncio.to_thread(self._token_present)
@@ -1635,9 +1754,48 @@ class Service:
         if len(self.settings["repos"]) >= settings_mod.MAX_REPOS:
             raise AppError("最多 %d 个仓库：先移出一个" % settings_mod.MAX_REPOS, "too_many", 409)
         saved = await self.save_settings({**self.settings_view(), "repos": list(self.settings["repos"]) + [top]})
-        rid = importer.listed_id(top, self.settings["repos"]) or ""
+        rid = importer.listed_id(top, self.repo_ids.of(self.settings["repos"])) or ""
         text = "加入了（%s）" % rid + ("：%s" % pend["text"] if pend else "")
         return {"ok": True, "id": rid, "text": text, "status": saved["status"]}
+
+    async def repo_ids_rebuild(self) -> dict[str, Any]:
+        """按记录重建编号: a damaged repo_ids.json without a good copy, rebuilt from the ids the records on disk carry
+        (repoids.from_records); the repos are loaded with them."""
+        if not self.repo_ids.problem:
+            raise AppError("仓库编号的记录是好的：不用重建", "ids_fine", 409)
+        listed = list(self.settings["repos"])
+        found = await asyncio.to_thread(self._recorded_ids)
+        keys_of = await asyncio.to_thread(lambda: {p: self._keys_at(p) for p in listed})
+        ids, n, fresh = from_records(listed, keys_of, found)
+        await asyncio.to_thread(self.repo_ids.rebuild, ids, n)
+        await asyncio.to_thread(self.reload_sync)
+        kept = "、".join(os.path.basename(os.path.normpath(p)) for p in listed if p not in fresh)
+        new = "、".join(os.path.basename(os.path.normpath(p)) for p in fresh)
+        text = "按记录重建了编号" + ("：%s 接上了原来的记录" % kept if kept else "")
+        if new:
+            text += "；%s 在这里没有能认准的记录，给了新编号（brain-kit 的记录都在，只是这里以前的会话和时间线不显示）" % new
+        return {"ok": True, "text": text, "status": await self.status()}
+
+    def _recorded_ids(self) -> dict[str, set[str]]:
+        """{repo id: requirement keys} of the records this app keeps by scope: events, hand-over locks, sessions,
+        big.json. Blocking."""
+        scopes = [f.stem for d in ("events", "handoff") if (self.data_dir / d).is_dir()
+                  for f in (self.data_dir / d).iterdir() if f.is_file()]
+        scopes += [i.key for i in self.sessions.roots() if i.key] + sorted(self._big)
+        found: dict[str, set[str]] = {}
+        for s in scopes:
+            m = RECORD_SCOPE_RE.match(str(s))
+            if m:
+                found.setdefault(m.group(1), set()).add(m.group(2))
+        return found
+
+    @staticmethod
+    def _keys_at(path: str) -> set[str] | None:
+        """The requirement keys of the repo at *path* (claims, run branches, merged runs); None: it cannot be read."""
+        try:
+            return {f["key"] for f in Repo("r0", path, bk.m("config").load(path)).scan()}
+        except Exception:  # noqa: BLE001 - a repo that cannot be read keeps no id (from_records)
+            return None
 
     async def repo_remove(self, body: dict[str, Any]) -> dict[str, Any]:
         """移出列表: the app's list only. No file, branch or worktree is touched; a folder that is gone can be removed."""

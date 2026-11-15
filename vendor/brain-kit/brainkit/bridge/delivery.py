@@ -9,7 +9,10 @@ sent again with the same sendId (each round for its first RESEND_FAST sends, the
 once after SEND_TRIES); the slot not readable -> it stays 'unknown' (whoever started the send has told the MR) and is
 looked at again next round. There is no last try: a message that never landed is still sent once KiroCrew takes it
 again, unless what it was for ended (a hand-over KiroCrew did not take for send_give_up_minutes fails its run; an
-answer or a notice whose MR head moved on is dropped, see decisions.py).
+answer or a notice whose MR head moved on is dropped, see decisions.py). A message KiroCrew would not let the bridge
+send (it refused to set the session to trust, before the send) is 'held': not sent, sent again each round without
+reading the slot (not a try), and the MR hears what to do (TRUST_ADVICE) once per outage: until a message to the
+run gets through again.
 
 A notice is a message the bridge sends a run on its own: its question was not asked or became void, its CI failed.
 It starts with a fixed word (NOTICE_PREFIXES) and is sent once per key (its sendId is derived from the key). Notices
@@ -22,12 +25,17 @@ from __future__ import annotations
 import hashlib
 from datetime import timedelta
 
-from ..common import BrainError, iso, utcnow
+from ..common import BrainError, iso, parse_iso, utcnow
+from ..rest import HttpError
+from .kirocrew import TrustRefused
 
 SEND_TRIES = 3            # sends of one message (one sendId) that did not land before the MR is told; sending goes on
 RESEND_FAST, RESEND_SLOW_S = 10, 300   # its first RESEND_FAST sends go one each round, the later ones one per 5 min
-UNKNOWN_KEPT_S = 86400    # a notice whose outcome stays unknown is looked at for this long
+UNKNOWN_KEPT_S = 86400    # a notice whose outcome stays unknown is looked at for this long (a held one: until sent)
 NOTICE_PREFIXES = ("问题没发出：", "问题作废：", "CI 没过：")
+# what to do when KiroCrew will not let the bridge app set its sessions to trust (%s: the app's name)
+TRUST_ADVICE = ("请负责人用 brain-kit 的 remote/kirocrew-app/brain-bridge 重新装这个 app（`kirocrew app install`），再到 "
+                "KiroCrew 网页（dashboard）上启用 %s、同意它要的 sessionApproval 权限：KiroCrew 的命令行给不了这个权限。")
 
 
 def inert(text) -> str:
@@ -54,8 +62,8 @@ def notice_send_id(run_id, key) -> str:
 
 
 class Delivery:
-    """Needs self.ledger, self.kc, self.gl, self.out (and self.reservation_ttl: how old a 'sending' row must be to
-    count as left by a bridge that stopped)."""
+    """Needs self.ledger, self.kc, self.gl, self.out, self._fail_run (and self.reservation_ttl: how old a 'sending' row
+    must be to count as left by a bridge that stopped)."""
 
     send_error = ""
 
@@ -70,7 +78,8 @@ class Delivery:
         """Send `message` into `slot` once (see the module docstring). `sha`: the MR head it is about; `count`: a
         counter (ledger notices) that goes up once, when this call records the message. -> "sent" (now or before),
         "unknown" (it may or may not have landed: self.send_error says why, when KiroCrew answered with an error),
-        "busy" (another bridge process is sending it now) or "dropped" (it is not sent any more)."""
+        "held" (not sent: KiroCrew refused trust; sent again next round), "busy" (another bridge process is sending it
+        now) or "dropped" (it is not sent any more)."""
         row, new = self.ledger.outbox_put(send_id, run_id, slot, what, message, sha=sha)
         if new:
             if count:
@@ -90,6 +99,10 @@ class Delivery:
             return st
         if st == "sending" and not self._stale(row["updated"]):
             return "busy"
+        if st == "held":                         # never sent: nothing to read in the slot
+            if not led.outbox_set(sid, (st,), "sending", updated=row["updated"]):
+                return "busy"
+            return self._push(sid, row["slot"], row["message"], attempt=int(row["tries"] or 0) + 1)
         landed = self._landed(row["slot"], sid)
         if landed:
             led.outbox_set(sid, (st,), "sent")
@@ -127,6 +140,11 @@ class Delivery:
                 again(slot, message, send_id, attempt)
             else:
                 self.kc.send(slot, message, send_id)
+        except TrustRefused as e:        # refused before the send: it did not land, and sending again is no try
+            led.outbox_set(send_id, "sending", "held")
+            self.out("send %s to slot %s: not sent, held: %s" % (send_id, slot, e))
+            self._tell_held(send_id)
+            return "held"
         except Exception as e:  # noqa: BLE001 - a 5xx, a read timeout, KiroCrew restarting: it may have landed
             led.outbox_set(send_id, "sending", "unknown", tried=True)
             self.send_error = str(e)
@@ -137,6 +155,9 @@ class Delivery:
             led.outbox_set(send_id, "sending", "interrupted", tried=True)
             raise
         led.outbox_set(send_id, "sending", "sent", tried=True)
+        row = led.outbox(send_id)
+        if row is not None:                 # trust was set: the outage the MR heard of is over (_tell_held)
+            led.forget_notice("trust:" + row["run_id"])
         return "sent"
 
     def _landed(self, slot, send_id):
@@ -184,6 +205,21 @@ class Delivery:
             % (row["run_id"], row["send_id"], what, int(row["tries"] or 0), row["slot"], RESEND_FAST,
                RESEND_SLOW_S // 60, tail), run_id=row["run_id"])
 
+    def _tell_held(self, send_id):
+        """KiroCrew would not let the bridge send into the run's session: the MR hears once per outage what to do."""
+        row = self.ledger.outbox(send_id)
+        run = self.ledger.run(row["run_id"]) if row is not None else None
+        if run is None:
+            return
+        kind, _, what = str(row["what"]).partition(":")
+        name = {"answer": "%s 的回答" % what, "handover": "接手消息"}.get(kind, "桥的通知")
+        redo = {"answer": "不用重新回答。", "handover": "不用重新交接。"}.get(kind, "不用做别的。")
+        app = getattr(self.kc, "app", None) or "brain-bridge"
+        self.tell_mr_once("trust:" + row["run_id"], run["project"], run["iid"],
+                          "%s：%s还没送进 KiroCrew 会话 %s：KiroCrew 不让桥把会话设成信任（桥的 KiroCrew app %s 没有 "
+                          "sessionApproval 权限），桥就先不送。" % (row["run_id"], name, row["slot"], app) +
+                          TRUST_ADVICE % app + "装好后桥自动接着送，" + redo, run_id=row["run_id"])
+
     # ---------- telling ----------
 
     def tell_mr_once(self, key, project, iid, text, run_id=None) -> bool:
@@ -191,12 +227,64 @@ class Delivery:
         if not self.ledger.claim_notice(key, run_id, project, iid):
             return False
         try:
-            self.gl.comment(project, iid, text)
+            note = self.gl.comment(project, iid, text)
         except BaseException:
             self.ledger.release_notice(key)
             raise
         self.ledger.notice_told(key)
+        learn = getattr(self, "_learn_me", None)            # the account GitLab shows on it is the bridge's own
+        if learn is not None:
+            learn(note)
         return True
+
+    def tell_if_stalled(self, run_row):
+        """The watchdog: a dispatched run whose session is at work (or waits for a click) and has written no new row
+        for stall_s seconds, a test server it started that never stops, say: the MR hears once per stall (the newest
+        row it stopped at). A session KiroCrew answers 404 for during stall_s seconds is gone (KiroCrew restarted: an
+        incognito session does not come back): the run is failed (_fail_run), which frees its requirement for a new
+        hand-over. A session that cannot be read otherwise for stall_s seconds (KiroCrew down) is told once per
+        stretch of failed reads. The session is never stopped from here. Nothing to do with a KiroCrew client that
+        cannot say what a session does (the brain app's runner mode), or when stall_s is 0 (the watchdog is off)."""
+        read, stall = getattr(self.kc, "activity", None), getattr(self, "stall_s", 900.0)
+        if read is None or not run_row["slot"] or not stall:
+            return
+        unreadable = "unreadable:" + run_row["run_id"]          # counters: created at the first failed read
+        missing = "missing:" + run_row["run_id"]                # ... and at the first 404 in a row
+        try:
+            a = read(run_row["slot"])
+        except Exception as e:  # noqa: BLE001 - KiroCrew down, or the session gone: looked at again next round
+            self.out("%s: watchdog: slot %s cannot be read: %s" % (run_row["run_id"], run_row["slot"], e))
+            self.ledger.bump(unreadable, run_row["run_id"])
+            if isinstance(e, HttpError) and e.status == 404:
+                self.ledger.bump(missing, run_row["run_id"])
+                gone = (utcnow() - parse_iso(self.ledger.notice(missing)["created"])).total_seconds()
+                if gone >= stall:
+                    self._fail_run(run_row, "KiroCrew 里已经没有它的会话 %s（%d 分钟一直回答 404；KiroCrew 重启过的话，"
+                                            "无痕会话不会回来）" % (run_row["slot"], int(gone // 60)), frm="dispatched")
+                return
+            self.ledger.drop_count(missing)
+            since = self.ledger.notice(unreadable)["created"]
+            gone = (utcnow() - parse_iso(since)).total_seconds()
+            if gone >= stall:
+                self.tell_mr_once("%s:%s" % (unreadable, since), run_row["project"], run_row["iid"], (
+                    "%s 已经 %d 分钟读不到它的 KiroCrew 会话 %s（%s）。KiroCrew 重启过的话，无痕会话不会回来，run 就停住了。"
+                    "请负责人到 KiroCrew 看一下这个会话；能读到以后，桥照常接着看。")
+                    % (run_row["run_id"], int(gone // 60), run_row["slot"], one_line(e, 200)), run_id=run_row["run_id"])
+            return
+        self.ledger.drop_count(unreadable)
+        self.ledger.drop_count(missing)
+        waits = bool(a) and a["last_role"] == "permission"
+        if not a or a["last_at"] is None or not (a["running"] or waits):
+            return
+        quiet = (utcnow() - a["last_at"]).total_seconds()
+        if quiet < stall:
+            return
+        rid, since = run_row["run_id"], a["last_at"].strftime("%H:%M")
+        what = ("在等人点批准（从 %s UTC 起）" % since if waits else
+                "还在跑，最后一步停在 %s UTC，可能卡住了（比如它起的测试服务器没停）" % since)
+        self.tell_mr_once("stalled:%s:%s" % (rid, a["last_id"]), run_row["project"], run_row["iid"], (
+            "%s 已经 %d 分钟没有动静：KiroCrew 会话 %s %s。请负责人到 KiroCrew 看一下这个会话；桥不会自己停它。")
+            % (rid, int(quiet // 60), run_row["slot"], what), run_id=rid)
 
     def notify_run(self, run_row, key, text, sha=None, count=None) -> str:
         """Send the run a notice once for `key` -> "sent" | "unknown" | "busy" | "dropped" | "no-slot". `sha`: the MR
@@ -220,8 +308,10 @@ class Delivery:
         """Notices whose send was cut off or answered with an error: settled (sent again when they did not land and
         still hold, dropped when they no longer do). One that fails does not hold up the others."""
         errors = []
-        for row in self.ledger.outbox_rows("interrupted", "unknown", "sending"):
-            if not str(row["what"]).startswith("notice:") or self._stale(row["created"], UNKNOWN_KEPT_S):
+        for row in self.ledger.outbox_rows("interrupted", "unknown", "held", "sending"):
+            if not str(row["what"]).startswith("notice:"):
+                continue
+            if row["state"] != "held" and self._stale(row["created"], UNKNOWN_KEPT_S):
                 continue
             if row["state"] == "sending" and not self._stale(row["updated"]):
                 continue                          # being sent by another bridge process right now

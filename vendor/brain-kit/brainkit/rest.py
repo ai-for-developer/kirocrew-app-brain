@@ -40,10 +40,43 @@ def read_error_body(e, method, url) -> bytes:
                          % (method, urllib.parse.urlsplit(url).netloc, e.code, x or type(x).__name__))
 
 
-try:  # optional machine-local transport (gitignored): transport_for(base) -> transport or None
-    from . import local_transport
-except ImportError:  # pragma: no cover
-    local_transport = None
+LOCAL_TRANSPORT = "~/.brain/local_transport.py"
+
+
+def local_transport():
+    """The optional sign-in helper for a GitLab behind single sign-on: brainkit/local_transport.py in this brain-kit
+    (machine-local, git-ignored), else LOCAL_TRANSPORT, where a person puts it without changing brain-kit (a release
+    bundle has none). Its transport_for(base) returns a transport for a GitLab that needs one, else None. None when
+    there is no helper."""
+    import importlib
+    import importlib.util
+    name = __package__ + ".local_transport"
+    if importlib.util.find_spec(name) is not None:
+        try:
+            return importlib.import_module(name)
+        except Exception as e:  # noqa: BLE001 - this machine's own file: name it and say why
+            raise BrainError("brainkit/local_transport.py could not be loaded: %s" % e)
+    path = os.path.expanduser(LOCAL_TRANSPORT)
+    if not os.path.isfile(path):
+        return None
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(__package__ + ".local_transport", path)
+    helper = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(helper)
+    except Exception as e:  # noqa: BLE001 - a person's own file: name it and say why
+        raise BrainError("%s could not be loaded: %s" % (LOCAL_TRANSPORT, e))
+    return helper
+
+
+# What a single sign-on proxy answers with its sign-in page; a 404 or a 5xx page is the server's own trouble.
+SIGN_IN_STATUSES = frozenset(list(range(200, 400)) + [401, 403])
+
+
+def _web_page(payload) -> bool:
+    """An HTML page where the API's JSON should be: what a single sign-on proxy answers in its place."""
+    head = (payload or b"")[:1024].lstrip().lower()
+    return head.startswith((b"<!doctype html", b"<html")) or b"<html" in head
 
 
 DEFAULT_TOKEN_FILE = "~/.brain/gitlab-token"
@@ -82,8 +115,9 @@ class Rest:
             data = json.dumps(body).encode("utf-8")
             headers["Content-Type"] = "application/json"
         status, payload = self.transport(method, url, headers, data)
+        page = status in SIGN_IN_STATUSES and _web_page(payload) and self.page_hint()
         if status not in ok:
-            snippet = (payload or b"")[:300].decode("utf-8", "replace")
+            snippet = page or (payload or b"")[:300].decode("utf-8", "replace")
             raise HttpError(status, "%s %s -> HTTP %d: %s" % (method, path, status, snippet))
         if raw:
             return payload
@@ -92,7 +126,11 @@ class Rest:
         try:
             return json.loads(payload.decode("utf-8"))
         except ValueError:
-            raise BrainError("%s %s returned non-JSON" % (method, path))
+            raise BrainError("%s %s returned %s" % (method, path, page or "non-JSON"))
+
+    def page_hint(self) -> str:
+        """What to do when this service answers with a web page instead of its API ('': nothing to add)."""
+        return ""
 
 
 class HttpError(BrainError):
@@ -143,9 +181,21 @@ class GitLab(Rest):
     """GitLab REST v4. `project` is a numeric id or 'group/repo'."""
 
     def __init__(self, base, token, transport=None):
-        if transport is None and local_transport is not None:
-            transport = local_transport.transport_for(base)
-        super().__init__(base.rstrip("/") + "/api/v4", {"PRIVATE-TOKEN": token or ""}, transport)
+        signin = None
+        if transport is None:
+            helper = local_transport()
+            signin = helper.transport_for(base) if helper is not None else None
+        super().__init__(base.rstrip("/") + "/api/v4", {"PRIVATE-TOKEN": token or ""}, transport or signin)
+        self.signed_in = signin is not None
+
+    def page_hint(self) -> str:
+        host = urllib.parse.urlsplit(self.base).netloc
+        if self.signed_in:
+            return ("a sign-in page from %s although its sign-in helper is in use: sign in again the way your company "
+                    "asks, then run this again" % host)
+        return ("a web page from %s (a sign-in page?), not GitLab's API: this GitLab sits behind single sign-on and "
+                "needs its sign-in helper. Put the helper file at %s (docs/安装和使用.md, 2. 准备), then run this "
+                "again" % (host, LOCAL_TRANSPORT))
 
     def current_user(self):
         return self.call("GET", "/user")

@@ -1,0 +1,12 @@
+{
+  "name": "brain-bridge",
+  "version": "0.2.0",
+  "displayName": "Brain Bridge",
+  "description": "brain-kit's hand-over bridge on the team runner: it opens run sessions, sets each one to trust (nobody is there to approve its tool calls) and sends them hand-over and answer messages. No UI, no backend.",
+  "author": "brain-kit",
+  "permissions": {
+    "api": ["/api/chat"],
+    "sessionApproval": true
+  },
+  "tags": ["brain-kit"]
+}

@@ -5,4 +5,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 from brainkit.bridge.runnerd import main  # noqa: E402
 
-sys.exit(main())
+script = os.path.abspath(__file__)
+while os.path.islink(script):           # a link to this script itself (in /usr/local/bin, say) is followed
+    script = os.path.normpath(os.path.join(os.path.dirname(script), os.readlink(script)))
+# the brain-kit as reached: a symlink above it that an upgrade swaps stays, as a configured kit_dir does
+sys.exit(main(kit_dir=os.path.dirname(os.path.dirname(script))))

@@ -2,9 +2,11 @@
 
 Threads may share one Ledger: `ledger.db` is one sqlite connection whose every statement runs under one lock, and
 its rows are read before the lock is let go. Code that needs several statements as one step (read a count, then
-insert) holds `ledger.lock` around them; it is re-entrant."""
+insert) holds `ledger.lock` around them; it is re-entrant. `ledger.step()` makes them one step for other processes on
+the ledger file too, and for a stop half-way (a verdict and the comment it owes)."""
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sqlite3
@@ -63,7 +65,8 @@ CREATE TABLE IF NOT EXISTS mr_notes_due (
 # before it is sent, so a bridge that stops mid-send knows what it was sending. send_id: meta.sendId (the voucher id,
 # or N-<hash> for a notice); what: handover:<run> | answer:<D-n> | notice:<key>. state: sending (being sent now, by
 # this or another bridge process), interrupted (the bridge was stopped while it sent: it may or may not have
-# landed), sent, unknown (KiroCrew answered with an error: it may or may not have landed), dropped (never sent again:
+# landed), sent, unknown (KiroCrew answered with an error: it may or may not have landed), held (not sent: KiroCrew
+# refused to set the session to trust before the send; sent again each round, not a try), dropped (never sent again:
 # what it says no longer holds - the MR head moved on, the run ended - or KiroCrew did not take a hand-over for
 # send_give_up_minutes). A row is settled again by reading the slot (a user message with that sendId landed); tries:
 # how often it was sent; sha (added later, NULL in an older bridge's rows): the MR head the message is about.
@@ -71,7 +74,7 @@ CREATE TABLE IF NOT EXISTS mr_notes_due (
 # process posts it now; taken over once stale), told, counting (only `count` matters).
 MR_DESC_ADDED_COLUMNS = ()
 OUTBOX_ADDED_COLUMNS = (("sha", "TEXT"),)
-OUTBOX_STATES = ("sending", "interrupted", "sent", "unknown", "dropped")
+OUTBOX_STATES = ("sending", "interrupted", "sent", "unknown", "held", "dropped")
 
 
 class _Rows:
@@ -156,6 +159,27 @@ class Ledger:
     def close(self):
         self.db.close()
 
+    @contextlib.contextmanager
+    def step(self):
+        """The statements run inside are one step, for other processes on this ledger file too: all of them take
+        effect, or (an error, a stop) none. Not nested; nothing inside waits on the network."""
+        with self.lock:
+            try:
+                self.db.execute("BEGIN IMMEDIATE")
+            except sqlite3.Error as e:
+                raise BrainError("ledger: busy: %s" % e)
+            try:
+                yield
+                self.db.execute("COMMIT")
+            except BaseException as e:
+                try:
+                    self.db.execute("ROLLBACK")
+                except sqlite3.Error:
+                    pass
+                if isinstance(e, sqlite3.Error):
+                    raise BrainError("ledger: %s" % e)
+                raise
+
     # handoffs: one row per (MR, head sha)
     def claim_handoff(self, project, iid, sha, stale_after=None) -> bool:
         """Insert as 'checking'; False if this MR+sha was already seen. With `stale_after` (seconds), a 'checking'
@@ -186,6 +210,14 @@ class Ledger:
         return self.db.execute("SELECT * FROM handoffs WHERE project=? AND iid=? AND sha=?",
                                (project, iid, sha)).fetchone()
 
+    def handoff_decided(self, project, iid, event):
+        """The verdict (accepted or rejected) a check of this MR under label event `event` got, at any head, or None.
+        The `sha` column holds the check's key, <head sha>#<label event id>."""
+        if not event:
+            return None
+        return self.db.execute("SELECT * FROM handoffs WHERE project=? AND iid=? AND state IN ('accepted', 'rejected') "
+                               "AND substr(sha, instr(sha, '#') + 1)=?", (project, iid, str(event))).fetchone()
+
     # runs
     def next_run_id(self, req) -> str:
         n = self.db.execute("SELECT COUNT(*) FROM runs WHERE req=?", (req,)).fetchone()[0]
@@ -211,30 +243,19 @@ class Ledger:
         """Take the next run id of `req` for this hand-over, as one step: None when `req` has an open run already.
         A reservation older than `stale_after` seconds was left by a bridge that stopped while signing: dropped."""
         now = utcnow()
-        with self.lock:
-            try:
-                self.db.execute("BEGIN IMMEDIATE")      # one step for other processes on this ledger file, too
-            except sqlite3.Error as e:
-                raise BrainError("ledger: could not reserve a run for %s: %s" % (req, e))
-            try:
+        try:
+            with self.step():
                 self.db.execute("DELETE FROM runs WHERE req=? AND state=? AND updated<?",
                                 (req, RESERVED, iso(now - timedelta(seconds=stale_after))))
-                run_id = None
-                if self.open_run_for(req) is None:
-                    run_id = self.next_run_id(req)
-                    self.db.execute("INSERT INTO runs(run_id,project,req,iid,sha,voucher_id,state,created,updated) "
-                                    "VALUES (?,?,?,?,?,?,?,?,?)", (run_id, project, req, iid, sha, "", RESERVED,
-                                                                   iso(now), iso(now)))
-                self.db.execute("COMMIT")
+                if self.open_run_for(req) is not None:
+                    return None
+                run_id = self.next_run_id(req)
+                self.db.execute("INSERT INTO runs(run_id,project,req,iid,sha,voucher_id,state,created,updated) "
+                                "VALUES (?,?,?,?,?,?,?,?,?)", (run_id, project, req, iid, sha, "", RESERVED,
+                                                               iso(now), iso(now)))
                 return run_id
-            except BaseException as e:
-                try:
-                    self.db.execute("ROLLBACK")
-                except sqlite3.Error:
-                    pass
-                if isinstance(e, sqlite3.Error):
-                    raise BrainError("ledger: could not reserve a run for %s: %s" % (req, e))
-                raise
+        except BrainError as e:
+            raise BrainError("could not reserve a run for %s: %s" % (req, e))
 
     def release_run(self, run_id) -> bool:
         """Give a reserved run id back (its contract was not signed). Never raises (it runs while another error is
@@ -406,6 +427,10 @@ class Ledger:
 
     def notice_told(self, key):
         self.db.execute("UPDATE notices SET state='told', updated=? WHERE key=?", (iso(utcnow()), key))
+
+    def forget_notice(self, key):
+        """What `key` told of is over: told again when it happens again."""
+        self.db.execute("DELETE FROM notices WHERE key=? AND state='told'", (key,))
 
     def release_notice(self, key):
         """Telling failed: told again next time (a counter row keeps its count)."""

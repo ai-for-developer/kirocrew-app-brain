@@ -11,6 +11,9 @@ If not: change nothing, and end the turn with the line `工作区和合同 <id> 
 
 ## 2. Pick up the work
 - `python3 .kiro/aidlc-lean/aidlc_lean.py use <intent>` then `... status`.
+- `brain` on this page is the command the hand-over message names (`brain 命令：…`): the team runner's brain-kit,
+  the bridge's own copy. Run it by that path; do not look for another `brain` on the machine (another copy writes
+  MR.md differently).
 - Read `AGENTS.md`, `brain/PRODUCT.md`, `brain/TECH.md`, `brain/IMPROVEMENT.md`, `brain/PROJECT.md`.
 - Read `aidlc-docs/<intent>/aidlc-state.md` Session notes: Status, Next, Open questions, Notes.
 - If `runs/<KEY>/intent.md` exists, read it: the requirement as it was filed (source debt, alert, schedule,
@@ -32,18 +35,21 @@ If not: change nothing, and end the turn with the line `工作区和合同 <id> 
 ## 4. Continue (back half)
 Work the `### Next` items within the run's scope only:
 - finish the remaining code-generation plan steps and tests;
-- review: spawn `brain-reviewer` (model kimi-k3, read-only) on the diff; fix what it confirms; write
+- review, as skill `aidlc-lean-release` step 1 says, by a context that did not write the code: you did not write
+  what was handed over, so review it yourself in a pass of its own (the intent's requirements, design and plans,
+  and `git diff <brain_commit>...HEAD`, with that step's checklist); give code you wrote on the runner to a
+  subagent with only those pages and its diff. Fix what matters and write
   `aidlc-docs/<intent>/construction/build-and-test/review.md`;
 - CI: when the pipeline fails, fix and push; at most 3 rounds, then park;
 - evidence: `lean verify` writes build-and-test-summary.md; keep `decisions.md` current, citing the Brain
   entry ids you relied on, and add `brain-proposal` blocks under `## Brain proposals` (skill `brain-reflect`)
   for every correction, rejection and lesson worth keeping, and `brain-gap` blocks for missing knowledge or
   missing tests you found but that are outside this run's scope. Never edit `brain/` itself.
-Push only this branch: `git push origin HEAD:<branch>`. Never force-push. Commit as the workspace is set up: the bot
-account's git identity (user.name / user.email of the runner's system user, one of `bot_emails`). Never set
-`user.name` / `user.email`, `--author` or `GIT_AUTHOR_*` / `GIT_COMMITTER_*`: the server hook and CI refuse bot
-commits made as anyone else. If `git commit` says the identity is not set, do not set one: end the turn with the
-line `运行机的 git 身份没设置，不继续` (the runner is not set up; nothing can be pushed).
+Push only this branch: `git push origin HEAD:<branch>`. Never force-push. Commit as the workspace is set up: runnerd
+gives it the bot account's git identity (runnerd.json `git_name` / `git_email`, else the runner's system user's;
+one of `bot_emails`). Never set `user.name` / `user.email`, `--author` or `GIT_AUTHOR_*` / `GIT_COMMITTER_*`: the
+server hook and CI refuse bot commits made as anyone else. If `git commit` says the identity is not set, do not set
+one: end the turn with the line `运行机的 git 身份没设置，不继续` (the runner is not set up; nothing can be pushed).
 
 ## 5. Decide within your authority; ask a person only when you must
 When a choice has a reasonable default and is yours to make (how to build it, naming, an edge case the

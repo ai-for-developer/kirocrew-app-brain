@@ -8,5 +8,7 @@
   "interval": 30,
   "kit_dir": "/opt/brain-kit",
   "agent_spec": "/home/brainbot/.kiro/agents/brain-run.json",
-  "hook_path": "/usr/bin:/bin"
+  "hook_path": "/usr/bin:/bin",
+  "git_name": "brain-bot",
+  "git_email": "brain-bot@noreply.invalid"
 }

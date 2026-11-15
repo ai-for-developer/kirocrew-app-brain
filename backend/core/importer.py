@@ -62,10 +62,15 @@ CTRL_RE = re.compile(r"[\x00-\x1f\x7f\u2028\u2029]")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 SCP_RE = re.compile(r"^(?P<user>[A-Za-z0-9._-]+)@(?P<host>[A-Za-z0-9][A-Za-z0-9.-]*)"
                     r":(?P<path>[A-Za-z0-9._~][A-Za-z0-9._~/-]*)$")
+# git's host:path with no user (the user comes from ~/.ssh/config): a host name with a dot, not a word
+HOST_PATH_RE = re.compile(r"^(?P<host>[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+)+)"
+                          r":(?P<path>[A-Za-z0-9._~][A-Za-z0-9._~/-]*)$")
+SSH_SCHEMES = ("ssh", "git+ssh", "ssh+git")
 PROJECT_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+$")
 PREFIX_RE = re.compile(r"^[A-Z][A-Z0-9]{0,9}$")
 CRED_RE = re.compile(r"(?i)\b((?:https?|ssh|git)://)[^/@\s]+@")
 NOT_GITLAB = {"github.com", "www.github.com", "bitbucket.org", "codeberg.org"}
+SSH_HOST_PREFIXES = ("ssh.", "altssh.")    # a GitLab's SSH-only host name in front of its web host
 FALSE_BIN = shutil.which("false") or "/usr/bin/false"
 
 CLONE_STEPS = (("clone", "克隆"),)
@@ -425,29 +430,41 @@ def shown_url(url: str) -> str:
 
 def gitlab_of(url: str) -> dict[str, str]:
     """The GitLab an origin URL suggests: {"base": "https://host", "project": "group/repo"}; empty when it is not a
-    hosted git URL (a local path, GitHub)."""
+    hosted git URL (a local path, GitHub). An SSH URL's port is SSH's, and its host may be GitLab's own SSH name
+    (SSH_HOST_PREFIXES): the web address has neither."""
     host, path, scheme = "", "", "https"
-    m = SCP_RE.match(url or "")
+    m = SCP_RE.match(url or "") or HOST_PATH_RE.match(url or "")
     if m:
-        host, path = m.group("host"), m.group("path")
+        host, path = web_host(m.group("host")), m.group("path")
     elif "://" in (url or ""):
         try:
             sp = urlsplit(url)
             port = sp.port
         except ValueError:
             return {"base": "", "project": ""}
-        if sp.scheme in ("ssh", "git", "https", "http") and sp.hostname:
+        if sp.scheme in SSH_SCHEMES + ("git", "https", "http") and sp.hostname:
             host, path = sp.hostname, sp.path
             if sp.scheme == "http":
                 scheme = "http"
             if sp.scheme in ("http", "https") and port:
                 host += ":%d" % port
+            if sp.scheme in SSH_SCHEMES:
+                host = web_host(host)
     path = path.strip("/")
     if path.endswith(".git"):
         path = path[:-4]
     if not host or host.lower() in NOT_GITLAB or not PROJECT_RE.match(path):
         return {"base": "", "project": ""}
     return {"base": "%s://%s" % (scheme, host), "project": path}
+
+
+def web_host(ssh_host: str) -> str:
+    """The web host of a GitLab SSH host: ssh.gitlab.example.com (GitLab's gitlab_ssh_host) is gitlab.example.com."""
+    for prefix in SSH_HOST_PREFIXES:
+        rest = ssh_host[len(prefix):]
+        if ssh_host.lower().startswith(prefix) and "." in rest:
+            return rest
+    return ssh_host
 
 
 def origin_of(g: Git) -> dict[str, str] | None:
@@ -682,6 +699,12 @@ def write_targets(cfg: dict[str, Any] | None = None) -> list[str]:
     return sorted(out)
 
 
+def bytecode(path: str) -> bool:
+    """Python's bytecode, never a kit file. brain install copies brain-kit's kit folder file by file, with any
+    __pycache__ that brain-kit's own runs left there (UI-18)."""
+    return "__pycache__" in path.split("/") or path.endswith((".pyc", ".pyo"))
+
+
 def touches(path: str, targets: list[str]) -> bool:
     """*path* (a file, or a folder git lists as one) is something `brain install` writes, or holds one."""
     p = path.rstrip("/")
@@ -830,11 +853,9 @@ def form_defaults(top: str, origin: dict[str, str] | None, d: str | None) -> dic
             "default_branch": d or "main", "team": ""}
 
 
-def listed_id(top: str, listed: list[str]) -> str | None:
-    for i, p in enumerate(listed, 1):
-        if os.path.realpath(os.path.expanduser(p)) == top:
-            return "r%d" % i
-    return None
+def listed_id(top: str, listed: dict[str, str]) -> str | None:
+    """The id of the listed repo at *top* (*listed*: {path: id}, repoids.RepoIds.of), or None."""
+    return next((rid for p, rid in listed.items() if os.path.realpath(os.path.expanduser(p)) == top), None)
 
 
 def bounded(fn: Callable[[], Any], timeout: float, default: Any) -> Any:
@@ -849,7 +870,7 @@ def bounded(fn: Callable[[], Any], timeout: float, default: Any) -> Any:
         ex.shutdown(wait=False)
 
 
-def inspect(raw: Any, *, listed: list[str], records: Records, token: bool = False,
+def inspect(raw: Any, *, listed: dict[str, str], records: Records, token: bool = False,
             team_of: Callable[[str, dict[str, Any]], bool] | None = None) -> dict[str, Any]:
     """Every check of the 检查 step (blocking: call it in a thread). Writes nothing. *team_of(top, cfg)*: the repo is
     handed to the team runner (its runner-only KiroCrew checks FAIL; a reminder otherwise); None: not known."""
