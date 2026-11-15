@@ -1041,6 +1041,23 @@ describe('需求详情', () => {
     expect(navigations).toEqual([runner.url])
   })
 
+  test('成本 and 会话 that leave something out say 至少 and what, never a smaller number as if whole (E2E-14)', async () => {
+    const missing = ['起过 1 次子代理（比如审查）：子代理的 credits KiroCrew 不报给这里，没算进来', '交接以后，运行机上的会话这台机器读不到，没算进来']
+    withDetail((d) => { d.credits = { ...d.credits, total: 22.7, whole: false, missing } })
+    renderDetail()
+    const cost = await screen.findByRole('article', { name: '成本' })
+    expect(cost).toHaveTextContent('至少22.7credits')
+    expect(within(cost).getByRole('list', { name: '没算进来的' }).textContent).toBe(missing.join(''))
+    const card = screen.getByRole('region', { name: '会话' })
+    expect(within(card).getByText(/合计至少 22.7 credits/)).toHaveAttribute('title', missing.join('\n'))
+    expect(screen.getAllByRole('list', { name: '没算进来的' })).toHaveLength(1)
+    cleanup()
+    withDetail((d) => { d.credits = { ...d.credits, total: 22.7, whole: true, missing: [] } })
+    renderDetail()
+    expect(await screen.findByRole('article', { name: '成本' })).not.toHaveTextContent('至少')
+    expect(screen.queryByRole('list', { name: '没算进来的' })).toBeNull()
+  })
+
   test('时间线: newest first, the app’s own records in words (no commands, slot ids, pseudonyms); unread sources only once handed over', async () => {
     withDetail((d) => {
       d.timeline.items.push(

@@ -1067,6 +1067,20 @@ describe('需求看板 · 轮到谁、做什么', () => {
     expect(within(changes).getByRole('list', { name: '提交' })).toHaveTextContent('61ddbc30PAY-3：refund-api 的代码计划1 个文件 · 只改记录')
   })
 
+  test('credits that leave something out: the KPI says how many are left out, its hover says what; 验收 says 至少 (E2E-14)', async () => {
+    const b = fx.board()
+    const missing = ['起过 1 次子代理（比如审查）：子代理的 credits KiroCrew 不报给这里，没算进来', '1 轮没报 credits（多半是中途被停了），没算进来']
+    b.credits = { ...b.credits, total: 22.7, whole: false, missing }
+    installFixtureRoutes(boardRoute(() => structuredClone(b)))
+    renderBoard()
+    await loaded()
+    const credits = within(screen.getByRole('group', { name: '指标' })).getByText('credits').parentElement as HTMLElement
+    const note = credits.querySelector('.kt-kpi-note') as HTMLElement
+    expect(note).toHaveTextContent(new RegExp(`^${b.sessions.length} 个会话合计，另有 2 处没算进来$`))
+    expect(note.title).toBe(missing.join('\n'))
+    expect(region('验收')).toHaveTextContent('花了多少至少 22.7 credits')
+  })
+
   test('small words: one credits number everywhere, 运行记录里的合计 without sessions; +N for more Brain entries; one verify round is said, not drawn', async () => {
     const b = fx.board()
     b.credits = { ...b.credits, total: 36.954 }

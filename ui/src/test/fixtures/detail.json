@@ -60,7 +60,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
   },
   "where_label": "本机的工作目录",
   "run": {
@@ -834,7 +835,9 @@
   ],
   "credits": {
     "total": 12.4,
-    "note": "只算这个 app 开的会话；KiroCrew 只报 credits"
+    "whole": true,
+    "missing": [],
+    "note": "KiroCrew 只报 credits，没有别的用量数"
   },
   "brain": {
     "loaded": 7,

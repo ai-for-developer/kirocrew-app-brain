@@ -39,7 +39,7 @@
       "review": false
     },
     "summary": "退款单号加上校验位，重复和非法单号在入口就拒掉。",
-    "credits": 8.3,
+    "credits": 22.7,
     "updated_at": 1793663640,
     "mr": {
       "iid": 37,
@@ -50,7 +50,7 @@
     "run_ids": [
       "RUN-PAY-2-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
@@ -61,7 +61,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
   },
   "branch": "ai/alice/PAY-2-refund-id",
   "base": "main",
@@ -2145,7 +2146,8 @@
           "slot": "brain-PAY-2-1c4e",
           "url": "/chat?sid=brain-PAY-2-1c4e",
           "busy": false,
-          "title": "PAY-2 退款单号校验"
+          "title": "PAY-2 退款单号校验",
+          "agent": "brain-dev"
         }
       ],
       "ticker": null
@@ -3894,10 +3896,29 @@
       "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
       "url": "/chat?sid=brain-PAY-2-1c4e",
       "error": null
+    },
+    {
+      "slot": "brain-run-RUN-PAY-2-1",
+      "title": "RUN-PAY-2-1",
+      "agent": "brain-run",
+      "kind": "runner",
+      "credits": 14.4,
+      "turns": 3,
+      "busy": false,
+      "awaiting": false,
+      "last_activity": 1793661540,
+      "opened_at": 1794038400,
+      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
+      "url": "/chat?sid=brain-run-RUN-PAY-2-1",
+      "error": null
     }
   ],
   "credits": {
-    "total": 8.3,
+    "total": 22.7,
+    "whole": false,
+    "missing": [
+      "起过 1 次子代理（比如审查）：子代理的 credits KiroCrew 不报给这里，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
   },
   "source": "trace",

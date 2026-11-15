@@ -158,8 +158,10 @@ export interface Requirement {
   /** the first line of its 变更说明 (brain mr-desc's 一句话, from runs/<KEY>/MR.md or the run's records at the commit
    * the row is read at); null before it has a run, while it is being made, or when brain-kit cannot make one */
   summary: string | null
-  /** credits of the Kiro Crew sessions this app opened for it (null: none known). KiroCrew reports credits only. */
+  /** credits of its sessions this machine reads (null: none known). KiroCrew reports credits only. */
   credits: number | null
+  /** false: the credits leave something out (its detail's credits.missing says what) */
+  credits_whole: boolean
   /** latest activity we know of (commit, Lean event, session) */
   updated_at: number | null
   mr: MrRef | null
@@ -1045,6 +1047,15 @@ export interface TimelineItem {
   src: string | null
 }
 
+/** A requirement's credits: its sessions this machine reads, added up. *missing*: what the total leaves out (a subagent,
+ * a turn that reported none, a session too long to read whole, sessions on another machine), a line each; *whole*: none. */
+export interface Credits {
+  total: number | null
+  note: string
+  whole: boolean
+  missing: string[]
+}
+
 export interface SessionRow {
   slot: string
   title: string
@@ -1111,7 +1122,7 @@ export interface RequirementDetail {
   /** other_runs (brain-kit 0d52e97, rule H0): this requirement's runs on another branch, not read into this trace, in words */
   timeline: { source: 'trace' | 'app'; items: TimelineItem[]; missing: string[]; error: string; other_runs: string[] }
   sessions: SessionRow[]
-  credits: { total: number | null; note: string }
+  credits: Credits
   brain: { loaded: number | null; cited: string[]; stale: string[]; unknown: string[]; proposals: number | null }
   mr_desc: MrDesc
 }
@@ -1531,8 +1542,8 @@ export interface Run {
   now: RunNow
   /** summed over its sessions on this machine; null when none here (never per stage) */
   credits: number | null
-  /** its KiroCrew sessions on this machine, to open; [] when none here */
-  sessions: { slot: string; url: string; busy: boolean; title: string }[]
+  /** its KiroCrew sessions on this machine, to open; [] when none here. *agent*: the one it boots ('' when not known) */
+  sessions: { slot: string; url: string; busy: boolean; title: string; agent: string }[]
   /** what its session here did last (readable here only; null otherwise or before it did anything): its last call
    * (读文件 · 写文件 · 跑命令 · 搜索 · 查知识库 · 其他, and the path or command), and the last line the agent wrote, scrubbed,
    * its emails pseudonyms; never a person's typed words */
@@ -1831,7 +1842,7 @@ export interface ReqBoard {
   questions: Question[]
   mr_desc: MrDesc
   sessions: SessionRow[]
-  credits: { total: number | null; note: string }
+  credits: Credits
   /** trace: built from brainkit.trace; app: from the Lean ledger and the repo only */
   source: 'trace' | 'app'
   missing: string[]
@@ -2031,7 +2042,8 @@ export interface CtoNumbers {
   /** 人介入: a person's acts at the judgment points and outside them; by kind */
   stepped_in: { at_points: number; outside: number; kinds: { label: string; n: number; point: boolean }[] } | null
   /** credits per requirement (the requirements with credits) and in all */
-  credits: { per_req: number | null; total: number | null; reqs: number }
+  /** cut: how many of those requirements' credits leave something out (Requirement.credits_whole false) */
+  credits: { per_req: number | null; total: number | null; reqs: number; cut: number }
   runs: CtoRun[]
   /** merged per week (Monday, YYYY-MM-DD), by how: the last 12 weeks */
   weekly: { week: string; unattended: number; people: number; local: number; pending: number }[]

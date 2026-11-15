@@ -32,8 +32,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from .constants import LOCAL_AGENT
-from .gateway import GatewayError, said
+from .constants import LOCAL_AGENTS
+from .gateway import PAGE, GatewayError, said
 from .problems import AGENT_NEW
 
 PREFIX = "s-"
@@ -41,7 +41,7 @@ ROOT_FOLDER = "Brain 需求"  # the default root folder (constants.LOCAL_FOLDER)
 IDLE_POLLS = 2          # idle this many polls in a row (after the reply is in) = the turn is over
 MISSING_POLLS = 3       # gone from this many listings in a row = closed or deleted by someone
 RESENDS = 2             # a turn KiroCrew refused to start is sent again at most this often
-NO_START_S = 90.0       # sent, idle and nothing in the transcript for this long: send again
+NO_START_S = 90.0       # sent, idle and no row of it in the whole transcript for this long: send again
 STALL_S = 180.0         # busy with no new transcript row for this long: shown as 卡住
 STUCK_S = 60.0          # busy with nothing new for this long: the turn is stopped and the agent told to carry on (K3 demo: 60 s)
 TEMPLATE_SUFFIX = "-template"  # the member templates scripts/install-example.sh writes (<member>-template)
@@ -50,8 +50,7 @@ TRANSIENT = re.compile(r"transient|5\d\d|runtime failed|timed? ?out|overloaded|r
                        re.I)
 HISTORY = 400
 STATS_EVERY = 5         # a tracked slot's whole transcript (credits, turns) is read every this many polls
-STATS_LIMIT = 1000      # rows read for a slot's stats
-TRANSCRIPT_PAGES = 40   # pages of a transcript the 产出 drawer reads (KiroCrew's 500 rows each)
+TRANSCRIPT_PAGES = 40   # pages of a transcript read at most (KiroCrew's 500 rows each): a turn, a slot's stats, 产出
 _FIELDS = ("id", "task", "parent_session_key", "slot", "title", "folder", "cwd", "model", "conv_root", "send_ids",
            "requested", "started", "sent_at", "done", "queued", "queued_reason", "result", "streaming_text", "error",
            "user_stopped", "turns", "tool_count", "last_tool", "last_activity", "stalled", "credits", "calls",
@@ -59,6 +58,7 @@ _FIELDS = ("id", "task", "parent_session_key", "slot", "title", "folder", "cwd",
            "project_dir", "slot_name", "first_send_id", "strict_agent", "resend_ok", "nudge_ok", "trust_ok", "kind",
            "key", "memory_mode", "shown")
 KNOWLEDGE_TOOL = "local_knowledge_search"  # kirocrew-core's knowledge search: shown as 查知识库
+SPAWN_TOOLS = ("spawn_run", "spawn_sub_agents")   # kirocrew-core's calls that start subagents
 
 # What a bridge message into a runner session shows on the 产出 drawer, by the words brain-kit's bridge starts each kind
 # with (bridge/handoff.py message; decisions.py answer_message and the notices): its cause, and whether it is shown
@@ -264,6 +264,54 @@ def tail(msgs: list[dict[str, Any]], scrub: Callable[[str], str], cwd: str = "")
             "said": line or None, "said_at": (_epoch(said.get("ts")) or None) if said else None}
 
 
+def turn_count(rows: list[dict[str, Any]]) -> int:
+    """The turns in *rows*, as 产出 cuts them (turns.py): a user row and the agent's work after it, up to the next user
+    row. Not its replies: one turn often has several."""
+    return sum(1 for m in rows if m.get("role") == "user")
+
+
+def _credits(m: dict[str, Any]) -> float | None:
+    v = ((m.get("meta") if isinstance(m.get("meta"), dict) else {}).get("turn_stats") or {}).get("credits")
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def spend(rows: list[dict[str, Any]], busy: bool) -> dict[str, Any]:
+    """What a transcript (oldest first) says it cost: *credits*, its replies' added up (None: none reported); *turns*
+    (turn_count); *subagents*, the calls that started one (SPAWN_TOOLS: a subagent's credits are in no transcript this
+    app reads); *unreported*, the turns the agent worked in that reported no credits (most often one cut short), the
+    last one left out while the slot is *busy*: it is still at work."""
+    vals = [c for c in map(_credits, rows) if c is not None]
+    cuts: list[list[dict[str, Any]]] = [[]]
+    for m in rows:
+        if m.get("role") == "user":
+            cuts.append([])
+        else:
+            cuts[-1].append(m)
+    unpaid = [c for c in cuts if any(m.get("role") in ("assistant", "tool") for m in c)
+              and all(_credits(m) is None for m in c) and not (busy and c is cuts[-1])]
+    spawns = sum(1 for m in rows if m.get("role") == "tool"
+                 and str((m.get("meta") if isinstance(m.get("meta"), dict) else {}).get("tool_name") or "") in SPAWN_TOOLS)
+    return {"credits": round(sum(vals), 3) if vals else None, "turns": turn_count(rows), "subagents": spawns,
+            "unreported": len(unpaid)}
+
+
+def requirement_credits(rows: list[dict[str, Any]], elsewhere: str | None = None) -> dict[str, Any]:
+    """A requirement's credits from its sessions this machine reads (*rows*: service._sessions_snapshot's, each session
+    once): {total, whole, missing}. *missing*: what the total leaves out, a line each (*elsewhere*: sessions this
+    machine cannot read, said by the caller); *whole*: nothing is. The total is never shown as whole when it is not."""
+    got = [float(r["credits"]) for r in rows if r.get("credits") is not None]
+    missing = ["「%s」太长，最早的部分没读到，没算进来" % (r.get("title") or r.get("slot")) for r in rows if r.get("whole") is False]
+    n = sum(int(r.get("subagents") or 0) for r in rows)
+    if n:
+        missing.append("起过 %d 次子代理（比如审查）：子代理的 credits KiroCrew 不报给这里，没算进来" % n)
+    n = sum(int(r.get("unreported") or 0) for r in rows)
+    if n:
+        missing.append("%d 轮没报 credits（多半是中途被停了），没算进来" % n)
+    if elsewhere:
+        missing.append(elsewhere)
+    return {"total": round(sum(got), 3) if got else None, "whole": not missing, "missing": missing}
+
+
 def _epoch(stamp: Any) -> float:
     from datetime import datetime
 
@@ -447,7 +495,8 @@ class SessionManager:
         return sorted(out, key=lambda i: i.requested)
 
     def slot_stats(self, slot: str | None) -> dict[str, Any] | None:
-        """{credits, turns, busy, awaiting, last_activity, missing, error} of a slot this app opened (None: unknown)."""
+        """{credits, turns, subagents, unreported (spend), busy, awaiting, last_activity, missing, error, whole} of a slot
+        this app opened (None: unknown); *whole*: they are its whole transcript's (False: past TRANSCRIPT_PAGES pages)."""
         return dict(self._stats[slot]) if slot and slot in self._stats else None
 
     def slot_tail(self, slot: str | None) -> dict[str, Any] | None:
@@ -480,10 +529,12 @@ class SessionManager:
                 out[i.key] = round(out.get(i.key, 0.0) + c, 3)
         return out
 
-    async def transcript(self, slot: str) -> tuple[list[dict[str, Any]], bool]:
+    async def transcript(self, slot: str, until: Callable[[dict[str, Any]], bool] | None = None
+                         ) -> tuple[list[dict[str, Any]], bool]:
         """A slot's whole transcript, oldest first, read a page at a time from its newest row back; and whether it is
-        whole (past TRANSCRIPT_PAGES pages its oldest rows are left out). A row added while it is read is after the
-        first page's end, so nothing is read twice or skipped."""
+        whole (read to its first row: past TRANSCRIPT_PAGES pages its oldest rows are left out). *until*: stop after
+        the first page with a row it passes (the rows before that page are not read: not whole). A row added while it
+        is read is after the first page's end, so nothing is read twice or skipped."""
         pages: list[list[dict[str, Any]]] = []
         before: int | None = None
         for _ in range(TRANSCRIPT_PAGES):
@@ -491,6 +542,8 @@ class SessionManager:
             pages.append(page)
             if nxt is None:
                 return [m for p in reversed(pages) for m in p], True
+            if until is not None and any(until(m) for m in page):
+                break
             if before is not None and nxt >= before:   # a cursor that does not move back: stop rather than loop
                 break
             before = nxt
@@ -575,7 +628,8 @@ class SessionManager:
                                                 agent_kind="template")
             except GatewayError as exc:
                 if exc.status in (400, 404, 409):
-                    fix = "在设置里点「%s」" % AGENT_NEW if info.agent == LOCAL_AGENT else "先在这台机器上装上它"
+                    fix = ("在设置里点「%s」" % AGENT_NEW.format(a=info.agent) if info.agent in LOCAL_AGENTS
+                           else "先在这台机器上装上它")
                     raise GatewayError(exc.status, f"KiroCrew 里没有 {info.agent}：{fix}，再试一次",
                                        exc.code or "agent_choice_unavailable", exc.path) from None
                 raise
@@ -656,16 +710,14 @@ class SessionManager:
         st["busy"] = bool(row.get("running") or row.get("pending_approval") or int(row.get("queue_depth") or 0))
         st["awaiting"] = bool(row.get("pending_approval"))
         try:
-            msgs = await self.gw.messages(slot, limit=STATS_LIMIT)
+            msgs, whole = await self.transcript(slot)
         except Exception as exc:  # noqa: BLE001
             st["error"] = f"{exc}"[:200]
             self._dirty = True
             return
-        replies = [m for m in msgs if m.get("role") == "assistant" and str(m.get("content") or "").strip()]
-        spent = [((m.get("meta") or {}).get("turn_stats") or {}).get("credits") for m in replies]
-        vals = [float(v) for v in spent if isinstance(v, (int, float)) and not isinstance(v, bool)]
+        got = spend(msgs, st["busy"])
         stamps = [_epoch(m.get("ts")) for m in msgs if m.get("ts")]
-        st.update(credits=round(sum(vals), 3) if vals else st.get("credits"), turns=len(replies),
+        st.update(got, credits=got["credits"] if got["credits"] is not None else st.get("credits"), whole=whole,
                   last_activity=max(stamps) if stamps else st.get("last_activity"), error=None)
         self._tails[slot] = tail(msgs, self.scrub, (self.by_slot(slot) or SessionInfo()).cwd)
         self._dirty = True
@@ -681,23 +733,24 @@ class SessionManager:
         info.missing = 0
         busy = bool(row.get("running") or row.get("pending_approval") or int(row.get("queue_depth") or 0))
         info._awaiting_approval = bool(row.get("pending_approval"))
+
+        def ours(m: dict[str, Any]) -> bool:
+            meta = m.get("meta") if isinstance(m.get("meta"), dict) else {}
+            return m.get("role") == "user" and meta.get("sendId") in info.send_ids
+
         try:
-            msgs = await self.gw.messages(str(info.slot), limit=300)
+            msgs, whole = await self.transcript(str(info.slot), until=ours)
         except Exception as exc:  # noqa: BLE001
             self.log.info(self.app + ": reading session %s failed: %s", info.slot, exc)
             return
-        mine = None
-        for idx in range(len(msgs) - 1, -1, -1):
-            meta = msgs[idx].get("meta") if isinstance(msgs[idx].get("meta"), dict) else {}
-            if msgs[idx].get("role") == "user" and meta.get("sendId") in info.send_ids:
-                mine = idx
-                break
+        mine = next((idx for idx in range(len(msgs) - 1, -1, -1) if ours(msgs[idx])), None)
         after = msgs[mine + 1:] if mine is not None else []
         self._tails[str(info.slot)] = tail(msgs, self.scrub, info.cwd)
         calls = [tool_call(m, self.scrub) for m in after if m.get("role") == "tool"]
         replies = [m for m in after if m.get("role") == "assistant" and str(m.get("content") or "").strip()]
         errors = [m for m in after if m.get("role") == "error"]
-        info.calls, info.tool_count, info.turns = calls[-HISTORY:], len(calls), len(replies)
+        info.calls, info.tool_count = calls[-HISTORY:], len(calls)
+        info.turns = turn_count(msgs[mine:]) if mine is not None else 0
         if calls:
             info.last_tool = f"{calls[-1]['tool']} {calls[-1]['detail'] or ''}".strip()
         spent = [((m.get("meta") or {}).get("turn_stats") or {}).get("credits") for m in replies]
@@ -729,7 +782,8 @@ class SessionManager:
                               ((errors[-1].get("meta") or {}).get("code") or "error"))
                 await self._send(info)
                 return
-        if (not after and not busy and now - float(info.sent_at or now) > NO_START_S and info.resend_ok
+        # sent again only when the whole transcript has no row of it: a session that took the message never gets it twice
+        if (mine is None and whole and not busy and now - float(info.sent_at or now) > NO_START_S and info.resend_ok
                 and info.resends < RESENDS):
             info.resends += 1
             await self._send(info)
@@ -814,7 +868,7 @@ class SessionManager:
 
     async def adapter_slot(self, name: str) -> dict[str, Any]:
         self._runner_slot(name)
-        return {"key": name, "messages": await self.gw.messages(name, limit=STATS_LIMIT)}
+        return {"key": name, "messages": await self.gw.messages(name, limit=PAGE)}
 
     # ---- cleaning up ----------------------------------------------------------------------------------- #
 

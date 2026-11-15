@@ -264,7 +264,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r1",
@@ -308,7 +309,7 @@
      "review": false
     },
     "summary": "对账单按商户拆成一户一份，大商户按小时切。",
-    "credits": null,
+    "credits": 6.1,
     "updated_at": 1794135600,
     "mr": {
      "iid": 41,
@@ -319,7 +320,7 @@
     "run_ids": [
      "RUN-PAY-4-1"
     ],
-    "sessions": 0,
+    "sessions": 1,
     "overlap": [
      "PAY-3"
     ],
@@ -335,7 +336,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r1",
@@ -391,7 +393,7 @@
     "run_ids": [
      "RUN-PAY-5-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [
      "D-3"
@@ -404,7 +406,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r1",
@@ -468,7 +471,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r1",
@@ -524,7 +528,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r1",
@@ -565,7 +570,7 @@
      "review": false
     },
     "summary": "退款单号加上校验位，重复和非法单号在入口就拒掉。",
-    "credits": 8.3,
+    "credits": 22.7,
     "updated_at": 1793663640,
     "mr": {
      "iid": 37,
@@ -576,7 +581,7 @@
     "run_ids": [
      "RUN-PAY-2-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
@@ -587,7 +592,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    {
     "repo": "r1",
@@ -643,7 +649,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r1",
@@ -707,7 +714,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r1",
@@ -767,7 +775,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r1",
@@ -827,7 +836,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r1",
@@ -896,7 +906,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    {
     "repo": "r1",
@@ -1030,7 +1041,8 @@
     },
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r1",
@@ -1120,7 +1132,8 @@
     },
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r1",
@@ -1219,7 +1232,8 @@
     },
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r1",
@@ -1324,7 +1338,8 @@
     },
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r3",
@@ -1376,7 +1391,7 @@
     "run_ids": [
      "RUN-ORD-1-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -1385,7 +1400,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    {
     "repo": "r3",
@@ -1437,7 +1453,7 @@
     "run_ids": [
      "RUN-ORD-2-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -1446,7 +1462,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    {
     "repo": "r3",
@@ -1498,7 +1515,7 @@
     "run_ids": [
      "RUN-ORD-3-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -1507,7 +1524,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    {
     "repo": "r3",
@@ -1559,7 +1577,7 @@
     "run_ids": [
      "RUN-ORD-4-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -1568,7 +1586,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    {
     "repo": "r3",
@@ -1618,7 +1637,7 @@
     },
     "worktree": null,
     "run_ids": [],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -1627,7 +1646,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r3",
@@ -1679,7 +1699,7 @@
     "run_ids": [
      "RUN-ORD-6-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -1688,7 +1708,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    {
     "repo": "r3",
@@ -1740,7 +1761,7 @@
     "run_ids": [
      "RUN-ORD-7-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -1749,7 +1770,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    {
     "repo": "r3",
@@ -1802,7 +1824,7 @@
      "RUN-ORD-8-1",
      "RUN-ORD-8-2"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -1811,7 +1833,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    {
     "repo": "r3",
@@ -1863,7 +1886,7 @@
     "run_ids": [
      "RUN-ORD-9-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -1872,7 +1895,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    {
     "repo": "r3",
@@ -1916,7 +1940,7 @@
      "review": false
     },
     "summary": null,
-    "credits": null,
+    "credits": 7.4,
     "updated_at": 1794146160,
     "mr": {
      "iid": 19,
@@ -1927,7 +1951,7 @@
     "run_ids": [
      "RUN-ORD-10-1"
     ],
-    "sessions": 0,
+    "sessions": 1,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -1936,7 +1960,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r4",
@@ -1996,7 +2021,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r1",
@@ -2056,7 +2082,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r3",
@@ -2116,7 +2143,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    {
     "repo": "r3",
@@ -2176,7 +2204,8 @@
     "family": null,
     "home": null,
     "verify_fails": 3,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    }
   ],
   "overlaps": [
@@ -2385,7 +2414,7 @@
   ],
   "cto": {
    "available": true,
-   "sentence": "交给运行机的 8 个需求里，5 个交接以后没人插手就做完了。人介入了 45 次（本机做的也算），44 次落在判断点上。有 credits 的 21 个需求，平均每个 13.3 credits。",
+   "sentence": "交给运行机的 8 个需求里，5 个交接以后没人插手就做完了。人介入了 45 次（本机做的也算），44 次落在判断点上。有 credits 的 23 个需求，平均每个 13.4 credits（10 个还有没算进来的，实际更多）。",
    "ref": "各仓库远端的 main 分支",
    "unattended": [
     5,
@@ -2413,9 +2442,10 @@
     ]
    },
    "credits": {
-    "per_req": 13.3,
-    "total": 280.0,
-    "reqs": 21
+    "per_req": 13.4,
+    "total": 307.9,
+    "reqs": 23,
+    "cut": 10
    },
    "runs": [
     {
@@ -2925,7 +2955,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -2969,7 +3000,7 @@
        "review": false
       },
       "summary": "对账单按商户拆成一户一份，大商户按小时切。",
-      "credits": null,
+      "credits": 6.1,
       "updated_at": 1794135600,
       "mr": {
        "iid": 41,
@@ -2980,7 +3011,7 @@
       "run_ids": [
        "RUN-PAY-4-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [
        "PAY-3"
       ],
@@ -2996,7 +3027,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -3052,7 +3084,7 @@
       "run_ids": [
        "RUN-PAY-5-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [
        "D-3"
@@ -3065,7 +3097,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -3129,7 +3162,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -3185,7 +3219,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -3226,7 +3261,7 @@
        "review": false
       },
       "summary": "退款单号加上校验位，重复和非法单号在入口就拒掉。",
-      "credits": 8.3,
+      "credits": 22.7,
       "updated_at": 1793663640,
       "mr": {
        "iid": 37,
@@ -3237,7 +3272,7 @@
       "run_ids": [
        "RUN-PAY-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -3248,7 +3283,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r1",
@@ -3304,7 +3340,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -3368,7 +3405,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -3428,7 +3466,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -3488,7 +3527,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -3557,7 +3597,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r1",
@@ -3691,7 +3732,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -3781,7 +3823,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -3880,7 +3923,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -3985,7 +4029,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -4037,7 +4082,7 @@
       "run_ids": [
        "RUN-ORD-1-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -4046,7 +4091,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -4098,7 +4144,7 @@
       "run_ids": [
        "RUN-ORD-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -4107,7 +4153,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -4159,7 +4206,7 @@
       "run_ids": [
        "RUN-ORD-3-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -4168,7 +4215,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -4220,7 +4268,7 @@
       "run_ids": [
        "RUN-ORD-4-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -4229,7 +4277,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -4279,7 +4328,7 @@
       },
       "worktree": null,
       "run_ids": [],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -4288,7 +4337,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -4340,7 +4390,7 @@
       "run_ids": [
        "RUN-ORD-6-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -4349,7 +4399,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -4401,7 +4452,7 @@
       "run_ids": [
        "RUN-ORD-7-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -4410,7 +4461,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -4463,7 +4515,7 @@
        "RUN-ORD-8-1",
        "RUN-ORD-8-2"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -4472,7 +4524,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -4524,7 +4577,7 @@
       "run_ids": [
        "RUN-ORD-9-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -4533,7 +4586,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -4577,7 +4631,7 @@
        "review": false
       },
       "summary": null,
-      "credits": null,
+      "credits": 7.4,
       "updated_at": 1794146160,
       "mr": {
        "iid": 19,
@@ -4588,7 +4642,7 @@
       "run_ids": [
        "RUN-ORD-10-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -4597,7 +4651,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r4",
@@ -4657,7 +4712,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -4717,7 +4773,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -4777,7 +4834,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -4837,7 +4895,8 @@
       "family": null,
       "home": null,
       "verify_fails": 3,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      }
     ],
     "overlaps": [
@@ -5046,7 +5105,7 @@
     ],
     "cto": {
      "available": true,
-     "sentence": "交给运行机的 8 个需求里，5 个交接以后没人插手就做完了。人介入了 45 次（本机做的也算），44 次落在判断点上。有 credits 的 21 个需求，平均每个 13.3 credits。",
+     "sentence": "交给运行机的 8 个需求里，5 个交接以后没人插手就做完了。人介入了 45 次（本机做的也算），44 次落在判断点上。有 credits 的 23 个需求，平均每个 13.4 credits（10 个还有没算进来的，实际更多）。",
      "ref": "各仓库远端的 main 分支",
      "unattended": [
       5,
@@ -5074,9 +5133,10 @@
       ]
      },
      "credits": {
-      "per_req": 13.3,
-      "total": 280.0,
-      "reqs": 21
+      "per_req": 13.4,
+      "total": 307.9,
+      "reqs": 23,
+      "cut": 10
      },
      "runs": [
       {
@@ -5584,7 +5644,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -5628,7 +5689,7 @@
        "review": false
       },
       "summary": "对账单按商户拆成一户一份，大商户按小时切。",
-      "credits": null,
+      "credits": 6.1,
       "updated_at": 1794135600,
       "mr": {
        "iid": 41,
@@ -5639,7 +5700,7 @@
       "run_ids": [
        "RUN-PAY-4-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [
        "PAY-3"
       ],
@@ -5655,7 +5716,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -5711,7 +5773,7 @@
       "run_ids": [
        "RUN-PAY-5-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [
        "D-3"
@@ -5724,7 +5786,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -5788,7 +5851,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -5844,7 +5908,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -5885,7 +5950,7 @@
        "review": false
       },
       "summary": "退款单号加上校验位，重复和非法单号在入口就拒掉。",
-      "credits": 8.3,
+      "credits": 22.7,
       "updated_at": 1793663640,
       "mr": {
        "iid": 37,
@@ -5896,7 +5961,7 @@
       "run_ids": [
        "RUN-PAY-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -5907,7 +5972,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r1",
@@ -5963,7 +6029,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -6027,7 +6094,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -6087,7 +6155,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -6147,7 +6216,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -6216,7 +6286,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r1",
@@ -6350,7 +6421,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -6440,7 +6512,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -6539,7 +6612,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -6644,7 +6718,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -6704,7 +6779,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      }
     ],
     "overlaps": [
@@ -6905,7 +6981,7 @@
     "errors": [],
     "cto": {
      "available": true,
-     "sentence": "交给运行机的 1 个需求里，0 个交接以后没人插手就做完了。人介入了 5 次（本机做的也算），5 次落在判断点上。有 credits 的 11 个需求，平均每个 9.6 credits。",
+     "sentence": "交给运行机的 1 个需求里，0 个交接以后没人插手就做完了。人介入了 5 次（本机做的也算），5 次落在判断点上。有 credits 的 12 个需求，平均每个 10.5 credits（2 个还有没算进来的，实际更多）。",
      "ref": "远端的 main 分支",
      "unattended": [
       0,
@@ -6928,9 +7004,10 @@
       ]
      },
      "credits": {
-      "per_req": 9.6,
-      "total": 105.6,
-      "reqs": 11
+      "per_req": 10.5,
+      "total": 126.1,
+      "reqs": 12,
+      "cut": 2
      },
      "runs": [
       {
@@ -7318,7 +7395,8 @@
      "credits": {
       "per_req": null,
       "total": null,
-      "reqs": 0
+      "reqs": 0,
+      "cut": 0
      },
      "runs": [],
      "weekly": [
@@ -7478,7 +7556,7 @@
       "run_ids": [
        "RUN-ORD-1-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -7487,7 +7565,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -7539,7 +7618,7 @@
       "run_ids": [
        "RUN-ORD-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -7548,7 +7627,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -7600,7 +7680,7 @@
       "run_ids": [
        "RUN-ORD-3-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -7609,7 +7689,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -7661,7 +7742,7 @@
       "run_ids": [
        "RUN-ORD-4-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -7670,7 +7751,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -7720,7 +7802,7 @@
       },
       "worktree": null,
       "run_ids": [],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -7729,7 +7811,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -7781,7 +7864,7 @@
       "run_ids": [
        "RUN-ORD-6-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -7790,7 +7873,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -7842,7 +7926,7 @@
       "run_ids": [
        "RUN-ORD-7-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -7851,7 +7935,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -7904,7 +7989,7 @@
        "RUN-ORD-8-1",
        "RUN-ORD-8-2"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -7913,7 +7998,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -7965,7 +8051,7 @@
       "run_ids": [
        "RUN-ORD-9-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -7974,7 +8060,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -8018,7 +8105,7 @@
        "review": false
       },
       "summary": null,
-      "credits": null,
+      "credits": 7.4,
       "updated_at": 1794146160,
       "mr": {
        "iid": 19,
@@ -8029,7 +8116,7 @@
       "run_ids": [
        "RUN-ORD-10-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -8038,7 +8125,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -8098,7 +8186,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -8158,7 +8247,8 @@
       "family": null,
       "home": null,
       "verify_fails": 3,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      }
     ],
     "overlaps": [],
@@ -8293,7 +8383,7 @@
     "errors": [],
     "cto": {
      "available": true,
-     "sentence": "交给运行机的 7 个需求里，5 个交接以后没人插手就做完了。人介入了 40 次（本机做的也算），39 次落在判断点上。有 credits 的 9 个需求，平均每个 18.8 credits。",
+     "sentence": "交给运行机的 7 个需求里，5 个交接以后没人插手就做完了。人介入了 40 次（本机做的也算），39 次落在判断点上。有 credits 的 10 个需求，平均每个 17.7 credits（8 个还有没算进来的，实际更多）。",
      "ref": "远端的 main 分支",
      "unattended": [
       5,
@@ -8321,9 +8411,10 @@
       ]
      },
      "credits": {
-      "per_req": 18.8,
-      "total": 169.5,
-      "reqs": 9
+      "per_req": 17.7,
+      "total": 176.9,
+      "reqs": 10,
+      "cut": 8
      },
      "runs": [
       {
@@ -8693,7 +8784,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      }
     ],
     "overlaps": [],
@@ -8829,7 +8921,8 @@
      "credits": {
       "per_req": 4.9,
       "total": 4.9,
-      "reqs": 1
+      "reqs": 1,
+      "cut": 0
      },
      "runs": [],
      "weekly": [
@@ -8991,7 +9084,8 @@
        "review": false
       },
       "summary": null,
-      "credits": null,
+      "credits": 12.4,
+      "credits_whole": true,
       "updated_at": 1794146340.0,
       "mr": {
        "iid": 53,
@@ -9002,7 +9096,7 @@
       "run_ids": [
        "RUN-PAY-9-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -9058,6 +9152,7 @@
       },
       "summary": "对账单按商户拆成一户一份，大商户按小时切。",
       "credits": 6.1,
+      "credits_whole": false,
       "updated_at": 1794135600.0,
       "mr": {
        "iid": 41,
@@ -9127,7 +9222,8 @@
        "review": false
       },
       "summary": "退款回调失败自动重试，第 6 次转人工处理。",
-      "credits": 24.2,
+      "credits": 31.0,
+      "credits_whole": true,
       "updated_at": 1794052800.0,
       "mr": {
        "iid": 44,
@@ -9138,7 +9234,7 @@
       "run_ids": [
        "RUN-PAY-5-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [
        "D-3"
@@ -9196,6 +9292,7 @@
       },
       "summary": "订单状态变化时推送到企业微信，失败自动重试。",
       "credits": 7.4,
+      "credits_whole": false,
       "updated_at": 1794146160.0,
       "mr": {
        "iid": 19,
@@ -9352,14 +9449,15 @@
     "errors": [],
     "cto": {
      "available": false,
-     "sentence": "有 credits 的 3 个需求，平均每个 12.6 credits。",
+     "sentence": "有 credits 的 4 个需求，平均每个 14.2 credits（2 个还有没算进来的，实际更多）。",
      "ref": null,
      "unattended": null,
      "stepped_in": null,
      "credits": {
-      "per_req": 12.6,
-      "total": 37.7,
-      "reqs": 3
+      "per_req": 14.2,
+      "total": 56.9,
+      "reqs": 4,
+      "cut": 2
      },
      "runs": [],
      "weekly": [
@@ -9560,7 +9658,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -9604,7 +9703,7 @@
        "review": false
       },
       "summary": "对账单按商户拆成一户一份，大商户按小时切。",
-      "credits": null,
+      "credits": 6.1,
       "updated_at": 1794135600,
       "mr": {
        "iid": 41,
@@ -9615,7 +9714,7 @@
       "run_ids": [
        "RUN-PAY-4-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [
        "PAY-3"
       ],
@@ -9631,7 +9730,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -9687,7 +9787,7 @@
       "run_ids": [
        "RUN-PAY-5-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [
        "D-3"
@@ -9700,7 +9800,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -9764,7 +9865,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -9820,7 +9922,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -9861,7 +9964,7 @@
        "review": false
       },
       "summary": "退款单号加上校验位，重复和非法单号在入口就拒掉。",
-      "credits": 8.3,
+      "credits": 22.7,
       "updated_at": 1793663640,
       "mr": {
        "iid": 37,
@@ -9872,7 +9975,7 @@
       "run_ids": [
        "RUN-PAY-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -9883,7 +9986,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r1",
@@ -9939,7 +10043,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -10003,7 +10108,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -10063,7 +10169,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -10123,7 +10230,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -10192,7 +10300,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r1",
@@ -10326,7 +10435,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -10416,7 +10526,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -10515,7 +10626,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -10620,7 +10732,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -10672,7 +10785,7 @@
       "run_ids": [
        "RUN-ORD-1-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -10681,7 +10794,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -10733,7 +10847,7 @@
       "run_ids": [
        "RUN-ORD-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -10742,7 +10856,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -10794,7 +10909,7 @@
       "run_ids": [
        "RUN-ORD-3-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -10803,7 +10918,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -10855,7 +10971,7 @@
       "run_ids": [
        "RUN-ORD-4-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -10864,7 +10980,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -10914,7 +11031,7 @@
       },
       "worktree": null,
       "run_ids": [],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -10923,7 +11040,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -10975,7 +11093,7 @@
       "run_ids": [
        "RUN-ORD-6-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -10984,7 +11102,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -11036,7 +11155,7 @@
       "run_ids": [
        "RUN-ORD-7-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -11045,7 +11164,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -11098,7 +11218,7 @@
        "RUN-ORD-8-1",
        "RUN-ORD-8-2"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -11107,7 +11227,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -11159,7 +11280,7 @@
       "run_ids": [
        "RUN-ORD-9-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -11168,7 +11289,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -11212,7 +11334,7 @@
        "review": false
       },
       "summary": null,
-      "credits": null,
+      "credits": 7.4,
       "updated_at": 1794146160,
       "mr": {
        "iid": 19,
@@ -11223,7 +11345,7 @@
       "run_ids": [
        "RUN-ORD-10-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -11232,7 +11354,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r4",
@@ -11292,7 +11415,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -11352,7 +11476,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -11412,7 +11537,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -11472,7 +11598,8 @@
       "family": null,
       "home": null,
       "verify_fails": 3,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      }
     ],
     "overlaps": [
@@ -11570,14 +11697,15 @@
     ],
     "cto": {
      "available": false,
-     "sentence": "有 credits 的 21 个需求，平均每个 13.3 credits。",
+     "sentence": "有 credits 的 23 个需求，平均每个 13.4 credits（10 个还有没算进来的，实际更多）。",
      "ref": null,
      "unattended": null,
      "stepped_in": null,
      "credits": {
-      "per_req": 13.3,
-      "total": 280.0,
-      "reqs": 21
+      "per_req": 13.4,
+      "total": 307.9,
+      "reqs": 23,
+      "cut": 10
      },
      "runs": [],
      "weekly": [
@@ -11838,7 +11966,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -11882,7 +12011,7 @@
        "review": false
       },
       "summary": "对账单按商户拆成一户一份，大商户按小时切。",
-      "credits": null,
+      "credits": 6.1,
       "updated_at": 1794135600,
       "mr": {
        "iid": 41,
@@ -11893,7 +12022,7 @@
       "run_ids": [
        "RUN-PAY-4-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [
        "PAY-3"
       ],
@@ -11909,7 +12038,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -11965,7 +12095,7 @@
       "run_ids": [
        "RUN-PAY-5-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [
        "D-3"
@@ -11978,7 +12108,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -12042,7 +12173,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -12098,7 +12230,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -12139,7 +12272,7 @@
        "review": false
       },
       "summary": "退款单号加上校验位，重复和非法单号在入口就拒掉。",
-      "credits": 8.3,
+      "credits": 22.7,
       "updated_at": 1793663640,
       "mr": {
        "iid": 37,
@@ -12150,7 +12283,7 @@
       "run_ids": [
        "RUN-PAY-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -12161,7 +12294,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r1",
@@ -12217,7 +12351,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -12281,7 +12416,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -12341,7 +12477,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -12401,7 +12538,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -12470,7 +12608,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r1",
@@ -12604,7 +12743,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -12694,7 +12834,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -12793,7 +12934,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -12898,7 +13040,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -12958,7 +13101,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      }
     ],
     "overlaps": [
@@ -13048,14 +13192,15 @@
     "errors": [],
     "cto": {
      "available": false,
-     "sentence": "有 credits 的 11 个需求，平均每个 9.6 credits。",
+     "sentence": "有 credits 的 12 个需求，平均每个 10.5 credits（2 个还有没算进来的，实际更多）。",
      "ref": null,
      "unattended": null,
      "stepped_in": null,
      "credits": {
-      "per_req": 9.6,
-      "total": 105.6,
-      "reqs": 11
+      "per_req": 10.5,
+      "total": 126.1,
+      "reqs": 12,
+      "cut": 2
      },
      "runs": [],
      "weekly": [
@@ -13305,7 +13450,8 @@
      "credits": {
       "per_req": null,
       "total": null,
-      "reqs": 0
+      "reqs": 0,
+      "cut": 0
      },
      "runs": [],
      "weekly": [
@@ -13465,7 +13611,7 @@
       "run_ids": [
        "RUN-ORD-1-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -13474,7 +13620,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -13526,7 +13673,7 @@
       "run_ids": [
        "RUN-ORD-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -13535,7 +13682,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -13587,7 +13735,7 @@
       "run_ids": [
        "RUN-ORD-3-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -13596,7 +13744,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -13648,7 +13797,7 @@
       "run_ids": [
        "RUN-ORD-4-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -13657,7 +13806,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -13707,7 +13857,7 @@
       },
       "worktree": null,
       "run_ids": [],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -13716,7 +13866,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -13768,7 +13919,7 @@
       "run_ids": [
        "RUN-ORD-6-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -13777,7 +13928,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -13829,7 +13981,7 @@
       "run_ids": [
        "RUN-ORD-7-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -13838,7 +13990,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -13891,7 +14044,7 @@
        "RUN-ORD-8-1",
        "RUN-ORD-8-2"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -13900,7 +14053,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -13952,7 +14106,7 @@
       "run_ids": [
        "RUN-ORD-9-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -13961,7 +14115,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -14005,7 +14160,7 @@
        "review": false
       },
       "summary": null,
-      "credits": null,
+      "credits": 7.4,
       "updated_at": 1794146160,
       "mr": {
        "iid": 19,
@@ -14016,7 +14171,7 @@
       "run_ids": [
        "RUN-ORD-10-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -14025,7 +14180,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -14085,7 +14241,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -14145,7 +14302,8 @@
       "family": null,
       "home": null,
       "verify_fails": 3,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      }
     ],
     "overlaps": [],
@@ -14219,14 +14377,15 @@
     "errors": [],
     "cto": {
      "available": false,
-     "sentence": "有 credits 的 9 个需求，平均每个 18.8 credits。",
+     "sentence": "有 credits 的 10 个需求，平均每个 17.7 credits（8 个还有没算进来的，实际更多）。",
      "ref": null,
      "unattended": null,
      "stepped_in": null,
      "credits": {
-      "per_req": 18.8,
-      "total": 169.5,
-      "reqs": 9
+      "per_req": 17.7,
+      "total": 176.9,
+      "reqs": 10,
+      "cut": 8
      },
      "runs": [],
      "weekly": [
@@ -14431,7 +14590,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      }
     ],
     "overlaps": [],
@@ -14512,7 +14672,8 @@
      "credits": {
       "per_req": 4.9,
       "total": 4.9,
-      "reqs": 1
+      "reqs": 1,
+      "cut": 0
      },
      "runs": [],
      "weekly": [
@@ -14674,7 +14835,8 @@
        "review": false
       },
       "summary": null,
-      "credits": null,
+      "credits": 12.4,
+      "credits_whole": true,
       "updated_at": 1794146340.0,
       "mr": {
        "iid": 53,
@@ -14685,7 +14847,7 @@
       "run_ids": [
        "RUN-PAY-9-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -14741,6 +14903,7 @@
       },
       "summary": "对账单按商户拆成一户一份，大商户按小时切。",
       "credits": 6.1,
+      "credits_whole": false,
       "updated_at": 1794135600.0,
       "mr": {
        "iid": 41,
@@ -14810,7 +14973,8 @@
        "review": false
       },
       "summary": "退款回调失败自动重试，第 6 次转人工处理。",
-      "credits": 24.2,
+      "credits": 31.0,
+      "credits_whole": true,
       "updated_at": 1794052800.0,
       "mr": {
        "iid": 44,
@@ -14821,7 +14985,7 @@
       "run_ids": [
        "RUN-PAY-5-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [
        "D-3"
@@ -14879,6 +15043,7 @@
       },
       "summary": "订单状态变化时推送到企业微信，失败自动重试。",
       "credits": 7.4,
+      "credits_whole": false,
       "updated_at": 1794146160.0,
       "mr": {
        "iid": 19,
@@ -14970,14 +15135,15 @@
     "errors": [],
     "cto": {
      "available": false,
-     "sentence": "有 credits 的 3 个需求，平均每个 12.6 credits。",
+     "sentence": "有 credits 的 4 个需求，平均每个 14.2 credits（2 个还有没算进来的，实际更多）。",
      "ref": null,
      "unattended": null,
      "stepped_in": null,
      "credits": {
-      "per_req": 12.6,
-      "total": 37.7,
-      "reqs": 3
+      "per_req": 14.2,
+      "total": 56.9,
+      "reqs": 4,
+      "cut": 2
      },
      "runs": [],
      "weekly": [
@@ -15180,7 +15346,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -15244,7 +15411,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -15300,7 +15468,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -15341,7 +15510,7 @@
        "review": false
       },
       "summary": "退款单号加上校验位，重复和非法单号在入口就拒掉。",
-      "credits": 8.3,
+      "credits": 22.7,
       "updated_at": 1793663640,
       "mr": {
        "iid": 37,
@@ -15352,7 +15521,7 @@
       "run_ids": [
        "RUN-PAY-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -15363,7 +15532,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r1",
@@ -15419,7 +15589,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -15483,7 +15654,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -15543,7 +15715,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -15603,7 +15776,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -15737,7 +15911,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -15827,7 +16002,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -15926,7 +16102,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -16031,7 +16208,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -16083,7 +16261,7 @@
       "run_ids": [
        "RUN-ORD-1-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -16092,7 +16270,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -16144,7 +16323,7 @@
       "run_ids": [
        "RUN-ORD-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -16153,7 +16332,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -16205,7 +16385,7 @@
       "run_ids": [
        "RUN-ORD-3-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -16214,7 +16394,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -16266,7 +16447,7 @@
       "run_ids": [
        "RUN-ORD-4-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -16275,7 +16456,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -16325,7 +16507,7 @@
       },
       "worktree": null,
       "run_ids": [],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -16334,7 +16516,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -16386,7 +16569,7 @@
       "run_ids": [
        "RUN-ORD-6-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -16395,7 +16578,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -16447,7 +16631,7 @@
       "run_ids": [
        "RUN-ORD-7-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -16456,7 +16640,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -16509,7 +16694,7 @@
        "RUN-ORD-8-1",
        "RUN-ORD-8-2"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -16518,7 +16703,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -16570,7 +16756,7 @@
       "run_ids": [
        "RUN-ORD-9-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -16579,7 +16765,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r4",
@@ -16639,7 +16826,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -16699,7 +16887,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -16759,7 +16948,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -16819,7 +17009,8 @@
       "family": null,
       "home": null,
       "verify_fails": 3,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "runner",
@@ -16863,7 +17054,8 @@
        "review": false
       },
       "summary": null,
-      "credits": null,
+      "credits": 12.4,
+      "credits_whole": true,
       "updated_at": 1794146340.0,
       "mr": {
        "iid": 53,
@@ -16874,7 +17066,7 @@
       "run_ids": [
        "RUN-PAY-9-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -16930,6 +17122,7 @@
       },
       "summary": "对账单按商户拆成一户一份，大商户按小时切。",
       "credits": 6.1,
+      "credits_whole": false,
       "updated_at": 1794135600.0,
       "mr": {
        "iid": 41,
@@ -17001,7 +17194,8 @@
        "review": false
       },
       "summary": "退款回调失败自动重试，第 6 次转人工处理。",
-      "credits": 24.2,
+      "credits": 31.0,
+      "credits_whole": true,
       "updated_at": 1794052800.0,
       "mr": {
        "iid": 44,
@@ -17012,7 +17206,7 @@
       "run_ids": [
        "RUN-PAY-5-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [
        "D-3"
@@ -17070,6 +17264,7 @@
       },
       "summary": "订单状态变化时推送到企业微信，失败自动重试。",
       "credits": 7.4,
+      "credits_whole": false,
       "updated_at": 1794146160.0,
       "mr": {
        "iid": 19,
@@ -17296,7 +17491,7 @@
     ],
     "cto": {
      "available": true,
-     "sentence": "交给运行机的 8 个需求里，5 个交接以后没人插手就做完了。人介入了 45 次（本机做的也算），44 次落在判断点上。有 credits 的 22 个需求，平均每个 13.6 credits。",
+     "sentence": "交给运行机的 8 个需求里，5 个交接以后没人插手就做完了。人介入了 45 次（本机做的也算），44 次落在判断点上。有 credits 的 23 个需求，平均每个 14.4 credits（11 个还有没算进来的，实际更多）。",
      "ref": "各仓库远端的 main 分支",
      "unattended": [
       5,
@@ -17324,9 +17519,10 @@
       ]
      },
      "credits": {
-      "per_req": 13.6,
-      "total": 298.5,
-      "reqs": 22
+      "per_req": 14.4,
+      "total": 332.1,
+      "reqs": 23,
+      "cut": 11
      },
      "runs": [
       {
@@ -17833,7 +18029,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -17897,7 +18094,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -17953,7 +18151,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -17994,7 +18193,7 @@
        "review": false
       },
       "summary": "退款单号加上校验位，重复和非法单号在入口就拒掉。",
-      "credits": 8.3,
+      "credits": 22.7,
       "updated_at": 1793663640,
       "mr": {
        "iid": 37,
@@ -18005,7 +18204,7 @@
       "run_ids": [
        "RUN-PAY-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -18016,7 +18215,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r1",
@@ -18072,7 +18272,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -18136,7 +18337,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -18196,7 +18398,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -18256,7 +18459,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -18390,7 +18594,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -18480,7 +18685,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -18579,7 +18785,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -18684,7 +18891,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -18744,7 +18952,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "runner",
@@ -18788,7 +18997,8 @@
        "review": false
       },
       "summary": null,
-      "credits": null,
+      "credits": 12.4,
+      "credits_whole": true,
       "updated_at": 1794146340.0,
       "mr": {
        "iid": 53,
@@ -18799,7 +19009,7 @@
       "run_ids": [
        "RUN-PAY-9-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -18855,6 +19065,7 @@
       },
       "summary": "对账单按商户拆成一户一份，大商户按小时切。",
       "credits": 6.1,
+      "credits_whole": false,
       "updated_at": 1794135600.0,
       "mr": {
        "iid": 41,
@@ -18926,7 +19137,8 @@
        "review": false
       },
       "summary": "退款回调失败自动重试，第 6 次转人工处理。",
-      "credits": 24.2,
+      "credits": 31.0,
+      "credits_whole": true,
       "updated_at": 1794052800.0,
       "mr": {
        "iid": 44,
@@ -18937,7 +19149,7 @@
       "run_ids": [
        "RUN-PAY-5-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [
        "D-3"
@@ -19149,7 +19361,7 @@
     "errors": [],
     "cto": {
      "available": true,
-     "sentence": "交给运行机的 1 个需求里，0 个交接以后没人插手就做完了。人介入了 5 次（本机做的也算），5 次落在判断点上。有 credits 的 11 个需求，平均每个 10.6 credits。",
+     "sentence": "交给运行机的 1 个需求里，0 个交接以后没人插手就做完了。人介入了 5 次（本机做的也算），5 次落在判断点上。有 credits 的 12 个需求，平均每个 12.5 credits（2 个还有没算进来的，实际更多）。",
      "ref": "远端的 main 分支",
      "unattended": [
       0,
@@ -19172,9 +19384,10 @@
       ]
      },
      "credits": {
-      "per_req": 10.6,
-      "total": 116.7,
-      "reqs": 11
+      "per_req": 12.5,
+      "total": 150.3,
+      "reqs": 12,
+      "cut": 2
      },
      "runs": [
       {
@@ -19561,7 +19774,8 @@
      "credits": {
       "per_req": null,
       "total": null,
-      "reqs": 0
+      "reqs": 0,
+      "cut": 0
      },
      "runs": [],
      "weekly": [
@@ -19721,7 +19935,7 @@
       "run_ids": [
        "RUN-ORD-1-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -19730,7 +19944,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -19782,7 +19997,7 @@
       "run_ids": [
        "RUN-ORD-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -19791,7 +20006,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -19843,7 +20059,7 @@
       "run_ids": [
        "RUN-ORD-3-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -19852,7 +20068,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -19904,7 +20121,7 @@
       "run_ids": [
        "RUN-ORD-4-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -19913,7 +20130,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -19963,7 +20181,7 @@
       },
       "worktree": null,
       "run_ids": [],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -19972,7 +20190,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -20024,7 +20243,7 @@
       "run_ids": [
        "RUN-ORD-6-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -20033,7 +20252,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -20085,7 +20305,7 @@
       "run_ids": [
        "RUN-ORD-7-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -20094,7 +20314,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -20147,7 +20368,7 @@
        "RUN-ORD-8-1",
        "RUN-ORD-8-2"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -20156,7 +20377,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -20208,7 +20430,7 @@
       "run_ids": [
        "RUN-ORD-9-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -20217,7 +20439,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -20277,7 +20500,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -20337,7 +20561,8 @@
       "family": null,
       "home": null,
       "verify_fails": 3,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "runner",
@@ -20384,6 +20609,7 @@
       },
       "summary": "订单状态变化时推送到企业微信，失败自动重试。",
       "credits": 7.4,
+      "credits_whole": false,
       "updated_at": 1794146160.0,
       "mr": {
        "iid": 19,
@@ -20536,7 +20762,7 @@
     "errors": [],
     "cto": {
      "available": true,
-     "sentence": "交给运行机的 7 个需求里，5 个交接以后没人插手就做完了。人介入了 40 次（本机做的也算），39 次落在判断点上。有 credits 的 10 个需求，平均每个 17.7 credits。",
+     "sentence": "交给运行机的 7 个需求里，5 个交接以后没人插手就做完了。人介入了 40 次（本机做的也算），39 次落在判断点上。有 credits 的 10 个需求，平均每个 17.7 credits（9 个还有没算进来的，实际更多）。",
      "ref": "远端的 main 分支",
      "unattended": [
       5,
@@ -20566,7 +20792,8 @@
      "credits": {
       "per_req": 17.7,
       "total": 176.9,
-      "reqs": 10
+      "reqs": 10,
+      "cut": 9
      },
      "runs": [
       {
@@ -20936,7 +21163,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      }
     ],
     "overlaps": [],
@@ -21072,7 +21300,8 @@
      "credits": {
       "per_req": 4.9,
       "total": 4.9,
-      "reqs": 1
+      "reqs": 1,
+      "cut": 0
      },
      "runs": [],
      "weekly": [
@@ -21234,7 +21463,8 @@
        "review": false
       },
       "summary": null,
-      "credits": null,
+      "credits": 12.4,
+      "credits_whole": true,
       "updated_at": 1794146340.0,
       "mr": {
        "iid": 53,
@@ -21245,7 +21475,7 @@
       "run_ids": [
        "RUN-PAY-9-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -21301,6 +21531,7 @@
       },
       "summary": "对账单按商户拆成一户一份，大商户按小时切。",
       "credits": 6.1,
+      "credits_whole": false,
       "updated_at": 1794135600.0,
       "mr": {
        "iid": 41,
@@ -21370,7 +21601,8 @@
        "review": false
       },
       "summary": "退款回调失败自动重试，第 6 次转人工处理。",
-      "credits": 24.2,
+      "credits": 31.0,
+      "credits_whole": true,
       "updated_at": 1794052800.0,
       "mr": {
        "iid": 44,
@@ -21381,7 +21613,7 @@
       "run_ids": [
        "RUN-PAY-5-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [
        "D-3"
@@ -21439,6 +21671,7 @@
       },
       "summary": "订单状态变化时推送到企业微信，失败自动重试。",
       "credits": 7.4,
+      "credits_whole": false,
       "updated_at": 1794146160.0,
       "mr": {
        "iid": 19,
@@ -21595,14 +21828,15 @@
     "errors": [],
     "cto": {
      "available": false,
-     "sentence": "有 credits 的 3 个需求，平均每个 12.6 credits。",
+     "sentence": "有 credits 的 4 个需求，平均每个 14.2 credits（2 个还有没算进来的，实际更多）。",
      "ref": null,
      "unattended": null,
      "stepped_in": null,
      "credits": {
-      "per_req": 12.6,
-      "total": 37.7,
-      "reqs": 3
+      "per_req": 14.2,
+      "total": 56.9,
+      "reqs": 4,
+      "cut": 2
      },
      "runs": [],
      "weekly": [
@@ -21803,7 +22037,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -21867,7 +22102,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -21923,7 +22159,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -21964,7 +22201,7 @@
        "review": false
       },
       "summary": "退款单号加上校验位，重复和非法单号在入口就拒掉。",
-      "credits": 8.3,
+      "credits": 22.7,
       "updated_at": 1793663640,
       "mr": {
        "iid": 37,
@@ -21975,7 +22212,7 @@
       "run_ids": [
        "RUN-PAY-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -21986,7 +22223,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r1",
@@ -22042,7 +22280,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -22106,7 +22345,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -22166,7 +22406,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -22226,7 +22467,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -22360,7 +22602,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -22450,7 +22693,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -22549,7 +22793,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -22654,7 +22899,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -22706,7 +22952,7 @@
       "run_ids": [
        "RUN-ORD-1-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -22715,7 +22961,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -22767,7 +23014,7 @@
       "run_ids": [
        "RUN-ORD-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -22776,7 +23023,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -22828,7 +23076,7 @@
       "run_ids": [
        "RUN-ORD-3-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -22837,7 +23085,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -22889,7 +23138,7 @@
       "run_ids": [
        "RUN-ORD-4-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -22898,7 +23147,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -22948,7 +23198,7 @@
       },
       "worktree": null,
       "run_ids": [],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -22957,7 +23207,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -23009,7 +23260,7 @@
       "run_ids": [
        "RUN-ORD-6-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -23018,7 +23269,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -23070,7 +23322,7 @@
       "run_ids": [
        "RUN-ORD-7-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -23079,7 +23331,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -23132,7 +23385,7 @@
        "RUN-ORD-8-1",
        "RUN-ORD-8-2"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -23141,7 +23394,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -23193,7 +23447,7 @@
       "run_ids": [
        "RUN-ORD-9-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -23202,7 +23456,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r4",
@@ -23262,7 +23517,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -23322,7 +23578,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -23382,7 +23639,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -23442,7 +23700,8 @@
       "family": null,
       "home": null,
       "verify_fails": 3,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "runner",
@@ -23486,7 +23745,8 @@
        "review": false
       },
       "summary": null,
-      "credits": null,
+      "credits": 12.4,
+      "credits_whole": true,
       "updated_at": 1794146340.0,
       "mr": {
        "iid": 53,
@@ -23497,7 +23757,7 @@
       "run_ids": [
        "RUN-PAY-9-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -23553,6 +23813,7 @@
       },
       "summary": "对账单按商户拆成一户一份，大商户按小时切。",
       "credits": 6.1,
+      "credits_whole": false,
       "updated_at": 1794135600.0,
       "mr": {
        "iid": 41,
@@ -23624,7 +23885,8 @@
        "review": false
       },
       "summary": "退款回调失败自动重试，第 6 次转人工处理。",
-      "credits": 24.2,
+      "credits": 31.0,
+      "credits_whole": true,
       "updated_at": 1794052800.0,
       "mr": {
        "iid": 44,
@@ -23635,7 +23897,7 @@
       "run_ids": [
        "RUN-PAY-5-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [
        "D-3"
@@ -23693,6 +23955,7 @@
       },
       "summary": "订单状态变化时推送到企业微信，失败自动重试。",
       "credits": 7.4,
+      "credits_whole": false,
       "updated_at": 1794146160.0,
       "mr": {
        "iid": 19,
@@ -23808,14 +24071,15 @@
     ],
     "cto": {
      "available": false,
-     "sentence": "有 credits 的 22 个需求，平均每个 13.6 credits。",
+     "sentence": "有 credits 的 23 个需求，平均每个 14.4 credits（11 个还有没算进来的，实际更多）。",
      "ref": null,
      "unattended": null,
      "stepped_in": null,
      "credits": {
-      "per_req": 13.6,
-      "total": 298.5,
-      "reqs": 22
+      "per_req": 14.4,
+      "total": 332.1,
+      "reqs": 23,
+      "cut": 11
      },
      "runs": [],
      "weekly": [
@@ -24075,7 +24339,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -24139,7 +24404,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -24195,7 +24461,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -24236,7 +24503,7 @@
        "review": false
       },
       "summary": "退款单号加上校验位，重复和非法单号在入口就拒掉。",
-      "credits": 8.3,
+      "credits": 22.7,
       "updated_at": 1793663640,
       "mr": {
        "iid": 37,
@@ -24247,7 +24514,7 @@
       "run_ids": [
        "RUN-PAY-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -24258,7 +24525,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r1",
@@ -24314,7 +24582,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -24378,7 +24647,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -24438,7 +24708,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -24498,7 +24769,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -24632,7 +24904,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -24722,7 +24995,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -24821,7 +25095,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -24926,7 +25201,8 @@
       },
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r1",
@@ -24986,7 +25262,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "runner",
@@ -25030,7 +25307,8 @@
        "review": false
       },
       "summary": null,
-      "credits": null,
+      "credits": 12.4,
+      "credits_whole": true,
       "updated_at": 1794146340.0,
       "mr": {
        "iid": 53,
@@ -25041,7 +25319,7 @@
       "run_ids": [
        "RUN-PAY-9-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -25097,6 +25375,7 @@
       },
       "summary": "对账单按商户拆成一户一份，大商户按小时切。",
       "credits": 6.1,
+      "credits_whole": false,
       "updated_at": 1794135600.0,
       "mr": {
        "iid": 41,
@@ -25168,7 +25447,8 @@
        "review": false
       },
       "summary": "退款回调失败自动重试，第 6 次转人工处理。",
-      "credits": 24.2,
+      "credits": 31.0,
+      "credits_whole": true,
       "updated_at": 1794052800.0,
       "mr": {
        "iid": 44,
@@ -25179,7 +25459,7 @@
       "run_ids": [
        "RUN-PAY-5-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [
        "D-3"
@@ -25280,14 +25560,15 @@
     "errors": [],
     "cto": {
      "available": false,
-     "sentence": "有 credits 的 11 个需求，平均每个 10.6 credits。",
+     "sentence": "有 credits 的 12 个需求，平均每个 12.5 credits（2 个还有没算进来的，实际更多）。",
      "ref": null,
      "unattended": null,
      "stepped_in": null,
      "credits": {
-      "per_req": 10.6,
-      "total": 116.7,
-      "reqs": 11
+      "per_req": 12.5,
+      "total": 150.3,
+      "reqs": 12,
+      "cut": 2
      },
      "runs": [],
      "weekly": [
@@ -25536,7 +25817,8 @@
      "credits": {
       "per_req": null,
       "total": null,
-      "reqs": 0
+      "reqs": 0,
+      "cut": 0
      },
      "runs": [],
      "weekly": [
@@ -25696,7 +25978,7 @@
       "run_ids": [
        "RUN-ORD-1-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -25705,7 +25987,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -25757,7 +26040,7 @@
       "run_ids": [
        "RUN-ORD-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -25766,7 +26049,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -25818,7 +26102,7 @@
       "run_ids": [
        "RUN-ORD-3-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -25827,7 +26111,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -25879,7 +26164,7 @@
       "run_ids": [
        "RUN-ORD-4-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -25888,7 +26173,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -25938,7 +26224,7 @@
       },
       "worktree": null,
       "run_ids": [],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -25947,7 +26233,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -25999,7 +26286,7 @@
       "run_ids": [
        "RUN-ORD-6-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -26008,7 +26295,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -26060,7 +26348,7 @@
       "run_ids": [
        "RUN-ORD-7-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -26069,7 +26357,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -26122,7 +26411,7 @@
        "RUN-ORD-8-1",
        "RUN-ORD-8-2"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -26131,7 +26420,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -26183,7 +26473,7 @@
       "run_ids": [
        "RUN-ORD-9-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [],
@@ -26192,7 +26482,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
      },
      {
       "repo": "r3",
@@ -26252,7 +26543,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "r3",
@@ -26312,7 +26604,8 @@
       "family": null,
       "home": null,
       "verify_fails": 3,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      },
      {
       "repo": "runner",
@@ -26359,6 +26652,7 @@
       },
       "summary": "订单状态变化时推送到企业微信，失败自动重试。",
       "credits": 7.4,
+      "credits_whole": false,
       "updated_at": 1794146160.0,
       "mr": {
        "iid": 19,
@@ -26450,14 +26744,15 @@
     "errors": [],
     "cto": {
      "available": false,
-     "sentence": "有 credits 的 10 个需求，平均每个 17.7 credits。",
+     "sentence": "有 credits 的 10 个需求，平均每个 17.7 credits（9 个还有没算进来的，实际更多）。",
      "ref": null,
      "unattended": null,
      "stepped_in": null,
      "credits": {
       "per_req": 17.7,
       "total": 176.9,
-      "reqs": 10
+      "reqs": 10,
+      "cut": 9
      },
      "runs": [],
      "weekly": [
@@ -26662,7 +26957,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
      }
     ],
     "overlaps": [],
@@ -26743,7 +27039,8 @@
      "credits": {
       "per_req": 4.9,
       "total": 4.9,
-      "reqs": 1
+      "reqs": 1,
+      "cut": 0
      },
      "runs": [],
      "weekly": [
@@ -26905,7 +27202,8 @@
        "review": false
       },
       "summary": null,
-      "credits": null,
+      "credits": 12.4,
+      "credits_whole": true,
       "updated_at": 1794146340.0,
       "mr": {
        "iid": 53,
@@ -26916,7 +27214,7 @@
       "run_ids": [
        "RUN-PAY-9-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -26972,6 +27270,7 @@
       },
       "summary": "对账单按商户拆成一户一份，大商户按小时切。",
       "credits": 6.1,
+      "credits_whole": false,
       "updated_at": 1794135600.0,
       "mr": {
        "iid": 41,
@@ -27041,7 +27340,8 @@
        "review": false
       },
       "summary": "退款回调失败自动重试，第 6 次转人工处理。",
-      "credits": 24.2,
+      "credits": 31.0,
+      "credits_whole": true,
       "updated_at": 1794052800.0,
       "mr": {
        "iid": 44,
@@ -27052,7 +27352,7 @@
       "run_ids": [
        "RUN-PAY-5-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [
        "D-3"
@@ -27110,6 +27410,7 @@
       },
       "summary": "订单状态变化时推送到企业微信，失败自动重试。",
       "credits": 7.4,
+      "credits_whole": false,
       "updated_at": 1794146160.0,
       "mr": {
        "iid": 19,
@@ -27201,14 +27502,15 @@
     "errors": [],
     "cto": {
      "available": false,
-     "sentence": "有 credits 的 3 个需求，平均每个 12.6 credits。",
+     "sentence": "有 credits 的 4 个需求，平均每个 14.2 credits（2 个还有没算进来的，实际更多）。",
      "ref": null,
      "unattended": null,
      "stepped_in": null,
      "credits": {
-      "per_req": 12.6,
-      "total": 37.7,
-      "reqs": 3
+      "per_req": 14.2,
+      "total": 56.9,
+      "reqs": 4,
+      "cut": 2
      },
      "runs": [],
      "weekly": [
@@ -28282,7 +28584,7 @@
      "review": false
     },
     "summary": "退款单号加上校验位，重复和非法单号在入口就拒掉。",
-    "credits": 8.3,
+    "credits": 22.7,
     "updated_at": 1793663640,
     "mr": {
      "iid": 37,
@@ -28293,7 +28595,7 @@
     "run_ids": [
      "RUN-PAY-2-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
@@ -28304,7 +28606,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "branch": "ai/alice/PAY-2-refund-id",
    "base": "main",
@@ -30388,7 +30691,8 @@
        "slot": "brain-PAY-2-1c4e",
        "url": "/chat?sid=brain-PAY-2-1c4e",
        "busy": false,
-       "title": "PAY-2 退款单号校验"
+       "title": "PAY-2 退款单号校验",
+       "agent": "brain-dev"
       }
      ],
      "ticker": null
@@ -32137,10 +32441,29 @@
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-2-1c4e",
      "error": null
+    },
+    {
+     "slot": "brain-run-RUN-PAY-2-1",
+     "title": "RUN-PAY-2-1",
+     "agent": "brain-run",
+     "kind": "runner",
+     "credits": 14.4,
+     "turns": 3,
+     "busy": false,
+     "awaiting": false,
+     "last_activity": 1793661540,
+     "opened_at": 1794038400,
+     "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
+     "url": "/chat?sid=brain-run-RUN-PAY-2-1",
+     "error": null
     }
    ],
    "credits": {
-    "total": 8.3,
+    "total": 22.7,
+    "whole": false,
+    "missing": [
+     "起过 1 次子代理（比如审查）：子代理的 credits KiroCrew 不报给这里，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -32216,7 +32539,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": "ai/alice/PAY-3-refund-export",
    "base": "main",
@@ -33889,7 +34213,8 @@
        "slot": "brain-PAY-3-7f3a",
        "url": "/chat?sid=brain-PAY-3-7f3a",
        "busy": false,
-       "title": "PAY-3 退款单导出 CSV"
+       "title": "PAY-3 退款单导出 CSV",
+       "agent": "brain-dev"
       }
      ],
      "ticker": null
@@ -35165,6 +35490,8 @@
    ],
    "credits": {
     "total": 12.4,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -35218,7 +35545,7 @@
      "review": false
     },
     "summary": "对账单按商户拆成一户一份，大商户按小时切。",
-    "credits": null,
+    "credits": 6.1,
     "updated_at": 1794135600,
     "mr": {
      "iid": 41,
@@ -35229,7 +35556,7 @@
     "run_ids": [
      "RUN-PAY-4-1"
     ],
-    "sessions": 0,
+    "sessions": 1,
     "overlap": [
      "PAY-3"
     ],
@@ -35245,7 +35572,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": "ai/carol/PAY-4-merchant-split",
    "base": "main",
@@ -37268,9 +37596,27 @@
     "ref": "d1e5032dfcf8",
     "error": ""
    },
-   "sessions": [],
+   "sessions": [
+    {
+     "slot": "brain-run-RUN-PAY-4-1",
+     "title": "RUN-PAY-4-1",
+     "agent": "brain-run",
+     "kind": "runner",
+     "credits": 6.1,
+     "turns": 17,
+     "busy": false,
+     "awaiting": false,
+     "last_activity": 1794135600,
+     "opened_at": 1794038400,
+     "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
+     "url": "/chat?sid=brain-run-RUN-PAY-4-1",
+     "error": null
+    }
+   ],
    "credits": {
-    "total": null,
+    "total": 6.1,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -37339,7 +37685,7 @@
     "run_ids": [
      "RUN-PAY-5-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [
      "D-3"
@@ -37352,7 +37698,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": "ai/alice/PAY-5-callback-retry",
    "base": "main",
@@ -39145,7 +39492,8 @@
        "slot": "brain-PAY-5-8a1d",
        "url": "/chat?sid=brain-PAY-5-8a1d",
        "busy": false,
-       "title": "PAY-5 退款回调失败重试"
+       "title": "PAY-5 退款回调失败重试",
+       "agent": "brain-dev"
       }
      ],
      "ticker": null
@@ -40464,10 +40812,27 @@
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-5-8a1d",
      "error": null
+    },
+    {
+     "slot": "brain-run-RUN-PAY-5-1",
+     "title": "RUN-PAY-5-1",
+     "agent": "brain-run",
+     "kind": "runner",
+     "credits": 24.2,
+     "turns": 52,
+     "busy": false,
+     "awaiting": false,
+     "last_activity": 1794056400,
+     "opened_at": 1794038400,
+     "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
+     "url": "/chat?sid=brain-run-RUN-PAY-5-1",
+     "error": null
     }
    ],
    "credits": {
-    "total": 6.8,
+    "total": 31.0,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -40544,7 +40909,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": "ai/alice/PAY-7-refund-reason",
    "base": "main",
@@ -41764,7 +42130,8 @@
        "slot": "brain-PAY-7-2b9f",
        "url": "/chat?sid=brain-PAY-7-2b9f",
        "busy": false,
-       "title": "PAY-7 退款原因下拉框"
+       "title": "PAY-7 退款原因下拉框",
+       "agent": "brain-dev"
       }
      ],
      "ticker": null
@@ -42648,6 +43015,8 @@
    ],
    "credits": {
     "total": 18.2,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -42716,7 +43085,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": null,
    "base": "main",
@@ -43046,6 +43416,8 @@
    "sessions": [],
    "credits": {
     "total": null,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "app",
@@ -43109,7 +43481,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": null,
    "base": "main",
@@ -43439,6 +43812,8 @@
    "sessions": [],
    "credits": {
     "total": null,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "app",
@@ -43510,7 +43885,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": "ai/alice/PAY-10-refund-confirm",
    "base": "main",
@@ -45567,6 +45943,8 @@
    "sessions": [],
    "credits": {
     "total": 12.6,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -45639,7 +46017,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": "ai/alice/PAY-1-refund-stats",
    "base": "main",
@@ -47025,7 +47404,8 @@
        "slot": "brain-PAY-1-3d8e",
        "url": "/chat?sid=brain-PAY-1-3d8e",
        "busy": false,
-       "title": "PAY-1 退款原因统计"
+       "title": "PAY-1 退款原因统计",
+       "agent": "brain-dev"
       }
      ],
      "ticker": null
@@ -47902,6 +48282,8 @@
    ],
    "credits": {
     "total": 9.8,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -47971,7 +48353,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": "ai/alice/PAY-16-refund-progress",
    "base": "main",
@@ -48969,7 +49352,8 @@
        "slot": "brain-PAY-16-4c7d",
        "url": "/chat?sid=brain-PAY-16-4c7d",
        "busy": false,
-       "title": "PAY-16 退款进度查询"
+       "title": "PAY-16 退款进度查询",
+       "agent": "brain-dev"
       }
      ],
      "ticker": null
@@ -49468,6 +49852,8 @@
    ],
    "credits": {
     "total": 3.1,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -49546,7 +49932,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "branch": "ai/alice/PAY-9-refund-sms",
    "base": "main",
@@ -52406,7 +52793,8 @@
        "slot": "brain-PAY-9-7f2c",
        "url": "/chat?sid=brain-PAY-9-7f2c",
        "busy": false,
-       "title": "PAY-9 退款通知短信"
+       "title": "PAY-9 退款通知短信",
+       "agent": "brain-dev"
       }
      ],
      "ticker": null
@@ -54520,6 +54908,10 @@
    ],
    "credits": {
     "total": 12.4,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -54665,7 +55057,8 @@
     },
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": "ai/alice/PAY-11-big",
    "base": "main",
@@ -56029,7 +56422,8 @@
        "slot": "brain-PAY-11-6d1e",
        "url": "/chat?sid=brain-PAY-11-6d1e",
        "busy": false,
-       "title": "PAY-11 退款大需求"
+       "title": "PAY-11 退款大需求",
+       "agent": "brain-dev"
       }
      ],
      "ticker": null
@@ -56918,6 +57312,8 @@
    ],
    "credits": {
     "total": 12.6,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -57085,7 +57481,8 @@
     },
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": "ai/alice/PAY-12-api",
    "base": "main",
@@ -59190,6 +59587,8 @@
    "sessions": [],
    "credits": {
     "total": 6.2,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -59298,7 +59697,8 @@
     },
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": "ai/bob/PAY-13-web",
    "base": "main",
@@ -61431,6 +61831,8 @@
    "sessions": [],
    "credits": {
     "total": 3.2,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -61545,7 +61947,8 @@
     },
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": null,
    "base": "main",
@@ -61812,6 +62215,8 @@
    "sessions": [],
    "credits": {
     "total": null,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "app",
@@ -61871,7 +62276,7 @@
     "run_ids": [
      "RUN-ORD-1-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -61880,7 +62285,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "branch": "ai/erin/ORD-1-order-1",
    "base": "main",
@@ -65051,6 +65457,10 @@
    "sessions": [],
    "credits": {
     "total": 14.2,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -65115,7 +65525,7 @@
     "run_ids": [
      "RUN-ORD-2-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -65124,7 +65534,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "branch": "ai/dave/ORD-2-order-2",
    "base": "main",
@@ -68480,6 +68891,10 @@
    "sessions": [],
    "credits": {
     "total": 21.9,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -68544,7 +68959,7 @@
     "run_ids": [
      "RUN-ORD-3-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -68553,7 +68968,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "branch": "ai/erin/ORD-3-order-3",
    "base": "main",
@@ -71921,6 +72337,10 @@
    "sessions": [],
    "credits": {
     "total": 26.4,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -71985,7 +72405,7 @@
     "run_ids": [
      "RUN-ORD-4-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -71994,7 +72414,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "branch": "ai/dave/ORD-4-order-4",
    "base": "main",
@@ -75220,6 +75641,10 @@
    "sessions": [],
    "credits": {
     "total": 17.8,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -75282,7 +75707,7 @@
     },
     "worktree": null,
     "run_ids": [],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -75291,7 +75716,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": "ai/erin/ORD-5-order-5",
    "base": "main",
@@ -77947,6 +78373,8 @@
    "sessions": [],
    "credits": {
     "total": 9.6,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -78008,7 +78436,7 @@
     "run_ids": [
      "RUN-ORD-6-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -78017,7 +78445,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "branch": "ai/dave/ORD-6-order-6",
    "base": "main",
@@ -81518,6 +81947,10 @@
    "sessions": [],
    "credits": {
     "total": 11.3,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -81582,7 +82015,7 @@
     "run_ids": [
      "RUN-ORD-7-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -81591,7 +82024,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "branch": "ai/erin/ORD-7-order-7",
    "base": "main",
@@ -84776,6 +85210,10 @@
    "sessions": [],
    "credits": {
     "total": 19.5,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -84841,7 +85279,7 @@
      "RUN-ORD-8-1",
      "RUN-ORD-8-2"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -84850,7 +85288,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "branch": "ai/dave/ORD-8-order-8",
    "base": "main",
@@ -88350,6 +88789,10 @@
    "sessions": [],
    "credits": {
     "total": 33.7,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -88414,7 +88857,7 @@
     "run_ids": [
      "RUN-ORD-9-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -88423,7 +88866,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "branch": "ai/erin/ORD-9-order-9",
    "base": "main",
@@ -91753,6 +92197,10 @@
    "sessions": [],
    "credits": {
     "total": 15.1,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -91809,7 +92257,7 @@
      "review": false
     },
     "summary": null,
-    "credits": null,
+    "credits": 7.4,
     "updated_at": 1794146160,
     "mr": {
      "iid": 19,
@@ -91820,7 +92268,7 @@
     "run_ids": [
      "RUN-ORD-10-1"
     ],
-    "sessions": 0,
+    "sessions": 1,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -91829,7 +92277,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": "ai/erin/ORD-10-wecom-push",
    "base": "main",
@@ -93794,9 +94243,27 @@
     "ref": "2b7745230929",
     "error": ""
    },
-   "sessions": [],
+   "sessions": [
+    {
+     "slot": "brain-run-RUN-ORD-10-1",
+     "title": "RUN-ORD-10-1",
+     "agent": "brain-run",
+     "kind": "runner",
+     "credits": 7.4,
+     "turns": 21,
+     "busy": true,
+     "awaiting": false,
+     "last_activity": 1794146340,
+     "opened_at": 1794038400,
+     "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
+     "url": "/chat?sid=brain-run-RUN-ORD-10-1",
+     "error": null
+    }
+   ],
    "credits": {
-    "total": null,
+    "total": 7.4,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -93869,7 +94336,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": "ai/alice/TOOL-1-price-import",
    "base": "main",
@@ -94712,7 +95180,8 @@
        "slot": "brain-TOOL-1-5a2c",
        "url": "/chat?sid=brain-TOOL-1-5a2c",
        "busy": true,
-       "title": "TOOL-1 价格表批量导入"
+       "title": "TOOL-1 价格表批量导入",
+       "agent": "brain-dev"
       }
      ],
      "ticker": {
@@ -95113,20 +95582,13 @@
      "opened_at": 1794038400,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-TOOL-1-5a2c",
-     "error": null,
-     "tail": {
-      "call": {
-       "at": 1794146340.0,
-       "tool": "写文件",
-       "detail": "aidlc-docs/261108-price-import/inception/application-design/application-design.md"
-      },
-      "said": "导入分两步：先校验整张表，再一次写进价格表。",
-      "said_at": 1794146220.0
-     }
+     "error": null
     }
    ],
    "credits": {
     "total": 4.9,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -95194,7 +95656,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": "ai/carol/PAY-15-refund-diff",
    "base": "main",
@@ -96578,6 +97041,8 @@
    "sessions": [],
    "credits": {
     "total": null,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -96647,7 +97112,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": "ai/dave/ORD-11-review-photos",
    "base": "main",
@@ -98396,6 +98862,8 @@
    "sessions": [],
    "credits": {
     "total": null,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -98465,7 +98933,8 @@
     "family": null,
     "home": null,
     "verify_fails": 3,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "branch": "ai/erin/ORD-12-export-watermark",
    "base": "main",
@@ -100619,6 +101088,8 @@
    "sessions": [],
    "credits": {
     "total": null,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -100672,7 +101143,8 @@
      "review": false
     },
     "summary": null,
-    "credits": null,
+    "credits": 12.4,
+    "credits_whole": true,
     "updated_at": 1794146340.0,
     "mr": {
      "iid": 53,
@@ -100683,7 +101155,7 @@
     "run_ids": [
      "RUN-PAY-9-1"
     ],
-    "sessions": 0,
+    "sessions": 1,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
@@ -101094,9 +101566,27 @@
     "ref": null,
     "error": "运行机还没开始做：它做完提交以后才有变更说明"
    },
-   "sessions": [],
+   "sessions": [
+    {
+     "slot": "brain-PAY-9-7f2c",
+     "title": "PAY-9 退款通知短信",
+     "agent": "brain-dev",
+     "kind": "local",
+     "credits": 12.4,
+     "turns": 7,
+     "busy": false,
+     "awaiting": false,
+     "last_activity": 1794127800,
+     "opened_at": 1794124200,
+     "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
+     "url": "/chat?sid=brain-PAY-9-7f2c",
+     "error": null
+    }
+   ],
    "credits": {
-    "total": null,
+    "total": 12.4,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "app",
@@ -101151,6 +101641,7 @@
     },
     "summary": "对账单按商户拆成一户一份，大商户按小时切。",
     "credits": 6.1,
+    "credits_whole": false,
     "updated_at": 1794135600.0,
     "mr": {
      "iid": 41,
@@ -102315,7 +102806,8 @@
        "slot": "brain-run-RUN-PAY-4-1",
        "url": "/chat?sid=brain-run-RUN-PAY-4-1",
        "busy": false,
-       "title": "RUN-PAY-4-1"
+       "title": "RUN-PAY-4-1",
+       "agent": "brain-run"
       }
      ],
      "ticker": null
@@ -103211,6 +103703,10 @@
    ],
    "credits": {
     "total": 6.1,
+    "whole": false,
+    "missing": [
+     "交接以前，开发者机器上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -103270,7 +103766,8 @@
      "review": false
     },
     "summary": "退款回调失败自动重试，第 6 次转人工处理。",
-    "credits": 24.2,
+    "credits": 31.0,
+    "credits_whole": true,
     "updated_at": 1794052800.0,
     "mr": {
      "iid": 44,
@@ -103281,7 +103778,7 @@
     "run_ids": [
      "RUN-PAY-5-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [
      "D-3"
@@ -105106,7 +105603,8 @@
        "slot": "brain-run-RUN-PAY-5-1",
        "url": "/chat?sid=brain-run-RUN-PAY-5-1",
        "busy": false,
-       "title": "RUN-PAY-5-1"
+       "title": "RUN-PAY-5-1",
+       "agent": "brain-run"
       }
      ],
      "ticker": null
@@ -106391,6 +106889,21 @@
    },
    "sessions": [
     {
+     "slot": "brain-PAY-5-8a1d",
+     "title": "PAY-5 退款回调失败重试",
+     "agent": "brain-dev",
+     "kind": "local",
+     "credits": 6.8,
+     "turns": 12,
+     "busy": false,
+     "awaiting": false,
+     "last_activity": 1793910540,
+     "opened_at": 1793901600,
+     "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
+     "url": "/chat?sid=brain-PAY-5-8a1d",
+     "error": null
+    },
+    {
      "slot": "brain-run-RUN-PAY-5-1",
      "title": "RUN-PAY-5-1",
      "agent": "brain-run",
@@ -106407,7 +106920,9 @@
     }
    ],
    "credits": {
-    "total": 24.2,
+    "total": 31.0,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -106463,7 +106978,8 @@
      "review": false
     },
     "summary": "退款单号加上校验位，重复和非法单号在入口就拒掉。",
-    "credits": 14.4,
+    "credits": 22.7,
+    "credits_whole": false,
     "updated_at": 1793930400.0,
     "mr": {
      "iid": 37,
@@ -106474,7 +106990,7 @@
     "run_ids": [
      "RUN-PAY-2-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
@@ -108588,7 +109104,8 @@
        "slot": "brain-run-RUN-PAY-2-1",
        "url": "/chat?sid=brain-run-RUN-PAY-2-1",
        "busy": false,
-       "title": "RUN-PAY-2-1"
+       "title": "RUN-PAY-2-1",
+       "agent": "brain-run"
       }
      ],
      "ticker": null
@@ -110342,12 +110859,27 @@
    },
    "sessions": [
     {
+     "slot": "brain-PAY-2-1c4e",
+     "title": "PAY-2 退款单号校验",
+     "agent": "brain-dev",
+     "kind": "local",
+     "credits": 8.3,
+     "turns": 19,
+     "busy": false,
+     "awaiting": false,
+     "last_activity": 1793639340,
+     "opened_at": 1794038400,
+     "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
+     "url": "/chat?sid=brain-PAY-2-1c4e",
+     "error": null
+    },
+    {
      "slot": "brain-run-RUN-PAY-2-1",
      "title": "RUN-PAY-2-1",
      "agent": "brain-run",
      "kind": "runner",
      "credits": 14.4,
-     "turns": 41,
+     "turns": 3,
      "busy": false,
      "awaiting": false,
      "last_activity": 1793661540,
@@ -110358,7 +110890,11 @@
     }
    ],
    "credits": {
-    "total": 14.4,
+    "total": 22.7,
+    "whole": false,
+    "missing": [
+     "起过 1 次子代理（比如审查）：子代理的 credits KiroCrew 不报给这里，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -110418,6 +110954,7 @@
     },
     "summary": "订单状态变化时推送到企业微信，失败自动重试。",
     "credits": 7.4,
+    "credits_whole": false,
     "updated_at": 1794146160.0,
     "mr": {
      "iid": 19,
@@ -111564,7 +112101,8 @@
        "slot": "brain-run-RUN-ORD-10-1",
        "url": "/chat?sid=brain-run-RUN-ORD-10-1",
        "busy": true,
-       "title": "RUN-ORD-10-1"
+       "title": "RUN-ORD-10-1",
+       "agent": "brain-run"
       }
      ],
      "ticker": null
@@ -112476,6 +113014,10 @@
    ],
    "credits": {
     "total": 7.4,
+    "whole": false,
+    "missing": [
+     "交接以前，开发者机器上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "source": "trace",
@@ -112552,7 +113094,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "本机的工作目录",
    "run": {
@@ -113326,7 +113869,9 @@
    ],
    "credits": {
     "total": 12.4,
-    "note": "只算这个 app 开的会话；KiroCrew 只报 credits"
+    "whole": true,
+    "missing": [],
+    "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
     "loaded": 7,
@@ -113391,7 +113936,7 @@
      "review": false
     },
     "summary": "退款单号加上校验位，重复和非法单号在入口就拒掉。",
-    "credits": 8.3,
+    "credits": 22.7,
     "updated_at": 1793663640,
     "mr": {
      "iid": 37,
@@ -113402,7 +113947,7 @@
     "run_ids": [
      "RUN-PAY-2-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
@@ -113413,7 +113958,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -114192,10 +114738,29 @@
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-2-1c4e",
      "error": null
+    },
+    {
+     "slot": "brain-run-RUN-PAY-2-1",
+     "title": "RUN-PAY-2-1",
+     "agent": "brain-run",
+     "kind": "runner",
+     "credits": 14.4,
+     "turns": 3,
+     "busy": false,
+     "awaiting": false,
+     "last_activity": 1793661540,
+     "opened_at": 1794038400,
+     "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
+     "url": "/chat?sid=brain-run-RUN-PAY-2-1",
+     "error": null
     }
    ],
    "credits": {
-    "total": 8.3,
+    "total": 22.7,
+    "whole": false,
+    "missing": [
+     "起过 1 次子代理（比如审查）：子代理的 credits KiroCrew 不报给这里，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -114261,7 +114826,7 @@
      "review": false
     },
     "summary": "对账单按商户拆成一户一份，大商户按小时切。",
-    "credits": null,
+    "credits": 6.1,
     "updated_at": 1794135600,
     "mr": {
      "iid": 41,
@@ -114272,7 +114837,7 @@
     "run_ids": [
      "RUN-PAY-4-1"
     ],
-    "sessions": 0,
+    "sessions": 1,
     "overlap": [
      "PAY-3"
     ],
@@ -114288,7 +114853,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "分支 （没在这台机器上检出）",
    "run": {
@@ -114866,9 +115432,27 @@
      "CI 流水线：在 GitLab 上，这里读不到"
     ]
    },
-   "sessions": [],
+   "sessions": [
+    {
+     "slot": "brain-run-RUN-PAY-4-1",
+     "title": "RUN-PAY-4-1",
+     "agent": "brain-run",
+     "kind": "runner",
+     "credits": 6.1,
+     "turns": 17,
+     "busy": false,
+     "awaiting": false,
+     "last_activity": 1794135600,
+     "opened_at": 1794038400,
+     "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
+     "url": "/chat?sid=brain-run-RUN-PAY-4-1",
+     "error": null
+    }
+   ],
    "credits": {
-    "total": null,
+    "total": 6.1,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -114946,7 +115530,7 @@
     "run_ids": [
      "RUN-PAY-5-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [
      "D-3"
@@ -114959,7 +115543,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "这台机器的工作区 /Users/alice/workplace/brain-app/PAY-5-callback-retry",
    "run": {
@@ -115623,10 +116208,27 @@
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-5-8a1d",
      "error": null
+    },
+    {
+     "slot": "brain-run-RUN-PAY-5-1",
+     "title": "RUN-PAY-5-1",
+     "agent": "brain-run",
+     "kind": "runner",
+     "credits": 24.2,
+     "turns": 52,
+     "busy": false,
+     "awaiting": false,
+     "last_activity": 1794056400,
+     "opened_at": 1794038400,
+     "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
+     "url": "/chat?sid=brain-run-RUN-PAY-5-1",
+     "error": null
     }
    ],
    "credits": {
-    "total": 6.8,
+    "total": 31.0,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -115711,7 +116313,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "这台机器的工作区 /Users/alice/workplace/brain-app/PAY-7-refund-reason",
    "run": {
@@ -116254,6 +116857,8 @@
    ],
    "credits": {
     "total": 18.2,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -116328,7 +116933,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "这台机器的工作区 None",
    "run": null,
@@ -116655,6 +117261,8 @@
    "sessions": [],
    "credits": {
     "total": null,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -116729,7 +117337,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "这台机器的工作区 None",
    "run": null,
@@ -117056,6 +117665,8 @@
    "sessions": [],
    "credits": {
     "total": null,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -117138,7 +117749,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "分支 （没在这台机器上检出）",
    "run": {
@@ -117661,6 +118273,8 @@
    "sessions": [],
    "credits": {
     "total": 12.6,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -117739,7 +118353,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "这台机器的工作区 /Users/alice/workplace/brain-app/shop-pay/refund-stats",
    "run": {
@@ -118277,6 +118892,8 @@
    ],
    "credits": {
     "total": 9.8,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -118357,7 +118974,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "这台机器的工作区 /Users/alice/workplace/brain-app/shop-pay/refund-progress",
    "run": {
@@ -118787,6 +119405,8 @@
    ],
    "credits": {
     "total": 3.1,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -118874,7 +119494,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "where_label": "分支 （没在这台机器上检出）",
    "run": {
@@ -119778,6 +120399,10 @@
    ],
    "credits": {
     "total": 12.4,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -119932,7 +120557,8 @@
     },
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "这台机器的工作区 /Users/alice/workplace/brain-app/shop-pay/big",
    "run": {
@@ -120434,6 +121060,8 @@
    ],
    "credits": {
     "total": 12.6,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -120542,7 +121170,8 @@
     },
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "这台机器的工作区 None",
    "run": {
@@ -120936,6 +121565,8 @@
    "sessions": [],
    "credits": {
     "total": 6.2,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -121053,7 +121684,8 @@
     },
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "这台机器的工作区 None",
    "run": {
@@ -121423,6 +122055,8 @@
    "sessions": [],
    "credits": {
     "total": 3.2,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -121546,7 +122180,8 @@
     },
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "这台机器的工作区 None",
    "run": null,
@@ -121873,6 +122508,8 @@
    "sessions": [],
    "credits": {
     "total": null,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -121943,7 +122580,7 @@
     "run_ids": [
      "RUN-ORD-1-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -121952,7 +122589,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -122577,6 +123215,10 @@
    "sessions": [],
    "credits": {
     "total": 14.2,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -122647,7 +123289,7 @@
     "run_ids": [
      "RUN-ORD-2-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -122656,7 +123298,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -123297,6 +123940,10 @@
    "sessions": [],
    "credits": {
     "total": 21.9,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -123367,7 +124014,7 @@
     "run_ids": [
      "RUN-ORD-3-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -123376,7 +124023,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -124025,6 +124673,10 @@
    "sessions": [],
    "credits": {
     "total": 26.4,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -124098,7 +124750,7 @@
     "run_ids": [
      "RUN-ORD-4-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -124107,7 +124759,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -124732,6 +125385,10 @@
    "sessions": [],
    "credits": {
     "total": 17.8,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -124800,7 +125457,7 @@
     },
     "worktree": null,
     "run_ids": [],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -124809,7 +125466,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -125332,6 +125990,8 @@
    "sessions": [],
    "credits": {
     "total": 9.6,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -125404,7 +126064,7 @@
     "run_ids": [
      "RUN-ORD-6-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -125413,7 +126073,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -126070,6 +126731,10 @@
    "sessions": [],
    "credits": {
     "total": 11.3,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -126140,7 +126805,7 @@
     "run_ids": [
      "RUN-ORD-7-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -126149,7 +126814,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -126774,6 +127440,10 @@
    "sessions": [],
    "credits": {
     "total": 19.5,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -126848,7 +127518,7 @@
      "RUN-ORD-8-1",
      "RUN-ORD-8-2"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -126857,7 +127527,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -127562,6 +128233,10 @@
    "sessions": [],
    "credits": {
     "total": 33.7,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -127634,7 +128309,7 @@
     "run_ids": [
      "RUN-ORD-9-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -127643,7 +128318,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": false
    },
    "where_label": "默认分支（已合并）",
    "run": {
@@ -128284,6 +128960,10 @@
    "sessions": [],
    "credits": {
     "total": 15.1,
+    "whole": false,
+    "missing": [
+     "交接以后，运行机上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -128349,7 +129029,7 @@
      "review": false
     },
     "summary": null,
-    "credits": null,
+    "credits": 7.4,
     "updated_at": 1794146160,
     "mr": {
      "iid": 19,
@@ -128360,7 +129040,7 @@
     "run_ids": [
      "RUN-ORD-10-1"
     ],
-    "sessions": 0,
+    "sessions": 1,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [],
@@ -128369,7 +129049,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "分支 （没在这台机器上检出）",
    "run": {
@@ -128887,9 +129568,27 @@
      "CI 流水线：在 GitLab 上，这里读不到"
     ]
    },
-   "sessions": [],
+   "sessions": [
+    {
+     "slot": "brain-run-RUN-ORD-10-1",
+     "title": "RUN-ORD-10-1",
+     "agent": "brain-run",
+     "kind": "runner",
+     "credits": 7.4,
+     "turns": 21,
+     "busy": true,
+     "awaiting": false,
+     "last_activity": 1794146340,
+     "opened_at": 1794038400,
+     "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
+     "url": "/chat?sid=brain-run-RUN-ORD-10-1",
+     "error": null
+    }
+   ],
    "credits": {
-    "total": null,
+    "total": 7.4,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -128970,7 +129669,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "这台机器的工作区 /Users/alice/workplace/brain-app/shop-tools/price-import",
    "run": {
@@ -129382,6 +130082,8 @@
    ],
    "credits": {
     "total": 4.9,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -129460,7 +130162,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "这台机器的工作区 None",
    "run": {
@@ -129874,6 +130577,8 @@
    "sessions": [],
    "credits": {
     "total": null,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -129952,7 +130657,8 @@
     "family": null,
     "home": null,
     "verify_fails": 0,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "这台机器的工作区 None",
    "run": {
@@ -130419,6 +131125,8 @@
    "sessions": [],
    "credits": {
     "total": null,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -130497,7 +131205,8 @@
     "family": null,
     "home": null,
     "verify_fails": 3,
-    "progress_pushed_at": null
+    "progress_pushed_at": null,
+    "credits_whole": true
    },
    "where_label": "这台机器的工作区 None",
    "run": {
@@ -131012,6 +131721,8 @@
    "sessions": [],
    "credits": {
     "total": null,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -131074,7 +131785,8 @@
      "review": false
     },
     "summary": null,
-    "credits": null,
+    "credits": 12.4,
+    "credits_whole": true,
     "updated_at": 1794146340.0,
     "mr": {
      "iid": 53,
@@ -131085,7 +131797,7 @@
     "run_ids": [
      "RUN-PAY-9-1"
     ],
-    "sessions": 0,
+    "sessions": 1,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
@@ -131457,9 +132169,27 @@
     "missing": [],
     "other_runs": []
    },
-   "sessions": [],
+   "sessions": [
+    {
+     "slot": "brain-PAY-9-7f2c",
+     "title": "PAY-9 退款通知短信",
+     "agent": "brain-dev",
+     "kind": "local",
+     "credits": 12.4,
+     "turns": 7,
+     "busy": false,
+     "awaiting": false,
+     "last_activity": 1794127800,
+     "opened_at": 1794124200,
+     "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
+     "url": "/chat?sid=brain-PAY-9-7f2c",
+     "error": null
+    }
+   ],
    "credits": {
-    "total": null,
+    "total": 12.4,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -131525,6 +132255,7 @@
     },
     "summary": "对账单按商户拆成一户一份，大商户按小时切。",
     "credits": 6.1,
+    "credits_whole": false,
     "updated_at": 1794135600.0,
     "mr": {
      "iid": 41,
@@ -132128,6 +132859,10 @@
    ],
    "credits": {
     "total": 6.1,
+    "whole": false,
+    "missing": [
+     "交接以前，开发者机器上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -132196,7 +132931,8 @@
      "review": false
     },
     "summary": "退款回调失败自动重试，第 6 次转人工处理。",
-    "credits": 24.2,
+    "credits": 31.0,
+    "credits_whole": true,
     "updated_at": 1794052800.0,
     "mr": {
      "iid": 44,
@@ -132207,7 +132943,7 @@
     "run_ids": [
      "RUN-PAY-5-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [
      "D-3"
@@ -132864,6 +133600,21 @@
    },
    "sessions": [
     {
+     "slot": "brain-PAY-5-8a1d",
+     "title": "PAY-5 退款回调失败重试",
+     "agent": "brain-dev",
+     "kind": "local",
+     "credits": 6.8,
+     "turns": 12,
+     "busy": false,
+     "awaiting": false,
+     "last_activity": 1793910540,
+     "opened_at": 1793901600,
+     "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
+     "url": "/chat?sid=brain-PAY-5-8a1d",
+     "error": null
+    },
+    {
      "slot": "brain-run-RUN-PAY-5-1",
      "title": "RUN-PAY-5-1",
      "agent": "brain-run",
@@ -132880,7 +133631,9 @@
     }
    ],
    "credits": {
-    "total": 24.2,
+    "total": 31.0,
+    "whole": true,
+    "missing": [],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -132944,7 +133697,8 @@
      "review": false
     },
     "summary": "退款单号加上校验位，重复和非法单号在入口就拒掉。",
-    "credits": 14.4,
+    "credits": 22.7,
+    "credits_whole": false,
     "updated_at": 1793930400.0,
     "mr": {
      "iid": 37,
@@ -132955,7 +133709,7 @@
     "run_ids": [
      "RUN-PAY-2-1"
     ],
-    "sessions": 1,
+    "sessions": 2,
     "overlap": [],
     "open_questions": [],
     "expected_paths": [
@@ -133756,12 +134510,27 @@
    },
    "sessions": [
     {
+     "slot": "brain-PAY-2-1c4e",
+     "title": "PAY-2 退款单号校验",
+     "agent": "brain-dev",
+     "kind": "local",
+     "credits": 8.3,
+     "turns": 19,
+     "busy": false,
+     "awaiting": false,
+     "last_activity": 1793639340,
+     "opened_at": 1794038400,
+     "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
+     "url": "/chat?sid=brain-PAY-2-1c4e",
+     "error": null
+    },
+    {
      "slot": "brain-run-RUN-PAY-2-1",
      "title": "RUN-PAY-2-1",
      "agent": "brain-run",
      "kind": "runner",
      "credits": 14.4,
-     "turns": 41,
+     "turns": 3,
      "busy": false,
      "awaiting": false,
      "last_activity": 1793661540,
@@ -133772,7 +134541,11 @@
     }
    ],
    "credits": {
-    "total": 14.4,
+    "total": 22.7,
+    "whole": false,
+    "missing": [
+     "起过 1 次子代理（比如审查）：子代理的 credits KiroCrew 不报给这里，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {
@@ -133841,6 +134614,7 @@
     },
     "summary": "订单状态变化时推送到企业微信，失败自动重试。",
     "credits": 7.4,
+    "credits_whole": false,
     "updated_at": 1794146160.0,
     "mr": {
      "iid": 19,
@@ -134410,6 +135184,10 @@
    ],
    "credits": {
     "total": 7.4,
+    "whole": false,
+    "missing": [
+     "交接以前，开发者机器上的会话这台机器读不到，没算进来"
+    ],
     "note": "KiroCrew 只报 credits，没有别的用量数"
    },
    "brain": {

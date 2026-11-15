@@ -26,7 +26,7 @@ import { Hit, Mini } from '../cto/charts'
 import { ago, fmtCredits, fmtIso, fmtSpan, fmtTime, isoDay } from '../format'
 import { VIEW_NAME, type BoardEntry, type ItemEntry } from '../nav'
 import type {
-  CheckCell, Decision, LeanPhase, OpenSessionBody, OpenSessionResult, ReqBoard, RequirementDetail, SessionRow, Stage,
+  CheckCell, Credits, Decision, LeanPhase, OpenSessionBody, OpenSessionResult, ReqBoard, RequirementDetail, SessionRow, Stage,
   TimelineItem, TimelineKind, WaitDo, WaitWho, Waits,
 } from '../types'
 import { APPROVAL_META, Icon, LoadState, MrLink, STAGE_META, StateChip, TYPE_IT_YOURSELF, isOpenQuestion } from '../ui'
@@ -395,7 +395,7 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
         </div>
         <div className="br-col">
           <NotesCard x={x} />
-          <SessionsCard sessions={x.sessions} total={x.credits.total} note={x.credits.note} replying={now.do === 'reply'} at={at} />
+          <SessionsCard sessions={x.sessions} credits={x.credits} replying={now.do === 'reply'} at={at} />
           <BrainUseCard x={x} board={board} repo={entry.repo} reqKey={entry.key} go={props.go} />
           <TimelineCard x={x} showMissing={handedOver(x) && !localOnly} me={board?.person.me ?? false} />
         </div>
@@ -772,8 +772,9 @@ function CostCard({ x, replying, me, onSessions }: { x: RequirementDetail; reply
   return (
     <article className="cto-card" aria-label="成本">
       <div className="cto-eyebrow">成本</div>
-      <div className="cto-value">{x.credits.total !== null ? <>{fmtCredits(x.credits.total)}<span className="cto-of">credits</span></> : <span className="cto-of" style={{ marginLeft: 0 }}>还没有</span>}</div>
+      <div className="cto-value">{x.credits.total !== null ? <>{!x.credits.whole && <span className="cto-of" style={{ marginLeft: 0, marginRight: 4 }}>至少</span>}{fmtCredits(x.credits.total)}<span className="cto-of">credits</span></> : <span className="cto-of" style={{ marginLeft: 0 }}>还没有</span>}</div>
       <div className="cto-desc">{ss.length ? `${ss.length} 个会话` : x.credits.total !== null ? SESSIONS_GONE : '还没开过会话'}</div>
+      <LeftOut credits={x.credits} />
       {ss.length > 0 && (
         <>
           <div className="cto-chips" aria-label="会话的用量">
@@ -1158,13 +1159,24 @@ function sessionState(s: SessionRow, replying: boolean): { label: string; tone: 
 /** credits recorded, but no session is listed now (a closed one, or the runner's) */
 const SESSIONS_GONE = '现在没有开着的会话'
 
-function SessionsCard({ sessions, total, note, replying, at }: { sessions: SessionRow[]; total: number | null; note: string; replying: boolean; at: number }) {
+/** what a requirement's credits leave out, a line each (成本 only: 会话's 合计至少 says it on hover); nothing when whole */
+function LeftOut({ credits }: { credits: Credits }) {
+  if (credits.whole) return null
+  return (
+    <ul className="br-small br-dim" aria-label="没算进来的" style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+      {credits.missing.map((m) => <li key={m}>{m}</li>)}
+    </ul>
+  )
+}
+
+function SessionsCard({ sessions, credits, replying, at }: { sessions: SessionRow[]; credits: Credits; replying: boolean; at: number }) {
   const navigate = useNavigate()
+  const total = credits.total
   return (
     <section className="cto-card" aria-label="会话">
       <div className="cto-chart-head">
         <h3>会话</h3>
-        <span className="cto-dim" title={note || undefined}>这个 app 开的{total !== null ? ` · 合计 ${fmtCredits(total)} credits` : sessions.length ? ' · 用量还没报' : ''}</span>
+        <span className="cto-dim" title={(credits.whole ? credits.note : credits.missing.join('\n')) || undefined}>这个 app 开的{total !== null ? ` · 合计${credits.whole ? '' : '至少'} ${fmtCredits(total)} credits` : sessions.length ? ' · 用量还没报' : ''}</span>
       </div>
       {sessions.length === 0 ? <p className="br-empty">{total !== null ? `${SESSIONS_GONE}；上面的合计是记下的用量。` : '还没开过会话。'}</p> : (
         <ul className="br-sessions">

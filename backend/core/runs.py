@@ -216,8 +216,8 @@ class RunView:
 
 def _here(sessions: Sequence[Mapping[str, Any]]
           ) -> Tuple[List[Dict[str, Any]], Optional[float], Optional[Mapping[str, Any]]]:
-    rows = [{"slot": s["slot"], "url": s["url"], "busy": bool(s.get("busy")), "title": str(s.get("title") or "")}
-            for s in sessions]
+    rows = [{"slot": s["slot"], "url": s["url"], "busy": bool(s.get("busy")), "title": str(s.get("title") or ""),
+             "agent": str(s.get("agent") or "")} for s in sessions]
     last = next((s for s in sessions if s.get("busy")), sessions[-1] if sessions else None)
     return rows, (round(sum(s.get("credits") or 0 for s in sessions), 3) or None) if sessions else None, \
         (last or {}).get("tail")

@@ -275,7 +275,7 @@ def test_slot_stats_sum_credits_over_the_whole_transcript(tmp_path):
         for _ in range(sessions.STATS_EVERY + 1):
             await mgr.poll()
         st = mgr.slot_stats(info.slot)
-        assert st["credits"] == 3.5 and st["turns"] == 3 and st["busy"] is False
+        assert st["credits"] == 3.5 and st["turns"] == 2 and st["busy"] is False   # the app's message and the one typed
         assert mgr.credits_by_key() == {"r1-PAY-1": 3.5}
 
     asyncio.run(go())

@@ -443,7 +443,7 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
                 <>
                   <button type="button" className="cto-value cto-link-value" data-testid="ov-credits" title="在交付清单里看有 credits 的需求"
                     onClick={() => filterTo({ id: 'credits', label: '有 credits 的需求', keep: (r) => (r.credits ?? 0) > 0 })}>{fmtCredits(c.credits.per_req)}</button>
-                  <div className="cto-desc">有 credits 的 {c.credits.reqs} 个需求，合计 {fmtCredits(c.credits.total)}</div>
+                  <div className="cto-desc">有 credits 的 {c.credits.reqs} 个需求，合计 {fmtCredits(c.credits.total)}{c.credits.cut ? `；${c.credits.cut} 个还有没算进来的，实际更多` : ''}</div>
                   {credits.length > 0 && <MiniCredits rows={credits} avg={c.credits.per_req} onKey={(k) => openKey(k)} />}
                 </>
               ) : (
@@ -516,7 +516,7 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
           <ul>
             <li>无人值守：brain-kit 评估里的「自主度」。交给运行机以后，除了必经的审批（需求、设计、计划、发布、验收），没有人做过任何事，而且交付正确（一次通过验收，合并后 14 天没有回滚、热修或缺陷）；14 天没满的、还没合并的算「还没评」，不算进分母。只在本机做的需求不交给运行机，也不算进分母。</li>
             <li>人介入：人在判断点上的动作是 Lean 的审批（批准、退回，打了批准那一行却没被接受的也算）和等人回答的问题；交接后又推了代码、允许改验收测试、平台上的手动操作，都算判断点之外。本机做的和交给运行机的需求都算。</li>
-            <li>每个需求的 credits：这个 app 给需求开的 Kiro Crew 会话报的 credits 合计 ÷ 有 credits 的需求数。KiroCrew 只报 credits，没有别的用量数。</li>
+            <li>每个需求的 credits：这台机器上需求的 Kiro Crew 会话（本机开发、审查，运行机在这台机器上时也算它的）报的 credits 合计 ÷ 有 credits 的需求数；子代理、没报 credits 的回合和别的机器上的会话算不进来，需求详情的成本里写着。KiroCrew 只报 credits，没有别的用量数。</li>
             <li>决定 · 谁定的：<WhoSyntax />。每个决定只算一次，写了别的就算「没归类」，列出在哪一行，不猜是谁。还在分支上、没合并的需求也算；评估里的「知识有用率」只看默认分支上的引用，所以两个数的范围不一样。</li>
             <li>每周合并：合并进默认分支的那一周（周一起）；交付方式同上，没评估过的合并算「还没评」。</li>
             <li>轮到你、等别人：按每个需求此刻等谁；「已等」从它开始这样等的那一刻算起。</li>
@@ -1015,7 +1015,9 @@ function Row({ r, at, run, ev, repoName, tree, fold, late, verifyLimit, onOpen, 
         {step && <StepButton step={step} onGo={onGo} primary={false} />}
       </td>
       <td data-label="交付方式"><HowCell r={r} run={run} /></td>
-      <td className="is-num" data-label="credits">{fmtCredits(r.credits)}</td>
+      <td className="is-num" data-label="credits" title={r.credits !== null && !r.credits_whole ? '至少这么多：有的没算进来，需求详情的成本里有' : undefined}>
+        {r.credits !== null && !r.credits_whole ? '至少 ' : ''}{fmtCredits(r.credits)}
+      </td>
       <td className="br-col-nowrap" data-label="MR" onClick={(e) => e.stopPropagation()}><MrLink mr={r.mr} /></td>
       <td onClick={(e) => e.stopPropagation()}>
         <span className="br-acts">

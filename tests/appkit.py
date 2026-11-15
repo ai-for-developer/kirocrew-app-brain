@@ -93,7 +93,8 @@ class FakeGateway:
         row["running"] = False
 
     async def messages(self, key, limit=120):
-        return list(self.msgs[key])[-limit:]
+        """KiroCrew 0.11.2: the newest *limit* rows, never more than 500."""
+        return list(self.msgs[key])[-min(limit, 500):]
 
     async def page(self, key, before=None, limit=500):
         """KiroCrew 0.11.2's paged read: at most 500 rows ending at row *before*; where the page before them ends."""

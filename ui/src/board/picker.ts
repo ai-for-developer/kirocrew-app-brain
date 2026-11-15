@@ -4,7 +4,7 @@
  * renumbered: a round keeps its 第 N 轮 and an event its place in the whole way.
  */
 import type { CheckWall, ReqBoard, Round, Run, RunKey, StageNode } from '../types'
-import { RUN_ICON, actorMeta, clockAt, gateVerb, openGate, runShort } from './format'
+import { RUN_ICON, actorMeta, clockAt, gateVerb, openGate, runShort, sessionOf } from './format'
 import { through, wayAt } from './way'
 
 export type RunFilter = 'all' | RunKey
@@ -22,7 +22,9 @@ export interface PickRow {
 
 /** The stages brain records by other means than Lean (types.ts NodeId): not counted on the AI-DLC Lean card. */
 export const NOT_LEAN: ReadonlySet<string> = new Set(['review', 'reflect'])
-const AGENT: Partial<Record<Run['kind'], string>> = { local: 'brain-dev', runner: 'brain-run' }
+/** a runner run's agent when its session is not here (bridge.json's kirocrew.agent); a local one names the agent of its
+ * session here (brain-dev-crew, or brain-dev for one opened before brain-kit renamed it), else none */
+const AGENT: Partial<Record<Run['kind'], string>> = { runner: 'brain-run' }
 const OVER: ReadonlySet<string> = new Set(['done', 'merged', 'skipped'])
 
 const mine = (run: RunFilter) => (x: { run: RunKey | null }) => run === 'all' || x.run === run
@@ -70,7 +72,7 @@ export function pickRows(b: ReqBoard): PickRow[] {
     const stages = did.map((s) => (s.rounds > 1 ? `${s.title} ${s.rounds} 轮` : s.title)).join('、')
     rows.push({
       key: r.key, icon: RUN_ICON[r.kind],
-      title: [r.label, r.run_id ?? AGENT[r.kind]].filter(Boolean).join(' · '),
+      title: [r.label, r.run_id ?? (sessionOf(r)?.agent || AGENT[r.kind])].filter(Boolean).join(' · '),
       count: did.length ? `${did.length} 个阶段` : '还没有阶段',
       sub: [span, stages, runNow(r, b)].filter(Boolean).join(' · '),
     })

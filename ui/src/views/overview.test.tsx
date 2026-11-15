@@ -58,8 +58,9 @@ describe('交付总览', () => {
     expect(screen.getByTestId('ov-unattended')).toHaveTextContent(/^0\/1$/)
     expect(screen.getByTestId('ov-people')).toHaveTextContent(/^5次$/)
     expect(screen.getByRole('article', { name: '人介入' })).toHaveTextContent('5 次落在判断点上（批准、退回、回答），0 次在判断点之外 · 本机做的也算')
-    expect(screen.getByTestId('ov-credits')).toHaveTextContent(/^11\.4$/)
-    expect(screen.getByRole('article', { name: '每个需求的 credits' })).toHaveTextContent('有 credits 的 4 个需求，合计 45.7')
+    // PAY-2's and PAY-4's runner sessions are on this machine too; PAY-2's reviewer subagent reports nothing (E2E-14)
+    expect(screen.getByTestId('ov-credits')).toHaveTextContent(/^13\.2$/)
+    expect(screen.getByRole('article', { name: '每个需求的 credits' })).toHaveTextContent('有 credits 的 5 个需求，合计 66.2；1 个还有没算进来的，实际更多')
     expect(screen.getByRole('article', { name: '每个需求的 credits' })).not.toHaveTextContent('token')
     const n = (h: CtoRun['how']) => c.runs.filter((r) => r.how === h).length
     expect(screen.getByRole('img', { name: `评估过的需求，按交付方式：无人值守 ${n('unattended')}，有人插手 ${n('people')}，只在本机 ${n('local')}，还没评 ${n('pending')}${n('ended') ? `，没交付就结束 ${n('ended')}` : ''}` })).toBeInTheDocument()
@@ -88,7 +89,7 @@ describe('交付总览', () => {
 
   test('a number with nothing to count yet says 还没有 and when it will have one, and draws no chart', async () => {
     const ov = fx.overview()
-    ov.cto = { ...ov.cto, available: false, unattended: null, stepped_in: null, credits: { per_req: null, total: null, reqs: 0 } }
+    ov.cto = { ...ov.cto, available: false, unattended: null, stepped_in: null, credits: { per_req: null, total: null, reqs: 0, cut: 0 } }
     ov.funnel = { ...ov.funnel, total: 0, rows: ov.funnel.rows.map((r) => ({ ...r, count: 0 })), unclassified: [] }
     installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
     const s = fx.status()
@@ -372,7 +373,7 @@ describe('交付总览', () => {
     await user.click(within(screen.getByRole('article', { name: '无人值守' })).getByRole('button', { name: /^还没评/ }))
     expect(keysOf(table)).toEqual(['PAY-4', 'PAY-5'])
     await user.click(screen.getByTestId('ov-credits'))
-    expect(keysOf(table)).toEqual(['PAY-3', 'PAY-7', 'PAY-5', 'PAY-2'])
+    expect(keysOf(table)).toEqual(['PAY-3', 'PAY-4', 'PAY-7', 'PAY-5', 'PAY-2'])
     await user.click(screen.getByRole('button', { name: /^不按/ }))
     expect(reqRows(table)).toHaveLength(6)
   })

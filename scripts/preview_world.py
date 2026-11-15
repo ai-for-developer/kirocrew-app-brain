@@ -463,10 +463,10 @@ class Req:
 
 
 def crew_rows() -> list[dict]:
-    """KiroCrew's checks of the fixtures' machine as crewcheck makes them (problems.py's words): brain-dev.json lacks
+    """KiroCrew's checks of the fixtures' machine as crewcheck makes them (problems.py's words): the agent's spec lacks
     Lean's hook before a tool call; shop-pay's committed hook adapter is the old one (a reminder there: it is not handed
     to the runner); the engine is kas."""
-    return [problems.agent_lacks([("preToolUse", "PreToolUse")]),
+    return [problems.agent_lacks(AGENT, [("preToolUse", "PreToolUse")]),
             problems.row("FAIL", ADAPTER_OLD, repo="/Users/alice/workplace/shop-pay", team=False), problems.engine("kas")]
 
 
@@ -830,26 +830,45 @@ def classified(r: Req, row: dict, *, park: dict | None = None, mr: dict | None =
 LATER: dict[str, tuple] = {}   # each board's makings by "<repo>/<key>", made once every run's Brain block is known
 
 
+# the fixtures' machine has a brain-kit from before it renamed the agent (crewcheck.agent_name), as its sessions boot
+AGENT = "brain-dev"
+SESSION_KEYS = ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting", "last_activity", "opened_at",
+                "project", "url", "error")   # a session row of 需求详情 (service._detail_sync)
+
+
+def cost_of(sess: list, elsewhere: str | None) -> dict:
+    """需求详情's 成本 over the sessions this machine reads (service._req_credits)."""
+    return dict(sessions_mod.requirement_credits(sess, elsewhere), note=detail.NO_TOKENS)
+
+
 def board_later(r: Req, row: dict, **kw) -> None:
     """*r*'s board (snapshot), made at the end: its Brain block comes from brain_views, which needs every record.
-    *sessions*: the ones this machine opened for it (service._sessions_snapshot: the repo's scope), whose credits are its
-    total; *runner_sessions*: the team runner's for it (keyed by the run id), listed on the runner's page only."""
+    *sessions*: the ones this machine opened for it (service._sessions_snapshot: the repo's scope); *runner_sessions*:
+    the team runner's for it here (keyed by the run id). Its row and page count both (service._local_credits); a
+    requirement handed over with none of the runner's here says those are left out."""
     sess = kw.get("sessions") or []
-    assert all(x.get("kind") != "runner" for x in sess), "a runner's session on a repo's page: %s" % r.key
-    if sess:   # the total is the sessions' own credits added up (sessions.credits_by_key)
-        assert kw.get("credits") == (round(sum(x["credits"] for x in sess if x.get("credits") is not None), 3) or None), r.key
-    LATER["%s/%s" % (r.repo, r.key)] = (r, row, kw)
+    assert all(x.get("kind") != "runner" for x in sess), "a runner's session in a repo's scope: %s" % r.key
+    counted = sess + (kw.get("runner_sessions") or [])
+    took = r.hand_at is not None and row.get("state") in service.RUNNER_TOOK
+    cost = cost_of(counted, service.RUNNER_ELSEWHERE if took and not kw.get("runner_sessions") else None)
+    if counted:
+        row["sessions"] = len(counted)
+    else:   # credits recorded of sessions closed since (the world's merged requirements): as given
+        cost["total"] = kw.get("credits")
+    row.update(credits=cost["total"], credits_whole=cost["whole"])
+    LATER["%s/%s" % (r.repo, r.key)] = (r, row, dict(kw, credits=cost, counted=counted))
 
 
 def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessions: list | None = None,
              decisions: list | None = None, local_only: bool = False, kit_rows: list | None = None, reflect: list | None = None,
              mr: dict | None = None, me: str | None = "alice", mr_desc: dict | None = None, questions: list | None = None,
-             credits: float | None = None, facts: dict | None = None, team_decisions: list | None = None,
-             bid: str | None = None, family: dict | None = None, keep: dict | None = None) -> dict:
+             credits: dict | None = None, facts: dict | None = None, team_decisions: list | None = None,
+             bid: str | None = None, family: dict | None = None, keep: dict | None = None, counted: list | None = None) -> dict:
     """The board snapshot the backend answers (service._board_sync), built the same way. *facts*: what the board is
     folded from when they are not *r*'s own records as this machine reads them (the team runner's workspace).
     *family*: a big requirement's trace family (brain-kit 0d52e97's roll-up of its small ones). *keep*: gets the
-    fold the 产出 drawer reads, as the service keeps it."""
+    fold the 产出 drawer reads, as the service keeps it. *counted*: the sessions its 成本 (*credits*) is over, listed on
+    the page; *sessions*: the ones the board's runs are read from."""
     f = facts or r.facts(park)
     STAGES[bid or "%s/%s" % (r.repo, r.key)] = f["stages"]
     t = r.trace(brain, family) if f.get("run") else None
@@ -867,7 +886,8 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
             "decisions": decisions or [], "questions": questions or [],
             "mr_desc": mr_desc or {"available": True, "text": "", "first": None, "source": None, "path": None, "ref": None,
                                    "error": "还没开工：开工以后才有变更说明"},
-            "sessions": sessions, "credits": {"total": credits, "note": detail.NO_TOKENS},
+            "sessions": sessions if counted is None else [{k: x.get(k) for k in SESSION_KEYS} for x in counted],
+            "credits": credits or cost_of([], None),
             "source": "trace" if t else "app", "error": "", "missing": g["missing"], "rollup": board.rollup(t)}
 
 
@@ -1042,7 +1062,7 @@ def detail_of(r: Req, row: dict, kw: dict, b: dict) -> dict:
     run = f.get("run") or {}
     t = r.trace(b["brain"]) if run else None
     handed = r.hand_at is not None
-    sess = kw.get("sessions") or []
+    sess = kw.get("counted") or []
     return {
         "row": row, "where_label": service.Service._where_label(f),
         "run": {"owner": run.get("owner"), "branch": run.get("branch"), "intent": run.get("intent"),
@@ -1060,7 +1080,7 @@ def detail_of(r: Req, row: dict, kw: dict, b: dict) -> dict:
                      "error": "", "missing": board.missing_sources(TRACE_MISSING if t else [], local_only=bool(kw.get("local_only")), handed=handed)},
         "sessions": [{k: x.get(k) for k in ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting",
                                              "last_activity", "opened_at", "project", "url", "error")} for x in sess],
-        "credits": {"total": kw.get("credits"), "note": detail.NO_TOKENS}, "brain": b["brain"], "mr_desc": b["mr_desc"]}
+        "credits": kw["credits"], "brain": b["brain"], "mr_desc": b["mr_desc"]}
 
 
 def outputs_key(path: str, q: dict) -> str:
@@ -1213,7 +1233,8 @@ def world(scratch: Path) -> None:
                                   reflect=[("brain/PAY-2-reflect-1", p2.merged_at + 15 * H, p2.merged_at + 15 * H)],
                                   sessions=[p2_sess],
                                   runner_sessions=[dict(det["sessions"][0], slot="brain-run-RUN-PAY-2-1", url="/chat?sid=brain-run-RUN-PAY-2-1", title="RUN-PAY-2-1",
-                                                        agent="brain-run", kind="runner", credits=14.4, turns=41, busy=False, awaiting=False, last_activity=p2.merged_at)],
+                                                        agent="brain-run", kind="runner", credits=14.4, turns=3, busy=False, awaiting=False, last_activity=p2.merged_at,
+                                                        subagents=1)],     # its reviewer, whose credits nobody reports
                                   mr_desc=mrdesc(p2, first["PAY-2"]), credits=8.3)
     runs.append({"key": "PAY-2", "repo": "r1", "how": "people", "beyond": ["回答问题"], "at_points": 5, "outside": 0, "credits": 8.3, "merged_at": p2.merged_at})
 
@@ -1257,6 +1278,7 @@ def world(scratch: Path) -> None:
     board_later(p3, row, park=p3_park,
                                   sessions=det["sessions"], decisions=det["decisions"], questions=det["questions"],
                                   mr_desc=det["mr_desc"], credits=row.get("credits"))
+    det["credits"] = LATER["r1/PAY-3"][2]["credits"]       # service._local_credits over its sessions
     details["r1/PAY-3"] = det
 
     # PAY-4: on the runner, parked on D-2 (a design question for the product)
@@ -1725,6 +1747,8 @@ def world(scratch: Path) -> None:
                      ("parent", None)):
             x.setdefault(k, v)
     all_rows = list(rows.values()) + extra_rows + fam_rows + order_rows + tool_rows + team_rows
+    for x in all_rows:      # deliveries.base_row's: whole unless its sessions here say otherwise (board_later)
+        x.setdefault("credits_whole", True)
     parts = [("r1", {"runs": [x for x in runs if x["repo"] == "r1"], "unattended": None, "judgment": None, "kinds": [], "ref": "origin/main"}),
              ("r3", {"runs": [x for x in runs if x["repo"] == "r3"], "unattended": None, "judgment": None, "kinds": [], "ref": "origin/main"})]
     judged = [x for x in runs if x["how"] in ("unattended", "people")]
@@ -1794,7 +1818,7 @@ def world(scratch: Path) -> None:
                 "session": {k: sessions[r_["key"]][k] for k in ("slot", "title", "url")} if r_["key"] in sessions else None,
                 "push_error": pushed_over(r_) if (r_["repo"], r_["key"]) == ("r1", "PAY-1") else None}
                for r_ in all_rows if r_["state"] != "closed" and (r_["state"] != "merged" or r_["waits"]["who"] == "you")]
-    crew_fail = problems.agent_missing()
+    crew_fail = problems.agent_missing(AGENT, "~/.kiro/agents/%s.json" % AGENT)
     world_todo = {"ok": todo.build(entries, team=False, crew_rows=[]), "crewfail": todo.build(entries, team=False, crew_rows=[crew_fail])}
     brains, uses, reflects = brain_views(reqs, all_rows, {bid: kw.get("decisions") or [] for bid, (_, _, kw) in LATER.items()})
     drawer: dict[str, dict] = {}
@@ -1843,11 +1867,14 @@ def world(scratch: Path) -> None:
         bid = "%s/%s" % (q.repo, key)
         kw = LATER[bid][2] if bid in LATER else {}
         sess = kw.get("runner_sessions") or []
+        rid = {"shop/shop-pay": "r1", "shop/shop-order": "r3"}.get(rr["project"])
+        mine_here = (kw.get("sessions") or []) if rid else []     # service._team_credits: its repo's scope here, then the runs'
+        counted = mine_here + sess
+        cost = cost_of(counted, None if mine_here else service.LOCAL_ELSEWHERE)
         url = rr["mr_url"]
-        row_t.update(run_ids=[run_id], credits=round(sum(x.get("credits") or 0 for x in sess), 3) or None, sessions=len(sess),
+        row_t.update(run_ids=[run_id], credits=cost["total"], credits_whole=cost["whole"], sessions=len(counted),
                      mr={"iid": int(rr["iid"]), "url": url, "state": None}, updated_at=lean_view.epoch(rr.get("updated")),
                      summary=mrdesc_view.plain_line((kw.get("mr_desc") or {}).get("first")) if f.get("run") else None)
-        rid = {"shop/shop-pay": "r1", "shop/shop-order": "r3"}.get(rr["project"])
         mine = next((r_ for r_ in all_rows if (r_["repo"], r_["key"]) == (rid, key)), None)
         if mine is not None:     # runnerd's workspace has the run.json the hand-over pushed: the same expected paths
             row_t["expected_paths"] = list(mine["expected_paths"])
@@ -1862,7 +1889,7 @@ def world(scratch: Path) -> None:
         b = snapshot(q, row_t, brain=brain_t, park=park, facts=f, team_decisions=decs, sessions=sess, me=ME,
                      decisions=kw.get("decisions") or [], reflect=kw.get("reflect") or [],
                      mr_desc=kw.get("mr_desc") if path else mrdesc_view.empty(board.RUNNER_NO_DESC),
-                     questions=detail.ledger_questions(decs, url), credits=row_t["credits"], bid="runner/%s" % key)
+                     questions=detail.ledger_questions(decs, url), credits=cost, counted=counted, bid="runner/%s" % key)
         boards["runner/%s" % key] = b
         run = f.get("run") or {}
         items = detail.trace_timeline(q.trace(brain_t)) if path else []
@@ -1884,8 +1911,8 @@ def world(scratch: Path) -> None:
                          "error": "", "missing": board.missing_sources(TRACE_MISSING if path else [], local_only=False, handed=True),
                          "other_runs": []},
             "sessions": [{k: x.get(k) for k in ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting",
-                                                 "last_activity", "opened_at", "project", "url", "error")} for x in sess],
-            "credits": {"total": row_t["credits"], "note": detail.NO_TOKENS}, "brain": brain_t, "mr_desc": b["mr_desc"]}
+                                                 "last_activity", "opened_at", "project", "url", "error")} for x in counted],
+            "credits": cost, "brain": brain_t, "mr_desc": b["mr_desc"]}
     team_items = todo.build(team_entries, team=True, crew_rows=[])["items"]
     world_todo["team"] = {"items": [i for i in world_todo["ok"]["items"] if (i["repo"], i["key"]) not in taken] + team_items,
                           "team": True}
@@ -1906,7 +1933,7 @@ def world(scratch: Path) -> None:
          "me": {"name": "alice", "source": "login", "gitlab": "", "text": "alice（这台机器的登录名：这个仓库不用 GitLab）",
                 "ask": False, "label": "", "why": "", "suggest": "", "error": ""}}]
     # KiroCrew is fine in the world (the 「KiroCrew 有 FAIL」 switch shows a failing row); shop-tools keeps its ! reminder
-    world_status["crew"]["rows"] = [problems.agent_ok(0) if r_["level"] == "FAIL" else r_ for r_ in status["crew"]["rows"]
+    world_status["crew"]["rows"] = [problems.agent_ok(AGENT, 0) if r_["level"] == "FAIL" else r_ for r_ in status["crew"]["rows"]
                                     if r_.get("fix") != "kit"] + tool_kit
     world_status["crew"]["fix"] = {"agent": any(r_.get("fix") == "agent" for r_ in world_status["crew"]["rows"]),
                                    "engine": any(r_.get("fix") == "engine" for r_ in world_status["crew"]["rows"])}
