@@ -445,6 +445,97 @@ with handover.guard(%r) as held:
         assert held is not None
 
 
+def test_a_hung_hand_over_left_by_a_killed_app_is_stopped_past_the_time_limit_and_the_lock_is_free(tmp_path, monkeypatch):
+    """A push that never ends, and the app that started it is gone (its own time limit died with it): a click within
+    TIMEOUT_S finds it running and leaves it; past TIMEOUT_S the brain handoff the lock's note names is stopped."""
+    import signal
+    import subprocess
+    import sys
+    import time
+    from appkit import ROOT
+    lock = tmp_path / "r1-PAY-1.lock"
+    child = """
+import sys
+sys.path.insert(0, %r)
+from backend.core import handover, intake
+intake.brain_cmd = lambda: [sys.executable, "-c", "import time; time.sleep(60)", "brain"]
+with handover.guard(%r) as held:
+    handover.run(%r, timeout=60, hold=held, lock=%r)
+""" % (str(ROOT), str(lock), str(tmp_path), str(lock))
+    app = subprocess.Popen([sys.executable, "-I", "-c", child])
+    for _ in range(50):
+        if handover.holder_of(lock).exists():
+            break
+        time.sleep(0.1)
+    time.sleep(0.5)
+    app.send_signal(signal.SIGKILL)
+    app.wait()
+    pid = __import__("json").loads(handover.holder_of(lock).read_text())["pid"]
+    assert handover.stop_stale(lock) is None, "younger than TIMEOUT_S: left running"
+    with pytest.raises(handover.Busy):
+        with handover.guard(lock):
+            pass
+    monkeypatch.setattr(handover, "TIMEOUT_S", 0.5)
+    assert handover.stop_stale(lock) == 1
+    with handover.guard(lock) as held:
+        assert held is not None
+    assert subprocess.run(["ps", "-p", str(pid)], capture_output=True).returncode != 0, "brain handoff is gone"
+
+
+def test_a_lock_note_that_names_another_process_stops_nothing(tmp_path, monkeypatch):
+    import json
+    import os
+    import time
+    lock = tmp_path / "r1-PAY-1.lock"
+    handover.holder_of(lock).write_text(json.dumps({"pid": os.getpid(), "started": time.time() - 3600,
+                                                    "lstart": "Thu Jan  1 00:00:00 1970"}))
+    monkeypatch.setattr(handover, "TIMEOUT_S", 1)
+    assert handover.stop_stale(lock) is None
+
+
+@needs_brainkit
+def test_a_hand_over_left_hung_by_the_app_before_a_restart_is_stopped_and_said_past_the_time_limit(tmp_path, home,
+                                                                                                     monkeypatch):
+    """The restarted app (a second Service on the same data dir) finds the push still hung past TIMEOUT_S: the click
+    stops it and says so in minutes; the next click hands over."""
+    gl, srv = served_gitlab(tmp_path, monkeypatch)
+    try:
+        repo, wt = project(tmp_path, home, base=srv.base)
+        alice_token(home)
+        sh("git", "-C", wt, "remote", "set-url", "--push", "origin", "ssh://git@127.0.0.1/x.git")
+        monkeypatch.setenv("GIT_SSH_COMMAND", "sh -c 'sleep 30' --")
+        before, after = make_service(tmp_path, [repo]), make_service(tmp_path, [repo])
+
+        async def go():
+            await before.start()
+            await after.start()
+            try:
+                first = asyncio.ensure_future(before.handoff("r1", "PAY-1"))
+                for _ in range(100):                  # until brain handoff committed: now it pushes
+                    if subjects(wt)[0] == HANDOFF or first.done():
+                        break
+                    await asyncio.sleep(0.2)
+                monkeypatch.setattr(handover, "TIMEOUT_S", 1)
+                await asyncio.sleep(1.5)
+                try:
+                    second = await after.handoff("r1", "PAY-1")
+                except AppError as exc:
+                    second = exc
+                await first
+                sh("git", "-C", wt, "config", "--unset", "remote.origin.pushurl")
+                return second, await after.handoff("r1", "PAY-1")
+            finally:
+                await before.stop()
+                await after.stop()
+
+        second, third = run(go())
+    finally:
+        srv.stop()
+    assert isinstance(second, AppError) and (second.code, second.status) == ("handing_stopped", 409), second
+    assert "停掉了" in str(second) and "1 分钟" in str(second) and "「%s」" % handover.BUTTON in str(second), second
+    assert third["state"] == "handed" and "ai-handoff" in gl.labels, third
+
+
 @needs_brainkit
 def test_a_note_not_ready_is_refused_by_brain_kit_and_nothing_changes(tmp_path, home):
     repo, wt = project(tmp_path, home, notes=False)
