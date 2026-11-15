@@ -1067,7 +1067,7 @@ describe('需求看板 · 轮到谁、做什么', () => {
     expect(within(changes).getByRole('list', { name: '提交' })).toHaveTextContent('61ddbc30PAY-3：refund-api 的代码计划1 个文件 · 只改记录')
   })
 
-  test('credits that leave something out: the KPI says how many are left out, its hover says what; 验收 says 至少 (E2E-14)', async () => {
+  test('credits that leave something out: the KPI says 至少 as 需求详情’s 成本 does, how many are left out, its hover what; 验收 says 至少 (E2E-14)', async () => {
     const b = fx.board()
     const missing = ['起过 1 次子代理（比如审查）：子代理的 credits KiroCrew 不报给这里，没算进来', '1 轮没报 credits（多半是中途被停了），没算进来']
     b.credits = { ...b.credits, total: 22.7, whole: false, missing }
@@ -1075,6 +1075,7 @@ describe('需求看板 · 轮到谁、做什么', () => {
     renderBoard()
     await loaded()
     const credits = within(screen.getByRole('group', { name: '指标' })).getByText('credits').parentElement as HTMLElement
+    expect(credits.querySelector('.kt-kpi-value')).toHaveTextContent(/^至少 ?22\.7$/)
     const note = credits.querySelector('.kt-kpi-note') as HTMLElement
     expect(note).toHaveTextContent(new RegExp(`^${b.sessions.length} 个会话合计，另有 2 处没算进来$`))
     expect(note.title).toBe(missing.join('\n'))
@@ -1092,7 +1093,7 @@ describe('需求看板 · 轮到谁、做什么', () => {
     renderBoard()
     const graph = await loaded()
     const credits = within(screen.getByRole('group', { name: '指标' })).getByText('credits').parentElement as HTMLElement
-    expect(credits).toHaveTextContent('37.0运行记录里的合计')
+    expect(credits).toHaveTextContent(/^credits37\.0运行记录里的合计$/)
     expect(region('验收')).toHaveTextContent('花了多少37.0 credits · 运行记录里的合计')
     expect(within(graph).getByTestId('kt-roster')).toHaveTextContent('+2 条')
     expect(region('检查墙').querySelector('.kt-spark')).toBeNull()
