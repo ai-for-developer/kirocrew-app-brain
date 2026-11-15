@@ -104,6 +104,8 @@ export const OV_CSS = `
 .br-ov .br-kband .br-lane-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 650; color: var(--text); }
 
 .br-ov .br-ledger td .br-hint { margin-top: 2px; }
+.br-ov .cto-seg { flex-wrap: wrap; }
+.br-ov .cto-seg button { white-space: nowrap; }
 .br-ov .br-ledger .br-col-req { min-width: 190px; }
 .br-ov .br-ledger .br-col-wait { min-width: 180px; }
 .br-ov .br-ledger .br-col-wait .br-step { margin-top: 4px; }
@@ -168,6 +170,27 @@ export const OV_CSS = `
   .br-ov .br-ledger { font-size: 13px; }
   .br-ov .br-ledger th, .br-ov .br-ledger td { padding: 8px 6px; }
   .br-ov .br-ledger .br-acts { flex-direction: column; align-items: stretch; }
+}
+/* a narrow 交付清单 gives each requirement two lines, three when narrower still: 交付方式, credits, MR and the buttons
+   go under it with their names, so no column is cut off at the right */
+@container brov (max-width: 1000px) {
+  .br-ov .br-ledger, .br-ov .br-ledger :is(thead, tbody) { display: block; }
+  .br-ov .br-ledger tr { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, .85fr) minmax(0, .9fr) minmax(0, 1.5fr); }
+  .br-ov .br-ledger :is(th, td) { min-width: 0; }
+  .br-ov .br-ledger th:nth-child(n+5) { display: none; }
+  .br-ov .br-ledger td:nth-child(-n+4) { border-bottom: 0; }
+  .br-ov .br-ledger td:nth-child(n+5) { grid-row: 2; padding-top: 0; text-align: left; }
+  .br-ov .br-ledger td:only-child { grid-column: 1 / -1; grid-row: auto; }
+  .br-ov .br-ledger td:nth-child(n+5)[data-label]::before { content: attr(data-label); display: block; font-size: 11.5px; color: var(--muted); }
+}
+@container brov (max-width: 680px) {
+  .br-ov .br-ledger tr { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); }
+  .br-ov .br-ledger th:nth-child(4) { display: none; }
+  .br-ov .br-ledger td:nth-child(4) { grid-row: 2; grid-column: 1 / 3; padding-top: 0; }
+  .br-ov .br-ledger td:nth-child(8) { grid-row: 2; grid-column: 3; }
+  .br-ov .br-ledger td:nth-child(n+5):not(:nth-child(8)) { grid-row: 3; }
+  .br-ov .br-ledger td:nth-child(8) { border-bottom: 0; }
+  .br-ov .br-ledger td:nth-child(4)[data-label]::before { content: attr(data-label); display: block; font-size: 11.5px; color: var(--muted); }
 }
 @container brov (max-width: 900px) {
   .br-ov .cto-duo { grid-template-columns: minmax(0, 1fr); }
@@ -985,15 +1008,15 @@ function Row({ r, at, run, ev, repoName, tree, fold, late, verifyLimit, onOpen, 
         {r.updated_at !== null && <div className="cto-was">{ago(r.updated_at, at)}更新</div>}
       </td>
       <td><LeanProgress r={r} /></td>
-      <td className="br-col-wait">
+      <td className="br-col-wait" data-label="在等">
         <div className={r.waits.who === 'you' ? 'br-strong' : undefined}>{r.waits.text}</div>
         {waited && <div className={r.waits.who === 'you' ? 'br-waited' : 'cto-was'}>{waited}</div>}
         {r.waits.line && <LineCopy line={r.waits.line} sessionUrl={r.session_url} />}
         {step && <StepButton step={step} onGo={onGo} primary={false} />}
       </td>
-      <td><HowCell r={r} run={run} /></td>
-      <td className="is-num">{fmtCredits(r.credits)}</td>
-      <td className="br-col-nowrap" onClick={(e) => e.stopPropagation()}><MrLink mr={r.mr} /></td>
+      <td data-label="交付方式"><HowCell r={r} run={run} /></td>
+      <td className="is-num" data-label="credits">{fmtCredits(r.credits)}</td>
+      <td className="br-col-nowrap" data-label="MR" onClick={(e) => e.stopPropagation()}><MrLink mr={r.mr} /></td>
       <td onClick={(e) => e.stopPropagation()}>
         <span className="br-acts">
           <button type="button" className="kt-btn is-small" onClick={onItem}>{ACT.openDetail}</button>

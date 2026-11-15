@@ -692,6 +692,11 @@ ${legendSwatches}
   transition: opacity .3s, box-shadow .3s, border-color .3s; scroll-margin: 16px; }
 .kt-lane::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--kt-tone); }
 .kt-lane.is-compact { grid-template-areas: "id live live" "id track track"; }
+/* a narrow board puts 改动 under what the lane says, so a file keeps its name */
+@container kt-root (max-width: 1000px) {
+  .kt-lane { grid-template-columns: 236px minmax(0, 1fr); grid-template-areas: "id live" "id work" "id track"; }
+  .kt-lane.is-compact { grid-template-areas: "id live" "id track"; }
+}
 .kt-lane:is(.is-running, .is-fixing) { border-color: color-mix(in srgb, var(--kt-tone) 55%, var(--border));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--kt-tone) 30%, transparent), 0 10px 30px -16px var(--kt-tone);
   background: linear-gradient(100deg, color-mix(in srgb, var(--kt-tone) 8%, var(--card)), var(--card) 45%); }
@@ -754,7 +759,7 @@ ${legendSwatches}
 .kt-tools li .kt-mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .kt-tools li time { font-size: .92em; white-space: nowrap; }
 .kt-tools li.is-last { border-color: color-mix(in srgb, var(--kt-tone) 60%, transparent); background: color-mix(in srgb, var(--kt-tone) 12%, transparent); }
-.kt-files-head { display: flex; align-items: baseline; gap: 8px; font-size: .84em; font-weight: 750; color: var(--text-strong); }
+.kt-files-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: .84em; font-weight: 750; color: var(--text-strong); }
 .kt-add { color: var(--kt-ok); font-weight: 750; } .kt-del { color: var(--kt-bad); font-weight: 750; }
 .kt-files { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: .8em; }
 .kt-files li { display: grid; grid-template-columns: 1.3em minmax(0, 1fr) 64px 5.6em; align-items: center; gap: 6px; }
