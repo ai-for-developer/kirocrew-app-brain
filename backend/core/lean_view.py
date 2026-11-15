@@ -297,6 +297,17 @@ def stage_text(lean: dict[str, Any]) -> str | None:
     return " · ".join(parts)
 
 
+def next_since(steps_: list[dict[str, Any]]) -> float | None:
+    """Since when Lean's next stage (*steps_*: steps') is the one it is now; None while Lean recorded nothing."""
+    now = steps_[-1]["lean"]["next"]
+    at = None
+    for s in reversed(steps_):
+        if s["lean"]["next"] != now:
+            break
+        at = s["at"]
+    return at or None
+
+
 def steps(evs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Lean's progress (summary) after each stage or verify record that changed it, oldest first, the first one (at
     0) before any: what 回放 shows at a moment. The last one is the progress now."""

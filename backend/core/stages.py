@@ -784,6 +784,8 @@ WAITS = {"requirements": "等开工", "application-design": "等需求分析", "
          "release": "等审查和自动检查", "reflect": "等合并以后"}
 # with the design skipped (Size: small), Lean asks for no design approval: what comes after the design waits on these
 NO_DESIGN_WAITS = {"units": "等需求分析", "code-generation": "等批了需求"}
+# Lean releases only after a review made in a new session: with 发布 Lean's next stage, the review not made yet is next
+REVIEW_NEXT = "构建测试过了，该审查了"
 AGAIN = {"sent_back": "退回以后", "verify_failed": "检查没过以后", "ci_failed": "CI 没过以后",
          "code_changed": "代码改了以后", "reopened": "又做一遍", "first": "又做一遍"}
 
@@ -892,7 +894,8 @@ class Way:
     owner). *over*: ("merged", at) or ("closed", at) once the way is over (a small one: merged into its big one).
     *proposals*: the Brain proposals waiting to be written back after the merge, by *you* (你, or the owner's name).
     *blind*: the team runner's page of a requirement handed over before it has a workspace (board.runner_blind).
-    *next*: the stage Lean does next (lean_view.summary), drawn waiting though it is not on the default way."""
+    *next*: the stage Lean does next (lean_view.summary), drawn waiting though it is not on the default way;
+    *next_at*: since when it is (lean_view.next_since)."""
     child: bool = False
     children: Mapping[str, Tuple[str, str, Optional[str]]] = field(default_factory=dict)
     over: Optional[Tuple[str, float]] = None
@@ -900,6 +903,7 @@ class Way:
     you: str = "你"
     blind: bool = False
     next: Optional[str] = None
+    next_at: Optional[float] = None
 
 
 @dataclass
@@ -936,6 +940,8 @@ def _waits(stage: StageDef, kid: Optional[Tuple[str, str, Optional[str]]], way: 
         return NodeStatus("waiting", "等运行机开工", None)
     if no_design and stage.id in NO_DESIGN_WAITS:
         return NodeStatus("waiting", NO_DESIGN_WAITS[stage.id], None)
+    if stage.id == "review" and way.next == "release":
+        return NodeStatus("waiting", REVIEW_NEXT, way.next_at)
     return NodeStatus("waiting", WAITS.get(stage.id, "等前一个阶段"), None)
 
 
@@ -1065,6 +1071,8 @@ def _history(n: Node, rec: Records, way: Way, pending: Optional[Callable[[Ask], 
                                             r.decided.at if r.decided else None, r.refused.at if r.refused else None)
                if t is not None}
     moments |= {next((s for s in later if s >= r.ended), None) for r in n.rounds if r.ended is not None} - {None}
+    if not n.rounds and n.waits.since is not None:
+        moments.add(n.waits.since)
     if way.over is not None:
         moments.add(way.over[1])
     ats = sorted(moments)

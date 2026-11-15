@@ -78,14 +78,15 @@ export function replayClock(b: ReqBoard, gap = GAP_S): Clock {
 const OPEN: Round['outcome'] = { kind: 'open', at: null, gate: null, by: null, decision: null, text: null, sha: null, subject: null, checks: [], pipeline: null }
 const DECIDED: ReadonlySet<Gate['state']> = new Set<Gate['state']>(['approved', 'sent_back', 'refused'])
 
-/** A node at *t*: its state then (before its first change it waits: with the line it had while waiting, if it still
- * waits, else the plain words; a stage never on this way stays skipped), the rounds started by then, its gates then. */
+/** A node at *t*: its state then (before its first change it waits: with the line it has while waiting, if it still
+ * waits and that line has always been its line, else the plain words; a stage never on this way stays skipped), the
+ * rounds started by then, its gates then. */
 function nodeAt(n: StageNode, t: number, owner: WaitWho, committed: (sha: string) => boolean): { node: StageNode; who: WaitWho | null } {
   const h = [...n.history].reverse().find((x) => x.at <= t)
   const off = n.status === 'skipped' && !n.history.length
   // in its last state it is as the board says it (since: when the fold says that state began)
   const last = h !== undefined && h === n.history[n.history.length - 1]
-  const now = h ? { status: h.status, doing: h.doing, since: last ? n.since : h.at } : off ? { status: n.status, doing: n.doing, since: null } : { status: 'waiting' as ActorStatus, doing: n.status === 'waiting' ? n.doing : '还没轮到', since: null }
+  const now = h ? { status: h.status, doing: h.doing, since: last ? n.since : h.at } : off ? { status: n.status, doing: n.doing, since: null } : { status: 'waiting' as ActorStatus, doing: n.status === 'waiting' && !n.history.length ? n.doing : '还没轮到', since: null }
   const waits = now.status === 'awaiting_approval'
   const who = waits ? h?.who ?? owner : null
   const rounds = n.rounds.filter((r) => r.started <= t).map((r): Round => (r.ended !== null && r.ended <= t ? r

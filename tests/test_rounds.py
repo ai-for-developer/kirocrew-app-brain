@@ -447,3 +447,26 @@ def test_a_node_says_what_it_does_did_or_waits_for():
     assert status("requirements", started, run_now=quiet) == ("awaiting_approval", "会话空着：轮到你回话")
     busy = stages.NodeStatus("running", "AI 在做", T + M)
     assert status("requirements", started, run_now=busy) == ("running", "在做")
+
+
+def test_the_review_is_next_once_lean_is_done_with_build_and_test():
+    """The 审查 box said 等构建测试 while 下一步 said 构建测试做完了 and to open the review session. Once Lean's next stage
+    is 发布 (Lean releases only after a review in a new session), the review not made yet is next, from the moment
+    Lean's progress turned to 发布, which is where 回放 says so; with Lean still at 构建测试 it waits on it."""
+    evs = ledger(QA)
+    evs = evs[:next(i for i, e in enumerate(evs) if e["event"] == "STAGE_STARTED" and e["data"]["stage"] == "release")]
+    steps = lean_view.steps(evs)
+    assert steps[-1]["lean"]["next"]["id"] == "release"
+    turned = lean_view.next_since(steps)
+    assert turned == at("2026-11-10T06:03:03.407Z")      # the last unit's code done, on the code the last verify passed
+
+    def review(way):
+        r, _ = records(evs)
+        nodes = stages.graph(r, stages.units_of(evs), way)
+        stages.with_status(nodes, r, {}, way)
+        n = next(n for n in nodes if n.id == "review")
+        return n.status.status, n.status.doing, [(h["at"], h["status"], h["doing"]) for h in n.history]
+
+    assert review(stages.Way(next="release", next_at=turned)) == (
+        "waiting", "构建测试过了，该审查了", [(turned, "waiting", "构建测试过了，该审查了")])
+    assert review(stages.Way(next="build-and-test")) == ("waiting", "等构建测试", [])
