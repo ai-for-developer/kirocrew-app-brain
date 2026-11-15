@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "check": "npm run typecheck && npm run test && npm run build",
-    "preview:build": "vite build --config vite.preview.config.ts"
+    "preview:build": "vite build --config vite.preview.config.ts",
+    "fit": "node scripts/fit.mjs"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",
