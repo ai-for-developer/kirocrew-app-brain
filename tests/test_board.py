@@ -478,6 +478,21 @@ def test_a_design_lean_skipped_is_not_needed_and_the_wall_says_what_is_still_to_
     assert "自动检查通过（1 项）" in [e["text"] for e in b["events"] if e["kind"] == "verify"]
 
 
+def test_a_design_skipped_for_size_small_is_never_waited_for_on_any_page():
+    """UI-20: DEMO-3's design was skipped (Size: small) and the board still said its code generation waited for the
+    design approval. From the skip on, no line of the board, 交付总览, 需求详情 or 待办 (the row's waits) waits on it."""
+    deliveries, lv = mod("deliveries"), mod("lean_view")
+    evs = demo3_events()
+    skip = next(i for i, e in enumerate(evs) if e["data"].get("stage") == "application-design")
+    for cut in range(skip + 1, len(evs) + 1):
+        f = dict(facts(evs[:cut]), stages=lv.stages(evs[:cut]))
+        row = deliveries.base_row("r1", f)
+        deliveries.classify(row, f, mr=None, slot={"last_activity": evs[cut - 1]["_at"]}, cfg={}, me="dana")
+        b = snapshot(f, row, sessions=[session(evs[cut - 1]["_at"])])
+        shown = json.dumps([b, row], ensure_ascii=False)
+        assert re.findall(r'等[^"]*设计', shown) == [], evs[cut - 1]["event"]
+
+
 def merged_trace(merged_at, window_end):
     return {"brain": {"loaded": 3, "cited": ["T-1"], "stale": [], "unknown": []},
             "humans": [{"at": iso(T + 11 * M), "kind": "approval", "what": "RELEASE", "who": "G-3F2A1C", "channel": "local"}],

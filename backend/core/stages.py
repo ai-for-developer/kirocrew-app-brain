@@ -874,7 +874,7 @@ class Node:
     spans: List[Dict[str, Any]] = field(default_factory=list)
 
 
-def _waits(stage: StageDef, kid: Optional[Tuple[str, str, Optional[str]]], way: Way) -> NodeStatus:
+def _waits(stage: StageDef, kid: Optional[Tuple[str, str, Optional[str]]], way: Way, no_design: bool = False) -> NodeStatus:
     if kid is not None:
         key, state, owner = kid
         status, words = CHILD_WAITS.get(state, ("waiting", "等小需求"))
@@ -890,6 +890,8 @@ def _waits(stage: StageDef, kid: Optional[Tuple[str, str, Optional[str]]], way: 
         return NodeStatus("done", RUNNER_BLIND, None)
     if way.blind and stage.id == "code-generation":
         return NodeStatus("waiting", "等运行机开工", None)
+    if no_design and stage.id == "code-generation":   # skipped for Size: small, Lean asks for no design approval
+        return NodeStatus("waiting", "等批了需求", None)
     return NodeStatus("waiting", WAITS.get(stage.id, "等前一个阶段"), None)
 
 
@@ -904,12 +906,14 @@ def graph(rec: Records, units: Sequence[UnitPlan], way: Way, approvals: Sequence
     for s in STAGES:
         if way.child and s.id in BIG_ONES:
             continue
+        no_design = any(n.stage.id == "application-design" and n.rounds[-1].end.outcome is Outcome.SKIPPED
+                        for n in out if n.rounds)
         for u in [x.name for x in units] if s.per_unit else [None]:
             rs = rounds_of(s, u, rec)
             kid = way.children.get(u) if s.id == "code-generation" and u else None
             if not rs and kid is None and s.id not in DEFAULT_WAY:
                 continue
-            out.append(Node(node_id(s.id, u), s, u, rs, gates_of(rs, u, approvals, pending), _waits(s, kid, way),
+            out.append(Node(node_id(s.id, u), s, u, rs, gates_of(rs, u, approvals, pending), _waits(s, kid, way, no_design),
                             (kid[0], kid[1]) if kid is not None else None))
     return out[:MAX_NODES]
 
