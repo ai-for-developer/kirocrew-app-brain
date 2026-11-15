@@ -114,6 +114,7 @@ class Service:
         self.team: Any = None
         self._tasks: list[asyncio.Task] = []
         self._mr_wanted: dict[tuple, tuple[str, str]] = {}   # (base, project, branch) -> (scope, kit bridge_user)
+        self._mr_seen: set[tuple] = set()      # (project, branch, hand-over commit) whose MR was read at first sight
         self._eval: dict[str, tuple] = {}
         self._eval_running: set[str] = set()
         self._trace: dict[tuple, tuple] = {}
@@ -441,6 +442,12 @@ class Service:
         if run.get("handoff") and f.get("branch") and base and project:
             self._mr_wanted[(base, project, f["branch"])] = (scope, str(repo.cfg.get("bridge_user") or ""))
             mr = self.mr.get(project, f["branch"])
+            seen = (project, f["branch"], f.get("tip"))
+            if (mr or {}).get("sha") != f.get("tip") and seen not in self._mr_seen and repo.is_handover_tip(f):
+                # a hand-over just made: read its MR now, so a label that did not go on is said at once
+                self._mr_seen.add(seen)
+                mr = self.mr.refresh(base, project, f["branch"], transport=self.transport,
+                                     bridge_user=str(repo.cfg.get("bridge_user") or "") or None)
         bot = 0
         if run.get("handoff") and not mr:
             bot = repo.bot_commits_since((run.get("handoff") or {}).get("local_head"), f.get("origin_sha"))
