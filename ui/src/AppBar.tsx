@@ -5,8 +5,12 @@
  * changes. Without a requirement in hand, 需求详情 and 需求看板 open the one that waits on you (else the newest one); with one
  * in hand both tabs carry its key, so a person sees which one they open; one its repo does not have (*gone*) opens in
  * neither, and the other tab says so instead of opening it. 运行机 opened on a machine that is not a team
- * runner is still a tab there (selected, greyed): the page says why it is empty.
+ * runner is still a tab there (selected, greyed): the page says why it is empty. Next to the name: the app's version, and
+ * when KiroCrew knows a newer one (useAppInfo's update, from KiroCrew's own caches: the app asks nobody), 有新版 with the
+ * one step that updates it (UI-1).
  */
+import { useAppInfo } from '@kirocrew/app-sdk'
+import { ago } from './format'
 import { VIEW_NAME, type ViewKind } from './nav'
 import { Icon } from './ui'
 import { RoleIcon } from './board/RoleIcon'
@@ -36,9 +40,22 @@ export function AppBar({ view, onView, item, gone = false, picking, todo, team }
   /** team mode: the 运行机 tab */
   team: boolean
 }) {
+  const info = useAppInfo()
+  const update = info.update?.available ? info.update : null
+  const looked = update?.checkedAt ? Date.parse(update.checkedAt) / 1000 : NaN
   return (
     <header className="br-bar" data-testid="br-appbar">
       <h1><RoleIcon role="brain" size={16} />Brain 交付</h1>
+      <span className="br-bar-ver" data-testid="app-version" title="装在 KiroCrew 里的版本。KiroCrew 从 GitHub 的 release 分支装的 app，有新版时这里会说">v{info.version}</span>
+      {update && (
+        <details className="br-bar-update" data-testid="app-update">
+          <summary>有新版 v{update.latestVersion}</summary>
+          <div className="br-bar-pop">
+            <p>你装的是 v{info.version}。到 KiroCrew 的 Apps → Discover（发现）→ 更新（Updates），在 Brain 交付 那一行点「更新」。数据和设置都留着。</p>
+            {Number.isFinite(looked) && <p className="br-dim br-small">KiroCrew {ago(looked)}查的</p>}
+          </div>
+        </details>
+      )}
       <div className="br-tabs" role="tablist" aria-label="视图">
         {TABS.filter(([k]) => k !== 'team' || team || view === 'team').map(([k, name, hint]) => {
           const held = k === 'item' || k === 'board'

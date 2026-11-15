@@ -76,10 +76,10 @@ describe('导入仓库', () => {
     expect(row('clean')).toHaveTextContent('有 1 个改动没提交：README.md')
     expect(within(row('clean')).getByRole('img', { name: '注意' })).toHaveTextContent('!')
     expect(row('clean').closest('details')).toBeNull()                                    // what needs a look is not
-    expect(within(card).getByText(/没有 ~\/\.kiro\/agents\/brain-dev\.json/)).toBeInTheDocument() // KiroCrew's rows
-    // the row's 做什么 names its button, and the button has that name (no brain-dev.json at all)
-    expect(within(card).getByText(/点「装上 brain-dev」/)).toBeInTheDocument()
-    expect(within(card).getByRole('button', { name: '装上 brain-dev' })).toBeInTheDocument()
+    expect(within(card).getByText(/没有 ~\/\.kiro\/agents\/brain-dev-crew\.json/)).toBeInTheDocument() // KiroCrew's rows
+    // the row's 做什么 names its button, and the button has that name (no brain-dev-crew.json at all)
+    expect(within(card).getByText(/点「装上 brain-dev-crew」/)).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: '装上 brain-dev-crew' })).toBeInTheDocument()
     expect(screen.queryByTestId('install')).toBeNull()
     expect(flowStates()).toEqual(['done', 'done', 'off', 'now']) // installed already: no install step
     expect(within(screen.getByRole('list', { name: '导入的步骤' })).getAllByRole('listitem')[2]).toHaveTextContent('已经装了：不用装')
@@ -92,15 +92,6 @@ describe('导入仓库', () => {
     expect(props.setStatus).toHaveBeenCalledWith(status)
     await user.click(screen.getByRole('button', { name: '开需求' }))
     expect(props.go).toHaveBeenCalledWith({ kind: 'new', repo: 'r3' })
-  })
-
-  test('with a brain-kit that renamed the agent, the install button is named for brain-dev-crew', async () => {
-    const crew = (c: ImportInspect) => ({ ...c, crew: { ...c.crew, rows: c.crew.rows.map((r) => r.fix === 'agent' ? { ...r,
-      text: 'KiroCrew 里还没有 brain-dev-crew', todo: r.todo?.replace('装上 brain-dev', '装上 brain-dev-crew'), raw: '没有 ~/.kiro/agents/brain-dev-crew.json' } : r) } })
-    const { user } = setup({ [`POST ${API}/import/inspect`]: () => crew(installed()) })
-    const card = await inspectPath(user)
-    expect(within(card).getByText(/点「装上 brain-dev-crew」/)).toBeInTheDocument()
-    expect(within(card).getByRole('button', { name: '装上 brain-dev-crew' })).toBeInTheDocument()
   })
 
   test('not installed, a team repo, the new branch picked: the form, the job, the result says it waits for the merge, the next step and the list right there', async () => {
@@ -156,7 +147,7 @@ describe('导入仓库', () => {
     expect(within(out).getByText('改了 14 个文件').closest('details')).not.toHaveAttribute('open')  // folded
     const doctor = fx.importJob().result!.doctor.rows
     expect(within(out).getByTestId('doctor')).toHaveTextContent('自检')
-    expect(within(out).getByTestId('doctor')).not.toHaveTextContent('KiroCrew 里还没有 brain-dev')  // the KiroCrew block's, once
+    expect(within(out).getByTestId('doctor')).not.toHaveTextContent('KiroCrew 里还没有 brain-dev-crew')  // the KiroCrew block's, once
     expect(within(out).getByText(`${doctor.length} 项都正常`)).toBeInTheDocument()
     expect(within(out).getByTestId('commit-ok')).toHaveTextContent('提交了 eb43199f（作者 Alice Example <alice@example.com>）')
     expect(props.reloadStatus).toHaveBeenCalled()

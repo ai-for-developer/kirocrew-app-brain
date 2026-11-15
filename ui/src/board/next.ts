@@ -6,7 +6,7 @@
 import type { Question, ReqBoard, WaitDo, Waits, WaitWho } from '../types'
 import { isOpenQuestion } from '../ui'
 import { ACT } from '../vocab'
-import { leanOf, openGate, sessionOf, waitsOnMe } from './format'
+import { leanOf, openGate, replySession, waitsOnMe } from './format'
 
 export interface Step {
   id: string
@@ -75,7 +75,7 @@ function guessDo(b: ReqBoard): WaitDo {
 export const doOf = (b: ReqBoard): WaitDo => b.row.waits.do ?? guessDo(b)
 
 /** This machine's session: 验收's, else the local run's. */
-const localSession = (b: ReqBoard) => b.accept.step.session_url ?? sessionOf(b.runs.find((r) => r.kind === 'local'))?.url ?? null
+const localSession = (b: ReqBoard) => b.accept.step.session_url ?? replySession(b)?.url ?? null
 
 export function nextOf(b: ReqBoard): Next {
   const w = b.row.waits
@@ -119,11 +119,11 @@ export function nextOf(b: ReqBoard): Next {
     const g = openGate(n)
     if (g?.line && g.who === 'you' && g.line !== st.line && !steps.some((x) => x.line === g.line)) {
       const run = b.runs.find((r) => r.key === n.run)
-      steps.push({ id: `g-${n.id}`, do: 'approve', text: n.doing, line: g.line, session: sessionOf(run)?.url ?? session })
+      steps.push({ id: `g-${n.id}`, do: 'approve', text: n.doing, line: g.line, session: replySession(b, run)?.url ?? session })
     }
   }
   for (const r of waiting) {
-    if (r.now.who === 'you' && r.now.do === 'tool' && d !== 'tool') steps.push({ id: `r-${r.key}`, do: 'tool', text: r.now.doing, session: sessionOf(r)?.url ?? session })
+    if (r.now.who === 'you' && r.now.do === 'tool' && d !== 'tool') steps.push({ id: `r-${r.key}`, do: 'tool', text: r.now.doing, session: replySession(b, r)?.url ?? session })
   }
   return { who: w.who, mine, since, steps, text: w.text, mr }
 }

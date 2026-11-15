@@ -34,7 +34,14 @@ declare module '@kirocrew/app-sdk' {
     request?<T = unknown>(path: string, init?: RequestInit): Promise<T>
   }
   export interface AppPermissions { api: string[]; events: string[] }
-  export interface AppInfo { name: string; version: string; permissions: AppPermissions }
+  /**
+   * Whether a newer version of this app is published, from the caches KiroCrew already keeps (no network call; it may
+   * be older than the registry). `available` is false whenever it cannot be compared. checkedAt: when that cache was
+   * written (ISO), null when unreadable.
+   */
+  export interface AppUpdate { available: boolean; latestVersion: string; checkedAt: string | null }
+  /** update: ABSENT when the host has not looked yet, or predates it: unknown, not current. */
+  export interface AppInfo { name: string; version: string; permissions: AppPermissions; active?: boolean; update?: AppUpdate }
   /**
    * `mode` reads `document.documentElement.dataset.theme`, which is only `dark`/`light` for the
    * default theme (other themes are `<slug>-dark`). Prefer the app's own `useHostMode()` which

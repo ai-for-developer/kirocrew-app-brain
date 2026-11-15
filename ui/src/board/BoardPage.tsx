@@ -43,7 +43,7 @@ import { effects, type BoardDiff, type Flash } from './diff'
 import type { Item } from './engine'
 import { EventFeed } from './EventFeed'
 import { BOARD_EXTRA_CSS } from './extra'
-import { PERSON, WORKING, boardWho, sessionOf } from './format'
+import { PERSON, WORKING, boardWho, replySession } from './format'
 import { NextStep } from './NextStep'
 import { OutputsDrawer } from './Outputs'
 import { openHere, reviewNext } from './next'
@@ -271,7 +271,7 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, pus
   const onAct = useCallback((id: string, d: WaitDo) => {
     const runs = board?.runs ?? []
     const run = runs.find((r) => r.key === board?.nodes.find((n) => n.id === id)?.run)
-    const url = (sessionOf(run) ?? sessionOf(runs.find((r) => r.kind === 'local')))?.url
+    const url = board && (replySession(board, run) ?? replySession(board))?.url
     const review = !!board && reviewNext(board.row.waits)
     if (((d === 'reply' && !review) || d === 'tool') && url) return navigate(url)
     if (d === 'write_back') return toBrain()

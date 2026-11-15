@@ -8,7 +8,7 @@ import subprocess
 import pytest
 
 from appkit import sh
-from brainfix import (FakeGateway, brain, filled_notes, install_brain_dev, make_project, make_service, mod,
+from brainfix import (CREW_AGENT, FakeGateway, brain, filled_notes, install_brain_dev, make_project, make_service, mod,
                       needs_brainkit, run, start_in_worktree)
 from teamfix import world  # noqa: F401  (world: the fixture)
 
@@ -36,7 +36,7 @@ def test_the_runner_and_review_sessions_count_into_the_requirement_and_a_subagen
     install_brain_dev(home)
     start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
     gw = FakeGateway()
-    gw.templates = {"brain-dev", "brain-run"}
+    gw.templates = {CREW_AGENT, "brain-run"}
     svc = make_service(tmp_path, [repo], gw=gw)
 
     gw.script = [[tool(i) for i in range(600)] + [reply("问题 1", 40.0)], [tool(i) for i in range(20)] + [reply("审完了", 6.5)]]
@@ -98,7 +98,7 @@ def test_once_a_runner_elsewhere_has_the_run_its_sessions_are_said_left_out(tmp_
     st.write_text(filled_notes(st.read_text(), "Status: Construction"))
     sh("git", "-C", wt, "commit", "-qam", "notes")
     gw = FakeGateway()
-    gw.templates = {"brain-dev"}
+    gw.templates = {CREW_AGENT}
     gw.script = [[reply("写完了", 20.0)]]
     gl = LabelledMr("")
     svc = make_service(tmp_path, [repo], gw=gw, transport=gl)
@@ -154,7 +154,7 @@ def test_on_the_team_runner_a_requirement_counts_its_run_and_the_sessions_before
     """Team mode, the runner here: the runner's row stands for the requirement. Its credits are its run's session and
     the sessions of its repo on this machine; with none of those here, it says they are left out."""
     gw = FakeGateway()
-    gw.templates = {"brain-dev", "brain-run"}
+    gw.templates = {CREW_AGENT, "brain-run"}
     svc = make_service(tmp_path / "app", [world["repo"]], gw=gw, team=world["team"], transport=world["gl"],
                        kick=lambda: world["signer"].once())
 
@@ -173,7 +173,7 @@ def test_on_the_team_runner_a_requirement_counts_its_run_and_the_sessions_before
             gw.msgs["run-pay-1-1"].append(reply("等回答", 30.0))
             before = await costs()
             dev = await svc.sessions.open_session("开工", parent_session_key="brain:r1-PAY-1", cwd="", title="PAY-1 · 本地开发",
-                                                  folder="PAY-1", agent="brain-dev", strict_agent=True, kind="local",
+                                                  folder="PAY-1", agent=CREW_AGENT, strict_agent=True, kind="local",
                                                   key="r1-PAY-1")
             gw.finish(dev.slot)
             gw.msgs[dev.slot] = turn("开工", 3, 12.0)

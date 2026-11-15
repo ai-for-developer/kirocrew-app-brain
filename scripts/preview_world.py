@@ -466,7 +466,7 @@ def crew_rows() -> list[dict]:
     """KiroCrew's checks of the fixtures' machine as crewcheck makes them (problems.py's words): the agent's spec lacks
     Lean's hook before a tool call; shop-pay's committed hook adapter is the old one (a reminder there: it is not handed
     to the runner); the engine is kas."""
-    return [problems.agent_lacks(AGENT, [("preToolUse", "PreToolUse")]),
+    return [problems.agent_lacks([("preToolUse", "PreToolUse")]),
             problems.row("FAIL", ADAPTER_OLD, repo="/Users/alice/workplace/shop-pay", team=False), problems.engine("kas")]
 
 
@@ -830,10 +830,8 @@ def classified(r: Req, row: dict, *, park: dict | None = None, mr: dict | None =
 LATER: dict[str, tuple] = {}   # each board's makings by "<repo>/<key>", made once every run's Brain block is known
 
 
-# the fixtures' machine has a brain-kit from before it renamed the agent (crewcheck.agent_name), as its sessions boot
-AGENT = "brain-dev"
 SESSION_KEYS = ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting", "last_activity", "opened_at",
-                "project", "url", "error")   # a session row of 需求详情 (service._detail_sync)
+                "project", "url", "error", "missing")   # a session row of 需求详情 (service._detail_sync)
 
 
 def cost_of(sess: list, elsewhere: str | None) -> dict:
@@ -874,11 +872,13 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
     t = r.trace(brain, family) if f.get("run") else None
     subjects = {c["sha"]: c["subject"] for c in r.commits}
     sessions = sessions or []
+    live = service.Service._live([dict(s, kind=s.get("kind") or "local", missing=bool(s.get("missing")),
+                                       review=str(s.get("title") or "").endswith(service.REVIEW_TITLE)) for s in sessions])
     g = board.build(f, row, t, mr=mr, sessions=sessions, app_events=r.app, team_decisions=team_decisions or [], subjects=subjects,
                     changes=changes(r),
                     reflect_refs=reflect or [], default_branch="main", local_only=local_only,
                     kit_rows=board.kit_cells(kit_rows or [], "/Users/alice/workplace/%s" % {"r1": "shop-pay", "r3": "shop-order", "r4": "shop-tools"}.get(r.repo, "")),
-                    decisions=decisions or [], brain=brain, me=me, now=T0, fold=keep)
+                    decisions=decisions or [], brain=brain, me=me, now=T0, fold=keep, live_slot=(live or {}).get("slot"))
     return {"at": T0, "row": row, "branch": row.get("branch"), "base": "main", "started_at": g["started_at"], "ended_at": g["ended_at"],
             "live": g["live"], "person": g["person"], "phases": g["phases"], "nodes": g["nodes"], "runs": g["runs"], "relays": g["relays"], "other_runs": g["other_runs"],
             "events": g["events"], "lean_steps": g["lean_steps"], "belt": g["belt"], "checks": g["checks"],
@@ -887,7 +887,7 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
             "mr_desc": mr_desc or {"available": True, "text": "", "first": None, "source": None, "path": None, "ref": None,
                                    "error": "还没开工：开工以后才有变更说明"},
             "sessions": sessions if counted is None else [{k: x.get(k) for k in SESSION_KEYS} for x in counted],
-            "credits": credits or cost_of([], None),
+            "live_slot": (live or {}).get("slot"), "credits": credits or cost_of([], None),
             "source": "trace" if t else "app", "error": "", "missing": g["missing"], "rollup": board.rollup(t)}
 
 
@@ -1818,7 +1818,7 @@ def world(scratch: Path) -> None:
                 "session": {k: sessions[r_["key"]][k] for k in ("slot", "title", "url")} if r_["key"] in sessions else None,
                 "push_error": pushed_over(r_) if (r_["repo"], r_["key"]) == ("r1", "PAY-1") else None}
                for r_ in all_rows if r_["state"] != "closed" and (r_["state"] != "merged" or r_["waits"]["who"] == "you")]
-    crew_fail = problems.agent_missing(AGENT, "~/.kiro/agents/%s.json" % AGENT)
+    crew_fail = problems.agent_missing()
     world_todo = {"ok": todo.build(entries, team=False, crew_rows=[]), "crewfail": todo.build(entries, team=False, crew_rows=[crew_fail])}
     brains, uses, reflects = brain_views(reqs, all_rows, {bid: kw.get("decisions") or [] for bid, (_, _, kw) in LATER.items()})
     drawer: dict[str, dict] = {}
@@ -1933,7 +1933,7 @@ def world(scratch: Path) -> None:
          "me": {"name": "alice", "source": "login", "gitlab": "", "text": "alice（这台机器的登录名：这个仓库不用 GitLab）",
                 "ask": False, "label": "", "why": "", "suggest": "", "error": ""}}]
     # KiroCrew is fine in the world (the 「KiroCrew 有 FAIL」 switch shows a failing row); shop-tools keeps its ! reminder
-    world_status["crew"]["rows"] = [problems.agent_ok(AGENT, 0) if r_["level"] == "FAIL" else r_ for r_ in status["crew"]["rows"]
+    world_status["crew"]["rows"] = [problems.agent_ok(0) if r_["level"] == "FAIL" else r_ for r_ in status["crew"]["rows"]
                                     if r_.get("fix") != "kit"] + tool_kit
     world_status["crew"]["fix"] = {"agent": any(r_.get("fix") == "agent" for r_ in world_status["crew"]["rows"]),
                                    "engine": any(r_.get("fix") == "engine" for r_ in world_status["crew"]["rows"])}

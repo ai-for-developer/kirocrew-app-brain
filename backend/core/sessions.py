@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from .constants import LOCAL_AGENTS
+from .constants import LOCAL_AGENT
 from .gateway import PAGE, GatewayError, said
 from .problems import AGENT_NEW
 
@@ -628,8 +628,7 @@ class SessionManager:
                                                 agent_kind="template")
             except GatewayError as exc:
                 if exc.status in (400, 404, 409):
-                    fix = ("在设置里点「%s」" % AGENT_NEW.format(a=info.agent) if info.agent in LOCAL_AGENTS
-                           else "先在这台机器上装上它")
+                    fix = "在设置里点「%s」" % AGENT_NEW if info.agent == LOCAL_AGENT else "先在这台机器上装上它"
                     raise GatewayError(exc.status, f"KiroCrew 里没有 {info.agent}：{fix}，再试一次",
                                        exc.code or "agent_choice_unavailable", exc.path) from None
                 raise

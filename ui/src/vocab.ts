@@ -23,7 +23,8 @@ export const waitsOn = (who: WaitWho): string => (who === 'nobody' ? '' : `等${
  * ACT.start (开工) is 开需求's own button only, the one that starts the run */
 export const DO_NAME: Record<WaitDo, string> = {
   approve: '去批准', reply: '去回话', tool: '去批准工具调用', start: '去开工', answer: '去回答', accept: '去验收',
-  redo_handoff: '改好后重新交接', label_handoff: '补上交接标签', write_back: '回写 Brain', watch: '观察中', none: '',
+  redo_handoff: '改好后重新交接', label_handoff: '补上交接标签', push_handoff: '再交接一次', write_back: '回写 Brain',
+  watch: '观察中', none: '',
 }
 
 /** the actions' names (buttons and the text that points at them use exactly these) */
@@ -111,7 +112,8 @@ export function leanNow(r: { state: ReqState; lean: LeanSummary }, skipped_phase
 /** the step (Waits.do) as what the requirement is waiting for: the counters of 交付总览 (「轮到你 5：等回话 2 · 等开工 3」) */
 export const WAIT_NAME: Record<WaitDo, string> = {
   approve: '等批准', reply: '等回话', tool: '等批准工具调用', start: '等开工', answer: '等回答', accept: '等验收',
-  redo_handoff: '要重做交接', label_handoff: '要补交接标签', write_back: '要回写 Brain', watch: '观察中', none: '',
+  redo_handoff: '要重做交接', label_handoff: '要补交接标签', push_handoff: '要再交接', write_back: '要回写 Brain',
+  watch: '观察中', none: '',
 }
 
 /** Lean's review in a new session (Waits.review) is its own step: the session that wrote the code may not review it,

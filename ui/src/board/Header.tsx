@@ -15,7 +15,7 @@ import { paths, useAction } from '../api'
 import type { ReqBoard, ReqFamily, Run, StageNode, StopResult } from '../types'
 import { StateChip } from '../ui'
 import { ACT, DO_NAME, FAMILY_ACT, leanNow, wholeSkips } from '../vocab'
-import { WORKING, actorMeta, boardWho, fmtCredits, fmtWhen, leanOf, localOnly, nodeLabel, nodeWait, outsidePushes, runnerBlind, sessionOf, titleOf, waitsOnMe } from './format'
+import { WORKING, actorMeta, boardWho, fmtCredits, fmtWhen, leanOf, localOnly, nodeLabel, nodeWait, outsidePushes, replySession, runnerBlind, sessionOf, titleOf, waitsOnMe } from './format'
 import { useChangeCount, useTween } from './hooks'
 import { waitCount } from './next'
 import { NOT_LEAN, pickedRun, runLean, type RunFilter } from './picker'
@@ -48,7 +48,7 @@ export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail,
   const r = board.row
   // this machine's session, and the latest runner run's when it is readable here (team mode)
   const localRun = board.runs.find((x) => x.kind === 'local')
-  const local = sessionOf(localRun) ?? null
+  const local = replySession(board, localRun) ?? null
   const runner = sessionOf([...board.runs].reverse().find((x) => x.kind === 'runner' && x.sessions.length)) ?? null
   const finished = board.ended_at !== null || r.state === 'merged' || r.state === 'closed'
   return (

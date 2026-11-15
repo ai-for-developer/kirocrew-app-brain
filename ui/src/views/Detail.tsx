@@ -36,11 +36,13 @@ import {
 } from '../vocab'
 import { Inline, Paths, pathPieces } from './Markdown'
 import { FamilyPanel, useFamily, type FamilyCtl } from './Family'
+import { Handover } from './Handover'
 import type { ViewProps } from './props'
 import { EntryChip, MrComment, MrDescCard, QuestionCard, ReviewButton, ReviewSay, useCopy } from './Question'
 import { PART_LABEL, PART_VAR, StreamCard, splitOf, valueStream, type Part } from './Stream'
 import { NotFound, OnRunner, ReqSwitch, useOnRunner } from './ReqSwitch'
 import { runWords } from './Team'
+import { ReopenSession } from './Reopen'
 
 export { EntryChip, MR_DESC_COPY_HINT, MrDescCard, QuestionCard, mrDescSource } from './Question'
 export { PART_LABEL, PART_VAR, valueStream, type Part, type StreamSeg } from './Stream'
@@ -173,9 +175,10 @@ export const DETAIL_CSS = `
 
 // ------------------------------------------------------------------ what the page reads off the records
 
-/** The requirement went to the team runner: its questions and approvals are answered on the MR from then on. */
+/** The requirement went to the team runner: its questions and approvals are answered on the MR from then on. A
+ * hand-over commit whose push failed (push_handoff) went nowhere. */
 function handedOver(x: RequirementDetail): boolean {
-  return !!x.run?.handoff || ['handed_over', 'running', 'parked', 'acceptance'].includes(x.row.state)
+  return x.row.waits.do !== 'push_handoff' && (!!x.run?.handoff || ['handed_over', 'running', 'parked', 'acceptance'].includes(x.row.state))
 }
 
 /** Lean's stages on the way, the ones its progress counts (vocab.leanProgress, backend lean_view.summary): those of a
@@ -304,7 +307,7 @@ export function DetailView({ entry, onBack, onSwitch, onMissing, ...props }: {
     if (missing || x) onMissing?.(missing)
   }, [missing, !!x]) // eslint-disable-line react-hooks/exhaustive-deps
   const repoInfo = props.status?.repos.find((r) => r.id === entry.repo) ?? null
-  const live = x ? x.sessions.find((s) => s.kind === 'local' && !s.error) ?? null : null
+  const live = x ? x.sessions.find((s) => s.slot === x.live_slot) ?? null : null
   const toBoard = (more: Partial<BoardEntry> = {}) => props.go({ kind: 'board', repo: entry.repo, key: entry.key, from: 'item', ...more })
   // 回交付总览: back when that is where it was opened from (its filters kept), else a move there
   const back = onBack ? { name: from, go: onBack } : { name: VIEW_NAME.overview, go: () => props.go({ kind: 'overview', ...(entry.repo !== 'runner' ? { repo: entry.repo } : {}) }) }
@@ -366,7 +369,10 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
       </>
     )
   }
-  const canOpen = x.row.state === 'local' && !live
+  // the backend opens sessions for a run here not handed over (service.open_session): a hand-over commit whose push
+  // failed reads 本地开发中 too, and its next step is 交接给运行机 again
+  const sessionsHere = x.row.state === 'local' && !x.run?.handoff
+  const canOpen = sessionsHere && !live
   const toAt = (t: number | null) => toBoard(t ? { at: Math.round(t) } : {})
   // whom the open questions and approvals wait on when it is not the person looking: the 此刻 judgment, said once
   // (DETAIL-10); then the cards below only look (看 MR)
@@ -380,6 +386,8 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
         <NowBar x={x} now={now} at={at} live={live} canOpen={canOpen} repo={entry.repo} reqKey={entry.key}
           onStart={onStart} onAnswer={() => scrollTo('问题和回答')} onBrain={() => props.go({ kind: 'brain', repo: entry.repo, reflect: entry.key })} />
         {(canOpen || opened) && <OpenSession repo={entry.repo} reqKey={entry.key} opened={opened} onOpened={onOpened} />}
+        {live && sessionsHere && x.row.worktree && <ReopenSession repo={entry.repo} reqKey={entry.key} live={live} onOpened={after} />}
+        <Handover x={x} repo={entry.repo} reqKey={entry.key} localOnly={localOnly} onDone={after} />
         <Facts x={x} start={startOf(x, board)} localOnly={localOnly} />
       </section>
       <Cards x={x} board={board} at={at} localOnly={localOnly} replying={now.do === 'reply'} onBoard={toBoard} onSessions={() => scrollTo('会话')} />
@@ -657,7 +665,7 @@ function OpenSession({ repo, reqKey, opened, onOpened }: { repo: string; reqKey:
     <section className="cto-card is-wait br-opensession" aria-label="开会话">
       {opened ? (
         <div className="br-row">
-          <span className="br-ok-text">会话开好了。</span>
+          <span className={opened.said ? 'br-warn-text' : 'br-ok-text'}>{opened.said || '会话开好了。'}</span>
           <button type="button" className="kt-btn is-primary" onClick={() => navigate(opened.url)}>
             <Icon name="MessageSquare" size={13} />{ACT.openSession}
           </button>
@@ -1149,6 +1157,7 @@ function sessionName(s: SessionRow): string {
 }
 
 function sessionState(s: SessionRow, replying: boolean): { label: string; tone: string } {
+  if (s.missing) return { label: '不在 KiroCrew 里了', tone: 'idle' }
   if (s.error) return { label: '出错', tone: 'bad' }
   if (s.awaiting) return { label: '等批准', tone: 'wait' }
   if (s.busy) return { label: '在做', tone: 'run' }
@@ -1199,9 +1208,11 @@ function SessionsCard({ sessions, credits, replying, at }: { sessions: SessionRo
                   </div>
                   {s.error && <p className="br-error br-small">{s.error}</p>}
                 </div>
-                <button type="button" className="kt-btn is-small" onClick={() => navigate(s.url)}>
-                  <Icon name="MessageSquare" size={13} />{ACT.openSession}
-                </button>
+                {!s.missing && (
+                  <button type="button" className="kt-btn is-small" onClick={() => navigate(s.url)}>
+                    <Icon name="MessageSquare" size={13} />{ACT.openSession}
+                  </button>
+                )}
               </li>
             )
           })}

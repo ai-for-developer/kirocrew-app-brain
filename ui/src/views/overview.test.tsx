@@ -280,6 +280,19 @@ describe('交付总览', () => {
     expect(cardOf(flow, 'PAY-3')).not.toHaveTextContent('至少')
   })
 
+  test('a hand-over whose push failed: 再交接一次 opens 需求详情, where 交接给运行机 is (the board has no such button)', async () => {
+    const ov = fx.overview()
+    const r = ov.rows.find((x) => x.key === 'PAY-3')!
+    Object.assign(r, { state: 'local', state_label: '本地开发中', mr: null,
+      waits: { who: 'you', text: '交接提交了，但没推上去：什么也没交出去。弄好以后再点「交接给运行机」', line: null, raw: '', do: 'push_handoff', since: ov.at - 600, where: 'app' } })
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
+    const p = props()
+    render(<OverviewView entry={{}} {...p} />)
+    const yours = await screen.findByTestId('your-turn')
+    await userEvent.setup().click(within(yours.querySelector('li[data-key="PAY-3"]') as HTMLElement).getByRole('button', { name: '再交接一次 ↗' }))
+    expect(p.go).toHaveBeenLastCalledWith({ kind: 'item', repo: 'r1', key: 'PAY-3', from: 'overview' })
+  })
+
   test('需求流动: every open card sits in the column colOf and the lane laneOf (waits.who) say; merged ones in 已合并', async () => {
     installFixtureRoutes()
     render(<OverviewView entry={{}} {...props()} />)

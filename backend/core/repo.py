@@ -405,6 +405,11 @@ class Repo:
         p = self.git.run("status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames", "--", *rels, cwd=wt)
         return frozenset(x[3:] for x in p.stdout.split("\0") if len(x) > 3) if p.returncode == 0 else frozenset()
 
+    def on_remote(self, facts: dict[str, Any]) -> bool:
+        """The requirement's branch tip is on the remote: the remote branch is at it or past it."""
+        tip, up = facts.get("tip"), facts.get("origin_sha")
+        return bool(tip and up and (tip == up or self.git.ok("merge-base", "--is-ancestor", tip, up)))
+
     def is_handover_tip(self, facts: dict[str, Any]) -> bool:
         """The requirement's branch tip is the hand-over commit `brain handoff` made: one commit on top of run.json's
         handoff.local_head."""

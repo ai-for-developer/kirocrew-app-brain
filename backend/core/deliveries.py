@@ -38,6 +38,9 @@ CAT_ORDER = ("person", "check", "brain", "agent", "unknown", "unclassified")
 NOT_LABELLED = "推上去了，但 MR 上没有交接标签：什么也没交出去。看一眼 MR，再交接一次"
 # the command it takes, for 细节 (a person types it in a terminal, on the requirement's branch)
 NOT_LABELLED_RAW = "MR 上要有标签 %s。再交接一次：在这个需求的分支上跑 brain handoff（它会提交交接、推送、打标签）"
+# a hand-over commit whose push failed or was stopped: it is on this machine only
+NOT_PUSHED = "交接提交了，但没推上去：什么也没交出去。弄好以后再点「交接给运行机」"
+NOT_PUSHED_RAW = "在终端里也一样：在这个需求的分支上跑 brain handoff（它会推送、打标签）"
 # brain-kit's ledger states of a question the bridge has not put on the MR yet: posting (to be posted), asking (one
 # bridge process is posting it right now, 72b278e)
 NOT_POSTED = ("posting", "asking")
@@ -147,11 +150,13 @@ def owns(me: str | None, owner: str | None) -> bool:
 
 def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | None, slot: dict[str, Any] | None,
              cfg: dict[str, Any], bot_commits: int = 0, at_handover: bool = False, me: str | None = None,
-             reflected: bool = False, now: float | None = None) -> None:
+             reflected: bool = False, now: float | None = None, pushed: bool = True) -> None:
     """Fill in state, state_label and waits (person mode). *at_handover*: the branch tip is the hand-over commit
     `brain handoff` made (its parent is run.json's handoff.local_head). *me*: who this machine's person is (None: not
     known); someone else's requirement waits for them, not for "you".
-    *reflected*: its Brain proposals were written back already (a brain/<KEY>-reflect-<n> branch)."""
+    *reflected*: its Brain proposals were written back already (a brain/<KEY>-reflect-<n> branch). *pushed*: the
+    branch tip is on the remote (False: a hand-over committed here whose push failed, so nothing was handed over; a
+    repo done only on this machine has nothing to push to)."""
     run, park, claim = f.get("run"), f.get("park"), f.get("claim") or {}
     pending = [a for a in f.get("approvals") or [] if a["state"] == "pending" and a.get("line")]
     owner = f.get("owner") or claim.get("owner")
@@ -213,6 +218,8 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
         return _merged(put, f, now=now, reflected=reflected, text="MR 已合并", owner=None if mine else owner)
     if mr and mr.get("state") == "closed":
         return put("closed", "nobody", "none", "MR 已关闭")
+    if not pushed:
+        return put("local", you, "push_handoff", NOT_PUSHED, where="app", raw=NOT_PUSHED_RAW, since=f.get("tip_at"))
     note = fresh_note(mr, f)
     if cfg.get("rejected_label") in labels:
         if note and note["kind"] == "failed":     # brain-kit 0d52e97: the run could not start (labelled rejected)

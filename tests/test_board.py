@@ -11,10 +11,10 @@ import subprocess
 import time
 
 from appkit import ROOT, mod
-from brainfix import (filled_notes, PY, brain, lean, make_project, make_service, needs_brainkit, request_requirements, run, sh,
+from brainfix import (CREW_AGENT, filled_notes, PY, brain, lean, make_project, make_service, needs_brainkit, request_requirements, run, sh,
                       start_in_worktree)
 
-board = mod("board")
+board, deliveries = mod("board"), mod("deliveries")
 
 
 def approve(wt, line):
@@ -83,6 +83,7 @@ def test_an_approved_requirement_handed_over_and_one_merged(tmp_path, home):
     state.write_text(filled_notes(state.read_text(), "Status: Construction step 2 of 4"))
     sh("git", "-C", wt, "commit", "-qam", "notes")
     brain(wt, "handoff", "--no-push")
+    sh("git", "-C", wt, "push", "-q", "origin", "HEAD")    # on the remote: handed over (not push_handoff)
     wt2 = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "done", "done", "做完了")
     sh("git", "-C", repo, "merge", "-q", "--no-ff", "-m", "merge PAY-2", "ai/alice/PAY-2-done")
     sh("git", "-C", repo, "push", "-q", "origin", "main")
@@ -140,7 +141,7 @@ def test_an_idle_session_waits_since_one_moment_and_a_claim_has_nothing_to_trace
     wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
     brain(repo, "claim", "--title", "只认领")
     gw = FakeGateway()
-    gw.templates = {"brain-dev"}
+    gw.templates = {"brain-dev-crew"}
     svc = make_service(tmp_path, [repo], gw=gw)
 
     async def go():
@@ -177,7 +178,7 @@ def test_stop_stops_only_this_requirements_own_session_and_only_while_it_works(t
     start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
     start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "notify", "notify", "通知")
     gw = FakeGateway()
-    gw.templates = {"brain-dev"}
+    gw.templates = {CREW_AGENT}
     svc = make_service(tmp_path, [repo], gw=gw)
     errors = mod("httpkit")
 
@@ -221,7 +222,7 @@ def test_a_quiet_session_waits_since_its_own_last_record_not_since_the_app_looke
     install_brain_dev(home)
     start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
     gw = FakeGateway()
-    gw.templates = {"brain-dev"}
+    gw.templates = {CREW_AGENT}
     svc = make_service(tmp_path, [repo], gw=gw)
 
     async def go():
@@ -371,11 +372,15 @@ def row_of(state, who, text, **waits):
 
 
 def snapshot(f, row, *, t=None, sessions=(), me="dana", now=T + 11.5 * H, local_only=True, mr=None,
-             app_events=(), reflect_refs=(), brain_=None, team_decisions=(), changes=None, units=()):
-    return board.build(f, row, t, mr=mr, sessions=list(sessions), app_events=list(app_events),
+             app_events=(), reflect_refs=(), brain_=None, team_decisions=(), changes=None, units=(), live=None):
+    """*live*: the live dev session's slot as service._live names it; by default the last local session given."""
+    sessions = list(sessions)
+    if live is None:
+        live = next((s["slot"] for s in reversed(sessions) if s.get("kind", "local") == "local"), None)
+    return board.build(f, row, t, mr=mr, sessions=sessions, app_events=list(app_events),
                        team_decisions=list(team_decisions), subjects={}, reflect_refs=list(reflect_refs),
                        default_branch="main", local_only=local_only, kit_rows=[], decisions=[], brain=brain_, me=me, now=now,
-                       changes=changes, units=units)
+                       changes=changes, units=units, live_slot=live)
 
 
 def session(last, busy=False, awaiting=False):
@@ -453,6 +458,20 @@ def test_a_quiet_session_waits_for_the_person_from_its_last_message_not_works_on
     assert [e["text"] for e in b["events"] if e["kind"] == "answer"] == ["你在会话里回话了"]
     # while the AI wrote the requirements it waited for that reply: since Lean's last record before it (逆向工程 done)
     assert {"a": T + 4 * M + 30, "b": T + 6 * M + 17, "kind": "wait", "run": "local"} in node(b, "requirements")["spans"]
+
+
+def test_a_review_session_beside_the_live_one_is_not_where_the_person_replies():
+    """main's live_slot: the live dev session is service._live's, never a review session. With the review session
+    newer and at work, 你要做的一步 opened the review session and the local run said AI 在做; it is the quiet dev
+    session the person replies in."""
+    last = T + 15 * M + 43
+    dev = session(last)
+    review = dict(session(last + 5 * M, busy=True), slot="brain-r1-demo-3-2", url="/chat?sid=brain-r1-demo-3-2")
+    b = snapshot(facts(demo3_events()), row_of("local", "you", "会话空着：轮到你回话", do="reply"),
+                 sessions=[dev, review], live=dev["slot"])
+    now = run_now(b, "local")
+    assert (now["status"], now["doing"], now["do"]) == ("awaiting_approval", "会话空着：轮到你回话", "reply")
+    assert b["accept"]["step"]["session_url"] == dev["url"]
 
 
 def test_a_reply_after_a_long_quiet_does_not_turn_the_quiet_into_ai_work():
@@ -753,6 +772,32 @@ def test_a_push_without_its_label_waits_on_the_person_not_on_the_runner():
     assert (cell["label"], cell["name"], cell["status"], cell["node"], cell["run"]) == ("标签", "补上交接标签", "wait", None, None)
     assert cell["detail"] == relay["steps"][1]["text"] == "MR 上没有交接标签：桥不会接"
     assert "在核对" not in json.dumps(b["checks"], ensure_ascii=False)
+
+
+def test_a_hand_over_whose_push_failed_is_not_handed_over_on_the_board():
+    """main's push_handoff: the hand-over commit is here but never reached the remote, so nothing went out. The board
+    said 交给运行机 in its events, 交接了 in the relay and 桥 在核对 on its check wall. Like the row, it says the push
+    did not go out and what to do (需求详情's 交接给运行机 again); the hours since are the person's, on this machine."""
+    hand = T + 30 * M
+    f = facts(demo3_events()[:12], handoff={"requested_at": iso(hand), "by": "dana"})
+    row = row_of("local", "you", deliveries.NOT_PUSHED, do="push_handoff", since=hand)
+    b = snapshot(f, row, local_only=False, now=hand + 2 * H)
+    assert [r["kind"] for r in b["runs"]] == ["local"]
+    assert run_now(b, "local")["do"] == "push_handoff"
+    [relay] = b["relays"]
+    assert relay["to"] is None
+    assert [(s["key"], s["status"], s["text"], s["todo"]) for s in relay["steps"]] == [
+        ("handover", "failed", "交接提交了，但没推上去", "推上去以后，在需求详情再点「交接给运行机」"),
+        ("bridge", "waiting", "什么也没交出去：桥收不到", None), ("signer", "waiting", "等桥核对完", None),
+        ("workspace", "waiting", "等签名", None)]
+    cell = next(c for c in b["checks"]["cells"] if c["group"] == "handover" and c["id"] == "bridge")
+    assert (cell["label"], cell["name"], cell["status"], cell["detail"]) == (
+        "交接", "推上交接", "fail", "交接提交了，但没推上去：什么也没交出去")
+    shown = said(b) + json.dumps(b["checks"], ensure_ascii=False)
+    for word in ("交给运行机了", "在核对", "桥接手了", "交接了（"):
+        assert word not in shown, word
+    hand_ev = [e for e in b["events"] if e["kind"] == "handover"]
+    assert [e["text"] for e in hand_ev] == ["交接提交了，没推上去"], hand_ev
 
 
 def test_a_question_the_runner_asks_on_the_mr_waits_on_whom_park_json_asks_as_the_row_says():

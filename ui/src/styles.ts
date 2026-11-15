@@ -56,6 +56,12 @@ ${toneVars}
   background: var(--kt-approve); color: var(--kt-on); }
 .br-bar .br-btn { margin: 4px 0 6px; }
 .br-bar-key { font-family: var(--mono, ui-monospace, monospace); font-size: .82em; font-weight: 700; color: var(--muted); }
+.br-bar-ver { margin-left: -12px; font-family: var(--mono, ui-monospace, monospace); font-size: 12px; color: var(--muted); }
+.br-bar-update { position: relative; font-size: 12.5px; }
+.br-bar-update > summary { list-style: none; cursor: pointer; padding: 2px 9px; border-radius: 999px; font-weight: 650; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.br-bar-update > summary::-webkit-details-marker { display: none; }
+.br-bar-pop { position: absolute; z-index: 5; top: calc(100% + 6px); left: 0; display: grid; gap: 4px; width: min(420px, 80vw); padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); box-shadow: 0 6px 20px rgb(0 0 0 / 18%); font-weight: 400; color: var(--text); }
+.br-bar-pop p { margin: 0; }
 
 /* ---------- a view: a kt-root (the board's frame, padding and gaps) ---------- */
 .br-view h2 { margin: 0; font-size: 1.1em; font-weight: 700; color: var(--text-strong); }

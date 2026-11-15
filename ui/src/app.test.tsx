@@ -7,7 +7,7 @@ import { AppBar } from './AppBar'
 import { parseView, type View } from './nav'
 import { fx } from './test/data'
 import { API, installFixtureRoutes } from './test/routes'
-import { apiCalls, apiError, badges, navigations } from './test/stubs/app-sdk'
+import { apiCalls, apiError, badges, navigations, setAppInfo } from './test/stubs/app-sdk'
 
 const bar = () => within(screen.getByTestId('br-appbar'))
 const FIX = '补上 Lean 的拦截'
@@ -21,6 +21,34 @@ const ledgerRow = async (key: string) => {
   expect(row).not.toBeNull()
   return row as HTMLElement
 }
+
+describe('the bar says the app’s version, and how to update when KiroCrew knows a newer one (UI-1)', () => {
+  const bar = () => render(<AppBar view="overview" onView={() => {}} todo={0} team={false} />)
+
+  test('a newer version: said with the one step that updates it, and when KiroCrew looked', async () => {
+    const user = userEvent.setup()
+    setAppInfo({ version: '0.1.0', update: { available: true, latestVersion: '0.2.0', checkedAt: '2026-11-15T01:00:00Z' } })
+    bar()
+    expect(screen.getByTestId('app-version')).toHaveTextContent('v0.1.0')
+    const note = screen.getByTestId('app-update')
+    await user.click(within(note).getByText('有新版 v0.2.0'))
+    expect(note).toHaveTextContent('你装的是 v0.1.0。到 KiroCrew 的 Apps → Discover（发现）→ 更新（Updates），在 Brain 交付 那一行点「更新」')
+    expect(note).toHaveTextContent('数据和设置都留着')
+    expect(note).toHaveTextContent(/KiroCrew .+查的/)
+  })
+
+  test('nothing newer, or KiroCrew has not said: the version only, no claim either way', () => {
+    setAppInfo({ version: '0.2.0', update: { available: false, latestVersion: '0.2.0', checkedAt: null } })
+    const { unmount } = bar()
+    expect(screen.getByTestId('app-version')).toHaveTextContent('v0.2.0')
+    expect(screen.queryByTestId('app-update')).toBeNull()
+    unmount()
+    setAppInfo({ version: '0.2.0' })
+    bar()
+    expect(screen.getByTestId('app-version')).toHaveTextContent('v0.2.0')
+    expect(screen.queryByTestId('app-update')).toBeNull()
+  })
+})
 
 describe('the app: one bar over the views', () => {
   test('it opens on 交付总览; the bar has the name once, the tabs, the 待办 count, and 设置', async () => {
@@ -205,6 +233,22 @@ describe('the app: one bar over the views', () => {
     expect(bar().getByRole('tab', { name: '交付总览' })).toHaveAttribute('aria-selected', 'true')
   })
 
+  test('a damaged repo_ids.json without a good copy: a banner on every view but 设置, with the way to 设置', async () => {
+    const user = userEvent.setup()
+    const s = fx.status()
+    s.repos = []
+    s.repo_ids_problem = '仓库编号的记录 /data/repo_ids.json 坏了，也没有好的备份：这次先不认列表里的仓库，免得记录记到别的仓库上。在设置里点「按记录重建编号」'
+    installFixtureRoutes({ [`GET ${API}/status`]: () => s })
+    render(<BrainApp pollMs={60_000} />)
+    const b = await screen.findByTestId('br-repo-ids')
+    expect(b).toHaveTextContent('仓库编号的记录坏了')
+    expect(b).toHaveTextContent('按记录重建编号')
+    await user.click(within(b).getByRole('button', { name: '去设置' }))
+    expect(parseView(window.location.search)).toEqual({ kind: 'settings' })
+    await screen.findByRole('region', { name: '仓库' })
+    expect(screen.queryByTestId('br-repo-ids')).toBeNull()
+  })
+
   test('no brain-kit: one banner for it on every view but 设置 (where to get it, 去填位置); 设置 says it at its top, and its KiroCrew row points at that card', async () => {
     const user = userEvent.setup()
     const s = fx.status()
@@ -369,7 +413,7 @@ describe('the app: one bar over the views', () => {
     installFixtureRoutes({ [`GET ${API}/status`]: () => { if (fail) throw apiError(403, 'forbidden', 'Token required'); return fx.status() } })
     render(<BrainApp pollMs={60_000} />)
     const b = await screen.findByTestId('br-status-error')
-    expect(b).toHaveTextContent('登录过期了做什么重新打开 KiroCrew 仪表盘，登录以后点「再试一次」')
+    expect(b).toHaveTextContent('登录过期了做什么重新打开 KiroCrew 仪表盘，登录以后再试一次')
     expect(b).not.toHaveTextContent(/Token required.*细节/)              // the host's English only under 细节
     expect(within(b).getByText('细节').closest('details')).not.toHaveAttribute('open')
     expect(b.querySelector('details pre')).toHaveTextContent('API 403: {"error":"Token required","code":"forbidden"}')
@@ -382,7 +426,7 @@ describe('the app: one bar over the views', () => {
     installFixtureRoutes({ [`GET ${API}/status`]: () => { throw new TypeError('Failed to fetch') } })
     render(<BrainApp pollMs={60_000} />)
     const b = await screen.findByTestId('br-status-error')
-    expect(b).toHaveTextContent('连不上 app 的后端做什么KiroCrew 或这个 app 可能停了，网络也可能断了：等一会儿点「再试一次」')
+    expect(b).toHaveTextContent('连不上 app 的后端做什么刷新一下页面；还不行，到 KiroCrew 的 Apps 里把 Brain 交付停用再启用')
     expect(within(b).getByRole('button', { name: '再试一次' })).toBeInTheDocument()
     expect(b.querySelector('details pre')).toHaveTextContent('Failed to fetch')
   })

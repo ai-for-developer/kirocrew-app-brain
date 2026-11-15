@@ -291,6 +291,38 @@ def test_git_over_the_network_never_prompts(home):
 
 # ---- 安装到新分支 --------------------------------------------------------------------------------------------------- #
 
+PYC = ".kiro/brain/__pycache__/lean-hook.cpython-312.pyc"
+
+
+def bytecode_in_the_kit_folder(monkeypatch, module):
+    """brain install copies brain-kit's kit folder file by file, Python's bytecode in it too (a __pycache__ that
+    brain-kit's own test runs leave there): UI-18's .pyc on a repo's main."""
+    real = module.run_quiet
+
+    def run_quiet(cmd, cwd, *args, **kw):
+        p = real(cmd, cwd, *args, **kw)
+        if "install" in cmd and p.returncode == 0:
+            junk = Path(cmd[cmd.index("install") + 1]) / PYC
+            junk.parent.mkdir(parents=True, exist_ok=True)
+            junk.write_bytes(b"\x00not a kit file")
+        return p
+
+    monkeypatch.setattr(module, "run_quiet", run_quiet)
+
+
+def test_a_branch_install_commits_the_kit_files_and_leaves_no_python_bytecode(tmp_path, home, monkeypatch):
+    repo, _ = plain_repo(tmp_path)
+    bytecode_in_the_kit_folder(monkeypatch, installer)
+    svc = make_service(tmp_path, [])
+    done = started(svc, lambda: install(svc, repo))
+    assert done["state"] == "done" and done["result"]["commit"]["ok"], done
+    committed = set(sh("git", "-C", repo, "show", "--name-only", "--format=", "brain/install").stdout.split())
+    assert ".kiro/brain/lean-hook.py" in committed and PYC not in committed
+    assert {f["path"] for f in done["result"]["files"]} == committed
+    wt = done["result"]["worktree"]
+    assert sh("git", "-C", wt, "status", "--porcelain", "--untracked-files=all").stdout == ""
+
+
 def test_install_goes_on_a_new_branch_in_its_own_worktree_and_never_touches_the_checkout(tmp_path, home):
     repo, bare = plain_repo(tmp_path)
     (repo / "README.md").write_text("# pay, my edit\n")      # the person's own work in progress
@@ -484,6 +516,32 @@ def test_remove_from_the_list_touches_no_file(tmp_path, home):
     assert json.loads((tmp_path / "data" / "settings.json").read_text())["repos"] == [str(b.resolve())]
 
 
+def test_a_repos_id_stays_when_another_is_removed_and_comes_back_when_it_is_added_again(tmp_path, home):
+    """UI-19: ids were list positions, so removing a repo pointed the records of every repo after it (sessions,
+    events, credits: all keyed by id) at another repo. An id is given once per path and kept; the ids an app from
+    before has on disk (r1, r2 … in the list's order) stay what they were."""
+    pay, shop, oms = (make_project(tmp_path, name=n, prefix=p) for n, p in (("pay", "PAY"), ("shop", "SHOP"), ("oms", "OMS")))
+    crm = make_project(tmp_path, name="crm", prefix="CRM")
+    svc = make_service(tmp_path, [pay, shop, oms])        # settings.json only, as an app from before left it
+    ids = lambda st: {r["name"]: r["id"] for r in st["repos"]}  # noqa: E731
+
+    async def go():
+        before = await svc.status()
+        removed = await svc.repo_remove({"path": str(pay)})
+        added = await svc.import_add({"path": str(crm)})
+        back = await svc.import_add({"path": str(pay)})
+        return before, removed, added, back
+
+    before, removed, added, back = started(svc, go)
+    assert ids(before) == {"pay": "r1", "shop": "r2", "oms": "r3"}
+    assert ids(removed["status"]) == {"shop": "r2", "oms": "r3"}
+    assert added["id"] == "r4" and "r4" in added["text"] and ids(added["status"]) == {"shop": "r2", "oms": "r3", "crm": "r4"}
+    assert back["id"] == "r1" and ids(back["status"]) == {"shop": "r2", "oms": "r3", "crm": "r4", "pay": "r1"}
+    again = make_service(tmp_path, [crm, oms, pay, shop])   # read again later, the list in another order
+    st = started(again, again.status)
+    assert ids(st) == {"crm": "r4", "oms": "r3", "pay": "r1", "shop": "r2"} and all(r["ok"] for r in st["repos"])
+
+
 # ---- 推送并开 MR ------------------------------------------------------------------------------------------------------ #
 
 def test_publish_pushes_the_branch_and_opens_the_mr_with_the_persons_token(tmp_path, home, monkeypatch, caplog):
@@ -613,6 +671,34 @@ def test_the_routes_refuse_bad_paths_before_anything_runs(tmp_path, home):
     assert "绝对路径" in got["rel"].body["error"] and "符号链接" in got["link"].body["error"]
     assert not (home / "workplace" / "brain-app").exists()
     assert sh("git", "-C", repo, "branch", "--list", "brain/install").stdout == ""
+
+
+def test_gitlab_of_takes_the_web_address_from_an_ssh_origin():
+    """GitLab's SSH host is often ssh.<its web host>, on a port of its own: the web address has neither (E2E-9)."""
+    web = {"base": "https://gitlab.example.com", "project": "grp/pay"}
+    for url in ("git@gitlab.example.com:grp/pay.git", "git@ssh.gitlab.example.com:grp/pay.git",
+                "ssh://git@gitlab.example.com/grp/pay.git", "ssh://git@ssh.gitlab.example.com/grp/pay.git",
+                "ssh://git@gitlab.example.com:2222/grp/pay.git", "ssh://git@ssh.gitlab.example.com:2222/grp/pay.git",
+                "ssh://ssh.gitlab.example.com:443/grp/pay", "git@altssh.gitlab.example.com:grp/pay.git"):
+        assert importer.gitlab_of(url) == web, url
+    # scp-style has no port: git reads 2222/… as the path
+    assert importer.gitlab_of("git@ssh.gitlab.example.com:2222/grp/pay.git") == {
+        "base": "https://gitlab.example.com", "project": "2222/grp/pay"}
+    # the web address keeps its own port; a host called ssh.<…> over https is the web host itself
+    assert importer.gitlab_of("https://gitlab.example.com:8443/grp/pay.git") == {
+        "base": "https://gitlab.example.com:8443", "project": "grp/pay"}
+    assert importer.gitlab_of("http://ssh.example.com/grp/pay") == {"base": "http://ssh.example.com", "project": "grp/pay"}
+    assert importer.gitlab_of("git@ssh.example:grp/pay.git") == {"base": "https://ssh.example", "project": "grp/pay"}
+
+
+def test_gitlab_of_reads_scp_style_without_a_user_and_git_plus_ssh_urls():
+    web = {"base": "https://gitlab.example.com", "project": "grp/pay"}
+    for url in ("gitlab.example.com:grp/pay.git", "ssh.gitlab.example.com:grp/pay.git",
+                "git+ssh://git@ssh.gitlab.example.com:2222/grp/pay.git", "ssh+git://git@gitlab.example.com/grp/pay.git"):
+        assert importer.gitlab_of(url) == web, url
+    assert importer.gitlab_of("gitlab.example.com:grp/pay.git") == importer.gitlab_of("git@gitlab.example.com:grp/pay.git")
+    for not_hosted in ("localhost:grp/pay", "C:/work/pay", "/srv/git/pay.git", "../pay"):
+        assert importer.gitlab_of(not_hosted) == {"base": "", "project": ""}, not_hosted
 
 
 def test_pure_helpers():

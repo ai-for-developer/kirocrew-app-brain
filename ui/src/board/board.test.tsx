@@ -1120,6 +1120,20 @@ describe('需求看板 · 轮到谁、做什么', () => {
     expect(within(screen.getByTestId('br-board').querySelector('.kt-top') as HTMLElement).getByRole('button', { name: '打开会话' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '本机会话' })).toBeNull()
   })
+
+  test('打开会话 opens the live dev session the backend names, not a review session beside it that is newer and at work', async () => {
+    const b = fx.board()
+    const local = b.runs.find((r) => r.kind === 'local')!
+    const dev = local.sessions[local.sessions.length - 1]
+    const review = { ...dev, slot: 'brain-review-1', url: '/chat?sid=brain-review-1', busy: true, title: `${dev.title} · 审查` }
+    local.sessions = [dev, review]
+    b.live_slot = dev.slot
+    installFixtureRoutes(boardRoute(() => structuredClone(b)))
+    renderBoard()
+    await loaded()
+    fireEvent.click(within(screen.getByTestId('br-board').querySelector('.kt-top') as HTMLElement).getByRole('button', { name: '打开会话' }))
+    expect(navigations[navigations.length - 1]).toBe(dev.url)
+  })
 })
 
 test('the time axis names each tick once: half hours are said, not rounded onto the next hour', () => {

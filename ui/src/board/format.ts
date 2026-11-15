@@ -300,6 +300,13 @@ export const RUN_ICON: Record<Run['kind'], string> = { local: 'laptop', runner: 
 /** The session a run opens: the one at work, else its latest on this machine. */
 export const sessionOf = (r: Run | undefined) => r?.sessions.find((s) => s.busy) ?? r?.sessions[r.sessions.length - 1]
 
+/** The session a person replies in for *r*: for the local run the live dev session the backend names (live_slot, never
+ * a review session beside it), else sessionOf. */
+export function replySession(b: Pick<ReqBoard, 'runs' | 'live_slot'>, r: Run | undefined = b.runs.find((x) => x.kind === 'local')) {
+  if (r?.kind !== 'local') return sessionOf(r)
+  return r.sessions.find((s) => s.slot === b.live_slot)
+}
+
 /** The gate that waits now on a node: asked (pending) or held back on the runner (queued). */
 export const openGate = (n: Pick<StageNode, 'gates'>): Gate | null => n.gates.find((g) => g.state === 'pending' || g.state === 'queued') ?? null
 

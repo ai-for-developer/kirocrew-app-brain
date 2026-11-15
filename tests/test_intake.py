@@ -6,8 +6,9 @@ import json
 
 import pytest
 
-from appkit import BRAINKIT, mod
+from appkit import BRAINKIT, commit_file, mod
 from brainfix import FakeGateway, brain, install_brain_dev, make_project, make_service, needs_brainkit, run, sh
+from http_fakes import AppRoute, FakeWeb, call
 
 pytestmark = needs_brainkit
 AppError = mod("httpkit").AppError
@@ -207,7 +208,7 @@ def test_start_makes_a_worktree_runs_brain_start_and_opens_brain_dev_there(tmp_p
     repo = make_project(tmp_path)
     install_brain_dev(home)
     gw = FakeGateway()
-    gw.templates = {"brain-dev"}
+    gw.templates = {"brain-dev-crew"}
     svc = make_service(tmp_path, [repo], gw=gw)
 
     async def go():
@@ -231,7 +232,7 @@ def test_start_makes_a_worktree_runs_brain_start_and_opens_brain_dev_there(tmp_p
     assert (home / ".brain" / "intake" / "packages" / "PKG-PAY-1-1").is_dir()  # materials stay out of the repo
     assert not list(repo.glob("**/PKG-PAY-1-1/segments"))  # (the read-only copy lives in the worktree's ignored dir)
     assert out["slot"] and out["url"] == "/chat?sid=%s" % out["slot"] and not out["session_error"]
-    assert ("agent", "brain-dev", "template") in gw.calls
+    assert ("agent", "brain-dev-crew", "template") in gw.calls
     assert gw.slot_rows[out["slot"]]["project"] == str(wt) and gw.slot_rows[out["slot"]]["trust"]
     folders = [c[1] for c in gw.calls if c[0] == "folder"]
     assert folders == ["Brain 需求", "PAY-1 · refund"]
@@ -242,9 +243,93 @@ def test_start_makes_a_worktree_runs_brain_start_and_opens_brain_dev_there(tmp_p
     assert again["slot"] == out["slot"]  # a live session is reused, not opened twice
 
 
+def test_reopen_opens_a_new_session_keeps_the_old_one_and_is_safe_to_click_twice(tmp_path, home):
+    """E2E-7, E2E-12: 打开会话 hands the live session back, so a session KiroCrew left stuck (busy for good after an
+    interrupted turn) could only be deleted. 重开一个会话 opens a new one in the worktree; the old one is stopped, not
+    deleted (its record stays readable); the same click again (a double click, a second tab) gets that new one."""
+    repo = make_project(tmp_path)
+    install_brain_dev(home)
+    gw = FakeGateway()
+    gw.templates = {"brain-dev-crew"}
+    svc = make_service(tmp_path, [repo], gw=gw)
+
+    async def go():
+        await svc.start()
+        try:
+            out = await svc.intake_start(dict(body(tmp_path, business="mask"), paths=[], open_session=True, trust=True))
+            await svc.sessions.poll()                       # its first turn never ends: busy, as a stuck one is
+            same = await svc.open_session("r1", out["key"])
+            first, second = await asyncio.gather(svc.reopen_session("r1", out["key"], out["slot"]),
+                                                 svc.reopen_session("r1", out["key"], out["slot"]))
+            third = await svc.reopen_session("r1", out["key"], out["slot"])
+            routes = mod("handlers").build_routes(svc, AppRoute, web=FakeWeb(), is_owner=lambda _r: True)
+            via = await call(routes, "POST", "/requirements/r1/%s/session" % out["key"],
+                             json_body={"fresh": True, "replace": out["slot"]})
+            detail = await svc.requirement("r1", out["key"])
+            return out, same, first, second, third, detail, via
+        finally:
+            await svc.stop()
+
+    out, same, first, second, third, detail, via = run(go())
+    old = out["slot"]
+    assert same["slot"] == old                                            # 打开会话: the live one, as before
+    new = [r for r in (first, second) if r["reopened"]]
+    assert len(new) == 1 and new[0]["slot"] != old and new[0]["url"] == "/chat?sid=%s" % new[0]["slot"]
+    assert {first["slot"], second["slot"], third["slot"], via.body["slot"]} == {new[0]["slot"]}
+    assert not third["reopened"] and via.status == 200 and via.body["reopened"] is False
+    assert ("stop", old) in gw.calls and old in gw.slot_rows             # stopped, not deleted
+    assert len([c for c in gw.calls if c[0] == "slot"]) == 2
+    assert [s["slot"] for s in detail["sessions"]] == [old, new[0]["slot"]]
+    assert [c for c in gw.calls if c[0] == "agent"][-1] == ("agent", "brain-dev-crew", "template")
+    kick = gw.msgs[new[0]["slot"]][0]["content"]
+    assert "PAY-1" in kick and "重开" in kick and "approve" not in kick.lower()
+    assert gw.slot_rows[new[0]["slot"]]["trust"]
+    assert any(i.get("label") == "重开了本机会话" for i in detail["timeline"]["items"]), detail["timeline"]["items"]
+
+
+def test_reopen_is_only_for_a_requirement_in_local_development_here(tmp_path, home):
+    repo = make_project(tmp_path)
+    install_brain_dev(home)
+    svc = make_service(tmp_path, [repo])
+
+    async def go():
+        await svc.start()
+        try:
+            with pytest.raises(AppError) as nothing:
+                await svc.reopen_session("r1", "PAY-9", None)
+            return nothing.value
+        finally:
+            await svc.stop()
+
+    nothing = run(go())
+    assert nothing.status == 404
+
+
+def test_a_repo_agent_with_the_crew_agents_name_keeps_the_session_closed(tmp_path, home):
+    """E2E-1: KiroCrew prefers a project's agent of the same name, and Lean's hooks would not run in it."""
+    repo = make_project(tmp_path)
+    commit_file(repo, ".kiro/agents/brain-dev-crew.md", "---\nname: brain-dev-crew\n---\nmine\n", "my own agent")
+    install_brain_dev(home)
+    gw = FakeGateway()
+    gw.templates = {"brain-dev-crew"}
+    svc = make_service(tmp_path, [repo], gw=gw)
+
+    async def go():
+        await svc.start()
+        try:
+            return await svc.intake_start(dict(body(tmp_path, business="mask"), paths=[], open_session=True, trust=True))
+        finally:
+            await svc.stop()
+
+    out = run(go())
+    assert out["ok"] and out["slot"] is None and not gw.slot_rows
+    assert out["session_error"].startswith("仓库里也有一个叫 brain-dev-crew 的 agent。") and "改个名字或者删掉" in \
+        out["session_error"], out["session_error"]
+
+
 def test_no_session_without_brain_dev_carrying_leans_hooks(tmp_path, home):
     repo = make_project(tmp_path)
-    (home / ".kiro" / "agents" / "brain-dev.json").write_text(json.dumps({"name": "brain-dev", "hooks": {}}))
+    (home / ".kiro" / "agents" / "brain-dev-crew.json").write_text(json.dumps({"name": "brain-dev-crew", "hooks": {}}))
     gw = FakeGateway()
     svc = make_service(tmp_path, [repo], gw=gw)
 
@@ -258,7 +343,7 @@ def test_no_session_without_brain_dev_carrying_leans_hooks(tmp_path, home):
     out = run(go())
     assert out["ok"] and out["slot"] is None and not gw.slot_rows
     # the button 设置's KiroCrew row has for this state, by its name
-    assert out["session_error"].startswith("brain-dev 的设置缺 Lean 的拦截：") and \
+    assert out["session_error"].startswith("brain-dev-crew 的设置缺 Lean 的拦截：") and \
         "在「设置」的 KiroCrew 里点「补上 Lean 的拦截」" in out["session_error"], out["session_error"]
 
 

@@ -110,11 +110,12 @@ export const HANDOVER_RESULT: Record<HandoverResult, { label: string; tone: Tone
   seen: { label: '看过了', tone: 'idle', hint: '这个提交和这次打标签以前检查过，结果在账本里' },
   unlabelled: { label: '标签刚被拿掉', tone: 'warn', hint: '交接标签刚被拿掉（重新交接、再打一次标签时会这样）：下一轮再看' },
   waiting: { label: '正在别处签名', tone: 'hand', hint: '这份交接的合同正在别处签（另一个桥进程，或停下的桥留下的占位）：下一轮再看' },
+  skipped: { label: '没看：不在名单里', tone: 'idle', hint: '不在这个项目要接的 MR 名单里，桥没看它。要接它，把它的号加进桥的设置里这个项目的 MR 名单' },
   error: { label: '这一轮没查成', tone: 'warn', hint: '下一轮再试' },
 }
 export const handoverMeta = (result: string) => HANDOVER_RESULT[result as HandoverResult] ?? { label: result, tone: 'idle' as Tone, hint: '' }
 /** a belt chip's look: green taken, red refused, dashed looked at again next round, quiet seen before */
-const CHIP_CLASS: Record<string, string> = { rejected: 'is-conflict', waiting: 'is-pending', unlabelled: 'is-pending', error: 'is-pending', seen: 'is-seen' }
+const CHIP_CLASS: Record<string, string> = { rejected: 'is-conflict', waiting: 'is-pending', unlabelled: 'is-pending', error: 'is-pending', seen: 'is-seen', skipped: 'is-seen' }
 
 type LedgerKey = keyof TeamView['ledger']
 /** A ledger count's state in words: runs by run state, decisions by question state, hand-overs and messages by their own. */

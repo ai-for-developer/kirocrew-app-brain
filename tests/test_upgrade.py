@@ -13,7 +13,7 @@ import pytest
 from appkit import BRAINKIT, mod, sh
 from brainfix import install_brain_dev, make_project, make_service, needs_brainkit, run
 from http_fakes import AppRoute, FakeWeb, call
-from test_import import FakeGitLab, checkout_state, fake_token, plain_repo
+from test_import import PYC, FakeGitLab, bytecode_in_the_kit_folder, checkout_state, fake_token, plain_repo
 
 pytestmark = needs_brainkit
 installer = mod("installer")
@@ -190,6 +190,23 @@ def test_without_a_remote_a_branch_update_is_on_a_local_branch_and_the_text_says
     assert r["mode"] == "branch" and r["text"] == "提交在本机分支 brain/upgrade-kit 上（这个仓库没有远端）：点「合并到 main」就生效"
     assert r["can_open_mr"] is False and "runs/**" in lean_json_at(repo, "brain/upgrade-kit")["fingerprint_exclude"]
     assert checkout_state(repo) == before
+
+
+def test_a_local_branch_kit_update_commits_no_python_bytecode_and_merging_it_cleans_up(tmp_path, home, monkeypatch):
+    repo = older_kit(tmp_path, origin=False)
+    bytecode_in_the_kit_folder(monkeypatch, installer)
+    svc = make_service(tmp_path, [repo])
+
+    async def go():
+        done = await upgrade(svc, repo, mode="branch")
+        return done, await svc.import_merge({"path": str(repo), "purpose": "upgrade"})
+
+    done, merged = started(svc, go)
+    r = done["result"]
+    assert done["state"] == "done" and r["commit"]["ok"], done
+    assert PYC not in sh("git", "-C", repo, "show", "--name-only", "--format=", r["commit"]["sha"]).stdout.split()
+    assert merged["ok"] and merged["removed"] == ["工作目录 %s" % r["worktree"], "分支 %s" % r["branch"]], merged
+    assert merged["kept"] == [] and sh("git", "-C", repo, "status", "--porcelain", "--untracked-files=all").stdout == ""
 
 
 def test_nothing_to_change_takes_back_the_worktree_and_the_branch(tmp_path, home):

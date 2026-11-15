@@ -1,7 +1,7 @@
 """The app's settings: ``settings.json`` in its data dir, edited on the page (owner only), checked before saving.
 
   brainkit    the brain-kit checkout to import (default: $BRAINKIT_HOME or a usual place, see bk.default_path)
-  repos       project repos with brain-kit installed, shown on this machine (ids r1, r2 … in this order)
+  repos       project repos with brain-kit installed, shown on this machine (ids r1, r2 …: repoids.py, kept per path)
   work_root   where each requirement's worktree goes (KiroCrew lets agents work under ~/workplace or ~/workspace only)
   fetch_every_min  every repo with a remote is fetched this often by itself, in minutes (0: only on 「从远端取最新」)
   auto_push   {repo path: false} for a listed repo whose run branches are not pushed at Lean's checkpoints (on when

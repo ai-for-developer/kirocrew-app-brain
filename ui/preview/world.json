@@ -148,7 +148,7 @@
    "rows": [
     {
      "level": "OK",
-     "text": "brain-dev 的设置里 Lean 的拦截都在",
+     "text": "brain-dev-crew 的设置里 Lean 的拦截都在",
      "todo": "",
      "fix": null,
      "repo": null,
@@ -198,7 +198,8 @@
   },
   "counts": {
    "todo": 8
-  }
+  },
+  "repo_ids_problem": ""
  },
  "overview": {
   "at": 1794146400,
@@ -28030,7 +28031,7 @@
      "repo": "",
      "key": "",
      "title": "KiroCrew 检查",
-     "text": "KiroCrew 里还没有 brain-dev。点「装上 brain-dev」：装上 brain-kit 带的那一份；没有它，Lean 的拦截在 KiroCrew 里不会跑",
+     "text": "KiroCrew 里还没有 brain-dev-crew。点「装上 brain-dev-crew」：装上 brain-kit 带的那一份。app 开的会话都用它，Lean 的拦截在它里面",
      "line": null,
      "approval": null,
      "mr_url": null,
@@ -28524,13 +28525,13 @@
  },
  "crew_missing": {
   "level": "FAIL",
-  "text": "KiroCrew 里还没有 brain-dev",
-  "todo": "点「装上 brain-dev」：装上 brain-kit 带的那一份；没有它，Lean 的拦截在 KiroCrew 里不会跑",
+  "text": "KiroCrew 里还没有 brain-dev-crew",
+  "todo": "点「装上 brain-dev-crew」：装上 brain-kit 带的那一份。app 开的会话都用它，Lean 的拦截在它里面",
   "fix": "agent",
   "repo": null,
-  "raw": "没有 ~/.kiro/agents/brain-dev.json"
+  "raw": "没有 ~/.kiro/agents/brain-dev-crew.json"
  },
- "crew_not_ready": "KiroCrew 里还没有 brain-dev。在「设置」的 KiroCrew 里点「装上 brain-dev」：装上 brain-kit 带的那一份；没有它，Lean 的拦截在 KiroCrew 里不会跑",
+ "crew_not_ready": "KiroCrew 里还没有 brain-dev-crew。在「设置」的 KiroCrew 里点「装上 brain-dev-crew」：装上 brain-kit 带的那一份。app 开的会话都用它，Lean 的拦截在它里面",
  "me_token": {
   "name": "alice",
   "source": "token",
@@ -32440,7 +32441,8 @@
      "opened_at": 1794038400,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-2-1c4e",
-     "error": null
+     "error": null,
+     "missing": false
     },
     {
      "slot": "brain-run-RUN-PAY-2-1",
@@ -32455,9 +32457,11 @@
      "opened_at": 1794038400,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-run-RUN-PAY-2-1",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": "brain-PAY-2-1c4e",
    "credits": {
     "total": 22.7,
     "whole": false,
@@ -35485,9 +35489,11 @@
      "opened_at": 1794038400,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-3-7f3a",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": "brain-PAY-3-7f3a",
    "credits": {
     "total": 12.4,
     "whole": true,
@@ -37610,9 +37616,11 @@
      "opened_at": 1794038400,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-run-RUN-PAY-4-1",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": null,
    "credits": {
     "total": 6.1,
     "whole": true,
@@ -40811,7 +40819,8 @@
      "opened_at": 1793901600,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-5-8a1d",
-     "error": null
+     "error": null,
+     "missing": false
     },
     {
      "slot": "brain-run-RUN-PAY-5-1",
@@ -40826,9 +40835,11 @@
      "opened_at": 1794038400,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-run-RUN-PAY-5-1",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": "brain-PAY-5-8a1d",
    "credits": {
     "total": 31.0,
     "whole": true,
@@ -43017,9 +43028,11 @@
      "opened_at": 1794038400,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-7-2b9f",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": "brain-PAY-7-2b9f",
    "credits": {
     "total": 18.2,
     "whole": true,
@@ -43421,6 +43434,7 @@
     "error": "还没开工：开工以后才有变更说明"
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": null,
     "whole": true,
@@ -43817,6 +43831,7 @@
     "error": "还没开工：开工以后才有变更说明"
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": null,
     "whole": true,
@@ -45955,6 +45970,7 @@
     "error": ""
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": 12.6,
     "whole": true,
@@ -48298,9 +48314,11 @@
      "opened_at": 1794123000,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-1-3d8e",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": "brain-PAY-1-3d8e",
    "credits": {
     "total": 9.8,
     "whole": true,
@@ -49868,9 +49886,11 @@
      "opened_at": 1794141620,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-16-4c7d",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": "brain-PAY-16-4c7d",
    "credits": {
     "total": 3.1,
     "whole": true,
@@ -54924,9 +54944,11 @@
      "opened_at": 1794124200,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-9-7f2c",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": "brain-PAY-9-7f2c",
    "credits": {
     "total": 12.4,
     "whole": false,
@@ -57328,9 +57350,11 @@
      "opened_at": 1794038400,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-11-6d1e",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": "brain-PAY-11-6d1e",
    "credits": {
     "total": 12.6,
     "whole": true,
@@ -59606,6 +59630,7 @@
     "error": ""
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": 6.2,
     "whole": true,
@@ -61850,6 +61875,7 @@
     "error": "还没开工：开工以后才有变更说明"
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": 3.2,
     "whole": true,
@@ -62234,6 +62260,7 @@
     "error": "还没开工：开工以后才有变更说明"
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": null,
     "whole": true,
@@ -65476,6 +65503,7 @@
     "error": ""
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": 14.2,
     "whole": false,
@@ -68910,6 +68938,7 @@
     "error": ""
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": 21.9,
     "whole": false,
@@ -72356,6 +72385,7 @@
     "error": ""
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": 26.4,
     "whole": false,
@@ -75660,6 +75690,7 @@
     "error": ""
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": 17.8,
     "whole": false,
@@ -78392,6 +78423,7 @@
     "error": ""
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": 9.6,
     "whole": true,
@@ -81966,6 +81998,7 @@
     "error": ""
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": 11.3,
     "whole": false,
@@ -85229,6 +85262,7 @@
     "error": ""
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": 19.5,
     "whole": false,
@@ -88808,6 +88842,7 @@
     "error": ""
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": 33.7,
     "whole": false,
@@ -92216,6 +92251,7 @@
     "error": ""
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": 15.1,
     "whole": false,
@@ -94278,9 +94314,11 @@
      "opened_at": 1794038400,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-run-RUN-ORD-10-1",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": null,
    "credits": {
     "total": 7.4,
     "whole": true,
@@ -95603,9 +95641,11 @@
      "opened_at": 1794038400,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-TOOL-1-5a2c",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": "brain-TOOL-1-5a2c",
    "credits": {
     "total": 4.9,
     "whole": true,
@@ -97060,6 +97100,7 @@
     "error": ""
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": null,
     "whole": true,
@@ -98881,6 +98922,7 @@
     "error": ""
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": null,
     "whole": true,
@@ -101107,6 +101149,7 @@
     "error": ""
    },
    "sessions": [],
+   "live_slot": null,
    "credits": {
     "total": null,
     "whole": true,
@@ -101601,9 +101644,11 @@
      "opened_at": 1794124200,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-9-7f2c",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": null,
    "credits": {
     "total": 12.4,
     "whole": true,
@@ -103719,9 +103764,11 @@
      "opened_at": 1794038400,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-run-RUN-PAY-4-1",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": null,
    "credits": {
     "total": 6.1,
     "whole": false,
@@ -106922,7 +106969,8 @@
      "opened_at": 1793901600,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-5-8a1d",
-     "error": null
+     "error": null,
+     "missing": false
     },
     {
      "slot": "brain-run-RUN-PAY-5-1",
@@ -106937,9 +106985,11 @@
      "opened_at": 1794038400,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-run-RUN-PAY-5-1",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": null,
    "credits": {
     "total": 31.0,
     "whole": true,
@@ -110892,7 +110942,8 @@
      "opened_at": 1794038400,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-2-1c4e",
-     "error": null
+     "error": null,
+     "missing": false
     },
     {
      "slot": "brain-run-RUN-PAY-2-1",
@@ -110907,9 +110958,11 @@
      "opened_at": 1794038400,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-run-RUN-PAY-2-1",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": null,
    "credits": {
     "total": 22.7,
     "whole": false,
@@ -113030,9 +113083,11 @@
      "opened_at": 1794038400,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-run-RUN-ORD-10-1",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": null,
    "credits": {
     "total": 7.4,
     "whole": false,
@@ -113885,9 +113940,11 @@
      "opened_at": 1794038400,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-3-7f3a",
-     "error": null
+     "error": null,
+     "missing": false
     }
    ],
+   "live_slot": "brain-PAY-3-7f3a",
    "credits": {
     "total": 12.4,
     "whole": true,

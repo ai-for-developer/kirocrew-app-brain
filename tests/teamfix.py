@@ -184,6 +184,44 @@ class GitLab:
                 "committer_name": f[4], "committer_email": f[5], "committed_date": f[6]}
 
 
+class Served:
+    """A GitLab fake (``__call__(method, url, headers, body)``) behind an HTTP server on 127.0.0.1, in a thread, for
+    brain-kit's own processes (they cannot take an in-process transport); ``base`` is its URL. One request at a time
+    (the fake is not thread-safe). ``stop()`` closes it."""
+
+    def __init__(self, fake, port=0):
+        import http.server
+        import threading
+        served = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def answer(self):
+                n = int(self.headers.get("Content-Length") or 0)
+                status, payload = served.fake(self.command, served.base + self.path, self.headers,
+                                              self.rfile.read(n) if n else None)
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload or b"")))
+                self.end_headers()
+                self.wfile.write(payload or b"")
+
+            do_GET = do_POST = do_PUT = do_DELETE = answer
+
+            def log_message(self, *_args):
+                pass
+
+        self.fake = fake
+        self.server = http.server.HTTPServer(("127.0.0.1", port), Handler)
+        self.base = "http://127.0.0.1:%d" % self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def stop(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join()
+
+
 def load_signer():
     sys.path.insert(0, str(ROOT / "signer"))
     import brain_signer

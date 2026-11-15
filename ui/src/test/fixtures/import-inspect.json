@@ -71,11 +71,11 @@
     "rows": [
       {
         "level": "FAIL",
-        "text": "KiroCrew 里还没有 brain-dev",
-        "todo": "点「装上 brain-dev」：装上 brain-kit 带的那一份；没有它，Lean 的拦截在 KiroCrew 里不会跑",
+        "text": "KiroCrew 里还没有 brain-dev-crew",
+        "todo": "点「装上 brain-dev-crew」：装上 brain-kit 带的那一份。app 开的会话都用它，Lean 的拦截在它里面",
         "fix": "agent",
         "repo": null,
-        "raw": "没有 ~/.kiro/agents/brain-dev.json"
+        "raw": "没有 ~/.kiro/agents/brain-dev-crew.json"
       },
       {
         "level": "OK",

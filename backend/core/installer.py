@@ -40,9 +40,9 @@ from . import bk
 from . import problems
 from .constants import GIT_BIN
 from .importer import (CTRL_RE, DEFAULT_BRANCH, GIT_TIMEOUT_S, KIT, LINKS_REFUSED, PREFIX_RE, PROJECT_RE,
-                       STATUS_TIMEOUT_S, ImportFail, Records, _status_rows, base_ref, default_branch, git_failure, has_at,
-                       last_lines, origin_of, planted_link, quiet_env, ref_word, run_quiet, short_ref,
-                       symlinks_on_targets, tail)
+                       STATUS_TIMEOUT_S, ImportFail, Records, _status_rows, base_ref, bytecode, default_branch,
+                       git_failure, has_at, last_lines, origin_of, planted_link, quiet_env, ref_word, run_quiet,
+                       short_ref, status_map, symlinks_on_targets, tail, touches, write_targets)
 from .intake import brain_cmd
 from .repo import Git
 
@@ -299,8 +299,8 @@ def install(top: str, kit: dict[str, str], branch: str, work_root: str, records:
     else:
         step("doctor", "warn" if fails else "ok", "%d 项通过，%d 项注意，%d 项没过" % (len(rows) - fails - warns, warns, fails))
 
-    res["files"] = _status_rows(Git(wt).run("status", "--porcelain=v1", "-z", "--untracked-files=all",
-                                            timeout=STATUS_TIMEOUT_S).stdout)[:MAX_FILES]
+    take_back(wt, {}, write_targets(_kit_of(wt)), only=bytecode)
+    res["files"] = installed_files(wt)
     records.put(top, {"branch": branch, "worktree": wt, "base": short_ref(ref), "base_sha": sha, "commit": None,
                       "kit": kit, "files": res["files"], "doctor": {"ok": len(rows) - fails - warns, "warn": warns,
                                                                     "fail": fails},
@@ -438,8 +438,8 @@ def upgrade(top: str, branch: str, work_root: str, records: Records, step: Calla
         else:
             step("doctor", "warn" if fails else "ok", "%d 项通过，%d 项注意，%d 项没过" % (len(rows) - fails - warns, warns,
                                                                                  fails))
-        res["files"] = _status_rows(Git(wt).run("status", "--porcelain=v1", "-z", "--untracked-files=all",
-                                                timeout=STATUS_TIMEOUT_S).stdout)[:MAX_FILES]
+        take_back(wt, {}, write_targets(wcfg), only=bytecode)
+        res["files"] = installed_files(wt)
     except BaseException:
         _drop(top, wt, branch, sha)
         res["worktree"] = None
@@ -487,6 +487,48 @@ def commit_failure(p: Any, where: str, purpose: str = "install") -> tuple[bool, 
     lock = "\n没提交之前，在这个目录里开的 brain-dev 会话每次调用工具都会被拦下（kit 文件和提交的不一样）。" if purpose == "upgrade" else ""
     return True, "提交被拦下了（多半是提交时跑的 git 检查），它说：\n%s\n\n改动还在 %s 里：处理好以后点「再提交一次」。%s" % (
         last_lines(tail(p), 15) or "（什么也没说，退出码 %d）" % p.returncode, where, lock)
+
+
+def _safe_rel(p: Any) -> bool:
+    return isinstance(p, str) and bool(p) and not p.startswith("/") and "\0" not in p and ".." not in p.split("/")
+
+
+def take_back(top: str, before: dict[str, str], targets: list[str], only: Callable[[str], bool] | None = None) -> bool:
+    """Undo what an install wrote in the checkout: paths within *targets* whose state differs from *before* (they were
+    clean then, so nothing of the person's is lost), or *only* those it picks. Tracked ones come back from HEAD, new
+    files are removed, and the folders that only held them. True when there was something to undo."""
+    g = Git(top)
+    after = status_map(g) or {}
+    changed = sorted(p for p, ch in after.items()
+                     if before.get(p) != ch and touches(p, targets) and _safe_rel(p) and (only is None or only(p)))
+    if not changed:
+        return False
+    in_head = [p for p in changed if g.ok("cat-file", "-e", "HEAD:%s" % p)]
+    if in_head:
+        run_quiet([GIT_BIN, "-C", top, "checkout", "-q", "HEAD", "--", *in_head], top, GIT_TIMEOUT_S * 2, brain_env())
+    for p in changed:
+        if p in in_head:
+            continue
+        full = os.path.join(top, p)
+        if os.path.islink(full) or os.path.isfile(full):
+            try:
+                os.remove(full)
+            except OSError:
+                continue
+        d = os.path.dirname(full)
+        while d.startswith(top + os.sep) and touches(os.path.relpath(d, top), targets):
+            try:
+                os.rmdir(d)          # only an empty one
+            except OSError:
+                break
+            d = os.path.dirname(d)
+    return True
+
+
+def installed_files(wt: str) -> list[dict[str, str]]:
+    """What brain install changed in its worktree: the commit takes these."""
+    return _status_rows(Git(wt).run("status", "--porcelain=v1", "-z", "--untracked-files=all",
+                                    timeout=STATUS_TIMEOUT_S).stdout)[:MAX_FILES]
 
 
 def commit(top: str, records: Records, step: Callable[..., None] | None = None, *,

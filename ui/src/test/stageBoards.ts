@@ -158,6 +158,7 @@ export function pay9(): ReqBoard {
   const cells = [verifyCell('pytest', t('16:10'), '41 秒'), verifyCell('ruff', t('16:10'), '2 秒'), verifyCell('mypy', t('16:10'), '9 秒')]
   return {
     ...b,
+    live_slot: 'brain-PAY-9-7f2c',
     at: t('16:15'),
     row: { ...b.row, key: 'PAY-9', title: '退款通知短信', state: 'acceptance', state_label: '等验收', branch: 'ai/alice/PAY-9-refund-sms', worktree: null,
       waits: { who: 'product', text: '等产品在 MR 上验收（D-3）', line: null, raw: '', do: 'accept', todo: '', since: t('16:14'), where: 'mr', review: false } },
@@ -209,6 +210,7 @@ export function pay16(): ReqBoard {
   ]
   return {
     ...b,
+    live_slot: 'brain-PAY-16-2b9d',
     row: { ...b.row, key: 'PAY-16', title: '退款进度查询', state: 'local', state_label: '本地开发中', branch: 'ai/alice/PAY-16-refund-progress',
       waits: { who: 'you', text: '等你批准需求和设计（在会话里自己打一行）', line, raw: '', do: 'approve', todo: '', since: ago(12), where: 'session', review: false } },
     branch: 'ai/alice/PAY-16-refund-progress', started_at: ago(82), ended_at: null, live: false,

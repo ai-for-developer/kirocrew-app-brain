@@ -19,7 +19,7 @@ import { ACT, CHILD_STATE_NAME, DO_NAME, approvalName } from '../vocab'
 import type { Item } from './engine'
 import {
   LIVE, ROUND_TONE, RUN_ICON, WORKING, actorMeta, brief, causeWords, clip, clockAt, decider, fmtAgo, fmtCredits, fmtHm, fmtSpan, gateVerb, gateWhat,
-  localOnly, nodeWait, openGate, otherWaits, roundWords, runShort, runnerBlind, sayWho, sessionOf, textWidth, waitsOnMe, whoOf, whoThen, wrap,
+  localOnly, nodeWait, openGate, otherWaits, roundWords, runShort, runnerBlind, replySession, sayWho, textWidth, waitsOnMe, whoOf, whoThen, wrap,
 } from './format'
 import { GraphDefs, Halo, PersonCard, Scroller, Station, useHoverCard, useParticles, type FlashMap } from './GraphFrame'
 import { useServerNow } from './hooks'
@@ -766,7 +766,7 @@ function StageCard({ n, board, runs, onSession, onOutputs }: {
   const wait = nodeWait(n, run)
   const g = openGate(n)
   const meta = actorMeta(n.status)
-  const session = run && run.readable === 'here' ? sessionOf(run) : undefined
+  const session = run && run.readable === 'here' ? replySession(board, run) : undefined
   const tick = tickerOf(n, run, false, board)
   return (
     <div className="kt-ncard-body">

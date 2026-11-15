@@ -133,13 +133,18 @@ def missing_sources(raw: list[Any], *, local_only: bool, handed: bool, ci_read: 
     return out
 
 
+# the hand-over in the events and on the belt: done, or committed here but never pushed (nothing went out)
+HAND_WORDS = {False: "交给运行机", True: "交接提交了，没推上去"}
+
+
 def events_of(f: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any] | None, app_events: list[dict[str, Any]],
               team_decisions: list[dict[str, Any]], subjects: dict[str, str], reflect_refs: list[tuple[str, float, float | None]],
-              default_branch: str, you: str = "你") -> list[dict[str, Any]]:
+              default_branch: str, you: str = "你", unpushed: bool = False) -> list[dict[str, Any]]:
     """Every recorded event of the requirement, oldest first, in the board's words (BoardEvent without seq and without
     its place on the graph, which stage_graph gives it). A question or an answer keeps the side it is on (_side: this
     machine's run, or the runner's), an answer the bridge delivered says so (_relay). *you*: the requirement's person
-    as the reader calls them (你, or their name)."""
+    as the reader calls them (你, or their name). *unpushed*: the hand-over commit never reached the remote
+    (deliveries' push_handoff), so nothing was handed over."""
     run = f.get("run") or {}
     handoff = run.get("handoff") if isinstance(run.get("handoff"), dict) else None
     hand_at = _epoch((handoff or {}).get("requested_at"))
@@ -236,7 +241,8 @@ def events_of(f: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any]
         kept = {"sha": sha, "files": c.get("files") or 0, "records": bool(c.get("records_only")), "_commit": c}
         if sha and sha == hand_sha:
             seen_hand = True
-            add(at, "handover", "交给运行机（提交 %s）" % sha[:8], by="person", subject=subj or "交接", **kept)
+            add(at, "handover", "%s（提交 %s）" % (HAND_WORDS[unpushed], sha[:8]), by="person", subject=subj or "交接",
+                unpushed=unpushed, **kept)
         elif c.get("by") == "bot":
             add(at, "commit", "运行机提交 %s%s" % (sha[:8], "：%s" % _clip(subj, 60) if subj else ""), by="bot",
                 subject=subj, **kept)
@@ -247,7 +253,8 @@ def events_of(f: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any]
             add(at, "commit", "提交 %s%s" % (sha[:8], "：%s" % _clip(subj, 60) if subj else ""), by="person", subject=subj,
                 **kept)
     if hand_at is not None and not seen_hand:
-        add(hand_at, "handover", "交给运行机", by="person", sha=(handoff or {}).get("local_head") or "")
+        add(hand_at, "handover", HAND_WORDS[unpushed], by="person", sha=(handoff or {}).get("local_head") or "",
+            unpushed=unpushed)
     for h in hands:
         at, kind = _epoch(h.get("at")), str(h.get("kind") or "")
         if kind == "bridge accepted":
@@ -514,7 +521,8 @@ def stage_graph(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None
                 mr: dict[str, Any] | None, sessions: list[dict[str, Any]], team_decisions: list[dict[str, Any]],
                 subjects: dict[str, str], changes: dict[str, list[dict[str, Any]]],
                 reflect_refs: list[tuple[str, float, float | None]], you: str, me: str | None, hand_at: float | None,
-                merged_at: float | None, proposals: int, units: Any, now: float) -> dict[str, Any]:
+                merged_at: float | None, proposals: int, units: Any, now: float, live_slot: str | None = None
+                ) -> dict[str, Any]:
     """The board's stage graph: phases, nodes, runs, relays, other_runs, and each event (*evs*, events_of's) placed
     on it (node, run, round, and where it travels: from, to), live. Rounds and gates are stages', who did them runs'.
     The words of a gate's decider (decided_by) and of whom a request waits on (the park.json ask, the MR question)
@@ -589,7 +597,7 @@ def stage_graph(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None
     rs = runs.runs(nodes, who, started=bool(run), family=family, sessions=sessions, owner=f.get("owner"),
                    mine=you == "你", team=row.get("where") == "runner")
     runs.overlay(rs, nodes, row=row, sessions=sessions, hand_at=hand_at, last_at=last_at, over=over, you=you,
-                 approvals=f.get("approvals") or [], now=now)
+                 approvals=f.get("approvals") or [], now=now, live_slot=live_slot)
     stages.with_status(nodes, rec, {r.key: (stages.NodeStatus(r.now.status, r.now.doing, r.now.since, r.now.who),
                                             r.now.node) for r in rs if r.now is not None}, way, pending,
                        _quiet(evs, lean + commits, who, rs))
@@ -660,7 +668,7 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
           subjects: dict[str, str], reflect_refs: list[tuple[str, float, float | None]], default_branch: str, local_only: bool,
           kit_rows: list[dict[str, Any]], decisions: list[dict[str, Any]], brain: dict[str, Any] | None,
           me: str | None, now: float, changes: dict[str, list[dict[str, Any]]] | None = None,
-          units: Any = (), fold: dict[str, Any] | None = None) -> dict[str, Any]:
+          units: Any = (), fold: dict[str, Any] | None = None, live_slot: str | None = None) -> dict[str, Any]:
     """The board's graph part (the stage graph: phases, nodes, runs, relays, other_runs; the events placed on it, belt,
     checks, accept, person, live, missing, and Lean's progress at each of its stage records for 回放: lean_view.steps);
     the service adds the requirement's detail (decisions, questions, 变更说明, sessions, credits). *changes*:
@@ -672,17 +680,19 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
     hand_at = _epoch((handoff or {}).get("requested_at"))
     local_only = bool(local_only or row.get("local_only"))
     you = _you(me, f.get("owner"))
+    unpushed = (row.get("waits") or {}).get("do") == "push_handoff"
     evs = events_of(f, t, mr=mr, app_events=app_events, team_decisions=team_decisions, subjects=subjects,
-                    reflect_refs=reflect_refs, default_branch=default_branch, you=you)
+                    reflect_refs=reflect_refs, default_branch=default_branch, you=you, unpushed=unpushed)
     proposals = ((brain or {}).get("proposals") or 0) if isinstance(brain, dict) else 0
     merged_at = next((e["at"] for e in evs if e["kind"] == "merge"), None)
     sg = stage_graph(f, row, t, evs, mr=mr, sessions=sessions, team_decisions=team_decisions, subjects=subjects,
                      changes=changes or {}, reflect_refs=reflect_refs, you=you, me=me, hand_at=hand_at,
-                     merged_at=merged_at, proposals=proposals, units=units, now=now)
+                     merged_at=merged_at, proposals=proposals, units=units, now=now, live_slot=live_slot)
     wait_who = str((row.get("waits") or {}).get("who"))
     asked = you if wait_who == "you" else ASK_NAME.get(wait_who, "人")
     checks = _checks(sg["_nodes"], sg["_runs"], sg["relays"], kit_rows, t, local_only, hand_at, merged_at, sg["_way"],
-                     you, asked, handed=hand_at is not None or runner_blind(f, row))
+                     you, asked, handed=(hand_at is not None and not unpushed) or runner_blind(f, row),
+                     unpushed=unpushed)
     for i, e in enumerate(evs, 1):
         e["seq"] = i
     if fold is not None:
@@ -691,7 +701,7 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
                        for e in evs][-MAX_EVENTS:],
             "belt": _belt(evs, changes or {}), "checks": checks, "person": _person(row, me, f, you),
             "accept": _accept(f, row, sg["_nodes"], checks, decisions, t, sessions, merged_at, proposals, you, mr,
-                              team_decisions),
+                              team_decisions, live_slot),
             "live": sg["live"], "started_at": evs[0]["at"] if evs else None, "ended_at": merged_at,
             "lean_steps": lean_view.steps(f.get("events") or []),
             "phases": sg["phases"], "nodes": sg["nodes"], "runs": sg["runs"], "relays": sg["relays"],
@@ -711,7 +721,8 @@ def _belt(evs: list[dict[str, Any]], changes: dict[str, list[dict[str, Any]]]) -
                         "node": e.get("node"), "changes": list(changes.get(e["sha"]) or [])})
         elif e["kind"] == "handover":   # brain-kit's own commit ("<KEY>: hand off to team runner"): said in words
             out.append({"kind": "handover", "at": e["at"], "sha": str(e.get("sha") or "")[:12], "by": "person",
-                        "text": "交给运行机", "files": int(e.get("files") or 0), "records_only": bool(e.get("records")),
+                        "text": HAND_WORDS[bool(e.get("unpushed"))], "files": int(e.get("files") or 0),
+                        "records_only": bool(e.get("records")),
                         "run": e.get("run"), "node": e.get("node"),
                         "changes": list(changes.get(str(e.get("sha") or "")) or [])})
         elif e["kind"] == "merge":
@@ -757,7 +768,8 @@ def _no_design(nodes: list[stages.Node], over: Optional[Tuple[str, float]]) -> s
 
 def _checks(nodes: list[stages.Node], rs: list[runs.RunView], relays: list[dict[str, Any]], kit_rows: list[dict[str, Any]],
             t: dict[str, Any] | None, local_only: bool, hand_at: float | None, merged_at: float | None,
-            way: stages.Way, you: str, asked: str = "人", handed: bool = False) -> dict[str, Any]:
+            way: stages.Way, you: str, asked: str = "人", handed: bool = False, unpushed: bool = False
+            ) -> dict[str, Any]:
     """The check wall, read off the stage graph. It counts what has happened (pass, fail, and wait: asked of a person);
     what is still to come on this requirement's way is `todo`, by name; what is not on its way (a design Lean skipped,
     the hand-over of a repo done only here) is not_needed or left out; the 14 days after the merge are watched,
@@ -836,7 +848,10 @@ def _checks(nodes: list[stages.Node], rs: list[runs.RunView], relays: list[dict[
         hand, bridge, signer = steps.get("handover") or {}, steps.get("bridge") or {}, steps.get("signer") or {}
         mine = runner.key if runner is not None else None
         refused = bridge.get("status") == "failed"
-        if hand.get("status") == "stalled":
+        if unpushed:
+            # committed here, never pushed: nothing reached the bridge; the person pushes and hands over again
+            cell("bridge", "handover", "交接", "推上交接", "fail", None, "交接提交了，但没推上去：什么也没交出去", run=mine)
+        elif hand.get("status") == "stalled":
             # pushed without the hand-over label: nothing reached the bridge and nothing is checked; the person labels it
             cell("bridge", "handover", "标签", "补上交接标签", "wait", None,
                  bridge.get("text") or "MR 上没有交接标签：桥不会接", run=mine)
@@ -974,8 +989,9 @@ def _reply_step(row: dict[str, Any], f: dict[str, Any], you: str) -> tuple[str, 
 def _accept(f: dict[str, Any], row: dict[str, Any], nodes: list[stages.Node], checks: dict[str, Any],
             decisions: list[dict[str, Any]], t: dict[str, Any] | None, sessions: list[dict[str, Any]],
             merged_at: float | None, proposals: int, you: str, mr: dict[str, Any] | None,
-            team_decisions: list[dict[str, Any]]) -> dict[str, Any]:
-    """验收: where the release's approval is (its last word on the 发布 node), and the one step a person takes now."""
+            team_decisions: list[dict[str, Any]], live_slot: str | None = None) -> dict[str, Any]:
+    """验收: where the release's approval is (its last word on the 发布 node), and the one step a person takes now, in
+    the live dev session (*live_slot*: service._live's, never a review session)."""
     g, _ = _last_gate([n for n in nodes if n.stage.id == "release"], "RELEASE")
     word = g.state if g is not None else None
     st = row.get("state")
@@ -983,7 +999,7 @@ def _accept(f: dict[str, Any], row: dict[str, Any], nodes: list[stages.Node], ch
     state = "merged" if merged else "waiting" if word in ("pending", "queued", "refused") or st == "acceptance" \
         else "accepted" if word == "approved" else "rejected" if word == "sent_back" else "not_yet"
     waits = row.get("waits") or {}
-    local = [s for s in sessions if s.get("kind", "local") == "local" and not s.get("missing")]
+    local = [s for s in sessions if live_slot and s.get("slot") == live_slot]
     session_url = local[-1]["url"] if local else None
     mr_url = (row.get("mr") or {}).get("url")
     hand = isinstance(run_of(f).get("handoff"), dict)
@@ -1032,6 +1048,9 @@ def _accept(f: dict[str, Any], row: dict[str, Any], nodes: list[stages.Node], ch
     elif do == "label_handoff":
         step = {"text": waits.get("text") or "在 MR 上补上交接标签", "who": who, "line": None, "mr_url": mr_url,
                 "session_url": None}
+    elif do == "push_handoff":   # 交接给运行机 is on 需求详情, not on the board
+        step = {"text": "交接提交了，但没推上去：什么也没交出去。推上去以后，在需求详情再点「交接给运行机」", "who": who,
+                "line": None, "mr_url": None, "session_url": None}
     elif do == "write_back" and proposals:
         step = {"text": "去 Brain 页回写这次的 %d 条新知识：先预览，再写到新分支" % proposals, "who": who, "line": None,
                 "mr_url": None, "session_url": None}

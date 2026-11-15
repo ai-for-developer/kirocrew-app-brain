@@ -46,7 +46,7 @@ def scenario(tmp_path, home):
     start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "report", "report", "报表", "--paths", "src/pay/r")
     brain(repo, "claim", "--title", "只认领")
     gw = FakeGateway()
-    gw.templates = {"brain-dev"}
+    gw.templates = {"brain-dev-crew"}
     return repo, gw
 
 

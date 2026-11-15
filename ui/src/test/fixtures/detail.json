@@ -830,9 +830,11 @@
       "opened_at": 1794038400,
       "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
       "url": "/chat?sid=brain-PAY-3-7f3a",
-      "error": null
+      "error": null,
+      "missing": false
     }
   ],
+  "live_slot": "brain-PAY-3-7f3a",
   "credits": {
     "total": 12.4,
     "whole": true,

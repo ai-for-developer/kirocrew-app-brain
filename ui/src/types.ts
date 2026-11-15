@@ -75,11 +75,12 @@ export type WaitWho = 'you' | 'agent' | 'runner' | 'bridge' | 'product' | 'build
  * lanes, the board): approve (a Lean approval line, in the session), reply (the local session is idle: your turn to
  * talk), tool (a tool call in the session waits for approval), start (claimed, no run yet: 开工), answer (a question:
  * in the session for a local run, on the MR for a handed-over one), accept (acceptance), redo_handoff (the hand-over
- * was refused), label_handoff (pushed without its label), write_back (merged with new knowledge to write back into
+ * was refused), label_handoff (pushed without its label), push_handoff (the hand-over commit is on this machine
+ * only: its push failed, nothing went out; 交接给运行机 again), write_back (merged with new knowledge to write back into
  * the Brain), watch (merged, in its 14 days: nobody's turn), none (nothing to do: AI or the runner at work, or done).
  */
 export type WaitDo = 'approve' | 'reply' | 'tool' | 'start' | 'answer' | 'accept' | 'redo_handoff' | 'label_handoff'
-  | 'write_back' | 'watch' | 'none'
+  | 'push_handoff' | 'write_back' | 'watch' | 'none'
 
 export interface Waits {
   who: WaitWho
@@ -486,6 +487,8 @@ export interface Status {
   me: { user: string | null; token: boolean; how: string }
   team: TeamStatus
   counts: { todo: number }
+  /** repo_ids.json cannot be read (UI-19): what is wrong and what to do, in words; '' when it reads fine */
+  repo_ids_problem: string
 }
 
 export interface TeamStatus {
@@ -760,6 +763,7 @@ export interface PushBody { path: string; branch: string; remote_url: string; co
 export interface PushResult { ok: boolean; pushed: boolean; branch: string; remote_url: string; text: string; output: string }
 
 export interface AddResult { ok: boolean; id: string; text: string; status: Status }
+/** 移出列表 and 按记录重建编号: what was done, in words, and the status after it */
 export interface RemoveResult { ok: boolean; text: string; status: Status }
 
 // ---------------------------------------------------------------- GET/POST /settings
@@ -1071,6 +1075,8 @@ export interface SessionRow {
   /** open it in Kiro Crew: navigate to this path */
   url: string
   error: string | null
+  /** KiroCrew no longer has it (closed or deleted there) */
+  missing: boolean
 }
 
 /**
@@ -1122,6 +1128,9 @@ export interface RequirementDetail {
   /** other_runs (brain-kit 0d52e97, rule H0): this requirement's runs on another branch, not read into this trace, in words */
   timeline: { source: 'trace' | 'app'; items: TimelineItem[]; missing: string[]; error: string; other_runs: string[] }
   sessions: SessionRow[]
+  /** the live brain-dev session on this machine, as the backend decides it (service._live): the newest one KiroCrew
+   * still has whose first message went in, never a review session. 打开会话 opens it, 重开一个会话 replaces it */
+  live_slot: string | null
   credits: Credits
   brain: { loaded: number | null; cited: string[]; stale: string[]; unknown: string[]; proposals: number | null }
   mr_desc: MrDesc
@@ -1132,8 +1141,14 @@ export interface RequirementDetail {
 export interface OpenSessionBody { trust?: boolean; kickoff?: boolean
   /** 开审查会话: a NEW brain-dev session in the worktree to review the code (the session that wrote it may not review it,
    * Lean's next step says so), never the live one; its first message the review line Lean wrote */
-  review?: boolean }
-export interface OpenSessionResult { ok: boolean; slot: string; url: string }
+  review?: boolean
+  /** 重开一个会话: a NEW session even when one is live (the old one stopped when busy, kept); *replace*: the slot the page
+   * shows as live (when another is live by now, that one is the answer and none is opened) */
+  fresh?: boolean
+  replace?: string }
+/** reopened: 重开一个会话 opened this one now (false: it was opened by an earlier click); said: what happened when the
+ * requirement's session was handed back instead (its first message did not go in, or is still being sent), '' otherwise */
+export interface OpenSessionResult { ok: boolean; slot: string; url: string; reopened?: boolean; said?: string }
 /** 停止: the slots of this requirement's own sessions on this machine whose turn was stopped (409 nothing_to_stop: none
  * was working) */
 export interface StopResult { ok: boolean; stopped: string[] }
@@ -1324,12 +1339,14 @@ export interface ReflectApplyResult {
 
 // ---------------------------------------------------------------- GET /todo
 
-/** handoff_unlabelled: pushed, but its MR carries no hand-over label (nothing was handed over) */
+/** handoff_unlabelled: pushed, but its MR carries no hand-over label (nothing was handed over); handoff_unpushed: the
+ * hand-over commit is on this machine only, its push failed (再交接一次, on 需求详情) */
 /** reply: a local session idle, your turn to talk (opens it); start: claimed by you, no run yet (开工) */
 /** child_start: a small requirement you claimed whose dependencies have all merged (开工 now); parent_release: a big
  * requirement whose small ones have all merged (review and release it); closed_leftover: your requirement closed with
  * `brain intent close` whose run branch or MR is still there (delete it, close it) */
-export type TodoKind = 'lean_approval' | 'question' | 'clarify' | 'acceptance' | 'handoff_rejected' | 'handoff_unlabelled' | 'crew'
+export type TodoKind = 'lean_approval' | 'question' | 'clarify' | 'acceptance' | 'handoff_rejected' | 'handoff_unlabelled'
+  | 'handoff_unpushed' | 'crew'
   | 'reply' | 'start'
   /** write_back: merged, its Brain proposals not written back yet (回写 Brain) */
   | 'write_back'
@@ -1405,7 +1422,7 @@ export interface TeamConfigRow { file: 'bridge.json' | 'runnerd.json'; key: stri
  * off, as `brain handoff` does while it labels again), waiting (this very hand-over is being signed elsewhere), error
  * (it could not be checked this round: error says why). Another value is shown as it is.
  */
-export type HandoverResult = 'accepted' | 'rejected' | 'seen' | 'unlabelled' | 'waiting' | 'error'
+export type HandoverResult = 'accepted' | 'rejected' | 'seen' | 'unlabelled' | 'waiting' | 'skipped' | 'error'
 export interface TeamHandover {
   project: string
   iid: number
@@ -1842,6 +1859,9 @@ export interface ReqBoard {
   questions: Question[]
   mr_desc: MrDesc
   sessions: SessionRow[]
+  /** the live brain-dev session on this machine (service._live, as on 需求详情): where the person replies, never a review
+   * session */
+  live_slot: string | null
   credits: Credits
   /** trace: built from brainkit.trace; app: from the Lean ledger and the repo only */
   source: 'trace' | 'app'
@@ -2051,3 +2071,32 @@ export interface CtoNumbers {
 
 /** One of brain-kit's notes on the 交付评估 numbers: what it says, what to do, its own words (细节). */
 export interface EvalNote { text: string; todo: string; raw: string }
+
+// ---------------------------------------------------------------- POST /requirements/{repo}/{key}/handoff: 交接给运行机
+
+/** How far `brain handoff` got (backend/core/handover.py): handed (the MR has the hand-over label: the bridge checks it,
+ * then the team runner goes on); committed (the hand-over commit is made, the branch is not pushed: no remote, or the
+ * push failed); not_labelled (pushed, but the MR has no hand-over label: nothing was handed over); refused (brain-kit
+ * said why before anything changed); timeout (stopped at the time limit); failed (brain-kit could not run, or said
+ * what the app does not know). */
+export type HandoffState = 'handed' | 'committed' | 'not_labelled' | 'refused' | 'timeout' | 'failed'
+
+/** What 交接给运行机 did: `brain handoff` in the requirement's worktree on this machine. The app's own refusals (a repo
+ * done only on this machine, someone else's run, a busy session, handed over already) are error answers, in words. */
+export interface HandoffResult {
+  /** handed over: the team runner takes it from here */
+  ok: boolean
+  state: HandoffState
+  /** one short line, what happened and why: 「没交出去：交接记录还没写好（没写下一步）」 */
+  text: string
+  /** 做什么 next ('' when nothing) */
+  todo: string
+  /** the MR brain-kit named, its link from kit.json's GitLab; null when it named none */
+  mr: { iid: number; url: string | null } | null
+  /** brain-kit's WARN lines, each a row (read only: no fix) */
+  warnings: CheckRow[]
+  /** brain-kit's own output, credentials hidden (shown folded under 细节) */
+  raw: string
+  /** its exit status: 0, 1 (pushed, not labelled), 2 (refused), 124 (stopped at the time limit) */
+  code: number
+}

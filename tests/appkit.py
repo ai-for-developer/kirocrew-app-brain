@@ -15,6 +15,9 @@ import backend.routes  # noqa: F401  (bootstraps the private namespace the app's
 
 ROOT = Path(__file__).resolve().parents[1]
 BRAINKIT = Path(os.environ.get("BRAIN_TEST_BRAINKIT") or Path.home() / "warren_ws" / "brain-kit")
+# the KiroCrew agent spec brain-kit ships: crew/brain-dev-crew.json since brain-kit a5e5328, crew/brain-dev.json before
+CREW_SRC = next((p for p in (BRAINKIT / "crew" / "brain-dev-crew.json", BRAINKIT / "crew" / "brain-dev.json") if p.exists()),
+                BRAINKIT / "crew" / "brain-dev-crew.json")
 
 
 def mod(name: str) -> Any:

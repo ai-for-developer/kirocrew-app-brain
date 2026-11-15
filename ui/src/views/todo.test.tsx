@@ -136,6 +136,19 @@ describe('待办', () => {
     expect(go).toHaveBeenCalledWith({ kind: 'brain', repo: 'r1', reflect: 'PAY-2' })
   })
 
+  test('a hand-over whose push failed is 交接没推上去: what happened, the terminal way under 细节, and 再交接一次 opens 需求详情, where its button is', async () => {
+    const it = { ...fx.todo().items[3], kind: 'handoff_unpushed', repo: 'r1', key: 'PAY-3', title: '退款单导出 CSV', approval: null, question: null,
+      line: null, session: null, mr_url: null, todo: '', text: '交接提交了，但没推上去：什么也没交出去。弄好以后再点「交接给运行机」',
+      raw: '在终端里也一样：在这个需求的分支上跑 brain handoff（它会推送、打标签）' } as unknown as TodoItem
+    installFixtureRoutes({ [`GET ${API}/todo`]: (): Todo => ({ team: false, items: [it] }) })
+    const { go } = renderTodo()
+    const g = await screen.findByRole('region', { name: '交接没推上去' })
+    expect(g).toHaveTextContent('交接提交了，但没推上去：什么也没交出去')
+    expect(within(g).getByText('细节').closest('details')).toHaveTextContent('brain handoff')
+    fireEvent.click(within(g).getByRole('button', { name: '再交接一次' }))
+    expect(go).toHaveBeenCalledWith({ kind: 'item', repo: 'r1', key: 'PAY-3', from: 'todo' })
+  })
+
   test('the tab’s count is read again when it disagrees with the list', async () => {
     const status = fx.status()
     status.counts.todo = 2
@@ -165,7 +178,7 @@ describe('待办', () => {
     const crew = group('KiroCrew 的问题')
     expect(within(crew).queryByRole('button', { name: /^PAY-/ })).toBeNull()
     expect(within(crew).queryByRole('button', { name: '需求看板' })).toBeNull()
-    expect(crew).toHaveTextContent('brain-dev 的设置缺 Lean 的拦截')
+    expect(crew).toHaveTextContent('brain-dev-crew 的设置缺 Lean 的拦截')
   })
 
   test('team mode says the runner’s questions are answered on GitLab, on their group only', async () => {
@@ -288,6 +301,9 @@ describe('待办', () => {
     const crew = await screen.findByRole('region', { name: 'KiroCrew 的问题' })
     expect(within(crew).getAllByRole('listitem').map((li) => li.dataset.level)).toEqual(['FAIL'])
     expect(crew).not.toHaveTextContent('适配文件是旧版')
+    // what a ✗ stops, as 开需求 says it (UI-16): the session, not 开工
+    expect(crew).toHaveTextContent('修好了才能开会话（不开会话也能开工）')
+    expect(crew).not.toHaveTextContent('修好了才能开工')
   })
 
   test('重装 kit 文件 in place on a team repo: its group stays while 推送 waits, even when the list no longer has the problem', async () => {

@@ -53,6 +53,28 @@ describe('设置', () => {
     expect(apiCalls.find((c) => c.path === `${API}/repos/remove`)?.body).toEqual({ path: '/Users/alice/workplace/shop-pay' })
   })
 
+  test('仓库: a damaged repo_ids.json without a good copy is said in words; 按记录重建编号 rebuilds it and says what each repo got', async () => {
+    const user = userEvent.setup()
+    const s = fx.status()
+    s.repos = []
+    s.repo_ids_problem = '仓库编号的记录 /data/repo_ids.json 坏了，也没有好的备份：这次先不认列表里的仓库，免得记录记到别的仓库上。在设置里点「按记录重建编号」'
+    const rebuilt = { ok: true, text: '按记录重建了编号：shop-pay 接上了原来的记录', status: fx.status() }
+    installFixtureRoutes({ [`POST ${API}/repos/ids/rebuild`]: () => rebuilt })
+    const p = props({ status: s })
+    render(<SettingsView {...p} />)
+    const card = screen.getByRole('region', { name: '仓库' })
+    expect(within(card).getByRole('alert')).toHaveTextContent(s.repo_ids_problem)
+    expect(card).not.toHaveTextContent('还没有仓库')
+    await user.click(within(card).getByRole('button', { name: '按记录重建编号' }))
+    await waitFor(() => expect(p.setStatus).toHaveBeenCalledWith(rebuilt.status))
+    expect(apiCalls.filter((c) => c.method === 'POST')).toEqual([{ method: 'POST', path: `${API}/repos/ids/rebuild`, body: {} }])
+  })
+
+  test('仓库: no word about the ids while their file reads fine', () => {
+    render(<SettingsView {...props()} />)
+    expect(within(screen.getByRole('region', { name: '仓库' })).queryByText(/仓库编号的记录/)).toBeNull()
+  })
+
   test('a team repo whose brain-kit is on the install branch with an open MR: the MR first; a local merge is 导入仓库’s', async () => {
     const user = userEvent.setup()
     const s = fx.status()
@@ -177,9 +199,31 @@ describe('设置', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('work_root 必须在 ~/workplace 或 ~/workspace 下面（400）')
   })
 
+  test('把引擎换成 kas asks first: it changes KiroCrew for every project (UI-17)', async () => {
+    const user = userEvent.setup()
+    const engine = { level: 'WARN' as const, text: 'KiroCrew 引擎是 kiro，不是 kas', todo: '点「把引擎换成 kas」：Lean 的拦截只在 kas 上测过。KiroCrew 可能要重开才生效', fix: 'engine' as const, repo: null, raw: '' }
+    installFixtureRoutes({
+      [`POST ${API}/crew/fix`]: () => ({ ok: true, text: '引擎设成了 kas。KiroCrew 可能要重开才生效。', rows: [{ ...engine, level: 'OK', text: 'KiroCrew 引擎：kas', todo: '', fix: null }] }),
+    })
+    const status = fx.status()
+    render(<SettingsView {...props({ status: { ...status, crew: { ...status.crew, rows: [engine], fix: { agent: false, engine: true } } } })} />)
+    const crew = await screen.findByRole('region', { name: 'KiroCrew' })
+    await user.click(await within(crew).findByRole('button', { name: '把引擎换成 kas' }))
+    const ask = within(crew).getByTestId('engine-confirm')
+    expect(ask).toHaveTextContent('这会改 KiroCrew 的全局设置：以后所有项目、所有会话都用 kas 引擎')
+    expect(apiCalls.filter((c) => c.method === 'POST')).toEqual([])                      // nothing sent yet
+    await user.click(within(ask).getByRole('button', { name: '先不换' }))
+    expect(within(crew).queryByTestId('engine-confirm')).toBeNull()
+    expect(apiCalls.filter((c) => c.method === 'POST')).toEqual([])
+    await user.click(within(crew).getByRole('button', { name: '把引擎换成 kas' }))
+    await user.click(within(crew).getByRole('button', { name: '换成 kas' }))
+    expect(await within(crew).findByText('引擎设成了 kas。KiroCrew 可能要重开才生效。')).toBeInTheDocument()
+    expect(apiCalls.filter((c) => c.method === 'POST')).toEqual([{ method: 'POST', path: `${API}/crew/fix`, body: { what: 'engine' } }])
+  })
+
   test('the status: brain-kit and its modules, each repo, who I am (a token is only 有/没有), KiroCrew’s checks with a fix', async () => {
     const user = userEvent.setup()
-    installFixtureRoutes({ [`POST ${API}/crew/fix`]: () => ({ ok: true, text: '给 brain-dev 的设置补上了 Lean 的拦截：调用工具前。别的都没动；改之前的那份留作备份：brain-dev.json.bak-20261110-091500。新开的会话才会用上。', rows: fx.crew().rows.slice(0, 2) }) })
+    installFixtureRoutes({ [`POST ${API}/crew/fix`]: () => ({ ok: true, text: '给 brain-dev-crew 的设置补上了 Lean 的拦截：调用工具前。别的都没动；改之前的那份留作备份：brain-dev-crew.json.bak-20261110-091500。新开的会话才会用上。', rows: fx.crew().rows.slice(0, 2) }) })
     const p = props()
     render(<SettingsView {...p} />)
     const kit = screen.getByRole('region', { name: 'brain-kit' })
@@ -204,11 +248,11 @@ describe('设置', () => {
     expect(me).toHaveTextContent('GitLab 令牌 有')
     expect(me).not.toHaveTextContent('glpat')
     const crew = screen.getByRole('region', { name: 'KiroCrew' })
-    expect(crew).toHaveTextContent('brain-dev 的设置缺 Lean 的拦截：调用工具前')
+    expect(crew).toHaveTextContent('brain-dev-crew 的设置缺 Lean 的拦截：调用工具前')
     expect(within(crew).getByRole('img', { name: '1 正常，1 注意，1 有问题' })).toBeInTheDocument()
     expect(crew).toHaveClass('is-bad')
     await user.click(within(crew).getByRole('button', { name: '补上 Lean 的拦截' }))
-    expect(await within(crew).findByText('给 brain-dev 的设置补上了 Lean 的拦截：调用工具前。别的都没动；改之前的那份留作备份：brain-dev.json.bak-20261110-091500。新开的会话才会用上。')).toBeInTheDocument()
+    expect(await within(crew).findByText('给 brain-dev-crew 的设置补上了 Lean 的拦截：调用工具前。别的都没动；改之前的那份留作备份：brain-dev-crew.json.bak-20261110-091500。新开的会话才会用上。')).toBeInTheDocument()
     expect(apiCalls.find((c) => c.method === 'POST')).toEqual({ method: 'POST', path: `${API}/crew/fix`, body: { what: 'agent' } })
     expect(p.reloadStatus).toHaveBeenCalled()
   })

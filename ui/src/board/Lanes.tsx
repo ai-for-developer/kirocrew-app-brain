@@ -17,7 +17,7 @@ import { TypeLine } from '../ui'
 import { ACT } from '../vocab'
 import {
   ROUND_TONE, RUN_ICON, WORKING, actorMeta, boardWho, causeWords, clip, clockAt, fmtAgo, fmtHm, fmtSpan, fmtWhen, nodeLabel, nodeWait, openGate,
-  roundWords, runShort, sessionOf, spanWho,
+  replySession, roundWords, runShort, sessionOf, spanWho,
 } from './format'
 import { useServerNow } from './hooks'
 import { lastRound } from './picker'
@@ -310,7 +310,7 @@ function Situation({ n, run, board, quiet, asks }: LaneProps) {
         <strong>{same ? bare : lead}</strong>
         {!same && <span className="kt-summary">{text}</span>}
       </div>
-      {!quiet && mine && asks && g?.line && <TypeLine line={g.line} sessionUrl={sessionOf(run)?.url ?? null} />}
+      {!quiet && mine && asks && g?.line && <TypeLine line={g.line} sessionUrl={replySession(board, run)?.url ?? null} />}
     </>
   )
 }

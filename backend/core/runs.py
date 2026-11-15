@@ -275,15 +275,17 @@ def node_now(key: RunKey, nodes: Sequence[Node]) -> Optional[str]:
 
 def overlay(rs: Sequence[RunView], nodes: Sequence[Node], *, row: Mapping[str, Any],
             sessions: Sequence[Mapping[str, Any]], hand_at: Optional[float], last_at: Mapping[RunKey, float],
-            over: Optional[Tuple[str, float]], you: str, approvals: Sequence[Mapping[str, Any]], now: float) -> None:
+            over: Optional[Tuple[str, float]], you: str, approvals: Sequence[Mapping[str, Any]], now: float,
+            live_slot: Optional[str] = None) -> None:
     """What each run is doing now, which is not an event: the local session waiting for a tool approval, busy,
     quiet (轮到你回话), missing; a run that stopped to ask; the runner's run by the row's state; the earlier ones over.
+    The local session is the live dev session (*live_slot*: service._live's), never a review session beside it.
     Each state is stamped with the moment it began (the row's waits.since, else the record or session that says it),
     never this poll's time."""
     state, waits = row.get("state"), row.get("waits") or {}
     since = waits.get("since")
     who_you = "you" if you == "你" else "people"
-    local = [s for s in sessions if s.get("kind", "local") == "local" and not s.get("missing")]
+    live = next((s for s in sessions if live_slot and s.get("slot") == live_slot), None)
     latest = max((r for r in rs if r.kind == "runner"), key=lambda r: r.n or 0, default=None)
     nodes_by = {n.id: n for n in nodes}
 
@@ -323,7 +325,10 @@ def overlay(rs: Sequence[RunView], nodes: Sequence[Node], *, row: Mapping[str, A
                 busy = any(s.get("busy") for s in sessions if s.get("kind") == "runner")
                 r.now = at_work(r, "running", "AI 在做" if r.readable == "here" and busy else doing_at(r), last)
         elif hand_at is not None:
-            if state == "rejected":
+            if waits.get("do") == "push_handoff":
+                r.now = RunNow("awaiting_approval", "交接没推上去：推上去以后再交接", since or hand_at, who_you,
+                               do="push_handoff")
+            elif state == "rejected":
                 r.now = RunNow("awaiting_approval", "接手被拒：改好以后重新交接", since or hand_at, who_you, do="redo_handoff")
             elif state == "handed_over" and waits.get("who") == "you":
                 r.now = RunNow("awaiting_approval", "推上去了，但 MR 上没有交接标签", since or hand_at, who_you,
@@ -338,7 +343,7 @@ def overlay(rs: Sequence[RunView], nodes: Sequence[Node], *, row: Mapping[str, A
         elif you != "你":
             r.now = at_work(r, "running", waits.get("text") or "在负责人自己的机器上做", last)
         else:
-            s = local[-1] if local else None
+            s = live
             pend = next((a for a in approvals if a.get("state") == "pending" and a.get("line")), None)
             seen = (s or {}).get("last_activity")    # KiroCrew's: a number, or an ISO time
             seen = lean_view.epoch(seen) if isinstance(seen, str) else seen
@@ -364,10 +369,13 @@ def _step(key: str, title: str, status: str, at: Optional[float], text: str, tod
 
 
 def hand_phase(row: Mapping[str, Any]) -> str:
-    """Where the latest hand-over is, by the row's state (deliveries.classify, team_classify): unlabelled (pushed, no
+    """Where the latest hand-over is, by the row's state (deliveries.classify, team_classify): unpushed (committed here,
+    its push failed: nothing went out), unlabelled (pushed, no
     label on the MR), checking (the bridge checks it), refused, signing (the team runner's ledger has it: the signer
     signs), preparing (signed: the runner builds the worktree), started (the runner's run began), none."""
     state, w = row.get("state"), row.get("waits") or {}
+    if w.get("do") == "push_handoff":
+        return "unpushed"
     if state == "rejected":
         return "refused"
     if state in ("running", "parked", "acceptance", "merged"):
@@ -404,6 +412,14 @@ def relays(bounds: Sequence[float], t: Optional[Mapping[str, Any]], row: Mapping
         phase = hand_phase(row) if i == len(bounds) - 1 else "started" if runner is not None else \
             "refused" if rej is not None else "none"
         later = phase in ("signing", "preparing", "started")
+        if phase == "unpushed":
+            steps = [_step("handover", "交接", "failed", b, "交接提交了，但没推上去",
+                           "推上去以后，在需求详情再点「交接给运行机」"),
+                     _step("bridge", "桥核对", "waiting", None, "什么也没交出去：桥收不到"),
+                     _step("signer", "签名", "waiting", None, "等桥核对完"),
+                     _step("workspace", "运行机建工作区", "waiting", None, "等签名")]
+            out.append({"to": None, "at": b, "sha": sha[:12] or None, "steps": steps})
+            continue
         steps = [_step("handover", "交接", "stalled" if phase == "unlabelled" else "merged", b,
                        "推上去了，但 MR 上没有交接标签" if phase == "unlabelled" else
                        "交接了%s" % ("（提交 %s）" % sha[:8] if sha else ""),

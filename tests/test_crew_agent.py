@@ -1,6 +1,6 @@
-"""KiroCrew's agent for brain-dev sessions is the one brain-kit names: cli.CREW_AGENT (brain-dev-crew since brain-kit
-renamed it, so a project's .kiro/agents/brain-dev.md cannot run in its place), else the spec cli.crew_agent_path names
-(brain-dev.json before the rename). The KiroCrew check, its fix and the session the app opens all name that agent."""
+"""KiroCrew's agent for brain-dev sessions is the one brain-kit names (crewcheck.crew_agent: cli.CREW_AGENT,
+brain-dev-crew, so a project's .kiro/agents/brain-dev.md cannot run in its place). The KiroCrew check, its fix and the
+session the app opens all name that agent, with the brain-dev.json of before the rename still on this machine."""
 
 import json
 import os
@@ -78,9 +78,3 @@ def test_a_kirocrew_without_brain_dev_crew_names_the_button_that_installs_it(tmp
     assert out["slot"] is None and not gw.slot_rows
     assert "KiroCrew 里没有 brain-dev-crew：在设置里点「装上 brain-dev-crew」，再试一次" in out["session_error"], out
 
-
-def test_agent_ok_takes_the_ok_row_of_either_name():
-    cc = mod("crewcheck")
-    for name in ("brain-dev", NEW):
-        assert cc.agent_ok([{"level": "OK", "text": "%s 的设置里 Lean 的拦截都在" % name}])
-        assert not cc.agent_ok([{"level": "WARN", "text": "%s 的设置里 Lean 的拦截都在" % name}])
