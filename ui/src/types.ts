@@ -1116,13 +1116,16 @@ export interface RequirementDetail {
   mr_desc: MrDesc
 }
 
-// ---------------------------------------------------------------- POST /requirements/{repo}/{key}/session, /answer
+// ---------------------------------------------------------------- POST /requirements/{repo}/{key}/session, /stop, /answer
 
 export interface OpenSessionBody { trust?: boolean; kickoff?: boolean
   /** 开审查会话: a NEW brain-dev session in the worktree to review the code (the session that wrote it may not review it,
    * Lean's next step says so), never the live one; its first message the review line Lean wrote */
   review?: boolean }
 export interface OpenSessionResult { ok: boolean; slot: string; url: string }
+/** 停止: the slots of this requirement's own sessions on this machine whose turn was stopped (409 nothing_to_stop: none
+ * was working) */
+export interface StopResult { ok: boolean; stopped: string[] }
 /**
  * choice: an option id (A–H), or 'approve' / 'reject' for a question without options. id: the question's D-<n> when it
  * has one (an MR question); without it the open clarify question is meant.

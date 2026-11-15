@@ -1068,6 +1068,27 @@ class Service:
         return await self._open_local(repo, key, f["branch"], f["worktree"], run, trust=trust, kickoff=kickoff,
                                       review=review)
 
+    async def stop_session(self, rid: str, key: str) -> dict[str, Any]:
+        """停止 on the board, once the person confirmed: the turn this requirement's own sessions on this machine are
+        working on (its 本机会话 and 审查会话), never another requirement's or the runner's. The session stays in KiroCrew:
+        打开会话 opens it to carry on."""
+        repo = self._repo(rid)
+        scope = scope_of(repo.id, key)
+        slots = [i.slot for i in self.sessions.roots(key=scope) if (i.kind or "local") == "local" and i.slot
+                 and (self.sessions.slot_stats(i.slot) or {}).get("busy")]
+        if not slots:
+            raise AppError("%s 在这台机器上没有在做的会话，没有要停的：刷新页面看看" % key, "nothing_to_stop", 409)
+        for slot in slots:
+            cancelled = [await self.sessions.cancel(i.id) for i in self.sessions.all_agents if i.slot == slot and not i.done]
+            if not any(cancelled):   # a turn the app does not follow (typed in KiroCrew after a stop): stop it there
+                try:
+                    await self.sessions.gw.stop(slot)
+                except Exception as exc:  # noqa: BLE001
+                    raise AppError("KiroCrew 没停下这个会话（%s）：在 KiroCrew 的会话里点停止" % exc, "stop_failed", 502)
+        await asyncio.to_thread(self.store.append, scope, "app", "停止了本机会话", None)
+        await self.sessions.save()
+        return {"ok": True, "stopped": slots}
+
     async def _open_local(self, repo: Repo, key: str, branch: str, wt: str, run: dict[str, Any], *, trust: bool,
                           kickoff: bool, review: bool = False, task: str | None = None) -> dict[str, Any]:
         self.crew = await asyncio.to_thread(self.crew_sync)

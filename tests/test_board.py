@@ -168,6 +168,49 @@ def test_an_idle_session_waits_since_one_moment_and_a_claim_has_nothing_to_trace
 
 
 @needs_brainkit
+def test_stop_stops_only_this_requirements_own_session_and_only_while_it_works(tmp_path, home):
+    """停止 on the board (UI-24): the turn PAY-1's 本机会话 is working on, never PAY-2's; with nothing working, a 409
+    that says so."""
+    from brainfix import FakeGateway, install_brain_dev
+    repo = make_project(tmp_path)
+    install_brain_dev(home)
+    start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
+    start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "notify", "notify", "通知")
+    gw = FakeGateway()
+    gw.templates = {"brain-dev"}
+    svc = make_service(tmp_path, [repo], gw=gw)
+    errors = mod("httpkit")
+
+    async def go():
+        await svc.start()
+        try:
+            one = (await svc.open_session("r1", "PAY-1"))["slot"]
+            two = (await svc.open_session("r1", "PAY-2"))["slot"]
+            for _ in range(6):
+                await svc.sessions.poll()
+            done = await svc.stop_session("r1", "PAY-1")
+            for _ in range(5):
+                await svc.sessions.poll()
+            try:
+                await svc.stop_session("r1", "PAY-1")
+                again = None
+            except errors.AppError as exc:
+                again = exc
+            board = await svc.board("r1", "PAY-1")
+            return one, two, done, again, board
+        finally:
+            await svc.stop()
+
+    one, two, done, again, b = run(go())
+    assert done == {"ok": True, "stopped": [one]}
+    assert ("stop", one) in gw.calls and ("stop", two) not in gw.calls
+    assert gw.slot_rows[two]["running"] is True
+    assert again is not None and (again.status, again.code) == (409, "nothing_to_stop")
+    assert "没有在做的会话" in str(again)
+    assert not [s for r in b["runs"] for s in r["sessions"] if s["busy"]]
+
+
+@needs_brainkit
 def test_a_quiet_session_waits_since_its_own_last_record_not_since_the_app_looked(tmp_path, home):
     """UI-11: DEMO-1 sat quiet for five days, and the drawer said 「从 11-14 16:14 起」 and the lane 「刚刚」: the moment this
     app first read the finished turn. The wait starts at a record's own time (here the app's kickoff is the newest:

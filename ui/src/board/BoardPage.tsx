@@ -326,7 +326,7 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, pus
         {board && view && lay && (
           <>
             <TopBar board={board} run={picked} onRun={onRun} replaying={rp.on} follow={follow} onReplay={() => rp.start()} onFollow={() => setFollow((v) => !v)} onDetail={toDetail}
-              onSession={(url) => navigate(url)} onStart={onStart} onParent={toBoard} onFamily={toFamily}
+              onSession={(url) => navigate(url)} onStart={onStart} onParent={toBoard} onFamily={toFamily} onStopped={entry.repo === 'runner' ? undefined : live.reload}
               onOutputs={!laneNodes(view).length ? undefined : () => onOutputs(firstOutputs(view))} />
             <ReplayBar rp={rp} />
             {problem && (

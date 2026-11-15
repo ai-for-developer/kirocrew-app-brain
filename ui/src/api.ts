@@ -27,6 +27,8 @@ export const paths = {
   outputsFile: (repo: string, key: string, f: { ref: string; base: string | null; path: string; view: 'source' | 'diff'; pin: string | null }) =>
     `${BASE}/outputs/${enc(repo)}/${enc(key)}/file?${new URLSearchParams({ ref: f.ref, path: f.path, view: f.view, ...(f.base ? { base: f.base } : {}), ...(f.pin ? { pin: f.pin } : {}) })}`,
   session: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/session`,
+  /** 停止: the turn the requirement's own sessions on this machine are working on (the backend finds them) */
+  stop: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/stop`,
   answer: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/answer`,
   /** 拆成小需求: `brain split` in the big requirement's worktree ({apply: false} the preview, nothing written) */
   split: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/split`,

@@ -116,6 +116,9 @@ ${toneVars}
 .kt-run-title { font-size: 1.65em; font-weight: 800; color: var(--text-strong); letter-spacing: -.01em; }
 .kt-run-meta { font-size: .82em; color: var(--muted); }
 .kt-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.br-stop-ask { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; max-width: 100%; padding: 6px 10px; border-radius: 10px; font-size: 13px;
+  border: 1px solid color-mix(in srgb, var(--kt-bad) 45%, var(--border)); background: color-mix(in srgb, var(--kt-bad) 6%, var(--card)); color: var(--text-strong); }
+.br-stop-ask .br-error { margin: 0; flex-basis: 100%; }
 .kt-start { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); }
 .kt-start label { font-weight: 750; color: var(--text-strong); }
 .kt-start textarea { font: inherit; resize: vertical; min-height: 86px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border-strong, var(--border)); background: var(--bg); color: var(--text); }

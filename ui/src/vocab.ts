@@ -29,6 +29,8 @@ export const DO_NAME: Record<WaitDo, string> = {
 /** the actions' names (buttons and the text that points at them use exactly these) */
 export const ACT = {
   openSession: '打开会话',
+  /** 停止 on the board: this requirement's own session on this machine, its turn */
+  stop: '停止',
   copyLine: '复制那一行',
   /** 开需求's own button (POST /intake/start): never the jump to it, which is DO_NAME.start */
   start: '开工',
