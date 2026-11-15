@@ -1,13 +1,12 @@
 /**
  * 产出: what each stage handed in, round by round (the sample's 每一步的产出 drawer, for a requirement's stages).
  *
- * A step pill per stage a run did (in band order), its rounds (第 1 轮 退回 · 第 2 轮 CI 没过 #1234 …), what the round
- * picked was about (done because a pipeline failed, sent back by whom, asked for, changed after the request), then its
- * files: what Lean recorded it hands in (约定它交的) and what else its commits changed (其他改动). A file shows as it was
- * in that round: a document
- * rendered (内容), the source (源码), or its change (改动), from the round before's version (和第 N 轮比) or the commit
- * before. 「就是请批的那一版」 marks the very version an approval was asked for. A document waiting for approval and not
- * committed yet is read from this machine's worktree, only as the bytes Lean recorded (the backend checks).
+ * A step pill per stage a run did (in band order), its rounds (第 1 轮 退回 · 第 2 轮 CI 没过 #1234 …), what the round picked
+ * was about (done because a pipeline failed, sent back by whom, asked for, changed after the request), then its files:
+ * what Lean recorded it hands in (约定它交的) and what else its commits changed (其他改动). A file shows as it was in that
+ * round: a document rendered (内容), the source (源码), or its change (改动), from the round before's version (和第 N 轮比) or
+ * the commit before. 「就是请批的那一版」 marks the very version an approval was asked for. A document waiting for approval and
+ * not committed yet is read from this machine's worktree, only as the bytes Lean recorded (the backend checks).
  *
  * GET /outputs/{repo}/{key}?node&round lists a round's files, GET /outputs/{repo}/{key}/file reads one; the rest
  * (rounds, gates, runs) is the board's own snapshot. Where it stands is in the URL (nav.ts out): the parent replaces
