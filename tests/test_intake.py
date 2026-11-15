@@ -29,7 +29,7 @@ def body(tmp_path, **kw):
 
 
 def test_the_dry_run_lists_every_finding_verbatim_and_what_would_stop_the_start(tmp_path, home):
-    repo = make_project(tmp_path)
+    repo = make_project(tmp_path, kit={"intake": {"allow_confidential": False}})
     svc = make_service(tmp_path, [repo])
 
     async def go():
@@ -80,7 +80,7 @@ def test_every_stop_line_of_the_current_brain_kit_is_said_in_the_apps_words(tmp_
     """SETUP-5 / SETUP-13 / NEW-1…3: brain-kit's own dry run for a set where no file can be taken, excludes that leave
     nothing, 绝密 picked or marked, 不确定 refused: each stop line by file name, no document code, no CLI flag, no
     brain-kit English; 「不收这些文件」 only where leaving a file out is the fix."""
-    repo = make_project(tmp_path)
+    repo = make_project(tmp_path, kit={"intake": {"allow_confidential": False}})
     svc = make_service(tmp_path, [repo])
     pic, one = tmp_path / "图", tmp_path / "一份"
     pic.mkdir(), one.mkdir()
@@ -123,10 +123,32 @@ def test_older_brain_kits_stop_lines_still_read_in_words():
         "第 2 关：绝密材料不收（a.pdf 标着绝密）：先请产品写一份脱敏摘要，交摘要；不想交这份，就把它写进「不收这些文件」"
     conf = "门 2：材料按机密处理（D03 合作方接口说明.pdf=confidential），而 intake.allow_confidential 是 false（决策 02 未放行）。"
     assert gate(conf, {"classification": "internal"}).startswith("第 2 关：这个仓库不收机密材料（合作方接口说明.pdf 标着机密）")
+    now = "门 2：材料按机密处理（你选的是 unsure），而 .brain/kit.json 的 intake.allow_confidential 是 false（不收机密）。"
+    assert gate(now, {"classification": "unsure"}) == "第 2 关：这个仓库不收机密材料（你选的是「不确定」）：先请产品写一份脱敏摘要，交摘要"
     # the person's own refused pick: leaving the file out would not help
     assert "不收这些文件" not in gate(conf, {"classification": "confidential"})
     assert gate("没有可收的文件", {"exclude": ["*.png"]}) == "没有可收的文件：文档是空的，或者都被「不收这些文件」排除了"
     assert gate("没有可收的文件", {"exclude": []}) == "没有可收的文件：给的文件夹里没有文件"
+
+
+def test_gate_2_without_the_switch_set_does_what_this_brain_kit_does_by_default(tmp_path, home):
+    """brain-kit 2053939: confidential material passes gate 2 unless .brain/kit.json sets intake.allow_confidential
+    false. 开需求 says up front what this brain-kit will do, and 不确定 passes or stops with it."""
+    repo = make_project(tmp_path)
+    svc = make_service(tmp_path, [repo])
+
+    async def go():
+        await svc.start()
+        try:
+            return (mod("bk").m("config").load(str(repo))["intake"]["allow_confidential"],
+                    await svc.intake_next("r1"),
+                    await svc.intake_check(body(tmp_path, business="mask", classification="unsure")))
+        finally:
+            await svc.stop()
+
+    takes, nxt, unsure = run(go())
+    assert nxt["allow_confidential"] is bool(takes)
+    assert any(b.startswith("第 2 关") for b in unsure["blocking"]) is not bool(takes), unsure
 
 
 def test_a_requirement_claimed_already_is_started_with_its_own_key(tmp_path, home):
