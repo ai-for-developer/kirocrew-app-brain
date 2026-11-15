@@ -73,7 +73,7 @@ Lean 也在里面）。安装时不用 node，也不用另外装 brain-kit。各
 3. 看 app 和它自带的 brain-kit：cat ~/.kiro/crew/apps/brain/VERSIONS，
    ls -l ~/.kiro/crew/apps/brain/vendor/brain-kit/bin/brain。没有的话，说明 app 还没装，停下来告诉我。
 4. 装 app 会话用的 agent：python3 ~/.kiro/crew/apps/brain/vendor/brain-kit/bin/brain crew-agent
-   （写 ~/.kiro/agents/brain-dev-crew.json，带 Lean 的三个 hook；也可以让我在 app 的「设置」里点「装上 brain-dev-crew」）。
+   （这个版本的 app 自带的 brain-kit 写 ~/.kiro/agents/brain-dev-crew.json，带 Lean 的三个 hook；也可以让我在 app 的「设置」里点「装上 brain-dev-crew」）。
 5. 问我要用哪个项目仓库。仓库里有 .brain/kit.json 的话，在仓库目录里运行
    python3 ~/.kiro/crew/apps/brain/vendor/brain-kit/bin/brain doctor，把 FAIL 和 WARN 原样列给我，并说怎么修。
    没有的话，告诉我先在 app 里「导入仓库」。
