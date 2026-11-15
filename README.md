@@ -66,7 +66,8 @@ The routes' JSON is `ui/src/types.ts`. Every requirement (a row of `GET /overvie
 `agent`, `runner`, `bridge`, `product`, `builder`, `people`, `nobody`), `text`, `line` (the exact Lean approval line when
 that is what it waits for), `do` (the step: `approve`, `reply`, `tool`, `start`, `answer`, `accept`, `redo_handoff`,
 `label_handoff`, `write_back`, `watch`, `none`), `since` (since when it has waited like this, in epoch seconds: the
-moment the session went idle, the approval was asked, the claim was made; null when unknown) and `where` (`session`,
+moment the session went idle, the approval was asked, the claim was made, each by its record's own time and never by
+when the app looked; null when unknown) and `where` (`session`,
 `mr`, `app`, or null: where the step is taken). `local_only` says the repo has no remote, and `lean` counts `done_n` and
 `skipped_n` and names `next`; `verify_fails` counts the most `lean verify` runs in a row one check has failed since it
 last passed. `progress_pushed_at` says when this machine last pushed the run branch at a Lean checkpoint (null when it

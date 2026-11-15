@@ -77,6 +77,14 @@ def me_line(repos: list[dict[str, Any]], token: bool, env: str) -> dict[str, Any
             "how": "GitLab 令牌（%s）" % ("有" if token else "没有") + ("；" + said if said else "")}
 
 
+def last_record(info: Any, tail: dict[str, Any] | None) -> float | None:
+    """When a session last did something, by its records' own times (the app's message, the agent's last reply or
+    call), until the whole transcript is read: never the moment this app noticed a change."""
+    ats = [info.sent_at, (tail or {}).get("said_at"), ((tail or {}).get("call") or {}).get("at")]
+    ats = [a for a in ats if isinstance(a, (int, float)) and not isinstance(a, bool) and a > 0]
+    return max(ats) if ats else None
+
+
 class Service:
     def __init__(self, ctx: Any, *, sessions: Any = None, transport: Any = None, now: Callable[[], float] = time.time,
                  signer_kick: Callable[[], Any] | None = None, sign_timeout: float | None = None) -> None:
@@ -390,14 +398,15 @@ class Service:
             if not info.key or not info.slot:
                 continue
             st = self.sessions.slot_stats(info.slot) or {}
+            tail = self.sessions.slot_tail(info.slot)
             by.setdefault(info.key, []).append({
                 "slot": info.slot, "title": info.title, "agent": info.agent, "kind": info.kind or "local",
                 "credits": self.sessions.slot_credits(info.slot),   # the very number credits_by_key adds up
                 "turns": int(st.get("turns") or info.turns or 0), "busy": bool(st.get("busy")),
-                "awaiting": bool(st.get("awaiting")), "last_activity": st.get("last_activity") or info.last_activity,
+                "awaiting": bool(st.get("awaiting")), "last_activity": st.get("last_activity") or last_record(info, tail),
                 "opened_at": st.get("opened_at") or info.started, "project": info.cwd or None,
                 "url": "/chat?sid=%s" % info.slot, "error": info.error, "missing": bool(st.get("missing")),
-                "id": info.id, "tail": self.sessions.slot_tail(info.slot)})
+                "id": info.id, "tail": tail})
         return {"by": by, "credits": self.sessions.credits_by_key()}
 
     @staticmethod

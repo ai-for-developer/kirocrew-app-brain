@@ -168,6 +168,41 @@ def test_an_idle_session_waits_since_one_moment_and_a_claim_has_nothing_to_trace
 
 
 @needs_brainkit
+def test_a_quiet_session_waits_since_its_own_last_record_not_since_the_app_looked(tmp_path, home):
+    """UI-11: DEMO-1 sat quiet for five days, and the drawer said 「从 11-14 16:14 起」 and the lane 「刚刚」: the moment this
+    app first read the finished turn. The wait starts at a record's own time (here the app's kickoff is the newest:
+    the fake transcript's stamps are older), however late the app looks."""
+    import asyncio
+    from brainfix import FakeGateway, install_brain_dev
+    repo = make_project(tmp_path)
+    install_brain_dev(home)
+    start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
+    gw = FakeGateway()
+    gw.templates = {"brain-dev"}
+    svc = make_service(tmp_path, [repo], gw=gw)
+
+    async def go():
+        await svc.start()
+        try:
+            await svc.open_session("r1", "PAY-1")
+            gw.finish(next(iter(gw.slot_rows)))
+            await asyncio.sleep(1.5)
+            looked = time.time()
+            for _ in range(2):
+                await svc.sessions.poll()
+            rows = {r["key"]: r for r in (await svc.overview("all"))["rows"]}
+            return looked, rows, await svc.board("r1", "PAY-1")
+        finally:
+            await svc.stop()
+
+    looked, rows, b = run(go())
+    w = rows["PAY-1"]["waits"]
+    assert (w["who"], w["do"]) == ("you", "reply")
+    assert w["since"] < looked, "since the kickoff went in, not since the app read the transcript"
+    assert run_now(b, "local")["since"] == w["since"] == b["row"]["waits"]["since"]
+
+
+@needs_brainkit
 def test_a_requirement_split_into_units_draws_each_planned_unit_before_its_code_generation(tmp_path, home):
     """Rule 1 through the service: unit-of-work.md's first table, as the run branch's newest commit has it, gives
     构建 a row per unit in the table's order before any code generation is recorded. The worktree's copy is not read."""
