@@ -111,6 +111,8 @@ describe('交接给运行机', () => {
       d.row.state_label = '本地开发中'
       d.run!.handoff = { requested_at: '2026-11-08T10:00:00+08:00', by: 'alice' }
       d.row.waits = { ...d.row.waits, who: 'you', text: NOT_PUSHED, line: null, do: 'push_handoff', where: 'app' }
+      d.sessions = []
+      d.live_slot = null
       return answer
     } })
     renderDetail()
@@ -120,6 +122,9 @@ describe('交接给运行机', () => {
     expect(out).toHaveTextContent(answer.text)
     await waitFor(() => expect(screen.getByRole('region', { name: '此刻' })).toHaveTextContent(NOT_PUSHED))
     expect(screen.getByRole('region', { name: '此刻' })).not.toHaveTextContent('等桥')
+    // the backend opens no session for a run with a hand-over commit (service.open_session): none is offered
+    expect(screen.queryByRole('button', { name: '开会话' })).toBeNull()
+    expect(screen.queryByTestId('reopen')).toBeNull()
     await user.click(within(out).getByRole('button', { name: '收起' }))
     const again = within(await card()).getByRole('button', { name: '交接给运行机' })
     expect(again).toBeEnabled()
