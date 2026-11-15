@@ -480,7 +480,7 @@ def _quiet(evs: list[dict[str, Any]], records: list[dict[str, Any]], who: runs.A
            rs: list[runs.RunView]) -> dict[str, list[tuple[float, float | None]]]:
     """When each run's session sat waiting for its person: before each reply the person typed in this machine's
     session, since that run's last record (a Lean record, a commit) before it; and now, since its state says it waits
-    on a person (a quiet session, a tool call, a question)."""
+    on a person (a quiet session, a tool call, a question, no session here to work in)."""
     seen = sorted(x.get("_at", x.get("at")) for x in records if who.run_of(x) == runs.LOCAL)
     out: dict[str, list[tuple[float, float | None]]] = {}
     for e in evs:
@@ -488,7 +488,7 @@ def _quiet(evs: list[dict[str, Any]], records: list[dict[str, Any]], who: runs.A
         if last is not None:
             out.setdefault(runs.LOCAL, []).append((last, e["at"]))
     for r in rs:
-        if r.now is not None and r.now.status == "awaiting_approval" and r.now.since is not None:
+        if r.now is not None and (r.now.status == "awaiting_approval" or r.now.do) and r.now.since is not None:
             out.setdefault(r.key, []).append((r.now.since, None))
     return out
 

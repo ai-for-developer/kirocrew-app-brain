@@ -177,12 +177,12 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
                        where="app" if here else "session", since=f.get("park_at"))
         if not mine:
             return put("local", "people", "none", "%s 在自己的机器上做" % owner, since=f.get("tip_at"))
+        if slot and slot.get("awaiting"):      # KiroCrew counts a session asking for a tool as busy too
+            return put("local", "you", "tool", "会话里有一个工具调用等你批准", where="session",
+                       since=updated_at(f, slot))
         if slot and slot.get("busy"):
             nxt = (row.get("lean") or {}).get("next")
             return put("local", "agent", "none", "AI 在做" + ("「%s」" % nxt["label"] if nxt else ""))
-        if slot and slot.get("awaiting"):
-            return put("local", "you", "tool", "会话里有一个工具调用等你批准", where="session",
-                       since=updated_at(f, slot))
         rows = f.get("stages") or lean_view.stages([])
         review_ok = lean_view.review_current((f.get("review") or {}).get("at"), bool(f.get("review")),
                                              f.get("events") or [])

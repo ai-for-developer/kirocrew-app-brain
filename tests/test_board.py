@@ -335,6 +335,29 @@ def test_a_big_requirement_waiting_on_its_small_ones_has_a_quiet_session_that_is
     assert [n["id"] for n in b["nodes"] if n["status"] == "awaiting_approval"] == []
 
 
+def test_without_a_session_nobody_works_the_hours_are_a_wait():
+    """UI-4: DEMO-1's AI worked about 20 minutes and the page said 126 hours of 「AI 在本机做」. With no session on this
+    machine nobody is at work: from Lean's last record on, its hours wait for the person to open one."""
+    coding = [e for e in demo3_events() if e["_at"] <= T + 11 * M + 47]     # code generation begun, nothing after
+    b = snapshot(facts(coding), row_of("local", "you", "没有开着的会话：打开会话接着做。", do="reply"), now=T + 126 * H)
+    assert run_now(b, "local")["status"] == "stalled"
+    assert spent(b, ("work", "fix"), T + 126 * H) < 12 * M
+    assert spent(b, ("wait",), T + 126 * H) > 125 * H
+
+
+def test_a_session_asking_for_a_tool_waits_on_the_person_on_every_page():
+    """UI-4: KiroCrew reports a session waiting on a tool approval as busy too. 交付总览 counted it as 「AI 在本机做」
+    while the board said it waits for the person: the row says 等你批准工具调用, as the board does."""
+    deliveries = mod("deliveries")
+    f = facts(demo3_events(), owner="dana")
+    row = deliveries.base_row("r1", f)
+    deliveries.classify(row, f, mr=None, slot={"busy": True, "awaiting": True, "last_activity": T + 16 * M}, cfg={},
+                        me="dana")
+    assert (row["waits"]["who"], row["waits"]["do"]) == ("you", "tool")
+    b = snapshot(f, row, sessions=[session(T + 16 * M, busy=True, awaiting=True)])
+    assert (run_now(b, "local")["who"], run_now(b, "local")["do"]) == ("you", "tool")
+
+
 def test_a_quiet_session_waits_for_the_person_from_its_last_message_not_works_on():
     """DEMO-3 (UI问题清单 #2): the AI worked about 15 minutes, then its session sat quiet for eleven hours. The board
     says its run waits for the person since the session's last message, at the stage it would do next, and none of
