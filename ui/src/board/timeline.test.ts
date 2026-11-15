@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fx } from '../test/data'
+import { worldBoard } from '../test/world'
 import type { NodeTurns, OutFile, ReqBoard, TurnView } from '../types'
 import { GAP_S, SAME_DECISION_S, decisionStops, filesAt, momentOf, replayAt, replayClock, replaySpan, turnsAt } from './timeline'
 
@@ -327,6 +328,33 @@ describe('replayAt: what was there then', () => {
     const hand = m.events.find((e) => e.kind === 'handover')!.at
     expect(replayAt(m, hand - 1).row.mr).toBeNull()
     expect(replayAt(m, hand + 1).row.mr).toEqual(m.row.mr)
+  })
+})
+
+describe('replayAt: the bands say what was skipped by then', () => {
+  const notes = (b: ReqBoard) => Object.fromEntries(b.phases.map((p) => [p.key, p.note]))
+  const skippedAt = (b: ReqBoard, id: string) => b.nodes.find((n) => n.id === id)!.history[0].at
+
+  it('PAY-2 just before its design was sent back: 拆分单元, CI 流水线 and 运维 were skipped later, so no band says them yet', () => {
+    const b = worldBoard('r1/PAY-2')
+    const design = b.events.find((e) => e.kind === 'reject' && e.node === 'application-design')!.at
+    expect(design).toBeLessThan(skippedAt(b, 'units'))
+    expect(notes(replayAt(b, design - 60))).toEqual({ init: null, ideation: '这次不需要', inception: '跳过：逆向工程、用户故事', construction: null, release: null, operations: null })
+    expect(notes(replayAt(b, skippedAt(b, 'units') + 1)).inception).toBe('跳过：逆向工程、用户故事、拆分单元')
+  })
+
+  it('a band skipped whole says 这次不需要 once Lean skipped it, 还没轮到 before', () => {
+    const b = worldBoard('r1/PAY-2')
+    expect(notes(replayAt(b, skippedAt(b, 'intent-capture') - 1)).ideation).toBe('还没轮到')
+  })
+
+  it('a moment after every skip says what the board says, per unit too', () => {
+    for (const key of ['r1/PAY-2', 'r1/PAY-9']) {
+      const b = worldBoard(key)
+      const last = Math.max(...b.nodes.flatMap((n) => n.history.filter((h) => h.status === 'skipped').map((h) => h.at)))
+      expect(notes(replayAt(b, last + 1))).toEqual(notes(b))
+    }
+    expect(notes(worldBoard('r1/PAY-9')).construction).toBe('跳过：CI 流水线 · 每个单元都跳过了功能设计、非功能设计、基础设施设计')
   })
 })
 
