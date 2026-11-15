@@ -75,7 +75,7 @@ export function replayClock(b: ReqBoard, gap = GAP_S): Clock {
   return { total, toPlay, toReal }
 }
 
-const OPEN: Round['outcome'] = { kind: 'open', at: null, gate: null, by: null, decision: null, text: null, sha: null, subject: null, checks: [] }
+const OPEN: Round['outcome'] = { kind: 'open', at: null, gate: null, by: null, decision: null, text: null, sha: null, subject: null, checks: [], pipeline: null }
 const DECIDED: ReadonlySet<Gate['state']> = new Set<Gate['state']>(['approved', 'sent_back', 'refused'])
 
 /** A node at *t*: its state then (before its first change it waits: with the line it had while waiting, if it still

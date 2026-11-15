@@ -78,6 +78,7 @@ progress = importlib.import_module("_brainapp_backend.core.progress")
 outputs = importlib.import_module("_brainapp_backend.core.outputs")
 turns_mod = importlib.import_module("_brainapp_backend.core.turns")
 sessions_mod = importlib.import_module("_brainapp_backend.core.sessions")
+mrinfo = importlib.import_module("_brainapp_backend.core.mrinfo")
 AppError = importlib.import_module("_brainapp_backend.core.httpkit").AppError
 import preview_docs  # noqa: E402  (PAY-9's and PAY-2's documents and code, next to this file)
 import preview_session  # noqa: E402  (PAY-9's session on alice's machine)
@@ -989,6 +990,22 @@ BUSINESS_LINE = ("门 3：找到商业敏感内容 {'amount': 4, 'company': 3}�
                  "不想交的文件请从输入里去掉")
 
 
+def mr_pipelines(rows: list[dict], project: str) -> list[dict] | None:
+    """An MR's pipelines as the MR refresh keeps them, from the rows GitLab answers with (mrinfo.parse_pipelines reads
+    their times with brain-kit's GitLab client); None without brain-kit, as when this machine cannot read them."""
+    if not (BRAINKIT / "brainkit" / "__init__.py").is_file():
+        return None
+    bk.load(str(BRAINKIT))
+    return mrinfo.parse_pipelines(rows, GL, project)
+
+
+def gl_pipeline(pid: int, commit: str, status: str, created: float, finished: float, project: str) -> dict:
+    """A row of GET /projects/:id/merge_requests/:iid/pipelines, as GitLab writes it."""
+    return {"id": pid, "iid": pid - 1100, "project_id": 7, "sha": commit, "ref": "refs/merge-requests/53/head",
+            "status": status, "source": "merge_request_event", "created_at": iso(created), "updated_at": iso(finished),
+            "web_url": "%s/%s/-/pipelines/%d" % (GL, project, pid)}
+
+
 def intake_gates() -> dict:
     """开需求's 先检查 in the preview: brain-kit's own gate 2 lines, from its dry run as the app runs it
     (intake.package.build, a kit that does not take confidential material) for the picks 机密 / 不确定 / 绝密 and for the
@@ -1416,8 +1433,8 @@ def world(scratch: Path) -> None:
     # PAY-9 (Scenario B, the mockup's story; 16:15 is now): alice's requirements and design approved on this machine
     # (INCEPTION), split into api and web, handed over at 11:05. Its run on the team runner (RUN-PAY-9-1) checks on
     # arrival, writes api, then web, has its review written and asks for the release; the product sends round 1 back
-    # on the MR (D-2); after rounds 2 and 3 the MR's pipeline fails and each fix is a new commit after the request;
-    # round 4 waits for the product's acceptance (D-3)
+    # on the MR (D-2); after rounds 2 and 3 the MR's pipeline fails (#1234, #1240: alice's machine reads them with
+    # the MR) and each fix is a new commit after the request; round 4 waits for the product's acceptance (D-3)
     def at9(hm: str) -> float:
         h_, m_ = hm.split(":")
         return T0 - ((16 * 60 + 15) - (int(h_) * 60 + int(m_))) * M
@@ -1483,7 +1500,7 @@ def world(scratch: Path) -> None:
     rel_files = (p9.doc("release"), "runs/PAY-9/park.json", "runs/PAY-9/MR.md")
     p9.draft(at9("13:25"), "release")
     p9.stage(at9("13:25"), "release", "started")
-    p9.commit(at9("13:26"), "bot", "请批发布", records=True, short="3b8e01f", paths=rel_files)
+    asked9 = [p9.commit(at9("13:26"), "bot", "请批发布", records=True, short="3b8e01f", paths=rel_files)]
     h9 = p9.request(at9("13:26") + 30, "RELEASE")
     p9.question_park(at9("13:27"), "waiting", "acceptance", "product")
     p9.ask("D-2", "acceptance", at9("13:28"), at9("14:40"), "reject", state="delivered", who="P-9E3B", human=False)
@@ -1496,20 +1513,24 @@ def world(scratch: Path) -> None:
         p9.stage(at9(verified) + 1, "build-and-test", "done", note=pass_note % sha("PAY-9", "fp", verified)[:8])
         p9.draft(at9(released), "release")
         p9.stage(at9(released), "release", "started")
-        p9.commit(at9(released) + 50, "bot", "请批发布", records=True, paths=rel_files)
+        asked9.append(p9.commit(at9(released) + 50, "bot", "请批发布", records=True, paths=rel_files))
         p9.request(at9(released) + 70, "RELEASE")
         p9.commit(at9(fixed), "bot", subject, files=1 if "api" in subject else 2, short=short)
     p9.verify(at9("16:10"), pass_all)
     p9.stage(at9("16:10") + 1, "build-and-test", "done", note=pass_note % sha("PAY-9", "fp", 5)[:8])
     p9.draft(at9("16:11"), "release")
     p9.stage(at9("16:11"), "release", "started")
-    p9.commit(at9("16:12"), "bot", "请批发布", records=True, paths=rel_files)
+    asked9.append(p9.commit(at9("16:12"), "bot", "请批发布", records=True, paths=rel_files))
     p9.request(at9("16:12") + 30, "RELEASE")
     p9.question_park(at9("16:13"), "waiting", "acceptance", "product")
     p9.ask("D-3", "acceptance", at9("16:14"))
     reqs["r1"].append(p9)
     p9_park = {"status": "waiting", "kind": "acceptance", "lean_request": "RELEASE %s" % p9.release_sha[:8]}
     p9_q = {"id": "D-3", "kind": "acceptance", "state": "open", "lean_request": "RELEASE %s" % p9.release_sha[:8], "at": iso(at9("16:14"))}
+    # each request's MR pipeline: green, then the two CI fixes' red ones, then green (the bridge asks D-3 after it)
+    p9_ci = mr_pipelines([gl_pipeline(pid, c, st, at9(a), at9(b), p9.project) for pid, c, st, a, b in (
+        (1247, asked9[3], "success", "16:12", "16:13"), (1240, asked9[2], "failed", "15:35", "15:46"),
+        (1234, asked9[1], "failed", "15:07", "15:16"), (1228, asked9[0], "success", "13:26", "13:27"))], p9.project)
     p9_sess = dict(det["sessions"][0], slot="brain-PAY-9-7f2c", url="/chat?sid=brain-PAY-9-7f2c", title="PAY-9 退款通知短信",
                    credits=12.4, turns=7, busy=False, awaiting=False, last_activity=p9.hand_at, opened_at=p9.start_at)
     row = copy.deepcopy(rows["PAY-5"])
@@ -1524,7 +1545,7 @@ def world(scratch: Path) -> None:
     for d_, did in zip(p9_dec[1:], ("D-4", "D-5")):
         d_.update(id=did)
     board_later(p9, row, park=p9_park, decisions=p9_dec, sessions=[p9_sess], credits=12.4,
-                mr_desc=mrdesc(p9, row["summary"]),
+                mr_desc=mrdesc(p9, row["summary"]), mr={"questions": [p9_q], "pipelines": p9_ci},
                 questions=[{"source": "mr", "id": "D-3", "kind": "acceptance", "kind_label": "验收",
                             "question": "验收：退款成功以后给用户发短信，旧订单不发。", "options": [], "recommend": None,
                             "lean_request": "RELEASE %s" % p9.release_sha[:8], "refs": [], "state": "open", "answer": None, "answerer": None,

@@ -7,8 +7,9 @@
 import { useState } from 'react'
 import { useNavigate } from '@kirocrew/app-sdk'
 import type { CallView, NodeTurns, ReqBoard, Round, Run, StageNode, TaskView, TurnView, WhyNot } from '../types'
+import { ExtLink } from '../ui'
 import { Markdown } from '../views/Markdown'
-import { clockAt, roundWords } from './format'
+import { ciCause, ciWords, clockAt, roundWords } from './format'
 
 export type SessionTab = 'reply' | 'task' | 'calls'
 
@@ -26,12 +27,18 @@ function leanLine(r: Round, n: StageNode, asked: number | null, board: ReqBoard)
 }
 
 export function WhyNotCard({ w, r, n, board }: { w: WhyNot; r: Round; n: StageNode; board: ReqBoard }) {
+  const ci = ciCause(r)
   return (
     <div className="kt-whynot" data-testid="out-whynot">
       <h4>{w.title}</h4>
       {w.missing && <p>{w.missing}</p>}
       <p>这台机器上有：</p>
       <ul>
+        {ci && (
+          <li data-testid="out-whynot-cause">
+            这一轮的起因：{ciWords(ci)}（MR 的流水线{ci.at ? `，${clockAt(ci.at, board.at)} 没过` : ''}）{ci.url && <> <ExtLink href={ci.url}>看流水线</ExtLink></>}
+          </li>
+        )}
         {w.here.map((x) => <li key={x}>{x}</li>)}
         {n.stage !== 'reflect' && <li>Lean 记下的这一轮：{leanLine(r, n, w.asked, board)}</li>}
       </ul>

@@ -110,15 +110,16 @@ def decided_by(humans: list[dict[str, Any]], kind: str, at: float | None, local:
     return "产品在 MR 上" if kind == "RELEASE" else "有人在 MR 上"   # the acceptance is asked of the product
 
 
-def missing_sources(raw: list[Any], *, local_only: bool, handed: bool) -> list[str]:
+def missing_sources(raw: list[Any], *, local_only: bool, handed: bool, ci_read: bool = False) -> list[str]:
     """brainkit.trace's `missing`, in plain Chinese, without the sources this requirement has no use for: a repo done
-    only here has no runner, bridge, signer or GitLab CI; before the hand-over the runner's half has nothing yet."""
+    only here has no runner, bridge, signer or GitLab CI; before the hand-over the runner's half has nothing yet. The
+    CI pipelines are not missing once this machine read them from the MR (*ci_read*)."""
     out = []
     for x in raw:
         s = str(x)
         hit = next((m for m in MISSING if s.startswith(m[0])), None)
         if hit:
-            if (hit[1] == "runner" and (local_only or not handed)) or (hit[1] == "remote" and local_only):
+            if (hit[1] == "runner" and (local_only or not handed)) or (hit[1] == "remote" and (local_only or ci_read)):
                 continue
             text = hit[2]
         elif "decisions.md" in s:
@@ -401,6 +402,21 @@ def _sub(stage: stages.StageDef, unit: str | None) -> str:
     return (stage.doc or "").rsplit("/", 1)[-1]
 
 
+def _pipeline_wire(p: stages.Pipeline | None) -> dict[str, Any] | None:
+    return {"id": p.id, "url": p.url, "at": p.at} if p is not None else None
+
+
+def pipelines_read(mr: dict[str, Any] | None) -> bool:
+    """This machine read the MR's pipelines (mrinfo: person mode, CI on, the token may read them)."""
+    return isinstance((mr or {}).get("pipelines"), list)
+
+
+def pipelines_of(mr: dict[str, Any] | None) -> list[stages.Pipeline]:
+    """The MR's pipelines as the rounds read them; none when they were not read here (team mode, CI off, no token)."""
+    return [stages.Pipeline(p["id"], p["status"], p["sha"], p["at"], p["url"])
+            for p in (mr or {}).get("pipelines") or [] if isinstance(p, dict)]
+
+
 def _round_wire(r: stages.Round) -> dict[str, Any]:
     e, w, k = r.end, r.why, r.end.outcome
     O = stages.Outcome
@@ -413,8 +429,9 @@ def _round_wire(r: stages.Round) -> dict[str, Any]:
                         _clip(lean_view.say_note(e.reason), 160) or None if k is O.SKIPPED and e.reason else None,
                         "sha": e.sha if k is O.SUPERSEDED else None,
                         "subject": _clip(e.subject, 80) or None if k is O.SUPERSEDED and e.subject else None,
-                        "checks": [{"name": stages.check_name(c.cmd), "ok": c.ok, "secs": c.secs} for c in e.checks]},
-            "why": {"kind": w.kind, "round": w.round, "pipeline": w.pipeline, "sha": w.sha,
+                        "checks": [{"name": stages.check_name(c.cmd), "ok": c.ok, "secs": c.secs} for c in e.checks],
+                        "pipeline": _pipeline_wire(e.pipeline) if k is O.SUPERSEDED else None},
+            "why": {"kind": w.kind, "round": w.round, "pipeline": _pipeline_wire(w.pipeline), "sha": w.sha,
                     "subject": _clip(w.subject, 80) or None if w.subject else None, "at": w.at},
             "note": (lean_view.say_note(r.note) or "").strip()[:2000] or None,
             "outputs": [{"path": path, "sha8": h[:8]} for path, h in r.outputs if h],
@@ -559,7 +576,7 @@ def stage_graph(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None
     if family is not None and family.role == "child":     # unit-of-work.md is its big one's: it builds one unit
         units = [u for u in units if u.name == family.unit]
     planned = list(units) + [stages.UnitPlan(c.unit) for c in (family.children if family else ()) if c.unit]
-    rec = stages.Records(lean, run.get("intent"), who.run_of, commits, list(reflect_refs), by, decision)
+    rec = stages.Records(lean, run.get("intent"), who.run_of, commits, list(reflect_refs), by, decision, pipelines_of(mr))
     nodes = stages.graph(rec, stages.units_of(lean, planned), way, f.get("approvals") or [], pending)
     last_at: dict[str, float] = {}
     starts: dict[str, float] = {}
@@ -676,7 +693,8 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
             "lean_steps": lean_view.steps(f.get("events") or []),
             "phases": sg["phases"], "nodes": sg["nodes"], "runs": sg["runs"], "relays": sg["relays"],
             "other_runs": sg["other_runs"],
-            "missing": missing_sources((t or {}).get("missing") or [], local_only=local_only, handed=hand_at is not None)}
+            "missing": missing_sources((t or {}).get("missing") or [], local_only=local_only, handed=hand_at is not None,
+                                       ci_read=pipelines_read(mr))}
 
 
 def _belt(evs: list[dict[str, Any]], changes: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:

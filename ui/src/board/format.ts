@@ -5,7 +5,7 @@
  * A tone is a meaning, not a colour: styles.ts maps each to a colour per host mode (kiro-dark / kiro-light), so the
  * same word always has the same colour and every colour has a word next to it.
  */
-import type { ActorStatus, BeltItem, BoardEvent, BoardEventKind, CheckWall, Gate, GateKind, LeanSummary, ReqBoard, Round, Run, StageNode, WaitWho } from '../types'
+import type { ActorStatus, BeltItem, BoardEvent, BoardEventKind, CheckWall, Gate, GateKind, LeanSummary, PipelineRef, ReqBoard, Round, Run, StageNode, WaitWho } from '../types'
 import { approvalName, waitsOn } from '../vocab'
 
 export const POLL_MS = 2000
@@ -335,7 +335,21 @@ export const ROUND_TONE: Record<Round['outcome']['kind'], Tone> = {
   open: 'run', done: 'ok', approved: 'ok', passed: 'ok', sent_back: 'fix', refused: 'warn', failed: 'bad', superseded: 'idle', skipped: 'idle',
 }
 
-/** How a round ended, in words: 产品退回（D-2）, 请批以后代码又改了（2e8d1f6「修好 CI：api 的 lint」）, 检查全过（3 项）. */
+/** A failed pipeline, as every place that names it says it: CI 没过 #1234 (backend stages.ci_words). */
+export const ciWords = (p: PipelineRef): string => `CI 没过 #${p.id}`
+
+/** The failed pipeline a round was done for (its why is ci_failed: read from GitLab on a person's machine), or null. */
+export const ciCause = (r: Round): PipelineRef | null => (r.why.kind === 'ci_failed' ? r.why.pipeline : null)
+
+/** What a list of a node's rounds says before a round done because a pipeline failed: CI 没过 #1234 以后; '' when it was
+ * not, or when the round before already ends with that pipeline (发布's CI 没过 #1234，代码又改了). */
+export function causeWords(r: Round, n: Pick<StageNode, 'rounds'>): string {
+  const ci = ciCause(r)
+  return ci && n.rounds.find((x) => x.n === r.n - 1)?.outcome.pipeline?.id !== ci.id ? `${ciWords(ci)} 以后` : ''
+}
+
+/** How a round ended, in words: 产品退回（D-2）, CI 没过 #1234，代码又改了（2e8d1f6「修好 CI：api 的 lint」）, 请批以后代码又改了
+ * (when the pipelines are not read here), 检查全过（3 项）. */
 export function roundWords(r: Round, n: Pick<StageNode, 'gates'>, b: Pick<ReqBoard, 'person'>): string {
   const o = r.outcome
   const said = o.decision ? `（${o.decision}）` : ''
@@ -353,7 +367,7 @@ export function roundWords(r: Round, n: Pick<StageNode, 'gates'>, b: Pick<ReqBoa
     case 'refused':
       return `批准的那一行没被接受${o.text ? `：${o.text}` : ''}`
     case 'superseded':
-      return `请批以后代码又改了${o.sha ? `（${o.sha.slice(0, 7)}${o.subject ? `「${o.subject}」` : ''}）` : ''}`
+      return `${o.pipeline ? `${ciWords(o.pipeline)}，代码又改了` : '请批以后代码又改了'}${o.sha ? `（${o.sha.slice(0, 7)}${o.subject ? `「${o.subject}」` : ''}）` : ''}`
     case 'passed':
       return `检查全过（${o.checks.length} 项）`
     case 'failed': {

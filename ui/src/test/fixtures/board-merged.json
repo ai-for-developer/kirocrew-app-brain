@@ -163,7 +163,8 @@
             "text": "这次没要构思这一段",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -219,7 +220,8 @@
             "text": "这次没要构思这一段",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -275,7 +277,8 @@
             "text": "这次没要构思这一段",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -331,7 +334,8 @@
             "text": "这次没要构思这一段",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -387,7 +391,8 @@
             "text": "这次没要构思这一段",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -443,7 +448,8 @@
             "text": "这次没要构思这一段",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -499,7 +505,8 @@
             "text": "这次没要构思这一段",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -555,7 +562,8 @@
             "text": "新功能，代码已经读过",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -664,7 +672,8 @@
             "text": null,
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -742,7 +751,8 @@
             "text": "小需求",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -900,7 +910,8 @@
             "text": null,
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -935,7 +946,8 @@
             "text": null,
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "sent_back",
@@ -1025,7 +1037,8 @@
             "text": "只有一个单元",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1151,7 +1164,8 @@
             "text": null,
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1281,7 +1295,8 @@
                 "ok": true,
                 "secs": 4.1
               }
-            ]
+            ],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1330,7 +1345,8 @@
                 "ok": true,
                 "secs": 8.8
               }
-            ]
+            ],
+            "pipeline": null
           },
           "why": {
             "kind": "verify_failed",
@@ -1405,7 +1421,8 @@
             "text": null,
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1463,7 +1480,8 @@
             "text": "现有的 CI 够用，不用改",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1592,7 +1610,8 @@
             "text": null,
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1670,7 +1689,8 @@
             "text": "部署和运维由团队的流水线做",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1726,7 +1746,8 @@
             "text": "部署和运维由团队的流水线做",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1782,7 +1803,8 @@
             "text": "部署和运维由团队的流水线做",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1838,7 +1860,8 @@
             "text": "部署和运维由团队的流水线做",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1894,7 +1917,8 @@
             "text": "部署和运维由团队的流水线做",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1950,7 +1974,8 @@
             "text": "部署和运维由团队的流水线做",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -2006,7 +2031,8 @@
             "text": "部署和运维由团队的流水线做",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -2074,7 +2100,8 @@
             "text": null,
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",

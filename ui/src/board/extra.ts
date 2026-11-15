@@ -97,6 +97,7 @@ export const BOARD_EXTRA_CSS = `
   border: 1px solid color-mix(in srgb, var(--kt-tone) 45%, var(--border)); background: color-mix(in srgb, var(--kt-tone) 8%, var(--card)); }
 .br-board .br-round b { color: var(--kt-tone); font-weight: 800; }
 .br-board .br-round.is-now { border-width: 2px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-tone) 16%, transparent); }
+.br-board .br-round-cause { color: var(--kt-bad); font-weight: 700; }
 /* 交的文件: the file name is what matters, so the directory is the part that gives way (as 改动's rows do) */
 .br-board [data-testid="kt-outputs"] .kt-commits li { display: grid; grid-template-columns: auto minmax(0, 1fr); }
 

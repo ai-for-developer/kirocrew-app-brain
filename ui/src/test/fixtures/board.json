@@ -163,7 +163,8 @@
             "text": "这次没要构思这一段",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -219,7 +220,8 @@
             "text": "这次没要构思这一段",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -275,7 +277,8 @@
             "text": "这次没要构思这一段",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -331,7 +334,8 @@
             "text": "这次没要构思这一段",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -387,7 +391,8 @@
             "text": "这次没要构思这一段",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -443,7 +448,8 @@
             "text": "这次没要构思这一段",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -499,7 +505,8 @@
             "text": "这次没要构思这一段",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -555,7 +562,8 @@
             "text": "新功能，代码已经读过",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -664,7 +672,8 @@
             "text": null,
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -742,7 +751,8 @@
             "text": "小需求",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -851,7 +861,8 @@
             "text": null,
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -946,7 +957,8 @@
             "text": null,
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1026,7 +1038,8 @@
             "text": null,
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1106,7 +1119,8 @@
             "text": null,
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1167,7 +1181,8 @@
             "text": "没有新的指标",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1223,7 +1238,8 @@
             "text": "没有新的指标",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1279,7 +1295,8 @@
             "text": "不动基础设施",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1335,7 +1352,8 @@
             "text": "不动基础设施",
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1454,7 +1472,8 @@
             "text": null,
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",
@@ -1568,7 +1587,8 @@
             "text": null,
             "sha": null,
             "subject": null,
-            "checks": []
+            "checks": [],
+            "pipeline": null
           },
           "why": {
             "kind": "first",

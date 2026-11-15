@@ -1,9 +1,10 @@
 /**
  * 产出: what each stage handed in, round by round (the sample's 每一步的产出 drawer, for a requirement's stages).
  *
- * A step pill per stage a run did (in band order), its rounds (第 1 轮 退回 · 第 2 轮 代码又改了 …), what the round
- * picked was about (sent back by whom, asked for, changed after the request), then its files: what Lean recorded it
- * hands in (约定它交的) and what else its commits changed (其他改动). A file shows as it was in that round: a document
+ * A step pill per stage a run did (in band order), its rounds (第 1 轮 退回 · 第 2 轮 CI 没过 #1234 …), what the round
+ * picked was about (done because a pipeline failed, sent back by whom, asked for, changed after the request), then its
+ * files: what Lean recorded it hands in (约定它交的) and what else its commits changed (其他改动). A file shows as it was
+ * in that round: a document
  * rendered (内容), the source (源码), or its change (改动), from the round before's version (和第 N 轮比) or the commit
  * before. 「就是请批的那一版」 marks the very version an approval was asked for. A document waiting for approval and not
  * committed yet is read from this machine's worktree, only as the bytes Lean recorded (the backend checks).
@@ -23,7 +24,7 @@ import type { FileView, Gate, NodeOutput, NodeTurns, OutFile, ReqBoard, Round, R
 import { ExtLink, TYPE_IT_YOURSELF } from '../ui'
 import { Markdown } from '../views/Markdown'
 import { laneNodes } from './Lanes'
-import { ROUND_TONE, actorMeta, clockAt, decider, fmtWhen, gateVerb, nodeLabel, roundWords, whoOf } from './format'
+import { ROUND_TONE, actorMeta, ciCause, ciWords, clockAt, decider, fmtWhen, gateVerb, nodeLabel, roundWords, whoOf } from './format'
 import { RoleIcon } from './RoleIcon'
 import { filesAt, turnsAt, type Moment } from './timeline'
 import { SessionPane } from './Turns'
@@ -32,7 +33,7 @@ type Mode = 'content' | 'source' | 'diff'
 
 const TURNS_LIVE_MS = 4000
 
-/** A round in two words, for its pill: 退回 · 代码又改了 · 等验收 · 批了. */
+/** A round in two words, for its pill: 退回 · CI 没过 #1234 · 代码又改了 · 等验收 · 批了. */
 function roundShort(r: Round, n: StageNode, b: ReqBoard): string {
   const o = r.outcome
   switch (o.kind) {
@@ -41,7 +42,7 @@ function roundShort(r: Round, n: StageNode, b: ReqBoard): string {
       return g ? (g.kind === 'RELEASE' && g.who === 'product' ? '等验收' : gateVerb(g, b)) : '在做'
     }
     case 'sent_back': return '退回'
-    case 'superseded': return '代码又改了'
+    case 'superseded': return o.pipeline ? ciWords(o.pipeline) : '代码又改了'
     case 'approved': return '批了'
     case 'passed': return '检查过了'
     case 'failed': return '检查没过'
@@ -92,9 +93,10 @@ function RoundBanner({ n, r, board, replay }: { n: StageNode; r: Round; board: R
   if (o.kind === 'superseded') {
     return (
       <div className="kt-round-banner tone-idle" data-testid="out-banner">
-        <strong>↻ 请批以后代码又改了</strong>
+        <strong>↻ {o.pipeline ? `${ciWords(o.pipeline)}：请批以后代码又改了` : '请批以后代码又改了'}</strong>
         <span>{o.sha ? `提交 ${o.sha.slice(0, 7)}${o.subject ? `「${o.subject}」` : ''}` : ''}{o.at ? ` · ${when(o.at)}` : ''}</span>
         <span className="kt-dim">这一版没人批过：下一轮又请批了</span>
+        {o.pipeline?.url && <ExtLink href={o.pipeline.url} className="kt-btn is-small">看流水线 ↗</ExtLink>}
       </div>
     )
   }
@@ -105,6 +107,19 @@ function RoundBanner({ n, r, board, replay }: { n: StageNode; r: Round; board: R
     return <div className="kt-round-banner tone-ok" data-testid="out-banner"><strong>✓ {roundWords(r, n, board)}</strong>{o.at && <span>{when(o.at)}</span>}</div>
   }
   return null
+}
+
+/** Why the round was done, when it was for a pipeline that failed: CI 没过 #1234 · 15:16 · 看流水线. */
+function CauseBanner({ r, board }: { r: Round; board: ReqBoard }) {
+  const ci = ciCause(r)
+  if (!ci) return null
+  return (
+    <div className="kt-round-banner tone-bad" data-testid="out-cause">
+      <strong>↻ 这一轮是因为 {ciWords(ci)}</strong>
+      <span>MR 的流水线 #{ci.id}{ci.at ? ` · ${clockAt(ci.at, board.at)} 没过` : ''}</span>
+      {ci.url && <ExtLink href={ci.url} className="kt-btn is-small">看流水线 ↗</ExtLink>}
+    </div>
+  )
 }
 
 function FileRow({ f, on, onPick }: { f: OutFile; on: boolean; onPick: () => void }) {
@@ -255,6 +270,7 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt, moment }: {
             ))}
           </div>
         )}
+        {r && <CauseBanner r={r} board={board} />}
         {r && <RoundBanner n={n} r={r} board={board} replay={!!moment} />}
         {r?.note && <p className="kt-note-box"><b>它自己写的说明</b>{r.note}</p>}
         <div className="kt-tabs" role="tablist">
