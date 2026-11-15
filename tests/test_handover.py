@@ -322,6 +322,58 @@ def test_a_gitlab_token_user_without_brain_user_hands_over_from_the_page(tmp_pat
     assert detail["row"]["state"] == "handed_over"
 
 
+def nothing_went_out(row):
+    """The row of a hand-over commit that is on this machine only: not handed over, the button offered again."""
+    w = row["waits"]
+    return (row["state"] == "local" and w["do"] == "push_handoff" and w["who"] == "you" and "没推上去" in w["text"]
+            and "「%s」" % handover.BUTTON in w["text"] and "等桥" not in w["text"])
+
+
+@needs_brainkit
+def test_after_a_failed_push_the_row_says_nothing_went_out_and_the_next_click_hands_it_over(tmp_path, home, monkeypatch):
+    gl, srv = served_gitlab(tmp_path, monkeypatch)
+    try:
+        repo, wt = project(tmp_path, home, base=srv.base)
+        alice_token(home)
+        sh("git", "-C", wt, "remote", "set-url", "--push", "origin", str(tmp_path / "gone.git"))
+        svc = make_service(tmp_path, [repo])
+
+        async def go():
+            await svc.start()
+            try:
+                first = await svc.handoff("r1", "PAY-1")
+                d1 = await svc.requirement("r1", "PAY-1")
+                sh("git", "-C", wt, "config", "--unset", "remote.origin.pushurl")
+                return first, d1, await svc.handoff("r1", "PAY-1"), await svc.requirement("r1", "PAY-1")
+            finally:
+                await svc.stop()
+
+        first, d1, second, d2 = run(go())
+    finally:
+        srv.stop()
+    assert first["state"] == "committed" and "「%s」" % handover.BUTTON in first["todo"], first
+    assert nothing_went_out(d1["row"]), d1["row"]
+    assert second["state"] == "handed" and "ai-handoff" in gl.labels, second
+    assert d2["row"]["state"] == "handed_over" and head(tmp_path / "repo-origin.git", BRANCH) == head(wt)
+
+
+@needs_brainkit
+def test_a_push_stopped_at_the_time_limit_leaves_the_button_for_the_next_click(tmp_path, home, monkeypatch):
+    import functools
+    gl, srv = served_gitlab(tmp_path, monkeypatch)
+    try:
+        repo, wt = project(tmp_path, home, base=srv.base)
+        alice_token(home)
+        sh("git", "-C", wt, "remote", "set-url", "--push", "origin", "ssh://git@127.0.0.1/x.git")
+        monkeypatch.setenv("GIT_SSH_COMMAND", "sh -c 'sleep 30' --")
+        monkeypatch.setattr(handover, "run", functools.partial(handover.run, timeout=5))
+        (r,), detail = handoff(make_service(tmp_path, [repo]), 1)
+    finally:
+        srv.stop()
+    assert r["state"] == "timeout" and subjects(wt)[0] == HANDOFF, r
+    assert nothing_went_out(detail["row"]), detail["row"]
+
+
 @needs_brainkit
 def test_a_note_not_ready_is_refused_by_brain_kit_and_nothing_changes(tmp_path, home):
     repo, wt = project(tmp_path, home, notes=False)
