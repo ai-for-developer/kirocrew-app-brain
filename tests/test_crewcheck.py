@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from appkit import BRAINKIT, commit_file, mod
+from appkit import BRAINKIT, CREW_SRC, commit_file, mod
 from brainfix import install_brain_dev, make_project, make_service, needs_brainkit, run, sh
 
 pytestmark = needs_brainkit
@@ -38,7 +38,7 @@ def loaded(tmp_path):
 
 def kiro_spec(hooks):
     """brain-kit's brain-dev as Kiro rewrites it: its keys in Kiro's order, the given hooks, kiroUpgrade last."""
-    src = json.loads((BRAINKIT / "crew" / "brain-dev.json").read_text(encoding="utf-8"))
+    src = json.loads(CREW_SRC.read_text(encoding="utf-8"))
     return {"name": "brain-dev-crew", "description": src["description"], "prompt": src["prompt"], "mcpServers": {},
             "tools": src["tools"], "toolAliases": {}, "allowedTools": [], "resources": src["resources"],
             "hooks": hooks, "toolsSettings": {}, "model": src["model"], "kiroUpgrade": dict(UPGRADE)}
@@ -95,7 +95,7 @@ def test_checks_and_fixes(tmp_path, home):
     assert any(l == "WARN" and "kiro" in t for l, t in levels(first["rows"]))
     assert fa["ok"] and "装好了" in fa["text"]
     spec = json.loads((home / ".kiro" / "agents" / "brain-dev-crew.json").read_text())
-    assert spec == dict(json.loads((BRAINKIT / "crew" / "brain-dev.json").read_text()), name="brain-dev-crew")
+    assert spec == dict(json.loads(CREW_SRC.read_text()), name="brain-dev-crew")
     assert fe["ok"] and (tmp_path / "engine").read_text().strip() == "kas"
     assert all(r["level"] == "OK" for r in fe["rows"])
     agent = next(r for r in first["rows"] if r["fix"] == "agent")
@@ -354,7 +354,7 @@ CREW = "brain-dev-crew"
 
 def write_crew_agent(home):
     """~/.kiro/agents/brain-dev-crew.json: brain-kit's crew spec under the crew agent's name."""
-    spec = json.loads((BRAINKIT / "crew" / "brain-dev.json").read_text(encoding="utf-8"))
+    spec = json.loads(CREW_SRC.read_text(encoding="utf-8"))
     p = home / ".kiro" / "agents" / (CREW + ".json")
     p.write_text(json.dumps(dict(spec, name=CREW), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return p
@@ -367,7 +367,7 @@ def test_only_brain_dev_crew_counts_and_a_shadowed_brain_dev_is_said(tmp_path, h
     repo = make_project(tmp_path)
     assert (repo / ".kiro" / "agents" / "brain-dev.md").is_file()
     old = home / ".kiro" / "agents" / "brain-dev.json"
-    old.write_text((BRAINKIT / "crew" / "brain-dev.json").read_text(encoding="utf-8"), encoding="utf-8")
+    old.write_text(CREW_SRC.read_text(encoding="utf-8"), encoding="utf-8")
     old_bytes = old.read_bytes()
     cc = loaded(tmp_path)
     assert cc.crew_agent() == CREW
@@ -414,7 +414,7 @@ def test_brain_kits_own_crew_agent_names_are_followed_when_it_has_them(tmp_path,
     cc = loaded(tmp_path)
     cli = mod("bk").m("cli")
     src = tmp_path / "crew-src.json"
-    src.write_text(json.dumps(dict(json.loads((BRAINKIT / "crew" / "brain-dev.json").read_text(encoding="utf-8")),
+    src.write_text(json.dumps(dict(json.loads(CREW_SRC.read_text(encoding="utf-8")),
                                    name=CREW)), encoding="utf-8")
     where = tmp_path / "agents" / (CREW + ".json")
     where.parent.mkdir()

@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 
-from appkit import BRAINKIT, FakeGateway, commit_file, git_repo, mod, sh
+from appkit import BRAINKIT, CREW_SRC, FakeGateway, commit_file, git_repo, mod, sh
 
 HAVE_BRAINKIT = (BRAINKIT / "brainkit" / "__init__.py").is_file() and (
     BRAINKIT / "vendor" / "aidlc-lean" / "install.sh").is_file()
@@ -122,7 +122,7 @@ CREW_AGENT = "brain-dev-crew"
 def install_brain_dev(home: Path) -> Path:
     """~/.kiro/agents/brain-dev-crew.json, the agent the app opens its sessions with (E2E-1), as the app's fix writes it:
     brain-kit's crew spec under that name."""
-    src = json.loads((BRAINKIT / "crew" / "brain-dev.json").read_text(encoding="utf-8"))
+    src = json.loads(CREW_SRC.read_text(encoding="utf-8"))
     dst = home / ".kiro" / "agents" / (CREW_AGENT + ".json")
     dst.write_text(json.dumps(dict(src, name=CREW_AGENT), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return dst
