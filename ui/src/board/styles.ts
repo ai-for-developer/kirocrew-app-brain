@@ -606,7 +606,8 @@ ${legendSwatches}
 .kt-belt::before { content: ''; position: absolute; left: 8px; right: 8px; top: 50%; height: 4px; margin-top: -2px; border-radius: 2px;
   background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--muted) 38%, transparent) 0 10px, transparent 10px 17px); }
 .kt-belt > li { position: relative; z-index: 1; flex: none; }
-.kt-belt.has-older { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 56px); mask-image: linear-gradient(90deg, transparent 0, #000 56px); }
+.kt-belt.has-older { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 10px); mask-image: linear-gradient(90deg, transparent 0, #000 10px); }
+.kt-belt-older { margin-left: auto; }
 .kt-belt-end { display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 10px; font-size: .86em; font-weight: 750; border: 1px solid var(--border-strong, var(--border)); background: var(--bg-elevated, var(--card)); color: var(--muted); }
 .kt-belt-end.is-head { margin-left: auto; color: var(--kt-ok); border-color: var(--kt-ok); background: color-mix(in srgb, var(--kt-ok) 10%, var(--card)); box-shadow: 0 0 20px -6px var(--kt-ok); }
 .kt-belt-chip { display: flex; flex-direction: column; gap: 1px; padding: 5px 11px 6px; border-radius: 12px; transition: opacity .3s;

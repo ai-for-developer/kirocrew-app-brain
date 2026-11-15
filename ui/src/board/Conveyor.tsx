@@ -24,15 +24,52 @@ function beltEmpty(b: Pick<ReqBoard, 'source' | 'row' | 'runs'>): string {
   return '这里读不到运行分支的提交：brain-kit 没读出这个需求的记录'
 }
 
+/** The gap between two chips: the fade at the belt's left edge covers it, and the first chip in view starts after it. */
+export const BELT_EDGE = 10
+
+/** Where the belt opens: at its newest end, moved on to where a chip starts BELT_EDGE in, so the first chip in view is
+ * whole; the room that takes is added after the newest chip, which stays whole too. *starts*: each chip's left, in
+ * order, in the belt's own coordinates. */
+export function newestEnd(starts: number[], clientWidth: number, scrollWidth: number): { left: number; room: number } {
+  const max = scrollWidth - clientWidth
+  if (max <= 0) return { left: 0, room: 0 }
+  const left = starts.map((x) => x - BELT_EDGE).find((x) => x >= max) ?? max
+  return { left, room: left - max }
+}
+
+/** How many chips are left of the view, whole or in part. */
+const hiddenLeft = (el: HTMLElement) => [...el.querySelectorAll<HTMLElement>('.kt-belt-chip')].filter((c) => c.offsetLeft < el.scrollLeft).length
+
 export function Conveyor({ board, fresh, focus, onNode }: { board: ReqBoard; fresh: ReadonlySet<string>; focus: string | null; onNode: (id: string) => void }) {
   const belt = useRef<HTMLOListElement | null>(null)
-  const [older, setOlder] = useState(false)
+  const [older, setOlder] = useState(0)
+  // at the newest end as it opened: a resize opens it there again (a scroll the resize makes is not the person's); once
+  // the person moves it, it stays where they put it
+  const pinned = useRef(false)
   useEffect(() => {
     const el = belt.current
     if (!el) return
-    el.scrollLeft = el.scrollWidth
-    setOlder(el.scrollLeft > 4)
+    const open = () => {
+      el.style.paddingRight = ''
+      const pad = parseFloat(getComputedStyle(el).paddingRight) || 0
+      const { left, room } = newestEnd([...el.children].map((c) => (c as HTMLElement).offsetLeft), el.clientWidth, el.scrollWidth)
+      if (room) el.style.paddingRight = `${pad + room}px`
+      el.scrollTo?.({ left, behavior: 'instant' })
+      pinned.current = true
+      setOlder(hiddenLeft(el))
+    }
+    open()
+    if (typeof ResizeObserver === 'undefined') return
+    let width = el.clientWidth
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth === width) return
+      width = el.clientWidth
+      if (pinned.current) open()
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [board.belt.length])
+  const moved = () => void (pinned.current = false)
   const runs = new Map(board.runs.map((r) => [r.key as string, r]))
   const commits = board.belt.filter((x) => x.kind === 'commit')
   const merged = board.belt.some((x) => x.kind === 'merge')
@@ -48,6 +85,10 @@ export function Conveyor({ board, fresh, focus, onNode }: { board: ReqBoard; fre
           {commits.length} 次提交{byRun.map(([who, k]) => ` · ${who} ${k}`).join('')}{handovers ? ` · 交接 ${handovers}` : ''}{merged ? ' · 已合并' : ''}
           {after ? <> · <span className="tone-warn">交接后有人推了 {after} 次</span></> : null}
         </span>
+        {older > 0 && <button type="button" className="kt-btn is-small kt-belt-older" onClick={() => {
+          moved()
+          belt.current?.scrollTo({ left: 0, behavior: 'smooth' })
+        }}>← 左边还有 {older} 个</button>}
       </header>
       {board.belt.length === 0 ? (
         <p className="kt-dim kt-wall-empty">
@@ -55,7 +96,8 @@ export function Conveyor({ board, fresh, focus, onNode }: { board: ReqBoard; fre
           {board.source !== 'trace' && board.row.mr && <> <ExtLink href={board.row.mr.url}>{ACT.viewMr}</ExtLink></>}
         </p>
       ) : (
-        <ol className={`kt-belt${older ? ' has-older' : ''}`} ref={belt} onScroll={(e) => setOlder(e.currentTarget.scrollLeft > 4)}>
+        <ol className={`kt-belt${older ? ' has-older' : ''}`} ref={belt} onScroll={(e) => setOlder(hiddenLeft(e.currentTarget))}
+          onWheel={moved} onPointerDown={moved} onKeyDown={moved}>
           <li className="kt-belt-end is-base" title="运行分支从这里出发">从 <code>{board.base}</code></li>
           {board.belt.map((x) => {
             const k = beltKey(x)
