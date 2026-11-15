@@ -217,6 +217,51 @@ class LabelledGitLab(FakeGitLab):
         return super().__call__(method, url, headers, body)
 
 
+def test_right_after_the_hand_over_the_first_look_reads_the_mr_at_the_hand_over_commit(tmp_path, home):
+    """E2E-13: right after `brain handoff`, 需求详情 said 「等桥核对交接」 until the MR was read in the background, a label
+    that did not go on included. The first look at a hand-over commit the MR read has not seen reads the MR at once:
+    without its label nothing was handed over, with it the bridge has it, and 交付总览 and 需求详情 say the same."""
+    repo = make_project(tmp_path, kit={"gitlab": {"base": "https://gl.example", "project": "grp/pay"},
+                                       "bridge_user": "brain-bridge"})
+    wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
+    intent = json.loads((wt / "runs" / "PAY-1" / "run.json").read_text())["intent"]
+    st = wt / "aidlc-docs" / intent / "aidlc-state.md"
+    st.write_text(filled_notes(st.read_text(), "Status: Construction"))
+    sh("git", "-C", wt, "commit", "-qam", "notes")
+    tok = home / ".brain" / "gitlab-token"
+    tok.parent.mkdir(parents=True, exist_ok=True)
+    gl = LabelledGitLab("ai/alice/PAY-1-refund", None, [])
+    svc = make_service(tmp_path, [repo], transport=gl)
+
+    def hand_over(labels):
+        """`brain handoff --no-push` (it would talk to GitLab with a token), then the MR as GitLab has it."""
+        tok.unlink(missing_ok=True)
+        brain(wt, "handoff", "--no-push")
+        tok.write_text("t0ken-for-tests")
+        tok.chmod(0o600)
+        gl.sha, gl.labels = sh("git", "-C", wt, "rev-parse", "HEAD").stdout.strip(), labels
+        svc.repos["r1"].invalidate()
+
+    async def go():
+        await svc.start()
+        try:
+            before = await svc.overview("r1")
+            hand_over([])
+            unlabelled = [await svc.overview("r1"), await svc.requirement("r1", "PAY-1")]
+            hand_over(["ai-handoff"])
+            svc.repos["r1"].invalidate()
+            return before, unlabelled, [await svc.overview("r1"), await svc.requirement("r1", "PAY-1")]
+        finally:
+            await svc.stop()
+
+    before, (v1, d1), (v2, d2) = run(go())
+    assert before["rows"][0]["state"] == "local"
+    for v, d, want in ((v1, d1, ("handed_over", "you", "label_handoff")), (v2, d2, ("handed_over", "bridge", "none"))):
+        w = v["rows"][0]["waits"]
+        assert (v["rows"][0]["state"], w["who"], w["do"]) == want
+        assert d["row"]["waits"] == w, "需求详情's 此刻 is the overview's"
+
+
 def test_a_pushed_hand_over_without_its_label_is_nothing_handed_over(tmp_path, home):
     """brain-kit 72b278e: `brain handoff` exits 1 when it pushed but could not label (someone pushed after it, or
     GitLab did not record the push in time): nothing was handed over. The MR at the hand-over commit has no label: the

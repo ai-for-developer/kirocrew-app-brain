@@ -32032,6 +32032,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -34957,6 +34958,7 @@
      "text": "在会话里自己打这一行，批准代码生成计划",
      "who": "你",
      "line": "approve PLAN 5d1e7a90",
+     "comment": null,
      "mr_url": null,
      "session_url": "/chat?sid=brain-PAY-3-7f3a"
     },
@@ -37166,6 +37168,7 @@
      "text": "在 MR 上回答 D-2（选一个答案）：桥会把回答带回运行机",
      "who": "产品",
      "line": null,
+     "comment": null,
      "mr_url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/41",
      "session_url": null
     },
@@ -40356,6 +40359,7 @@
      "text": "在 MR 上回答 D-3（approve 通过 / reject 退回）：桥会把回答带回运行机",
      "who": "产品",
      "line": null,
+     "comment": "answer D-3 approve",
      "mr_url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/44",
      "session_url": null
     },
@@ -42579,6 +42583,7 @@
      "text": "接手被拒：标签是 bob 打的，不是负责人 alice\n改好后，在这个需求的分支上重新交接（交接会提交、推送、打标签）",
      "who": "你",
      "line": null,
+     "comment": null,
      "mr_url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/46",
      "session_url": null
     },
@@ -43012,6 +43017,7 @@
      "text": "carol 认领的，等 carol 开工",
      "who": "carol",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -43404,6 +43410,7 @@
      "text": "认领了，还没开工：在开需求里开工 PAY-8",
      "who": "你",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -45507,6 +45514,7 @@
      "text": "推上去了，但 MR 上没有交接标签：什么也没交出去。看一眼 MR，再交接一次",
      "who": "你",
      "line": null,
+     "comment": null,
      "mr_url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/52",
      "session_url": null
     },
@@ -46861,7 +46869,7 @@
         "subject": null,
         "at": null
        },
-       "note": "verify PASS：1 项",
+       "note": "自动检查通过（1 项）",
        "outputs": [
         {
          "path": "aidlc-docs/261107-refund-stats/construction/build-and-test/build-and-test-summary.md",
@@ -47847,6 +47855,7 @@
      "text": "会话空着，轮到你回话。Lean 做完了「构建测试」，下一步是「发布」。\n先开一个新会话做审查（这个会话写了代码，不能自己审），审查写好再回这个会话接着发布",
      "who": "你",
      "line": "Review intent 261107-refund-stats against its requirements, design and plans, using the diff, and write construction/build-and-test/review.md.",
+     "comment": null,
      "mr_url": null,
      "session_url": "/chat?sid=brain-PAY-1-3d8e"
     },
@@ -48816,6 +48825,26 @@
      "child": null
     },
     {
+     "id": "functional-design/app",
+     "stage": "functional-design",
+     "n": "3.1",
+     "unit": "app",
+     "phase": "construction",
+     "title": "功能设计",
+     "sub": "app 的功能设计",
+     "icon": "design",
+     "status": "waiting",
+     "doing": "等前一个阶段",
+     "since": null,
+     "history": [],
+     "spans": [],
+     "marks": [],
+     "rounds": [],
+     "gates": [],
+     "run": null,
+     "child": null
+    },
+    {
      "id": "code-generation/app",
      "stage": "code-generation",
      "n": "3.5",
@@ -49394,6 +49423,7 @@
      "text": "在会话里自己打这一行，批准需求和设计",
      "who": "你",
      "line": "approve INCEPTION 3fa2c1d0",
+     "comment": null,
      "mr_url": null,
      "session_url": "/chat?sid=brain-PAY-16-4c7d"
     },
@@ -53577,20 +53607,62 @@
      }
     },
     {
-     "at": 1794128101,
+     "at": 1794128160,
      "lean": {
-      "stage": "release",
-      "stage_label": "发布",
-      "stage_n": "✓",
+      "stage": "nfr-design",
+      "stage_label": "非功能设计",
+      "stage_n": "3.2",
       "stage_state": "todo",
-      "done": 10,
+      "done": 6,
       "total": 11,
-      "done_n": 4,
-      "skipped_n": 6,
+      "done_n": 3,
+      "skipped_n": 3,
       "next": {
-       "id": "release",
-       "label": "发布",
-       "n": "✓"
+       "id": "nfr-design",
+       "label": "非功能设计",
+       "n": "3.2"
+      },
+      "skipped_phases": [
+       "构思"
+      ]
+     }
+    },
+    {
+     "at": 1794128180,
+     "lean": {
+      "stage": "infrastructure-design",
+      "stage_label": "基础设施设计",
+      "stage_n": "3.4",
+      "stage_state": "todo",
+      "done": 7,
+      "total": 11,
+      "done_n": 3,
+      "skipped_n": 4,
+      "next": {
+       "id": "infrastructure-design",
+       "label": "基础设施设计",
+       "n": "3.4"
+      },
+      "skipped_phases": [
+       "构思"
+      ]
+     }
+    },
+    {
+     "at": 1794128200,
+     "lean": {
+      "stage": "code-generation",
+      "stage_label": "代码生成",
+      "stage_n": "3.5",
+      "stage_state": "todo",
+      "done": 8,
+      "total": 11,
+      "done_n": 3,
+      "skipped_n": 5,
+      "next": {
+       "id": "code-generation",
+       "label": "代码生成",
+       "n": "3.5"
       },
       "skipped_phases": [
        "构思"
@@ -53604,9 +53676,9 @@
       "stage_label": "代码生成",
       "stage_n": "3.5",
       "stage_state": "started",
-      "done": 9,
+      "done": 8,
       "total": 11,
-      "done_n": 4,
+      "done_n": 3,
       "skipped_n": 5,
       "next": {
        "id": "code-generation",
@@ -53621,18 +53693,18 @@
     {
      "at": 1794132240,
      "lean": {
-      "stage": "release",
-      "stage_label": "发布",
-      "stage_n": "✓",
-      "stage_state": "todo",
-      "done": 10,
+      "stage": "build-and-test",
+      "stage_label": "构建测试",
+      "stage_n": "3.6",
+      "stage_state": "started",
+      "done": 9,
       "total": 11,
-      "done_n": 5,
+      "done_n": 4,
       "skipped_n": 5,
       "next": {
-       "id": "release",
-       "label": "发布",
-       "n": "✓"
+       "id": "build-and-test",
+       "label": "构建测试",
+       "n": "3.6"
       },
       "skipped_phases": [
        "构思"
@@ -53646,9 +53718,9 @@
       "stage_label": "代码生成",
       "stage_n": "3.5",
       "stage_state": "started",
-      "done": 9,
+      "done": 8,
       "total": 11,
-      "done_n": 4,
+      "done_n": 3,
       "skipped_n": 5,
       "next": {
        "id": "code-generation",
@@ -53662,6 +53734,27 @@
     },
     {
      "at": 1794134940,
+     "lean": {
+      "stage": "build-and-test",
+      "stage_label": "构建测试",
+      "stage_n": "3.6",
+      "stage_state": "started",
+      "done": 9,
+      "total": 11,
+      "done_n": 4,
+      "skipped_n": 5,
+      "next": {
+       "id": "build-and-test",
+       "label": "构建测试",
+       "n": "3.6"
+      },
+      "skipped_phases": [
+       "构思"
+      ]
+     }
+    },
+    {
+     "at": 1794135180,
      "lean": {
       "stage": "release",
       "stage_label": "发布",
@@ -54300,6 +54393,7 @@
      "text": "在 MR 上回答 D-3（approve 通过 / reject 退回）：桥会把回答带回运行机",
      "who": "产品",
      "line": null,
+     "comment": "answer D-3 approve",
      "mr_url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/53",
      "session_url": null
     },
@@ -56757,6 +56851,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -59066,6 +59161,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -61306,6 +61402,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -61686,6 +61783,7 @@
      "text": "认领了，还没开工：在开需求里开工 PAY-14",
      "who": "你",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -64920,6 +65018,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -68348,6 +68447,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -71785,6 +71885,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -75086,6 +75187,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -77810,6 +77912,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -81382,6 +81485,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -84636,6 +84740,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -88210,6 +88315,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -91611,6 +91717,7 @@
      "text": "去 Brain 页回写这次的 1 条新知识：先预览，再写到新分支",
      "who": "别人",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -93659,6 +93766,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -94965,6 +95073,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -96440,6 +96549,7 @@
      "text": "在会话里自己打这一行，批准设计",
      "who": "别人",
      "line": "approve DESIGN db94cea5",
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -98257,6 +98367,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -100479,6 +100590,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -100896,6 +101008,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -102990,6 +103103,7 @@
      "text": "在 MR 上回答 D-2（选一个答案）：桥会把回答带回运行机",
      "who": "产品",
      "line": null,
+     "comment": null,
      "mr_url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/41",
      "session_url": null
     },
@@ -106185,6 +106299,7 @@
      "text": "在 MR 上回答 D-3（approve 通过 / reject 退回）：桥会把回答带回运行机",
      "who": "产品",
      "line": null,
+     "comment": "answer D-3 approve",
      "mr_url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/44",
      "session_url": null
     },
@@ -110096,6 +110211,7 @@
      "text": "",
      "who": "",
      "line": null,
+     "comment": null,
      "mr_url": null,
      "session_url": null
     },
@@ -112293,6 +112409,7 @@
      "text": "在 MR 上回答（选一个答案）：桥会把回答带回运行机",
      "who": "别人",
      "line": null,
+     "comment": null,
      "mr_url": "https://gitlab.example.com/shop/shop-order/-/merge_requests/19",
      "session_url": null
     },
@@ -117833,7 +117950,7 @@
       "phase": "construction",
       "state": "done",
       "units": [],
-      "note": "verify PASS：1 项",
+      "note": "自动检查通过（1 项）",
       "at": 1794133500
      },
      {
@@ -118123,7 +118240,7 @@
       "at": "2026-11-08T10:25:00Z",
       "kind": "stage",
       "label": "构建测试：完成",
-      "detail": "verify PASS：1 项",
+      "detail": "自动检查通过（1 项）",
       "who": null,
       "src": "aidlc-docs/audit/L-3F2A1C.jsonl"
      },
@@ -136661,7 +136778,7 @@
     "phase": "construction",
     "state": "done",
     "units": [],
-    "note": "verify PASS：1 项",
+    "note": "自动检查通过（1 项）",
     "at": 1794133500
    },
    {

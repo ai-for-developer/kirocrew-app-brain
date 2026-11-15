@@ -77,6 +77,14 @@ def me_line(repos: list[dict[str, Any]], token: bool, env: str) -> dict[str, Any
             "how": "GitLab 令牌（%s）" % ("有" if token else "没有") + ("；" + said if said else "")}
 
 
+def last_record(info: Any, tail: dict[str, Any] | None) -> float | None:
+    """When a session last did something, by its records' own times (the app's message, the agent's last reply or
+    call), until the whole transcript is read: never the moment this app noticed a change."""
+    ats = [info.sent_at, (tail or {}).get("said_at"), ((tail or {}).get("call") or {}).get("at")]
+    ats = [a for a in ats if isinstance(a, (int, float)) and not isinstance(a, bool) and a > 0]
+    return max(ats) if ats else None
+
+
 class Service:
     def __init__(self, ctx: Any, *, sessions: Any = None, transport: Any = None, now: Callable[[], float] = time.time,
                  signer_kick: Callable[[], Any] | None = None, sign_timeout: float | None = None) -> None:
@@ -106,6 +114,7 @@ class Service:
         self.team: Any = None
         self._tasks: list[asyncio.Task] = []
         self._mr_wanted: dict[tuple, tuple[str, str]] = {}   # (base, project, branch) -> (scope, kit bridge_user)
+        self._mr_seen: set[tuple] = set()      # (project, branch, hand-over commit) whose MR was read at first sight
         self._eval: dict[str, tuple] = {}
         self._eval_running: set[str] = set()
         self._trace: dict[tuple, tuple] = {}
@@ -390,14 +399,15 @@ class Service:
             if not info.key or not info.slot:
                 continue
             st = self.sessions.slot_stats(info.slot) or {}
+            tail = self.sessions.slot_tail(info.slot)
             by.setdefault(info.key, []).append({
                 "slot": info.slot, "title": info.title, "agent": info.agent, "kind": info.kind or "local",
                 "credits": self.sessions.slot_credits(info.slot),   # the very number credits_by_key adds up
                 "turns": int(st.get("turns") or info.turns or 0), "busy": bool(st.get("busy")),
-                "awaiting": bool(st.get("awaiting")), "last_activity": st.get("last_activity") or info.last_activity,
+                "awaiting": bool(st.get("awaiting")), "last_activity": st.get("last_activity") or last_record(info, tail),
                 "opened_at": st.get("opened_at") or info.started, "project": info.cwd or None,
                 "url": "/chat?sid=%s" % info.slot, "error": info.error, "missing": bool(st.get("missing")),
-                "id": info.id, "tail": self.sessions.slot_tail(info.slot)})
+                "id": info.id, "tail": tail})
         return {"by": by, "credits": self.sessions.credits_by_key()}
 
     @staticmethod
@@ -432,6 +442,12 @@ class Service:
         if run.get("handoff") and f.get("branch") and base and project:
             self._mr_wanted[(base, project, f["branch"])] = (scope, str(repo.cfg.get("bridge_user") or ""))
             mr = self.mr.get(project, f["branch"])
+            seen = (project, f["branch"], f.get("tip"))
+            if (mr or {}).get("sha") != f.get("tip") and seen not in self._mr_seen and repo.is_handover_tip(f):
+                # a hand-over just made: read its MR now, so a label that did not go on is said at once
+                self._mr_seen.add(seen)
+                mr = self.mr.refresh(base, project, f["branch"], transport=self.transport,
+                                     bridge_user=str(repo.cfg.get("bridge_user") or "") or None)
         bot = 0
         if run.get("handoff") and not mr:
             bot = repo.bot_commits_since((run.get("handoff") or {}).get("local_head"), f.get("origin_sha"))
@@ -750,10 +766,13 @@ class Service:
         mr = self.mr.get(project, f["branch"]) if (base and project and f.get("branch")) else None
         can_post = own and bool(base and project) and self._token_present()
         questions = []
-        pq = detail.park_question(f.get("park"), answerable=own and not run.get("handoff") and bool(
-            self._live(snap["by"].get(scope, []))), via="session")
-        if pq:
-            questions.append(pq)
+        handed = bool(run.get("handoff"))
+        pq = detail.park_question(f.get("park"), answerable=own and not handed and bool(
+            self._live(snap["by"].get(scope, []))), via="session", handed=handed,
+            mr_url=(row.get("mr") or {}).get("url"))
+        posted = str(f.get("park_sha") or "")[:12]
+        if pq and not (handed and posted and any(q.get("park") == posted for q in (mr or {}).get("questions") or [])):
+            questions.append(pq)    # once the bridge posted it, its D-n on the MR is the same question
         questions += detail.mr_questions(mr, own=own, can_post=can_post)
         tl = self._timeline(repo, f, snap, scope)
         if parts is not None:
@@ -800,7 +819,8 @@ class Service:
         if got and time.monotonic() - got[0] < TRACE_TTL_S:
             tl = dict(got[1])
         else:
-            src_repo, ref = (f["worktree"], None) if f.get("worktree") else (repo.path, f.get("ref"))
+            behind = f.get("where") == "worktree" and f.get("ref")      # origin's run branch is ahead of the worktree
+            src_repo, ref = (f["worktree"], None) if f.get("worktree") and not behind else (repo.path, f.get("ref"))
             c = snap["credits"].get(scope)
             tl = detail.timeline(src_repo, repo.cfg, f["key"], ref=ref, events=f.get("events") or [],
                                  credits={"runs": {f["key"]: {"credits": c}}} if c is not None else None,

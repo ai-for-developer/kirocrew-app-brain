@@ -19,7 +19,7 @@ from typing import Any, Mapping, Optional, Tuple
 
 from . import lean_view, problems, runs, stages
 from . import outputs as outputs_mod
-from .deliveries import ASK_NAME, ASK_WHO, CAT_LABEL, CAT_ORDER, KIND_LABEL, category, owns
+from .deliveries import ASK_NAME, ASK_WHO, CAT_LABEL, CAT_ORDER, category, owns, park_waiting, question_label
 
 RUNNER_NO_DESC = "运行机还没开始做：它做完提交以后才有变更说明"
 # Lean's approval kinds the board says, in words (CR-<team>-<n> is left out)
@@ -262,7 +262,7 @@ def events_of(f: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any]
     for q in ((t or {}).get("actions") or {}).get("questions") or []:
         at, st = _epoch(q.get("at")), q.get("status")
         s = side(at)
-        label = KIND_LABEL.get(str(q.get("kind")), q.get("kind") or "问题")
+        label = question_label(q.get("kind"), q.get("lean_request"))
         if st == "waiting":
             asker = you if s == "local" else _asked(you, q.get("ask"), q.get("kind"), q.get("lean_request"))[1]
             add(at, "question", "停下问%s：%s" % (asker.rstrip(), label), _side=s)
@@ -272,7 +272,7 @@ def events_of(f: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any]
     def on_mr(did: Any, kind: Any, lean: Any, at: float | None, ask: Any = None) -> None:
         """A question the bridge put on the MR for the runner's run: of whom its park.json asks."""
         asker = _asked(you, ask or _park_for(parks, at, kind=kind).get("ask"), kind, lean)[1]
-        add(at, "question", "%s 在 MR 上问%s：%s" % (did, asker.rstrip(), KIND_LABEL.get(str(kind), kind or "问题")),
+        add(at, "question", "%s 在 MR 上问%s：%s" % (did, asker.rstrip(), question_label(kind, lean)),
             _side="runner")
 
     decisions = [d for d in (t or {}).get("decisions") or [] if d.get("source") == "bridge"] or [
@@ -497,7 +497,7 @@ def _quiet(evs: list[dict[str, Any]], records: list[dict[str, Any]], who: runs.A
            rs: list[runs.RunView]) -> dict[str, list[tuple[float, float | None]]]:
     """When each run's session sat waiting for its person: before each reply the person typed in this machine's
     session, since that run's last record (a Lean record, a commit) before it; and now, since its state says it waits
-    on a person (a quiet session, a tool call, a question)."""
+    on a person (a quiet session, a tool call, a question, no session here to work in)."""
     seen = sorted(x.get("_at", x.get("at")) for x in records if who.run_of(x) == runs.LOCAL)
     out: dict[str, list[tuple[float, float | None]]] = {}
     for e in evs:
@@ -505,7 +505,7 @@ def _quiet(evs: list[dict[str, Any]], records: list[dict[str, Any]], who: runs.A
         if last is not None:
             out.setdefault(runs.LOCAL, []).append((last, e["at"]))
     for r in rs:
-        if r.now is not None and r.now.status == "awaiting_approval" and r.now.since is not None:
+        if r.now is not None and (r.now.status == "awaiting_approval" or r.now.do) and r.now.since is not None:
             out.setdefault(r.key, []).append((r.now.since, None))
     return out
 
@@ -572,7 +572,8 @@ def stage_graph(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None
     way = stages.Way(child=family is not None and family.role == "child",
                      children={c.unit: (c.key, c.state, c.owner) for c in (family.children if family else ())
                                if c.unit and c.state != "merged"},
-                     over=over, proposals=proposals, you=you, blind=runner_blind(f, row))
+                     over=over, proposals=proposals, you=you, blind=runner_blind(f, row),
+                     next=((row.get("lean") or {}).get("next") or {}).get("id") if lean and over is None else None)
     if family is not None and family.role == "child":     # unit-of-work.md is its big one's: it builds one unit
         units = [u for u in units if u.name == family.unit]
     planned = list(units) + [stages.UnitPlan(c.unit) for c in (family.children if family else ()) if c.unit]
@@ -987,21 +988,31 @@ def _accept(f: dict[str, Any], row: dict[str, Any], nodes: list[stages.Node], ch
     do = _do_of(row, f, nodes, hand, local, merged)
     where = waits.get("where") or ("app" if do == "start" else "mr" if hand else "session")
     who = {"product": "产品", "people": "别人", "builder": "开发的人"}.get(str(waits.get("who")), you.strip())
-    step = {"text": "", "who": "", "line": None, "mr_url": None, "session_url": None}
+    blank = {"text": "", "who": "", "line": None, "comment": None, "mr_url": None, "session_url": None}
+    step = blank
+    park = f.get("park") or {}
+    # the question waiting on the MR (D-n), else the Lean approval the runner stopped for that the bridge has not
+    # posted yet
+    lean = str(park.get("lean_request") or "") if hand and park_waiting(park) else ""
     q = _open_question(mr, team_decisions, t)
-    on_mr = "在 MR 上回答%s（%s）：桥会把回答带回运行机" % (
-        " " + q["id"] if q.get("id") else "",
-        " / ".join(str(o.get("id")) for o in q.get("options") or [] if isinstance(o, dict) and o.get("id"))
-        or ("approve 通过 / reject 退回" if do in ("accept", "approve") or q.get("kind") == "acceptance" else "选一个答案"))
+    unposted = not q and bool(lean) and all(x["lean"] != lean for x in _mr_questions(t, team_decisions, mr))
+    q = park if unposted else q
+    opts = " / ".join(str(o.get("id")) for o in q.get("options") or [] if isinstance(o, dict) and o.get("id"))
+    yes_no = not opts and (do in ("accept", "approve") or q.get("kind") == "acceptance" or bool(q.get("lean_request")))
+    how = opts or ("approve 通过 / reject 退回" if yes_no else "选一个答案")
+    on_mr = ("在 MR 上回答%s（%s）：桥会把回答带回运行机" % (" " + q["id"] if q.get("id") else "", how) if not unposted
+             else "等桥把它贴到 MR 上，再在那里回答（%s）：桥会把回答带回运行机" % how)
     if do == "approve" and where != "mr":
         pend = next((a for a in f.get("approvals") or [] if a.get("state") == "pending" and a.get("line")), None)
         if pend:
             step = {"text": "在会话里自己打这一行，批准%s" % GATE_KIND_LABEL.get(pend["kind"], pend["kind"]), "who": who,
                     "line": pend["line"], "mr_url": None, "session_url": session_url}
     elif do in ("approve", "accept") or (do == "answer" and where == "mr"):
-        step = {"text": on_mr, "who": who, "line": None, "mr_url": mr_url, "session_url": None}
+        step = {"text": on_mr, "who": who, "line": None,
+                "comment": "answer %s approve" % q["id"] if q.get("id") and yes_no else None,
+                "mr_url": mr_url, "session_url": None}
     elif do == "answer":
-        step = {"text": "在会话里回答它的问题（%s）" % KIND_LABEL.get(str((f.get("park") or {}).get("kind")), "问题"),
+        step = {"text": "在会话里回答它的问题（%s）" % question_label(park.get("kind"), park.get("lean_request")),
                 "who": who, "line": None, "mr_url": None, "session_url": session_url}
     elif do == "reply":
         text, line = _reply_step(row, f, you)
@@ -1022,6 +1033,7 @@ def _accept(f: dict[str, Any], row: dict[str, Any], nodes: list[stages.Node], ch
     elif do == "write_back" and proposals:
         step = {"text": "去 Brain 页回写这次的 %d 条新知识：先预览，再写到新分支" % proposals, "who": who, "line": None,
                 "mr_url": None, "session_url": None}
+    step = {**blank, **step}
     step["text"] = _lines(step["text"]) if step["text"] else ""
     counts = {c: 0 for c in CAT_ORDER}
     for d in decisions:

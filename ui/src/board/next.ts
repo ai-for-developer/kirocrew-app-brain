@@ -19,6 +19,8 @@ export interface Step {
   hint?: string
   /** the line the person types themselves in the session */
   line?: string | null
+  /** what they write on the MR after the hand-over (`answer D-3 approve`) */
+  comment?: string | null
   /** Lean's next step is a review in a new session (the session that wrote the code may not review it): 开审查会话 */
   review?: boolean
   /** the line 开审查会话 says to the new session (Lean's own), to copy for a session opened by hand */
@@ -92,7 +94,7 @@ export function nextOf(b: ReqBoard): Next {
   const session = localSession(b)
   const text = st.text || w.text
   if (text && d !== 'none' && d !== 'watch') {
-    const main: Step = { id: 'main', do: d, text, line: st.line, mr: st.mr_url, session: st.session_url }
+    const main: Step = { id: 'main', do: d, text, line: st.line, comment: st.comment ?? null, mr: st.mr_url, session: st.session_url }
     if (d === 'reply') {
       const next = leanOf(b.row.lean).next
       main.session = st.session_url ?? session

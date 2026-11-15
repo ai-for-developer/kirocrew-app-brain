@@ -40,15 +40,21 @@ export function Paths({ text }: { text: string | null | undefined }) {
  * backtick shows (brain-kit cuts long table cells at a length, wherever that falls). */
 const closeCut = (text: string) => ((text.match(/`/g)?.length ?? 0) % 2 && /…$/.test(text) ? text.replace(/…$/, '`…') : text)
 
-/** One line's `code`, **bold** and [links](…) (their words only); a path in it breaks only at a 「/」. */
-export function Inline({ text: raw }: { text: string | null | undefined }) {
+/** a file name or a path (calc.py, tests/test_calc.py, aidlc-docs/): not code like subtract(a, b) or a - b */
+const FILE = /^[\w.~@+-]*(?:\/[\w.~@+-]*)+$|^[\w~@+-][\w.~@+-]*\.[A-Za-z][A-Za-z0-9]{0,7}$/
+
+/** One line's `code`, **bold** and [links](…) (their words only); a path in it breaks only at a 「/」. *files*: only a
+ * file name's `code` is monospace, other code reads as the words around it (a record a person reads, not types). */
+export function Inline({ text: raw, files = false }: { text: string | null | undefined; files?: boolean }) {
   if (!raw) return null
   const text = closeCut(raw)
   const out: ReactNode[] = []
   let last = 0
   for (const m of text.matchAll(INLINE)) {
     if (m.index > last) out.push(<Paths key={`t${m.index}`} text={text.slice(last, m.index)} />)
-    out.push(m[1] !== undefined ? <code key={m.index}><Paths text={m[1]} /></code> : m[2] !== undefined ? <b key={m.index}><Paths text={m[2]} /></b> : m[3])
+    const code = m[1] !== undefined && (!files || FILE.test(m[1]))
+    out.push(code ? <code key={m.index}><Paths text={m[1]} /></code> : m[1] !== undefined ? <Paths key={m.index} text={m[1]} />
+      : m[2] !== undefined ? <b key={m.index}><Paths text={m[2]} /></b> : m[3])
     last = m.index + m[0].length
   }
   if (last < text.length) out.push(<Paths key="end" text={text.slice(last)} />)

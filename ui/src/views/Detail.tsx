@@ -31,13 +31,13 @@ import type {
 } from '../types'
 import { APPROVAL_META, Icon, LoadState, MrLink, STAGE_META, StateChip, TYPE_IT_YOURSELF, isOpenQuestion } from '../ui'
 import {
-  ACT, CHECK_GROUP_NAME, CHILD_STATE_NAME, DECIDED_BY, DO_NAME, FAMILY_ACT, WHERE_NAME, approvalName, leanProgress, missingSourceName,
+  ACT, CHECK_GROUP_NAME, CHILD_STATE_NAME, DECIDED_BY, DO_NAME, FAMILY_ACT, WHERE_NAME, approvalName, leanNow, missingSourceName,
   sourceName, waitsOn,
 } from '../vocab'
 import { Inline, Paths, pathPieces } from './Markdown'
 import { FamilyPanel, useFamily, type FamilyCtl } from './Family'
 import type { ViewProps } from './props'
-import { EntryChip, MrDescCard, QuestionCard, ReviewButton, ReviewSay, useCopy } from './Question'
+import { EntryChip, MrComment, MrDescCard, QuestionCard, ReviewButton, ReviewSay, useCopy } from './Question'
 import { PART_LABEL, PART_VAR, StreamCard, splitOf, valueStream, type Part } from './Stream'
 import { NotFound, OnRunner, ReqSwitch, useOnRunner } from './ReqSwitch'
 import { runWords } from './Team'
@@ -222,6 +222,8 @@ interface Now {
   /** the open MR question (D-n) it waits on, and how it is answered: its options (A / B …), else approve / reject */
   question: string | null
   choices: string
+  /** what to write on the MR to answer it (`answer D-3 approve`): the board's step */
+  comment: string | null
   /** a refused hand-over: how to hand it over again, as the board's step says it (its reason line is the text already) */
   how: string | null
   /** Lean's next step is its review in a new session, and the line 开审查会话 says to it */
@@ -243,6 +245,7 @@ function nowOf(x: RequirementDetail, board: ReqBoard | null, live: SessionRow | 
     mrUrl: board?.accept.step.mr_url ?? open?.mr_url ?? x.row.mr?.url ?? null,
     question: open?.id ?? null,
     choices: open?.options.length ? `选 ${open.options.map((o) => o.id).join(' / ')}` : 'approve / reject',
+    comment: board?.accept.step.comment ?? null,
     how: step === 'redo_handoff' && board?.row.waits.do === 'redo_handoff' ? board.accept.step.text.split('\n').filter((l) => l && !l.startsWith('接手被拒')).join(' ') || null : null,
     review: step === 'reply' ? reviewOf(x, board) : null,
   }
@@ -565,7 +568,14 @@ function NowBar({ x, now, at, live, canOpen, repo, reqKey, onStart, onAnswer, on
     case 'answer':
       if (onMr) {
         body = mine
-          ? <p>{now.do === 'answer' ? '问题已经发到 MR 上了' : '交接以后，批准在 MR 上回答'}{now.question ? `：回答 ${now.question}` : ''}（{now.choices}）。</p>
+          ? (
+            <>
+              <p>{now.question
+                ? `${now.do === 'answer' ? '问题已经发到 MR 上了' : '交接以后，批准在 MR 上回答'}：回答 ${now.question}（${now.choices}）。`
+                : `桥把它贴到 MR 上以后，在那里回答（${now.choices}）。`}</p>
+              {now.comment && <MrComment comment={now.comment} />}
+            </>
+          )
           : <p>{whoThen(now.whoSay, `在 MR 上${verb}${now.question ? ` ${now.question}` : ''}`)}，你不用做什么；{verb}以后运行机接着做。</p>
         acts = mrLink
       } else if (now.line) {
@@ -709,13 +719,13 @@ function Cards({ x, board, at, localOnly, replying, onBoard, onSessions }: {
         <div className="cto-eyebrow">周期</div>
         <div className="cto-value" data-testid="item-cycle">{start ? fmtSpan((end ?? at) - start) : '—'}</div>
         <div className="cto-desc">{start ? `${fmtTime(start)} 开工` : '开工时间没记下'}{end ? ` → ${fmtTime(end)} 合并` : ' → 进行中'}</div>
-        <div className="kt-segs cto-segs" role="img" aria-label={`Lean：${leanProgress(lean)}`}>
+        <div className="kt-segs cto-segs" role="img" aria-label={`Lean：${leanNow(x.row)}`}>
           {onWay(x).map((s) => (
             <i key={s.id} title={`${s.n} ${s.label} · ${lean.next?.id === s.id && s.state === 'todo' ? '下一步' : STAGE_META[s.state]?.label ?? s.state}`}
               className={s.state === 'done' ? 'is-pass' : s.state === 'skipped' ? 'is-skip' : s.state === 'started' ? 'is-run' : lean.next?.id === s.id ? 'is-next' : 'is-todo'} />
           ))}
         </div>
-        <div className="cto-legend"><span data-testid="lean-progress">Lean {leanProgress(lean)}</span></div>
+        <div className="cto-legend"><span data-testid="lean-progress">Lean {leanNow(x.row)}</span></div>
       </article>
       <article className="cto-card" aria-label="时间花在哪">
         <div className="cto-eyebrow">时间花在哪</div>
@@ -879,7 +889,7 @@ function LeanCard({ x, sessionUrl, mrUrl, waiter }: { x: RequirementDetail; sess
     <section className="cto-card" aria-label="Lean 进度">
       <div className="cto-chart-head">
         <h3>AI-DLC Lean</h3>
-        <span className="cto-dim">{leanProgress(lean)} · {onMr ? '交接以后，审批在 MR 上回答' : '审批的那一行由你在会话里自己打，app 不替你发'}</span>
+        <span className="cto-dim">{leanNow(x.row)} · {onMr ? '交接以后，审批在 MR 上回答' : '审批的那一行由你在会话里自己打，app 不替你发'}</span>
       </div>
       <div className="br-lean-phases" data-testid="lean-phases">
         {phases.map((p) => {
@@ -921,10 +931,13 @@ function LeanCard({ x, sessionUrl, mrUrl, waiter }: { x: RequirementDetail; sess
                 </div>
                 {a.state === 'pending' && (onMr
                   ? (
-                    <p className="br-note">
-                      {whoThen(waiter ?? '', `在 MR 上${accept ? '验收' : '回答'}${q?.id ? ` ${q.id}` : ''}`)}（approve / reject），{waiter ? '你不用做什么' : '这里不能回答'}。
-                      {url && /^https?:\/\//i.test(url) && <> <a className="br-link" href={url} target="_blank" rel="noopener noreferrer">{waiter ? ACT.viewMr : accept ? ACT.acceptOnMr : ACT.answerOnMr} <Icon name="ExternalLink" size={12} /></a></>}
-                    </p>
+                    <>
+                      <p className="br-note">
+                        {whoThen(waiter ?? '', `在 MR 上${accept ? '验收' : '回答'}${q?.id ? ` ${q.id}` : ''}`)}（approve / reject），{waiter ? '你不用做什么' : '这里不能回答'}。
+                        {url && /^https?:\/\//i.test(url) && <> <a className="br-link" href={url} target="_blank" rel="noopener noreferrer">{waiter ? ACT.viewMr : accept ? ACT.acceptOnMr : ACT.answerOnMr} <Icon name="ExternalLink" size={12} /></a></>}
+                      </p>
+                      {!waiter && q?.id && isOpenQuestion(q) && <MrComment comment={`answer ${q.id} approve`} />}
+                    </>
                   )
                   : a.line && <ApprovalLine line={a.line} sessionUrl={sessionUrl} onOpen={(u) => navigate(u)} />)}
               </li>
@@ -1238,7 +1251,9 @@ function clock(iso: string | null): string {
 const PSEUDONYM = /^[A-Z]-[0-9A-F]{4,}$/
 
 /** An item of the timeline in words: the app's own records said plainly (no slot ids, commands or flags). */
-function itemText(it: TimelineItem): { label: string; detail: string | null; title: string | null } {
+function itemText(it: TimelineItem): { label: string; detail: string | null; title: string | null; english?: string } {
+  // a stage's note the AI wrote in English: the line stays Chinese, its words folded (Lean's own lines come in words)
+  if (it.kind === 'stage' && it.detail && !/[\u4e00-\u9fff]/.test(it.detail)) return { label: it.label, detail: null, title: null, english: it.detail }
   // the write-back's detail is the branch it wrote
   if (it.kind === 'app' && it.label.startsWith('回写 Brain') && it.detail) return { label: it.label, detail: `分支 ${it.detail}`, title: null }
   if (it.kind === 'commit' && it.detail && /^[0-9a-f]{7,40}$/.test(it.detail)) return { label: it.label, detail: it.detail.slice(0, 8), title: it.detail }
@@ -1307,9 +1322,10 @@ function TimelineCard({ x, showMissing, me }: { x: RequirementDetail; showMissin
                     <span title={k.label}><RoleIcon role={k.icon} size={16} /><span className="br-sr">{k.label}</span></span>
                     <span>
                       <span className="br-strong"><Paths text={s.label} /></span>
-                      {s.detail && !long && <span className="br-dim"> · <Paths text={s.detail} /></span>}
+                      {s.detail && !long && <span className="br-dim"> · <Inline text={s.detail} files /></span>}
                       {who && <span className="br-dim br-small"> · {who}</span>}
-                      {long && <details><summary className="br-small">看说明</summary><span className="br-dim br-small"><Inline text={s.detail} /></span></details>}
+                      {long && <details><summary className="br-small">看说明</summary><span className="br-dim br-small"><Inline text={s.detail} files /></span></details>}
+                      {s.english && <details><summary className="br-small">AI 写的原话（英文）</summary><span className="br-dim br-small">{s.english}</span></details>}
                     </span>
                   </li>
                 )

@@ -2803,6 +2803,7 @@
       "text": "在会话里自己打这一行，批准代码生成计划",
       "who": "你",
       "line": "approve PLAN 5d1e7a90",
+      "comment": null,
       "mr_url": null,
       "session_url": "/chat?sid=brain-PAY-3-7f3a"
     },

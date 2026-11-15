@@ -173,6 +173,45 @@ describe('需求详情', () => {
     expect(within(release).queryByTestId('type-line')).toBeNull()
   })
 
+  test('UI-23: an approval the runner asks for is answered on the MR, with the comment to write there, never in a session', async () => {
+    const parked = (d: RequirementDetail) => {
+      handedOver(d)
+      d.row.state = 'parked'
+      d.row.waits = { who: 'you', text: '等你在 MR 上回答（approve / reject）', line: null, raw: '', do: 'answer', since: AT - 600, where: 'mr' }
+      d.lean.approvals[3] = { ...d.lean.approvals[3], kind: 'PLAN', line: LINE }
+    }
+    const plan = { kind: 'clarify', kind_label: '代码生成计划审批', lean_request: 'PLAN 5d1e7a90', question: '请批准 app 的代码生成计划' }
+    withDetail((d) => {
+      parked(d)
+      d.questions = [mrQuestion({ ...plan, source: 'runner', id: null, state: 'waiting' })]
+    })
+    renderDetail()
+    const q = within(await screen.findByRole('region', { name: '问题和回答' })).getByTestId('question')
+    expect(q).toHaveTextContent('运行机代码生成计划审批等回答')
+    expect(q).toHaveTextContent('在 MR 上回答（approve / reject），桥会把回答带回运行机。桥把它贴到 MR 上以后才有编号。')
+    expect(q).not.toHaveTextContent('在会话里')
+    expect(now()).toHaveTextContent('桥把它贴到 MR 上以后，在那里回答（approve / reject）。')
+    expect(within(await pendingApproval()).queryByTestId('type-line')).toBeNull()
+    cleanup()
+
+    const b = fx.board()
+    b.accept.step = { ...b.accept.step, text: '在 MR 上回答 D-4（approve 通过 / reject 退回）：桥会把回答带回运行机', line: null, comment: 'answer D-4 approve', mr_url: MR, session_url: null }
+    withDetail((d) => {
+      parked(d)
+      d.questions = [mrQuestion({ ...plan, id: 'D-4' })]
+    }, { [`GET ${API}/board/*`]: () => b })
+    renderDetail()
+    const bar = await screen.findByRole('region', { name: '此刻' })
+    await waitFor(() => expect(within(bar).getByTestId('mr-comment')).toHaveTextContent('在 MR 上回一条评论answer D-4 approve'))
+    expect(bar).toHaveTextContent('问题已经发到 MR 上了：回答 D-4（approve / reject）。')
+    expect(within(bar).getByRole('link', { name: /去 MR 上回答 D-4/ })).toHaveAttribute('href', MR)
+    const pending = await pendingApproval()
+    expect(within(pending).getByTestId('mr-comment')).toHaveTextContent('answer D-4 approve')
+    expect(within(pending).getByRole('link', { name: /去 MR 上回答/ })).toHaveAttribute('href', MR)
+    expect(within(pending).queryByTestId('type-line')).toBeNull()
+    noLineSent()
+  })
+
   test('a question someone else answers on the MR: 此刻 names them, the viewer has nothing to do, the link only shows it', async () => {
     withDetail((d) => {
       d.row.state = 'parked'
@@ -1020,6 +1059,33 @@ describe('需求详情', () => {
     expect(tl).not.toHaveTextContent(/brain reflect|--apply|G-A29056|claim\/|origin/)
     expect(items.some((i) => i.textContent!.includes('批准需求') && i.title.includes('化名 G-A29056'))).toBe(true)
     expect(tl).not.toHaveTextContent('读不到')   // a local run: the bridge's and the runner's records are not on its way
+  })
+
+  test('时间线 reads in plain Chinese: an English note of the AI folded as its own words, code in monospace only for a file name (UI-15)', async () => {
+    const english = 'Read calc.py, tests/test_calc.py; ran the check (1 test OK, Python 3.9.6). Wrote architecture.md: one module with add(a, b).'
+    withDetail((d) => {
+      d.timeline.items = [
+        { at: '2026-11-09T08:33:00+08:00', kind: 'stage', label: '逆向工程：完成', detail: english, who: null, src: 'audit' },
+        { at: '2026-11-09T08:39:00+08:00', kind: 'stage', label: '代码生成：完成（app）', detail: 'unit app built', who: null, src: 'audit' },
+        { at: '2026-11-09T08:42:00+08:00', kind: 'stage', label: '应用设计：跳过', detail: 'Size: small（D-4）；接口只有 `subtract(a, b)`，放在 `calc.py`', who: null, src: 'audit' },
+      ]
+    })
+    renderDetail()
+    const tl = await screen.findByRole('region', { name: '时间线' })
+    const [skip, built, read] = within(tl).getAllByTestId('tl-item')
+    const shown = (li: HTMLElement) => {
+      const c = li.cloneNode(true) as HTMLElement
+      c.querySelectorAll('details').forEach((x) => x.remove())
+      return c.textContent
+    }
+    expect(shown(read)).toMatch(/逆向工程：完成$/)
+    expect(shown(read)).not.toMatch(/[A-Za-z]/)
+    expect(shown(built)).toMatch(/代码生成：完成（app）$/)
+    expect(within(read).getByText('AI 写的原话（英文）').closest('details')).toHaveTextContent(english)
+    expect(within(built).getByText('AI 写的原话（英文）').closest('details')).toHaveTextContent('unit app built')
+    expect(skip).toHaveTextContent('应用设计：跳过 · Size: small（D-4）；接口只有 subtract(a, b)，放在 calc.py')
+    expect(skip).not.toHaveTextContent('`')
+    expect([...skip.querySelectorAll('code')].map((c) => c.textContent)).toEqual(['calc.py'])
   })
 
   test('时间线 of a handed-over requirement says which records could not be read, in words, the original folded', async () => {
