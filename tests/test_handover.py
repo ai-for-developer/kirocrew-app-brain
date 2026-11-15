@@ -184,7 +184,6 @@ def row(state="local", do="reply"):
     (fact(), row(), {"local_only": True}, "local_only", 409),
     (fact(run=dict(RUN, handoff={"by": "alice"})), row("handed_over", "none"), {}, "handed_over", 409),
     (fact(), row(), {"me": "bob"}, "not_owner", 403),
-    (fact(), row(), {"me": None}, "not_owner", 403),
     (fact(worktree=None), row(), {}, "no_worktree", 409),
     (fact(), row(), {"busy": True}, "busy", 409),
 ])
@@ -201,6 +200,11 @@ def test_the_app_lets_it_run_for_a_local_run_and_for_a_hand_over_to_do_again(sta
     yet the remote has nothing: clicking again pushes and labels it."""
     f = fact(run=dict(RUN, handoff={"by": "alice"})) if state != "local" else fact()
     assert handover.why_not(f, row(state, do), me="alice", local_only=False, busy=False, pushed=pushed) is None
+
+
+def test_a_person_the_app_cannot_name_is_left_to_brain_kit_which_checks_the_owner_itself():
+    """A GitLab-token user has no brain.user: the app does not know the name, brain-kit asks GitLab."""
+    assert handover.why_not(fact(), row(), me=None, local_only=False, busy=False, pushed=True) is None
 
 
 # ---- through the app: a real `brain handoff` in temp repos ------------------------------------------------------- #
@@ -262,23 +266,32 @@ def handoff(svc, *rounds):
     return run(go())
 
 
-@needs_brainkit
-def test_handed_over_through_gitlab_once_for_two_clicks_and_not_again(tmp_path, home, monkeypatch):
-    """The whole hand-over without a terminal: brain-kit pushes the branch and labels MR !5 on a GitLab (the fake,
-    over HTTP on 127.0.0.1) as alice, by her token. Two clicks at once run it once and get the same answer; once the MR
-    has its label, a third click is refused before anything runs."""
+def served_gitlab(tmp_path, monkeypatch):
+    """The GitLab fake over HTTP on 127.0.0.1, knowing alice by her token."""
     for k in ("NO_PROXY", "no_proxy"):
         monkeypatch.setenv(k, "127.0.0.1,localhost")
     gl = GitLab(tmp_path / "repo-origin.git")
     gl.labels, gl.events = [], []
     gl.who["alice-tok"] = "alice"
-    srv = Served(gl)
+    return gl, Served(gl)
+
+
+def alice_token(home):
+    tok = home / ".brain" / "gitlab-token"
+    tok.parent.mkdir(parents=True, exist_ok=True)
+    tok.write_text("alice-tok\n")
+    tok.chmod(0o600)
+
+
+@needs_brainkit
+def test_handed_over_through_gitlab_once_for_two_clicks_and_not_again(tmp_path, home, monkeypatch):
+    """The whole hand-over without a terminal: brain-kit pushes the branch and labels MR !5 on a GitLab (the fake,
+    over HTTP on 127.0.0.1) as alice, by her token. Two clicks at once run it once and get the same answer; once the MR
+    has its label, a third click is refused before anything runs."""
+    gl, srv = served_gitlab(tmp_path, monkeypatch)
     try:
         repo, wt = project(tmp_path, home, base=srv.base)
-        tok = home / ".brain" / "gitlab-token"
-        tok.parent.mkdir(parents=True, exist_ok=True)
-        tok.write_text("alice-tok\n")
-        tok.chmod(0o600)
+        alice_token(home)
         svc = make_service(tmp_path, [repo])
         (first, second, third), detail = handoff(svc, 2, 1)
     finally:
@@ -291,6 +304,22 @@ def test_handed_over_through_gitlab_once_for_two_clicks_and_not_again(tmp_path, 
     assert isinstance(third, AppError) and (third.code, third.status) == ("handed_over", 409), third
     assert detail["row"]["state"] == "handed_over"
     assert any(i["kind"] == "app" and i["label"] == "交接：" + first["text"] for i in detail["timeline"]["items"])
+
+
+@needs_brainkit
+def test_a_gitlab_token_user_without_brain_user_hands_over_from_the_page(tmp_path, home, monkeypatch):
+    """Settings says the token names this person, and has no name to fill in: the hand-over runs, as in a terminal."""
+    gl, srv = served_gitlab(tmp_path, monkeypatch)
+    try:
+        repo, wt = project(tmp_path, home, base=srv.base)
+        sh("git", "-C", repo, "config", "--unset", "brain.user")
+        alice_token(home)
+        (r,), detail = handoff(make_service(tmp_path, [repo]), 1)
+    finally:
+        srv.stop()
+    assert not isinstance(r, AppError), r
+    assert r["state"] == "handed" and r["ok"] and "ai-handoff" in gl.labels, r
+    assert detail["row"]["state"] == "handed_over"
 
 
 @needs_brainkit
