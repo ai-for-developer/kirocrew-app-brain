@@ -40,6 +40,11 @@ const startBtn = () => screen.getByRole('button', { name: '开工' })
 const gateStates = () => [1, 2, 3, 4, 5].map((n) => screen.getByTestId(`gate-${n}`).dataset.state)
 const flowStates = () => within(screen.getByRole('list', { name: '开需求的步骤' })).getAllByRole('listitem').map((li) => li.dataset.state)
 const checkBtn = () => screen.getByRole('button', { name: '先检查' })
+const DOCS = '文档（一行一个路径）'
+const docsCard = () => screen.getByRole('region', { name: '文档' })
+const fileBtn = () => within(docsCard()).getByRole('button', { name: '选文件…' })
+const folderBtn = () => within(docsCard()).getByRole('button', { name: '选文件夹…' })
+const pickCalls = () => apiCalls.filter((c) => c.method === 'POST' && c.path === `${API}/pick`)
 
 async function fillBasics(user: ReturnType<typeof userEvent.setup>) {
   await waitFor(() => expect(screen.getByLabelText('需求号')).toHaveValue('PAY-8'))
@@ -646,3 +651,61 @@ describe('开需求', () => {
   })
 })
 
+describe('导入需求文档', () => {
+  test('without documents the step is titled 导入需求文档（选填）, drawn as usable, and offers this machine’s own picker and pasting', async () => {
+    setup()
+    const card = docsCard()
+    expect(within(card).getByRole('heading', { level: 3 })).toHaveTextContent('导入需求文档（选填）')
+    expect(card.querySelector('[data-step="2"]')).not.toHaveAttribute('data-state', 'off')
+    expect(fileBtn()).toBeEnabled()
+    expect(folderBtn()).toBeEnabled()
+    expect(screen.getByLabelText(DOCS)).toHaveAccessibleDescription(/在访达里选中它，按 ⌥⌘C，粘贴到这里/)
+    expect(screen.getByTestId('no-docs')).toBeInTheDocument()
+  })
+
+  test('选文件… and 选文件夹… add what was chosen to the box, one per line, each once; a cancel changes nothing; the five gates open', async () => {
+    const answers: Record<string, string[][]> = {
+      file: [['/Users/alice/Downloads/结算周报需求.docx'], ['/Users/alice/Downloads/结算周报需求.docx'], []],
+      folder: [['/Users/alice/Downloads/飞书导出', '/Users/alice/Downloads/结算周报需求.docx']],
+    }
+    const { user } = setup({ [`POST ${API}/pick`]: (body) => ({ paths: answers[(body as { kind: string }).kind].shift() ?? [] }) })
+    const box = screen.getByLabelText(DOCS)
+    await user.type(box, '/Users/alice/notes.md')                         // typed or pasted: kept
+    await user.click(fileBtn())
+    await waitFor(() => expect(box).toHaveValue('/Users/alice/notes.md\n/Users/alice/Downloads/结算周报需求.docx'))
+    await user.click(folderBtn())
+    const three = '/Users/alice/notes.md\n/Users/alice/Downloads/结算周报需求.docx\n/Users/alice/Downloads/飞书导出'
+    await waitFor(() => expect(box).toHaveValue(three))
+    for (const n of [3, 4]) {                                             // the same file again, then a cancel
+      await waitFor(() => expect(fileBtn()).toBeEnabled())
+      await user.click(fileBtn())
+      await waitFor(() => expect(pickCalls()).toHaveLength(n))
+    }
+    await waitFor(() => expect(fileBtn()).toBeEnabled())
+    expect(box).toHaveValue(three)
+    expect(pickCalls().map((c) => c.body)).toEqual([{ kind: 'file' }, { kind: 'folder' }, { kind: 'file' }, { kind: 'file' }])
+    expect(within(docsCard()).queryByRole('alert')).toBeNull()
+    expect(screen.queryByTestId('no-docs')).toBeNull()
+    expect(screen.getByTestId('gate-1')).toBeInTheDocument()
+  })
+
+  test('while the dialog is open both buttons wait and say where it is; no dialog on this machine says to paste, and the box still takes a path', async () => {
+    let close: (answer: unknown) => void = () => {}
+    const replies: (() => unknown)[] = [
+      () => new Promise((resolve) => { close = resolve }),
+      () => { throw apiError(501, 'no_picker', '这台机器上打不开选文件的窗口：把路径粘贴到下面的框里，一行一个') },
+    ]
+    const { user } = setup({ [`POST ${API}/pick`]: () => replies.shift()?.() })
+    await user.click(fileBtn())
+    await waitFor(() => expect(fileBtn()).toBeDisabled())
+    expect(folderBtn()).toBeDisabled()
+    expect(within(docsCard()).getByRole('status')).toHaveTextContent('选文件的窗口开着')
+    close({ paths: [] })
+    await waitFor(() => expect(folderBtn()).toBeEnabled())
+    expect(within(docsCard()).queryByRole('status')).toBeNull()
+    await user.click(folderBtn())
+    expect(await within(docsCard()).findByRole('alert')).toHaveTextContent('这台机器上打不开选文件的窗口：把路径粘贴到下面的框里，一行一个（501）')
+    await user.type(screen.getByLabelText(DOCS), '/Users/alice/Downloads/需求.docx')
+    expect(screen.getByLabelText(DOCS)).toHaveValue('/Users/alice/Downloads/需求.docx')
+  })
+})
