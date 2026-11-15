@@ -830,6 +830,12 @@ def classified(r: Req, row: dict, *, park: dict | None = None, mr: dict | None =
 LATER: dict[str, tuple] = {}   # each board's makings by "<repo>/<key>", made once every run's Brain block is known
 
 
+def live_of(sessions: list) -> dict | None:
+    """The live dev session among *sessions*, by the service's own rule (service._live: never a review session)."""
+    return service.Service._live([dict(s, kind=s.get("kind") or "local", missing=bool(s.get("missing")),
+                                       review=str(s.get("title") or "").endswith(service.REVIEW_TITLE)) for s in sessions])
+
+
 SESSION_KEYS = ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting", "last_activity", "opened_at",
                 "project", "url", "error", "missing")   # a session row of 需求详情 (service._detail_sync)
 
@@ -872,8 +878,7 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
     t = r.trace(brain, family) if f.get("run") else None
     subjects = {c["sha"]: c["subject"] for c in r.commits}
     sessions = sessions or []
-    live = service.Service._live([dict(s, kind=s.get("kind") or "local", missing=bool(s.get("missing")),
-                                       review=str(s.get("title") or "").endswith(service.REVIEW_TITLE)) for s in sessions])
+    live = live_of(sessions)
     g = board.build(f, row, t, mr=mr, sessions=sessions, app_events=r.app, team_decisions=team_decisions or [], subjects=subjects,
                     changes=changes(r),
                     reflect_refs=reflect or [], default_branch="main", local_only=local_only,
@@ -1078,8 +1083,7 @@ def detail_of(r: Req, row: dict, kw: dict, b: dict) -> dict:
         "timeline": {"source": "trace" if t else "app",
                      "items": sorted((detail.trace_timeline(t) if t else []) + r.app, key=lambda x: (x["at"] or "", x["kind"])),
                      "error": "", "missing": board.missing_sources(TRACE_MISSING if t else [], local_only=bool(kw.get("local_only")), handed=handed)},
-        "sessions": [{k: x.get(k) for k in ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting",
-                                             "last_activity", "opened_at", "project", "url", "error")} for x in sess],
+        "sessions": [{k: x.get(k) for k in SESSION_KEYS} for x in sess], "live_slot": (live_of(sess) or {}).get("slot"),
         "credits": kw["credits"], "brain": b["brain"], "mr_desc": b["mr_desc"]}
 
 
