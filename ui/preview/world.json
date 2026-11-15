@@ -53377,20 +53377,62 @@
      }
     },
     {
-     "at": 1794128101,
+     "at": 1794128160,
      "lean": {
-      "stage": "release",
-      "stage_label": "发布",
-      "stage_n": "✓",
+      "stage": "nfr-design",
+      "stage_label": "非功能设计",
+      "stage_n": "3.2",
       "stage_state": "todo",
-      "done": 10,
+      "done": 6,
       "total": 11,
-      "done_n": 4,
-      "skipped_n": 6,
+      "done_n": 3,
+      "skipped_n": 3,
       "next": {
-       "id": "release",
-       "label": "发布",
-       "n": "✓"
+       "id": "nfr-design",
+       "label": "非功能设计",
+       "n": "3.2"
+      },
+      "skipped_phases": [
+       "构思"
+      ]
+     }
+    },
+    {
+     "at": 1794128180,
+     "lean": {
+      "stage": "infrastructure-design",
+      "stage_label": "基础设施设计",
+      "stage_n": "3.4",
+      "stage_state": "todo",
+      "done": 7,
+      "total": 11,
+      "done_n": 3,
+      "skipped_n": 4,
+      "next": {
+       "id": "infrastructure-design",
+       "label": "基础设施设计",
+       "n": "3.4"
+      },
+      "skipped_phases": [
+       "构思"
+      ]
+     }
+    },
+    {
+     "at": 1794128200,
+     "lean": {
+      "stage": "code-generation",
+      "stage_label": "代码生成",
+      "stage_n": "3.5",
+      "stage_state": "todo",
+      "done": 8,
+      "total": 11,
+      "done_n": 3,
+      "skipped_n": 5,
+      "next": {
+       "id": "code-generation",
+       "label": "代码生成",
+       "n": "3.5"
       },
       "skipped_phases": [
        "构思"
@@ -53404,9 +53446,9 @@
       "stage_label": "代码生成",
       "stage_n": "3.5",
       "stage_state": "started",
-      "done": 9,
+      "done": 8,
       "total": 11,
-      "done_n": 4,
+      "done_n": 3,
       "skipped_n": 5,
       "next": {
        "id": "code-generation",
@@ -53421,18 +53463,18 @@
     {
      "at": 1794132240,
      "lean": {
-      "stage": "release",
-      "stage_label": "发布",
-      "stage_n": "✓",
-      "stage_state": "todo",
-      "done": 10,
+      "stage": "build-and-test",
+      "stage_label": "构建测试",
+      "stage_n": "3.6",
+      "stage_state": "started",
+      "done": 9,
       "total": 11,
-      "done_n": 5,
+      "done_n": 4,
       "skipped_n": 5,
       "next": {
-       "id": "release",
-       "label": "发布",
-       "n": "✓"
+       "id": "build-and-test",
+       "label": "构建测试",
+       "n": "3.6"
       },
       "skipped_phases": [
        "构思"
@@ -53446,9 +53488,9 @@
       "stage_label": "代码生成",
       "stage_n": "3.5",
       "stage_state": "started",
-      "done": 9,
+      "done": 8,
       "total": 11,
-      "done_n": 4,
+      "done_n": 3,
       "skipped_n": 5,
       "next": {
        "id": "code-generation",
@@ -53462,6 +53504,27 @@
     },
     {
      "at": 1794134940,
+     "lean": {
+      "stage": "build-and-test",
+      "stage_label": "构建测试",
+      "stage_n": "3.6",
+      "stage_state": "started",
+      "done": 9,
+      "total": 11,
+      "done_n": 4,
+      "skipped_n": 5,
+      "next": {
+       "id": "build-and-test",
+       "label": "构建测试",
+       "n": "3.6"
+      },
+      "skipped_phases": [
+       "构思"
+      ]
+     }
+    },
+    {
+     "at": 1794135180,
      "lean": {
       "stage": "release",
       "stage_label": "发布",

@@ -277,6 +277,44 @@ def test_lean_progress_over_time_ends_on_the_progress_now():
     assert steps[-1]["lean"] == lv.summary(lv.stages(evs))
 
 
+def test_build_and_test_is_done_only_once_the_code_is_and_its_last_verify_passed_on_it():
+    """UI-10 (the e2e OMS-4 ledger): Lean records Build and Test done on each verify PASS while it is still writing
+    code; the app said 构建测试 做完 then. As Lean's build_status: a PASS on part of the code leaves it not reached,
+    a failed verify or code changed since the PASS leaves it in progress, the release approval closes it. 回放 agrees."""
+    lv = mod("lean_view")
+    t = iter(range(10, 1000))
+
+    def ev(event, **data):
+        at = float(next(t))
+        return {"event": event, "data": data, "ts": "2026-11-14T07:%02d:%02dZ" % divmod(int(at), 60), "_at": at}
+
+    def verify(fp, ok=True):
+        done = [ev("STAGE_COMPLETED", stage="build-and-test", fingerprint=fp,
+                   note="verify PASS: 1 check on code fingerprint %s" % fp)] if ok else []
+        return [ev("VERIFY", ok=ok, fingerprint=fp)] + done
+
+    def said(evs):
+        rows = {r["id"]: r for r in lv.stages(evs)}
+        assert lv.steps(evs)[-1]["lean"] == lv.summary(lv.stages(evs))
+        return rows["build-and-test"]["state"], rows["build-and-test"]["note"], lv.stage_text(lv.summary(lv.stages(evs)))
+
+    evs = [ev("STAGE_SKIPPED", stage="reverse-engineering"), ev("STAGE_COMPLETED", stage="requirements"),
+           ev("STAGE_SKIPPED", stage="user-stories"), ev("STAGE_COMPLETED", stage="application-design"),
+           ev("STAGE_SKIPPED", stage="units")] + \
+        [ev("STAGE_SKIPPED", stage=s, unit="app") for s in ("functional-design", "nfr-design", "infrastructure-design")] + \
+        [ev("STAGE_STARTED", stage="code-generation", unit="app")] + verify("278289d6") + verify("c8cce304")
+    assert said(evs) == ("todo", None, "做完 2 · 跳过 6 · 在做：代码生成")
+    evs += [ev("STAGE_COMPLETED", stage="code-generation", unit="app", fingerprint="768e9bd7")]
+    assert said(evs) == ("started", "检查以后代码又改过：要再跑一次自动检查", "做完 3 · 跳过 6 · 在做：构建测试")
+    evs += verify("768e9bd7")
+    assert said(evs) == ("done", "自动检查通过（1 项）", "做完 4 · 跳过 6 · 下一步：发布")
+    evs += verify("9f00aa11", ok=False)
+    assert said(evs) == ("started", "最近一次自动检查没过", "做完 3 · 跳过 6 · 在做：构建测试")
+    evs += [ev("STAGE_STARTED", stage="release"), ev("APPROVED", kind="RELEASE"),
+            ev("STAGE_COMPLETED", stage="release", note="RELEASE approved (sha 0c9a7e21)")]
+    assert said(evs) == ("done", "自动检查通过（1 项）", "全部做完（跳过 6）")
+
+
 def test_an_idle_session_says_what_to_tell_it_from_lean():
     """「轮到你回话」 says what to say (UI问题清单 #4): the stage it stopped in, the next one, or, before the release,
     the review in a new session (the session that wrote the code cannot review it), as Lean's release skill asks."""
