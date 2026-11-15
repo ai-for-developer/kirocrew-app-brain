@@ -482,14 +482,14 @@ describe('开需求', () => {
     expect(flowStates()[4]).toBe('off')
   })
 
-  test('the hero says what happens; its steps follow the form: 认领 → 文档过五关 (not needed without documents) → 开工 → Lean 推进', async () => {
+  test('the hero says what happens; its steps follow the form: 认领 → 导入需求文档 (optional) → 开工 → Lean 推进', async () => {
     const { user } = setup()
     const hero = screen.getByRole('region', { name: '开需求' })
     expect(hero).toHaveTextContent(HERO_TEXT)
     expect(HERO_TEXT).not.toMatch(/brain start|slug/)
     const steps = within(screen.getByRole('list', { name: '开需求的步骤' })).getAllByRole('listitem')
     expect(steps.map((li) => li.textContent)).toEqual([
-      '1认领仓库、标题、需求号', '2文档过五关没有文档：不用过', '3开工在它自己的工作目录里开 AI 开发会话', '4Lean 推进需求和设计由你批准', '5交给运行机团队仓库：交接以后它接着做',
+      '1认领仓库、标题、需求号', '2导入需求文档选填：没有就跳过', '3开工在它自己的工作目录里开 AI 开发会话', '4Lean 推进需求和设计由你批准', '5交给运行机团队仓库：交接以后它接着做',
     ])
     expect(flowStates()).toEqual(['now', 'off', undefined, undefined, undefined])
     await fillBasics(user)
@@ -614,11 +614,11 @@ describe('开需求', () => {
     expect(box).toBeEnabled()
     expect(box).not.toBeChecked()
     const titles = () => within(screen.getByRole('list', { name: '开需求的步骤' })).getAllByRole('listitem').map((li) => li.querySelector('b')?.textContent?.replace(/^[0-9✓]+/, ''))
-    expect(titles()).toEqual(['认领', '文档过五关', '开工', 'Lean 推进', '交给运行机'])
+    expect(titles()).toEqual(['认领', '导入需求文档', '开工', 'Lean 推进', '交给运行机'])
     await user.click(box)
     expect(box).toBeChecked()
     expect(box.closest('label')).toHaveClass('is-on')
-    expect(titles()).toEqual(['认领', '文档过五关', '开工', 'Lean 推进', '拆成小需求', '交给运行机'])
+    expect(titles()).toEqual(['认领', '导入需求文档', '开工', 'Lean 推进', '拆成小需求', '交给运行机'])
     expect(screen.getByRole('list', { name: '开需求的步骤' })).toHaveTextContent('需求和设计由你批准，设计里拆单元')
     expect(startBtn()).toBeEnabled()   // the choice is not part of the gates: no check needed
     await user.click(startBtn())

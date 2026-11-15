@@ -1,6 +1,6 @@
 /**
  * 开需求: claim a requirement and start it, in the sample's empty state + start form look. A hero says what happens
- * (认领 → 文档过五关 → 开工 → Lean 推进 → 交给运行机) as a Flow whose steps follow the form. Then three numbered cards:
+ * (认领 → 导入需求文档 → 开工 → Lean 推进 → 交给运行机) as a Flow whose steps follow the form. Then three numbered cards:
  *
  *   1 认领      repo, title, 英文短名 (suggested from the title), key (prefilled from GET /intake/next), the paths it is
  *              expected to change: a grid. Opened for a requirement claimed already (?key=&title=): its key is fixed and
@@ -236,7 +236,7 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
   const flow: FlowStep[] = [
     { icon: 'new', title: '认领', text: claimed ? `${claimed} 已经认领了` : '仓库、标题、需求号', state: ok || basicsOk ? 'done' : 'now' },
     {
-      icon: 'security', title: '文档过五关', text: noDocs ? '没有文档：不用过' : '原件不进任何仓库',
+      icon: 'security', title: '导入需求文档', text: noDocs ? '选填：没有就跳过' : '过五关，原件不进任何仓库',
       state: noDocs ? 'off' : ok || passed ? 'done' : docsBad ? 'bad' : basicsOk ? 'now' : undefined,
     },
     { icon: 'laptop', title: '开工', text: '在它自己的工作目录里开 AI 开发会话', state: ok ? 'done' : started ? 'bad' : canStart ? 'now' : undefined },
