@@ -1282,13 +1282,18 @@ class Service:
                                        local_only=row["local_only"], busy=busy, pushed=pushed)
                 if why:
                     raise AppError(*why)
+                lock = self.data_dir / "handoff" / ("%s.lock" % scope.replace(":", "-"))
                 try:
-                    with handover.guard(self.data_dir / "handoff" / ("%s.lock" % scope.replace(":", "-"))) as held:
+                    with handover.guard(lock) as held:
                         out = await asyncio.to_thread(handover.run, f["worktree"], base=base, project=project,
-                                                      hold=held)
+                                                      hold=held, lock=lock)
                 except handover.Busy:
-                    raise AppError("上一次点的交接还在跑（Brain 交付重启前开始的）：等一两分钟它做完，再刷新这一页看结果",
-                                   "handing", 409) from None
+                    ran = await asyncio.to_thread(handover.stop_stale, lock)
+                    if ran:
+                        raise AppError("上一次点的交接跑了 %d 分钟没做完（Brain 交付重启前开始的），停掉了：再点一次「%s」"
+                                       % (ran, handover.BUTTON), "handing_stopped", 409) from None
+                    raise AppError("上一次点的交接还在跑（Brain 交付重启前开始的）：等它做完，再刷新这一页看结果；过了 %d 分钟"
+                                   "还没做完，再点一次就会停掉它" % (handover.TIMEOUT_S // 60), "handing", 409) from None
                 await asyncio.to_thread(repo.invalidate)
                 if branch and base and project:
                     await asyncio.to_thread(mr_now)

@@ -19,15 +19,21 @@ short line, what happened and why; todo 做什么 ('' when nothing); mr ``{iid, 
 
 The words are tables: OUTCOMES (the line a run ends with, by exit code), REFUSALS (why it was not handed over: a
 refusal's message, or the reason inside a pushed-but-not-labelled line) and WARNINGS; problems.row says what none of
-them knows. why_not is what the app refuses itself, before anything runs. Pure but ``run``.
+them knows. why_not is what the app refuses itself, before anything runs. Pure but ``run``, ``guard`` and
+``stop_stale``: one brain handoff per requirement, across a restart of the app, and one left hung by an app that is gone
+stopped past TIMEOUT_S (the lock's note names it: pid and start time).
 """
 
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import re
+import signal
 import subprocess
+import time
+from pathlib import Path
 from typing import Any, Callable, Iterator, Optional, Union
 
 from . import family, mrinfo, problems
@@ -286,12 +292,62 @@ def guard(path: Union[str, os.PathLike]) -> Iterator[Optional[int]]:
         yield fh.fileno()
 
 
+def holder_of(lock: Union[str, os.PathLike]) -> Path:
+    """The lock's note: which brain handoff holds it ({pid, started, lstart})."""
+    return Path(lock).with_suffix(".holder")
+
+
+def _ps(pid: int, field: str) -> str:
+    try:
+        return subprocess.run(["ps", "-o", field + "=", "-p", str(pid)], capture_output=True, text=True,
+                              timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def note_holder(lock: Union[str, os.PathLike], pid: int) -> None:
+    """Write the lock's note when brain handoff starts: its pid, when (this clock), and its start time as ps says it,
+    so stop_stale stops only that very process."""
+    try:
+        holder_of(lock).write_text(json.dumps({"pid": pid, "started": time.time(), "lstart": _ps(pid, "lstart")}),
+                                   encoding="utf-8")
+    except OSError:
+        pass
+
+
+def stop_stale(lock: Union[str, os.PathLike]) -> Optional[int]:
+    """The brain handoff that holds *lock* (its note's pid, still the process that started then, a ``handoff``) when
+    it has run longer than TIMEOUT_S: its app is gone (an app alive stops its own at the limit), so it is stopped here,
+    SIGINT then SIGKILL as run_brain does. How many minutes it ran; None when there is none to stop. Blocking."""
+    try:
+        h = json.loads(holder_of(lock).read_text(encoding="utf-8"))
+        pid, started, lstart = int(h["pid"]), float(h["started"]), str(h["lstart"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    ran = time.time() - started
+    if ran <= TIMEOUT_S or not lstart or _ps(pid, "lstart") != lstart or "handoff" not in _ps(pid, "command"):
+        return None
+    for sig, wait in ((signal.SIGINT, 15), (signal.SIGKILL, 5)):
+        try:
+            os.killpg(pid, sig)
+        except OSError:
+            break
+        end = time.monotonic() + wait
+        while time.monotonic() < end and _ps(pid, "lstart") == lstart:
+            time.sleep(0.2)
+        if _ps(pid, "lstart") != lstart:
+            break
+    return max(1, round(ran / 60))
+
+
 def run(worktree: str, *, base: str = "", project: str = "", timeout: float = TIMEOUT_S,
-        hold: Optional[int] = None) -> dict[str, Any]:
+        hold: Optional[int] = None, lock: Optional[Union[str, os.PathLike]] = None) -> dict[str, Any]:
     """``brain handoff`` in the requirement's worktree (blocking: call it in a thread) -> HandoffResult. *hold*: the
-    file of guard(), which brain handoff keeps open until it exits."""
-    p = family.run_brain(["handoff"], worktree, timeout, hold=hold)
+    file of guard(), which brain handoff keeps open until it exits; *lock*: its path, whose note names brain handoff."""
+    p = family.run_brain(["handoff"], worktree, timeout, hold=hold,
+                         on_start=None if lock is None else (lambda pid: note_holder(lock, pid)))
     return said(p.returncode, p.stdout, p.stderr, base=base, project=project)
 
 
-__all__ = ["said", "run", "guard", "Busy", "why_not", "reason", "warning", "STATES", "TIMEOUT_S", "BUTTON"]
+__all__ = ["said", "run", "guard", "Busy", "stop_stale", "holder_of", "why_not", "reason", "warning", "STATES",
+           "TIMEOUT_S", "BUTTON"]
