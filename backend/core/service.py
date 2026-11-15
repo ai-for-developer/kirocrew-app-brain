@@ -1414,7 +1414,8 @@ class Service:
                              "modules": info["modules"]},
                 "repos": repos, "crew": self.crew,
                 "me": me_line(repos, token, os.environ.get("BRAIN_USER", "").strip().lower()),
-                "team": self._team_status(), "counts": {"todo": len(todo["items"])}}
+                "team": self._team_status(), "counts": {"todo": len(todo["items"])},
+                "repo_ids_problem": self.repo_ids.problem}
 
     def settings_view(self) -> dict[str, Any]:
         return {**self.settings, "team": dict(self.settings["team"])}

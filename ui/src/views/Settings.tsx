@@ -181,7 +181,7 @@ export function SettingsView({ status, setStatus, reloadStatus, go }: ViewProps)
       {status && <StatCards status={status} onTeam={() => go({ kind: 'team' })} />}
       <div className="st-main">
         <div className="st-col">
-          {status && <ReposCard repos={status.repos} kitOk={status.brainkit.ok} onImport={onImport} onRemoved={setStatus} onChanged={reloadStatus} />}
+          {status && <ReposCard repos={status.repos} idsProblem={status.repo_ids_problem} kitOk={status.brainkit.ok} onImport={onImport} onRemoved={setStatus} onChanged={reloadStatus} />}
           {formCard}
         </div>
         <div className="st-col">
@@ -275,8 +275,9 @@ function StatCards({ status: s, onTeam }: { status: Status; onTeam: () => void }
   )
 }
 
-function ReposCard({ repos, kitOk, onImport, onRemoved, onChanged }: {
+function ReposCard({ repos, idsProblem, kitOk, onImport, onRemoved, onChanged }: {
   repos: RepoInfo[]
+  idsProblem: string
   kitOk: boolean
   onImport: (path?: string) => void
   onRemoved: (s: Status) => void
@@ -292,6 +293,7 @@ function ReposCard({ repos, kitOk, onImport, onRemoved, onChanged }: {
         <span className="br-grow" />
         <button type="button" className="br-btn is-small is-primary" onClick={() => onImport()}><RoleIcon role="import" size={14} />导入仓库</button>
       </header>
+      {idsProblem && <p className="br-error" role="alert">{idsProblem}</p>}
       {repos.length === 0 ? (
         <div className="st-norepo">
           <p className="br-note">还没有仓库：点「导入仓库」。</p>

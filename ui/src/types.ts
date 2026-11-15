@@ -450,6 +450,8 @@ export interface Status {
   me: { user: string | null; token: boolean; how: string }
   team: TeamStatus
   counts: { todo: number }
+  /** repo_ids.json cannot be read (UI-19): what is wrong and what to do, in words; '' when it reads fine */
+  repo_ids_problem: string
 }
 
 export interface TeamStatus {
