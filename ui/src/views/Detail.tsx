@@ -363,7 +363,10 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
       </>
     )
   }
-  const canOpen = x.row.state === 'local' && !live
+  // the backend opens sessions for a run here not handed over (service.open_session): a hand-over commit whose push
+  // failed reads 本地开发中 too, and its next step is 交接给运行机 again
+  const sessionsHere = x.row.state === 'local' && !x.run?.handoff
+  const canOpen = sessionsHere && !live
   const toAt = (t: number | null) => toBoard(t ? { at: Math.round(t) } : {})
   // whom the open questions and approvals wait on when it is not the person looking: the 此刻 judgment, said once
   // (DETAIL-10); then the cards below only look (看 MR)
@@ -377,7 +380,7 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
         <NowBar x={x} now={now} at={at} live={live} canOpen={canOpen} repo={entry.repo} reqKey={entry.key}
           onStart={onStart} onAnswer={() => scrollTo('问题和回答')} onBrain={() => props.go({ kind: 'brain', repo: entry.repo, reflect: entry.key })} />
         {(canOpen || opened) && <OpenSession repo={entry.repo} reqKey={entry.key} opened={opened} onOpened={onOpened} />}
-        {live && x.row.state === 'local' && x.row.worktree && <ReopenSession repo={entry.repo} reqKey={entry.key} live={live} onOpened={after} />}
+        {live && sessionsHere && x.row.worktree && <ReopenSession repo={entry.repo} reqKey={entry.key} live={live} onOpened={after} />}
         <Handover x={x} repo={entry.repo} reqKey={entry.key} localOnly={localOnly} onDone={after} />
         <Facts x={x} start={startOf(x, board)} localOnly={localOnly} />
       </section>
