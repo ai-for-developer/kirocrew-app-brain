@@ -26,7 +26,7 @@ import { ago, fmtCredits, spaced } from '../format'
 import type { OverviewEntry, View } from '../nav'
 import type { CtoNumbers, CtoRun, EvalFamily, EvalMetric, EvalView, Funnel, Overview, RefreshResult, ReqFamily, ReqState, RepoInfo, Requirement, Roster, Stuck, StuckKind } from '../types'
 import { STATE_LABEL } from '../types'
-import { ACT, DECIDED_BY, STUCK_NAME, leanProgress, waitName } from '../vocab'
+import { ACT, DECIDED_BY, STUCK_NAME, leanNow, waitName } from '../vocab'
 import { EmptyHero, Icon, ImportCta, LoadState, MrLink, PendingRepo, STATE_TONE, StateChip } from '../ui'
 import type { ViewProps } from './props'
 
@@ -869,15 +869,14 @@ function Summary({ text }: { text: string }) {
  * skipped as a whole (构思整段不需要: nearly every row's) are in the bar's name and hover, not printed in each row. */
 function LeanProgress({ r }: { r: Requirement }) {
   const l = r.lean
-  if (r.state === 'claimed' || (l.stage === null && !l.done_n && !l.skipped_n)) return <span className="cto-was" data-testid="lean-cell">还没开工</span>
-  const said = { done_n: l.done_n, skipped_n: l.skipped_n, next: l.next }
-  const whole = leanProgress({ ...said, skipped_phases: l.skipped_phases })
-  const text = leanProgress({ ...said, skipped_phases: [] })
+  const whole = leanNow(r)
+  if (whole === '还没开工') return <span className="cto-was" data-testid="lean-cell">还没开工</span>
+  const text = leanNow(r, [])
   return (
     <span className="br-lean" data-testid="lean-cell" title={whole}>
       <span className="br-prog" role="img" aria-label={whole}>
         {Array.from({ length: l.total }, (_, i) => (
-          <i key={i} className={i < l.done_n ? 'is-done' : i < l.done_n + l.skipped_n ? 'is-skipped' : l.next && i === l.done_n + l.skipped_n ? 'is-next' : ''} />
+          <i key={i} className={i < l.done_n ? 'is-done' : i < l.done_n + l.skipped_n ? 'is-skipped' : l.next && isOpen(r) && i === l.done_n + l.skipped_n ? 'is-next' : ''} />
         ))}
       </span>
       <span>{text.split(' · ').map((part, i) => <span key={i}>{i > 0 && ' · '}<span className="br-nw">{part}</span></span>)}</span>

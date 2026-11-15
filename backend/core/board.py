@@ -555,7 +555,8 @@ def stage_graph(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None
     way = stages.Way(child=family is not None and family.role == "child",
                      children={c.unit: (c.key, c.state, c.owner) for c in (family.children if family else ())
                                if c.unit and c.state != "merged"},
-                     over=over, proposals=proposals, you=you, blind=runner_blind(f, row))
+                     over=over, proposals=proposals, you=you, blind=runner_blind(f, row),
+                     next=((row.get("lean") or {}).get("next") or {}).get("id") if lean and over is None else None)
     if family is not None and family.role == "child":     # unit-of-work.md is its big one's: it builds one unit
         units = [u for u in units if u.name == family.unit]
     planned = list(units) + [stages.UnitPlan(c.unit) for c in (family.children if family else ()) if c.unit]

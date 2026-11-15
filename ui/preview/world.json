@@ -48681,6 +48681,26 @@
      "child": null
     },
     {
+     "id": "functional-design/app",
+     "stage": "functional-design",
+     "n": "3.1",
+     "unit": "app",
+     "phase": "construction",
+     "title": "功能设计",
+     "sub": "app 的功能设计",
+     "icon": "design",
+     "status": "waiting",
+     "doing": "等前一个阶段",
+     "since": null,
+     "history": [],
+     "spans": [],
+     "marks": [],
+     "rounds": [],
+     "gates": [],
+     "run": null,
+     "child": null
+    },
+    {
      "id": "code-generation/app",
      "stage": "code-generation",
      "n": "3.5",

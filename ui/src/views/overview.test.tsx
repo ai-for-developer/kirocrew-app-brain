@@ -461,10 +461,10 @@ describe('交付总览', () => {
     render(<OverviewView entry={{}} {...props()} />)
     const table = await screen.findByTestId('req-table')
     const cell = (key: string) => within(rowOf(table, key)).getByTestId('lean-cell')
-    expect(cell('PAY-3')).toHaveTextContent(/^做完 4 · 跳过 4 · 下一步：代码生成$/)
-    expect(within(cell('PAY-3')).getByRole('img')).toHaveAccessibleName('做完 4 · 跳过 4 · 下一步：代码生成 · 构思整段不需要')
-    expect(cell('PAY-3')).toHaveAttribute('title', '做完 4 · 跳过 4 · 下一步：代码生成 · 构思整段不需要')
-    expect(within(cell('PAY-3')).getByText('下一步：代码生成')).toHaveClass('br-nw') // never broken inside a stage name
+    expect(cell('PAY-3')).toHaveTextContent(/^做完 4 · 跳过 4 · 在做：代码生成$/)
+    expect(within(cell('PAY-3')).getByRole('img')).toHaveAccessibleName('做完 4 · 跳过 4 · 在做：代码生成 · 构思整段不需要')
+    expect(cell('PAY-3')).toHaveAttribute('title', '做完 4 · 跳过 4 · 在做：代码生成 · 构思整段不需要')
+    expect(within(cell('PAY-3')).getByText('在做：代码生成')).toHaveClass('br-nw') // never broken inside a stage name
     expect(within(cell('PAY-3')).getByRole('img').querySelectorAll('i')).toHaveLength(11)   // the stages on the way
     // ci-pipeline, skipped after the verify, counts with the skipped ones (Lean 0.3.1 has it)
     expect(cell('PAY-7')).toHaveTextContent(/^做完 4 · 跳过 7 · 下一步：发布$/)

@@ -753,6 +753,8 @@ RUNNER_BLIND = "交接前的事：运行机还没建工作区，读不到它的�
 WAITS = {"requirements": "等开工", "application-design": "等需求分析", "units": "等应用设计",
          "code-generation": "等批了设计", "build-and-test": "等代码生成", "review": "等构建测试",
          "release": "等审查和自动检查", "reflect": "等合并以后"}
+# with the design skipped (Size: small), Lean asks for no design approval: what comes after the design waits on these
+NO_DESIGN_WAITS = {"units": "等需求分析", "code-generation": "等批了需求"}
 AGAIN = {"sent_back": "退回以后", "verify_failed": "检查没过以后", "ci_failed": "CI 没过以后",
          "code_changed": "代码改了以后", "reopened": "又做一遍", "first": "又做一遍"}
 DONE_WORDS = {"doc": "做完了", "release": "做完了", "verify": "检查都过了", "review": "写好了审查",
@@ -849,13 +851,15 @@ class Way:
     write-back. A split's unit that its small requirement has not merged in is that one's: unit -> (key, state,
     owner). *over*: ("merged", at) or ("closed", at) once the way is over (a small one: merged into its big one).
     *proposals*: the Brain proposals waiting to be written back after the merge, by *you* (你, or the owner's name).
-    *blind*: the team runner's page of a requirement handed over before it has a workspace (board.runner_blind)."""
+    *blind*: the team runner's page of a requirement handed over before it has a workspace (board.runner_blind).
+    *next*: the stage Lean does next (lean_view.summary), drawn waiting though it is not on the default way."""
     child: bool = False
     children: Mapping[str, Tuple[str, str, Optional[str]]] = field(default_factory=dict)
     over: Optional[Tuple[str, float]] = None
     proposals: int = 0
     you: str = "你"
     blind: bool = False
+    next: Optional[str] = None
 
 
 @dataclass
@@ -890,8 +894,8 @@ def _waits(stage: StageDef, kid: Optional[Tuple[str, str, Optional[str]]], way: 
         return NodeStatus("done", RUNNER_BLIND, None)
     if way.blind and stage.id == "code-generation":
         return NodeStatus("waiting", "等运行机开工", None)
-    if no_design and stage.id == "code-generation":   # skipped for Size: small, Lean asks for no design approval
-        return NodeStatus("waiting", "等批了需求", None)
+    if no_design and stage.id in NO_DESIGN_WAITS:
+        return NodeStatus("waiting", NO_DESIGN_WAITS[stage.id], None)
     return NodeStatus("waiting", WAITS.get(stage.id, "等前一个阶段"), None)
 
 
@@ -911,7 +915,7 @@ def graph(rec: Records, units: Sequence[UnitPlan], way: Way, approvals: Sequence
         for u in [x.name for x in units] if s.per_unit else [None]:
             rs = rounds_of(s, u, rec)
             kid = way.children.get(u) if s.id == "code-generation" and u else None
-            if not rs and kid is None and s.id not in DEFAULT_WAY:
+            if not rs and kid is None and s.id not in DEFAULT_WAY and s.id != way.next:
                 continue
             out.append(Node(node_id(s.id, u), s, u, rs, gates_of(rs, u, approvals, pending), _waits(s, kid, way, no_design),
                             (kid[0], kid[1]) if kid is not None else None))

@@ -31,7 +31,7 @@ import type {
 } from '../types'
 import { APPROVAL_META, Icon, LoadState, MrLink, STAGE_META, StateChip, TYPE_IT_YOURSELF, isOpenQuestion } from '../ui'
 import {
-  ACT, CHECK_GROUP_NAME, CHILD_STATE_NAME, DECIDED_BY, DO_NAME, FAMILY_ACT, WHERE_NAME, approvalName, leanProgress, missingSourceName,
+  ACT, CHECK_GROUP_NAME, CHILD_STATE_NAME, DECIDED_BY, DO_NAME, FAMILY_ACT, WHERE_NAME, approvalName, leanNow, missingSourceName,
   sourceName, waitsOn,
 } from '../vocab'
 import { Inline, Paths, pathPieces } from './Markdown'
@@ -719,13 +719,13 @@ function Cards({ x, board, at, localOnly, replying, onBoard, onSessions }: {
         <div className="cto-eyebrow">周期</div>
         <div className="cto-value" data-testid="item-cycle">{start ? fmtSpan((end ?? at) - start) : '—'}</div>
         <div className="cto-desc">{start ? `${fmtTime(start)} 开工` : '开工时间没记下'}{end ? ` → ${fmtTime(end)} 合并` : ' → 进行中'}</div>
-        <div className="kt-segs cto-segs" role="img" aria-label={`Lean：${leanProgress(lean)}`}>
+        <div className="kt-segs cto-segs" role="img" aria-label={`Lean：${leanNow(x.row)}`}>
           {onWay(x).map((s) => (
             <i key={s.id} title={`${s.n} ${s.label} · ${lean.next?.id === s.id && s.state === 'todo' ? '下一步' : STAGE_META[s.state]?.label ?? s.state}`}
               className={s.state === 'done' ? 'is-pass' : s.state === 'skipped' ? 'is-skip' : s.state === 'started' ? 'is-run' : lean.next?.id === s.id ? 'is-next' : 'is-todo'} />
           ))}
         </div>
-        <div className="cto-legend"><span data-testid="lean-progress">Lean {leanProgress(lean)}</span></div>
+        <div className="cto-legend"><span data-testid="lean-progress">Lean {leanNow(x.row)}</span></div>
       </article>
       <article className="cto-card" aria-label="时间花在哪">
         <div className="cto-eyebrow">时间花在哪</div>
@@ -889,7 +889,7 @@ function LeanCard({ x, sessionUrl, mrUrl, waiter }: { x: RequirementDetail; sess
     <section className="cto-card" aria-label="Lean 进度">
       <div className="cto-chart-head">
         <h3>AI-DLC Lean</h3>
-        <span className="cto-dim">{leanProgress(lean)} · {onMr ? '交接以后，审批在 MR 上回答' : '审批的那一行由你在会话里自己打，app 不替你发'}</span>
+        <span className="cto-dim">{leanNow(x.row)} · {onMr ? '交接以后，审批在 MR 上回答' : '审批的那一行由你在会话里自己打，app 不替你发'}</span>
       </div>
       <div className="br-lean-phases" data-testid="lean-phases">
         {phases.map((p) => {
