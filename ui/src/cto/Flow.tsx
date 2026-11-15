@@ -84,6 +84,7 @@ export function stepOf(r: Requirement): Step | null {
   if (d === 'start') return { label: DO_NAME.start, view: { kind: 'new', repo: r.repo, key: r.key, title: r.title } }
   if (d === 'answer' && r.waits.where === 'mr' && r.mr?.url) return { label: ACT.answerOnMr, href: r.mr.url }
   if (d === 'write_back') return { label: DO_NAME.write_back, view: { kind: 'brain', repo: r.repo, reflect: r.key } }
+  if (d === 'push_handoff') return { label: DO_NAME.push_handoff, view: { kind: 'item', repo: r.repo, key: r.key, from: 'overview' } }   // 交接给运行机 is on 需求详情
   return { label: DO_NAME[d], view: { kind: 'board', repo: r.repo, key: r.key, from: 'overview', ...(d === 'accept' ? { focus: 'accept' as const } : {}) } }
 }
 

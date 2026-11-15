@@ -1204,12 +1204,14 @@ export interface ReflectApplyResult {
 
 // ---------------------------------------------------------------- GET /todo
 
-/** handoff_unlabelled: pushed, but its MR carries no hand-over label (nothing was handed over) */
+/** handoff_unlabelled: pushed, but its MR carries no hand-over label (nothing was handed over); handoff_unpushed: the
+ * hand-over commit is on this machine only, its push failed (再交接一次, on 需求详情) */
 /** reply: a local session idle, your turn to talk (opens it); start: claimed by you, no run yet (开工) */
 /** child_start: a small requirement you claimed whose dependencies have all merged (开工 now); parent_release: a big
  * requirement whose small ones have all merged (review and release it); closed_leftover: your requirement closed with
  * `brain intent close` whose run branch or MR is still there (delete it, close it) */
-export type TodoKind = 'lean_approval' | 'question' | 'clarify' | 'acceptance' | 'handoff_rejected' | 'handoff_unlabelled' | 'crew'
+export type TodoKind = 'lean_approval' | 'question' | 'clarify' | 'acceptance' | 'handoff_rejected' | 'handoff_unlabelled'
+  | 'handoff_unpushed' | 'crew'
   | 'reply' | 'start'
   /** write_back: merged, its Brain proposals not written back yet (回写 Brain) */
   | 'write_back'

@@ -18,6 +18,7 @@
  *   write_back          merged, its new knowledge not written back yet               回写 Brain (Brain's 回写, on it)
  *   handoff_rejected    the hand-over was refused: why, and what to say to the AI   打开会话 · 看 MR
  *   handoff_unlabelled  pushed, but the MR has no hand-over label                   补上交接标签 · 看 MR
+ *   handoff_unpushed    the hand-over commit's push failed: nothing went out        再交接一次 (需求详情, its button)
  *   closed_leftover     closed with brain intent close, its run branch or MR left   看 MR (delete it, close it)
  *   stuck               a run on the runner that no answer can move any more        看 MR
  *   crew                KiroCrew's failing checks, with their fix buttons
@@ -56,6 +57,7 @@ const GROUPS: Group[] = [
   { key: 'write_back', heading: '等回写 Brain', icon: 'brain', tone: 'wait', hint: '合并了：把学到的写回 Brain' },
   { key: 'handoff_rejected', heading: '接手被拒', icon: 'handover', tone: 'bad', hint: '改好再交接' },
   { key: 'handoff_unlabelled', heading: '没交出去的交接', icon: 'handover', tone: 'warn', hint: 'MR 上没有交接标签' },
+  { key: 'handoff_unpushed', heading: '交接没推上去', icon: 'handover', tone: 'warn', hint: '在需求详情再点「交接给运行机」' },
   { key: 'closed_leftover', heading: '关了的需求还留着分支或 MR', icon: 'settings', tone: 'warn', hint: '用不着就删掉、关掉' },
   { key: 'stuck', heading: '卡住了的运行', icon: 'blocked', tone: 'bad', hint: '这一步答不了了：找负责人' },
   { key: 'crew', heading: 'KiroCrew 的问题', icon: 'settings', tone: 'bad', hint: '修好了才能开会话（不开会话也能开工）' },
@@ -258,6 +260,11 @@ function Item({ it, group, now, go, onAnswered, started, onStarted }: {
         {it.kind === 'start' && it.key && (
           <button type="button" className="br-btn is-small is-primary" onClick={() => go({ kind: 'new', repo: it.repo, key: it.key, title: it.title })}>
             <RoleIcon role="new" size={14} />{DO_NAME.start}
+          </button>
+        )}
+        {group.key === 'handoff_unpushed' && it.key && (
+          <button type="button" className="br-btn is-small is-primary" onClick={() => go({ kind: 'item', repo: it.repo, key: it.key, from: 'todo' })}>
+            <RoleIcon role="handover" size={14} />{DO_NAME.push_handoff}
           </button>
         )}
         {group.key === 'write_back' && it.key && (

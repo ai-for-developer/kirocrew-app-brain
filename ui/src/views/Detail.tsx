@@ -169,9 +169,10 @@ export const DETAIL_CSS = `
 
 // ------------------------------------------------------------------ what the page reads off the records
 
-/** The requirement went to the team runner: its questions and approvals are answered on the MR from then on. */
+/** The requirement went to the team runner: its questions and approvals are answered on the MR from then on. A
+ * hand-over commit whose push failed (push_handoff) went nowhere. */
 function handedOver(x: RequirementDetail): boolean {
-  return !!x.run?.handoff || ['handed_over', 'running', 'parked', 'acceptance'].includes(x.row.state)
+  return x.row.waits.do !== 'push_handoff' && (!!x.run?.handoff || ['handed_over', 'running', 'parked', 'acceptance'].includes(x.row.state))
 }
 
 /** Lean's progress the one way (vocab.leanProgress): the backend's counts, else counted from the stages; a next stage
