@@ -943,6 +943,8 @@ export interface SessionRow {
   /** open it in Kiro Crew: navigate to this path */
   url: string
   error: string | null
+  /** KiroCrew no longer has it (closed or deleted there) */
+  missing: boolean
 }
 
 /**
@@ -993,6 +995,9 @@ export interface RequirementDetail {
   /** other_runs (brain-kit 0d52e97, rule H0): this requirement's runs on another branch, not read into this trace, in words */
   timeline: { source: 'trace' | 'app'; items: TimelineItem[]; missing: string[]; error: string; other_runs: string[] }
   sessions: SessionRow[]
+  /** the live brain-dev session on this machine, as the backend decides it (service._live): the newest one KiroCrew
+   * still has whose first message went in, never a review session. 打开会话 opens it, 重开一个会话 replaces it */
+  live_slot: string | null
   credits: { total: number | null; note: string }
   brain: { loaded: number | null; cited: string[]; stale: string[]; unknown: string[]; proposals: number | null }
   mr_desc: MrDesc

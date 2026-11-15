@@ -36,6 +36,7 @@ _REGISTRY: dict[str, "Service"] = {}
 _SECRETS = re.compile(r"(?i)((?:password|passwd|secret|token|api[_-]?key|authorization)\s*[=:]\s*|bearer\s+)\S+"
                       r"|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{16,}")
 EVAL_TTL_S = 120.0
+REVIEW_TITLE = " · 审查"     # a review session's title ends so (开审查会话): it is never the live dev session
 MR_EVERY_S = 30.0
 CREW_EVERY_S = 300.0
 TRACE_TTL_S = 15.0
@@ -73,6 +74,19 @@ def me_line(repos: list[dict[str, Any]], token: bool, env: str) -> dict[str, Any
     how = "GitLab 令牌（%s）" % ("有" if token else "没有") + (
         "；这台机器的环境变量里设的 %s" % env if env else "；%s" % first["text"] if first else "")
     return {"user": env or (first["name"] if first else None), "token": token, "how": how}
+
+
+def session_row(mgr: SessionManager, info: Any) -> dict[str, Any]:
+    """A session this app opened, as the pages list it (and service._live picks from)."""
+    st = mgr.slot_stats(info.slot) or {}
+    return {
+        "slot": info.slot, "title": info.title, "agent": info.agent, "kind": info.kind or "local",
+        "credits": mgr.slot_credits(info.slot),   # the very number credits_by_key adds up
+        "turns": int(st.get("turns") or info.turns or 0), "busy": bool(st.get("busy")),
+        "awaiting": bool(st.get("awaiting")), "last_activity": st.get("last_activity") or info.last_activity,
+        "opened_at": st.get("opened_at") or info.started, "project": info.cwd or None,
+        "url": "/chat?sid=%s" % info.slot, "error": info.error, "missing": bool(st.get("missing")),
+        "id": info.id, "opened": info.started is not None, "review": str(info.title or "").endswith(REVIEW_TITLE)}
 
 
 class Service:
@@ -352,23 +366,20 @@ class Service:
         """{scope: [session rows]} and credits per scope, read on the event loop."""
         by: dict[str, list[dict[str, Any]]] = {}
         for info in self.sessions.roots():
-            if not info.key or not info.slot:
-                continue
-            st = self.sessions.slot_stats(info.slot) or {}
-            by.setdefault(info.key, []).append({
-                "slot": info.slot, "title": info.title, "agent": info.agent, "kind": info.kind or "local",
-                "credits": self.sessions.slot_credits(info.slot),   # the very number credits_by_key adds up
-                "turns": int(st.get("turns") or info.turns or 0), "busy": bool(st.get("busy")),
-                "awaiting": bool(st.get("awaiting")), "last_activity": st.get("last_activity") or info.last_activity,
-                "opened_at": st.get("opened_at") or info.started, "project": info.cwd or None,
-                "url": "/chat?sid=%s" % info.slot, "error": info.error, "missing": bool(st.get("missing")),
-                "id": info.id})
+            if info.key and info.slot:
+                by.setdefault(info.key, []).append(session_row(self.sessions, info))
         return {"by": by, "credits": self.sessions.credits_by_key()}
 
     @staticmethod
     def _live(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
-        live = [r for r in rows if not r.get("missing") and r["kind"] == "local"]
+        """The requirement's live brain-dev session on this machine, the one 打开会话 opens, 重开一个会话 replaces and
+        an answer goes into: the newest that KiroCrew still has and whose first message went in. Never a review
+        session: 开审查会话 opens one beside it."""
+        live = [r for r in rows if r["kind"] == "local" and r["opened"] and not r["missing"] and not r["review"]]
         return live[-1] if live else None
+
+    def _live_of(self, scope: str) -> dict[str, Any] | None:
+        return self._live([session_row(self.sessions, i) for i in self.sessions.roots(key=scope) if i.slot])
 
     def _gitlab_of(self, repo: Repo) -> tuple[str, str]:
         g = repo.cfg.get("gitlab") or {}
@@ -749,8 +760,9 @@ class Service:
                                                               handed=bool(run.get("handoff"))),
                          "other_runs": tl.get("other_runs") or []},
             "sessions": [{k: s[k] for k in ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting",
-                                             "last_activity", "opened_at", "project", "url", "error")}
+                                             "last_activity", "opened_at", "project", "url", "error", "missing")}
                          for s in snap["by"].get(scope, [])],
+            "live_slot": (self._live(snap["by"].get(scope, [])) or {}).get("slot"),
             "credits": {"total": snap["credits"].get(scope), "note": detail.NO_TOKENS},
             "brain": detail.brain_block(tl.get("brain"), None, f.get("decisions_text")),
             "mr_desc": self._desc_now(self._desc_job(repo, f, snap["credits"].get(scope))),
@@ -958,12 +970,11 @@ class Service:
             task = intake.review_task(key, branch, run.get("intent"))
             if not task:
                 raise AppError("这个需求的记录里找不到它在 Lean 里的名字：开不了审查会话", "no_intent", 409)
-            title, said = "%s · 审查" % key, "开了审查会话"
+            title, said = key + REVIEW_TITLE, "开了审查会话"
         else:
-            live = [i for i in self.sessions.roots(key=scope, kind="local") if i.slot and not
-                    (self.sessions.slot_stats(i.slot) or {}).get("missing")]
+            live = self._live_of(scope)
             if live and not fresh:
-                return {"ok": True, "slot": live[-1].slot, "url": "/chat?sid=%s" % live[-1].slot}
+                return {"ok": True, "slot": live["slot"], "url": live["url"]}
             if task is None:     # a small requirement's start brings its own first message (family.kickoff)
                 task = intake.kickoff(key, branch, run.get("intent"),
                                       [str(m.get("package")) for m in run.get("materials") or [] if isinstance(m, dict)]) \
@@ -999,9 +1010,7 @@ class Service:
             raise AppError("这台机器上没有检出 %s 的分支：先在开需求里开工" % f.get("branch"), "no_worktree", 409)
         scope = scope_of(repo.id, key)
         async with self._reopening.setdefault(scope, asyncio.Lock()):
-            live = [i.slot for i in self.sessions.roots(key=scope, kind="local") if i.slot and not
-                    (self.sessions.slot_stats(i.slot) or {}).get("missing")]
-            cur = live[-1] if live else None
+            cur = (self._live_of(scope) or {}).get("slot")
             if cur and cur != (replace if isinstance(replace, str) and replace else None):
                 return {"ok": True, "slot": cur, "url": "/chat?sid=%s" % cur, "reopened": False}
             if cur:
@@ -1039,12 +1048,12 @@ class Service:
                 raise AppError("这个需求没有等你回答的澄清问题", "no_question", 409)
             if choice not in answer_choices([str(o.get("id")) for o in park.get("options") or [] if isinstance(o, dict)]):
                 raise AppError("没有选项 %s" % choice, "invalid_choice")
-            live = [i for i in self.sessions.roots(key=scope, kind="local") if i.slot]
+            live = self._live_of(scope)
             if not live:
                 raise AppError("先开这个需求的 brain-dev 会话", "no_session", 409)
             text = local_answer(choice, note)
-            turn = await self.sessions.continue_conversation_async(live[-1].id, text,
-                                                                   parent_session_key=live[-1].parent_session_key)
+            turn = await self.sessions.continue_conversation_async(live["id"], text, parent_session_key=self.sessions.get(
+                live["id"]).parent_session_key)
             if turn.error:
                 raise AppError(turn.error, "send_failed", 502)
             await asyncio.to_thread(self.store.append, scope, "app", "在 app 里回答了澄清问题：%s" % choice, None)

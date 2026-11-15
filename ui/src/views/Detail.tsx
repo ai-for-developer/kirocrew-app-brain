@@ -301,8 +301,7 @@ export function DetailView({ entry, onBack, onSwitch, onMissing, ...props }: {
     if (missing || x) onMissing?.(missing)
   }, [missing, !!x]) // eslint-disable-line react-hooks/exhaustive-deps
   const repoInfo = props.status?.repos.find((r) => r.id === entry.repo) ?? null
-  // the newest local one, as the backend's (service._live): 重开一个会话 adds one after the old
-  const live = x ? [...x.sessions].reverse().find((s) => s.kind === 'local' && !s.error) ?? null : null
+  const live = x ? x.sessions.find((s) => s.slot === x.live_slot) ?? null : null
   const toBoard = (more: Partial<BoardEntry> = {}) => props.go({ kind: 'board', repo: entry.repo, key: entry.key, from: 'item', ...more })
   // 回交付总览: back when that is where it was opened from (its filters kept), else a move there
   const back = onBack ? { name: from, go: onBack } : { name: VIEW_NAME.overview, go: () => props.go({ kind: 'overview', ...(entry.repo !== 'runner' ? { repo: entry.repo } : {}) }) }
@@ -1113,6 +1112,7 @@ function sessionName(s: SessionRow): string {
 }
 
 function sessionState(s: SessionRow, replying: boolean): { label: string; tone: string } {
+  if (s.missing) return { label: '不在 KiroCrew 里了', tone: 'idle' }
   if (s.error) return { label: '出错', tone: 'bad' }
   if (s.awaiting) return { label: '等批准', tone: 'wait' }
   if (s.busy) return { label: '在做', tone: 'run' }
@@ -1152,9 +1152,11 @@ function SessionsCard({ sessions, total, note, replying, at }: { sessions: Sessi
                   </div>
                   {s.error && <p className="br-error br-small">{s.error}</p>}
                 </div>
-                <button type="button" className="kt-btn is-small" onClick={() => navigate(s.url)}>
-                  <Icon name="MessageSquare" size={13} />{ACT.openSession}
-                </button>
+                {!s.missing && (
+                  <button type="button" className="kt-btn is-small" onClick={() => navigate(s.url)}>
+                    <Icon name="MessageSquare" size={13} />{ACT.openSession}
+                  </button>
+                )}
               </li>
             )
           })}
