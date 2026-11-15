@@ -53,6 +53,19 @@ describe('设置', () => {
     expect(apiCalls.find((c) => c.path === `${API}/repos/remove`)?.body).toEqual({ path: '/Users/alice/workplace/shop-pay' })
   })
 
+  test('仓库: a damaged repo_ids.json is said in words, with what to do', async () => {
+    const s = fx.status()
+    s.repo_ids_problem = '仓库编号的记录 /data/repo_ids.json 坏了，读不出来：这次先按设置里的顺序编号，那个文件没动。修好它，再重启 Brain 交付（KiroCrew 的「应用」里先停再启动）'
+    render(<SettingsView {...props({ status: s })} />)
+    const card = screen.getByRole('region', { name: '仓库' })
+    expect(within(card).getByRole('alert')).toHaveTextContent(s.repo_ids_problem)
+  })
+
+  test('仓库: no word about the ids while their file reads fine', () => {
+    render(<SettingsView {...props()} />)
+    expect(within(screen.getByRole('region', { name: '仓库' })).queryByText(/仓库编号的记录/)).toBeNull()
+  })
+
   test('a team repo whose brain-kit is on the install branch with an open MR: the MR first; a local merge is 导入仓库’s', async () => {
     const user = userEvent.setup()
     const s = fx.status()
