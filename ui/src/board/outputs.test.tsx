@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, test, vi } from 'vitest'
 import { fx } from '../test/data'
 import { API, installFixtureRoutes } from '../test/routes'
@@ -320,6 +320,21 @@ describe('CI 没过: the MR’s pipelines read on this machine', () => {
     }
     expect([...said].sort()).toEqual(['build-and-test:4:CI 没过 #1234 以后', 'build-and-test:5:CI 没过 #1240 以后', 'release:2:CI 没过 #1234，代码又改了',
       'release:3:CI 没过 #1240，代码又改了'])
+  })
+
+  test('in a replay the version asked for is marked once Lean asked with it: not a minute into round 3, from its request on', async () => {
+    const rel = worldBoard('r1/PAY-9').nodes.find((n) => n.id === 'release')!
+    const asked = worldBoard('r1/PAY-9').events.find((e) => e.kind === 'request' && e.node === 'release' && e.at > rel.rounds[2].started)!.at
+    expect(asked - rel.rounds[2].started).toBe(70)
+    for (const [t, marked] of [[rel.rounds[2].started + 60, false], [asked + 60, true]] as const) {
+      renderBoard({ ...PAY9, at: t, out: { node: 'release', round: 3 } }, () => worldBoard('r1/PAY-9'))
+      const pane = await screen.findByTestId('out-pane', {}, { timeout: 5000 })
+      await waitFor(() => expect(within(pane).getByTestId('out-md')).toBeInTheDocument(), { timeout: 5000 })
+      expect(within(pane).getByTestId('out-rounds').textContent).toMatch(marked ? /第 3 轮等验收$/ : /第 3 轮在做$/)
+      if (marked) expect(within(pane).getByTestId('out-asked')).toHaveTextContent('✋ 就是请批的那一版 · 73b5061f')
+      else expect(within(pane).queryByTestId('out-asked')).toBeNull()
+      cleanup()
+    }
   })
 
   test('the drawer in a replay says the cause at the moment: #1234 once round 3 began, #1240 not yet', async () => {

@@ -139,9 +139,9 @@ function FileRow({ f, on, onPick }: { f: OutFile; on: boolean; onPick: () => voi
   )
 }
 
-/** One file of the round: its bar (path, lines, which version, 就是请批的那一版, the modes) and its body (keyed by the
- * file and its version: another one starts in its own default mode). */
-function FilePane({ repo, reqKey, f, round }: { repo: string; reqKey: string; f: OutFile; round: number }) {
+/** One file of the round: its bar (path, lines, which version, 就是请批的那一版 once the round had asked with it, the
+ * modes) and its body (keyed by the file and its version: another one starts in its own default mode). */
+function FilePane({ repo, reqKey, f, round, asked }: { repo: string; reqKey: string; f: OutFile; round: number; asked: boolean }) {
   const doc = isDoc(f.path)
   const [mode, setMode] = useState<Mode>(doc ? 'content' : 'diff')
   const [vs, setVs] = useState<string | null>(f.base)
@@ -160,7 +160,7 @@ function FilePane({ repo, reqKey, f, round }: { repo: string; reqKey: string; f:
             {f.ref === 'worktree' ? `第 ${round} 轮的版本 · 还没提交，和 Lean 记下的指纹一样` : `第 ${round} 轮的版本 · 提交 ${f.ref.slice(0, 7)}`}
           </span>
         )}
-        {v?.asked && <span className="kt-asked" data-testid="out-asked" title={`${v.asked.kind} 请批时 Lean 记下的指纹 ${v.asked.sha8}`}>✋ 就是请批的那一版 · {v.asked.sha8}</span>}
+        {asked && v?.asked && <span className="kt-asked" data-testid="out-asked" title={`${v.asked.kind} 请批时 Lean 记下的指纹 ${v.asked.sha8}`}>✋ 就是请批的那一版 · {v.asked.sha8}</span>}
         {f.ref && (
           <span className="kt-seg" role="group" aria-label="怎么看">
             <button type="button" className={`kt-btn is-small${mode === 'source' ? ' is-on' : ''}`} aria-pressed={mode === 'source'} onClick={() => setMode('source')}>源码</button>
@@ -231,7 +231,9 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt, moment }: {
   }, [sig]) // eslint-disable-line react-hooks/exhaustive-deps
   const run = r ? runs.get(r.run) : undefined
   const listed = out.data?.files ?? []
-  const { files, later } = moment && r ? filesAt(listed, r, !!openAsk(n, r), moment) : { files: listed, later: 0 }
+  // a round still going then had asked with its version only if its gate was open then (replayAt's gates)
+  const asked = !moment || !r || r.ended !== null || !!openAsk(n, r)
+  const { files, later } = moment && r ? filesAt(listed, r, asked, moment) : { files: listed, later: 0 }
   const pick = files.find((f) => f.path === at.file) ?? files.find((f) => f.ref) ?? files[0]
   const declared = files.filter((f) => f.output)
   const others = files.filter((f) => !f.output)
@@ -296,7 +298,7 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt, moment }: {
                 {later > 0 && <p className="kt-dim kt-flist-foot" data-testid="out-later">这一轮那时还在做：那以后才提交的 {later} 个文件这里没列</p>}
                 {run?.kind === 'runner' && <p className="kt-dim kt-flist-foot">都在运行机推上来的提交里：这台机器取回来以后能看全</p>}
               </div>
-              {pick && <FilePane key={`${pick.path}@${pick.ref}`} repo={repo} reqKey={reqKey} f={pick} round={r?.n ?? 0} />}
+              {pick && <FilePane key={`${pick.path}@${pick.ref}`} repo={repo} reqKey={reqKey} f={pick} round={r?.n ?? 0} asked={asked} />}
             </div>
           )}
       </div>

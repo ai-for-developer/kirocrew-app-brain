@@ -97,6 +97,12 @@ function nodeAt(n: StageNode, t: number, owner: WaitWho, committed: (sha: string
     // asked then and decided later, or still open: it waits while its node waits; nothing to type in a replay
     return waits ? [{ ...g, state: g.state === 'queued' ? 'queued' : 'pending', at: now.since, who: who, by: null, line: null, text: g.state === 'queued' ? g.text : null }] : []
   })
+  // a round whose ask the snapshot keeps no gate of (its code changed before anyone decided: superseded) was asked
+  // while its node waited
+  const open = rounds[rounds.length - 1]
+  if (waits && n.gates.length && open?.ended === null && !gates.some((g) => g.round === open.n)) {
+    gates.push({ ...n.gates[0], state: 'pending', round: open.n, at: now.since, who, by: null, line: null, mr: null, text: null })
+  }
   return {
     node: {
       ...n, ...now, rounds, gates,
