@@ -163,18 +163,29 @@ describe('回放 on the page: the hold and the drawer at the moment', () => {
     act(() => void vi.advanceTimersByTime(TICK_MS))
     const chips = () => within(screen.getByTestId('kt-graph')).getAllByTestId('kt-gate-pill').map((x) => x.querySelector('text')?.textContent)
     expect(screen.getByTestId('br-replay-held')).toHaveTextContent('应用设计：等你批')
-    expect(designBox().querySelector('[data-testid="kt-node-held"]')).not.toHaveClass('is-fix')
+    expect(designBox().querySelector('[data-testid="kt-node-held"]')).not.toHaveClass('is-bad')
     expect(chips()).toContain('等你批 · 设计')
     act(() => void vi.advanceTimersByTime(TICK_MS * (HOLD_TICKS - PICK_TICKS)))
     expect(screen.getByTestId('br-replay-held')).toHaveTextContent('应用设计：你退回了设计')
-    expect(screen.getByTestId('br-replay-held')).toHaveClass('is-fix')
-    expect(designBox().querySelector('[data-testid="kt-node-held"]')).toHaveClass('is-fix')
+    // 退回 in the one colour it has everywhere (the legend's 退回 · 没过, the flash when it lands): red, not 返工's orange
+    expect(screen.getByTestId('br-replay-held')).toHaveClass('is-bad')
+    expect(designBox().querySelector('[data-testid="kt-node-held"]')).toHaveClass('is-bad')
     expect(chips()).toContain('✗ 退回了')
     expect(designBox()).toHaveAttribute('data-status', 'awaiting_approval')
     act(() => void vi.advanceTimersByTime(TICK_MS * PICK_TICKS))
     expect(screen.queryByTestId('br-replay-held')).toBeNull()
     expect(designBox().querySelector('[data-testid="kt-node-held"]')).toBeNull()
     expect(designBox()).toHaveAttribute('data-status', 'fixing')
+  })
+
+  test('a round sent back says it in 退回’s colour on its lane, in the drawer’s pill and banner, as the held choice does', async () => {
+    renderPage({ ...PAY2, out: { node: 'application-design', round: 1 } })
+    const lane = (await screen.findAllByTestId('kt-lane', {}, SLOW)).find((l) => l.dataset.node === 'application-design')!
+    expect(within(lane).getByText(/你退回了/).closest('li')).toHaveClass('tone-bad')
+    const pill = await drawer().findByRole('button', { name: /第 1 轮/ }, SLOW)
+    expect(pill).toHaveClass('tone-bad')
+    expect(drawer().getByTestId('out-banner')).toHaveClass('tone-bad')
+    expect(drawer().getByTestId('out-banner')).toHaveTextContent('你退回了这一轮')
   })
 
   test('the drawer lists only the rounds started by then, each file at that round’s version; a later round is absent', async () => {
@@ -184,6 +195,7 @@ describe('回放 on the page: the hold and the drawer at the moment', () => {
     expect(drawer().getByRole('group', { name: '回放' })).toBeInTheDocument()
     expect(roundPills()).toEqual(['第 1 轮等你批'])
     expect(drawer().getByTestId('out-banner')).toHaveTextContent('这是请你批的版本')
+    expect(drawer().getByTestId('out-banner')).toHaveTextContent(/^✋ 这是请你批的版本设计 · (\d\d-\d\d )?\d\d:\d\d 请批/)
     expect(drawer().getByTestId('out-banner')).not.toHaveTextContent('MR')
     await waitFor(() => expect(drawer().getByTestId('out-at')).toHaveTextContent(`第 1 轮的版本 · 提交 ${DRAFT.slice(0, 7)}`), SLOW)
     expect(await drawer().findByTestId('out-md', {}, SLOW)).toHaveTextContent(`应用设计 @ ${DRAFT.slice(0, 7)}`)

@@ -1,6 +1,6 @@
 /**
  * The top of the 需求看板 (the sample team board's Header.tsx): the requirement's key, title and state, its branch, the
- * actions (回放, 跟随, 需求详情, 打开会话), and the live counters: checks passed, Lean's stages, a person's acts (at the
+ * actions (回放, 跟随, 需求详情, 打开会话, 停止), and the live counters: checks passed, Lean's stages, a person's acts (at the
  * judgment points and outside them), the steps of the way done, credits. Also the introduction a requirement shows
  * before its run started: the way it will go (the repo's own way: one done only here never goes to the runner), and
  * how to start it.
@@ -9,9 +9,12 @@
  * unit; a big one says how many of its small ones merged (a jump to its family card), or that it is not split yet. A
  * small one's introduction is its own way: 认领, 开工 from the big one's branch, 同步, its MR to the big one's owner.
  */
-import type { ReqBoard, ReqFamily, Run, StageNode } from '../types'
+import { useEffect, useState } from 'react'
+import { useAppApi } from '@kirocrew/app-sdk'
+import { paths, useAction } from '../api'
+import type { ReqBoard, ReqFamily, Run, StageNode, StopResult } from '../types'
 import { StateChip } from '../ui'
-import { ACT, DO_NAME, FAMILY_ACT, leanProgress, wholeSkips } from '../vocab'
+import { ACT, DO_NAME, FAMILY_ACT, leanNow, wholeSkips } from '../vocab'
 import { WORKING, actorMeta, boardWho, fmtCredits, fmtWhen, leanOf, localOnly, nodeLabel, nodeWait, outsidePushes, runnerBlind, sessionOf, titleOf, waitsOnMe } from './format'
 import { useChangeCount, useTween } from './hooks'
 import { waitCount } from './next'
@@ -20,7 +23,7 @@ import { RoleIcon } from './RoleIcon'
 import { RunPicker } from './RunPicker'
 import { verifyCount, wayAt } from './way'
 
-export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail, onSession, onStart, onParent, onFamily, onOutputs, run = 'all', onRun }: {
+export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail, onSession, onStart, onParent, onFamily, onOutputs, onStopped, run = 'all', onRun }: {
   board: ReqBoard
   /** the run picked, and picking one (运行：全部 ▾) */
   run?: RunFilter
@@ -39,10 +42,13 @@ export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail,
   onOutputs?: () => void
   /** a big one: its family card */
   onFamily?: () => void
+  /** 停止 is offered (this machine's board), and what follows a stop */
+  onStopped?: () => void
 }) {
   const r = board.row
   // this machine's session, and the latest runner run's when it is readable here (team mode)
-  const local = sessionOf(board.runs.find((x) => x.kind === 'local')) ?? null
+  const localRun = board.runs.find((x) => x.kind === 'local')
+  const local = sessionOf(localRun) ?? null
   const runner = sessionOf([...board.runs].reverse().find((x) => x.kind === 'runner' && x.sessions.length)) ?? null
   const finished = board.ended_at !== null || r.state === 'merged' || r.state === 'closed'
   return (
@@ -74,6 +80,7 @@ export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail,
         {!replaying && local && onSession && (
           <button type="button" className="kt-btn" onClick={() => onSession(local.url)} title="在 Kiro Crew 里打开本机的 brain-dev 会话">{ACT.openSession}</button>
         )}
+        {!replaying && onStopped && localRun?.sessions.some((x) => x.busy) && <StopButton repo={r.repo} reqKey={r.key} onStopped={onStopped} />}
         {!replaying && runner && onSession && (
           <button type="button" className="kt-btn" onClick={() => onSession(runner.url)} title="打开运行机上的 brain-run 会话">{ACT.openSession}（运行机）</button>
         )}
@@ -85,6 +92,44 @@ export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail,
         {onDetail && <button type="button" className="kt-btn" onClick={onDetail}>需求详情 ↗</button>}
       </div>
     </header>
+  )
+}
+
+/** 停止 (the sample's): the turn this requirement's own session on this machine is working on, after the person says so;
+ * the backend finds the requirement's sessions itself, so nothing else can be stopped from here. Esc is 取消. */
+function StopButton({ repo, reqKey, onStopped }: { repo: string; reqKey: string; onStopped: () => void }) {
+  const api = useAppApi()
+  const [asking, setAsking] = useState(false)
+  const stop = useAction(() => api.post<StopResult>(paths.stop(repo, reqKey), {}))
+  useEffect(() => {
+    if (!asking) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      setAsking(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [asking])
+  if (!asking) {
+    return (
+      <button type="button" className="kt-btn is-danger" title={`停下 ${reqKey} 的本机会话正在做的这一轮`} onClick={() => { stop.reset(); setAsking(true) }}>
+        {ACT.stop}
+      </button>
+    )
+  }
+  const go = async () => {
+    if (!(await stop.run())) return
+    setAsking(false)
+    onStopped()
+  }
+  return (
+    <span className="br-stop-ask" role="group" aria-label={`${ACT.stop} ${reqKey} 的本机会话`}>
+      <span>停下 {reqKey} 的本机会话正在做的这一轮？别的需求、别的会话都不动；会话还在，{ACT.openSession}可以接着做。</span>
+      <button type="button" className="kt-btn is-danger is-solid" disabled={stop.busy} onClick={() => void go()}>{stop.busy ? '正在停…' : `确定${ACT.stop}`}</button>
+      <button type="button" className="kt-btn" disabled={stop.busy} onClick={() => setAsking(false)}>取消</button>
+      {stop.error && <span className="br-error" role="alert">{stop.error}</span>}
+    </span>
   )
 }
 
@@ -145,9 +190,9 @@ function ChecksKpi({ board, reducedMotion }: { board: ReqBoard; reducedMotion: b
   )
 }
 
-/** Lean's stages on the way, as Lean counts them: done green, skipped grey; the box the way is at lit (way.ts wayAt, the
- * rule the graph follows), else the next one; once the graph has nothing left, the rest grey. A phase skipped as a whole
- * is not a cell, it is said once under them. */
+/** Lean's stages on the way, as Lean counts them: done green, skipped grey; the stage Lean is on or does next lit, as
+ * 交付总览 and 需求详情 say it (vocab.leanNow); once the way is over, the rest grey. A phase skipped as a whole is not a
+ * cell, it is said once under them. */
 function LeanKpi({ board }: { board: ReqBoard }) {
   const ln = leanOf(board.row.lean)
   const through = ln.done_n + ln.skipped_n
@@ -156,13 +201,14 @@ function LeanKpi({ board }: { board: ReqBoard }) {
   const blocked = board.events.filter((e) => e.kind === 'blocked').length
   const blind = runnerBlind(board)
   const whole = wholeSkips(ln.skipped_phases)
-  const { at, next } = wayAt(board.nodes)
-  const step = at ?? next
-  const over = !step && board.nodes.some((n) => n.rounds.length > 0)
-  const said = leanProgress({ ...ln, next: step ? { id: step.stage, label: step.title, n: step.n } : null, stage: null, stage_state: at ? 'started' : null })
-  const seg = (i: number) => (i < ln.done_n ? 'is-pass' : i < through || over ? 'is-skip' : !blind && step && i === through ? (at ? litSeg(at, board) : 'is-next') : '')
+  const now = leanNow(board.row, []).split(' · ').pop()!
+  const step = /^(在做|下一步)：(.+)$/.exec(now)
+  const over = !step && now !== '还没开工'
+  const { at } = wayAt(board.nodes)
+  const lit = step?.[1] === '在做' ? (at ? litSeg(at, board) : 'is-run') : 'is-next'
+  const seg = (i: number) => (i < ln.done_n ? 'is-pass' : i < through || over ? 'is-skip' : !blind && step && i === through ? lit : '')
   return (
-    <div className="kt-kpi kt-kpi-gates br-kpi-lean" aria-label={`AI-DLC Lean：${blind ? '运行机还读不到 Lean 的记录' : said}`}>
+    <div className="kt-kpi kt-kpi-gates br-kpi-lean" aria-label={`AI-DLC Lean：${blind ? '运行机还读不到 Lean 的记录' : leanNow(board.row)}`}>
       <div className="kt-kpi-label">AI-DLC Lean</div>
       <div className="kt-kpi-value" data-testid="br-lean-counter">
         <span className="kt-kpi-big">{ln.done_n}</span>
@@ -173,7 +219,7 @@ function LeanKpi({ board }: { board: ReqBoard }) {
       </div>
       <div className="kt-kpi-note br-lean-next">
         {blind ? '运行机还读不到 Lean 的记录' : <>
-          {step ? <>{at ? '在做' : '下一步'}：<b>{step.title}</b></> : over || through ? '全部做完' : '还没开始'}
+          {step ? <>{step[1]}：<b>{step[2]}</b></> : now}
           {whole && <span data-testid="br-lean-whole"> · {whole}</span>}
         </>}
       </div>

@@ -14,7 +14,7 @@ import { ACT, approvalName } from '../vocab'
 import { Inline, Markdown, Paths, takeRefs } from './Markdown'
 import type { ViewProps } from './props'
 
-const SOURCE_LABEL: Record<Question['source'], string> = { park: '本地会话', bridge: '运行机', mr: 'MR' }
+const SOURCE_LABEL: Record<Question['source'], string> = { park: '本地会话', runner: '运行机', bridge: '运行机', mr: 'MR' }
 
 /** A Brain entry as a chip that opens the Brain view at it (an id that is not an entry id stays plain). */
 export function EntryChip({ id, repo, go }: { id: string; repo: string; go: ViewProps['go'] }) {
@@ -46,7 +46,7 @@ export function QuestionCard({ q, repo, reqKey, mrUrl, onAnswered, waiter = null
   const open = isOpenQuestion(q)
   const formHere = q.answerable_here && !q.lean_request
   const link = mrUrl === undefined ? q.mr_url : mrUrl
-  // a question the bridge put on the MR is answered there (handed over); only a local run's park.json is the session's
+  // after the hand-over a question is answered on the MR; only a local run's park.json is the session's
   const onMr = q.source !== 'park'
   const what = q.lean_request ? `${approvalName(q.lean_request.split(' ')[0]) || '审批'}请求` : ''
   const asked = takeRefs(q.question)
@@ -80,7 +80,7 @@ export function QuestionCard({ q, repo, reqKey, mrUrl, onAnswered, waiter = null
       {q.lean_request && (
         <p className="br-note" data-testid="lean-request">
           {onMr
-            ? <>这是 Lean 的{what}：{whoThen(theirs ? waiter ?? '' : '', `在 MR 上${verb}${q.id ? ` ${q.id}` : ''}`)}（approve / reject），桥会把回答带回运行机。</>
+            ? <>这是 Lean 的{what}：{whoThen(theirs ? waiter ?? '' : '', `在 MR 上${verb}${q.id ? ` ${q.id}` : ''}`)}（approve / reject），桥会把回答带回运行机。{!q.id && '桥把它贴到 MR 上以后才有编号。'}</>
             : <>这是 Lean 的{what}：在会话里自己打批准那一行，这里不能回答。</>}
         </p>
       )}
@@ -115,6 +115,22 @@ export function mrDescSource(m: MrDesc): { text: string; title: string } {
   if (m.source === 'file') return { text: '分支上写好的变更说明', title: `${file} · 提交 ${m.ref ?? '?'}` }
   if (m.source === 'records') return { text: '分支上还没写好，这份是从记录生成的', title: `提交 ${m.ref ?? '?'} · 分支上没有 ${file}` }
   return { text: '', title: '' }
+}
+
+/** What the person writes on the MR after the hand-over to answer an approval (`answer D-3 approve`; reject sends it
+ * back): the comment and 复制那一行. The app never posts it for them. */
+export function MrComment({ comment }: { comment: string }) {
+  const { copied, copy } = useCopy(comment)
+  return (
+    <div className="br-next-cmd" data-testid="mr-comment">
+      <span className="br-next-k">在 MR 上回一条评论</span>
+      <code className="br-mono">{comment}</code>
+      <button type="button" className="br-btn is-small" onClick={() => void copy()}><Icon name="Copy" size={13} />{ACT.copyLine}</button>
+      {copied === 'ok' && <span className="br-small br-ok-text" role="status">已复制</span>}
+      {copied === 'fail' && <span className="br-small br-bad-text" role="status">没复制成：请手动选中这一行</span>}
+      <span className="kt-dim br-small">要退回就把 approve 换成 reject</span>
+    </div>
+  )
 }
 
 /** 复制 a 变更说明's text, and what it said. */

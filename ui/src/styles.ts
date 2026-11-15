@@ -291,8 +291,9 @@ button.br-tag:hover { border-color: var(--accent); color: var(--text-strong); }
 .br-jobsteps li.is-fail i { background: var(--kt-bad-solid); color: #fff; }
 .br-jobsteps li.is-todo { opacity: .6; border-style: dashed; }
 .br-segs i.is-run { background: var(--kt-run); box-shadow: 0 0 8px color-mix(in srgb, var(--kt-run) 55%, transparent); }
-.br-switch { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
-.br-switch .kt-select { max-width: 340px; color: var(--text-strong); }
+.br-switch { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
+/* select, not .kt-select: the forms rule above (.br-app :is(…, select)) outranks a bare .br-switch .kt-select */
+.br-switch select.kt-select { max-width: 340px; min-width: 0; color: var(--text-strong); }
 /* ---------- Markdown shown as text (views/Markdown.tsx: a 变更说明's 看全文) ---------- */
 .br-md { display: grid; gap: 8px; margin-top: 8px; font-size: 14px; color: var(--text); line-height: 1.6; }
 .br-md > * { margin: 0; min-width: 0; }

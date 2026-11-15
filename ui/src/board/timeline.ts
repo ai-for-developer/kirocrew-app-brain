@@ -3,7 +3,7 @@
  * snapshot itself: each node's status history, its rounds started by then (one that ended later is still open), its
  * gates (one decided later waits while its node waited then), spans and marks up to *t*; each run where its open round
  * was then; each hand-over's steps done by then; the events, the conveyor, the check cells decided by then, Lean's
- * progress at its stage records, whom it waited for then. Runs and hand-overs are never left out, so the graph keeps
+ * progress at its stage records, whom it waited for then, what each band had skipped by then. Runs and hand-overs are never left out, so the graph keeps
  * its picture. What has no time of its own (the decisions, what the Brain was cited for, credits) is not shown until
  * the end. Pure: the same snapshot and *t* always give the same board, so the replay can be scrubbed.
  *
@@ -14,7 +14,7 @@
  * The 产出 drawer at a moment (filesAt, turnsAt): a round over by then as it ended; one still going then, only what it
  * had by then.
  */
-import type { ActorStatus, CheckCell, Gate, NodeId, NodeTurns, OutFile, Relay, ReqBoard, ReqState, Round, Run, StageNode, WaitWho } from '../types'
+import type { ActorStatus, BoardPhase, CheckCell, Gate, NodeId, NodeTurns, OutFile, Relay, ReqBoard, ReqState, Round, Run, StageNode, WaitWho } from '../types'
 import { ownerIsYou } from './format'
 
 export interface ReplaySpan {
@@ -97,6 +97,12 @@ function nodeAt(n: StageNode, t: number, owner: WaitWho, committed: (sha: string
     // asked then and decided later, or still open: it waits while its node waits; nothing to type in a replay
     return waits ? [{ ...g, state: g.state === 'queued' ? 'queued' : 'pending', at: now.since, who: who, by: null, line: null, text: g.state === 'queued' ? g.text : null }] : []
   })
+  // a round whose ask the snapshot keeps no gate of (its code changed before anyone decided: superseded) was asked
+  // while its node waited
+  const open = rounds[rounds.length - 1]
+  if (waits && n.gates.length && open?.ended === null && !gates.some((g) => g.round === open.n)) {
+    gates.push({ ...n.gates[0], state: 'pending', round: open.n, at: now.since, who, by: null, line: null, mr: null, text: null })
+  }
   return {
     node: {
       ...n, ...now, rounds, gates,
@@ -124,6 +130,36 @@ function runAt(r: Run, nodes: StageNode[], waitOn: Map<string, WaitWho>, t: numb
 /** A hand-over at *t*: the steps taken by then; the rest not reached yet. */
 function relayAt(r: Relay, t: number): Relay {
   return { ...r, to: r.at <= t ? r.to : null, steps: r.steps.map((x) => (x.at !== null && x.at <= t ? x : { ...x, status: 'waiting', at: null, text: '还没到这一步', todo: null })) }
+}
+
+/** Not Lean's stages: a band skipped whole by Lean still has these on its way. */
+const NOT_LEAN: ReadonlySet<string> = new Set(['review', 'reflect'])
+
+/** A used band's foot line from its nodes then (backend stages._skips, the same words): what of it was skipped by then. */
+function skipsAt(p: BoardPhase, mine: StageNode[]): string | null {
+  const skipped = mine.filter((n) => n.rounds[n.rounds.length - 1]?.outcome.kind === 'skipped')
+  if (!skipped.length) return null
+  const lean = mine.filter((n) => !NOT_LEAN.has(n.stage))
+  if (lean.length && lean.every((n) => skipped.includes(n))) return `${p.title.split(' · ')[0]} ${new Set(lean.map((n) => n.stage)).size} 个阶段：这次不需要`
+  const stages = [...new Map(skipped.map((n) => [n.stage, n])).values()]
+  const whole = stages.filter((n) => n.unit === null).map((n) => n.title)
+  const every = stages.filter((s) => s.unit !== null && mine.every((n) => n.stage !== s.stage || skipped.includes(n)))
+  return [
+    whole.length ? `跳过：${whole.join('、')}` : '',
+    every.length ? `每个单元都跳过了${every.map((n) => n.title).join('、')}` : '',
+    ...stages.filter((s) => s.unit !== null && !every.includes(s)).map((s) => `${skipped.filter((n) => n.stage === s.stage).map((n) => n.unit).join('、')} 跳过了${s.title}`),
+  ].filter(Boolean).join(' · ')
+}
+
+/** The bands' words then; each band stays where it is (the picture does not move). A band Lean skipped whole says so
+ * once it was skipped. */
+function phasesAt(phases: BoardPhase[], nodes: StageNode[]): BoardPhase[] {
+  return phases.map((p) => {
+    const mine = nodes.filter((n) => n.phase === p.key)
+    if (p.key === 'init' || !mine.length || p.state === 'unrecorded') return p
+    if (p.state === 'used') return { ...p, note: skipsAt(p, mine) }
+    return mine.some((n) => n.status === 'skipped') ? p : { ...p, note: '还没轮到' }
+  })
 }
 
 /** The board of *b* as it stood at *t* (epoch seconds, between its start and end). Nothing can be done in a replay:
@@ -192,6 +228,7 @@ export function replayAt(b: ReqBoard, t: number): ReqBoard {
     person: claimed
       ? { ...b.person, status: ownerIsYou(b) ? 'awaiting_approval' : 'waiting', doing: starts }
       : { ...b.person, status: who === 'you' ? 'awaiting_approval' : working.length && !awaiting ? 'running' : 'waiting', doing: awaiting ? awaiting.doing : working.length ? 'AI 在做' : '没有等你的事' },
+    phases: phasesAt(b.phases, nodes),
     nodes,
     runs,
     relays,

@@ -23,6 +23,7 @@ function page(b: ReqBoard) {
     lean: screen.getByText('AI-DLC Lean').parentElement as HTMLElement,
     status: (id: string) => graph.querySelector(`g.kt-node[data-node="${id}"]`)?.getAttribute('data-status'),
     ready: () => Array.from(graph.querySelectorAll('path.kt-edge.is-ready')).length,
+    readyEdges: () => Array.from(graph.querySelectorAll('path.kt-edge.is-ready')).map((e) => e.getAttribute('data-edge')),
   }
 }
 
@@ -37,16 +38,21 @@ describe('the AI-DLC Lean card and the graph say the same next step', () => {
     expect(p.lean.querySelectorAll('.kt-segs .is-next, .kt-segs .is-run')).toHaveLength(0)
   })
 
-  test('PAY-16 waits for its INCEPTION approval: 下一步 is 代码生成, the dashed box the graph leads to next, not Lean’s 功能设计', () => {
+  test('PAY-16 waits for its INCEPTION approval: 下一步 is Lean’s 功能设计, as on 交付总览 and 需求详情, and the graph draws its box next', () => {
     const b = worldBoard('r1/PAY-16')
     expect(b.row.lean.next?.label).toBe('功能设计')
     const p = page(b)
-    expect(p.status('code-generation/app')).toBe('waiting')
-    expect(p.lean.querySelector('.br-lean-next')).toHaveTextContent(/^下一步：代码生成/)
-    expect(p.lean).toHaveAccessibleName('AI-DLC Lean：做完 3 · 跳过 2 · 下一步：代码生成 · 构思整段不需要')
-    const into = Array.from(p.graph.querySelectorAll('path.kt-edge.is-ready'))
-    expect(into).toHaveLength(1)
-    expect(p.graph.querySelector('g.kt-node[data-node="functional-design/app"]')).toBeNull()
+    expect(p.status('functional-design/app')).toBe('waiting')
+    expect(p.lean.querySelector('.br-lean-next')).toHaveTextContent(/^下一步：功能设计/)
+    expect(p.lean).toHaveAccessibleName('AI-DLC Lean：做完 3 · 跳过 2 · 下一步：功能设计 · 构思整段不需要')
+    expect(p.ready()).toBe(1)
+  })
+
+  test.each(['r1/PAY-1', 'r1/PAY-7', 'r1/PAY-10'])('%s built and tested: 下一步 is Lean’s 发布, and the graph leads there through the 审查 it needs first', (k) => {
+    const p = page(worldBoard(k))
+    expect(p.lean.querySelector('.br-lean-next')).toHaveTextContent(/^下一步：发布/)
+    expect([p.status('review'), p.status('release')]).toEqual(['waiting', 'waiting'])
+    expect(p.readyEdges()).toEqual(['build-and-test>review', 'review>release'])
   })
 
   test('PAY-9 asked the product for its release: the card says 在做：发布, the box it is on', () => {

@@ -181,7 +181,7 @@ export const BOARD_EXTRA_CSS = `
 .kt-axis-tail { position: absolute; top: 0; padding-left: 6px; border-left: 2px dotted color-mix(in srgb, var(--muted) 55%, transparent); font-size: .76em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kt-track-tail { position: absolute; top: 0; height: 14px; border-left: 2px dotted color-mix(in srgb, var(--muted) 55%, transparent);
   background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 12%, transparent) 0 4px, transparent 4px 8px); }
-.br-changes { display: grid; gap: 4px; min-width: 0; }
+.br-changes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }
 .br-commit-rows li { align-items: center; }
 .br-commit-rows li .br-commit-subj { flex: 1 1 auto; }
 .br-commit-rows li.is-records .br-commit-subj { color: var(--muted); }

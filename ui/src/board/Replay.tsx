@@ -25,7 +25,7 @@ export const PICK_TICKS = 8
 export type Held = DecisionStop & { picked: boolean }
 
 /** What a person chose, lit: the 退回 colour for a send-back. */
-export const CHOICE_TONE: Record<Choice, 'ok' | 'fix'> = { approve: 'ok', accept: 'ok', answer: 'ok', reject: 'fix' }
+export const CHOICE_TONE: Record<Choice, 'ok' | 'bad'> = { approve: 'ok', accept: 'ok', answer: 'ok', reject: 'bad' }
 
 /** 应用设计：等你批, then 应用设计：你退回了设计 (the board's own words for it). */
 export function heldNote(b: ReqBoard, h: Held): string {

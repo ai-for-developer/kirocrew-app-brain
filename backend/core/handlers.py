@@ -87,6 +87,9 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
                                                kickoff=body.get("kickoff", True) is not False,
                                                review=body.get("review") is True))
 
+    async def stop_session(request: Any) -> Any:
+        return kit.json(await svc.stop_session(_rid(request), _key(request)))
+
     async def answer(request: Any) -> Any:
         body = await kit.body(request)
         did = body.get("id")
@@ -238,6 +241,7 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
         AppRoute("GET", "/outputs/{repo}/{key}/file", kit.guarded(outputs_file)),
         AppRoute("GET", "/outputs/{repo}/{key}/turns", kit.guarded(outputs_turns)),
         AppRoute("POST", "/requirements/{repo}/{key}/session", kit.guarded(open_session)),
+        AppRoute("POST", "/requirements/{repo}/{key}/stop", kit.guarded(stop_session)),
         AppRoute("POST", "/requirements/{repo}/{key}/answer", kit.guarded(answer)),
         AppRoute("POST", "/requirements/{repo}/{key}/split", kit.guarded(split)),
         AppRoute("POST", "/requirements/{repo}/{key}/claim", kit.guarded(claim)),

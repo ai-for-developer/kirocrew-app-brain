@@ -1004,7 +1004,9 @@ export interface Decision {
 
 export interface QuestionOption { id: string; text: string }
 export interface Question {
-  source: 'park' | 'bridge' | 'mr'
+  /** park: this machine's run's park.json (answered in its session); runner: the runner's, read off the run branch after
+   * the hand-over (answered on the MR once the bridge posts it); bridge: brain-kit's ledger (team mode); mr: the MR's */
+  source: 'park' | 'runner' | 'bridge' | 'mr'
   /** D-<n> once the bridge posted it */
   id: string | null
   kind: string
@@ -1114,13 +1116,16 @@ export interface RequirementDetail {
   mr_desc: MrDesc
 }
 
-// ---------------------------------------------------------------- POST /requirements/{repo}/{key}/session, /answer
+// ---------------------------------------------------------------- POST /requirements/{repo}/{key}/session, /stop, /answer
 
 export interface OpenSessionBody { trust?: boolean; kickoff?: boolean
   /** 开审查会话: a NEW brain-dev session in the worktree to review the code (the session that wrote it may not review it,
    * Lean's next step says so), never the live one; its first message the review line Lean wrote */
   review?: boolean }
 export interface OpenSessionResult { ok: boolean; slot: string; url: string }
+/** 停止: the slots of this requirement's own sessions on this machine whose turn was stopped (409 nothing_to_stop: none
+ * was working) */
+export interface StopResult { ok: boolean; stopped: string[] }
 /**
  * choice: an option id (A–H), or 'approve' / 'reject' for a question without options. id: the question's D-<n> when it
  * has one (an MR question); without it the open clarify question is meant.
@@ -1777,8 +1782,9 @@ export interface Acceptance {
   /** not_yet (not at the release stage), waiting (RELEASE / acceptance waits for a person), accepted, rejected
    * (sent back), merged */
   state: 'not_yet' | 'waiting' | 'accepted' | 'rejected' | 'merged'
-  /** the one step a person takes now; text '' when there is none */
-  step: { text: string; who: string; line: string | null; mr_url: string | null; session_url: string | null }
+  /** the one step a person takes now; text '' when there is none. *line*: what they type in the session; *comment*:
+   * what they write on the MR after the hand-over (`answer D-3 approve`) */
+  step: { text: string; who: string; line: string | null; comment?: string | null; mr_url: string | null; session_url: string | null }
   /** who settled the decisions (decisions.md's Who): person, check, brain, agent, unknown, unclassified */
   by: { id: string; label: string; count: number }[]
   /** what the checks say, one line */

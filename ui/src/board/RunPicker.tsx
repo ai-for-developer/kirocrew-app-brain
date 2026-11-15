@@ -14,7 +14,10 @@ export function RunPicker({ board, value, onPick }: { board: ReqBoard; value: Ru
   useEffect(() => {
     if (!open) return
     const away = (e: Event) => {
-      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !root.current?.contains(e.target as Node)) setOpen(false)
+      if (!(e instanceof KeyboardEvent)) return void (!root.current?.contains(e.target as Node) && setOpen(false))
+      if (e.key !== 'Escape') return
+      e.stopPropagation()   // the board's own Esc (the box looked at) waits for the next one
+      setOpen(false)
     }
     document.addEventListener('mousedown', away)
     document.addEventListener('keydown', away)

@@ -4,7 +4,7 @@
  * missing gets added here, not spelled out in a view. Lean's stages are named by the backend's stage table
  * (backend/core/stages.py), which every Stage and LeanSummary carries.
  */
-import type { ChildState, LeanSummary, StuckKind, SyncResult, WaitDo, WaitWho, Waits } from './types'
+import type { ChildState, LeanSummary, ReqState, StuckKind, SyncResult, WaitDo, WaitWho, Waits } from './types'
 
 /** Lean's approval kinds → what is approved */
 export const APPROVAL_NAME: Record<string, string> = {
@@ -29,6 +29,8 @@ export const DO_NAME: Record<WaitDo, string> = {
 /** the actions' names (buttons and the text that points at them use exactly these) */
 export const ACT = {
   openSession: '打开会话',
+  /** 停止 on the board: this requirement's own session on this machine, its turn */
+  stop: '停止',
   copyLine: '复制那一行',
   /** 开需求's own button (POST /intake/start): never the jump to it, which is DO_NAME.start */
   start: '开工',
@@ -94,6 +96,16 @@ export function leanProgress(lean: Pick<LeanSummary, 'done_n' | 'skipped_n' | 'n
   }
   if (lean.skipped_phases.length) parts.push(wholeSkips(lean.skipped_phases))
   return parts.join(' · ')
+}
+
+/** Where a requirement is on Lean's way: the one rule 交付总览, 需求详情 and 需求看板 say it by. Nothing recorded yet
+ * (claimed, or Lean has no record) is 还没开工; a way that is over (merged, merged into its big one, closed) has nothing
+ * next; else Lean's own progress (backend lean_view.summary), its next stage 在做 once started. */
+export function leanNow(r: { state: ReqState; lean: LeanSummary }, skipped_phases: string[] = r.lean.skipped_phases): string {
+  const l = r.lean
+  if (r.state === 'claimed' || r.state === 'unclaimed' || (l.stage === null && !l.done_n && !l.skipped_n)) return '还没开工'
+  const over = r.state === 'merged' || r.state === 'merged_into_parent' || r.state === 'closed'
+  return leanProgress({ ...l, next: over ? null : l.next, skipped_phases })
 }
 
 /** the step (Waits.do) as what the requirement is waiting for: the counters of 交付总览 (「轮到你 5：等回话 2 · 等开工 3」) */

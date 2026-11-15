@@ -661,6 +661,7 @@ const TM_CSS = `
 .tm-def { display: inline-flex; margin-left: .55em; padding: 0 .55em; border-radius: 999px; font-size: .78em; font-weight: 650; vertical-align: 1px; white-space: nowrap;
   color: var(--muted); background: color-mix(in srgb, var(--text) 7%, transparent); }
 .tm-cfg-text { color: var(--text); font-size: .93em; min-width: 18em; }
+@container br-app (max-width: 760px) { .tm-cfg-text { min-width: 12em; } }
 .tm-signer { display: grid; grid-template-columns: repeat(auto-fit, minmax(20em, 1fr)); gap: var(--kit-gap-row, 12px); align-items: start; }
 .tm-sig-col { display: grid; gap: .5em; }
 .tm-sig-col h4 { margin: 0; display: flex; align-items: center; gap: .5em; font-size: .93em; color: var(--text-strong); }

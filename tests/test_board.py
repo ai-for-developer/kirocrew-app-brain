@@ -168,6 +168,84 @@ def test_an_idle_session_waits_since_one_moment_and_a_claim_has_nothing_to_trace
 
 
 @needs_brainkit
+def test_stop_stops_only_this_requirements_own_session_and_only_while_it_works(tmp_path, home):
+    """停止 on the board (UI-24): the turn PAY-1's 本机会话 is working on, never PAY-2's; with nothing working, a 409
+    that says so."""
+    from brainfix import FakeGateway, install_brain_dev
+    repo = make_project(tmp_path)
+    install_brain_dev(home)
+    start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
+    start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "notify", "notify", "通知")
+    gw = FakeGateway()
+    gw.templates = {"brain-dev"}
+    svc = make_service(tmp_path, [repo], gw=gw)
+    errors = mod("httpkit")
+
+    async def go():
+        await svc.start()
+        try:
+            one = (await svc.open_session("r1", "PAY-1"))["slot"]
+            two = (await svc.open_session("r1", "PAY-2"))["slot"]
+            for _ in range(6):
+                await svc.sessions.poll()
+            done = await svc.stop_session("r1", "PAY-1")
+            for _ in range(5):
+                await svc.sessions.poll()
+            try:
+                await svc.stop_session("r1", "PAY-1")
+                again = None
+            except errors.AppError as exc:
+                again = exc
+            board = await svc.board("r1", "PAY-1")
+            return one, two, done, again, board
+        finally:
+            await svc.stop()
+
+    one, two, done, again, b = run(go())
+    assert done == {"ok": True, "stopped": [one]}
+    assert ("stop", one) in gw.calls and ("stop", two) not in gw.calls
+    assert gw.slot_rows[two]["running"] is True
+    assert again is not None and (again.status, again.code) == (409, "nothing_to_stop")
+    assert "没有在做的会话" in str(again)
+    assert not [s for r in b["runs"] for s in r["sessions"] if s["busy"]]
+
+
+@needs_brainkit
+def test_a_quiet_session_waits_since_its_own_last_record_not_since_the_app_looked(tmp_path, home):
+    """UI-11: DEMO-1 sat quiet for five days, and the drawer said 「从 11-14 16:14 起」 and the lane 「刚刚」: the moment this
+    app first read the finished turn. The wait starts at a record's own time (here the app's kickoff is the newest:
+    the fake transcript's stamps are older), however late the app looks."""
+    import asyncio
+    from brainfix import FakeGateway, install_brain_dev
+    repo = make_project(tmp_path)
+    install_brain_dev(home)
+    start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
+    gw = FakeGateway()
+    gw.templates = {"brain-dev"}
+    svc = make_service(tmp_path, [repo], gw=gw)
+
+    async def go():
+        await svc.start()
+        try:
+            await svc.open_session("r1", "PAY-1")
+            gw.finish(next(iter(gw.slot_rows)))
+            await asyncio.sleep(1.5)
+            looked = time.time()
+            for _ in range(2):
+                await svc.sessions.poll()
+            rows = {r["key"]: r for r in (await svc.overview("all"))["rows"]}
+            return looked, rows, await svc.board("r1", "PAY-1")
+        finally:
+            await svc.stop()
+
+    looked, rows, b = run(go())
+    w = rows["PAY-1"]["waits"]
+    assert (w["who"], w["do"]) == ("you", "reply")
+    assert w["since"] < looked, "since the kickoff went in, not since the app read the transcript"
+    assert run_now(b, "local")["since"] == w["since"] == b["row"]["waits"]["since"]
+
+
+@needs_brainkit
 def test_a_requirement_split_into_units_draws_each_planned_unit_before_its_code_generation(tmp_path, home):
     """Rule 1 through the service: unit-of-work.md's first table, as the run branch's newest commit has it, gives
     构建 a row per unit in the table's order before any code generation is recorded. The worktree's copy is not read."""
@@ -335,6 +413,29 @@ def test_a_big_requirement_waiting_on_its_small_ones_has_a_quiet_session_that_is
     assert [n["id"] for n in b["nodes"] if n["status"] == "awaiting_approval"] == []
 
 
+def test_without_a_session_nobody_works_the_hours_are_a_wait():
+    """UI-4: DEMO-1's AI worked about 20 minutes and the page said 126 hours of 「AI 在本机做」. With no session on this
+    machine nobody is at work: from Lean's last record on, its hours wait for the person to open one."""
+    coding = [e for e in demo3_events() if e["_at"] <= T + 11 * M + 47]     # code generation begun, nothing after
+    b = snapshot(facts(coding), row_of("local", "you", "没有开着的会话：打开会话接着做。", do="reply"), now=T + 126 * H)
+    assert run_now(b, "local")["status"] == "stalled"
+    assert spent(b, ("work", "fix"), T + 126 * H) < 12 * M
+    assert spent(b, ("wait",), T + 126 * H) > 125 * H
+
+
+def test_a_session_asking_for_a_tool_waits_on_the_person_on_every_page():
+    """UI-4: KiroCrew reports a session waiting on a tool approval as busy too. 交付总览 counted it as 「AI 在本机做」
+    while the board said it waits for the person: the row says 等你批准工具调用, as the board does."""
+    deliveries = mod("deliveries")
+    f = facts(demo3_events(), owner="dana")
+    row = deliveries.base_row("r1", f)
+    deliveries.classify(row, f, mr=None, slot={"busy": True, "awaiting": True, "last_activity": T + 16 * M}, cfg={},
+                        me="dana")
+    assert (row["waits"]["who"], row["waits"]["do"]) == ("you", "tool")
+    b = snapshot(f, row, sessions=[session(T + 16 * M, busy=True, awaiting=True)])
+    assert (run_now(b, "local")["who"], run_now(b, "local")["do"]) == ("you", "tool")
+
+
 def test_a_quiet_session_waits_for_the_person_from_its_last_message_not_works_on():
     """DEMO-3 (UI问题清单 #2): the AI worked about 15 minutes, then its session sat quiet for eleven hours. The board
     says its run waits for the person since the session's last message, at the stage it would do next, and none of
@@ -418,6 +519,21 @@ def test_a_design_lean_skipped_is_not_needed_and_the_wall_says_what_is_still_to_
     assert (w["passed"], w["failed"], w["total"], w["todo"]) == (2, 0, 2, ["发布审批"])
     assert b["accept"]["checks"] == "目前 2 项都过 · 还剩 发布审批"
     assert "自动检查通过（1 项）" in [e["text"] for e in b["events"] if e["kind"] == "verify"]
+
+
+def test_a_design_skipped_for_size_small_is_never_waited_for_on_any_page():
+    """UI-20: DEMO-3's design was skipped (Size: small) and the board still said its code generation waited for the
+    design approval. From the skip on, no line of the board, 交付总览, 需求详情 or 待办 (the row's waits) waits on it."""
+    deliveries, lv = mod("deliveries"), mod("lean_view")
+    evs = demo3_events()
+    skip = next(i for i, e in enumerate(evs) if e["data"].get("stage") == "application-design")
+    for cut in range(skip + 1, len(evs) + 1):
+        f = dict(facts(evs[:cut]), stages=lv.stages(evs[:cut]))
+        row = deliveries.base_row("r1", f)
+        deliveries.classify(row, f, mr=None, slot={"last_activity": evs[cut - 1]["_at"]}, cfg={}, me="dana")
+        b = snapshot(f, row, sessions=[session(evs[cut - 1]["_at"])])
+        shown = json.dumps([b, row], ensure_ascii=False)
+        assert re.findall(r'等[^"]*设计', shown) == [], evs[cut - 1]["event"]
 
 
 def merged_trace(merged_at, window_end):
@@ -956,6 +1072,30 @@ def handed_over(state="running", who="runner", text="运行机在跑", **waits):
     row = dict(row_of(state, who, text, **waits), mr={"iid": 41, "url": mr["url"], "state": "opened"},
                run_ids=["RUN-DEMO-3-1"])
     return snapshot(f, row, t=t, mr=mr, local_only=False, now=T + 90 * M)
+
+
+def test_an_approval_on_the_mr_gives_the_comment_to_write_there_not_a_session_line():
+    """UI-23: after the hand-over Lean's approval is a question on the MR, answered with the comment
+    `answer D-n approve` (reject sends it back). The step names the MR, gives that comment to copy and the MR to open,
+    and no session; the runner asks for the code-generation plan's approval as a clarify, and the board names the
+    approval, not 澄清."""
+    b = handed_over("acceptance", "product", "等产品在 MR 上验收 D-3（approve / reject）", do="accept", where="mr")
+    step = b["accept"]["step"]
+    assert (step["comment"], step["line"], step["session_url"]) == ("answer D-3 approve", None, None)
+    assert step["mr_url"] == "https://gitlab.example.com/p/-/merge_requests/41" and "会话" not in step["text"]
+
+    hand = T + 30 * M
+    f = facts(demo3_events()[:12], handoff={"requested_at": iso(hand), "by": "dana"})
+    mr = {"url": "https://gitlab.example.com/p/-/merge_requests/41",
+          "questions": [{"id": "D-4", "kind": "clarify", "kind_label": "澄清", "state": "open", "at": iso(hand + H),
+                         "lean_request": "PLAN 5d1e7a90", "options": []}]}
+    row = dict(row_of("parked", "you", "等你在 MR 上回答 D-4（approve / reject）", do="answer", where="mr"),
+               mr={"iid": 41, "url": mr["url"], "state": "opened"})
+    b = snapshot(f, row, mr=mr, local_only=False, now=hand + 2 * H)
+    step = b["accept"]["step"]
+    assert step["text"] == "在 MR 上回答 D-4（approve 通过 / reject 退回）：桥会把回答带回运行机"
+    assert (step["comment"], step["line"], step["session_url"]) == ("answer D-4 approve", None, None)
+    assert "D-4 在 MR 上问人：代码生成计划审批" in [e["text"] for e in b["events"]]
 
 
 def test_a_round_says_who_did_it_and_each_event_its_node_run_and_round():

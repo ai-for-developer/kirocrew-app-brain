@@ -248,13 +248,15 @@ class Req:
               short: str = "") -> None:
         """A stage record as Lean writes it: a start names its document (created the first time), a done each
         output's sha256, a skip its reason. The release's start is `lean release`: release.md's sha256, the code's
-        fingerprint, the commit it is for."""
+        fingerprint (the last verify's: `lean release` needs a passing verify on the code), the commit it is for."""
         ev = {"started": "STAGE_STARTED", "done": "STAGE_COMPLETED", "skipped": "STAGE_SKIPPED"}[state]
         data: dict = {"stage": sid, "unit": unit}
         path = self.doc(sid, unit)
         if state == "started" and sid == "release":
             self.release_sha = self.hash_at(path, at) or short + h64(self.key, "release.md", at)[len(short):]
-            data.update(path=path, sha256=self.release_sha, fingerprint=h64(self.key, "fp", at), head=self.head(at))
+            verified = [e["data"]["fingerprint"] for e in self.events if e["event"] == "VERIFY" and e["_at"] <= at]
+            data.update(path=path, sha256=self.release_sha, fingerprint=verified[-1] if verified else h64(self.key, "fp", at),
+                        head=self.head(at))
         elif state == "started":
             data.update(path=path, created=not any(e["event"] == "STAGE_STARTED" and e["data"].get("path") == path
                                                    for e in self.events))
@@ -1387,7 +1389,8 @@ def world(scratch: Path) -> None:
     p1.commit(t + 40 * M, "person", "PAY-1：按原因汇总的查询和接口", files=3)
     p1.stage(t + 42 * M, "code-generation", "done", unit="stats", note="代码写完，计划 3 步全打勾")
     p1.verify(t + 50 * M, [("pytest -q", 0)])
-    p1.stage(t + 51 * M, "build-and-test", "done", note="verify PASS：1 项")
+    p1.stage(t + 51 * M, "build-and-test", "done",
+             note="verify PASS: 1 check on code fingerprint %s" % h64(p1.key, "fp", t + 50 * M)[:8])
     p1.stage(t + 51 * M + 20, "ci-pipeline", "skipped", note=CI_AS_IS)
     p1_idle = t + 53 * M
     reqs["r1"].append(p1)

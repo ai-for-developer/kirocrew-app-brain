@@ -55,6 +55,8 @@ def phase_skipped(phase: Any) -> str:
 
 
 PASSED_OVER = "Lean 没记这一步，直接往后做了"
+# Build and Test recorded done (each verify PASS records it) that Lean's build_status does not call done, in words
+BUILD_FAILED, BUILD_STALE = "最近一次自动检查没过", "检查以后代码又改过：要再跑一次自动检查"
 APPROVAL_EVENTS = ("APPROVAL_REQUESTED", "APPROVED", "REJECTED", "APPROVAL_REFUSED")
 KIND_LABEL = {"REQUIREMENTS": "需求", "DESIGN": "设计", "INCEPTION": "需求和设计", "PLAN": "代码生成计划",
               "RELEASE": "发布", "IDEATION": "构思"}
@@ -137,9 +139,15 @@ class _Decided:
         self.no_ideation_skip: dict[tuple, dict[str, Any]] = {}
         self.used = self.skip = -1
         self.n = 0
+        self.verify: dict[str, Any] | None = None   # the last VERIFY's data
+        self.code: Any = None   # the code fingerprint the latest record names (verify, code generation, release)
 
     def add(self, e: dict[str, Any]) -> None:
         ev, d = e.get("event"), _data(e)
+        if ev == "VERIFY":
+            self.verify = d
+        if d.get("fingerprint"):
+            self.code = d["fingerprint"]
         if ev == "PHASE_SKIPPED" and d.get("phase") == "ideation":
             self.skip = self.n
         elif ev in ("STAGE_STARTED", "STAGE_COMPLETED") and d.get("stage") in IDEATION:
@@ -180,6 +188,7 @@ class _Decided:
                         "units": [{"unit": u, "state": x} for u, x in units] if s.per_unit else [],
                         "note": say_note(str(note)[:300]) if isinstance(note, str) else None,
                         "at": latest.get("_at") if latest else None})
+        self._build_and_test(out)
         # a stage on the way that Lean went past without a word (a later stage Lean always asks for is recorded) was
         # not on this intent's way: skipped. An optional stage recorded early (Operations before the release) passes
         # nothing.
@@ -188,6 +197,24 @@ class _Decided:
             if r["state"] == "todo":
                 r.update(state="skipped", note=PASSED_OVER)
         return out
+
+    def _build_and_test(self, out: list[dict[str, Any]]) -> None:
+        """Lean records Build and Test done on every verify PASS, also while the code is still being written; it is
+        done only as Lean's build_status says: released (the RELEASE approval records the release done), or every
+        unit's code is done and the last verify passed on the code (no later record names another fingerprint; an
+        edit nothing recorded is not seen here). A PASS on part of the code is not reached yet, so the stage in
+        progress stays code generation."""
+        row = {r["id"]: r for r in out}
+        bt, code, release = row["build-and-test"], row["code-generation"], row["release"]
+        if bt["state"] != "done" or release["state"] == "done":
+            return
+        verified = (self.verify or {}).get("fingerprint")
+        if code["state"] != "done":
+            bt.update(state="todo", note=None, at=None)
+        elif self.verify is not None and not self.verify.get("ok"):
+            bt.update(state="started", note=BUILD_FAILED)
+        elif verified and self.code and verified != self.code:
+            bt.update(state="started", note=BUILD_STALE)
 
 
 def stages(evs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -271,13 +298,13 @@ def stage_text(lean: dict[str, Any]) -> str | None:
 
 
 def steps(evs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Lean's progress (summary) after each stage record that changed it, oldest first, the first one (at 0) before
-    any: what 回放 shows at a moment. The last one is the progress now."""
+    """Lean's progress (summary) after each stage or verify record that changed it, oldest first, the first one (at
+    0) before any: what 回放 shows at a moment. The last one is the progress now."""
     out = [{"at": 0, "lean": summary(stages([]))}]
     decided = _Decided()
     for e in evs:
-        if e.get("event") in DECIDES:
-            decided.add(e)
+        decided.add(e)
+        if e.get("event") in DECIDES or e.get("event") == "VERIFY":
             lean = summary(decided.rows())
             if lean != out[-1]["lean"] and isinstance(e.get("_at"), (int, float)):
                 out.append({"at": e["_at"], "lean": lean})

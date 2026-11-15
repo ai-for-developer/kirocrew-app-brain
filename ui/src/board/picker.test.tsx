@@ -170,3 +170,35 @@ describe('选择运行 · the address', () => {
     expect(dimmed()).toEqual([])
   })
 })
+
+describe('Esc closes what is on top first', () => {
+  // a key goes to the focused element and bubbles up to the page, as a real Esc does
+  const esc = () => fireEvent.keyDown(document.body, { key: 'Escape' })
+  const box = (id: string) => graph().querySelector<SVGGElement>(`g.kt-node[data-node="${id}"]`)!
+
+  test('the 运行 menu over a box looked at: the menu goes, the box stays looked at; the next Esc lets it go', async () => {
+    serve(() => worldBoard('r1/PAY-9'))
+    render(<BoardPage entry={PAY9} {...props()} />)
+    await screen.findByTestId('kt-graph')
+    fireEvent.click(box('release'))
+    fireEvent.click(screen.getByTestId('kt-runpick'))
+    expect(screen.getByRole('menu', { name: '选择运行' })).toBeInTheDocument()
+    esc()
+    expect(screen.queryByRole('menu', { name: '选择运行' })).toBeNull()
+    expect(screen.getByTestId('kt-focusbar')).toHaveTextContent('发布')
+    esc()
+    expect(screen.queryByTestId('kt-focusbar')).toBeNull()
+  })
+
+  test('a box’s card: Esc hides it and nothing else', async () => {
+    serve(() => worldBoard('r1/PAY-9'))
+    render(<BoardPage entry={PAY9} {...props()} />)
+    await screen.findByTestId('kt-graph')
+    fireEvent.click(box('release'))
+    fireEvent.mouseEnter(box('build-and-test'))
+    await screen.findByRole('dialog', { name: '构建测试做了什么' })
+    esc()
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '构建测试做了什么' })).toBeNull())
+    expect(screen.getByTestId('kt-focusbar')).toHaveTextContent('发布')
+  })
+})

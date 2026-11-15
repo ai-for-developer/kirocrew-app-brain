@@ -96,9 +96,9 @@ export const QUESTION_STATE: Record<string, { label: string; tone: Tone }> = {
   refused: { label: '签名服务拒签', tone: 'bad' },
 }
 
-/** A question state's label and tone. A park.json question (*source* park) has no bridge: its 'answered' is just 已回答. */
+/** A question state's label and tone. A park.json question (*source* park or runner) is not the bridge's: its 'answered' is just 已回答. */
 export const questionMeta = (state: string, source?: Question['source']) =>
-  source === 'park' && state === 'answered' ? { label: '已回答', tone: 'info' as Tone } : QUESTION_STATE[state] ?? { label: state, tone: 'idle' as Tone }
+  (source === 'park' || source === 'runner') && state === 'answered' ? { label: '已回答', tone: 'info' as Tone } : QUESTION_STATE[state] ?? { label: state, tone: 'idle' as Tone }
 export const isOpenQuestion = (q: Pick<Question, 'state'>) => q.state === 'waiting' || q.state === 'open'
 
 /** A link that opens outside the app (a new tab). Only http(s) URLs become links. */
