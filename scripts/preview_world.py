@@ -1372,7 +1372,8 @@ def world(scratch: Path) -> None:
     p1.commit(t + 40 * M, "person", "PAY-1：按原因汇总的查询和接口", files=3)
     p1.stage(t + 42 * M, "code-generation", "done", unit="stats", note="代码写完，计划 3 步全打勾")
     p1.verify(t + 50 * M, [("pytest -q", 0)])
-    p1.stage(t + 51 * M, "build-and-test", "done", note="verify PASS：1 项")
+    p1.stage(t + 51 * M, "build-and-test", "done",
+             note="verify PASS: 1 check on code fingerprint %s" % h64(p1.key, "fp", t + 50 * M)[:8])
     p1.stage(t + 51 * M + 20, "ci-pipeline", "skipped", note=CI_AS_IS)
     p1_idle = t + 53 * M
     reqs["r1"].append(p1)

@@ -1251,7 +1251,9 @@ function clock(iso: string | null): string {
 const PSEUDONYM = /^[A-Z]-[0-9A-F]{4,}$/
 
 /** An item of the timeline in words: the app's own records said plainly (no slot ids, commands or flags). */
-function itemText(it: TimelineItem): { label: string; detail: string | null; title: string | null } {
+function itemText(it: TimelineItem): { label: string; detail: string | null; title: string | null; english?: string } {
+  // a stage's note the AI wrote in English: the line stays Chinese, its words folded (Lean's own lines come in words)
+  if (it.kind === 'stage' && it.detail && !/[\u4e00-\u9fff]/.test(it.detail)) return { label: it.label, detail: null, title: null, english: it.detail }
   // the write-back's detail is the branch it wrote
   if (it.kind === 'app' && it.label.startsWith('回写 Brain') && it.detail) return { label: it.label, detail: `分支 ${it.detail}`, title: null }
   if (it.kind === 'commit' && it.detail && /^[0-9a-f]{7,40}$/.test(it.detail)) return { label: it.label, detail: it.detail.slice(0, 8), title: it.detail }
@@ -1320,9 +1322,10 @@ function TimelineCard({ x, showMissing, me }: { x: RequirementDetail; showMissin
                     <span title={k.label}><RoleIcon role={k.icon} size={16} /><span className="br-sr">{k.label}</span></span>
                     <span>
                       <span className="br-strong"><Paths text={s.label} /></span>
-                      {s.detail && !long && <span className="br-dim"> · <Paths text={s.detail} /></span>}
+                      {s.detail && !long && <span className="br-dim"> · <Inline text={s.detail} files /></span>}
                       {who && <span className="br-dim br-small"> · {who}</span>}
-                      {long && <details><summary className="br-small">看说明</summary><span className="br-dim br-small"><Inline text={s.detail} /></span></details>}
+                      {long && <details><summary className="br-small">看说明</summary><span className="br-dim br-small"><Inline text={s.detail} files /></span></details>}
+                      {s.english && <details><summary className="br-small">AI 写的原话（英文）</summary><span className="br-dim br-small">{s.english}</span></details>}
                     </span>
                   </li>
                 )

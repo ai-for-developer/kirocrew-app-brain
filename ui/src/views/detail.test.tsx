@@ -1061,6 +1061,33 @@ describe('需求详情', () => {
     expect(tl).not.toHaveTextContent('读不到')   // a local run: the bridge's and the runner's records are not on its way
   })
 
+  test('时间线 reads in plain Chinese: an English note of the AI folded as its own words, code in monospace only for a file name (UI-15)', async () => {
+    const english = 'Read calc.py, tests/test_calc.py; ran the check (1 test OK, Python 3.9.6). Wrote architecture.md: one module with add(a, b).'
+    withDetail((d) => {
+      d.timeline.items = [
+        { at: '2026-11-09T08:33:00+08:00', kind: 'stage', label: '逆向工程：完成', detail: english, who: null, src: 'audit' },
+        { at: '2026-11-09T08:39:00+08:00', kind: 'stage', label: '代码生成：完成（app）', detail: 'unit app built', who: null, src: 'audit' },
+        { at: '2026-11-09T08:42:00+08:00', kind: 'stage', label: '应用设计：跳过', detail: 'Size: small（D-4）；接口只有 `subtract(a, b)`，放在 `calc.py`', who: null, src: 'audit' },
+      ]
+    })
+    renderDetail()
+    const tl = await screen.findByRole('region', { name: '时间线' })
+    const [skip, built, read] = within(tl).getAllByTestId('tl-item')
+    const shown = (li: HTMLElement) => {
+      const c = li.cloneNode(true) as HTMLElement
+      c.querySelectorAll('details').forEach((x) => x.remove())
+      return c.textContent
+    }
+    expect(shown(read)).toMatch(/逆向工程：完成$/)
+    expect(shown(read)).not.toMatch(/[A-Za-z]/)
+    expect(shown(built)).toMatch(/代码生成：完成（app）$/)
+    expect(within(read).getByText('AI 写的原话（英文）').closest('details')).toHaveTextContent(english)
+    expect(within(built).getByText('AI 写的原话（英文）').closest('details')).toHaveTextContent('unit app built')
+    expect(skip).toHaveTextContent('应用设计：跳过 · Size: small（D-4）；接口只有 subtract(a, b)，放在 calc.py')
+    expect(skip).not.toHaveTextContent('`')
+    expect([...skip.querySelectorAll('code')].map((c) => c.textContent)).toEqual(['calc.py'])
+  })
+
   test('时间线 of a handed-over requirement says which records could not be read, in words, the original folded', async () => {
     withDetail(handedOver)
     renderDetail()

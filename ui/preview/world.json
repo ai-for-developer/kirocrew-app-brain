@@ -46738,7 +46738,7 @@
         "subject": null,
         "at": null
        },
-       "note": "verify PASS：1 项",
+       "note": "自动检查通过（1 项）",
        "outputs": [
         {
          "path": "aidlc-docs/261107-refund-stats/construction/build-and-test/build-and-test-summary.md",
@@ -117308,7 +117308,7 @@
       "phase": "construction",
       "state": "done",
       "units": [],
-      "note": "verify PASS：1 项",
+      "note": "自动检查通过（1 项）",
       "at": 1794133500
      },
      {
@@ -117598,7 +117598,7 @@
       "at": "2026-11-08T10:25:00Z",
       "kind": "stage",
       "label": "构建测试：完成",
-      "detail": "verify PASS：1 项",
+      "detail": "自动检查通过（1 项）",
       "who": null,
       "src": "aidlc-docs/audit/L-3F2A1C.jsonl"
      },
@@ -136136,7 +136136,7 @@
     "phase": "construction",
     "state": "done",
     "units": [],
-    "note": "verify PASS：1 项",
+    "note": "自动检查通过（1 项）",
     "at": 1794133500
    },
    {
