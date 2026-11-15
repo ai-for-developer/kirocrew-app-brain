@@ -375,6 +375,77 @@ def test_a_push_stopped_at_the_time_limit_leaves_the_button_for_the_next_click(t
 
 
 @needs_brainkit
+def test_a_hand_over_still_running_when_the_app_restarted_is_not_started_again(tmp_path, home, monkeypatch):
+    """The app that started it is gone (a second Service on the same data dir stands for the restarted one) while
+    brain handoff still pushes: a click then is refused in words, and runs nothing."""
+    gl, srv = served_gitlab(tmp_path, monkeypatch)
+    try:
+        repo, wt = project(tmp_path, home, base=srv.base)
+        alice_token(home)
+        sh("git", "-C", wt, "remote", "set-url", "--push", "origin", "ssh://git@127.0.0.1/x.git")
+        monkeypatch.setenv("GIT_SSH_COMMAND", "sh -c 'sleep 6' --")
+        before, after = make_service(tmp_path, [repo]), make_service(tmp_path, [repo])
+
+        async def go():
+            await before.start()
+            await after.start()
+            try:
+                first = asyncio.ensure_future(before.handoff("r1", "PAY-1"))
+                for _ in range(100):                  # until brain handoff committed: now it pushes
+                    if subjects(wt)[0] == HANDOFF or first.done():
+                        break
+                    await asyncio.sleep(0.2)
+                try:
+                    second = await after.handoff("r1", "PAY-1")
+                except AppError as exc:
+                    second = exc
+                return await first, second
+            finally:
+                await before.stop()
+                await after.stop()
+
+        first, second = run(go())
+    finally:
+        srv.stop()
+    assert first["state"] == "committed", first
+    assert isinstance(second, AppError) and (second.code, second.status) == ("handing", 409), second
+    assert problems.chinese(str(second)) and "等" in str(second)
+    assert subjects(wt).count(HANDOFF) == 1
+
+
+def test_the_hand_over_lock_outlives_an_app_killed_while_brain_handoff_runs(tmp_path):
+    import signal
+    import subprocess
+    import sys
+    import time
+    from appkit import ROOT
+    lock, done = tmp_path / "r1-PAY-1.lock", tmp_path / "done"
+    child = """
+import sys
+sys.path.insert(0, %r)
+from backend.core import family, handover, intake
+intake.brain_cmd = lambda: ["/bin/sh", "-c", "sleep 4; echo ok > %s", "brain"]
+with handover.guard(%r) as held:
+    family.run_brain(["handoff"], %r, 60, hold=held)
+""" % (str(ROOT), str(done), str(lock), str(tmp_path))
+    app = subprocess.Popen([sys.executable, "-I", "-c", child])
+    time.sleep(1.5)
+    assert app.poll() is None, "the app runs brain handoff"
+    app.send_signal(signal.SIGKILL)
+    app.wait()
+    with pytest.raises(handover.Busy):
+        with handover.guard(lock):
+            pass
+    for _ in range(50):
+        if done.exists():
+            break
+        time.sleep(0.2)
+    time.sleep(0.3)
+    with handover.guard(lock) as held:
+        assert held is not None
+
+
+@needs_brainkit
 def test_a_note_not_ready_is_refused_by_brain_kit_and_nothing_changes(tmp_path, home):
     repo, wt = project(tmp_path, home, notes=False)
     before, pushed = head(wt), head(tmp_path / "repo-origin.git", BRANCH)
