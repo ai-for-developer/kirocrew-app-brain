@@ -317,11 +317,16 @@ function CreditsKpi({ board, reducedMotion, replaying, run }: { board: ReqBoard;
       </div>
     )
   }
+  const left = run || replaying || board.credits.whole ? [] : board.credits.missing
+  const sum = n ? `${n} 个会话合计` : '运行记录里的合计'
   return (
     <div className="kt-kpi kt-kpi-credits">
       <div className="kt-kpi-label">credits</div>
       <div className="kt-kpi-value"><span className="kt-kpi-big">{c === null ? '—' : fmtCredits(shown)}</span></div>
-      <div className="kt-kpi-note">{replaying ? '回放时不算' : c === null ? (n ? '这个 app 开的会话还没报' : '还没开过会话') : n ? `${n} 个会话合计` : '运行记录里的合计'}</div>
+      <div className="kt-kpi-note" title={left.join('\n') || undefined}>
+        {replaying ? '回放时不算' : c === null ? (n ? '这个 app 开的会话还没报' : left.length ? `${left.length} 处没算进来` : '还没开过会话')
+          : left.length ? `${sum}，另有 ${left.length} 处没算进来` : sum}
+      </div>
     </div>
   )
 }

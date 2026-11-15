@@ -61,7 +61,7 @@ def test_the_numbers_add_up_over_repos_and_the_weeks_say_how_merges_went():
     c = D.cto_numbers([("r1", D.cto_part(data())), ("r2", D.cto_part(data()))], rows, available=True, now=now)
     assert c["available"] and c["unattended"] == [4, 6]
     assert c["stepped_in"]["at_points"] == 10 and c["stepped_in"]["outside"] == 2
-    assert c["credits"] == {"per_req": 15.8, "total": 31.5, "reqs": 2}
+    assert c["credits"] == {"per_req": 15.8, "total": 31.5, "reqs": 2, "cut": 0}
     assert len(c["weekly"]) == 12 and c["weekly"][-1]["week"] <= time.strftime("%Y-%m-%d", time.gmtime(now))
     total = {k: sum(w[k] for w in c["weekly"]) for k in ("unattended", "people", "local", "pending")}
     # each repo's PAY-1 … PAY-5 merged in the last 12 weeks; PAY-7 is merged but not judged: pending
@@ -102,3 +102,14 @@ def test_without_evaluate_the_rows_still_give_credits_and_merges():
     assert c["available"] is False and c["unattended"] is None and c["stepped_in"] is None
     assert c["credits"]["per_req"] == 12.0 and sum(w["pending"] for w in c["weekly"]) == 1
     assert c["sentence"] == "有 credits 的 1 个需求，平均每个 12.0 credits。"
+
+
+def test_credits_that_leave_something_out_are_said_to_be_more():
+    """E2E-14: a requirement whose credits leave something out (a subagent, the runner's sessions elsewhere) makes the
+    average at least what it says."""
+    rows = [{"repo": "r1", "key": "PAY-1", "state": "merged", "credits": 12.0, "credits_whole": False, "updated_at": 1.0},
+            {"repo": "r1", "key": "PAY-2", "state": "local", "credits": 8.0, "credits_whole": True, "updated_at": 1.0},
+            {"repo": "r1", "key": "PAY-3", "state": "claimed", "credits": None, "credits_whole": False, "updated_at": None}]
+    c = D.cto_numbers([], rows, available=False, now=time.time())
+    assert c["credits"] == {"per_req": 10.0, "total": 20.0, "reqs": 2, "cut": 1}
+    assert c["sentence"] == "有 credits 的 2 个需求，平均每个 10.0 credits（1 个还有没算进来的，实际更多）。"

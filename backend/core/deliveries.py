@@ -95,7 +95,7 @@ def base_row(repo_id: str, f: dict[str, Any], *, local_only: bool = False) -> di
         "lean": lean, "stage": lean_view.stage_text(lean), "verify_fails": lean_view.verify_fails(f.get("events") or []),
         "waits": waits("nobody", "none", ""),
         "summary": None,     # the first line of its 变更说明 (mrdesc_view), filled in by the service
-        "credits": None,
+        "credits": None, "credits_whole": True,
         "updated_at": None, "mr": None, "worktree": f.get("worktree"), "run_ids": [], "sessions": 0,
         "overlap": [], "open_questions": [],
         "expected_paths": [p for p in run.get("expected_paths") or [] if isinstance(p, str)][:50],
@@ -931,6 +931,15 @@ def branch_words(refs: list[tuple[str, str | None]]) -> str | None:
     return "、".join(of(name + " ", w) for name, w in got)
 
 
+def cto_credits(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """每个需求的 credits over the rows that have some: per requirement, the total, how many; *cut*: how many of those
+    leave something out (credits_whole false: service._req_credits), so the numbers are at least these."""
+    with_c = [r for r in rows if isinstance(r.get("credits"), (int, float)) and r.get("credits")]
+    total = round(sum(float(r["credits"]) for r in with_c), 1) if with_c else None
+    return {"per_req": round(total / len(with_c), 1) if with_c else None, "total": total, "reqs": len(with_c),
+            "cut": sum(1 for r in with_c if r.get("credits_whole") is False)}
+
+
 def cto_numbers(parts: list[tuple[str, dict[str, Any]]], rows: list[dict[str, Any]], *, available: bool, now: float,
                 weeks: int = 12, names: dict[str, str] | None = None, local_repos: int = 0,
                 repos: int = 0) -> dict[str, Any]:
@@ -954,9 +963,7 @@ def cto_numbers(parts: list[tuple[str, dict[str, Any]]], rows: list[dict[str, An
         stepped = {"at_points": at_points, "outside": max(0, all_ - at_points),
                    "kinds": [{"label": lab, "n": n, "point": pt} for (lab, pt), n in
                              sorted(kinds.items(), key=lambda kv: (not kv[0][1], -kv[1]))]}
-    with_c = [r for r in rows if isinstance(r.get("credits"), (int, float)) and r.get("credits")]
-    total = round(sum(float(r["credits"]) for r in with_c), 1) if with_c else None
-    credits = {"per_req": round(total / len(with_c), 1) if with_c else None, "total": total, "reqs": len(with_c)}
+    credits = cto_credits(rows)
     # the weekly merges: a run brain-kit judged says how it went; a merged row it did not judge is counted as pending
     first = _week(now) if now else ""
     starts = []
@@ -1000,5 +1007,6 @@ def cto_sentence(unattended: list[int] | None, stepped: dict[str, Any] | None, c
         n = stepped["at_points"] + stepped["outside"]
         parts.append("人介入了 %d 次（本机做的也算），%d 次落在判断点上" % (n, stepped["at_points"]) if n else "人还没有介入过")
     if credits.get("per_req") is not None:
-        parts.append("有 credits 的 %d 个需求，平均每个 %s credits" % (credits["reqs"], credits["per_req"]))
+        parts.append("有 credits 的 %d 个需求，平均每个 %s credits%s" % (
+            credits["reqs"], credits["per_req"], "（%d 个还有没算进来的，实际更多）" % credits["cut"] if credits["cut"] else ""))
     return ("。".join(parts) + "。") if parts else "还没有可以算的数：需求合并以后，这里会说它们是怎么交付的。"

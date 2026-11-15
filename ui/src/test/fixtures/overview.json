@@ -62,7 +62,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
     },
     {
       "repo": "r1",
@@ -106,7 +107,7 @@
         "review": false
       },
       "summary": "对账单按商户拆成一户一份，大商户按小时切。",
-      "credits": null,
+      "credits": 6.1,
       "updated_at": 1794135600,
       "mr": {
         "iid": 41,
@@ -117,7 +118,7 @@
       "run_ids": [
         "RUN-PAY-4-1"
       ],
-      "sessions": 0,
+      "sessions": 1,
       "overlap": [
         "PAY-3"
       ],
@@ -133,7 +134,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
     },
     {
       "repo": "r1",
@@ -189,7 +191,7 @@
       "run_ids": [
         "RUN-PAY-5-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [
         "D-3"
@@ -202,7 +204,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
     },
     {
       "repo": "r1",
@@ -266,7 +269,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
     },
     {
       "repo": "r1",
@@ -322,7 +326,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": true
     },
     {
       "repo": "r1",
@@ -363,7 +368,7 @@
         "review": false
       },
       "summary": "退款单号加上校验位，重复和非法单号在入口就拒掉。",
-      "credits": 8.3,
+      "credits": 22.7,
       "updated_at": 1793663640,
       "mr": {
         "iid": 37,
@@ -374,7 +379,7 @@
       "run_ids": [
         "RUN-PAY-2-1"
       ],
-      "sessions": 1,
+      "sessions": 2,
       "overlap": [],
       "open_questions": [],
       "expected_paths": [
@@ -385,7 +390,8 @@
       "family": null,
       "home": null,
       "verify_fails": 0,
-      "progress_pushed_at": null
+      "progress_pushed_at": null,
+      "credits_whole": false
     }
   ],
   "overlaps": [
@@ -572,7 +578,7 @@
   ],
   "cto": {
     "available": true,
-    "sentence": "交给运行机的 1 个需求里，0 个交接以后没人插手就做完了。人介入了 5 次（本机做的也算），5 次落在判断点上。有 credits 的 4 个需求，平均每个 11.4 credits。",
+    "sentence": "交给运行机的 1 个需求里，0 个交接以后没人插手就做完了。人介入了 5 次（本机做的也算），5 次落在判断点上。有 credits 的 5 个需求，平均每个 13.2 credits（1 个还有没算进来的，实际更多）。",
     "ref": "远端的 main 分支",
     "unattended": [
       0,
@@ -595,9 +601,10 @@
       ]
     },
     "credits": {
-      "per_req": 11.4,
-      "total": 45.7,
-      "reqs": 4
+      "per_req": 13.2,
+      "total": 66.2,
+      "reqs": 5,
+      "cut": 1
     },
     "runs": [
       {

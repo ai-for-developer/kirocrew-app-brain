@@ -107,7 +107,7 @@ export function Accept({ board, onDetail, quiet = false }: { board: ReqBoard; on
           <dt>花了多少</dt>
           <dd>
             {quiet ? '回放时不算' : <>
-              {board.credits.total !== null ? `${fmtCredits(board.credits.total)} credits` : 'credits 还没报'}
+              {board.credits.total !== null ? `${board.credits.whole ? '' : '至少 '}${fmtCredits(board.credits.total)} credits` : 'credits 还没报'}
               {' · '}{sessions ? `${sessions} 个会话` : board.credits.total !== null ? '运行记录里的合计' : '还没有会话'}
             </>}
           </dd>

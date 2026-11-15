@@ -30,7 +30,7 @@ from .gateway import Gateway, GatewayError
 from .gateway import said as gateway_said
 from .httpkit import AppError
 from .repo import Git, Repo, Source, read_claim, read_facts
-from .sessions import SessionManager
+from .sessions import SessionManager, requirement_credits
 from . import store as store_mod
 from .store import Store
 
@@ -42,6 +42,9 @@ MR_EVERY_S = 30.0
 CREW_EVERY_S = 300.0
 TRACE_TTL_S = 15.0
 FOLD_TTL_S = 10.0     # the 产出 drawer reads the board's last fold; the board polls every 2 s while it is open
+RUNNER_ELSEWHERE = "交接以后，运行机上的会话这台机器读不到，没算进来"
+LOCAL_ELSEWHERE = "交接以前，开发者机器上的会话这台机器读不到，没算进来"
+RUNNER_TOOK = ("running", "parked", "acceptance", "merged", "closed")   # a hand-over's states once the runner has it
 
 
 def basic_scrub(text: str) -> str:
@@ -397,8 +400,41 @@ class Service:
                 "awaiting": bool(st.get("awaiting")), "last_activity": st.get("last_activity") or info.last_activity,
                 "opened_at": st.get("opened_at") or info.started, "project": info.cwd or None,
                 "url": "/chat?sid=%s" % info.slot, "error": info.error, "missing": bool(st.get("missing")),
-                "id": info.id, "tail": self.sessions.slot_tail(info.slot)})
+                "id": info.id, "tail": self.sessions.slot_tail(info.slot), "whole": st.get("whole"),
+                "subagents": int(st.get("subagents") or 0), "unreported": int(st.get("unreported") or 0)})
         return {"by": by, "credits": self.sessions.credits_by_key()}
+
+    @staticmethod
+    def _req_credits(snap: dict[str, Any], keys: list[str], elsewhere: str | None = None
+                     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """A requirement's sessions here, every one of *keys*' (its repo scope, its runs on the team runner here), and
+        its 成本 over them (sessions.requirement_credits)."""
+        rows = [s for k in keys for s in snap["by"].get(k, [])]
+        return rows, dict(requirement_credits(rows, elsewhere), note=detail.NO_TOKENS)
+
+    def _local_credits(self, snap: dict[str, Any], f: dict[str, Any], scope: str, state: str | None = None
+                       ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """A requirement of a repo here: its sessions on this machine, then its runs' when the team runner is here too
+        (run id RUN-<KEY>-<n>); taken by a runner on another machine (*state*, RUNNER_TOOK), the runner's are said to be
+        left out."""
+        runs = sorted((k for k in snap["by"] if re.fullmatch(r"RUN-%s-[1-9][0-9]*" % re.escape(f["key"]), k)),
+                      key=lambda k: int(k.rsplit("-", 1)[1]))
+        took = (f.get("run") or {}).get("handoff") and state in RUNNER_TOOK
+        gone = RUNNER_ELSEWHERE if took and not runs and not self._team_on() else None
+        return self._req_credits(snap, [scope] + runs, gone)
+
+    def _team_credits(self, snap: dict[str, Any], key: str, run_ids: list[str], project: Any
+                      ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """A requirement on the team runner here: the sessions of its repo's scope on this machine, then its runs'; with
+        none of the first here, the sessions before the hand-over are said to be left out."""
+        home = self._home_of(project)
+        mine = [scope_of(home.id, key)] if home is not None else []
+        here = any(snap["by"].get(k) for k in mine)
+        return self._req_credits(snap, mine + list(run_ids), None if here else LOCAL_ELSEWHERE)
+
+    def _home_of(self, project: Any) -> Repo | None:
+        """The repo here of a GitLab project (the first listed with it), None when this machine does not list it."""
+        return next((r for r in self.repos.values() if project and self._gitlab_of(r)[1] == project), None)
 
     @staticmethod
     def _live(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -442,8 +478,8 @@ class Service:
         fams = self._families_of(repo) if fams is None else fams
         row["family"] = fams.get(f["key"])
         family.classify(row, row["family"], f, self.me_in(repo) if row["family"] else None)
-        row["credits"] = snap["credits"].get(scope)
-        row["sessions"] = len(sess)
+        counted, cost = self._local_credits(snap, f, scope, row["state"])
+        row["credits"], row["credits_whole"], row["sessions"] = cost["total"], cost["whole"], len(counted)
         row["updated_at"] = deliveries.updated_at(f, live)
         row["session_url"] = live["url"] if live else None
         row["progress_pushed_at"] = self.sync.pushed_at(repo.path, f.get("branch"))
@@ -518,8 +554,8 @@ class Service:
             deliveries.team_classify(row, r, decs, facts.get("park"),
                                      notes=notices_by_run(led.get("notices") or [], led.get("outbox") or []).get(r["run_id"], []))
             row["run_ids"] = all_ids[key]
-            row["credits"] = round(sum(snap["credits"].get(x, 0.0) for x in all_ids[key]), 3) or None
-            row["sessions"] = sum(len(snap["by"].get(x, [])) for x in all_ids[key])
+            counted, cost = self._team_credits(snap, key, all_ids[key], r.get("project"))
+            row["credits"], row["credits_whole"], row["sessions"] = cost["total"], cost["whole"], len(counted)
             row["mr"] = {"iid": int(r["iid"]), "url": self.team.mr_url(r["project"], r["iid"]), "state": None}
             row["updated_at"] = lean_view.epoch(r.get("updated"))
             job = self._runner_desc(facts, key, row) if facts.get("run") else None
@@ -756,6 +792,7 @@ class Service:
             questions.append(pq)
         questions += detail.mr_questions(mr, own=own, can_post=can_post)
         tl = self._timeline(repo, f, snap, scope)
+        counted, cost = self._local_credits(snap, f, scope, row["state"])
         if parts is not None:
             parts.update(repo=repo, facts=f, trace=tl.get("trace"), mr=mr, scope=scope, decisions=[], me=me,
                          cfg=repo.cfg, path=repo.path, local_only=row["local_only"])
@@ -782,10 +819,10 @@ class Service:
                          "other_runs": tl.get("other_runs") or []},
             "sessions": [{k: s[k] for k in ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting",
                                              "last_activity", "opened_at", "project", "url", "error")}
-                         for s in snap["by"].get(scope, [])],
-            "credits": {"total": snap["credits"].get(scope), "note": detail.NO_TOKENS},
+                         for s in counted],
+            "credits": cost,
             "brain": detail.brain_block(tl.get("brain"), None, f.get("decisions_text")),
-            "mr_desc": self._desc_now(self._desc_job(repo, f, snap["credits"].get(scope))),
+            "mr_desc": self._desc_now(self._desc_job(repo, f, cost["total"])),
         }
 
     def _desc_now(self, job: tuple[tuple, Callable[[], dict]] | None) -> dict[str, Any]:
@@ -801,7 +838,7 @@ class Service:
             tl = dict(got[1])
         else:
             src_repo, ref = (f["worktree"], None) if f.get("worktree") else (repo.path, f.get("ref"))
-            c = snap["credits"].get(scope)
+            c = self._local_credits(snap, f, scope)[1]["total"]
             tl = detail.timeline(src_repo, repo.cfg, f["key"], ref=ref, events=f.get("events") or [],
                                  credits={"runs": {f["key"]: {"credits": c}}} if c is not None else None,
                                  vouchers_dir=self._vouchers_dir(repo), has_run=bool(f.get("run")))
@@ -834,12 +871,13 @@ class Service:
             tl["items"] += self.store.events(rid)
         tl["items"].sort(key=lambda x: (x["at"] or "", x["kind"]))
         sess = [s for x in row["run_ids"] for s in snap["by"].get(x, [])]
+        counted, cost = self._team_credits(snap, key, row["run_ids"], f.get("project"))
         if parts is not None:
             try:
                 cfg_t = bk.m("config").load(path) if path else dict(bk.m("config").DEFAULTS)
             except Exception:  # noqa: BLE001
                 cfg_t = dict(bk.m("config").DEFAULTS)
-            home = next((r for r in self.repos.values() if f.get("project") and self._gitlab_of(r)[1] == f["project"]), None)
+            home = self._home_of(f.get("project"))
             parts.update(repo=None, facts=f, trace=tl.get("trace"), mr=None, scope=None, decisions=decs,
                          me=self.me_in(home) if home is not None else None,   # who reads it, as in its repo
                          cfg=cfg_t, path=path, local_only=False, sessions=sess,
@@ -863,8 +901,8 @@ class Service:
                          "missing": board_mod.missing_sources(tl["missing"], local_only=False, handed=True),
                          "other_runs": tl.get("other_runs") or []},
             "sessions": [{k: s[k] for k in ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting",
-                                             "last_activity", "opened_at", "project", "url", "error")} for s in sess],
-            "credits": {"total": row["credits"], "note": detail.NO_TOKENS},
+                                             "last_activity", "opened_at", "project", "url", "error")} for s in counted],
+            "credits": cost,
             "brain": detail.brain_block(tl.get("brain"), None, f.get("decisions_text")),
             # no run read yet: the runner has not started on it, nothing is waiting for 开工
             "mr_desc": self._desc_now(self._runner_desc(f, key, row)) if run else mrdesc_view.empty(board_mod.RUNNER_NO_DESC),

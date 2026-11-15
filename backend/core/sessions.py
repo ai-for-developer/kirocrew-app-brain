@@ -58,6 +58,7 @@ _FIELDS = ("id", "task", "parent_session_key", "slot", "title", "folder", "cwd",
            "project_dir", "slot_name", "first_send_id", "strict_agent", "resend_ok", "nudge_ok", "trust_ok", "kind",
            "key", "memory_mode", "shown")
 KNOWLEDGE_TOOL = "local_knowledge_search"  # kirocrew-core's knowledge search: shown as 查知识库
+SPAWN_TOOLS = ("spawn_run", "spawn_sub_agents")   # kirocrew-core's calls that start subagents
 
 # What a bridge message into a runner session shows on the 产出 drawer, by the words brain-kit's bridge starts each kind
 # with (bridge/handoff.py message; decisions.py answer_message and the notices): its cause, and whether it is shown
@@ -269,6 +270,48 @@ def turn_count(rows: list[dict[str, Any]]) -> int:
     return sum(1 for m in rows if m.get("role") == "user")
 
 
+def _credits(m: dict[str, Any]) -> float | None:
+    v = ((m.get("meta") if isinstance(m.get("meta"), dict) else {}).get("turn_stats") or {}).get("credits")
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def spend(rows: list[dict[str, Any]], busy: bool) -> dict[str, Any]:
+    """What a transcript (oldest first) says it cost: *credits*, its replies' added up (None: none reported); *turns*
+    (turn_count); *subagents*, the calls that started one (SPAWN_TOOLS: a subagent's credits are in no transcript this
+    app reads); *unreported*, the turns the agent worked in that reported no credits (most often one cut short), the
+    last one left out while the slot is *busy*: it is still at work."""
+    vals = [c for c in map(_credits, rows) if c is not None]
+    cuts: list[list[dict[str, Any]]] = [[]]
+    for m in rows:
+        if m.get("role") == "user":
+            cuts.append([])
+        else:
+            cuts[-1].append(m)
+    unpaid = [c for c in cuts if any(m.get("role") in ("assistant", "tool") for m in c)
+              and all(_credits(m) is None for m in c) and not (busy and c is cuts[-1])]
+    spawns = sum(1 for m in rows if m.get("role") == "tool"
+                 and str((m.get("meta") if isinstance(m.get("meta"), dict) else {}).get("tool_name") or "") in SPAWN_TOOLS)
+    return {"credits": round(sum(vals), 3) if vals else None, "turns": turn_count(rows), "subagents": spawns,
+            "unreported": len(unpaid)}
+
+
+def requirement_credits(rows: list[dict[str, Any]], elsewhere: str | None = None) -> dict[str, Any]:
+    """A requirement's credits from its sessions this machine reads (*rows*: service._sessions_snapshot's, each session
+    once): {total, whole, missing}. *missing*: what the total leaves out, a line each (*elsewhere*: sessions this
+    machine cannot read, said by the caller); *whole*: nothing is. The total is never shown as whole when it is not."""
+    got = [float(r["credits"]) for r in rows if r.get("credits") is not None]
+    missing = ["「%s」太长，最早的部分没读到，没算进来" % (r.get("title") or r.get("slot")) for r in rows if r.get("whole") is False]
+    n = sum(int(r.get("subagents") or 0) for r in rows)
+    if n:
+        missing.append("起过 %d 次子代理（比如审查）：子代理的 credits KiroCrew 不报给这里，没算进来" % n)
+    n = sum(int(r.get("unreported") or 0) for r in rows)
+    if n:
+        missing.append("%d 轮没报 credits（多半是中途被停了），没算进来" % n)
+    if elsewhere:
+        missing.append(elsewhere)
+    return {"total": round(sum(got), 3) if got else None, "whole": not missing, "missing": missing}
+
+
 def _epoch(stamp: Any) -> float:
     from datetime import datetime
 
@@ -452,8 +495,8 @@ class SessionManager:
         return sorted(out, key=lambda i: i.requested)
 
     def slot_stats(self, slot: str | None) -> dict[str, Any] | None:
-        """{credits, turns, busy, awaiting, last_activity, missing, error, whole} of a slot this app opened (None: unknown);
-        *whole*: its credits and turns are its whole transcript's (False: past TRANSCRIPT_PAGES pages)."""
+        """{credits, turns, subagents, unreported (spend), busy, awaiting, last_activity, missing, error, whole} of a slot
+        this app opened (None: unknown); *whole*: they are its whole transcript's (False: past TRANSCRIPT_PAGES pages)."""
         return dict(self._stats[slot]) if slot and slot in self._stats else None
 
     def slot_tail(self, slot: str | None) -> dict[str, Any] | None:
@@ -671,11 +714,9 @@ class SessionManager:
             st["error"] = f"{exc}"[:200]
             self._dirty = True
             return
-        replies = [m for m in msgs if m.get("role") == "assistant" and str(m.get("content") or "").strip()]
-        spent = [((m.get("meta") or {}).get("turn_stats") or {}).get("credits") for m in replies]
-        vals = [float(v) for v in spent if isinstance(v, (int, float)) and not isinstance(v, bool)]
+        got = spend(msgs, st["busy"])
         stamps = [_epoch(m.get("ts")) for m in msgs if m.get("ts")]
-        st.update(credits=round(sum(vals), 3) if vals else st.get("credits"), turns=turn_count(msgs), whole=whole,
+        st.update(got, credits=got["credits"] if got["credits"] is not None else st.get("credits"), whole=whole,
                   last_activity=max(stamps) if stamps else st.get("last_activity"), error=None)
         self._tails[slot] = tail(msgs, self.scrub, (self.by_slot(slot) or SessionInfo()).cwd)
         self._dirty = True
