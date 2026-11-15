@@ -233,8 +233,8 @@ def said(code: int, stdout: str, stderr: str, *, base: str = "", project: str = 
 def why_not(f: dict[str, Any], row: dict[str, Any], *, me: Optional[str], local_only: bool, busy: bool,
             pushed: bool) -> Optional[tuple[str, str, int]]:
     """Why the app does not run the hand-over (its words, code, HTTP status), or None when it may. *f*: the
-    requirement's facts (repo.py); *row*: its row (deliveries.classify: state, waits); *me*: who the person is here;
-    *busy*: its session on this machine is in a turn (which could commit meanwhile); *pushed*: the branch tip is on
+    requirement's facts (repo.py); *row*: its row (deliveries.classify: state, waits); *me*: who the person is here
+    (None: the app does not know, as for a GitLab-token user; brain-kit checks the owner itself); *busy*: its session on this machine is in a turn (which could commit meanwhile); *pushed*: the branch tip is on
     the remote (a hand-over commit whose push failed is not: then the row reads handed over, and nothing is)."""
     run = f.get("run") or {}
     if not run:
@@ -249,7 +249,7 @@ def why_not(f: dict[str, Any], row: dict[str, Any], *, me: Optional[str], local_
     if run.get("handoff") and pushed and (row.get("waits") or {}).get("do") not in AGAIN_DO:
         return "已经交接过了（%s）：不用再交接" % ((row.get("waits") or {}).get("text") or row.get("state_label")), \
             "handed_over", 409
-    if not me or me != f.get("owner"):
+    if me and me != f.get("owner"):
         return "只有需求负责人本人能交接（按你在这个仓库的名字认人，在「设置」的「仓库」里填）", "not_owner", 403
     if not f.get("worktree"):
         return "这台机器上没有它的工作区：到开工的那台机器上交接", "no_worktree", 409
