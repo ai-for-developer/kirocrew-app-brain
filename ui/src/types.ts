@@ -1015,8 +1015,9 @@ export interface OpenSessionBody { trust?: boolean; kickoff?: boolean
    * shows as live (when another is live by now, that one is the answer and none is opened) */
   fresh?: boolean
   replace?: string }
-/** reopened: 重开一个会话 opened this one now (false: it was opened by an earlier click) */
-export interface OpenSessionResult { ok: boolean; slot: string; url: string; reopened?: boolean }
+/** reopened: 重开一个会话 opened this one now (false: it was opened by an earlier click); said: what happened when the
+ * requirement's session was handed back instead (its first message did not go in, or is still being sent), '' otherwise */
+export interface OpenSessionResult { ok: boolean; slot: string; url: string; reopened?: boolean; said?: string }
 /**
  * choice: an option id (A–H), or 'approve' / 'reject' for a question without options. id: the question's D-<n> when it
  * has one (an MR question); without it the open clarify question is meant.

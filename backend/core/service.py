@@ -89,6 +89,13 @@ def session_row(mgr: SessionManager, info: Any) -> dict[str, Any]:
         "id": info.id, "opened": info.started is not None, "review": str(info.title or "").endswith(REVIEW_TITLE)}
 
 
+def live_said(live: dict[str, Any]) -> str:
+    """What 开会话 says when it hands back the requirement's session instead of opening one ('' when it simply is)."""
+    if live["error"]:
+        return "这个需求已经有一个会话，只是它的第一条消息没发进去：打开它，在里面说一句接着做；要换一个新的，点「重开一个会话」"
+    return "" if live["opened"] else "这个需求的会话刚开，第一条消息还在发：打开它看一眼"
+
+
 class Service:
     def __init__(self, ctx: Any, *, sessions: Any = None, transport: Any = None, now: Callable[[], float] = time.time,
                  signer_kick: Callable[[], Any] | None = None, sign_timeout: float | None = None) -> None:
@@ -126,7 +133,7 @@ class Service:
         self._subj: dict[tuple, tuple] = {}     # the board's commit subjects and changed files, by the commits asked for
         self._me: str | None = None
         self.families = family.Families()      # brain-kit's listing per repo (大需求 and their 小需求), made in the background
-        self._reopening: dict[str, asyncio.Lock] = {}   # 重开一个会话, one at a time per requirement
+        self._opening: dict[str, asyncio.Lock] = {}     # 开会话 and 重开, one at a time per requirement
         self._handing: dict[str, asyncio.Future] = {}   # 交接给运行机, one at a time per requirement
         self._big_file = self.data_dir / "big.json"
         self._big = self._load_big()           # scopes opened here as 「大需求：先拆成小需求」
@@ -373,9 +380,10 @@ class Service:
     @staticmethod
     def _live(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
         """The requirement's live brain-dev session on this machine, the one 打开会话 opens, 重开一个会话 replaces and
-        an answer goes into: the newest that KiroCrew still has and whose first message went in. Never a review
-        session: 开审查会话 opens one beside it."""
-        live = [r for r in rows if r["kind"] == "local" and r["opened"] and not r["missing"] and not r["review"]]
+        an answer goes into: the newest that KiroCrew still has, also while its first message is being sent or when it
+        did not go in (the session is there, in the worktree: one session per worktree). Never a review session:
+        开审查会话 opens one beside it."""
+        live = [r for r in rows if r["kind"] == "local" and not r["missing"] and not r["review"]]
         return live[-1] if live else None
 
     def _live_of(self, scope: str) -> dict[str, Any] | None:
@@ -955,8 +963,9 @@ class Service:
             raise AppError("只有本地开发中的需求能在这里开会话", "not_local", 409)
         if not f.get("worktree"):
             raise AppError("这台机器上没有检出 %s 的分支：先在开需求里开工" % f.get("branch"), "no_worktree", 409)
-        return await self._open_local(repo, key, f["branch"], f["worktree"], run, trust=trust, kickoff=kickoff,
-                                      review=review)
+        async with self._opening.setdefault(scope_of(repo.id, key), asyncio.Lock()):
+            return await self._open_local(repo, key, f["branch"], f["worktree"], run, trust=trust, kickoff=kickoff,
+                                          review=review)
 
     async def _open_local(self, repo: Repo, key: str, branch: str, wt: str, run: dict[str, Any], *, trust: bool,
                           kickoff: bool, review: bool = False, task: str | None = None, fresh: bool = False
@@ -974,7 +983,7 @@ class Service:
         else:
             live = self._live_of(scope)
             if live and not fresh:
-                return {"ok": True, "slot": live["slot"], "url": live["url"]}
+                return {"ok": True, "slot": live["slot"], "url": live["url"], "said": live_said(live)}
             if task is None:     # a small requirement's start brings its own first message (family.kickoff)
                 task = intake.kickoff(key, branch, run.get("intent"),
                                       [str(m.get("package")) for m in run.get("materials") or [] if isinstance(m, dict)]) \
@@ -994,13 +1003,14 @@ class Service:
             raise AppError(info.error or "会话没开成", "session_failed", 502)
         await asyncio.to_thread(self.store.append, scope, "app", said, store_mod.TRUSTED if trust else None)
         await self.sessions.save()
-        return {"ok": True, "slot": info.slot, "url": "/chat?sid=%s" % info.slot}
+        return {"ok": True, "slot": info.slot, "url": "/chat?sid=%s" % info.slot, "said": ""}
 
     async def reopen_session(self, rid: str, key: str, replace: Any, trust: bool = True) -> dict[str, Any]:
         """重开一个会话: a new session for the requirement in its worktree, whatever the live one is doing (E2E-12: one
         KiroCrew left stuck after an interrupted turn). The old one stays, its record readable; still busy, it is
         stopped first, so two sessions never work in one worktree. *replace*: the slot the page showed as live; when
-        another one is live by now (the same click twice, another tab) that one is the answer and none is opened."""
+        another one is live by now (the same click twice, another tab) that one is the answer and none is opened,
+        unless its first message did not go in (that click failed: this one replaces it)."""
         repo = self._repo(rid)
         f = await asyncio.to_thread(self._facts, repo, key)
         run = f.get("run") or {}
@@ -1009,10 +1019,11 @@ class Service:
         if not f.get("worktree"):
             raise AppError("这台机器上没有检出 %s 的分支：先在开需求里开工" % f.get("branch"), "no_worktree", 409)
         scope = scope_of(repo.id, key)
-        async with self._reopening.setdefault(scope, asyncio.Lock()):
-            cur = (self._live_of(scope) or {}).get("slot")
-            if cur and cur != (replace if isinstance(replace, str) and replace else None):
-                return {"ok": True, "slot": cur, "url": "/chat?sid=%s" % cur, "reopened": False}
+        async with self._opening.setdefault(scope, asyncio.Lock()):
+            live = self._live_of(scope)
+            cur = (live or {}).get("slot")
+            if cur and cur != (replace if isinstance(replace, str) and replace else None) and not live["error"]:
+                return {"ok": True, "slot": cur, "url": "/chat?sid=%s" % cur, "reopened": False, "said": live_said(live)}
             if cur:
                 turns = [i.id for i in self.sessions.all_agents if i.slot == cur and not i.done]
                 for t in turns:

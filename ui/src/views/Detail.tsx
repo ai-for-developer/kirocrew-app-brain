@@ -653,7 +653,7 @@ function OpenSession({ repo, reqKey, opened, onOpened }: { repo: string; reqKey:
     <section className="cto-card is-wait br-opensession" aria-label="开会话">
       {opened ? (
         <div className="br-row">
-          <span className="br-ok-text">会话开好了。</span>
+          <span className={opened.said ? 'br-warn-text' : 'br-ok-text'}>{opened.said || '会话开好了。'}</span>
           <button type="button" className="kt-btn is-primary" onClick={() => navigate(opened.url)}>
             <Icon name="MessageSquare" size={13} />{ACT.openSession}
           </button>
