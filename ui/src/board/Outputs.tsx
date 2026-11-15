@@ -11,16 +11,21 @@
  * GET /outputs/{repo}/{key}?node&round lists a round's files, GET /outputs/{repo}/{key}/file reads one; the rest
  * (rounds, gates, runs) is the board's own snapshot. Where it stands is in the URL (nav.ts out): the parent replaces
  * the history entry, so 后退 never steps through the drawer.
+ *
+ * In a replay it reads the replayed board at its moment (timeline.ts): only the rounds started by then, a round over
+ * by then as it ended, one still going then with what it had by then (filesAt, turnsAt); nothing is read for a step
+ * not started then. The replay's controls come along, so it can be played and scrubbed with the drawer open.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { paths, usePoll } from '../api'
 import type { OutAt } from '../nav'
 import type { FileView, Gate, NodeOutput, NodeTurns, OutFile, ReqBoard, Round, Run, StageNode } from '../types'
 import { ExtLink, TYPE_IT_YOURSELF } from '../ui'
 import { Markdown } from '../views/Markdown'
 import { laneNodes } from './Lanes'
-import { ROUND_TONE, actorMeta, clockAt, decider, gateVerb, nodeLabel, roundWords, whoOf } from './format'
+import { ROUND_TONE, actorMeta, clockAt, decider, fmtWhen, gateVerb, nodeLabel, roundWords, whoOf } from './format'
 import { RoleIcon } from './RoleIcon'
+import { filesAt, turnsAt, type Moment } from './timeline'
 import { SessionPane } from './Turns'
 
 type Mode = 'content' | 'source' | 'diff'
@@ -58,7 +63,7 @@ const isDoc = (p: string): boolean => /\.(md|markdown)$/i.test(p)
 
 /** What the round was about, above its files: sent back (who, the D-n, never their words), asked for, changed after
  * the request, its checks red, approved. */
-function RoundBanner({ n, r, board }: { n: StageNode; r: Round; board: ReqBoard }) {
+function RoundBanner({ n, r, board, replay }: { n: StageNode; r: Round; board: ReqBoard; replay: boolean }) {
   const o = r.outcome
   const when = (t: number | null) => (t ? clockAt(t, board.at) : '')
   const g = openAsk(n, r)
@@ -68,7 +73,8 @@ function RoundBanner({ n, r, board }: { n: StageNode; r: Round; board: ReqBoard 
       <div className="kt-round-banner tone-approve" data-testid="out-banner">
         <strong>✋ 这是请{who}批的版本</strong>
         <span>{g.kind}{g.at ? ` · ${when(g.at)} 请批` : ''}{g.mr?.decision ? ` · ${g.mr.decision} 在 MR 上` : ''}</span>
-        {g.line ? <span>做什么：看完回会话打 <code>{g.line}</code>（{TYPE_IT_YOURSELF}）</span> : <span className="kt-dim">{who}在 MR 上回答；你不用在会话里打什么</span>}
+        {g.line ? <span>做什么：看完回会话打 <code>{g.line}</code>（{TYPE_IT_YOURSELF}）</span>
+          : (g.mr || !replay) && <span className="kt-dim">{who}在 MR 上回答；你不用在会话里打什么</span>}
         {g.mr?.url && <ExtLink href={g.mr.url} className="kt-btn is-small">看 MR ↗</ExtLink>}
       </div>
     )
@@ -189,17 +195,18 @@ function FileBody({ v, mode }: { v: FileView; mode: Mode }) {
   )
 }
 
-function NodePane({ board, repo, reqKey, n, r, at, onAt }: {
-  board: ReqBoard; repo: string; reqKey: string; n: StageNode; r: Round | null; at: OutAt; onAt: (at: OutAt) => void
+function NodePane({ board, repo, reqKey, n, r, at, onAt, moment }: {
+  board: ReqBoard; repo: string; reqKey: string; n: StageNode; r: Round | null; at: OutAt; onAt: (at: OutAt) => void; moment: Moment | null
 }) {
   const runs = useMemo(() => new Map(board.runs.map((x) => [x.key, x])), [board.runs])
-  const out = usePoll<NodeOutput>(paths.outputs(repo, reqKey, n.id, r?.n ?? null), 0)
+  // no round then: nothing to read (the latest round is not that moment's)
+  const out = usePoll<NodeOutput>(moment && !r ? null : paths.outputs(repo, reqKey, n.id, r?.n ?? null), 0)
   const [live, setLive] = useState(false)
   // a turn still going: its reply and calls as they come
-  const turns = usePoll<NodeTurns>(r ? paths.outputsTurns(repo, reqKey, n.id, r.n) : null, live ? TURNS_LIVE_MS : 0)
+  const turns = usePoll<NodeTurns>(r ? paths.outputsTurns(repo, reqKey, n.id, r.n) : null, live && !moment ? TURNS_LIVE_MS : 0)
   useEffect(() => setLive(!!turns.data?.turns.some((t) => t.live)), [turns.data])
-  // the round moved on (a commit, its end): its files and turns again
-  const sig = r ? `${r.n}:${r.commits.length}:${r.outcome.kind}:${r.outputs.map((o) => o.sha8).join(',')}` : ''
+  // the round moved on (a commit, its end): its files and turns again; a replayed round is cut from what was read already
+  const sig = r && !moment ? `${r.n}:${r.commits.length}:${r.outcome.kind}:${r.outputs.map((o) => o.sha8).join(',')}` : ''
   const seen = useRef(sig)
   useEffect(() => {
     if (seen.current !== sig) {
@@ -209,15 +216,17 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt }: {
     seen.current = sig
   }, [sig]) // eslint-disable-line react-hooks/exhaustive-deps
   const run = r ? runs.get(r.run) : undefined
-  const files = out.data?.files ?? []
+  const listed = out.data?.files ?? []
+  const { files, later } = moment && r ? filesAt(listed, r, !!openAsk(n, r), moment) : { files: listed, later: 0 }
   const pick = files.find((f) => f.path === at.file) ?? files.find((f) => f.ref) ?? files[0]
   const declared = files.filter((f) => f.output)
   const others = files.filter((f) => !f.output)
   const meta = actorMeta(n.status)
-  const head = out.data?.head
+  const head = moment ? r?.commits[r.commits.length - 1] : out.data?.head
   const title = n.unit ? `${n.title} · ${n.unit}` : n.title
   const tab = at.tab ?? 'files'
-  const t = turns.data && !turns.data.why_not ? turns.data : null
+  const said = turns.data && moment ? turnsAt(turns.data, moment.t) : turns.data
+  const t = said && !said.why_not ? said : null
   const tabs: [OutAt['tab'], string, number | null][] = [[undefined, '产出文件', out.data ? files.length : null], ['reply', '它的回复', null],
     ['task', '接到的任务', t?.turns.length || null], ['calls', '做了什么', t?.meta.calls || null]]
   return (
@@ -246,7 +255,7 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt }: {
             ))}
           </div>
         )}
-        {r && <RoundBanner n={n} r={r} board={board} />}
+        {r && <RoundBanner n={n} r={r} board={board} replay={!!moment} />}
         {r?.note && <p className="kt-note-box"><b>它自己写的说明</b>{r.note}</p>}
         <div className="kt-tabs" role="tablist">
           {tabs.map(([k, label, count]) => (
@@ -257,17 +266,19 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt }: {
         </div>
       </div>
       <div className="kt-pane-body">
-        {tab !== 'files' ? (r ? <SessionPane tab={tab} data={turns.data} error={turns.error} r={r} n={n} run={run} board={board} />
+        {moment && !r ? <p className="kt-pad kt-dim" data-testid="out-not-yet">这一步那时还没开始</p>
+          : tab !== 'files' ? (r ? <SessionPane key={moment ? said?.turns.length : undefined} tab={tab} data={said} error={turns.error} r={r} n={n} run={run} board={board} />
           : <p className="kt-pad kt-dim">这一步还没开始：开始以后，这里有它每一回合的回复、接到的消息和工具调用</p>)
           : out.error ? <p className="kt-pad" role="alert">{out.error}</p>
           : !out.data ? <p className="kt-pad kt-dim">读取中…</p>
-          : !files.length ? <p className="kt-pad kt-dim" data-testid="out-none">{out.data.why ?? '这一轮没有提交文件'}</p>
+          : !files.length ? <p className="kt-pad kt-dim" data-testid="out-none">{later ? '这一轮那时还没提交文件' : out.data.why ?? '这一轮没有提交文件'}</p>
           : (
             <div className="kt-files-pane">
               <div className="kt-flist">
                 {declared.length > 0 && <><p className="kt-flist-h">约定它交的</p><ul>{declared.map((f) => <FileRow key={f.path} f={f} on={f === pick} onPick={() => onAt({ ...at, file: f.path })} />)}</ul></>}
                 {others.length > 0 && <><p className="kt-flist-h">其他改动</p><ul>{others.map((f) => <FileRow key={f.path} f={f} on={f === pick} onPick={() => onAt({ ...at, file: f.path })} />)}</ul></>}
                 {out.data.more > 0 && <p className="kt-dim kt-flist-foot">还有 {out.data.more} 个文件没列出来</p>}
+                {later > 0 && <p className="kt-dim kt-flist-foot" data-testid="out-later">这一轮那时还在做：那以后才提交的 {later} 个文件这里没列</p>}
                 {run?.kind === 'runner' && <p className="kt-dim kt-flist-foot">都在运行机推上来的提交里：这台机器取回来以后能看全</p>}
               </div>
               {pick && <FilePane key={`${pick.path}@${pick.ref}`} repo={repo} reqKey={reqKey} f={pick} round={r?.n ?? 0} />}
@@ -278,7 +289,7 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt }: {
   )
 }
 
-export function OutputsDrawer({ board, repo, reqKey, at, onAt, onClose }: {
+export function OutputsDrawer({ board, repo, reqKey, at, onAt, onClose, moment = null, bar }: {
   board: ReqBoard
   repo: string
   reqKey: string
@@ -286,6 +297,9 @@ export function OutputsDrawer({ board, repo, reqKey, at, onAt, onClose }: {
   /** move the drawer (another step, round or file) */
   onAt: (at: OutAt) => void
   onClose: () => void
+  /** 回放: the moment *board* is replayed at, and the replay's controls */
+  moment?: Moment | null
+  bar?: ReactNode
 }) {
   const lanes = laneNodes(board)
   const steps = board.nodes.filter((x) => lanes.includes(x) || x.id === at.node)
@@ -309,6 +323,12 @@ export function OutputsDrawer({ board, repo, reqKey, at, onAt, onClose }: {
           <button type="button" className="kt-btn is-small" onClick={() => step(1)} disabled={i < 0 || i >= steps.length - 1}>下一步 ›</button>
           <button type="button" className="kt-btn is-small" onClick={onClose} aria-label="关掉产出" title="关掉（Esc）">✕</button>
         </div>
+        {moment && (
+          <div className="kt-drawer-replay" data-testid="out-replay">
+            {bar}
+            <p className="kt-dim">回放：这是 {fmtWhen(moment.t)} 那一刻的产出，只有那时已经开始的轮次；退出回放看现在的</p>
+          </div>
+        )}
         <nav className="kt-steps" aria-label="每一步">
           {steps.map((x, k) => (
             <button key={x.id} type="button" className={`kt-step tone-${actorMeta(x.status).tone}${x.id === at.node ? ' is-on' : ''}`} aria-current={x.id === at.node ? 'step' : undefined}
@@ -319,7 +339,7 @@ export function OutputsDrawer({ board, repo, reqKey, at, onAt, onClose }: {
             </button>
           ))}
         </nav>
-        {n ? <NodePane key={`${n.id}#${r?.n ?? 0}`} board={board} repo={repo} reqKey={reqKey} n={n} r={r} at={at} onAt={onAt} />
+        {n ? <NodePane key={`${n.id}#${r?.n ?? 0}`} board={board} repo={repo} reqKey={reqKey} n={n} r={r} at={at} onAt={onAt} moment={moment} />
           : <p className="kt-pad kt-dim">看板上没有这一步了：点上面的一步看它的产出</p>}
       </aside>
     </div>

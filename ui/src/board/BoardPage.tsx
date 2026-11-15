@@ -16,7 +16,8 @@
  * (RunPicker.tsx) picks one run: the boxes it did no round of dim, and the counters, the conveyor, the lanes, the wall,
  * the events and the drawer show its flow only (picker.ts inRun); the pick is in the address (?run=) and is a history
  * entry, so 后退 returns to the run before. 回放
- * (Replay.tsx) plays the requirement again from the same snapshot (timeline.ts); while it plays nothing can be done.
+ * (Replay.tsx) plays the requirement again from the same snapshot (timeline.ts), holding on each decision a person
+ * made; while it plays nothing can be done, and the drawer shows what each step had at the replayed moment.
  * Reduced motion: nothing flies or pulses, states still change.
  *
  * A big requirement split into small ones (row.family, views/Family.tsx): a small one names its big one in the crumb
@@ -326,7 +327,7 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, pus
           <>
             <TopBar board={board} run={picked} onRun={onRun} replaying={rp.on} follow={follow} onReplay={() => rp.start()} onFollow={() => setFollow((v) => !v)} onDetail={toDetail}
               onSession={(url) => navigate(url)} onStart={onStart} onParent={toBoard} onFamily={toFamily}
-              onOutputs={rp.on || !laneNodes(view).length ? undefined : () => onOutputs(firstOutputs(view))} />
+              onOutputs={!laneNodes(view).length ? undefined : () => onOutputs(firstOutputs(view))} />
             <ReplayBar rp={rp} />
             {problem && (
               <div className="kt-banner br-problem" role="status" data-testid="br-board-problem">
@@ -351,12 +352,12 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, pus
                     <div ref={graphBox}>
                       <StageGraph key={`${entry.repo}/${entry.key}${rp.on ? ':replay' : ''}`} board={board} run={picked} lay={lay} focus={focus} onNode={onNode} flashes={fx.flashes}
                         reducedMotion={reducedMotion} feed={feed} quiet={quiet} onSession={(url) => navigate(url)} onAct={quiet ? undefined : onAct}
-                        onOutputs={quiet ? undefined : onOutputs} />
+                        onOutputs={onOutputs} held={rp.held} />
                     </div>
                     {focus && <FocusBar board={board} focus={focus} onClear={() => setFocus(null)} />}
                     <Conveyor board={view} fresh={fx.belt} focus={focus} onNode={onNode} />
                     {(fam?.role === 'parent' || fam?.role === 'child') && famCard}
-                    <Lanes board={view} focus={focus} bumps={fx.bumps} onNode={onNode} quiet={quiet} onOutputs={quiet ? undefined : onOutputs} />
+                    <Lanes board={view} focus={focus} bumps={fx.bumps} onNode={onNode} quiet={quiet} onOutputs={onOutputs} />
                     {!acceptTop && <Accept board={board} onDetail={toDetail} quiet={quiet} />}
                   </div>
                   <aside className="kt-side" aria-label="检查、问题和事件">
@@ -374,8 +375,10 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, pus
             )}
           </>
         )}
-        {view && out && !rp.on && (
-          <OutputsDrawer board={view} repo={entry.repo} reqKey={entry.key} at={out} onAt={toOutputs} onClose={() => toOutputs(null)} />
+        {/* a way in that replays opens the drawer at its moment, never first at the live board */}
+        {view && out && (entered.current || !(entry.at || entry.replay)) && (
+          <OutputsDrawer board={view} repo={entry.repo} reqKey={entry.key} at={out} onAt={toOutputs} onClose={() => toOutputs(null)}
+            moment={rp.moment} bar={rp.on && <ReplayBar rp={rp} />} />
         )}
         <div className="kt-sr" aria-live="polite" data-testid="kt-announce">{fx.announce}</div>
       </ClockContext.Provider>

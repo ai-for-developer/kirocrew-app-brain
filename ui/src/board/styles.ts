@@ -102,6 +102,9 @@ ${toneVars}
 .kt-replay-speeds { display: inline-flex; gap: 4px; }
 .kt-replay-speeds .kt-btn { padding: 4px 9px; font-size: .85em; }
 .kt-replay-note { font-size: .86em; }
+.kt-replay-held { font-weight: 750; color: var(--kt-approve); }
+.kt-replay-held.is-ok { color: var(--kt-ok); }
+.kt-replay-held.is-fix { color: var(--kt-fix); }
 .kt-error { margin: 0; color: var(--kt-bad); font-weight: 650; }
 .kt-focusbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 8px 6px 14px; border-radius: 12px;
   border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
@@ -459,6 +462,10 @@ ${toneVars}
 .kt-node-flash { stroke-width: 6; opacity: 0; transform-box: fill-box; transform-origin: center; pointer-events: none; animation: kt-flash 1.4s ease-out 1 forwards; }
 .kt-node-flash.is-bad { stroke: var(--kt-bad); fill: color-mix(in srgb, var(--kt-bad) 30%, transparent); }
 .kt-node-flash.is-ok { stroke: var(--kt-ok); fill: color-mix(in srgb, var(--kt-ok) 25%, transparent); }
+.kt-node-held { fill: none; stroke: var(--kt-approve); stroke-width: 4; stroke-dasharray: 10 7; pointer-events: none; animation: kt-ants 1s linear infinite; }
+.kt-node-held.is-ok, .kt-node-held.is-fix { stroke-dasharray: none; animation: none; }
+.kt-node-held.is-ok { stroke: var(--kt-ok); fill: color-mix(in srgb, var(--kt-ok) 16%, transparent); }
+.kt-node-held.is-fix { stroke: var(--kt-fix); fill: color-mix(in srgb, var(--kt-fix) 18%, transparent); }
 
 .kt-rail-base { stroke: color-mix(in srgb, var(--muted) 45%, transparent); stroke-width: 6; stroke-linecap: round; stroke-dasharray: 1 9; }
 .kt-rail-fill { stroke: var(--kt-ok); stroke-width: 6; stroke-linecap: round; filter: drop-shadow(0 0 5px color-mix(in srgb, var(--kt-ok) 60%, transparent)); transition: x2 .8s; }
@@ -533,6 +540,9 @@ ${legendSwatches}
 .kt-gate-pill.is-other text { fill: var(--kt-info); }
 .kt-gate-pill.is-back rect { stroke: var(--kt-fix); }
 .kt-gate-pill.is-back text { fill: var(--kt-fix); }
+.kt-gate-pill.is-picked.is-ok rect { fill: var(--kt-ok); stroke: none; }
+.kt-gate-pill.is-picked.is-fix rect { fill: var(--kt-fix); stroke: none; }
+.kt-gate-pill.is-picked text { fill: #fff; }
 .kt-gate-pill.is-doc rect { fill: var(--card); stroke: var(--accent); }
 .kt-gate-pill.is-doc text { fill: var(--accent); }
 .kt-gate-pill.is-queued rect { stroke: var(--kt-queue); stroke-dasharray: 4 3; }
@@ -853,6 +863,8 @@ ${legendSwatches}
 .kt-drawer { width: min(1240px, 96vw); height: 100%; display: flex; flex-direction: column; min-height: 0; background: var(--bg, var(--card)); color: var(--text);
   border-left: 1px solid var(--border-strong, var(--border)); box-shadow: -30px 0 80px rgba(0, 0, 0, .38); }
 .kt-drawer-top { display: flex; align-items: center; gap: 10px; padding: 14px 20px 10px; }
+.kt-drawer-replay { padding: 0 20px 8px; }
+.kt-drawer-replay p { margin: 6px 2px 0; font-size: .86em; }
 .kt-drawer-top h2 { margin: 0; font-size: 1.12em; color: var(--text-strong); }
 .kt-steps { display: flex; gap: 6px; padding: 4px 20px 12px; overflow-x: auto; border-bottom: 1px solid var(--border); }
 .kt-step { appearance: none; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px 5px 6px; border-radius: 999px; cursor: pointer; white-space: nowrap; font: inherit; font-size: .9em; font-weight: 700;

@@ -28,8 +28,10 @@ import {
   type RosterKind, type StageBand, type StageBox, type StageInput, type StageLayout,
 } from './layout'
 import { doOf, reviewNext } from './next'
+import { CHOICE_TONE, type Held } from './Replay'
 import { RoleGlyph, RoleIcon } from './RoleIcon'
 import { hasRound, inRun, type RunFilter } from './picker'
+import type { Choice } from './timeline'
 import { verifyCount, wayAt } from './way'
 
 export interface StageGraphProps {
@@ -51,6 +53,8 @@ export interface StageGraphProps {
   onAct?: (node: string, d: WaitDo) => void
   /** 看产出 from a box's hover card (a round of it: that round), 看文档 from a gate: the 产出 drawer there */
   onOutputs?: (node: string, round?: number, file?: string) => void
+  /** 回放: the decision it holds on, ringed on its box; what the person chose lit under it */
+  held?: Held | null
 }
 
 /** A row of the list under the orchestrator box (layout.ts RosterKind), as it is drawn. */
@@ -78,6 +82,9 @@ const isDone = (s: string) => s === 'done' || s === 'merged'
 const mark = (s: RelayStep['status']) => (isDone(s) ? '✓' : actorMeta(s).icon)
 /** Who decided, as a badge on a box's top edge says it: shorter, 大需求 for 大需求的负责人. */
 const badgeWho = (by: string | null) => clip(decider(by).replace(/的负责人$/, ''), 5)
+/** What the person chose, on the chip under the box a replay holds on. */
+const CHOSE: Record<Choice, string> = { approve: '✓ 批了', accept: '✓ 验收通过', answer: '✓ 回答了', reject: '✗ 退回了' }
+
 /** An open gate's chip: 等你批 · 需求和设计, 等产品验收 · D-3. */
 const askWords = (g: Gate, b: ReqBoard) => `${gateVerb(g, b)} · ${g.mr?.decision ?? gateWhat(g.kind)}`
 /** The step an open gate's chip stands for. */
@@ -151,7 +158,7 @@ export function stageInput(b: ReqBoard): StageInput {
   return { phases: b.phases, nodes: b.nodes, runs: b.runs, relays: b.relays, roster: rosterOf(b).map(({ kind, run }) => ({ kind, run })) }
 }
 
-export function StageGraph({ board, run = 'all', lay, focus, onNode, flashes, reducedMotion, feed, quiet = false, onSession, onAct, onOutputs }: StageGraphProps) {
+export function StageGraph({ board, run = 'all', lay, focus, onNode, flashes, reducedMotion, feed, quiet = false, onSession, onAct, onOutputs, held = null }: StageGraphProps) {
   const [card, hover] = useHoverCard()
   const head = stageHeadX(lay, board.belt)
   const runs = useMemo(() => new Map<string, Run>(board.runs.map((r) => [r.key, r])), [board.runs])
@@ -177,7 +184,10 @@ export function StageGraph({ board, run = 'all', lay, focus, onNode, flashes, re
     : []
   const ask = [...chips.values()].find((g) => g.state === 'pending' && g.who === 'you')
   const asking = ask ? askWords(ask, board) : null
-  const under = new Set<string>([...chips.keys(), ...stepWaits.map((n) => n.id), ...drawn.filter((n) => tickerOf(n, runs.get(n.run ?? ''), quiet, board)).map((n) => n.id)])
+  // a decision held on where no gate is open (an answer): its own chip under the box
+  const heldAlone = held && lay.boxes.has(held.node) && !chips.has(held.node) ? held : null
+  const under = new Set<string>([...chips.keys(), ...stepWaits.map((n) => n.id), ...drawn.filter((n) => tickerOf(n, runs.get(n.run ?? ''), quiet, board)).map((n) => n.id),
+    ...(heldAlone ? [heldAlone.node] : [])])
   const working = drawn.filter((n) => WORKING.has(n.status)).length
   const waits = drawn.map((n) => nodeWait(n, runs.get(n.run ?? ''))).filter((w): w is WaitWho => w !== null)
   const finished = drawn.filter((n) => isDone(n.status)).length
@@ -214,12 +224,14 @@ export function StageGraph({ board, run = 'all', lay, focus, onNode, flashes, re
           <g className="kt-nodes">
             {drawn.map((n) => (
               <StageBoxView key={n.id} n={n} box={lay.boxes.get(n.id)!} board={board} run={runs.get(n.run ?? '')} focus={focus} off={!hasRound(n, run)} flash={flashes[n.id]}
-                onNode={onNode} reducedMotion={reducedMotion} quiet={quiet} onHover={(on) => hover(on ? n.id : null, on ? 300 : 250)} />
+                onNode={onNode} reducedMotion={reducedMotion} quiet={quiet} onHover={(on) => hover(on ? n.id : null, on ? 300 : 250)}
+                held={held?.node === n.id ? held : undefined} />
             ))}
             {[...chips].map(([id, g]) => (
               <GateChips key={`gate-${id}`} n={byId.get(id)!} g={g} box={lay.boxes.get(id)!} board={board} off={!hasRound(byId.get(id)!, run)} onAct={quiet ? undefined : onAct}
-                onDoc={quiet || !onOutputs ? undefined : onOutputs} />
+                onDoc={quiet || !onOutputs ? undefined : onOutputs} held={held?.node === id ? held : undefined} />
             ))}
+            {heldAlone && <HeldChip h={heldAlone} box={lay.boxes.get(heldAlone.node)!} />}
             {stepWaits.map((n) => (
               <StepChip key={`step-${n.id}`} n={n} box={lay.boxes.get(n.id)!} d={step} review={reviewNext(board.row.waits)} onAct={onAct} />
             ))}
@@ -235,7 +247,7 @@ export function StageGraph({ board, run = 'all', lay, focus, onNode, flashes, re
         {cardNode && cardBox && (
           <div key={card} className="kt-ncard" style={cardPlace(cardBox, lay)} data-testid="kt-ncard" role="dialog" aria-label={`${cardNode.title}做了什么`}
             onMouseEnter={() => hover(card, 0)} onMouseLeave={() => hover(null, 200)}>
-            <StageCard n={cardNode} board={board} runs={runs} onSession={quiet ? undefined : onSession} onOutputs={quiet ? undefined : onOutputs} />
+            <StageCard n={cardNode} board={board} runs={runs} onSession={quiet ? undefined : onSession} onOutputs={onOutputs} />
           </div>
         )}
       </Scroller>
@@ -571,9 +583,9 @@ function stateLine(n: StageNode, run: Run | undefined, board: ReqBoard, wait: Wa
 }
 
 /** *off*: a run is picked and this box has no round of it (dimmed, as a box not looked at is) */
-function StageBoxView({ n, box, board, run, focus, off, flash, onNode, reducedMotion, quiet, onHover }: {
+function StageBoxView({ n, box, board, run, focus, off, flash, onNode, reducedMotion, quiet, onHover, held }: {
   n: StageNode; box: StageBox; board: ReqBoard; run: Run | undefined; focus: string | null; off: boolean; flash?: { n: number; tone: string }
-  onNode: (id: string) => void; reducedMotion: boolean; quiet: boolean; onHover: (on: boolean) => void
+  onNode: (id: string) => void; reducedMotion: boolean; quiet: boolean; onHover: (on: boolean) => void; held?: Held
 }) {
   const w = NODE_W
   const h = NODE_H
@@ -645,6 +657,8 @@ function StageBoxView({ n, box, board, run, focus, off, flash, onNode, reducedMo
         )
       })}
       {ticker && <Ticker t={ticker} h={h} />}
+      {held && <rect className={`kt-node-held${held.picked ? ` is-${CHOICE_TONE[held.choice]}` : ''}`} x={-w / 2 - 6} y={-h / 2 - 6} width={w + 12} height={h + 12} rx={21}
+        data-testid="kt-node-held" />}
       {flash && <rect key={flash.n} className={`kt-node-flash is-${flash.tone}`} x={-w / 2 - 5} y={-h / 2 - 5} width={w + 10} height={h + 10} rx={20} />}
       <rect className="kt-node-focus" x={-w / 2 - 5} y={-h / 2 - 5} width={w + 10} height={h + 10} rx={20} />
     </g>
@@ -668,9 +682,9 @@ function WaitLine({ g }: { g: Gate }) {
 
 /** Under the box an open gate covers last: a round sent back before (✗ 退回 · D-2), then the one asked now; the open
  * one takes the person to the step (the session, the step strip), as the board's other chips do. */
-function GateChips({ n, g, box, board, off, onAct, onDoc }: {
+function GateChips({ n, g, box, board, off, onAct, onDoc, held }: {
   n: StageNode; g: Gate; box: StageBox; board: ReqBoard; off: boolean; onAct?: (node: string, d: WaitDo) => void
-  onDoc?: (node: string, round?: number, file?: string) => void
+  onDoc?: (node: string, round?: number, file?: string) => void; held?: Held
 }) {
   const back = n.rounds.filter((r) => r.outcome.kind === 'sent_back' && r.outcome.gate === g.kind).slice(-2)
   // 看文档: the drawer on the first document the gate approves, at the round it was asked (an INCEPTION ask covers two
@@ -679,7 +693,9 @@ function GateChips({ n, g, box, board, off, onAct, onDoc }: {
   const docNode = board.nodes.find((x) => x.rounds.some((r) => r.outputs.some((o) => o.path === doc))) ?? n
   const chips: { text: string; cls: string; tip: string; open: boolean; doc?: boolean }[] = [
     ...back.map((r) => ({ text: `✗ 退回 · ${r.outcome.decision ?? `第 ${r.n} 轮`}`, cls: 'is-back', tip: `第 ${r.n} 轮：${roundWords(r, n, board)}`, open: false })),
-    g.state === 'queued'
+    held?.picked
+      ? { text: CHOSE[held.choice], cls: `is-picked is-${CHOICE_TONE[held.choice]}`, tip: held.text, open: false }
+      : g.state === 'queued'
       ? { text: `排队 · ${g.text ?? '等流水线过了才问'}`, cls: 'is-queued', tip: g.text ?? '', open: false }
       : { text: askWords(g, board), cls: g.who === 'you' ? 'is-mine' : 'is-other', tip: g.line ?? '', open: true },
     ...(onDoc && doc ? [{ text: '看文档', cls: 'is-doc', tip: `看要批的 ${doc.slice(doc.lastIndexOf('/') + 1)}`, open: false, doc: true }] : []),
@@ -704,6 +720,20 @@ function GateChips({ n, g, box, board, off, onAct, onDoc }: {
           </g>
         )
       })}
+    </g>
+  )
+}
+
+/** Under the box a replay holds on where no gate is open (a question): 等人回答, then what the person chose. */
+function HeldChip({ h, box }: { h: Held; box: StageBox }) {
+  const text = h.picked ? CHOSE[h.choice] : h.choice === 'answer' ? '等人回答' : '等人拍板'
+  const w = Math.max(84, Math.round(textWidth(text) * 12.6) + 20)
+  return (
+    <g className={`kt-gate-pill is-static ${h.picked ? `is-picked is-${CHOICE_TONE[h.choice]}` : 'is-other'}`} transform={`translate(${box.x},${box.y + NODE_H / 2 + 22})`}
+      data-testid="kt-held-pill">
+      <title>{h.text}</title>
+      <rect x={-w / 2} y={-13} width={w} height={26} rx={13} />
+      <text y={5} textAnchor="middle">{text}</text>
     </g>
   )
 }
