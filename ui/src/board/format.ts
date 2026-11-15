@@ -332,7 +332,7 @@ export const decider = (by: string | null): string => (!by ? '有人' : by.start
 
 /** A round's colour by how it ended. */
 export const ROUND_TONE: Record<Round['outcome']['kind'], Tone> = {
-  open: 'run', done: 'ok', approved: 'ok', passed: 'ok', sent_back: 'fix', refused: 'warn', failed: 'bad', superseded: 'idle', skipped: 'idle',
+  open: 'run', done: 'ok', approved: 'ok', passed: 'ok', sent_back: 'bad', refused: 'warn', failed: 'bad', superseded: 'idle', skipped: 'idle',
 }
 
 /** A failed pipeline, as every place that names it says it: CI 没过 #1234 (backend stages.ci_words). */
