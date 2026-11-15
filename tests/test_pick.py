@@ -98,15 +98,16 @@ def test_one_dialog_at_a_time_the_second_click_says_where_the_first_is(tmp_path,
 
 def test_a_dialog_left_open_too_long_is_closed_and_the_next_click_opens_one(tmp_path, monkeypatch):
     monkeypatch.setattr(picker, "TIMEOUT_S", 0.5)
-    p = fake(tmp_path, monkeypatch, 'echo $$ > "%s"\nexec sleep 30' % (tmp_path / "pid"))
+    dialog = "sleep 29.%06d" % os.getpid()                  # this run's own: nothing else runs it
+    p = fake(tmp_path, monkeypatch, "exec " + dialog)
     r = routes(tmp_path)
     t0 = time.monotonic()
     got = pick(r, {"kind": "file"})
     assert (got.status, got.code) == (408, "picker_timeout")
     assert "再点一次" in got.body["error"]
     assert time.monotonic() - t0 < 10
-    with pytest.raises(ProcessLookupError):                  # the dialog's process is gone
-        os.kill(int((tmp_path / "pid").read_text()), 0)
+    left = subprocess.run(["pgrep", "-f", dialog], capture_output=True, text=True)
+    assert left.stdout == ""                                 # the dialog's process is gone
     p.write_text('#!/bin/sh\necho /Users/alice/b.docx\n', encoding="utf-8")
     assert pick(r, {"kind": "file"}).body == {"paths": ["/Users/alice/b.docx"]}
 
