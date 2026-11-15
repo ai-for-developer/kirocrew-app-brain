@@ -556,6 +556,8 @@ predicate; the UI host modules `@kirocrew/app-sdk` (`useAppApi`, `useNavigate`, 
 python3 -m pytest -q                     # backend (Python 3.9+, pytest, git, ssh-keygen, the brain-kit checkout)
 (cd ui && npm ci && npm run check)       # UI: type check, component tests, build
 (cd ui && npm run preview:build)         # ui/preview-dist/index.html: the page on the fixtures, no Kiro Crew
+(cd ui && npm run fit)                   # after preview:build: every view at 1280, 1050, 860 wide (KiroCrew's sidebar
+                                         # taken off) in headless Chrome; fails when something is cut off
 python3 scripts/preview_world.py         # after changing board.py, detail.py or deliveries.py: the preview's world
 ```
 
