@@ -23,6 +23,7 @@ function page(b: ReqBoard) {
     lean: screen.getByText('AI-DLC Lean').parentElement as HTMLElement,
     status: (id: string) => graph.querySelector(`g.kt-node[data-node="${id}"]`)?.getAttribute('data-status'),
     ready: () => Array.from(graph.querySelectorAll('path.kt-edge.is-ready')).length,
+    readyEdges: () => Array.from(graph.querySelectorAll('path.kt-edge.is-ready')).map((e) => e.getAttribute('data-edge')),
   }
 }
 
@@ -45,6 +46,13 @@ describe('the AI-DLC Lean card and the graph say the same next step', () => {
     expect(p.lean.querySelector('.br-lean-next')).toHaveTextContent(/^下一步：功能设计/)
     expect(p.lean).toHaveAccessibleName('AI-DLC Lean：做完 3 · 跳过 2 · 下一步：功能设计 · 构思整段不需要')
     expect(p.ready()).toBe(1)
+  })
+
+  test.each(['r1/PAY-1', 'r1/PAY-7', 'r1/PAY-10'])('%s built and tested: 下一步 is Lean’s 发布, and the graph leads there through the 审查 it needs first', (k) => {
+    const p = page(worldBoard(k))
+    expect(p.lean.querySelector('.br-lean-next')).toHaveTextContent(/^下一步：发布/)
+    expect([p.status('review'), p.status('release')]).toEqual(['waiting', 'waiting'])
+    expect(p.readyEdges()).toEqual(['build-and-test>review', 'review>release'])
   })
 
   test('PAY-9 asked the product for its release: the card says 在做：发布, the box it is on', () => {

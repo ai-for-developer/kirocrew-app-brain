@@ -1,8 +1,10 @@
 /**
  * Where a requirement's way is, read off its boxes: the one rule the AI-DLC Lean card, the graph's edges and the check
- * ring follow. A box's status has one writer (backend stages.node_status); nothing here asks Lean's summary again.
+ * ring follow. A box's status has one writer (backend stages.node_status); where the way goes next is the card's
+ * 下一步 (vocab.leanNow).
  */
-import type { GateKind, Round, StageNode } from '../types'
+import type { GateKind, ReqBoard, Round, StageNode } from '../types'
+import { leanNow } from '../vocab'
 import { openGate } from './format'
 
 /** Approvals of a document its stage has finished: Lean marks the stage done, then asks. A box waiting on one of these
@@ -22,6 +24,19 @@ export function wayAt(nodes: readonly StageNode[]): { at: StageNode | null; next
   const drawn = nodes.filter((n) => n.status !== 'skipped')
   const on = drawn.filter((n) => n.status !== 'waiting' && !through(n))
   return { at: on[on.length - 1] ?? null, next: drawn.find((n) => n.status === 'waiting') ?? null }
+}
+
+/** The boxes the graph's edges lead on to: Lean's next stage once the AI-DLC Lean card says 下一步 and it has a box, with
+ * the 审查 still to do before it (Lean releases only after a review in a new session); else the first box not reached. */
+export function wayAhead(board: Pick<ReqBoard, 'nodes' | 'row'>): ReadonlySet<string> {
+  const drawn = board.nodes.filter((n) => n.status !== 'skipped')
+  const said = leanNow(board.row, []).split(' · ').pop()!.startsWith('下一步：')
+  const lean = said ? drawn.findIndex((n) => n.stage === board.row.lean.next?.id && n.status === 'waiting') : -1
+  if (lean < 0) {
+    const { next } = wayAt(drawn)
+    return new Set(next ? [next.id] : [])
+  }
+  return new Set([...drawn.slice(0, lean).filter((n) => n.stage === 'review' && n.status === 'waiting'), drawn[lean]].map((n) => n.id))
 }
 
 export interface VerifyCount {

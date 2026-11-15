@@ -32,7 +32,7 @@ import { CHOICE_TONE, type Held } from './Replay'
 import { RoleGlyph, RoleIcon } from './RoleIcon'
 import { hasRound, inRun, type RunFilter } from './picker'
 import type { Choice } from './timeline'
-import { verifyCount, wayAt } from './way'
+import { verifyCount, wayAhead } from './way'
 
 export interface StageGraphProps {
   board: ReqBoard
@@ -194,7 +194,7 @@ export function StageGraph({ board, run = 'all', lay, focus, onNode, flashes, re
   const waitWords = [...new Set(waits.map((w) => whoOf(w, board)))].join('、')
   const view = useMemo(() => inRun(board, run), [board, run])
   const checks = verifyCount(view.nodes)
-  const next = wayAt(board.nodes).next?.id
+  const ahead = wayAhead(board)
   const label = `需求的路：${drawn.length} 步，${working} 步在做${waits.length ? `，${waits.length} 步${waitWords}` : ''}，${finished} 步做完；${checks.total ? `检查 ${checks.passed}/${checks.total}` : checks.say}。点一步只看它。`
   // the blue in the legend is said as the boxes and the lanes say it (等产品, 等 carol)
   const others = [...new Set([...waits.filter((w) => sayWho(w, board) !== 'you').map((w) => whoOf(w, board)), ...otherWaits(board)])]
@@ -213,9 +213,9 @@ export function StageGraph({ board, run = 'all', lay, focus, onNode, flashes, re
           <Roster rows={rows} lay={lay} />
           <g className="kt-edges" aria-hidden="true">
             {lay.edges.map((e) => {
-              const state = edgeState(e.from === ORCH ? (board.started_at !== null ? 'done' : 'waiting') : byId.get(e.from)?.status, byId.get(e.to)?.status, e.to === next)
+              const state = edgeState(e.from === ORCH ? (board.started_at !== null ? 'done' : 'waiting') : byId.get(e.from)?.status, byId.get(e.to)?.status, ahead.has(e.to), ahead.has(e.from))
               const hot = !!focus && (e.from === focus || e.to === focus)
-              return <path key={`${e.from}>${e.to}`} className={`kt-edge is-${state}${focus ? (hot ? ' is-hot' : ' is-dim') : ''}`} d={e.d} markerEnd={`url(#kt-arrow-${state})`} />
+              return <path key={`${e.from}>${e.to}`} data-edge={`${e.from}>${e.to}`} className={`kt-edge is-${state}${focus ? (hot ? ' is-hot' : ' is-dim') : ''}`} d={e.d} markerEnd={`url(#kt-arrow-${state})`} />
             })}
           </g>
           <Commands board={board} lay={lay} byId={byId} run={run} />
@@ -269,11 +269,13 @@ function cardPlace(box: StageBox, lay: StageLayout) {
   }
 }
 
-/** An edge's state: used (both ends got going), ready (the first is through and the second is the way's next box,
- * way.ts wayAt: the one the AI-DLC Lean card names), pending. */
-function edgeState(a: string | undefined, b: string | undefined, toNext: boolean): 'used' | 'ready' | 'pending' {
-  if (!a || !b || !(isDone(a) || a === 'awaiting_approval')) return 'pending'
-  return b !== 'waiting' && b !== 'skipped' ? 'used' : toNext ? 'ready' : 'pending'
+/** An edge's state: used (both ends got going), ready (it leads on to where the way goes next, way.ts wayAhead: the
+ * stage the AI-DLC Lean card names, through the 审查 before it), pending. */
+function edgeState(a: string | undefined, b: string | undefined, toAhead: boolean, fromAhead: boolean): 'used' | 'ready' | 'pending' {
+  if (!a || !b) return 'pending'
+  if (toAhead && fromAhead) return 'ready'
+  if (!(isDone(a) || a === 'awaiting_approval')) return 'pending'
+  return b !== 'waiting' && b !== 'skipped' ? 'used' : toAhead ? 'ready' : 'pending'
 }
 
 /** How many lines a band's foot note may take: the room between its lowest box (and what is drawn under it) and the
