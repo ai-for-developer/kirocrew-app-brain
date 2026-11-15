@@ -691,6 +691,16 @@ def test_gitlab_of_takes_the_web_address_from_an_ssh_origin():
     assert importer.gitlab_of("git@ssh.example:grp/pay.git") == {"base": "https://ssh.example", "project": "grp/pay"}
 
 
+def test_gitlab_of_reads_scp_style_without_a_user_and_git_plus_ssh_urls():
+    web = {"base": "https://gitlab.example.com", "project": "grp/pay"}
+    for url in ("gitlab.example.com:grp/pay.git", "ssh.gitlab.example.com:grp/pay.git",
+                "git+ssh://git@ssh.gitlab.example.com:2222/grp/pay.git", "ssh+git://git@gitlab.example.com/grp/pay.git"):
+        assert importer.gitlab_of(url) == web, url
+    assert importer.gitlab_of("gitlab.example.com:grp/pay.git") == importer.gitlab_of("git@gitlab.example.com:grp/pay.git")
+    for not_hosted in ("localhost:grp/pay", "C:/work/pay", "/srv/git/pay.git", "../pay"):
+        assert importer.gitlab_of(not_hosted) == {"base": "", "project": ""}, not_hosted
+
+
 def test_pure_helpers():
     assert importer.gitlab_of("git@gitlab.example.com:grp/sub/pay.git") == {"base": "https://gitlab.example.com", "project": "grp/sub/pay"}
     assert importer.gitlab_of("https://gitlab.example.com:8443/grp/pay") == {"base": "https://gitlab.example.com:8443",
