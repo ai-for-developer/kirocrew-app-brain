@@ -370,9 +370,9 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
               {keyBad && <p className="br-error" role="alert">需求号的格式像 PAY-12。</p>}
             </div>
             <div className="br-field is-full">
-              <label htmlFor="new-paths">预计会改的路径（用逗号、空格或换行分开）</label>
-              <textarea id="new-paths" rows={2} value={expected} placeholder="src/refund/" onChange={(e) => setExpected(e.target.value)} />
-              <p className="br-hint">别的需求也改到这里时会提醒你。</p>
+              <label htmlFor="new-paths">这次大概改哪些代码目录（选填）</label>
+              <textarea id="new-paths" rows={2} value={expected} placeholder="src/refund/" aria-describedby="new-paths-hint" onChange={(e) => setExpected(e.target.value)} />
+              <p className="br-hint" id="new-paths-hint">填了，别的需求也改这些目录时会提醒你们，免得撞车。比如 src/refund/，多个用逗号或换行分开。</p>
             </div>
             {bigInfo && (
               <div className="br-field is-full nr-big" data-testid="new-big">
