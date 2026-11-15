@@ -294,24 +294,25 @@ def test_git_over_the_network_never_prompts(home):
 PYC = ".kiro/brain/__pycache__/lean-hook.cpython-312.pyc"
 
 
-def bytecode_while_doctor_runs(monkeypatch, module):
-    """Python's bytecode of the hook adapter turns up while the install's self-check runs, as when a Python process
-    imports it (UI-18: one landed on a repo's main)."""
+def bytecode_in_the_kit_folder(monkeypatch, module):
+    """brain install copies brain-kit's kit folder file by file, Python's bytecode in it too (a __pycache__ that
+    brain-kit's own test runs leave there): UI-18's .pyc on a repo's main."""
     real = module.run_quiet
 
     def run_quiet(cmd, cwd, *args, **kw):
-        if "doctor" in cmd:
-            junk = Path(cwd) / PYC
+        p = real(cmd, cwd, *args, **kw)
+        if "install" in cmd and p.returncode == 0:
+            junk = Path(cmd[cmd.index("install") + 1]) / PYC
             junk.parent.mkdir(parents=True, exist_ok=True)
             junk.write_bytes(b"\x00not a kit file")
-        return real(cmd, cwd, *args, **kw)
+        return p
 
     monkeypatch.setattr(module, "run_quiet", run_quiet)
 
 
-def test_a_branch_install_commits_the_kit_files_and_not_python_bytecode(tmp_path, home, monkeypatch):
+def test_a_branch_install_commits_the_kit_files_and_leaves_no_python_bytecode(tmp_path, home, monkeypatch):
     repo, _ = plain_repo(tmp_path)
-    bytecode_while_doctor_runs(monkeypatch, installer)
+    bytecode_in_the_kit_folder(monkeypatch, installer)
     svc = make_service(tmp_path, [])
     done = started(svc, lambda: install(svc, repo))
     assert done["state"] == "done" and done["result"]["commit"]["ok"], done
@@ -319,7 +320,7 @@ def test_a_branch_install_commits_the_kit_files_and_not_python_bytecode(tmp_path
     assert ".kiro/brain/lean-hook.py" in committed and PYC not in committed
     assert {f["path"] for f in done["result"]["files"]} == committed
     wt = done["result"]["worktree"]
-    assert sh("git", "-C", wt, "status", "--porcelain", "--untracked-files=all").stdout.split() == ["??", PYC]
+    assert sh("git", "-C", wt, "status", "--porcelain", "--untracked-files=all").stdout == ""
 
 
 def test_install_goes_on_a_new_branch_in_its_own_worktree_and_never_touches_the_checkout(tmp_path, home):
