@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .constants import LOCAL_AGENT
-from .gateway import GatewayError, said
+from .gateway import PAGE, GatewayError, said
 from .problems import AGENT_NEW
 
 PREFIX = "s-"
@@ -50,8 +50,7 @@ TRANSIENT = re.compile(r"transient|5\d\d|runtime failed|timed? ?out|overloaded|r
                        re.I)
 HISTORY = 400
 STATS_EVERY = 5         # a tracked slot's whole transcript (credits, turns) is read every this many polls
-STATS_LIMIT = 1000      # rows read for a slot's stats
-TRANSCRIPT_PAGES = 40   # pages of a transcript the 产出 drawer reads (KiroCrew's 500 rows each)
+TRANSCRIPT_PAGES = 40   # pages of a transcript read at most (KiroCrew's 500 rows each): a turn, a slot's stats, 产出
 _FIELDS = ("id", "task", "parent_session_key", "slot", "title", "folder", "cwd", "model", "conv_root", "send_ids",
            "requested", "started", "sent_at", "done", "queued", "queued_reason", "result", "streaming_text", "error",
            "user_stopped", "turns", "tool_count", "last_tool", "last_activity", "stalled", "credits", "calls",
@@ -447,7 +446,8 @@ class SessionManager:
         return sorted(out, key=lambda i: i.requested)
 
     def slot_stats(self, slot: str | None) -> dict[str, Any] | None:
-        """{credits, turns, busy, awaiting, last_activity, missing, error} of a slot this app opened (None: unknown)."""
+        """{credits, turns, busy, awaiting, last_activity, missing, error, whole} of a slot this app opened (None: unknown);
+        *whole*: its credits and turns are its whole transcript's (False: past TRANSCRIPT_PAGES pages)."""
         return dict(self._stats[slot]) if slot and slot in self._stats else None
 
     def slot_tail(self, slot: str | None) -> dict[str, Any] | None:
@@ -660,7 +660,7 @@ class SessionManager:
         st["busy"] = bool(row.get("running") or row.get("pending_approval") or int(row.get("queue_depth") or 0))
         st["awaiting"] = bool(row.get("pending_approval"))
         try:
-            msgs = await self.gw.messages(slot, limit=STATS_LIMIT)
+            msgs, whole = await self.transcript(slot)
         except Exception as exc:  # noqa: BLE001
             st["error"] = f"{exc}"[:200]
             self._dirty = True
@@ -669,7 +669,7 @@ class SessionManager:
         spent = [((m.get("meta") or {}).get("turn_stats") or {}).get("credits") for m in replies]
         vals = [float(v) for v in spent if isinstance(v, (int, float)) and not isinstance(v, bool)]
         stamps = [_epoch(m.get("ts")) for m in msgs if m.get("ts")]
-        st.update(credits=round(sum(vals), 3) if vals else st.get("credits"), turns=len(replies),
+        st.update(credits=round(sum(vals), 3) if vals else st.get("credits"), turns=len(replies), whole=whole,
                   last_activity=max(stamps) if stamps else st.get("last_activity"), error=None)
         self._tails[slot] = tail(msgs, self.scrub, (self.by_slot(slot) or SessionInfo()).cwd)
         self._dirty = True
@@ -819,7 +819,7 @@ class SessionManager:
 
     async def adapter_slot(self, name: str) -> dict[str, Any]:
         self._runner_slot(name)
-        return {"key": name, "messages": await self.gw.messages(name, limit=STATS_LIMIT)}
+        return {"key": name, "messages": await self.gw.messages(name, limit=PAGE)}
 
     # ---- cleaning up ----------------------------------------------------------------------------------- #
 

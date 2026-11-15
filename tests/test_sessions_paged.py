@@ -104,3 +104,52 @@ def test_a_message_that_never_landed_is_sent_again_once_and_one_not_found_in_a_p
     asyncio.run(lost())
     monkeypatch.setattr(sessions, "TRANSCRIPT_PAGES", 2)
     asyncio.run(unread())
+
+
+def long_session(turns, rows_each):
+    """*turns* turns, each a message, its calls and one reply of 1.5 credits: rows_each + 2 rows a turn."""
+    out = []
+    for t in range(turns):
+        out.append({"role": "user", "content": "第 %d 轮" % t, "meta": {"human": True}, "ts": "2026-11-08T10:00:00Z"})
+        out += [tool(i) for i in range(rows_each)]
+        out.append(reply("做完第 %d 轮" % t, 1.5))
+    return out
+
+
+async def stats_of(mgr, gw, slot):
+    for _ in range(sessions.STATS_EVERY + 1):
+        await mgr.poll()
+    return mgr.slot_stats(slot)
+
+
+def test_a_session_longer_than_a_page_counts_every_turn_s_credits(tmp_path):
+    """UI-7: KiroCrew answers at most 500 rows a call; a session of 1741 rows was counted 663 credits, not 1990."""
+    async def go():
+        gw = FakeGateway()
+        mgr, _ = manager(tmp_path, gw)
+        info = await opened(mgr, gw)
+        gw.finish(info.slot)
+        gw.msgs[info.slot] += long_session(20, 85)
+        assert len(gw.msgs[info.slot]) == 1742
+        st = await stats_of(mgr, gw, info.slot)
+        assert st["credits"] == 30.0 and st["whole"] is True
+        assert mgr.credits_by_key() == {"r1:PAY-1": 30.0}
+
+    asyncio.run(go())
+
+
+def test_a_session_too_long_to_read_whole_says_so(tmp_path, monkeypatch):
+    monkeypatch.setattr(sessions, "TRANSCRIPT_PAGES", 2)
+
+    async def go():
+        gw = FakeGateway()
+        mgr, _ = manager(tmp_path, gw)
+        info = await opened(mgr, gw)
+        gw.finish(info.slot)
+        gw.msgs[info.slot] += long_session(20, 85)
+        st = await stats_of(mgr, gw, info.slot)
+        read = gw.msgs[info.slot][-2 * 500:]
+        assert st["whole"] is False and st["credits"] == 1.5 * sum(1 for m in read if m["role"] == "assistant") < 30.0
+
+    asyncio.run(go())
+

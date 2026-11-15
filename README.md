@@ -22,7 +22,9 @@ not opened: Crew's default agent would run without Lean's hooks), exact slot nam
 after the run id), deliver-once sends (no resend, no nudge), per-slot credits over the whole transcript, and the
 bridge's KiroCrew surface (`adapter_create / set_project / send / slot / stop`). A turn is read back a page (500 rows,
 `before`) at a time until the app's own message (its `sendId`), however long the turn; a message the app sent is sent
-again only when the whole transcript has no row of it, so a session that took it never gets it twice.
+again only when the whole transcript has no row of it, so a session that took it never gets it twice. A slot's
+credits are read the same way, every page to its first row (KiroCrew answers at most 500 rows a call; up to 40 pages,
+past which the stats say they are not whole).
 
 ## Views (UI text is Chinese)
 
