@@ -41,7 +41,7 @@ ROOT_FOLDER = "Brain 需求"  # the default root folder (constants.LOCAL_FOLDER)
 IDLE_POLLS = 2          # idle this many polls in a row (after the reply is in) = the turn is over
 MISSING_POLLS = 3       # gone from this many listings in a row = closed or deleted by someone
 RESENDS = 2             # a turn KiroCrew refused to start is sent again at most this often
-NO_START_S = 90.0       # sent, idle and nothing in the transcript for this long: send again
+NO_START_S = 90.0       # sent, idle and no row of it in the whole transcript for this long: send again
 STALL_S = 180.0         # busy with no new transcript row for this long: shown as 卡住
 STUCK_S = 60.0          # busy with nothing new for this long: the turn is stopped and the agent told to carry on (K3 demo: 60 s)
 TEMPLATE_SUFFIX = "-template"  # the member templates scripts/install-example.sh writes (<member>-template)
@@ -480,10 +480,12 @@ class SessionManager:
                 out[i.key] = round(out.get(i.key, 0.0) + c, 3)
         return out
 
-    async def transcript(self, slot: str) -> tuple[list[dict[str, Any]], bool]:
+    async def transcript(self, slot: str, until: Callable[[dict[str, Any]], bool] | None = None
+                         ) -> tuple[list[dict[str, Any]], bool]:
         """A slot's whole transcript, oldest first, read a page at a time from its newest row back; and whether it is
-        whole (past TRANSCRIPT_PAGES pages its oldest rows are left out). A row added while it is read is after the
-        first page's end, so nothing is read twice or skipped."""
+        whole (read to its first row: past TRANSCRIPT_PAGES pages its oldest rows are left out). *until*: stop after
+        the first page with a row it passes (the rows before that page are not read: not whole). A row added while it
+        is read is after the first page's end, so nothing is read twice or skipped."""
         pages: list[list[dict[str, Any]]] = []
         before: int | None = None
         for _ in range(TRANSCRIPT_PAGES):
@@ -491,6 +493,8 @@ class SessionManager:
             pages.append(page)
             if nxt is None:
                 return [m for p in reversed(pages) for m in p], True
+            if until is not None and any(until(m) for m in page):
+                break
             if before is not None and nxt >= before:   # a cursor that does not move back: stop rather than loop
                 break
             before = nxt
@@ -681,17 +685,17 @@ class SessionManager:
         info.missing = 0
         busy = bool(row.get("running") or row.get("pending_approval") or int(row.get("queue_depth") or 0))
         info._awaiting_approval = bool(row.get("pending_approval"))
+
+        def ours(m: dict[str, Any]) -> bool:
+            meta = m.get("meta") if isinstance(m.get("meta"), dict) else {}
+            return m.get("role") == "user" and meta.get("sendId") in info.send_ids
+
         try:
-            msgs = await self.gw.messages(str(info.slot), limit=300)
+            msgs, whole = await self.transcript(str(info.slot), until=ours)
         except Exception as exc:  # noqa: BLE001
             self.log.info(self.app + ": reading session %s failed: %s", info.slot, exc)
             return
-        mine = None
-        for idx in range(len(msgs) - 1, -1, -1):
-            meta = msgs[idx].get("meta") if isinstance(msgs[idx].get("meta"), dict) else {}
-            if msgs[idx].get("role") == "user" and meta.get("sendId") in info.send_ids:
-                mine = idx
-                break
+        mine = next((idx for idx in range(len(msgs) - 1, -1, -1) if ours(msgs[idx])), None)
         after = msgs[mine + 1:] if mine is not None else []
         self._tails[str(info.slot)] = tail(msgs, self.scrub, info.cwd)
         calls = [tool_call(m, self.scrub) for m in after if m.get("role") == "tool"]
@@ -729,7 +733,8 @@ class SessionManager:
                               ((errors[-1].get("meta") or {}).get("code") or "error"))
                 await self._send(info)
                 return
-        if (not after and not busy and now - float(info.sent_at or now) > NO_START_S and info.resend_ok
+        # sent again only when the whole transcript has no row of it: a session that took the message never gets it twice
+        if (mine is None and whole and not busy and now - float(info.sent_at or now) > NO_START_S and info.resend_ok
                 and info.resends < RESENDS):
             info.resends += 1
             await self._send(info)

@@ -20,7 +20,9 @@ commit of this repo is that copy, unchanged.
 Added to the session runner: `strict_agent` (a session boots exactly the template `brain-dev` / `brain-run`, or is
 not opened: Crew's default agent would run without Lean's hooks), exact slot names (the bridge names runner slots
 after the run id), deliver-once sends (no resend, no nudge), per-slot credits over the whole transcript, and the
-bridge's KiroCrew surface (`adapter_create / set_project / send / slot / stop`).
+bridge's KiroCrew surface (`adapter_create / set_project / send / slot / stop`). A turn is read back a page (500 rows,
+`before`) at a time until the app's own message (its `sendId`), however long the turn; a message the app sent is sent
+again only when the whole transcript has no row of it, so a session that took it never gets it twice.
 
 ## Views (UI text is Chinese)
 
@@ -517,7 +519,7 @@ The app runs as the same OS user as the agent sessions, and agents have a shell.
 
 `POST /api/apps/brain/token` (app secret → 5-minute token); `GET/POST /api/chat/folders`, `PATCH
 /api/chat/folders/<id>`; `GET/POST /api/chat/slots` (`agent`, `agent_kind: template`, `model`, `memory_mode`,
-`folder_id`), `GET /api/chat/slots/<key>?limit=`, `POST /api/chat/slots/<key>/project`, `POST
+`folder_id`), `GET /api/chat/slots/<key>?limit=&before=` (at most 500 rows, `has_more`, `next_before`), `POST /api/chat/slots/<key>/project`, `POST
 /api/chat/slots/<key>/stop`, `DELETE /api/chat/slots/<key>`; `POST /api/chat/mode` (`trust` for one slot,
 `permissions.sessionApproval`); `POST /api/chat?ws=1` (`meta.sendId`); assistant rows' `meta.turn_stats.credits`;
 the backend hooks (`routes`, `on_startup`, `on_shutdown`), `ctx.name / logger / data_dir / scrub`, KiroCrew's owner
