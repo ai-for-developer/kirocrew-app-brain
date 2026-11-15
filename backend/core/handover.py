@@ -24,11 +24,18 @@ them knows. why_not is what the app refuses itself, before anything runs. Pure b
 
 from __future__ import annotations
 
+import contextlib
+import os
 import re
 import subprocess
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Iterator, Optional, Union
 
 from . import family, mrinfo, problems
+
+try:
+    import fcntl
+except ImportError:      # no flock here: only the app's own guard (one hand-over at a time while it runs)
+    fcntl = None  # type: ignore[assignment]
 
 TIMEOUT_S = 300
 STATES = ("handed", "committed", "not_labelled", "refused", "timeout", "failed")
@@ -258,10 +265,33 @@ def why_not(f: dict[str, Any], row: dict[str, Any], *, me: Optional[str], local_
     return None
 
 
-def run(worktree: str, *, base: str = "", project: str = "", timeout: float = TIMEOUT_S) -> dict[str, Any]:
-    """``brain handoff`` in the requirement's worktree (blocking: call it in a thread) -> HandoffResult."""
-    p = family.run_brain(["handoff"], worktree, timeout)
+class Busy(Exception):
+    """A brain handoff for this requirement still runs: one an app before a restart started."""
+
+
+@contextlib.contextmanager
+def guard(path: Union[str, os.PathLike]) -> Iterator[Optional[int]]:
+    """One brain handoff per requirement, also across a restart of the app: an exclusive flock on *path*, its file
+    handed to brain handoff (run's *hold*), so the lock stays until brain handoff exits, even when the app stops first.
+    Yields the file to hand over; raises Busy while another holds it."""
+    if fcntl is None:
+        yield None
+        return
+    os.makedirs(os.path.dirname(os.fspath(path)) or ".", exist_ok=True)
+    with open(path, "a") as fh:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise Busy(str(path)) from None
+        yield fh.fileno()
+
+
+def run(worktree: str, *, base: str = "", project: str = "", timeout: float = TIMEOUT_S,
+        hold: Optional[int] = None) -> dict[str, Any]:
+    """``brain handoff`` in the requirement's worktree (blocking: call it in a thread) -> HandoffResult. *hold*: the
+    file of guard(), which brain handoff keeps open until it exits."""
+    p = family.run_brain(["handoff"], worktree, timeout, hold=hold)
     return said(p.returncode, p.stdout, p.stderr, base=base, project=project)
 
 
-__all__ = ["said", "run", "why_not", "reason", "warning", "STATES", "TIMEOUT_S", "BUTTON"]
+__all__ = ["said", "run", "guard", "Busy", "why_not", "reason", "warning", "STATES", "TIMEOUT_S", "BUTTON"]

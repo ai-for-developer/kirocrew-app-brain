@@ -1268,7 +1268,13 @@ class Service:
                                        local_only=row["local_only"], busy=busy, pushed=pushed)
                 if why:
                     raise AppError(*why)
-                out = await asyncio.to_thread(handover.run, f["worktree"], base=base, project=project)
+                try:
+                    with handover.guard(self.data_dir / "handoff" / ("%s.lock" % scope.replace(":", "-"))) as held:
+                        out = await asyncio.to_thread(handover.run, f["worktree"], base=base, project=project,
+                                                      hold=held)
+                except handover.Busy:
+                    raise AppError("上一次点的交接还在跑（Brain 交付重启前开始的）：等一两分钟它做完，再刷新这一页看结果",
+                                   "handing", 409) from None
                 await asyncio.to_thread(repo.invalidate)
                 if branch and base and project:
                     await asyncio.to_thread(mr_now)

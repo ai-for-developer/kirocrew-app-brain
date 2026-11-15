@@ -62,10 +62,11 @@ ATTENTION = ("changed", "removed", "duplicate")
 
 # ---- running brain-kit -------------------------------------------------------------------------------------------- #
 
-def run_brain(args: list[str], cwd: str, timeout: float) -> subprocess.CompletedProcess:
+def run_brain(args: list[str], cwd: str, timeout: float, hold: int | None = None) -> subprocess.CompletedProcess:
     """``bin/brain <args>`` in *cwd*: no shell, stdin closed, its own session (no terminal to ask anything), git over
     the network without a prompt (importer.quiet_env). At *timeout* it gets SIGINT first (brain-kit gives back a claim
-    it took, a half-made worktree), then SIGKILL; exit 124."""
+    it took, a half-made worktree), then SIGKILL; exit 124. *hold*: an open file brain keeps until it exits (a lock
+    that outlives this app, handover.guard)."""
     env = importer.quiet_env(cwd)
     env.pop("AIDLC_LEAN_TEAM", None)       # brain-kit refuses a child start when it is set (it overrides the team)
     from .intake import brain_cmd
@@ -73,7 +74,7 @@ def run_brain(args: list[str], cwd: str, timeout: float) -> subprocess.Completed
     try:
         p = subprocess.Popen(cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
-                             start_new_session=True)
+                             start_new_session=True, pass_fds=() if hold is None else (hold,))
     except OSError as exc:
         return subprocess.CompletedProcess(cmd, 127, "", "跑不了 brain：%s" % exc)
     try:
