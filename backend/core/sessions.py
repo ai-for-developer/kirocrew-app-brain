@@ -502,16 +502,16 @@ class SessionManager:
         return str(got.get("id") or "")
 
     async def regroup(self, repo_of: Callable[[str], str]) -> list[dict[str, Any]]:
-        """Each requirement folder this app made before it had repo folders, moved into its repo's folder (*repo_of*: a
-        session key's repo name, "" for none) once; one already in place (a person dragged it in: it counts), hidden,
-        no longer right under its root (a person moved it), in a root that is a person's or holding a folder that is
-        not this app's is left as it is (KiroCrew would refuse the last two; the repo folder is made for it all the
-        same). Rerun on every start and while some stay. The ones that stay: 设置's rows saying so, one for a
-        person's root. GatewayError: KiroCrew was not read."""
+        """Each requirement folder this app made before it had repo folders, or whose repo folder a person deleted
+        (KiroCrew put it at the top level), moved into its repo's folder (*repo_of*: a session key's repo name, "" for
+        none); one already in place (a person dragged it in: it counts), hidden, somewhere a person moved it, in a root
+        that is a person's or holding a folder that is not this app's is left as it is (KiroCrew would refuse the last
+        two; the repo folder is made for it all the same). Rerun on every start and while some stay. The ones that
+        stay: 设置's rows saying so, one for a person's root. GatewayError: KiroCrew was not read."""
         if self._folder_lock is None:
             self._folder_lock = asyncio.Lock()
         async with self._folder_lock:
-            todo = [(rec, repo_of(k)[:60]) for k, rec in self._folders.items() if not rec.get("repo") and rec.get("root")]
+            todo = [(rec, repo_of(k)[:60]) for k, rec in self._folders.items() if rec.get("root")]
             todo = [(rec, name) for rec, name in todo if name]
             if not todo:
                 return []
@@ -520,7 +520,7 @@ class SessionManager:
             stuck: list[dict[str, Any]] = []
             for rec, name in todo:
                 f = by_id.get(str(rec.get("id")))
-                if f is None or f.get("owner_app") != self.app or f.get("hidden"):
+                if f is None or f.get("owner_app") != self.app or f.get("hidden") or rec.get("repo") in by_id:
                     continue
                 root, root_name = by_id.get(rec["root"]) or {}, rec.get("root_name") or ROOT_FOLDER
                 parent, known = str(f.get("parent_id") or ""), self._repo_known(folders, root_name, rec["root"], name)
@@ -528,7 +528,7 @@ class SessionManager:
                     rec.update(repo=parent, repo_name=name)
                     self._dirty = True
                     continue
-                if parent != rec["root"]:
+                if parent != rec["root"] and not (rec.get("repo") and not parent):
                     continue
                 if root.get("owner_app") != self.app:   # the one new sessions go in: no folder of theirs can be made
                     row = folder_root(root_name)
