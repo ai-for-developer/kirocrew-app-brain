@@ -171,10 +171,12 @@ def test_a_long_session_s_stats_read_only_what_came_after_the_last_read(tmp_path
         gw.slot_rows[info.slot]["running"] = False
         st = await stats_of(mgr, gw, info.slot)
         assert said(st) == whole_says() and st["unreported"] == cut_short + 1
+        n = len(gw.msgs[info.slot])
         del gw.msgs[info.slot][600:]
-        gw.msgs[info.slot] += long_session(1, 4)
+        gw.msgs[info.slot] += long_session(14, 85)
+        assert len(gw.msgs[info.slot]) > n, "other rows where the last read stopped"
         st = await stats_of(mgr, gw, info.slot)
-        assert said(st) == whole_says() and st["credits"] == 1.5 * 6 + 1.5     # 6 turns left of the 20, and the new one
+        assert said(st) == whole_says() and st["credits"] == 1.5 * (6 + 14)    # 6 turns left of the 20, the 14 new
 
     asyncio.run(go())
 
