@@ -187,7 +187,7 @@ def test_the_apps_older_requirement_folders_move_into_their_repo_folder_once_and
         "oms-brain-trial（人） › DEMO-6 · moved", "remote-orca-multica（人）",
         "remote-orca-multica（人） › 261102-one-click-deploy（人）"]
     assert [w[0] for w in writes] == ["folder", "move_folder", "move_folder", "folder", "move_folder"]
-    assert [r["text"] for r in stuck] == ["需求文件夹「DEMO-5 · nested」没能放进仓库文件夹「demo」：里面有不是这个 app 建的文件夹，"
+    assert [r["text"] for r in stuck] == ["需求文件夹「DEMO-5 · nested」没能放进「Brain 需求 › demo」：里面有不是这个 app 建的文件夹，"
                                           "KiroCrew 不让 app 移它"]
     assert stuck2 == stuck and writes2 == []
     assert tree(gw) == sorted(tree1 + ["Brain 需求 › demo › DEMO-8 · divide"])
@@ -211,8 +211,9 @@ def test_a_folder_kirocrew_refuses_to_move_stays_where_it_is_said_in_chinese_and
         return stuck, where, await mgr.regroup(repo_of), tree(gw)
 
     stuck, where, stuck2, after = asyncio.run(go())
-    assert [r["text"] for r in stuck] == ["需求文件夹「DEMO-1 · subtract」没能放进仓库文件夹「demo」：连不上 KiroCrew：看它是不是还开着，"
-                                          "再试一次"]
+    assert [(r["text"], r["todo"]) for r in stuck] == [(
+        "需求文件夹「DEMO-1 · subtract」没能放进「Brain 需求 › demo」：连不上 KiroCrew：看它是不是还开着，再试一次",
+        "app 会自己再试；不放进去也不影响用")]
     assert where == "82ead8e50edc" and stuck2 == [] and "Brain 需求 › demo › DEMO-1 · subtract" in after
 
 
@@ -229,19 +230,19 @@ def test_a_move_kirocrew_refuses_with_nothing_foreign_inside_says_kirocrew_refus
         return await mgr.regroup(repo_of)
 
     assert [r["text"] for r in asyncio.run(go())] == [
-        "需求文件夹「DEMO-1 · subtract」没能放进仓库文件夹「demo」：KiroCrew 没答应：等一会儿再试一次；一直这样，在 KiroCrew 里看一下它"]
+        "需求文件夹「DEMO-1 · subtract」没能放进「Brain 需求 › demo」：KiroCrew 没答应：等一会儿再试一次；一直这样，在 KiroCrew 里看一下它"]
 
 
-def old_layout(gw, tmp_path, root_owner="brain"):
-    """「Brain 需求」 (*root_owner* "": a person's) holding three of repo pay's requirement folders the app made before
+def old_layout(gw, tmp_path, root_owner="brain", n=3):
+    """「Brain 需求」 (*root_owner* "": a person's) holding *n* of repo pay's requirement folders the app made before
     repo folders, and the app's sessions.json naming them."""
     import json
 
     root = {"id": "R", "name": "Brain 需求", "parent_id": ""}
     gw.folder_rows += [dict(root, owner_app=root_owner) if root_owner else root] + [
-        {"id": "F%d" % i, "name": "PAY-%d · x" % i, "parent_id": "R", "owner_app": "brain"} for i in (1, 2, 3)]
+        {"id": "F%d" % i, "name": "PAY-%d · x" % i, "parent_id": "R", "owner_app": "brain"} for i in range(1, n + 1)]
     recs = {"brain:r1-PAY-%d" % i: {"id": "F%d" % i, "name": "PAY-%d · x" % i, "root": "R", "root_name": "Brain 需求"}
-            for i in (1, 2, 3)}
+            for i in range(1, n + 1)}
     (tmp_path / "sessions.json").write_text(json.dumps({"infos": [], "folders": recs}), encoding="utf-8")
     mgr = manager(tmp_path, gw)
     mgr.load()
@@ -269,6 +270,31 @@ def test_a_root_folder_that_is_a_persons_is_one_row_saying_so_and_what_to_do_and
     assert stuck2 == [] and not opened.error
     assert after == ["Brain 需求", "Brain 需求 › pay", "Brain 需求 › pay › PAY-5 · new", "我的旧需求（人）",
                      "我的旧需求（人） › PAY-1 · x", "我的旧需求（人） › PAY-2 · x", "我的旧需求（人） › PAY-3 · x"]
+
+
+def test_a_stuck_folders_row_points_at_its_repo_folder_made_for_it_and_where_a_person_renamed_it_and_goes_once_in(tmp_path):
+    async def go():
+        gw = FakeGateway()
+        mgr = old_layout(gw, tmp_path, n=1)
+        gw.folder_rows.append({"id": "P", "name": "我的笔记", "parent_id": "F1"})     # a person's, inside PAY-1
+        rows = [await mgr.regroup(lambda key: "pay")]
+        made = tree(gw)
+        await open_local(mgr, "r1-PAY-2", "pay", "PAY-2 · new", str(tmp_path))
+        pay = next(f for f in gw.folder_rows if f["name"] == "pay")
+        pay["name"] = "支付"
+        rows.append(await mgr.regroup(lambda key: "pay"))
+        next(f for f in gw.folder_rows if f["id"] == "F1")["parent_id"] = pay["id"]   # the person drags PAY-1 in
+        rows.append(await mgr.regroup(lambda key: "pay"))
+        return made, [[(r["text"], r["todo"]) for r in got] for got in rows], tree(gw)
+
+    made, rows, after = asyncio.run(go())
+    assert made == ["Brain 需求", "Brain 需求 › PAY-1 · x", "Brain 需求 › PAY-1 · x › 我的笔记（人）", "Brain 需求 › pay"]
+    assert rows == [[("需求文件夹「PAY-1 · x」没能放进「Brain 需求 › pay」：里面有不是这个 app 建的文件夹，KiroCrew 不让 app 移它",
+                      "想放进去，就在 KiroCrew 侧栏里自己把它拖进「Brain 需求 › pay」；不拖也不影响用")],
+                    [("需求文件夹「PAY-1 · x」没能放进「Brain 需求 › 支付」：里面有不是这个 app 建的文件夹，KiroCrew 不让 app 移它",
+                      "想放进去，就在 KiroCrew 侧栏里自己把它拖进「Brain 需求 › 支付」；不拖也不影响用")], []]
+    assert after == ["Brain 需求", "Brain 需求 › 支付", "Brain 需求 › 支付 › PAY-1 · x", "Brain 需求 › 支付 › PAY-1 · x › 我的笔记（人）",
+                     "Brain 需求 › 支付 › PAY-2 · new"]
 
 
 # ---- the app: 打开会话 and 开审查会话 in the repo's folder; the older folders moved on start; what stays said in 设置 -- #
@@ -332,10 +358,60 @@ def test_on_start_the_older_folders_move_into_their_repo_folder_and_the_one_that
                      "Brain 需求 › pay › PAY-1 · refund"]
     assert gw.slot_rows[dev["slot"]]["folder_id"] == "ab01"
     rows = [r for r in status["crew"]["rows"] if "仓库文件夹" in r["text"]]
-    assert rows == [{"level": "WARN", "text": "需求文件夹「PAY-3 · nested」没能放进仓库文件夹「pay」：里面有不是这个 app 建的文件夹，"
+    assert rows == [{"level": "WARN", "text": "需求文件夹「PAY-3 · nested」没能放进「Brain 需求 › pay」：里面有不是这个 app 建的文件夹，"
                                               "KiroCrew 不让 app 移它",
-                     "todo": "想放进去，就在 KiroCrew 侧栏里自己把它拖进「Brain 需求」里的「pay」；不拖也不影响用",
+                     "todo": "想放进去，就在 KiroCrew 侧栏里自己把它拖进「Brain 需求 › pay」；不拖也不影响用",
                      "fix": None, "repo": None, "raw": ""}]
+
+
+def test_settings_checks_the_stuck_folders_again_so_a_row_goes_once_dragged_in_or_once_kirocrew_answers(tmp_path, home):
+    import json
+
+    from brainfix import make_service, run
+    from test_todo_answer import setup
+
+    repo, wt, line, gw = setup(tmp_path, home)
+    svc = make_service(tmp_path, [repo], gw=gw)
+    gw.folder_rows += [{"id": "R", "name": "Brain 需求", "parent_id": "", "owner_app": "brain"},
+                       {"id": "F3", "name": "PAY-3 · nested", "parent_id": "R", "owner_app": "brain"},
+                       {"id": "P", "name": "我的", "parent_id": "F3"},
+                       {"id": "F4", "name": "PAY-4 · late", "parent_id": "R", "owner_app": "brain"}]
+    rec = lambda fid, name: {"id": fid, "name": name, "root": "R", "root_name": "Brain 需求"}  # noqa: E731
+    (tmp_path / "data" / "sessions.json").write_text(json.dumps({"infos": [], "folders": {
+        "brain:r1-PAY-3": rec("F3", "PAY-3 · nested"), "brain:r1-PAY-4": rec("F4", "PAY-4 · late")}},
+        ensure_ascii=False), encoding="utf-8")
+    move, down = gw.move_folder, [True]
+
+    async def flaky(fid, parent_id):
+        if down[0]:
+            raise GatewayError(0, "gateway unreachable (ClientConnectorError)", "unreachable", "/api/chat/folders")
+        await move(fid, parent_id)
+
+    gw.move_folder = flaky
+
+    async def go():
+        await svc.start()
+        try:
+            for _ in range(5):
+                await asyncio.sleep(0)
+            first = await svc.status()
+            down[0] = False
+            next(f for f in gw.folder_rows if f["id"] == "F3")["parent_id"] = next(
+                f["id"] for f in gw.folder_rows if f["name"] == "pay")       # the person drags PAY-3 in
+            return first, await svc.status()
+        finally:
+            await svc.stop()
+
+    first, then = run(go())
+    said = lambda status: [(r["text"], r["todo"]) for r in status["crew"]["rows"] if "需求文件夹" in r["text"]]  # noqa: E731
+    assert said(first) == [
+        ("需求文件夹「PAY-3 · nested」没能放进「Brain 需求 › pay」：里面有不是这个 app 建的文件夹，KiroCrew 不让 app 移它",
+         "想放进去，就在 KiroCrew 侧栏里自己把它拖进「Brain 需求 › pay」；不拖也不影响用"),
+        ("需求文件夹「PAY-4 · late」没能放进「Brain 需求 › pay」：连不上 KiroCrew：看它是不是还开着，再试一次",
+         "app 会自己再试；不放进去也不影响用")]
+    assert said(then) == []
+    assert tree(gw) == ["Brain 需求", "Brain 需求 › pay", "Brain 需求 › pay › PAY-3 · nested",
+                        "Brain 需求 › pay › PAY-3 · nested › 我的（人）", "Brain 需求 › pay › PAY-4 · late"]
 
 
 def test_cleanup_hides_the_folders_it_leaves_empty_at_every_level_and_never_the_repo_folder_of_one_it_keeps(tmp_path):
