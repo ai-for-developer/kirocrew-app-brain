@@ -244,6 +244,34 @@ def test_the_name_is_read_from_git_once_until_a_git_config_file_changes(tmp_path
     assert reads() == n + 1
 
 
+
+def test_a_name_set_in_a_git_config_file_another_one_names_shows_at_once(tmp_path, home, monkeypatch):
+    """The name may be set in a file ~/.gitconfig includes (include.path, includeIf) or in $GIT_CONFIG_GLOBAL's file:
+    a name set or changed there was not seen for up to a minute."""
+    repo = project(tmp_path)
+    said = lambda: sh("git", "-C", repo, "config", "brain.user", check=False).stdout.strip()  # noqa: E731
+    seen = []
+
+    def edit(path, text=None):
+        if text is not None:
+            path.write_text(text, encoding="utf-8")
+        seen.append((path.name, identity.git_name(str(repo)), said()))
+
+    edit(home / ".gitconfig", "[include]\n\tpath = ~/.gitconfig-brain\n")
+    edit(home / ".gitconfig-brain", "[brain]\n\tuser = bob\n")              # the included file appears
+    inc = tmp_path / "work.inc"
+    edit(inc, "[brain]\n\tuser = carol\n")
+    edit(home / ".gitconfig", '[includeIf "gitdir:%s/"]\n\tpath = %s\n' % (repo, inc))
+    edit(inc, "[brain]\n\tuser = dave1\n")                                    # the same size, edited
+    alt = tmp_path / "alt-global"
+    edit(alt, "[brain]\n\tuser = erin\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(alt))
+    edit(alt)
+    edit(alt, "[brain]\n\tuser = frank\n")
+    assert [(f, kept) for f, kept, _ in seen] == [(f, git) for f, _, git in seen]
+    assert [kept for _, kept, _ in seen] == ["", "bob", "bob", "carol", "dave1", "dave1", "erin", "frank"]
+
+
 def test_the_name_route_takes_brainkits_names_only_runs_no_shell_and_stores_no_token(tmp_path, home, login):
     repo = project(tmp_path, kit=GITLAB)
     svc = make_service(tmp_path, [repo])
