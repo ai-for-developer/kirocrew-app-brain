@@ -140,7 +140,7 @@ class Service:
         self._handing: dict[str, asyncio.Future] = {}   # 交接给运行机, one at a time per requirement
         self._big_file = self.data_dir / "big.json"
         self._big = self._load_big()           # scopes opened here as 「大需求：先拆成小需求」
-        self.folders_stuck: list[dict[str, str]] = []   # requirement folders KiroCrew would not move (sessions.regroup)
+        self.folders_stuck: list[dict[str, Any]] = []   # 设置 rows: the folders KiroCrew would not move (sessions.regroup)
 
     # ---- lifecycle ------------------------------------------------------------------------------------ #
 
@@ -1473,8 +1473,7 @@ class Service:
         return {"app": {"name": self.name, "version": VERSION, "team": self.team is not None},
                 "brainkit": {"path": info["path"], "ok": info["ok"], "version": info["version"], "error": info["error"],
                              "modules": info["modules"]},
-                "repos": repos, "crew": dict(self.crew, rows=list(self.crew["rows"]) + [
-                    problems.folder_stuck(**s) for s in self.folders_stuck]),
+                "repos": repos, "crew": dict(self.crew, rows=list(self.crew["rows"]) + self.folders_stuck),
                 "me": me_line(repos, token, os.environ.get("BRAIN_USER", "").strip().lower()),
                 "team": self._team_status(), "counts": {"todo": len(todo["items"])},
                 "repo_ids_problem": self.repo_ids.problem}

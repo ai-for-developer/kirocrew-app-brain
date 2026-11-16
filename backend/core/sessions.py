@@ -34,11 +34,10 @@ from typing import Any, Callable
 
 from .constants import LOCAL_AGENT
 from .gateway import GatewayError, said
-from .problems import AGENT_NEW
+from .problems import AGENT_NEW, FOREIGN_INSIDE, folder_stuck
 
 PREFIX = "s-"
 ROOT_FOLDER = "Brain 需求"  # the default root folder (constants.LOCAL_FOLDER)
-FOREIGN_INSIDE = "里面有不是这个 app 建的文件夹，KiroCrew 不让 app 移它"
 IDLE_POLLS = 2          # idle this many polls in a row (after the reply is in) = the turn is over
 MISSING_POLLS = 3       # gone from this many listings in a row = closed or deleted by someone
 RESENDS = 2             # a turn KiroCrew refused to start is sent again at most this often
@@ -496,7 +495,7 @@ class SessionManager:
         """Each requirement folder this app made before it had repo folders, moved into its repo's folder (*repo_of*: a
         session key's repo name, "" for none) once; one already in place, hidden, no longer right under its root (a
         person moved it) or holding a folder that is not this app's is left as it is (KiroCrew would refuse the
-        last). Rerun on every start. The ones that stay: [{name, repo, why}]. GatewayError: KiroCrew was not read."""
+        last). Rerun on every start. The ones that stay: 设置's rows saying so. GatewayError: KiroCrew was not read."""
         if self._folder_lock is None:
             self._folder_lock = asyncio.Lock()
         async with self._folder_lock:
@@ -506,7 +505,7 @@ class SessionManager:
                 return []
             folders = await self.gw.folders()
             by_id = {str(f.get("id")): f for f in folders}
-            stuck: list[dict[str, str]] = []
+            stuck: list[dict[str, Any]] = []
             for rec, name in todo:
                 f = by_id.get(str(rec.get("id")))
                 if (f is None or f.get("owner_app") != self.app or f.get("hidden")
@@ -524,7 +523,7 @@ class SessionManager:
                         why = FOREIGN_INSIDE if exc.code == "folder_not_owned" else said(exc)
                         self.log.info(self.app + ": moving folder %s into %s: %s", rec["id"], name, exc)
                 if why:
-                    stuck.append({"name": str(f.get("name") or rec.get("name") or ""), "repo": name, "why": why})
+                    stuck.append(folder_stuck(str(f.get("name") or rec.get("name") or ""), name, why))
             return stuck
 
     async def _open(self, info: SessionInfo) -> None:

@@ -431,6 +431,9 @@ def rows(level_text: Iterable[tuple[Any, Any]], *, repo: str | None = None,
 
 # ---- the app's own rows (crewcheck) ---------------------------------------------------------------------------- #
 
+FOREIGN_INSIDE = "里面有不是这个 app 建的文件夹，KiroCrew 不让 app 移它"
+
+
 def folder_stuck(name: str, repo: str, why: str) -> dict[str, Any]:
     """A requirement folder KiroCrew would not let the app move into its repo's folder (sessions.regroup)."""
     return mk("WARN", "需求文件夹「%s」没能放进仓库文件夹「%s」：%s" % (name, repo, why),

@@ -187,7 +187,8 @@ def test_the_apps_older_requirement_folders_move_into_their_repo_folder_once_and
         "oms-brain-trial（人） › DEMO-6 · moved", "remote-orca-multica（人）",
         "remote-orca-multica（人） › 261102-one-click-deploy（人）"]
     assert [w[0] for w in writes] == ["folder", "move_folder", "move_folder", "folder", "move_folder"]
-    assert stuck == [{"name": "DEMO-5 · nested", "repo": "demo", "why": "里面有不是这个 app 建的文件夹，KiroCrew 不让 app 移它"}]
+    assert [r["text"] for r in stuck] == ["需求文件夹「DEMO-5 · nested」没能放进仓库文件夹「demo」：里面有不是这个 app 建的文件夹，"
+                                          "KiroCrew 不让 app 移它"]
     assert stuck2 == stuck and writes2 == []
     assert tree(gw) == sorted(tree1 + ["Brain 需求 › demo › DEMO-8 · divide"])
     assert gw.slot_rows[later.slot]["folder_id"] == next(f["id"] for f in gw.folder_rows if f["name"] == "DEMO-8 · divide")
@@ -210,7 +211,8 @@ def test_a_folder_kirocrew_refuses_to_move_stays_where_it_is_said_in_chinese_and
         return stuck, where, await mgr.regroup(repo_of), tree(gw)
 
     stuck, where, stuck2, after = asyncio.run(go())
-    assert stuck == [{"name": "DEMO-1 · subtract", "repo": "demo", "why": "连不上 KiroCrew：看它是不是还开着，再试一次"}]
+    assert [r["text"] for r in stuck] == ["需求文件夹「DEMO-1 · subtract」没能放进仓库文件夹「demo」：连不上 KiroCrew：看它是不是还开着，"
+                                          "再试一次"]
     assert where == "82ead8e50edc" and stuck2 == [] and "Brain 需求 › demo › DEMO-1 · subtract" in after
 
 
