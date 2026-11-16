@@ -242,6 +242,36 @@ def test_an_empty_brain_is_kept_only_when_main_has_no_brain_files(tmp_path, home
 
 
 
+
+def test_a_brain_that_cannot_be_read_lists_no_runs_and_reads_none(tmp_path, home, monkeypatch):
+    """When brain-kit cannot read the Brain on main the page says so and nothing else, as it always did: the runs not
+    merged yet were read all the same and listed in the answer."""
+    repo = make_project(tmp_path)
+    wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
+    intent = json.loads((wt / "runs" / "PAY-1" / "run.json").read_text())["intent"]
+    dec = wt / "aidlc-docs" / intent / "decisions.md"
+    dec.write_text(dec.read_text() + "| D-2 | 2026-11-08 | requirements | 按 T-PAY-9-1 切分 | Brain | agent |\n")
+    svc = make_service(tmp_path, [repo])
+    log = tmp_path / "brainkit-git-calls"
+    shim = tmp_path / "gitbin" / "git"                  # brain-kit's git: main is not a commit in the repo
+    shim.parent.mkdir()
+    shim.write_text('#!/bin/sh\necho "$*" >> "%s"\nif [ "$2" = "%s" ] && [ "$3" = rev-parse ]; then exit 128; fi\n'
+                    'exec \'%s\' "$@"\n' % (log, repo, mod("repo").GIT_BIN), encoding="utf-8")
+    shim.chmod(0o755)
+    monkeypatch.setenv("PATH", "%s:%s" % (shim.parent, os.environ["PATH"]))
+
+    async def go():
+        await svc.start()
+        try:
+            return await svc.brain("r1")
+        finally:
+            await svc.stop()
+
+    v = run(go())
+    assert v["error"] == mod("brainview").UNREADABLE and v["files"] == []
+    assert v["usage"]["unmerged"] == [] and str(wt) not in log.read_text()
+
+
 class ChangingRepo:
     """A repo whose three runs not merged yet move to other branches on every scan."""
 
