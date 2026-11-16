@@ -326,6 +326,37 @@ def test_a_stuck_folders_row_points_at_its_repo_folder_made_for_it_and_where_a_p
                      "Brain 需求 › 支付 › PAY-2 · new"]
 
 
+class Slow(FakeGateway):
+    """KiroCrew over its socket: while a folder call is on its way, the loop runs something else."""
+    async def folders(self):
+        await asyncio.sleep(0.01)
+        return await super().folders()
+
+    async def create_folder(self, *args, **kwargs):
+        await asyncio.sleep(0.01)
+        return await super().create_folder(*args, **kwargs)
+
+    async def move_folder(self, *args, **kwargs):
+        await asyncio.sleep(0.01)
+        return await super().move_folder(*args, **kwargs)
+
+
+def test_two_starts_of_the_app_at_once_on_its_data_dir_make_one_repo_folder(tmp_path):
+    async def go():
+        gw = Slow()
+        first = old_layout(gw, tmp_path)
+        second = manager(tmp_path, gw)
+        second.load()
+        await asyncio.gather(first.regroup(lambda key: "pay"), second.regroup(lambda key: "pay"),
+                             open_local(first, "r1-PAY-8", "pay", "PAY-8 · a", str(tmp_path)),
+                             open_local(second, "r1-PAY-9", "pay", "PAY-9 · b", str(tmp_path)))
+        return tree(gw)
+
+    assert asyncio.run(go()) == ["Brain 需求", "Brain 需求 › pay", "Brain 需求 › pay › PAY-1 · x", "Brain 需求 › pay › PAY-2 · x",
+                                 "Brain 需求 › pay › PAY-3 · x", "Brain 需求 › pay › PAY-8 · a",
+                                 "Brain 需求 › pay › PAY-9 · b"]
+
+
 # ---- the app: 打开会话 and 开审查会话 in the repo's folder; the older folders moved on start; what stays said in 设置 -- #
 
 def test_open_and_review_sessions_of_a_requirement_open_in_its_folder_inside_its_repo_folder(tmp_path, home):
