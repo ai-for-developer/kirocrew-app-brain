@@ -1,7 +1,7 @@
 """交付总览's team view (backend/core/roster.py): working hours, each kind of stuck requirement (a hit and a miss),
 what each person has open, the order 全队卡点 lists them in, and teammates' rows as the real classify makes them."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from appkit import mod
 
@@ -204,7 +204,7 @@ def classified(key, owner, me, fam, *, approval_at=None, tip_at=None, mr=False, 
     pending = [{"kind": "DESIGN", "unit": None, "state": "pending", "line": "approve DESIGN 1234abcd", "at": approval_at}]
     f = {"key": key, "owner": owner, "where": "branch", "branch": run["branch"], "tip_at": tip_at,
          "claim": {"owner": owner, "title": key, "created_at": "2026-11-09T01:00:00Z"} if claim_at is None else
-         {"owner": owner, "title": key, "created_at": datetime.utcfromtimestamp(claim_at).strftime("%Y-%m-%dT%H:%M:%SZ")},
+         {"owner": owner, "title": key, "created_at": datetime.fromtimestamp(claim_at, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")},
          "run": None if claim_at is not None else run, "approvals": pending if approval_at else [], "events": []}
     r = deliveries.base_row("r1", f)
     deliveries.classify(r, f, mr=None, slot=None, cfg=CFG, me=me, now=at(13, 16))
