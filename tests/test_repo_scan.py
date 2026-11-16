@@ -61,3 +61,50 @@ def test_a_scan_that_finds_nothing_new_starts_no_git_and_sees_each_change_at_onc
     n = gits()
     keys(repo)
     assert gits() > n                                                  # asked again after PLACES_TTL_S anyway
+
+
+def failing_once(tmp_path, monkeypatch):
+    """git as the app starts it, where ``fail("ls-tree")`` makes the next ``git -C <repo> ls-tree …`` fail (exit 128),
+    the way a call that times out under load does."""
+    flags = tmp_path / "fail-next"
+    flags.mkdir()
+    shim = tmp_path / "failbin" / "git"
+    shim.parent.mkdir()
+    shim.write_text('#!/bin/sh\nif [ -f "%s/$3" ]; then rm -f "%s/$3"; exit 128; fi\nexec \'%s\' "$@"\n'
+                    % (flags, flags, mod("repo").GIT_BIN), encoding="utf-8")
+    shim.chmod(0o755)
+    monkeypatch.setattr(mod("repo"), "GIT_BIN", str(shim))
+    return lambda verb: (flags / verb).write_text("1")
+
+
+def test_a_git_read_that_failed_is_not_kept_and_is_asked_again_next_time(tmp_path, home, monkeypatch):
+    """A git call that failed said "nothing there", and that was kept: merged requirements stayed hidden until main
+    moved again, every requirement for 30 s, the remote for 5 min. Only what git answered (exit 0) is kept."""
+    repo_dir = make_project(tmp_path, origin=True)
+    svc = make_service(tmp_path, [repo_dir])
+    svc.reload_sync()
+    repo = svc.repos["r1"]
+    assert set(keys(repo)) == set() and repo.has_origin() and repo.reflected() == set()
+    fail = failing_once(tmp_path, monkeypatch)
+
+    commit_file(repo_dir, "runs/PAY-9/run.json", '{"key": "PAY-9", "intent": "261108-pay-9-x"}', "merged run")
+    sh("git", "-C", repo_dir, "push", "-q", "origin", "main")
+    fail("for-each-ref")
+    keys(repo)
+    assert set(keys(repo)) == {"PAY-9"}                                # the refs: listed again
+
+    commit_file(repo_dir, "runs/PAY-10/run.json", '{"key": "PAY-10", "intent": "261108-pay-10-x"}', "merged run")
+    sh("git", "-C", repo_dir, "push", "-q", "origin", "main")
+    fail("ls-tree")
+    keys(repo)
+    assert set(keys(repo)) == {"PAY-9", "PAY-10"}                      # main's runs/: listed again
+
+    sh("git", "-C", repo_dir, "config", "brain.note", "the repo's config changed")
+    fail("remote")
+    repo.has_origin()
+    assert repo.has_origin() is True                                   # the remote: asked again
+
+    sh("git", "-C", repo_dir, "branch", "-q", "brain/PAY-9-reflect-1")
+    fail("for-each-ref")
+    repo.reflected()
+    assert repo.reflected() == {"PAY-9"}                               # the reflect branches: listed again
