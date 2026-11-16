@@ -38,6 +38,7 @@ from .problems import AGENT_NEW
 
 PREFIX = "s-"
 ROOT_FOLDER = "Brain 需求"  # the default root folder (constants.LOCAL_FOLDER)
+FOREIGN_INSIDE = "里面有不是这个 app 建的文件夹，KiroCrew 不让 app 移它"
 IDLE_POLLS = 2          # idle this many polls in a row (after the reply is in) = the turn is over
 MISSING_POLLS = 3       # gone from this many listings in a row = closed or deleted by someone
 RESENDS = 2             # a turn KiroCrew refused to start is sent again at most this often
@@ -221,6 +222,18 @@ def _epoch(stamp: Any) -> float:
         return datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).timestamp()
     except ValueError:
         return 0.0
+
+
+def _inside(by_id: dict[str, dict[str, Any]], f: dict[str, Any], top: str) -> bool:
+    """*f* lies somewhere under the folder *top* (a parent chain with a loop ends the walk)."""
+    seen: set[str] = set()
+    cur = str(f.get("parent_id") or "")
+    while cur and cur not in seen:
+        if cur == top:
+            return True
+        seen.add(cur)
+        cur = str((by_id.get(cur) or {}).get("parent_id") or "")
+    return False
 
 
 def _slug(text: str) -> str:
@@ -469,6 +482,41 @@ class SessionManager:
             got = await self.gw.create_folder(name, parent_id=root_id)
             folders.append(got)
         return str(got.get("id") or "")
+
+    async def regroup(self, repo_of: Callable[[str], str]) -> list[dict[str, str]]:
+        """Each requirement folder this app made before it had repo folders, moved into its repo's folder (*repo_of*: a
+        session key's repo name, "" for none) once; one already in place, hidden, no longer right under its root (a
+        person moved it) or holding a folder that is not this app's is left as it is (KiroCrew would refuse the
+        last). Rerun on every start. The ones that stay: [{name, repo, why}]. GatewayError: KiroCrew could not be read."""
+        if self._folder_lock is None:
+            self._folder_lock = asyncio.Lock()
+        async with self._folder_lock:
+            todo = [(rec, repo_of(k)) for k, rec in self._folders.items() if not rec.get("repo") and rec.get("root")]
+            todo = [(rec, name[:60]) for rec, name in todo if name]
+            if not todo:
+                return []
+            folders = await self.gw.folders()
+            by_id = {str(f.get("id")): f for f in folders}
+            stuck: list[dict[str, str]] = []
+            for rec, name in todo:
+                f = by_id.get(str(rec.get("id")))
+                if (f is None or f.get("owner_app") != self.app or f.get("hidden")
+                        or str(f.get("parent_id") or "") != rec["root"]):
+                    continue
+                why = FOREIGN_INSIDE if any(g.get("owner_app") != self.app and _inside(by_id, g, rec["id"])
+                                            for g in folders) else ""
+                if not why:
+                    try:
+                        repo = await self._repo_folder(folders, rec["root"], name)
+                        await self.gw.move_folder(rec["id"], repo)
+                        rec.update(repo=repo, repo_name=name)
+                        self._dirty = True
+                    except GatewayError as exc:
+                        why = FOREIGN_INSIDE if exc.code == "folder_not_owned" else said(exc)
+                        self.log.info(self.app + ": moving folder %s into %s: %s", rec["id"], name, exc)
+                if why:
+                    stuck.append({"name": str(f.get("name") or rec.get("name") or ""), "repo": name, "why": why})
+            return stuck
 
     async def _open(self, info: SessionInfo) -> None:
         try:
