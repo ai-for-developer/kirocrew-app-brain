@@ -172,8 +172,8 @@ def unmerged_usage(repo: Repo) -> list[dict[str, Any]]:
             if r is not None:
                 out.append({"key": f["key"], "loaded": r.get("loaded"), "cited": list(r.get("cited") or []),
                             "where": "worktree" if f.get("worktree") else "branch"})
-    for k in [k for k in _runs if k[0] == repo.path and k[1:] not in groups]:
-        del _runs[k]                         # merged since, or its worktree removed
+    for k in [k for k in list(_runs) if k[0] == repo.path and k[1:] not in groups]:
+        _runs.pop(k, None)                   # merged since, or its worktree removed (another page may be at it too)
     return sorted(out, key=lambda x: x["key"])
 
 
