@@ -34,9 +34,13 @@ _MAC_CHOOSE = {
 }
 # osascript's own `activate` makes it a GUI app on every click (about 2.5 s on the user's Mac); System Events, once
 # running, comes to the front in about 0.6 s. Without permission to drive System Events, the plain dialog is used.
-MAC_SCRIPTS = {k: 'tell application "System Events"\nactivate\n' + v + 'end tell\n' + _POSIX_LINES for k, v in _MAC_CHOOSE.items()}
+# AppleScript waits only 120 s for another app by default: wait as long as the dialog may stay open (TIMEOUT_S)
+MAC_SCRIPTS = {k: 'with timeout of %d seconds\ntell application "System Events"\nactivate\n%send tell\nend timeout\n%s'
+               % (int(TIMEOUT_S), v, _POSIX_LINES) for k, v in _MAC_CHOOSE.items()}
 MAC_PLAIN = {k: 'activate\n' + v + _POSIX_LINES for k, v in _MAC_CHOOSE.items()}
 _MAC_NO_HOST = ("(-1743)", "(-600)", "(-10810)")   # not allowed to drive System Events; it is not running; cannot launch
+_MAC_TIMED_OUT = "(-1712)"                         # AppleEvent timed out: System Events' dialog stayed open past TIMEOUT_S
+_SE_REFUSED = False                                # System Events refused once: this process uses the plain dialog
 LINUX_TITLES = {"file": "选需求文档（可以多选）", "folder": "选需求文档所在的文件夹"}
 
 
@@ -59,7 +63,10 @@ def picker_for(kind: str, platform: str, env: Mapping[str, str], which: Callable
     if own:
         return Picker([own, kind], _exit_1)
     if platform == "darwin":
-        return Picker(["/usr/bin/osascript", "-e", MAC_SCRIPTS[kind]], _mac_cancel, ["/usr/bin/osascript", "-e", MAC_PLAIN[kind]])
+        plain = ["/usr/bin/osascript", "-e", MAC_PLAIN[kind]]
+        if _SE_REFUSED:
+            return Picker(plain, _mac_cancel)
+        return Picker(["/usr/bin/osascript", "-e", MAC_SCRIPTS[kind]], _mac_cancel, plain)
     if not platform.startswith("linux") or not (env.get("DISPLAY") or env.get("WAYLAND_DISPLAY")):
         return None
     folder = kind == "folder"
@@ -91,6 +98,8 @@ def pick(kind: Any, *, run: Callable[..., Any] = subprocess.run, platform: str |
         r = run(p.argv, stdin=subprocess.DEVNULL, capture_output=True, encoding="utf-8", errors="replace",
                 timeout=TIMEOUT_S)
         if r.returncode != 0 and p.plain and any(code in (r.stderr or "") for code in _MAC_NO_HOST):
+            global _SE_REFUSED
+            _SE_REFUSED = True
             r = run(p.plain, stdin=subprocess.DEVNULL, capture_output=True, encoding="utf-8", errors="replace",
                     timeout=TIMEOUT_S)
     except subprocess.TimeoutExpired:      # subprocess.run has killed it: the dialog is gone
@@ -103,6 +112,8 @@ def pick(kind: Any, *, run: Callable[..., Any] = subprocess.run, platform: str |
         return chosen(r.stdout or "")
     if p.cancelled(r.returncode, r.stderr or ""):
         return []
+    if _MAC_TIMED_OUT in (r.stderr or ""):
+        raise AppError(TIMED_OUT, "picker_timeout", 408)
     said = (r.stderr or "").strip().splitlines()
     raise AppError(FAILED % (said[-1] if said else "退出码 %d" % r.returncode), "picker_failed", 502)
 
