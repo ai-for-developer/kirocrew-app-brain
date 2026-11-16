@@ -4,7 +4,10 @@
 import asyncio
 import json
 import os
+import sys
+import threading
 import time
+from types import SimpleNamespace
 
 from appkit import mod
 from brainfix import brain, make_project, make_service, needs_brainkit, run, sh, start_in_worktree
@@ -236,6 +239,46 @@ def test_an_empty_brain_is_kept_only_when_main_has_no_brain_files(tmp_path, home
     assert count(first) == 1 and failed
     assert after == [1, 1, 1]                           # read again, not kept as 0
     assert count(gone) == 0 and gone["error"] == "" and again == gone and more == 0   # really none: kept
+
+
+
+class ChangingRepo:
+    """A repo whose three runs not merged yet move to other branches on every scan."""
+
+    def __init__(self, i):
+        self.path, self.cfg, self.n = "/repos/%d" % i, {"brain_dir": "brain", "runs_dir": "runs"}, 0
+
+    def scan(self):
+        self.n += 1
+        return [{"key": "PAY-%d" % (k + 1), "run": {"intent": "i%d" % k}, "ref": "refs/heads/ai/a/PAY-%d" % ((self.n + k) % 7 + 1),
+                 "tip": "%d-%d" % (self.n, k), "worktree": None, "merged": False} for k in range(3)]
+
+
+def test_runs_not_merged_are_read_by_many_pages_at_once(monkeypatch):
+    """Each /brain runs in a thread of its own: two at once pruned the shared run records while the other one changed
+    them (dictionary changed size during iteration, KeyError)."""
+    bv = mod("brainview")
+    monkeypatch.setattr(bv, "_kit", lambda: ())
+    monkeypatch.setattr(bv.bk, "m", lambda name: SimpleNamespace(collect=lambda src, cfg, ref=None: {"runs": []}))
+    errors = []
+    repos = [ChangingRepo(i) for i in range(4)]
+
+    def pages(repo):
+        for _ in range(2000):
+            try:
+                bv.unmerged_usage(repo)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(repr(exc))
+
+    was = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        threads = [threading.Thread(target=pages, args=(repos[i % 4],)) for i in range(8)]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+    finally:
+        sys.setswitchinterval(was)
+    assert errors == []
 
 
 def test_a_bad_proposal_is_a_problem_in_the_preview(tmp_path, home):
