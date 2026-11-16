@@ -503,7 +503,8 @@ class SessionManager:
             self._dirty = True
             return rec["id"]
 
-    def _repo_known(self, folders: list[dict[str, Any]], root_name: str, root_id: str, name: str) -> dict | None:
+    def _repo_known(self, folders: list[dict[str, Any]], root_name: str, root_id: str,
+                    name: str) -> dict[str, Any] | None:
         """This app's folder of repo *name*: the one its records name while it is there (a person may have renamed or
         moved it), else its folder of that name right under *root_id* (a person's of that name is not it: KiroCrew
         lets an app nest only in its own); None for neither."""
@@ -548,12 +549,13 @@ class SessionManager:
                     rec.update(repo=parent, repo_name=name)
                     self._dirty = True
                     continue
-                if parent != rec["root"] and not (rec.get("repo") and not parent):
+                stranded = bool(rec.get("repo")) and not parent     # its repo folder deleted: KiroCrew put it on top
+                if parent != rec["root"] and not stranded:
                     continue
-                if root.get("owner_app") != self.app:   # the one new sessions go in: no folder of theirs can be made
-                    row = folder_root(root_name)
-                    if not root.get("parent_id") and root.get("name") == root_name and row not in stuck:
-                        stuck.append(row)
+                if root.get("owner_app") != self.app:   # a person's: KiroCrew lets the app make nothing in it
+                    in_use = not root.get("parent_id") and root.get("name") == root_name   # new sessions go in it
+                    if in_use and folder_root(root_name) not in stuck:
+                        stuck.append(folder_root(root_name))
                     continue
                 into = _path(folders, rec["root"]) + " › " + name
                 try:
