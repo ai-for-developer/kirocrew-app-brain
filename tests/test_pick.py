@@ -131,6 +131,11 @@ class Recorded:
         return subprocess.CompletedProcess(argv, self.code, self.out, self.err)
 
 
+@pytest.fixture(autouse=True)
+def _system_events_not_refused(monkeypatch):
+    monkeypatch.setattr(picker, "_SE_REFUSED", False)
+
+
 def mac(kind, rec):
     return picker.pick(kind, run=rec, platform="darwin", env={})
 
@@ -144,6 +149,58 @@ def test_on_macos_osascript_asks_for_several_files_or_folders_and_answers_their_
     assert "choose folder" not in script
     mac("folder", rec)
     assert "choose folder" in rec.argv[2] and "multiple selections allowed" in rec.argv[2]
+
+
+def test_on_macos_the_dialog_opens_in_system_events_not_in_osascript_itself():
+    # osascript's own `activate` cost about 2.5 s per click on the user's Mac; System Events, once running, about 0.6 s
+    rec = Recorded(out="/Users/alice/Downloads/需求.docx\n")
+    for kind in picker.KINDS:
+        mac(kind, rec)
+        script = rec.argv[2]
+        assert script.index('tell application "System Events"') < script.index("activate") < script.index("choose"), script
+
+
+def test_on_macos_without_permission_for_system_events_the_plain_dialog_is_used(monkeypatch):
+    monkeypatch.setattr(picker, "_SE_REFUSED", False)
+    calls = []
+
+    def run(argv, **kw):
+        calls.append(argv)
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(argv, 1, "", "execution error: Not authorized to send Apple events to System Events. (-1743)\n")
+        return subprocess.CompletedProcess(argv, 0, "/Users/alice/Downloads/需求.docx\n", "")
+
+    assert picker.pick("file", run=run, platform="darwin", env={}) == ["/Users/alice/Downloads/需求.docx"]
+    assert len(calls) == 2 and "System Events" in calls[0][2] and "System Events" not in calls[1][2]
+
+
+def test_on_macos_system_events_waits_as_long_as_the_dialog_may_stay_open():
+    # AppleScript waits 120 s for another app by default, less than TIMEOUT_S
+    rec = Recorded(out="")
+    for kind in picker.KINDS:
+        mac(kind, rec)
+        assert "with timeout of %d seconds" % int(picker.TIMEOUT_S) in rec.argv[2], rec.argv[2]
+
+
+def test_on_macos_an_apple_event_timeout_is_said_as_the_dialog_timing_out():
+    with pytest.raises(AppError) as e:
+        mac("file", Recorded(1, err="execution error: System Events got an error: AppleEvent timed out. (-1712)\n"))
+    assert e.value.code == "picker_timeout" and e.value.status == 408
+
+
+def test_on_macos_once_system_events_is_refused_later_clicks_go_straight_to_the_plain_dialog(monkeypatch):
+    monkeypatch.setattr(picker, "_SE_REFUSED", False)
+    calls = []
+
+    def run(argv, **kw):
+        calls.append(argv)
+        if "System Events" in argv[2]:
+            return subprocess.CompletedProcess(argv, 1, "", "Not authorized to send Apple events to System Events. (-1743)\n")
+        return subprocess.CompletedProcess(argv, 0, "/Users/alice/a.md\n", "")
+
+    picker.pick("file", run=run, platform="darwin", env={})
+    picker.pick("file", run=run, platform="darwin", env={})
+    assert ["System Events" in c[2] for c in calls] == [True, False, False]
 
 
 def test_on_macos_cancel_is_no_change_and_any_other_error_is_said():
