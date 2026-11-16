@@ -4,9 +4,11 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ItemEntry } from '../nav'
 import { apiCalls, apiError, navigations } from '../test/stubs/app-sdk'
 import { fmtCredits, fmtTime } from '../format'
-import { fx } from '../test/data'
+import { clone, fx } from '../test/data'
+import { worldBoard } from '../test/world'
+import world from '../../preview/world.json'
 import { API, installFixtureRoutes } from '../test/routes'
-import type { Question, RequirementDetail } from '../types'
+import type { Question, ReqBoard, RequirementDetail } from '../types'
 import { TYPE_IT_YOURSELF } from '../ui'
 import type { ChildStartResult, FamilyActs, ReqFamily } from '../types'
 import { DetailView, MR_DESC_COPY_HINT } from './Detail'
@@ -1246,6 +1248,65 @@ function childDetail() {
   }
   return d
 }
+
+/** The preview's own detail and board of *key* (scripts/preview_world.py, alice looking), served as the page gets them. */
+const fromWorld = (key: string, change: (d: RequirementDetail, b: ReqBoard) => void = () => {}) => {
+  const d = clone((world.details as unknown as Record<string, RequirementDetail>)[key])
+  const b = worldBoard(key)
+  change(d, b)
+  installFixtureRoutes({ [`GET ${API}/requirements/*`]: () => d, [`GET ${API}/board/*`]: () => b })
+}
+
+describe('需求详情 · 别人的需求只看 (F1)', () => {
+  test('PAY-15, carol’s, alice looking: 此刻 says it waits on carol; no 去回答, no approval line, no 开会话 (her branch is not checked out here)', async () => {
+    fromWorld('r1/PAY-15')
+    renderDetail({ repo: 'r1', key: 'PAY-15', from: 'overview' })
+    const bar = await screen.findByRole('region', { name: '此刻' })
+    expect(bar).toHaveTextContent('等 carol 批准设计')
+    expect(within(bar).queryByRole('button')).toBeNull()
+    const design = await pendingApproval()
+    expect(design).toHaveTextContent('等 carol 批')
+    expect(design).not.toHaveTextContent('等你批')
+    expect(screen.queryByTestId('type-line')).toBeNull()
+    expect(screen.getByTestId('br-detail')).not.toHaveTextContent('approve DESIGN')
+    expect(screen.queryByRole('button', { name: /复制那一行/ })).toBeNull()
+    expect(screen.queryByRole('region', { name: '开会话' })).toBeNull()
+  })
+
+  test('the same requirement as alice’s own, its worktree here, no session: 去回答, 等你批 with its line, and 开会话', async () => {
+    fromWorld('r1/PAY-15', (d, b) => {
+      d.row.owner = 'alice'
+      d.row.worktree = '/Users/alice/workplace/brain-app/shop-pay/refund-diff'
+      d.row.waits = { ...d.row.waits, who: 'you', text: '等你批准设计：读完再在会话里自己打那一行' }
+      b.person = { ...b.person, owner: 'alice', me: true, you: true }
+    })
+    renderDetail({ repo: 'r1', key: 'PAY-15', from: 'overview' })
+    expect(await within(await screen.findByRole('region', { name: '此刻' })).findByRole('button', { name: '去回答 ↓' })).toBeInTheDocument()
+    const design = await pendingApproval()
+    expect(design).toHaveTextContent('等你批')
+    expect(within(design).getByTestId('type-line')).toHaveTextContent('approve DESIGN db94cea5')
+    expect(within(screen.getByRole('region', { name: '开会话' })).getByRole('button', { name: '开会话' })).toBeInTheDocument()
+  })
+
+  test('PAY-16, alice’s own with a live session: the line and 打开会话 in 此刻 and on its approval, 等你批', async () => {
+    fromWorld('r1/PAY-16')
+    renderDetail({ repo: 'r1', key: 'PAY-16', from: 'overview' })
+    const bar = await screen.findByRole('region', { name: '此刻' })
+    expect(within(bar).getByTestId('now-line')).toHaveTextContent('approve INCEPTION 3fa2c1d0')
+    expect(within(bar).getByRole('button', { name: '打开会话' })).toBeInTheDocument()
+    const inception = await pendingApproval()
+    expect(inception).toHaveTextContent('等你批')
+    expect(within(inception).getByTestId('type-line')).toHaveTextContent('approve INCEPTION 3fa2c1d0')
+  })
+
+  test('ORD-9, erin’s, merged with knowledge to write back: 此刻 names erin and gives alice no 回写 Brain', async () => {
+    fromWorld('r3/ORD-9')
+    renderDetail({ repo: 'r3', key: 'ORD-9', from: 'overview' })
+    const bar = await screen.findByRole('region', { name: '此刻' })
+    expect(bar).toHaveTextContent('等 erin 回写 Brain')
+    expect(within(bar).queryByRole('button')).toBeNull()
+  })
+})
 
 describe('需求详情 · 重开一个会话 (E2E-7, E2E-12)', () => {
   const second = { slot: 'brain-PAY-3-9c1d', kind: 'local' as const, title: 'PAY-3 · 本地开发（重开）', agent: 'brain-dev-crew', credits: null, turns: 0,

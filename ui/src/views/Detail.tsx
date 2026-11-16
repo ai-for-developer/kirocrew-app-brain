@@ -372,7 +372,8 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
   // the backend opens sessions for a run here not handed over (service.open_session): a hand-over commit whose push
   // failed reads 本地开发中 too, and its next step is 交接给运行机 again
   const sessionsHere = x.row.state === 'local' && !x.run?.handoff
-  const canOpen = sessionsHere && !live
+  // and only in the branch's checkout on this machine (open_session refuses with no_worktree)
+  const canOpen = sessionsHere && !live && !!x.row.worktree
   const toAt = (t: number | null) => toBoard(t ? { at: Math.round(t) } : {})
   // whom the open questions and approvals wait on when it is not the person looking: the 此刻 judgment, said once
   // (DETAIL-10); then the cards below only look (看 MR)
@@ -597,7 +598,7 @@ function NowBar({ x, now, at, live, canOpen, repo, reqKey, onStart, onAnswer, on
         )
         acts = <>{openSession}<span className="br-hint">{TYPE_IT_YOURSELF}</span></>
       } else {
-        acts = <><button type="button" className="kt-btn is-primary" onClick={onAnswer}>{DO_NAME.answer} ↓</button>{openSession}</>
+        acts = mine ? <><button type="button" className="kt-btn is-primary" onClick={onAnswer}>{DO_NAME.answer} ↓</button>{openSession}</> : null
       }
       break
     case 'reply':
@@ -633,7 +634,7 @@ function NowBar({ x, now, at, live, canOpen, repo, reqKey, onStart, onAnswer, on
       acts = mine ? <button type="button" className="kt-btn is-primary" onClick={onStart}>{DO_NAME.start}</button> : null
       break
     case 'write_back':
-      acts = <button type="button" className="kt-btn is-primary" onClick={onBrain}>{ACT.writeBack} ↗</button>
+      acts = mine ? <button type="button" className="kt-btn is-primary" onClick={onBrain}>{ACT.writeBack} ↗</button> : null
       break
     default:
   }
@@ -931,7 +932,7 @@ function LeanCard({ x, sessionUrl, mrUrl, waiter }: { x: RequirementDetail; sess
                 <div className="br-row">
                   <RoleIcon role={a.kind === 'RELEASE' ? 'release' : a.kind === 'REQUIREMENTS' ? 'req' : 'design'} size={16} />
                   <b>{approvalName(a.kind)}{unit ? ` · ${unit}` : ''}</b>
-                  <span className={`br-chip tone-${m.tone}`}>{a.state === 'pending' && onMr ? '在 MR 上等回答' : m.label}</span>
+                  <span className={`br-chip tone-${m.tone}`}>{a.state !== 'pending' ? m.label : onMr ? '在 MR 上等回答' : waiter ? whoThen(waiter, '批') : m.label}</span>
                   {a.at !== null && <span className="br-dim br-small">{fmtTime(a.at)}</span>}
                   <details className="br-raw">
                     <summary>细节</summary>
@@ -948,7 +949,7 @@ function LeanCard({ x, sessionUrl, mrUrl, waiter }: { x: RequirementDetail; sess
                       {!waiter && q?.id && isOpenQuestion(q) && <MrComment comment={`answer ${q.id} approve`} />}
                     </>
                   )
-                  : a.line && <ApprovalLine line={a.line} sessionUrl={sessionUrl} onOpen={(u) => navigate(u)} />)}
+                  : !waiter && a.line && <ApprovalLine line={a.line} sessionUrl={sessionUrl} onOpen={(u) => navigate(u)} />)}
               </li>
             )
           })}
