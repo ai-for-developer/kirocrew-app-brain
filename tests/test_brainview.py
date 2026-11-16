@@ -196,6 +196,48 @@ def test_a_brain_that_cannot_be_read_after_main_moved_is_said_not_shown_stale_fo
     assert now["error"] == mod("brainview").NO_USAGE and now["raw"] == "usage.collect: cannot read the runs"
 
 
+
+def test_an_empty_brain_is_kept_only_when_main_has_no_brain_files(tmp_path, home, monkeypatch):
+    """brain-kit reads a Brain whose git listing failed as an empty Brain with no error: the page kept 0 entries until
+    main moved again. An empty Brain is kept only when main's tree has no Brain files."""
+    repo = make_project(tmp_path)
+    brain(repo, "entry", "add", "TECH", "pitfall", "--key", "PAY-9", "--src", "D-1", "--text", "对账文件按自然日切分。")
+    sh("git", "-C", repo, "add", "-A")
+    sh("git", "-C", repo, "commit", "-qm", "brain entry")
+    svc = make_service(tmp_path, [repo])
+    flag, log = tmp_path / "fail-next-ls-tree", tmp_path / "brainkit-git-calls"
+    shim = tmp_path / "gitbin" / "git"                  # brain-kit's git (on PATH), not the app's
+    shim.parent.mkdir()
+    shim.write_text('#!/bin/sh\necho "$*" >> "%s"\nif [ -f "%s" ] && [ "$3" = ls-tree ]; then rm -f "%s"; exit 128; fi\n'
+                    'exec \'%s\' "$@"\n' % (log, flag, flag, mod("repo").GIT_BIN), encoding="utf-8")
+    shim.chmod(0o755)
+    monkeypatch.setenv("PATH", "%s:%s" % (shim.parent, os.environ["PATH"]))
+    count = lambda v: next(f for f in v["files"] if f["key"] == "TECH")["count"]  # noqa: E731
+    calls = lambda: len(log.read_text().splitlines())  # noqa: E731
+
+    async def go():
+        await svc.start()
+        try:
+            first = await fresh(svc)
+            sh("git", "-C", repo, "commit", "-q", "--allow-empty", "-m", "main moves")
+            flag.write_text("1")
+            after = [count(await fresh(svc)) for _ in range(3)]
+            failed = not flag.exists()
+            sh("git", "-C", repo, "rm", "-rq", "brain")
+            sh("git", "-C", repo, "commit", "-qm", "no Brain on main")
+            gone = await fresh(svc)
+            n = calls()
+            again = await fresh(svc)
+            return first, after, failed, gone, again, calls() - n
+        finally:
+            await svc.stop()
+
+    first, after, failed, gone, again, more = run(go())
+    assert count(first) == 1 and failed
+    assert after == [1, 1, 1]                           # read again, not kept as 0
+    assert count(gone) == 0 and gone["error"] == "" and again == gone and more == 0   # really none: kept
+
+
 def test_a_bad_proposal_is_a_problem_in_the_preview(tmp_path, home):
     repo = make_project(tmp_path)
     wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "x", "x", "x")
