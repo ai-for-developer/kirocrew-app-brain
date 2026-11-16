@@ -241,16 +241,11 @@ def test_an_empty_brain_is_kept_only_when_main_has_no_brain_files(tmp_path, home
     assert count(gone) == 0 and gone["error"] == "" and again == gone and more == 0   # really none: kept
 
 
-
-
 def test_a_brain_that_cannot_be_read_lists_no_runs_and_reads_none(tmp_path, home, monkeypatch):
     """When brain-kit cannot read the Brain on main the page says so and nothing else, as it always did: the runs not
     merged yet were read all the same and listed in the answer."""
     repo = make_project(tmp_path)
     wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
-    intent = json.loads((wt / "runs" / "PAY-1" / "run.json").read_text())["intent"]
-    dec = wt / "aidlc-docs" / intent / "decisions.md"
-    dec.write_text(dec.read_text() + "| D-2 | 2026-11-08 | requirements | 按 T-PAY-9-1 切分 | Brain | agent |\n")
     svc = make_service(tmp_path, [repo])
     log = tmp_path / "brainkit-git-calls"
     shim = tmp_path / "gitbin" / "git"                  # brain-kit's git: main is not a commit in the repo
