@@ -283,6 +283,7 @@ class Service:
                     await asyncio.to_thread(self.reload_sync)
                 if time.monotonic() - last_crew > CREW_EVERY_S:
                     last_crew = time.monotonic()
+                    await asyncio.to_thread(crewcheck.refresh_engine)
                     self.crew = await asyncio.to_thread(self.crew_sync)
             except asyncio.CancelledError:
                 raise
