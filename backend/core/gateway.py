@@ -163,6 +163,11 @@ class Gateway:
         """An app may not delete a folder (KiroCrew: "ask the person"); it may hide one it owns."""
         await self.request("PATCH", f"/api/chat/folders/{q(folder_id)}", body={"hidden": True})
 
+    async def move_folder(self, folder_id: str, parent_id: str) -> None:
+        """Into *parent_id*: KiroCrew lets an app move a folder it owns into one it owns, and only while nothing of
+        anyone else's sits inside it (403 folder_not_owned)."""
+        await self.request("PATCH", f"/api/chat/folders/{q(folder_id)}", body={"parent_id": parent_id})
+
     async def slots(self) -> list[dict[str, Any]]:
         return _rows(await self.request("GET", "/api/chat/slots"), "slots")
 

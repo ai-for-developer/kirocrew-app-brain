@@ -42,17 +42,58 @@ class FakeGateway:
     async def folders(self):
         return list(self.folder_rows)
 
+    # KiroCrew's rules for an app (chat_folders_records.create_folder_record, chat_folders_routes.api_chat_folder_update):
+    # it nests, moves and hides only folders it owns, never one holding a folder of anyone else's; a person's row has
+    # no owner_app. An app's calls are not refused for a same-name sibling (they count as the browser's).
+    def _folder(self, fid):
+        return next((f for f in self.folder_rows if f["id"] == fid), None)
+
+    def _own(self, f):
+        if f.get("owner_app") != self.app:
+            raise GatewayError(403, "this app does not own that folder", "folder_not_owned")
+
+    def _under(self, fid, top):
+        f, seen = self._folder(fid), set()
+        while f is not None and f["id"] not in seen:
+            if f["id"] == top:
+                return True
+            seen.add(f["id"])
+            f = self._folder(f.get("parent_id") or "")
+        return False
+
     async def create_folder(self, name, parent_id=None, project_dir=None):
-        f = {"id": f"f{next(self.ids)}", "name": name, "parent_id": parent_id, "owner_app": self.app,
+        if parent_id:
+            parent = self._folder(parent_id)
+            if parent is None:
+                raise GatewayError(400, "parent folder not found", "folder_parent_not_found")
+            self._own(parent)
+        f = {"id": f"f{next(self.ids)}", "name": name, "parent_id": parent_id or "", "owner_app": self.app,
              "project_dir": project_dir}
         self.folder_rows.append(f)
         self.calls.append(("folder", name, parent_id))
         return f
 
+    async def move_folder(self, fid, parent_id):
+        f, dest = self._folder(fid), self._folder(parent_id)
+        if f is None:
+            raise GatewayError(404, "not found", "folder_not_found")
+        if dest is None:
+            raise GatewayError(400, "parent folder not found", "folder_parent_not_found")
+        if self._under(parent_id, fid):
+            raise GatewayError(400, "cannot move a folder into its own descendant", "folder_cycle")
+        self._own(f)
+        self._own(dest)
+        for g in self.folder_rows:
+            if g["id"] != fid and self._under(g["id"], fid):
+                self._own(g)
+        f["parent_id"] = parent_id
+        self.calls.append(("move_folder", fid, parent_id))
+
     async def hide_folder(self, fid):
-        for f in self.folder_rows:
-            if f["id"] == fid:
-                f["hidden"] = True
+        f = self._folder(fid)
+        if f is not None:
+            self._own(f)
+            f["hidden"] = True
         self.calls.append(("hide_folder", fid))
 
     async def slots(self):
