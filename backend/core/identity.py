@@ -15,6 +15,7 @@ from __future__ import annotations
 import getpass
 import os
 import re
+import time
 from typing import Any
 
 from . import bk
@@ -75,7 +76,7 @@ def of(top: str, gitlab_base: str, *, token: bool) -> dict[str, Any]:
         out.update(source="token", text="GitLab 令牌认你：用你在 GitLab 上的用户名")
         return out
     env = os.environ.get("BRAIN_USER", "").strip()
-    conf = "" if env else Git(top).out("config", "brain.user").strip()
+    conf = "" if env else git_name(top)
     who = env or conf
     if who and valid(who.lower()):
         out.update(name=who.lower(), source="env" if env else "git",
@@ -107,6 +108,50 @@ def set_name(top: str, name: Any) -> str:
         raise NameRefused("名字%s" % RULE)
     from .importer import last_lines, run_quiet, tail       # here: importer imports this module
     p = run_quiet([GIT_BIN, "-C", top, "config", "--local", "brain.user", n], top, SET_TIMEOUT_S)
+    _names.clear()
     if p.returncode != 0:
         raise NameRefused("名字没存上，git 说：%s" % (last_lines(tail(p), 3) or "退出码 %d" % p.returncode))
     return n
+
+
+NAME_TTL_S = 60.0   # git config brain.user is read again at least this often (an include, the system's config)
+_names: dict[str, tuple[tuple, float, str]] = {}   # top -> (config_stamp, when read, what git said)
+
+
+def config_stamp(top: str) -> tuple:
+    """The git config files a name is set in (mtime and size; None: not there): the repo's own (a worktree's common
+    one and its config.worktree), ~/.gitconfig and git's user config, and git's environment."""
+    home = os.path.expanduser("~")
+    gitdir = os.path.join(top, ".git")
+    try:
+        if os.path.isfile(gitdir):
+            with open(gitdir, encoding="utf-8") as f:
+                gitdir = os.path.join(top, f.read().strip().split("gitdir:", 1)[-1].strip())
+        with open(os.path.join(gitdir, "commondir"), encoding="utf-8") as f:
+            common = os.path.join(gitdir, f.read().strip())
+    except OSError:
+        common = gitdir
+    files = (os.path.join(common, "config"), os.path.join(gitdir, "config.worktree"), os.path.join(home, ".gitconfig"),
+             os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config"), "git", "config"))
+    out: list[Any] = [tuple(sorted((k, v) for k, v in os.environ.items() if k.startswith("GIT_CONFIG")))]
+    for p in files:
+        try:
+            st = os.stat(p)
+            out.append((st.st_mtime_ns, st.st_size))
+        except OSError:
+            out.append(None)
+    return tuple(out)
+
+
+def git_name(top: str) -> str:
+    """`git config brain.user` in *top*, read again only when config_stamp changes or after NAME_TTL_S."""
+    stamp = config_stamp(top)
+    kept = _names.get(top)
+    if kept is not None and kept[0] == stamp and time.monotonic() - kept[1] < NAME_TTL_S:
+        return kept[2]
+    at = time.monotonic()
+    p = Git(top).run("config", "brain.user")
+    got = p.stdout.strip() if p.returncode == 0 else ""
+    if p.returncode in (0, 1):      # 1: no name set; anything else (a timeout) is asked again next time
+        _names[top] = (stamp, at, got)
+    return got

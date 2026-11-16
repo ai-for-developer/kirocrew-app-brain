@@ -217,6 +217,33 @@ def test_with_a_token_gitlab_says_who_and_a_set_name_wins_otherwise(tmp_path, ho
     assert (env["name"], env["source"]) == ("erin", "env")
 
 
+def test_the_name_is_read_from_git_once_until_a_git_config_file_changes(tmp_path, home, login, monkeypatch):
+    """Every row of 待办 and 交付总览 says whose it is, so `git config brain.user` ran a dozen times per /status: the
+    name is read once and again when the repo's config, ~/.gitconfig or git's own user config changes (at once: a
+    name set in a terminal shows on the next page), or after NAME_TTL_S."""
+    repo = project(tmp_path)
+    sh("git", "-C", repo, "config", "brain.user", "alice")
+    log = tmp_path / "git-calls"
+    wrap = tmp_path / "bin" / "git-logged"
+    wrap.write_text("#!/bin/sh\necho \"$*\" >> '%s'\nexec '%s' \"$@\"\n" % (log, mod("repo").GIT_BIN), encoding="utf-8")
+    wrap.chmod(0o755)
+    monkeypatch.setattr(mod("repo"), "GIT_BIN", str(wrap))
+    reads = lambda: log.read_text().count("config brain.user") if log.exists() else 0  # noqa: E731
+    name = lambda: identity.of(str(repo), "", token=False)["name"]  # noqa: E731
+    assert [name(), name(), name()] == ["alice"] * 3 and reads() == 1
+    sh("git", "-C", repo, "config", "brain.user", "bob")
+    assert name() == "bob" and name() == "bob" and reads() == 2
+    sh("git", "-C", repo, "config", "--unset", "brain.user")
+    sh("git", "config", "--global", "brain.user", "carol")
+    assert name() == "carol" and reads() == 3
+    identity.set_name(str(repo), "dave")
+    assert name() == "dave"
+    monkeypatch.setattr(identity, "NAME_TTL_S", 0.0)
+    n = reads()
+    name()
+    assert reads() == n + 1
+
+
 def test_the_name_route_takes_brainkits_names_only_runs_no_shell_and_stores_no_token(tmp_path, home, login):
     repo = project(tmp_path, kit=GITLAB)
     svc = make_service(tmp_path, [repo])
