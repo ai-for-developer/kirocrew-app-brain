@@ -324,7 +324,11 @@ export function OutputsDrawer({ board, repo, reqKey, at, onAt, onClose, moment =
   const n = steps[i]
   const r = n ? (n.rounds.find((x) => x.n === at.round) ?? n.rounds[n.rounds.length - 1] ?? null) : null
   const box = useRef<HTMLElement | null>(null)
+  const stepBar = useRef<HTMLElement | null>(null)
   useEffect(() => box.current?.focus(), [])
+  useEffect(() => {
+    stepBar.current?.querySelector('[aria-current="step"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [at.node])
   const step = (d: number) => {
     const to = steps[i + d]
     if (to) onAt({ node: to.id })
@@ -346,7 +350,7 @@ export function OutputsDrawer({ board, repo, reqKey, at, onAt, onClose, moment =
             <p className="kt-dim">回放：这是 {fmtWhen(moment.t)} 那一刻的产出，只有那时已经开始的轮次；退出回放看现在的</p>
           </div>
         )}
-        <nav className="kt-steps" aria-label="每一步">
+        <nav ref={stepBar} className="kt-steps" aria-label="每一步">
           {steps.map((x, k) => (
             <button key={x.id} type="button" className={`kt-step tone-${actorMeta(x.status).tone}${x.id === at.node ? ' is-on' : ''}`} aria-current={x.id === at.node ? 'step' : undefined}
               onClick={() => onAt({ node: x.id, tab: at.tab })} data-testid="out-step">
