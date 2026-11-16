@@ -34,7 +34,7 @@ from typing import Any, Callable
 
 from .constants import LOCAL_AGENT
 from .gateway import GatewayError, said
-from .problems import AGENT_NEW, FOREIGN_INSIDE, folder_stuck
+from .problems import AGENT_NEW, FOREIGN_INSIDE, folder_root, folder_stuck
 
 PREFIX = "s-"
 ROOT_FOLDER = "Brain 需求"  # the default root folder (constants.LOCAL_FOLDER)
@@ -491,11 +491,12 @@ class SessionManager:
             folders.append(got)
         return str(got.get("id") or "")
 
-    async def regroup(self, repo_of: Callable[[str], str]) -> list[dict[str, str]]:
+    async def regroup(self, repo_of: Callable[[str], str]) -> list[dict[str, Any]]:
         """Each requirement folder this app made before it had repo folders, moved into its repo's folder (*repo_of*: a
         session key's repo name, "" for none) once; one already in place, hidden, no longer right under its root (a
-        person moved it) or holding a folder that is not this app's is left as it is (KiroCrew would refuse the
-        last). Rerun on every start. The ones that stay: 设置's rows saying so. GatewayError: KiroCrew was not read."""
+        person moved it), in a root that is a person's or holding a folder that is not this app's is left as it is
+        (KiroCrew would refuse the last two). Rerun on every start. The ones that stay: 设置's rows saying so, one for
+        a person's root. GatewayError: KiroCrew was not read."""
         if self._folder_lock is None:
             self._folder_lock = asyncio.Lock()
         async with self._folder_lock:
@@ -511,16 +512,22 @@ class SessionManager:
                 if (f is None or f.get("owner_app") != self.app or f.get("hidden")
                         or str(f.get("parent_id") or "") != rec["root"]):
                     continue
+                root, root_name = by_id.get(rec["root"]) or {}, rec.get("root_name") or ROOT_FOLDER
+                if root.get("owner_app") != self.app:   # the one new sessions go in: no folder of theirs can be made
+                    row = folder_root(root_name)
+                    if not root.get("parent_id") and root.get("name") == root_name and row not in stuck:
+                        stuck.append(row)
+                    continue
                 why = FOREIGN_INSIDE if any(g.get("owner_app") != self.app and _inside(by_id, g, rec["id"])
                                             for g in folders) else ""
                 if not why:
                     try:
-                        repo = await self._repo_folder(folders, rec.get("root_name") or ROOT_FOLDER, rec["root"], name)
+                        repo = await self._repo_folder(folders, root_name, rec["root"], name)
                         await self.gw.move_folder(rec["id"], repo)
                         rec.update(repo=repo, repo_name=name)
                         self._dirty = True
                     except GatewayError as exc:
-                        why = FOREIGN_INSIDE if exc.code == "folder_not_owned" else said(exc)
+                        why = said(exc)
                         self.log.info(self.app + ": moving folder %s into %s: %s", rec["id"], name, exc)
                 if why:
                     stuck.append(folder_stuck(str(f.get("name") or rec.get("name") or ""), name, why))
