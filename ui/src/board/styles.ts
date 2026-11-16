@@ -875,7 +875,7 @@ ${legendSwatches}
 .kt-drawer-replay { padding: 0 20px 8px; }
 .kt-drawer-replay p { margin: 6px 2px 0; font-size: .86em; }
 .kt-drawer-top h2 { margin: 0; font-size: 1.12em; color: var(--text-strong); }
-.kt-steps { display: flex; gap: 6px; padding: 4px 20px 12px; overflow-x: auto; border-bottom: 1px solid var(--border); }
+.kt-steps { display: flex; gap: 6px; padding: 4px 20px 12px; overflow-x: auto; scroll-padding-inline: 20px; border-bottom: 1px solid var(--border); }
 .kt-step { appearance: none; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px 5px 6px; border-radius: 999px; cursor: pointer; white-space: nowrap; font: inherit; font-size: .9em; font-weight: 700;
   border: 1px solid color-mix(in srgb, var(--kt-tone, var(--border)) 45%, var(--border)); background: color-mix(in srgb, var(--kt-tone, var(--muted)) 8%, var(--card)); color: var(--text); }
 .kt-step-n { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-size: .78em; background: color-mix(in srgb, var(--kt-tone, var(--muted)) 30%, transparent); color: var(--text-strong); }

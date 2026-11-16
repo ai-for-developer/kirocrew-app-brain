@@ -134,6 +134,21 @@ describe('产出', () => {
     expect(within(pane).getByTestId('out-at').textContent).toBe('第 4 轮的版本 · 提交 ddddddd')
   })
 
+  test('the picked step is scrolled into view in the step bar: on open, on 上一步 and on 下一步 (F5)', async () => {
+    renderBoard({ ...PAY9, out: { node: 'release' } })
+    await screen.findByTestId('out-pane')
+    const drawer = screen.getByRole('dialog', { name: '每一步的产出' })
+    const picked = () => within(drawer).getAllByTestId('out-step').find((s) => s.getAttribute('aria-current') === 'step')
+    const scroll = vi.mocked(HTMLElement.prototype.scrollIntoView)
+    await waitFor(() => expect(scroll.mock.contexts).toContain(picked()))
+    for (const [name, title] of [['‹ 上一步', '审查'], ['下一步 ›', '发布']]) {
+      scroll.mockClear()
+      fireEvent.click(within(drawer).getByRole('button', { name }))
+      await waitFor(() => expect(picked()).toHaveTextContent(title))
+      await waitFor(() => expect(scroll.mock.contexts).toContain(picked()))
+    }
+  })
+
   test('改动 compares with the round before, 和第 1 轮比 with the first', async () => {
     renderBoard({ ...PAY9, out: { node: 'release', round: 4 } })
     const pane = await screen.findByTestId('out-pane')
