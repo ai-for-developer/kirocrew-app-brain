@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, test, vi } from 'vitest'
 import { API, installFixtureRoutes } from '../test/routes'
 import { apiError } from '../test/stubs/app-sdk'
@@ -42,6 +42,23 @@ describe('停止 (UI-24): this requirement’s own session on this machine, afte
     await waitFor(() => expect(stops).toEqual([{}]))
     await waitFor(() => expect(reads).toBeGreaterThan(before))
     expect(within(top()).queryByRole('group', { name: '停止 TOOL-1 的本机会话' })).toBeNull()
+  })
+
+  test('确定停止 done: the top bar says 停下了 for a few seconds (F6)', async () => {
+    serve(() => worldBoard('r4/TOOL-1'), () => ({ ok: true, stopped: ['brain-TOOL-1-5a2c'] }))
+    render(<BoardPage entry={TOOL1} {...props()} />)
+    await screen.findByTestId('kt-graph')
+    expect(within(top()).queryByText(/停下了/)).toBeNull()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      fireEvent.click(within(top()).getByRole('button', { name: '停止' }))
+      fireEvent.click(within(top()).getByRole('button', { name: '确定停止' }))
+      expect(await within(top()).findByRole('status')).toHaveTextContent('停下了：会话还在，打开会话可以接着做')
+      act(() => vi.advanceTimersByTime(8000))
+      expect(within(top()).queryByText(/停下了/)).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   test('nothing working any more: the 409 says so in the ask, and nothing else changes', async () => {

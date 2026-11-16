@@ -51,6 +51,12 @@ export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail,
   const local = replySession(board, localRun) ?? null
   const runner = sessionOf([...board.runs].reverse().find((x) => x.kind === 'runner' && x.sessions.length)) ?? null
   const finished = board.ended_at !== null || r.state === 'merged' || r.state === 'closed'
+  const [stopped, setStopped] = useState(false)
+  useEffect(() => {
+    if (!stopped) return
+    const t = setTimeout(() => setStopped(false), 6000)
+    return () => clearTimeout(t)
+  }, [stopped])
   return (
     <header className="kt-top">
       <div className="kt-title">
@@ -80,7 +86,8 @@ export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail,
         {!replaying && local && onSession && (
           <button type="button" className="kt-btn" onClick={() => onSession(local.url)} title="在 Kiro Crew 里打开本机的 brain-dev 会话">{ACT.openSession}</button>
         )}
-        {!replaying && onStopped && localRun?.sessions.some((x) => x.busy) && <StopButton repo={r.repo} reqKey={r.key} onStopped={onStopped} />}
+        {!replaying && onStopped && localRun?.sessions.some((x) => x.busy) && <StopButton repo={r.repo} reqKey={r.key} onStopped={() => { setStopped(true); onStopped() }} />}
+        {stopped && <span className="br-small br-ok-text" role="status">停下了：会话还在，{ACT.openSession}可以接着做</span>}
         {!replaying && runner && onSession && (
           <button type="button" className="kt-btn" onClick={() => onSession(runner.url)} title="打开运行机上的 brain-run 会话">{ACT.openSession}（运行机）</button>
         )}
