@@ -228,7 +228,7 @@ def test_the_name_is_read_from_git_once_until_a_git_config_file_changes(tmp_path
     wrap.write_text("#!/bin/sh\necho \"$*\" >> '%s'\nexec '%s' \"$@\"\n" % (log, mod("repo").GIT_BIN), encoding="utf-8")
     wrap.chmod(0o755)
     monkeypatch.setattr(mod("repo"), "GIT_BIN", str(wrap))
-    reads = lambda: log.read_text().count("config brain.user") if log.exists() else 0  # noqa: E731
+    reads = lambda: sum(line.split()[2:3] == ["config"] for line in log.read_text().splitlines()) if log.exists() else 0  # noqa: E731
     name = lambda: identity.of(str(repo), "", token=False)["name"]  # noqa: E731
     assert [name(), name(), name()] == ["alice"] * 3 and reads() == 1
     sh("git", "-C", repo, "config", "brain.user", "bob")
@@ -264,12 +264,12 @@ def test_a_name_set_in_a_git_config_file_another_one_names_shows_at_once(tmp_pat
     edit(home / ".gitconfig", '[includeIf "gitdir:%s/"]\n\tpath = %s\n' % (repo, inc))
     edit(inc, "[brain]\n\tuser = dave1\n")                                    # the same size, edited
     alt = tmp_path / "alt-global"
-    edit(alt, "[brain]\n\tuser = erin\n")
-    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(alt))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(alt))                     # not there yet
     edit(alt)
+    edit(alt, "[brain]\n\tuser = erin\n")
     edit(alt, "[brain]\n\tuser = frank\n")
     assert [(f, kept) for f, kept, _ in seen] == [(f, git) for f, _, git in seen]
-    assert [kept for _, kept, _ in seen] == ["", "bob", "bob", "carol", "dave1", "dave1", "erin", "frank"]
+    assert [kept for _, kept, _ in seen] == ["", "bob", "bob", "carol", "dave1", "", "erin", "frank"]
 
 
 def test_the_name_route_takes_brainkits_names_only_runs_no_shell_and_stores_no_token(tmp_path, home, login):

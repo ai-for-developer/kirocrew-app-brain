@@ -20,7 +20,7 @@ from typing import Any
 
 from . import bk
 from .constants import GIT_BIN
-from .repo import Git
+from .repo import Git, git_dirs
 
 USER_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")   # brain-kit 48b6b97 common.USER_RE, while brain-kit is not loaded
 SET_TIMEOUT_S = 15
@@ -114,26 +114,23 @@ def set_name(top: str, name: Any) -> str:
     return n
 
 
-NAME_TTL_S = 60.0   # git config brain.user is read again at least this often (an include, the system's config)
-_names: dict[str, tuple[tuple, float, str]] = {}   # top -> (config_stamp, when read, what git said)
+NAME_TTL_S = 60.0   # git config brain.user is read again at least this often (an onbranch include, the system's config)
+_names: dict[str, tuple[tuple[str, ...], tuple, float, str]] = {}   # top -> (the files stamped, their stamp, when, name)
 
 
-def config_stamp(top: str) -> tuple:
-    """The git config files a name is set in (mtime and size; None: not there): the repo's own (a worktree's common
-    one and its config.worktree), ~/.gitconfig and git's user config, and git's environment."""
+def config_files(top: str) -> tuple[str, ...]:
+    """The git config files a name is set in, as far as they are known before git is asked: the repo's own (a
+    worktree's common one and its config.worktree), ~/.gitconfig, git's user config and $GIT_CONFIG_GLOBAL's."""
     home = os.path.expanduser("~")
-    gitdir = os.path.join(top, ".git")
-    try:
-        if os.path.isfile(gitdir):
-            with open(gitdir, encoding="utf-8") as f:
-                gitdir = os.path.join(top, f.read().strip().split("gitdir:", 1)[-1].strip())
-        with open(os.path.join(gitdir, "commondir"), encoding="utf-8") as f:
-            common = os.path.join(gitdir, f.read().strip())
-    except OSError:
-        common = gitdir
-    files = (os.path.join(common, "config"), os.path.join(gitdir, "config.worktree"), os.path.join(home, ".gitconfig"),
-             os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config"), "git", "config"))
-    out: list[Any] = [tuple(sorted((k, v) for k, v in os.environ.items() if k.startswith("GIT_CONFIG")))]
+    gitdir, common = git_dirs(top)
+    alt = os.environ.get("GIT_CONFIG_GLOBAL")
+    return (os.path.join(common, "config"), os.path.join(gitdir, "config.worktree"), os.path.join(home, ".gitconfig"),
+            os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config"), "git", "config")) + (
+            (alt,) if alt else ())
+
+
+def _stats(files: tuple[str, ...]) -> tuple:
+    out: list[Any] = []
     for p in files:
         try:
             st = os.stat(p)
@@ -143,15 +140,33 @@ def config_stamp(top: str) -> tuple:
     return tuple(out)
 
 
+def config_stamp(files: tuple[str, ...]) -> tuple:
+    """git's environment, and *files* (mtime and size; None: not there)."""
+    return (tuple(sorted((k, v) for k, v in os.environ.items() if k.startswith("GIT_CONFIG"))),) + _stats(files)
+
+
 def git_name(top: str) -> str:
-    """`git config brain.user` in *top*, read again only when config_stamp changes or after NAME_TTL_S."""
-    stamp = config_stamp(top)
+    """`git config brain.user` in *top*, read again only when a git config file it may come from changes (config_files,
+    each file git read a setting from, each file an include names), or after NAME_TTL_S."""
     kept = _names.get(top)
-    if kept is not None and kept[0] == stamp and time.monotonic() - kept[1] < NAME_TTL_S:
-        return kept[2]
-    at = time.monotonic()
-    p = Git(top).run("config", "brain.user")
-    got = p.stdout.strip() if p.returncode == 0 else ""
-    if p.returncode in (0, 1):      # 1: no name set; anything else (a timeout) is asked again next time
-        _names[top] = (stamp, at, got)
-    return got
+    if kept is not None and kept[1] == config_stamp(kept[0]) and time.monotonic() - kept[2] < NAME_TTL_S:
+        return kept[3]
+    at, files = time.monotonic(), config_files(top)
+    stamp = config_stamp(files)
+    p = Git(top).run("config", "--list", "--show-origin", "-z")
+    if p.returncode != 0:
+        return ""                       # a bad config file, a timeout: asked again next time
+    name, read = "", []
+    said = p.stdout.split("\0")
+    for origin, entry in zip(said[0::2], said[1::2]):
+        key, _, value = entry.partition("\n")
+        if key == "brain.user":
+            name = value.strip()         # the last one wins, as in `git config brain.user`
+        if origin.startswith("file:"):
+            path = os.path.join(top, origin[5:])
+            read.append(path)
+            if key == "include.path" or (key.startswith("includeif.") and key.endswith(".path")):
+                read.append(os.path.join(os.path.dirname(path), os.path.expanduser(value)))
+    more = tuple(dict.fromkeys(os.path.normpath(x) for x in read if os.path.normpath(x) not in files))
+    _names[top] = (files + more, stamp + _stats(more), at, name)
+    return name
