@@ -192,3 +192,70 @@ def test_a_folder_kirocrew_refuses_to_move_stays_where_it_is_said_in_chinese_and
     stuck, where, stuck2, after = asyncio.run(go())
     assert stuck == [{"name": "DEMO-1 · subtract", "repo": "demo", "why": "连不上 KiroCrew：看它是不是还开着，再试一次"}]
     assert where == "82ead8e50edc" and stuck2 == [] and "Brain 需求 › demo › DEMO-1 · subtract" in after
+
+
+# ---- the app: 打开会话 and 开审查会话 in the repo's folder; the older folders moved on start; what stays said in 设置 -- #
+
+def test_open_and_review_sessions_of_a_requirement_open_in_its_folder_inside_its_repo_folder(tmp_path, home):
+    from brainfix import make_service, run
+    from test_todo_answer import setup
+
+    repo, wt, line, gw = setup(tmp_path, home)
+    svc = make_service(tmp_path, [repo], gw=gw)
+
+    async def go():
+        await svc.start()
+        try:
+            return await svc.open_session("r1", "PAY-1"), await svc.open_session("r1", "PAY-1", review=True)
+        finally:
+            await svc.stop()
+
+    dev, review = run(go())
+    assert tree(gw) == ["Brain 需求", "Brain 需求 › pay", "Brain 需求 › pay › PAY-1 · refund"]
+    assert gw.slot_rows[dev["slot"]]["folder_id"] == gw.slot_rows[review["slot"]]["folder_id"] == next(
+        f["id"] for f in gw.folder_rows if f["name"] == "PAY-1 · refund")
+
+
+def test_on_start_the_older_folders_move_into_their_repo_folder_and_the_one_that_cannot_is_said_in_settings(tmp_path, home):
+    import json
+
+    from brainfix import make_service, run
+    from test_todo_answer import setup
+
+    repo, wt, line, gw = setup(tmp_path, home)
+    svc = make_service(tmp_path, [repo], gw=gw)
+    root = {"id": "82ead8e50edc", "name": "Brain 需求", "parent_id": "", "owner_app": "brain"}
+    gone_wt = home / "workplace" / "brain-app" / "gone" / "old"   # a repo no longer listed: its worktree's folder
+    gw.folder_rows += [root,
+                       {"id": "ab01", "name": "PAY-1 · refund", "parent_id": root["id"], "owner_app": "brain"},
+                       {"id": "ab02", "name": "OLD-2 · old", "parent_id": root["id"], "owner_app": "brain"},
+                       {"id": "ab03", "name": "PAY-3 · nested", "parent_id": root["id"], "owner_app": "brain"},
+                       {"id": "pp01", "name": "我的", "parent_id": "ab03"}]
+    rec = lambda fid, name: {"id": fid, "name": name, "root": root["id"], "root_name": "Brain 需求"}  # noqa: E731
+    old = {"id": "s-0001", "task": "", "parent_session_key": "brain:r9-OLD-2", "conv_root": "s-0001", "done": True,
+           "queued": False, "kind": "local", "key": "r9-OLD-2", "cwd": str(gone_wt), "title": "OLD-2 · 本地开发"}
+    (tmp_path / "data" / "sessions.json").write_text(json.dumps({"infos": [old], "folders": {
+        "brain:r1-PAY-1": rec("ab01", "PAY-1 · refund"), "brain:r9-OLD-2": rec("ab02", "OLD-2 · old"),
+        "brain:r1-PAY-3": rec("ab03", "PAY-3 · nested")}}, ensure_ascii=False), encoding="utf-8")
+
+    async def go():
+        await svc.start()
+        try:
+            for _ in range(5):
+                await asyncio.sleep(0)
+            moved = tree(gw)
+            dev = await svc.open_session("r1", "PAY-1")
+            return moved, dev, await svc.status()
+        finally:
+            await svc.stop()
+
+    moved, dev, status = run(go())
+    assert moved == ["Brain 需求", "Brain 需求 › PAY-3 · nested", "Brain 需求 › PAY-3 · nested › 我的（人）",
+                     "Brain 需求 › gone", "Brain 需求 › gone › OLD-2 · old", "Brain 需求 › pay",
+                     "Brain 需求 › pay › PAY-1 · refund"]
+    assert gw.slot_rows[dev["slot"]]["folder_id"] == "ab01"
+    rows = [r for r in status["crew"]["rows"] if "仓库文件夹" in r["text"]]
+    assert rows == [{"level": "WARN", "text": "需求文件夹「PAY-3 · nested」没能放进仓库文件夹「pay」：里面有不是这个 app 建的文件夹，"
+                                              "KiroCrew 不让 app 移它",
+                     "todo": "想放进去，就在 KiroCrew 侧栏里自己把它拖进「Brain 需求」里的「pay」；不拖也不影响用",
+                     "fix": None, "repo": None, "raw": ""}]

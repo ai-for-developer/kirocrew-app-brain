@@ -431,6 +431,12 @@ def rows(level_text: Iterable[tuple[Any, Any]], *, repo: str | None = None,
 
 # ---- the app's own rows (crewcheck) ---------------------------------------------------------------------------- #
 
+def folder_stuck(name: str, repo: str, why: str) -> dict[str, Any]:
+    """A requirement folder KiroCrew would not let the app move into its repo's folder (sessions.regroup)."""
+    return mk("WARN", "需求文件夹「%s」没能放进仓库文件夹「%s」：%s" % (name, repo, why),
+              "想放进去，就在 KiroCrew 侧栏里自己把它拖进「Brain 需求」里的「%s」；不拖也不影响用" % repo)
+
+
 def brainkit_missing() -> dict[str, Any]:
     return mk("FAIL", "brain-kit 没装载", "在「设置」里写对 brain-kit 的位置")
 
