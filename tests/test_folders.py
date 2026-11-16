@@ -216,6 +216,61 @@ def test_a_folder_kirocrew_refuses_to_move_stays_where_it_is_said_in_chinese_and
     assert where == "82ead8e50edc" and stuck2 == [] and "Brain 需求 › demo › DEMO-1 · subtract" in after
 
 
+def test_a_move_kirocrew_refuses_with_nothing_foreign_inside_says_kirocrew_refused_not_a_folder_inside(tmp_path):
+    async def go():
+        gw = FakeGateway()
+        mgr = manager(tmp_path, gw)
+        mgr._folders = {k: v for k, v in snapshot(gw).items() if k == "brain:r1-DEMO-1"}
+
+        async def refused(fid, parent_id):
+            raise GatewayError(403, "this app does not own that folder", "folder_not_owned", "/api/chat/folders")
+
+        gw.move_folder = refused
+        return await mgr.regroup(repo_of)
+
+    assert [r["text"] for r in asyncio.run(go())] == [
+        "需求文件夹「DEMO-1 · subtract」没能放进仓库文件夹「demo」：KiroCrew 没答应：等一会儿再试一次；一直这样，在 KiroCrew 里看一下它"]
+
+
+def old_layout(gw, tmp_path, root_owner="brain"):
+    """「Brain 需求」 (*root_owner* "": a person's) holding three of repo pay's requirement folders the app made before
+    repo folders, and the app's sessions.json naming them."""
+    import json
+
+    root = {"id": "R", "name": "Brain 需求", "parent_id": ""}
+    gw.folder_rows += [dict(root, owner_app=root_owner) if root_owner else root] + [
+        {"id": "F%d" % i, "name": "PAY-%d · x" % i, "parent_id": "R", "owner_app": "brain"} for i in (1, 2, 3)]
+    recs = {"brain:r1-PAY-%d" % i: {"id": "F%d" % i, "name": "PAY-%d · x" % i, "root": "R", "root_name": "Brain 需求"}
+            for i in (1, 2, 3)}
+    (tmp_path / "sessions.json").write_text(json.dumps({"infos": [], "folders": recs}), encoding="utf-8")
+    mgr = manager(tmp_path, gw)
+    mgr.load()
+    return mgr
+
+
+def test_a_root_folder_that_is_a_persons_is_one_row_saying_so_and_what_to_do_and_doing_it_works(tmp_path):
+    async def go():
+        gw = FakeGateway()
+        mgr = old_layout(gw, tmp_path, root_owner="")
+        before = tree(gw)
+        stuck = await mgr.regroup(lambda key: "pay")
+        blocked = await open_local(mgr, "r1-PAY-4", "pay", "PAY-4 · new", str(tmp_path))
+        untouched = tree(gw)
+        next(f for f in gw.folder_rows if f["id"] == "R")["name"] = "我的旧需求"     # what the row says to do
+        stuck2 = await mgr.regroup(lambda key: "pay")
+        opened = await open_local(mgr, "r1-PAY-5", "pay", "PAY-5 · new", str(tmp_path))
+        return before, stuck, blocked, untouched, stuck2, opened, tree(gw)
+
+    before, stuck, blocked, untouched, stuck2, opened, after = asyncio.run(go())
+    assert [(r["level"], r["text"], r["todo"]) for r in stuck] == [(
+        "FAIL", "侧栏里的「Brain 需求」不是这个 app 建的文件夹，KiroCrew 不让 app 在里面建文件夹，新需求的会话开不了",
+        "在 KiroCrew 侧栏里给它改个名字，app 会自己再建一个「Brain 需求」")]
+    assert blocked.error and untouched == before
+    assert stuck2 == [] and not opened.error
+    assert after == ["Brain 需求", "Brain 需求 › pay", "Brain 需求 › pay › PAY-5 · new", "我的旧需求（人）",
+                     "我的旧需求（人） › PAY-1 · x", "我的旧需求（人） › PAY-2 · x", "我的旧需求（人） › PAY-3 · x"]
+
+
 # ---- the app: 打开会话 and 开审查会话 in the repo's folder; the older folders moved on start; what stays said in 设置 -- #
 
 def test_open_and_review_sessions_of_a_requirement_open_in_its_folder_inside_its_repo_folder(tmp_path, home):
