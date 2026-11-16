@@ -3,9 +3,9 @@ reaches into the Crew process. Kept from the aidlc-team sample (its session runn
 and extended for brain-kit:
 
 - a requirement's ``brain-dev`` session on this machine sits in a folder of the requirement, in its repo's folder under
-  「Brain 需求」, with the requirement's worktree as its project directory; a team-runner ``brain-run`` session (dispatched by the bridge
-  through ``KiroCrewAdapter`` in team/crewadapter.py) sits under 「Brain 运行机」 and keeps the slot name the bridge
-  chose (the run id);
+  「Brain 需求」, with the requirement's worktree as its project directory; a team-runner ``brain-run`` session
+  (dispatched by the bridge through ``KiroCrewAdapter`` in team/crewadapter.py) sits under 「Brain 运行机」 and keeps
+  the slot name the bridge chose (the run id);
 - *strict_agent*: the session boots exactly that template of ~/.kiro/agents (brain-dev / brain-run carry Lean's hooks)
   or is not opened at all: Crew's default agent would run without the hooks;
 - *resend* / *nudge*: a bridge message is delivered once (no automatic resend), and a brain session is never told to
@@ -247,7 +247,7 @@ class SessionManager:
                  scrub: Callable[[str], str] = lambda s: s) -> None:
         self.gw, self.app, self.state_file, self.log, self.now, self.scrub = gw, app, Path(state_file), log, now, scrub
         self._infos: dict[str, SessionInfo] = {}
-        self._folders: dict[str, dict[str, Any]] = {}  # parent → {"id", "name", "root", "root_name", "repo", "repo_name"}
+        self._folders: dict[str, dict[str, Any]] = {}  # parent → {id, name, root, root_name, repo, repo_name}
         self._stats: dict[str, dict[str, Any]] = {}    # slot → what slot_stats() answers
         self._folder_lock: asyncio.Lock | None = None  # made on the loop (Python 3.9 binds a Lock at creation)
         self._tasks: set[asyncio.Task[Any]] = set()
@@ -487,7 +487,7 @@ class SessionManager:
         """Each requirement folder this app made before it had repo folders, moved into its repo's folder (*repo_of*: a
         session key's repo name, "" for none) once; one already in place, hidden, no longer right under its root (a
         person moved it) or holding a folder that is not this app's is left as it is (KiroCrew would refuse the
-        last). Rerun on every start. The ones that stay: [{name, repo, why}]. GatewayError: KiroCrew could not be read."""
+        last). Rerun on every start. The ones that stay: [{name, repo, why}]. GatewayError: KiroCrew was not read."""
         if self._folder_lock is None:
             self._folder_lock = asyncio.Lock()
         async with self._folder_lock:
@@ -823,8 +823,9 @@ class SessionManager:
         gone = 0
         for f in folders:
             fid = str(f.get("id"))
-            if (any(_inside(by_id, f, r) for r in root_ids) and fid not in keep_folders and f.get("owner_app") == self.app
-                    and not f.get("hidden") and not any(_inside(by_id, by_id[k], fid) for k in keep_folders if k in by_id)):
+            holds_kept = any(_inside(by_id, by_id[k], fid) for k in keep_folders if k in by_id)
+            if (any(_inside(by_id, f, r) for r in root_ids) and fid not in keep_folders and not holds_kept
+                    and f.get("owner_app") == self.app and not f.get("hidden")):
                 try:
                     await self.gw.hide_folder(fid)
                     gone += 1

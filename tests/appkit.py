@@ -42,9 +42,9 @@ class FakeGateway:
     async def folders(self):
         return list(self.folder_rows)
 
-    # KiroCrew's rules for an app (chat_folders_records.create_folder_record, chat_folders_routes.api_chat_folder_update):
-    # it nests, moves and hides only folders it owns, never one holding a folder of anyone else's; a person's row has
-    # no owner_app. An app's calls are not refused for a same-name sibling (they count as the browser's).
+    # KiroCrew's rules for an app (chat_folders_records.create_folder_record, chat_folders_routes'
+    # api_chat_folder_update): it nests, moves and hides only folders it owns, never one holding a folder of anyone
+    # else's; a person's row has no owner_app. An app is not refused a same-name sibling (it counts as the browser).
     def _folder(self, fid):
         return next((f for f in self.folder_rows if f["id"] == fid), None)
 

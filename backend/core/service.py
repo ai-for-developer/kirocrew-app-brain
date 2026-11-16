@@ -1038,8 +1038,8 @@ class Service:
         info = await self.sessions.open_session(
             task, parent_session_key="%s:%s" % (self.name, scope), cwd=wt, title=title,
             folder="%s · %s" % (key, slug), agent=crewcheck.crew_agent(), root_folder=LOCAL_FOLDER, project_dir=wt,
-            repo_folder=repo.name, strict_agent=True, resend_ok=True, nudge_ok=False, trust_ok=bool(trust), kind="local",
-            key=scope)
+            repo_folder=repo.name, strict_agent=True, resend_ok=True, nudge_ok=False, trust_ok=bool(trust),
+            kind="local", key=scope)
         if info.error or not info.slot:
             raise AppError(info.error or "会话没开成", "session_failed", 502)
         await asyncio.to_thread(self.store.append, scope, "app", said, store_mod.TRUSTED if trust else None)
