@@ -255,7 +255,8 @@ def view(repo: Repo, reflectable: list[dict[str, Any]]) -> dict[str, Any]:
         made, stale = kept[1], kept[2]
     else:
         made = _make_kept(repo, key)
-    return dict(made, usage=dict(made["usage"], unmerged=unmerged_usage(repo)), reflect=reflectable, stale=stale)
+    unmerged = [] if made["error"] == UNREADABLE else unmerged_usage(repo)    # unreadable: the page shows nothing else
+    return dict(made, usage=dict(made["usage"], unmerged=unmerged), reflect=reflectable, stale=stale)
 
 
 def _make_view(repo: Repo) -> tuple[dict[str, Any], bool]:
