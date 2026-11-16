@@ -431,6 +431,24 @@ def rows(level_text: Iterable[tuple[Any, Any]], *, repo: str | None = None,
 
 # ---- the app's own rows (crewcheck) ---------------------------------------------------------------------------- #
 
+FOREIGN_INSIDE = "里面有不是这个 app 建的文件夹，KiroCrew 不让 app 移它"
+
+
+def folder_stuck(name: str, into: str, why: str) -> dict[str, Any]:
+    """A requirement folder the app could not move into its repo's folder, at *into* (sessions.regroup): one holding
+    a folder not this app's waits for the person; on a KiroCrew error the app tries again by itself."""
+    todo = ("想放进去，就在 KiroCrew 侧栏里自己把它拖进「%s」；不拖也不影响用" % into if why == FOREIGN_INSIDE
+            else "app 会自己再试；不放进去也不影响用")
+    return mk("WARN", "需求文件夹「%s」没能放进「%s」：%s" % (name, into, why), todo)
+
+
+def folder_root(name: str) -> dict[str, Any]:
+    """The top-level folder *name* the app's sessions go in is a person's: KiroCrew lets an app make a folder only in
+    its own, so no new requirement's folder can be made there (sessions.regroup)."""
+    return mk("FAIL", "侧栏里的「%s」不是这个 app 建的文件夹，KiroCrew 不让 app 在里面建文件夹，新需求的会话开不了" % name,
+              "在 KiroCrew 侧栏里给它改个名字，app 会自己再建一个「%s」" % name)
+
+
 def brainkit_missing() -> dict[str, Any]:
     return mk("FAIL", "brain-kit 没装载", "在「设置」里写对 brain-kit 的位置")
 

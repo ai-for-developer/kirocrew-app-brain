@@ -2,10 +2,10 @@
 reaches into the Crew process. Kept from the aidlc-team sample (its session runner was proven live on Kiro Crew 0.11.2)
 and extended for brain-kit:
 
-- a requirement's ``brain-dev`` session on this machine sits in a folder of the requirement under 「Brain 需求」, with
-  the requirement's worktree as its project directory; a team-runner ``brain-run`` session (dispatched by the bridge
-  through ``KiroCrewAdapter`` in team/crewadapter.py) sits under 「Brain 运行机」 and keeps the slot name the bridge
-  chose (the run id);
+- a requirement's ``brain-dev`` session on this machine sits in a folder of the requirement, in its repo's folder under
+  「Brain 需求」, with the requirement's worktree as its project directory; a team-runner ``brain-run`` session
+  (dispatched by the bridge through ``KiroCrewAdapter`` in team/crewadapter.py) sits under 「Brain 运行机」 and keeps
+  the slot name the bridge chose (the run id);
 - *strict_agent*: the session boots exactly that template of ~/.kiro/agents (brain-dev / brain-run carry Lean's hooks)
   or is not opened at all: Crew's default agent would run without the hooks;
 - *resend* / *nudge*: a bridge message is delivered once (no automatic resend), and a brain session is never told to
@@ -23,6 +23,7 @@ twice in a row and the transcript has the reply. State lives in ``sessions.json`
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import re
@@ -30,11 +31,16 @@ import secrets
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, AsyncIterator, Callable
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows: the folders are guarded within this process only
+    fcntl = None  # type: ignore[assignment]
 
 from .constants import LOCAL_AGENT
 from .gateway import PAGE, GatewayError, said
-from .problems import AGENT_NEW
+from .problems import AGENT_NEW, FOREIGN_INSIDE, folder_root, folder_stuck
 
 PREFIX = "s-"
 ROOT_FOLDER = "Brain 需求"  # the default root folder (constants.LOCAL_FOLDER)
@@ -54,7 +60,7 @@ TRANSCRIPT_PAGES = 40   # pages of a transcript read at most (KiroCrew's 500 row
 _FIELDS = ("id", "task", "parent_session_key", "slot", "title", "folder", "cwd", "model", "conv_root", "send_ids",
            "requested", "started", "sent_at", "done", "queued", "queued_reason", "result", "streaming_text", "error",
            "user_stopped", "turns", "tool_count", "last_tool", "last_activity", "stalled", "credits", "calls",
-           "resends", "seen_busy", "idle", "missing", "sig", "agent", "agent_kind", "nudges", "root_folder",
+           "resends", "seen_busy", "idle", "missing", "sig", "agent", "agent_kind", "nudges", "root_folder", "repo_folder",
            "project_dir", "slot_name", "first_send_id", "strict_agent", "resend_ok", "nudge_ok", "trust_ok", "kind",
            "key", "memory_mode", "shown")
 KNOWLEDGE_TOOL = "local_knowledge_search"  # kirocrew-core's knowledge search: shown as 查知识库
@@ -189,6 +195,7 @@ class SessionInfo:
         self.agent_kind = ""   # what the session got: member, template, or "" (Crew's default agent)
         self.nudges = 0        # times a cut-short turn was continued
         self.root_folder = ROOT_FOLDER  # the sidebar folder its requirement's folder goes under
+        self.repo_folder = ""  # the folder between root_folder and the requirement's: its repo ("": none)
         self.project_dir: str | None = None  # the folder's project directory (default: the session's cwd)
         self.slot_name = ""    # an exact slot name (the bridge names runner slots after the run id)
         self.first_send_id = ""  # the first message's sendId (the bridge uses the voucher id)
@@ -321,6 +328,28 @@ def _epoch(stamp: Any) -> float:
         return 0.0
 
 
+def _inside(by_id: dict[str, dict[str, Any]], f: dict[str, Any], top: str) -> bool:
+    """*f* lies somewhere under the folder *top* (a parent chain with a loop ends the walk)."""
+    seen: set[str] = set()
+    cur = str(f.get("parent_id") or "")
+    while cur and cur not in seen:
+        if cur == top:
+            return True
+        seen.add(cur)
+        cur = str((by_id.get(cur) or {}).get("parent_id") or "")
+    return False
+
+
+def _path(folders: list[dict[str, Any]], fid: str) -> str:
+    """Where the folder *fid* is in the sidebar: its names from the top, 「A › B」."""
+    by_id = {str(f.get("id")): f for f in folders}
+    names: list[str] = []
+    while fid in by_id and len(names) < len(by_id):
+        names.insert(0, str(by_id[fid].get("name") or ""))
+        fid = str(by_id[fid].get("parent_id") or "")
+    return " › ".join(names)
+
+
 def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9-]+", "-", text.lower()).strip("-")[:40] or "run"
 
@@ -332,7 +361,7 @@ class SessionManager:
                  scrub: Callable[[str], str] = lambda s: s) -> None:
         self.gw, self.app, self.state_file, self.log, self.now, self.scrub = gw, app, Path(state_file), log, now, scrub
         self._infos: dict[str, SessionInfo] = {}
-        self._folders: dict[str, dict[str, Any]] = {}  # parent → {"id", "name", "root"}
+        self._folders: dict[str, dict[str, Any]] = {}  # parent → {id, name, root, root_name, repo, repo_name}
         self._stats: dict[str, dict[str, Any]] = {}    # slot → what slot_stats() answers
         self._tails: dict[str, dict[str, Any] | None] = {}   # slot → what it did last (tail): live only, never saved
         self._folder_lock: asyncio.Lock | None = None  # made on the loop (Python 3.9 binds a Lock at creation)
@@ -560,10 +589,26 @@ class SessionManager:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    async def _folder_for(self, info: SessionInfo) -> str:
+    @contextlib.asynccontextmanager
+    async def _folders_held(self) -> AsyncIterator[None]:
+        """One change to KiroCrew's folders at a time, in this process and across starts of this app on its data dir
+        (a file lock, polled so the loop never waits on it; it goes with the process): two starts at once make one
+        repo folder, the second finding the first's."""
         if self._folder_lock is None:
             self._folder_lock = asyncio.Lock()
         async with self._folder_lock:
+            self.state_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.state_file.with_name(".folders.lock"), "a") as fh:
+                while fcntl is not None:
+                    try:
+                        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        await asyncio.sleep(0.05)
+                yield
+
+    async def _folder_for(self, info: SessionInfo) -> str:
+        async with self._folders_held():
             have = self._folders.get(info.parent_session_key)
             if have and have.get("id"):
                 return str(have["id"])
@@ -573,17 +618,92 @@ class SessionManager:
                          and f.get("owner_app") in (self.app, None, "")), None)
             if root is None:
                 root = await self.gw.create_folder(root_name)
+            at = str(root.get("id") or "")
+            repo = await self._repo_folder(folders, root_name, at, info.repo_folder) if info.repo_folder else ""
             if info.project_dir is not None:
                 project_dir = info.project_dir or None
             else:  # the sample's layout: <run>/wt/<role> → the run's folder
                 run_dir = str(Path(info.cwd).parents[1]) if info.cwd and len(Path(info.cwd).parents) > 1 else None
                 project_dir = run_dir
-            sub = await self.gw.create_folder(info.folder[:60], parent_id=str(root.get("id") or ""),
+            sub = await self.gw.create_folder(info.folder[:60], parent_id=repo or at,
                                               project_dir=project_dir if project_dir and Path(project_dir).is_dir() else None)
-            self._folders[info.parent_session_key] = {"id": str(sub.get("id") or ""), "name": info.folder[:60],
-                                                      "root": str(root.get("id") or ""), "root_name": root_name}
+            rec = {"id": str(sub.get("id") or ""), "name": info.folder[:60], "root": at, "root_name": root_name}
+            if repo:
+                rec.update(repo=repo, repo_name=info.repo_folder[:60])
+            self._folders[info.parent_session_key] = rec
             self._dirty = True
-            return self._folders[info.parent_session_key]["id"]
+            return rec["id"]
+
+    def _repo_known(self, folders: list[dict[str, Any]], root_name: str, root_id: str,
+                    name: str) -> dict[str, Any] | None:
+        """This app's folder of repo *name*: the one its records name while it is there (a person may have renamed or
+        moved it), else its folder of that name right under *root_id* (a person's of that name is not it: KiroCrew
+        lets an app nest only in its own); None for neither."""
+        mine = {str(f.get("id")): f for f in folders if f.get("owner_app") == self.app}
+        got = next((mine[r["repo"]] for r in self._folders.values() if r.get("repo_name") == name
+                    and r.get("root_name") == root_name and r.get("repo") in mine), None)
+        return got or next((f for f in mine.values() if str(f.get("parent_id") or "") == root_id
+                            and f.get("name") == name), None)
+
+    async def _repo_folder(self, folders: list[dict[str, Any]], root_name: str, root_id: str, name: str) -> str:
+        """The id of this app's folder of repo *name* (_repo_known), made right under *root_id* when there is none.
+        *folders* gets the new one."""
+        name = name[:60]
+        got = self._repo_known(folders, root_name, root_id, name)
+        if got is None:
+            got = await self.gw.create_folder(name, parent_id=root_id)
+            folders.append(got)
+        return str(got.get("id") or "")
+
+    async def regroup(self, repo_of: Callable[[str], str]) -> list[dict[str, Any]]:
+        """Each requirement folder this app made before it had repo folders, or whose repo folder a person deleted
+        (KiroCrew put it at the top level), moved into its repo's folder (*repo_of*: a session key's repo name, "" for
+        none); one already in place (a person dragged it in: it counts), hidden, somewhere a person moved it, in a root
+        that is a person's or holding a folder that is not this app's is left as it is (KiroCrew would refuse the last
+        two; the repo folder is made for it all the same). Rerun on every start and while some stay. The ones that
+        stay: 设置's rows saying so, one for a person's root. GatewayError: KiroCrew was not read."""
+        async with self._folders_held():
+            todo = [(rec, repo_of(k)[:60]) for k, rec in self._folders.items() if rec.get("root")]
+            todo = [(rec, name) for rec, name in todo if name]
+            if not todo:
+                return []
+            folders = await self.gw.folders()
+            by_id = {str(f.get("id")): f for f in folders}
+            stuck: list[dict[str, Any]] = []
+            for rec, name in todo:
+                f = by_id.get(str(rec.get("id")))
+                if f is None or f.get("owner_app") != self.app or f.get("hidden") or rec.get("repo") in by_id:
+                    continue
+                root, root_name = by_id.get(rec["root"]) or {}, rec.get("root_name") or ROOT_FOLDER
+                parent, known = str(f.get("parent_id") or ""), self._repo_known(folders, root_name, rec["root"], name)
+                if known is not None and parent == str(known.get("id")):
+                    rec.update(repo=parent, repo_name=name)
+                    self._dirty = True
+                    continue
+                stranded = bool(rec.get("repo")) and not parent     # its repo folder deleted: KiroCrew put it on top
+                if parent != rec["root"] and not stranded:
+                    continue
+                if root.get("owner_app") != self.app:   # a person's: KiroCrew lets the app make nothing in it
+                    in_use = not root.get("parent_id") and root.get("name") == root_name   # new sessions go in it
+                    if in_use and folder_root(root_name) not in stuck:
+                        stuck.append(folder_root(root_name))
+                    continue
+                into = _path(folders, rec["root"]) + " › " + name
+                try:
+                    repo = await self._repo_folder(folders, root_name, rec["root"], name)
+                    into = _path(folders, repo)
+                    if any(g.get("owner_app") != self.app and _inside(by_id, g, rec["id"]) for g in folders):
+                        why = FOREIGN_INSIDE
+                    else:
+                        await self.gw.move_folder(rec["id"], repo)
+                        rec.update(repo=repo, repo_name=name)
+                        self._dirty = True
+                        continue
+                except GatewayError as exc:
+                    why = said(exc)
+                    self.log.info(self.app + ": moving folder %s into %s: %s", rec["id"], name, exc)
+                stuck.append(folder_stuck(str(f.get("name") or rec.get("name") or ""), into, why))
+            return stuck
 
     async def _open(self, info: SessionInfo) -> None:
         try:
@@ -873,7 +993,8 @@ class SessionManager:
 
     async def cleanup(self, keep_parents: set[str]) -> dict[str, int]:
         """Delete every session this app opened, except those of *keep_parents*, and hide the folders they leave empty
-        under this app's root folders: Kiro Crew lets only a person delete a folder."""
+        under this app's root folders, at any depth (a repo folder holding a kept one stays): Kiro Crew lets only a
+        person delete a folder."""
         keep_slots = {i.slot for i in self._infos.values() if i.parent_session_key in keep_parents and i.slot}
         keep_folders = {str(v.get("id")) for k, v in self._folders.items() if k in keep_parents}
         roots = {v.get("root_name") or ROOT_FOLDER for v in self._folders.values()} | {ROOT_FOLDER}
@@ -886,12 +1007,14 @@ class SessionManager:
             except Exception as exc:  # noqa: BLE001
                 self.log.info(self.app + ": deleting session %s: %s", r.get("key"), exc)
         folders = await self.gw.folders()
+        by_id = {str(f.get("id")): f for f in folders}
         root_ids = {str(f.get("id")) for f in folders if f.get("name") in roots and not f.get("parent_id")}
         gone = 0
         for f in folders:
             fid = str(f.get("id"))
-            if (str(f.get("parent_id") or "") in root_ids and fid not in keep_folders and f.get("owner_app") == self.app
-                    and not f.get("hidden")):
+            holds_kept = any(_inside(by_id, by_id[k], fid) for k in keep_folders if k in by_id)
+            if (any(_inside(by_id, f, r) for r in root_ids) and fid not in keep_folders and not holds_kept
+                    and f.get("owner_app") == self.app and not f.get("hidden")):
                 try:
                     await self.gw.hide_folder(fid)
                     gone += 1
