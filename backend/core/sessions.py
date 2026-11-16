@@ -457,7 +457,7 @@ class SessionManager:
             if root is None:
                 root = await self.gw.create_folder(root_name)
             at = str(root.get("id") or "")
-            repo = await self._repo_folder(folders, at, info.repo_folder) if info.repo_folder else ""
+            repo = await self._repo_folder(folders, root_name, at, info.repo_folder) if info.repo_folder else ""
             if info.project_dir is not None:
                 project_dir = info.project_dir or None
             else:  # the sample's layout: <run>/wt/<role> → the run's folder
@@ -472,12 +472,21 @@ class SessionManager:
             self._dirty = True
             return rec["id"]
 
-    async def _repo_folder(self, folders: list[dict[str, Any]], root_id: str, name: str) -> str:
-        """This app's folder *name* right under *root_id*, made when there is none (a person's of that name is not
-        it: KiroCrew lets an app nest only in its own). *folders* gets the new one."""
+    def _repo_known(self, folders: list[dict[str, Any]], root_name: str, root_id: str, name: str) -> dict | None:
+        """This app's folder of repo *name*: the one its records name while it is there (a person may have renamed or
+        moved it), else its folder of that name right under *root_id* (a person's of that name is not it: KiroCrew
+        lets an app nest only in its own); None for neither."""
+        mine = {str(f.get("id")): f for f in folders if f.get("owner_app") == self.app}
+        got = next((mine[r["repo"]] for r in self._folders.values() if r.get("repo_name") == name
+                    and r.get("root_name") == root_name and r.get("repo") in mine), None)
+        return got or next((f for f in mine.values() if str(f.get("parent_id") or "") == root_id
+                            and f.get("name") == name), None)
+
+    async def _repo_folder(self, folders: list[dict[str, Any]], root_name: str, root_id: str, name: str) -> str:
+        """The id of this app's folder of repo *name* (_repo_known), made right under *root_id* when there is none.
+        *folders* gets the new one."""
         name = name[:60]
-        got = next((f for f in folders if str(f.get("parent_id") or "") == root_id and f.get("name") == name
-                    and f.get("owner_app") == self.app), None)
+        got = self._repo_known(folders, root_name, root_id, name)
         if got is None:
             got = await self.gw.create_folder(name, parent_id=root_id)
             folders.append(got)
@@ -507,7 +516,7 @@ class SessionManager:
                                             for g in folders) else ""
                 if not why:
                     try:
-                        repo = await self._repo_folder(folders, rec["root"], name)
+                        repo = await self._repo_folder(folders, rec.get("root_name") or ROOT_FOLDER, rec["root"], name)
                         await self.gw.move_folder(rec["id"], repo)
                         rec.update(repo=repo, repo_name=name)
                         self._dirty = True
