@@ -138,6 +138,47 @@ def test_a_session_longer_than_a_page_counts_every_turn_s_credits(tmp_path):
     asyncio.run(go())
 
 
+def test_a_long_session_s_stats_read_only_what_came_after_the_last_read(tmp_path):
+    """Every STATS_EVERY polls a tracked slot's credits and turns are read: once its transcript was read whole, the
+    next read is its newest page, and the totals stay the whole transcript's. One rewound (shorter, or other rows
+    where the last read stopped) is read whole again."""
+    async def go():
+        gw = FakeGateway()
+        mgr, _ = manager(tmp_path, gw)
+        info = await opened(mgr, gw)
+        gw.finish(info.slot)
+        gw.msgs[info.slot] += long_session(20, 85)
+        pages = lambda: sum(1 for c in gw.calls if c[:2] == ("page", info.slot))
+
+        def whole_says(busy=False):
+            return dict(sessions.spend(gw.msgs[info.slot], busy), whole=True)
+
+        def said(st):
+            return {k: st[k] for k in ("credits", "turns", "subagents", "unreported", "whole")}
+
+        st = await stats_of(mgr, gw, info.slot)
+        assert info.done and said(st) == whole_says() and st["credits"] == 30.0
+        gw.msgs[info.slot] += long_session(2, 30)
+        n = pages()
+        st = await stats_of(mgr, gw, info.slot)
+        assert pages() - n == 1 and said(st) == whole_says() and st["credits"] == 33.0 and st["turns"] == 23
+        cut_short = st["unreported"]
+        gw.msgs[info.slot].append({"role": "user", "content": "再来", "meta": {"human": True}})
+        gw.msgs[info.slot] += [tool(i) for i in range(3)]
+        gw.slot_rows[info.slot]["running"] = True
+        st = await stats_of(mgr, gw, info.slot)
+        assert said(st) == whole_says(busy=True) and st["unreported"] == cut_short, "the turn at work is not cut short"
+        gw.slot_rows[info.slot]["running"] = False
+        st = await stats_of(mgr, gw, info.slot)
+        assert said(st) == whole_says() and st["unreported"] == cut_short + 1
+        del gw.msgs[info.slot][600:]
+        gw.msgs[info.slot] += long_session(1, 4)
+        st = await stats_of(mgr, gw, info.slot)
+        assert said(st) == whole_says() and st["credits"] == 1.5 * 6 + 1.5     # 6 turns left of the 20, and the new one
+
+    asyncio.run(go())
+
+
 def test_a_session_too_long_to_read_whole_says_so(tmp_path, monkeypatch):
     monkeypatch.setattr(sessions, "TRANSCRIPT_PAGES", 2)
 

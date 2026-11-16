@@ -29,6 +29,7 @@ import re
 import secrets
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -49,8 +50,10 @@ NUDGES = 4              # a turn cut short (a transient model error, or stuck) i
 TRANSIENT = re.compile(r"transient|5\d\d|runtime failed|timed? ?out|overloaded|rate.?limit|throttl|temporarily|unavailable",
                        re.I)
 HISTORY = 400
-STATS_EVERY = 5         # a tracked slot's whole transcript (credits, turns) is read every this many polls
+STATS_EVERY = 5         # a tracked slot's credits and turns are read every this many polls (its new rows: Tally)
 TRANSCRIPT_PAGES = 40   # pages of a transcript read at most (KiroCrew's 500 rows each): a turn, a slot's stats, 产出
+SETTLE_BACK = 100       # rows this far back from a transcript's newest are final: KiroCrew changes only its newest ones
+                        # (the reply it streams, the credits it adds at the turn's end); a later read starts there
 _FIELDS = ("id", "task", "parent_session_key", "slot", "title", "folder", "cwd", "model", "conv_root", "send_ids",
            "requested", "started", "sent_at", "done", "queued", "queued_reason", "result", "streaming_text", "error",
            "user_stopped", "turns", "tool_count", "last_tool", "last_activity", "stalled", "credits", "calls",
@@ -275,24 +278,95 @@ def _credits(m: dict[str, Any]) -> float | None:
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
 
+class Spent:
+    """What a transcript says it cost (spend), added up a row at a time, oldest first: a transcript read in parts adds
+    up to what it says read whole."""
+
+    def __init__(self) -> None:
+        self.credits, self.reported, self.turns, self.subagents, self.unpaid = 0.0, 0, 0, 0, 0
+        self.work = self.paid = False      # the turn the rows so far end in: the agent worked in it, it reported credits
+
+    def add(self, rows: list[dict[str, Any]]) -> "Spent":
+        for m in rows:
+            role, c = m.get("role"), _credits(m)
+            if role == "user":
+                self.unpaid += self.work and not self.paid
+                self.turns += 1
+                self.work = self.paid = False
+            elif role in ("assistant", "tool"):
+                self.work = True
+            if c is not None:
+                self.credits += c
+                self.reported += 1
+                self.paid = self.paid or role != "user"
+            if role == "tool" and str((m.get("meta") if isinstance(m.get("meta"), dict) else {}).get("tool_name")
+                                      or "") in SPAWN_TOOLS:
+                self.subagents += 1
+        return self
+
+    def copy(self) -> "Spent":
+        out = Spent()
+        out.__dict__.update(self.__dict__)
+        return out
+
+    def result(self, busy: bool) -> dict[str, Any]:
+        return {"credits": round(self.credits, 3) if self.reported else None, "turns": self.turns,
+                "subagents": self.subagents, "unreported": self.unpaid + (self.work and not self.paid and not busy)}
+
+
 def spend(rows: list[dict[str, Any]], busy: bool) -> dict[str, Any]:
     """What a transcript (oldest first) says it cost: *credits*, its replies' added up (None: none reported); *turns*
     (turn_count); *subagents*, the calls that started one (SPAWN_TOOLS: a subagent's credits are in no transcript this
     app reads); *unreported*, the turns the agent worked in that reported no credits (most often one cut short), the
     last one left out while the slot is *busy*: it is still at work."""
-    vals = [c for c in map(_credits, rows) if c is not None]
-    cuts: list[list[dict[str, Any]]] = [[]]
-    for m in rows:
-        if m.get("role") == "user":
-            cuts.append([])
-        else:
-            cuts[-1].append(m)
-    unpaid = [c for c in cuts if any(m.get("role") in ("assistant", "tool") for m in c)
-              and all(_credits(m) is None for m in c) and not (busy and c is cuts[-1])]
-    spawns = sum(1 for m in rows if m.get("role") == "tool"
-                 and str((m.get("meta") if isinstance(m.get("meta"), dict) else {}).get("tool_name") or "") in SPAWN_TOOLS)
-    return {"credits": round(sum(vals), 3) if vals else None, "turns": turn_count(rows), "subagents": spawns,
-            "unreported": len(unpaid)}
+    return Spent().add(rows).result(busy)
+
+
+def _ident(m: dict[str, Any]) -> tuple:
+    """What tells a transcript row from another one at the same index (the transcript rewound, or the row edited)."""
+    meta = m.get("meta") if isinstance(m.get("meta"), dict) else {}
+    return m.get("role"), m.get("ts"), meta.get("mid"), str(m.get("content") or "")
+
+
+@dataclass(frozen=True)
+class Mark:
+    """Row *at* of a transcript as it was read: what is kept of the rows before it starts at row *start* (0: the
+    transcript's first), and the next read starts at it."""
+    at: int
+    ident: tuple
+    start: int
+
+
+def _newest(at: float | None, rows: list[dict[str, Any]]) -> float | None:
+    got = [x for x in [at] + [_epoch(m.get("ts")) for m in rows if m.get("ts")] if x]
+    return max(got) if got else None
+
+
+@dataclass
+class Tally:
+    """A slot's transcript before *mark*, added up for slot_stats: its spend, its last call and reply (tail reads
+    them) and its newest time."""
+    mark: Mark
+    spent: Spent
+    seen: list[dict[str, Any]]
+    last_at: float | None
+
+    @staticmethod
+    def empty(start: int) -> "Tally":
+        """Nothing kept: a read that starts at row *start*."""
+        return Tally(Mark(start, (), start), Spent(), [], None)
+
+    def settled(self, rows: list[dict[str, Any]], first: int) -> "Tally":
+        """This tally with *rows* (the transcript from row *first* on) added to it, all but their newest SETTLE_BACK."""
+        cut = len(rows) - SETTLE_BACK
+        if cut <= 0:
+            return self
+        seen = self.seen + rows[:cut]
+        last = [next((m for m in reversed(seen) if m.get("role") == "tool"), None),
+                next((m for m in reversed(seen) if m.get("role") == "assistant" and str(m.get("content") or "").strip()),
+                     None)]
+        return Tally(Mark(first + cut, _ident(rows[cut]), self.mark.start), self.spent.copy().add(rows[:cut]),
+                     [m for m in last if m is not None], _newest(self.last_at, rows[:cut]))
 
 
 def requirement_credits(rows: list[dict[str, Any]], elsewhere: str | None = None) -> dict[str, Any]:
@@ -335,6 +409,7 @@ class SessionManager:
         self._folders: dict[str, dict[str, Any]] = {}  # parent → {"id", "name", "root"}
         self._stats: dict[str, dict[str, Any]] = {}    # slot → what slot_stats() answers
         self._tails: dict[str, dict[str, Any] | None] = {}   # slot → what it did last (tail): live only, never saved
+        self._tally: dict[str, Tally] = {}             # slot → its transcript's final rows, added up: live only
         self._folder_lock: asyncio.Lock | None = None  # made on the loop (Python 3.9 binds a Lock at creation)
         self._tasks: set[asyncio.Task[Any]] = set()
         self._dirty = False
@@ -535,19 +610,42 @@ class SessionManager:
         whole (read to its first row: past TRANSCRIPT_PAGES pages its oldest rows are left out). *until*: stop after
         the first page with a row it passes (the rows before that page are not read: not whole). A row added while it
         is read is after the first page's end, so nothing is read twice or skipped."""
+        rows, start = await self._pages(slot, until=until)
+        return rows, start == 0
+
+    async def _pages(self, slot: str, until: Callable[[dict[str, Any]], bool] | None = None, since: int | None = None
+                     ) -> tuple[list[dict[str, Any]], int]:
+        """transcript()'s read, and the index of its first row (0: the transcript's first). *since*: stop after the
+        page that holds row *since*."""
         pages: list[list[dict[str, Any]]] = []
         before: int | None = None
+        start = 0
         for _ in range(TRANSCRIPT_PAGES):
             page, nxt = await self.gw.page(slot, before)
             pages.append(page)
             if nxt is None:
-                return [m for p in reversed(pages) for m in p], True
+                start = 0
+                break
+            start = nxt
+            if since is not None and nxt <= since:
+                break
             if until is not None and any(until(m) for m in page):
                 break
             if before is not None and nxt >= before:   # a cursor that does not move back: stop rather than loop
                 break
             before = nxt
-        return [m for p in reversed(pages) for m in p], False
+        return [m for p in reversed(pages) for m in p], start
+
+    async def _after(self, slot: str, mark: Mark | None) -> tuple[list[dict[str, Any]], int, Mark | None]:
+        """The rows of *slot*'s transcript from *mark* on, and the index of the first. With no mark, or one that no
+        longer holds (the row there is another one), as far back as transcript() reads, and no mark."""
+        if mark is not None:
+            rows, start = await self._pages(slot, since=mark.at)
+            i = mark.at - start
+            if 0 <= i < len(rows) and _ident(rows[i]) == mark.ident:
+                return rows[i:], mark.at, mark
+        rows, start = await self._pages(slot)
+        return rows, start, None
 
     def sent(self, slot: str) -> dict[str, dict[str, str] | None]:
         """What this app showed of each message it sent into *slot*, by sendId (SessionInfo.shown; None: nothing)."""
@@ -708,17 +806,22 @@ class SessionManager:
         st["misses"] = 0
         st["busy"] = bool(row.get("running") or row.get("pending_approval") or int(row.get("queue_depth") or 0))
         st["awaiting"] = bool(row.get("pending_approval"))
+        kept = self._tally.get(slot)
         try:
-            msgs, whole = await self.transcript(slot)
+            msgs, first, mark = await self._after(slot, kept.mark if kept else None)
         except Exception as exc:  # noqa: BLE001
             st["error"] = f"{exc}"[:200]
             self._dirty = True
             return
-        got = spend(msgs, st["busy"])
-        stamps = [_epoch(m.get("ts")) for m in msgs if m.get("ts")]
-        st.update(got, credits=got["credits"] if got["credits"] is not None else st.get("credits"), whole=whole,
-                  last_activity=max(stamps) if stamps else st.get("last_activity"), error=None)
-        self._tails[slot] = tail(msgs, self.scrub, (self.by_slot(slot) or SessionInfo()).cwd)
+        kept = kept if mark is not None else Tally.empty(first)
+        got = kept.spent.copy().add(msgs).result(st["busy"])
+        st.update(got, credits=got["credits"] if got["credits"] is not None else st.get("credits"),
+                  whole=kept.mark.start == 0, last_activity=_newest(kept.last_at, msgs) or st.get("last_activity"),
+                  error=None)
+        self._tails[slot] = tail(kept.seen + msgs, self.scrub, (self.by_slot(slot) or SessionInfo()).cwd)
+        later = kept.settled(msgs, first)
+        if later is not kept:
+            self._tally[slot] = later
         self._dirty = True
 
     async def _update(self, info: SessionInfo, row: dict[str, Any] | None) -> None:
