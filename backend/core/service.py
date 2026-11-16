@@ -29,7 +29,7 @@ from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_FOLDER, REPO_ID_RE, TIC
 from .gateway import Gateway, GatewayError
 from .gateway import said as gateway_said
 from .httpkit import AppError
-from .repo import Git, Repo, Source, git_stamp, read_claim, read_facts
+from .repo import Git, Repo, Source, config_stamp, files_stamp, git_stamp, read_claim, read_facts
 from .repoids import RepoIds, from_records
 from .sessions import SessionManager, requirement_credits
 from . import store as store_mod
@@ -42,7 +42,6 @@ EVAL_TTL_S = 120.0
 REVIEW_TITLE = " · 审查"     # a review session's title ends so (开审查会话): it is never the live dev session
 MR_EVERY_S = 30.0
 CREW_EVERY_S = 300.0
-TRACE_TTL_S = 15.0
 FOLD_TTL_S = 10.0     # the 产出 drawer reads the board's last fold; the board polls every 2 s while it is open
 RUNNER_ELSEWHERE = "交接以后，运行机上的会话这台机器读不到，没算进来"
 LOCAL_ELSEWHERE = "交接以前，开发者机器上的会话这台机器读不到，没算进来"
@@ -149,7 +148,8 @@ class Service:
         self._mr_seen: set[tuple] = set()      # (project, branch, hand-over commit) whose MR was read at first sight
         self._eval: dict[str, tuple] = {}
         self._eval_running: set[str] = set()
-        self._trace: dict[tuple, tuple] = {}
+        self._trace: dict[str, tuple] = {}      # scope -> (what it was made from, detail.timeline)
+        self._intake: dict[str, tuple] = {}     # repo -> (config_stamp, its git config brain.intake)
         self.desc = mrdesc_view.DescCache()     # each requirement's 变更说明, by the commits it is made from
         self._subj: dict[tuple, tuple] = {}     # the board's commit subjects and changed files, by the commits asked for
         self._units: dict[tuple, list] = {}     # the units unit-of-work.md plans, by the commit it is read at
@@ -811,7 +811,11 @@ class Service:
         return f
 
     def _vouchers_dir(self, repo: Repo) -> str | None:
-        s = os.environ.get("BRAIN_INTAKE_DIR") or repo.git.out("config", "brain.intake") or "~/.brain/intake"
+        stamp = config_stamp(repo.path)
+        got = self._intake.get(repo.path)
+        if got is None or got[0] != stamp:
+            got = self._intake[repo.path] = (stamp, repo.git.out("config", "brain.intake"))
+        s = os.environ.get("BRAIN_INTAKE_DIR") or got[1] or "~/.brain/intake"
         d = os.path.join(os.path.abspath(os.path.expanduser(s)), "vouchers")
         return d if os.path.isdir(d) else None
 
@@ -880,21 +884,35 @@ class Service:
         return self.desc.get_or_make(*job)
 
     def _timeline(self, repo: Repo, f: dict[str, Any], snap: dict[str, Any], scope: str) -> dict[str, Any]:
-        sig = (scope, f.get("tip"), f.get("worktree"), len(f.get("events") or []), f.get("park_sha"))
-        got = self._trace.get(sig)
-        if got and time.monotonic() - got[0] < TRACE_TTL_S:
+        """The requirement's trace, made again only when something it is made from changed (_trace_stamp)."""
+        behind = f.get("where") == "worktree" and f.get("ref")      # origin's run branch is ahead of the worktree
+        src_repo, ref = (f["worktree"], None) if f.get("worktree") and not behind else (repo.path, f.get("ref"))
+        c = self._local_credits(snap, f, scope)[1]["total"]
+        vouchers = self._vouchers_dir(repo)
+        sig = (f.get("tip"), f.get("worktree"), len(f.get("events") or []), f.get("park_sha"), bool(f.get("run")),
+               src_repo, ref, c, vouchers, self._trace_stamp(repo.cfg, src_repo, ref, f["key"], vouchers))
+        got = self._trace.get(scope)
+        if got is not None and got[0] == sig:
             tl = dict(got[1])
         else:
-            behind = f.get("where") == "worktree" and f.get("ref")      # origin's run branch is ahead of the worktree
-            src_repo, ref = (f["worktree"], None) if f.get("worktree") and not behind else (repo.path, f.get("ref"))
-            c = self._local_credits(snap, f, scope)[1]["total"]
             tl = detail.timeline(src_repo, repo.cfg, f["key"], ref=ref, events=f.get("events") or [],
                                  credits={"runs": {f["key"]: {"credits": c}}} if c is not None else None,
-                                 vouchers_dir=self._vouchers_dir(repo), has_run=bool(f.get("run")))
-            self._trace = {k: v for k, v in self._trace.items() if time.monotonic() - v[0] < TRACE_TTL_S}
-            self._trace[sig] = (time.monotonic(), dict(tl))
+                                 vouchers_dir=vouchers, has_run=bool(f.get("run")))
+            self._trace[scope] = (sig, dict(tl))
         tl["items"] = sorted(tl["items"] + self.store.events(scope), key=lambda x: (x["at"] or "", x["kind"]))
         return tl
+
+    def _trace_stamp(self, cfg: dict[str, Any], src: str, ref: str | None, key: str, vouchers: str | None) -> tuple:
+        """What brain-kit's trace reads besides commits, which never change: the branches, the run's records when they
+        are read in the worktree (trace and usage read runs_dir, aidlc-docs and brain_dir there), the key's vouchers,
+        and the hour, since it judges the 14 days after a merge at the time it is made."""
+        files = files_stamp(src, [cfg["runs_dir"], lean_view.DOCS, cfg["brain_dir"]]) if ref is None else ()
+        try:
+            runs = [d for d in sorted(os.listdir(vouchers)) if d.startswith("RUN-%s-" % key)] if vouchers else []
+        except OSError:
+            runs = []
+        return (git_stamp(src, ("refs/heads/", "refs/remotes/origin/")), files,
+                files_stamp(vouchers, runs) if vouchers else (), int(self.now() // 3600))
 
     def _team_detail(self, key: str, snap: dict[str, Any], parts: dict[str, Any] | None = None) -> dict[str, Any]:
         hit = next(((r, f, d) for r, f, d in self._team_rows(snap) if r["key"] == key), None)

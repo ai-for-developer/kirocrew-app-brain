@@ -146,6 +146,29 @@ def git_stamp(top: str, refs: tuple[str, ...]) -> tuple:
     return tuple(out)
 
 
+def files_stamp(top: str, rels: list[str]) -> tuple:
+    """Every file under *rels* (folders or files) in the folder *top*: its path, mtime and size."""
+    out = []
+    for rel in rels:
+        p = os.path.join(top, rel)
+        walk = os.walk(p) if os.path.isdir(p) else [(os.path.dirname(p), [], [os.path.basename(p)])]
+        for d, dirs, names in walk:
+            dirs.sort()
+            out += [(os.path.relpath(os.path.join(d, n), top), _stat(os.path.join(d, n))) for n in sorted(names)]
+    return tuple(out)
+
+
+def config_stamp(top: str) -> tuple:
+    """What `git config` in *top* reads: the repo's config and config.worktree, ~/.gitconfig, git's user config and
+    git's GIT_CONFIG* environment."""
+    gitdir, common = git_dirs(top)
+    home = os.path.expanduser("~")
+    files = (os.path.join(common, "config"), os.path.join(gitdir, "config.worktree"), os.path.join(home, ".gitconfig"),
+             os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config"), "git", "config"))
+    return (tuple(sorted((k, v) for k, v in os.environ.items() if k.startswith("GIT_CONFIG"))),) + \
+        tuple(_stat(p) for p in files)
+
+
 class Source:
     """Files of one place: a worktree's files, or a git ref. Both: the ref's files, but *mine* (the ones the person
     changed in the worktree and has not committed) from the worktree."""
