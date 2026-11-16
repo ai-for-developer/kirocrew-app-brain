@@ -28,18 +28,22 @@ TIMED_OUT = "选文件的窗口开得太久没选，已经关了：要选的话�
 FAILED = "选文件的窗口没打开（%s）：把路径粘贴到下面的框里，一行一个"
 
 _POSIX_LINES = 'set out to ""\nrepeat with f in picked\n  set out to out & POSIX path of f & linefeed\nend repeat\nreturn out'
-MAC_SCRIPTS = {
-    "file": 'activate\nset picked to choose file with prompt "选需求文档（按住 ⌘ 可以多选）" with multiple selections allowed\n'
-            + _POSIX_LINES,
-    "folder": 'activate\nset picked to choose folder with prompt "选需求文档所在的文件夹（按住 ⌘ 可以多选）" '
-              'with multiple selections allowed\n' + _POSIX_LINES,
+_MAC_CHOOSE = {
+    "file": 'set picked to choose file with prompt "选需求文档（按住 ⌘ 可以多选）" with multiple selections allowed\n',
+    "folder": 'set picked to choose folder with prompt "选需求文档所在的文件夹（按住 ⌘ 可以多选）" with multiple selections allowed\n',
 }
+# osascript's own `activate` makes it a GUI app on every click (about 2.5 s on the user's Mac); System Events, once
+# running, comes to the front in about 0.6 s. Without permission to drive System Events, the plain dialog is used.
+MAC_SCRIPTS = {k: 'tell application "System Events"\nactivate\n' + v + 'end tell\n' + _POSIX_LINES for k, v in _MAC_CHOOSE.items()}
+MAC_PLAIN = {k: 'activate\n' + v + _POSIX_LINES for k, v in _MAC_CHOOSE.items()}
+_MAC_NO_HOST = ("(-1743)", "(-600)", "(-10810)")   # not allowed to drive System Events; it is not running; cannot launch
 LINUX_TITLES = {"file": "选需求文档（可以多选）", "folder": "选需求文档所在的文件夹"}
 
 
 class Picker(NamedTuple):
     argv: list[str]
     cancelled: Callable[[int, str], bool]     # (exit code, stderr): closed without a choice
+    plain: list[str] | None = None            # run instead when argv's host refused (_MAC_NO_HOST)
 
 
 def _exit_1(code: int, _err: str) -> bool:
@@ -55,7 +59,7 @@ def picker_for(kind: str, platform: str, env: Mapping[str, str], which: Callable
     if own:
         return Picker([own, kind], _exit_1)
     if platform == "darwin":
-        return Picker(["/usr/bin/osascript", "-e", MAC_SCRIPTS[kind]], _mac_cancel)
+        return Picker(["/usr/bin/osascript", "-e", MAC_SCRIPTS[kind]], _mac_cancel, ["/usr/bin/osascript", "-e", MAC_PLAIN[kind]])
     if not platform.startswith("linux") or not (env.get("DISPLAY") or env.get("WAYLAND_DISPLAY")):
         return None
     folder = kind == "folder"
@@ -86,6 +90,9 @@ def pick(kind: Any, *, run: Callable[..., Any] = subprocess.run, platform: str |
     try:
         r = run(p.argv, stdin=subprocess.DEVNULL, capture_output=True, encoding="utf-8", errors="replace",
                 timeout=TIMEOUT_S)
+        if r.returncode != 0 and p.plain and any(code in (r.stderr or "") for code in _MAC_NO_HOST):
+            r = run(p.plain, stdin=subprocess.DEVNULL, capture_output=True, encoding="utf-8", errors="replace",
+                    timeout=TIMEOUT_S)
     except subprocess.TimeoutExpired:      # subprocess.run has killed it: the dialog is gone
         raise AppError(TIMED_OUT, "picker_timeout", 408)
     except OSError as exc:
