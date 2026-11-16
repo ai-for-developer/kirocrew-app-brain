@@ -107,6 +107,26 @@ def test_a_requirement_session_opens_in_its_repo_folder_and_its_later_sessions_o
         next(f["id"] for f in gw.folder_rows if f["name"] == "PAY-1 · refund")}
 
 
+def test_a_repo_folder_a_person_renamed_or_moved_still_gets_its_repos_new_requirements_after_a_restart(tmp_path):
+    async def go(d, change):
+        d.mkdir()
+        gw = FakeGateway()
+        mgr = manager(d, gw)
+        await open_local(mgr, "r1-PAY-1", "pay", "PAY-1 · refund", str(d))
+        change(next(f for f in gw.folder_rows if f["name"] == "pay"))
+        await mgr.save()
+        again = manager(d, gw)
+        again.load()
+        await open_local(again, "r1-PAY-2", "pay", "PAY-2 · invoice", str(d))
+        return tree(gw)
+
+    renamed = asyncio.run(go(tmp_path / "renamed", lambda f: f.update(name="支付")))
+    moved = asyncio.run(go(tmp_path / "moved", lambda f: f.update(parent_id="")))
+    assert renamed == ["Brain 需求", "Brain 需求 › 支付", "Brain 需求 › 支付 › PAY-1 · refund",
+                       "Brain 需求 › 支付 › PAY-2 · invoice"]
+    assert moved == ["Brain 需求", "pay", "pay › PAY-1 · refund", "pay › PAY-2 · invoice"]
+
+
 def snapshot(gw):
     """KiroCrew's folders on the 2026-11-16 machine (the app's ids, a person's folders, another app's), plus a requirement
     folder a person nested a folder in, one a person moved into their own folder, and a hidden one."""
