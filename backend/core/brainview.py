@@ -25,7 +25,7 @@ from typing import Any
 
 from . import bk, problems
 from .intake import brain_cmd
-from .repo import Repo
+from .repo import GitFailed, Repo
 
 MIN_RUNS = 3
 SECTION_RE = re.compile(r"^##\s+(.+?)\s*$")
@@ -124,13 +124,22 @@ def reflect_says(line: str) -> str:
     return reflect_row(line)["text"]
 
 
-def _brain(repo: Repo) -> tuple[Any, str]:
+def _brain(repo: Repo) -> tuple[Any, str, bool]:
+    """The Brain on the default branch (else in the working tree), where it was read, and whether it was read whole:
+    brain-kit reads a git listing that failed as no files, so an empty Brain is whole only when git lists no Brain
+    files on that branch."""
     E = bk.m("entries")
     ref = repo.main_ref()
-    if ref:
-        return E.Brain.from_git(repo.path, ref, repo.cfg["brain_dir"]), ref.replace("refs/remotes/", "").replace(
-            "refs/heads/", "").replace("origin/", "")
-    return E.Brain.load(os.path.join(repo.path, repo.cfg["brain_dir"])), "工作区"
+    if not ref:
+        return E.Brain.load(os.path.join(repo.path, repo.cfg["brain_dir"])), "工作区", True
+    brain = E.Brain.from_git(repo.path, ref, repo.cfg["brain_dir"])
+    label = ref.replace("refs/remotes/", "").replace("refs/heads/", "").replace("origin/", "")
+    if brain.files or brain.problems:
+        return brain, label, True
+    try:
+        return brain, label, not repo.git.ls(ref, repo.cfg["brain_dir"], strict=True)
+    except GitFailed:
+        return brain, label, False
 
 
 def unmerged_usage(repo: Repo) -> list[dict[str, Any]]:
@@ -209,11 +218,11 @@ def _make_kept(repo: Repo, key: tuple) -> dict[str, Any]:
         kept = _views.get(repo.path)
         if kept is not None and kept[0] == key:
             return kept[1]
-        made = _make_view(repo)
-        if made["error"]:
-            _views.pop(repo.path, None)      # the next visit makes it and shows why, as it did before anything was kept
-        else:
+        made, whole = _make_view(repo)
+        if whole:
             _views[repo.path] = (key, made, time.time())
+        else:
+            _views.pop(repo.path, None)      # the next visit makes it again (and shows why), as before anything was kept
         return made
 
 
@@ -238,7 +247,7 @@ def view(repo: Repo, reflectable: list[dict[str, Any]]) -> dict[str, Any]:
     kept = _views.get(repo.path)
     stale = None
     if key is None:
-        made = _make_view(repo)
+        made = _make_view(repo)[0]
     elif kept is not None and kept[0] == key:
         made = kept[1]
     elif kept is not None:
@@ -249,17 +258,18 @@ def view(repo: Repo, reflectable: list[dict[str, Any]]) -> dict[str, Any]:
     return dict(made, usage=dict(made["usage"], unmerged=unmerged_usage(repo)), reflect=reflectable, stale=stale)
 
 
-def _make_view(repo: Repo) -> dict[str, Any]:
+def _make_view(repo: Repo) -> tuple[dict[str, Any], bool]:
+    """The default branch's part of the page, and whether it is whole (no error, the Brain read whole): to be kept."""
     E = bk.m("entries")
     out: dict[str, Any] = {"repo": repo.id, "ref": "", "files": [], "lint": {"errors": [], "warnings": []},
                            "usage": {"useful": [0, 0], "repeat_rate": [0, 0], "archived": 0, "purged": 0, "runs": [],
                                      "never_cited": [], "repeats_any": [], "unmerged": []},
                            "reflect": [], "error": "", "raw": "", "stale": None}
     try:
-        brain, label = _brain(repo)
+        brain, label, whole = _brain(repo)
     except bk.brain_error() as exc:
         out["error"], out["raw"] = UNREADABLE, str(exc)[:2000]
-        return out
+        return out, False
     out["ref"] = label
     try:
         u = bk.m("usage").collect(repo.path, repo.cfg, ref=repo.main_ref())
@@ -306,7 +316,7 @@ def _make_view(repo: Repo) -> dict[str, Any]:
                       "unknown": list(r.get("unknown") or [])} for r in u.get("runs") or []],
             "never_cited": [x["id"] for x in u.get("entries") or [] if not x["cites"] and x["loaded_by"] >= MIN_RUNS],
             "repeats_any": [[i, n] for i, n in u.get("repeats_any") or []], "unmerged": []}
-    return out
+    return out, whole and not out["error"]
 
 
 def _where(repo: Repo, facts: dict[str, Any]) -> tuple[str, str | None]:
