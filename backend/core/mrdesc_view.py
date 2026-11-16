@@ -145,6 +145,7 @@ class DescCache:
         self._done: "collections.OrderedDict[tuple, dict[str, Any]]" = collections.OrderedDict()
         self._base: dict[tuple, tuple] = {}            # sig without the credits -> the newest full sig
         self._todo: "collections.OrderedDict[tuple, Callable[[], dict[str, Any]]]" = collections.OrderedDict()
+        self._making: dict[tuple, threading.Event] = {}   # sig -> set once the thread making it is done
         self._worker: threading.Thread | None = None
 
     def get(self, sig: tuple) -> dict[str, Any] | None:
@@ -166,9 +167,26 @@ class DescCache:
             return result
 
     def get_or_make(self, sig: tuple, make: Callable[[], dict[str, Any]]) -> dict[str, Any]:
-        """The result for *sig*, made now (blocking) when there is none."""
-        got = self.get(sig)
-        return got if got is not None else self.put(sig, make())
+        """The result for *sig*, made now (blocking) when there is none: one made by first()'s thread is waited for,
+        and one still queued for it is made here instead."""
+        while True:
+            with self._lock:
+                got = self._done.get(sig)
+                if got is not None:
+                    self._done.move_to_end(sig)
+                    return got
+                self._todo.pop(sig, None)
+                busy = self._making.get(sig)
+                if busy is None:
+                    busy = self._making[sig] = threading.Event()
+                    break
+            busy.wait()
+        try:
+            return self.put(sig, make())
+        finally:
+            with self._lock:
+                del self._making[sig]
+            busy.set()
 
     def first(self, sig: tuple, make: Callable[[], dict[str, Any]]) -> str | None:
         """The first line for *sig* when a result made from the same commits is there (whatever its credits);
@@ -178,7 +196,7 @@ class DescCache:
             got = self._done.get(full) if full else None
             if got is not None:
                 return got.get("first")
-            if sig[:-1] not in {s[:-1] for s in self._todo}:
+            if sig[:-1] not in {s[:-1] for s in self._todo} | {s[:-1] for s in self._making}:
                 self._todo[sig] = make
             if self._worker is None or not self._worker.is_alive():
                 self._worker = threading.Thread(target=self._drain, daemon=True, name="brain-mrdesc")
@@ -192,9 +210,13 @@ class DescCache:
                     self._worker = None
                     return
                 sig, make = self._todo.popitem(last=False)
+                busy = self._making[sig] = threading.Event()
             try:
                 result = make()
             except Exception as exc:  # noqa: BLE001
                 logging.getLogger(APP_NAME).info("brain mr-desc: %s", str(exc).split("\n", 1)[0][:300])
                 result = empty(NOT_MADE)
             self.put(sig, result)
+            with self._lock:
+                del self._making[sig]
+            busy.set()
