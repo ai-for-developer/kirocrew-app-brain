@@ -165,10 +165,10 @@ class Service:
         await self._start_team()
         self.started = True
         loop = asyncio.get_running_loop()
-        self._tasks = [loop.create_task(self._forever()), loop.create_task(self._slow()),
-                       loop.create_task(self._regroup_soon())]
+        self._tasks = [loop.create_task(self._forever()), loop.create_task(self._slow())]
         if self.team is not None:
             self._tasks.append(loop.create_task(self._team_forever()))
+        self._tasks.append(loop.create_task(self._regroup_soon()))
         self.log.info("brain: started, brain-kit %s, %d repos, team %s", bk.info().get("version"), len(self.repos),
                       "on" if self.team is not None else "off")
 
