@@ -417,7 +417,7 @@ describe('the 产出 drawer at a moment', () => {
   it('a round still going: what its commits had by then, what it hands in once it had asked; the rest counted as later', () => {
     const b = fx.boardMerged()
     const doc = file({ path: 'application-design.md', output: true, ref: sha(FIXED) })
-    const draft = file({ path: 'aidlc-state.md', ref: sha(DESIGN_DRAFT) })
+    const draft = file({ path: 'decisions.md', ref: sha(DESIGN_DRAFT) })
     const pinned = file({ path: 'application-design.md', output: true, ref: 'worktree', pin: 'f'.repeat(64) })
     const t = 1793633700 + 30 // the draft is committed, nothing asked yet (asked at 1793633760)
     const r = replayAt(b, t).nodes.find((n) => n.id === 'application-design')!.rounds[0]

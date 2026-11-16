@@ -438,12 +438,14 @@ The app runs as the same OS user as the agent sessions, and agents have a shell.
   local round's document waiting for approval: only at the stage table's document path, only for a sha256 a local
   round of that stage recorded, each part of the path opened with `O_NOFOLLOW` under the worktree's real path, and
   only when the bytes hash to that sha256 (else 409: 到会话里看). Lean's ledgers (`aidlc-docs/audit` and anything under it,
-  wherever `aidlc-docs` is) are never listed or read: they hold what people typed. Emails (release.md's approval table
+  wherever `aidlc-docs` is) and the pages Lean writes from them (`aidlc-state.md`, `audit.md`, at any depth under
+  `aidlc-docs`) are never listed or read: they hold what people typed, a rejection's words among them. Emails (release.md's approval table
   has git emails) become brain-kit's pseudonyms (G-<6 hex>) before anything is sent, and the text goes through the
   scrubber; a text over 300 000 characters is cut at a line end first (a longer first line shows nothing), so the
   scrubber never gets part of a secret. Each refusal says why and what to do, in plain Chinese, and carries none of
   the file's content. `tests/test_outputs.py` and `tests/test_outputs_guard.py` prove each of these on real git
-  repositories.
+  repositories; `tests/test_typed_words_sweep.py` types two rejections in a real Lean worktree and finds their words
+  in no read route's answer (交付总览, 需求详情, the board, 待办, 产出 with every file it lists).
 - **产出's session tabs never show what a person typed.** `GET /outputs/{repo}/{key}/turns` is the owner's only too and
   reads the same fold. A round's turns are found by the sha256 Lean recorded of each message (HUMAN_TURN), matched to
   a user row of the run's session transcripts on this machine (KiroCrew lets an app read only the slots it opened; a
