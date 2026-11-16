@@ -136,7 +136,8 @@ def _stat(path: str) -> tuple | None:
 
 def git_stamp(top: str, refs: tuple[str, ...]) -> tuple:
     """What git rewrites when a ref under *refs* (names or prefixes), a HEAD or a worktree moves: packed-refs and the
-    loose refs (a reftable repo: its tables.list), HEAD, and each worktree's entry. No git is started."""
+    loose refs (a reftable repo: its tables.list), HEAD, and each worktree's entry (its HEAD, or with reftable its own
+    tables.list). No git is started."""
     gitdir, common = git_dirs(top)
     out: list[Any] = [_stat(os.path.join(common, "packed-refs")), _stat(os.path.join(common, "reftable", "tables.list")),
                       _stat(os.path.join(gitdir, "HEAD"))]
@@ -153,8 +154,8 @@ def git_stamp(top: str, refs: tuple[str, ...]) -> tuple:
         names = sorted(os.listdir(wdir))
     except OSError:
         names = []
-    out += [(n, _stat(os.path.join(wdir, n, "HEAD")), _stat(os.path.join(wdir, n, "gitdir")),
-             _stat(os.path.join(wdir, n, "locked"))) for n in names]
+    out += [(n, _stat(os.path.join(wdir, n, "HEAD")), _stat(os.path.join(wdir, n, "reftable", "tables.list")),
+             _stat(os.path.join(wdir, n, "gitdir")), _stat(os.path.join(wdir, n, "locked"))) for n in names]
     return tuple(out)
 
 
