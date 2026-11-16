@@ -357,7 +357,7 @@ def test_on_start_the_older_folders_move_into_their_repo_folder_and_the_one_that
                      "Brain 需求 › gone", "Brain 需求 › gone › OLD-2 · old", "Brain 需求 › pay",
                      "Brain 需求 › pay › PAY-1 · refund"]
     assert gw.slot_rows[dev["slot"]]["folder_id"] == "ab01"
-    rows = [r for r in status["crew"]["rows"] if "仓库文件夹" in r["text"]]
+    rows = [r for r in status["crew"]["rows"] if "需求文件夹" in r["text"]]
     assert rows == [{"level": "WARN", "text": "需求文件夹「PAY-3 · nested」没能放进「Brain 需求 › pay」：里面有不是这个 app 建的文件夹，"
                                               "KiroCrew 不让 app 移它",
                      "todo": "想放进去，就在 KiroCrew 侧栏里自己把它拖进「Brain 需求 › pay」；不拖也不影响用",

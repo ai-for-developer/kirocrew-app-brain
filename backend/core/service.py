@@ -1447,6 +1447,8 @@ class Service:
         return self.team.status()
 
     async def status(self) -> dict[str, Any]:
+        if self.folders_stuck:   # one folder list: a folder dragged in since, or KiroCrew answering again
+            await self.regroup_folders()
         info = bk.info()
         repos = []
         for path, rid in self.repo_ids.of(self.settings["repos"]).items():
