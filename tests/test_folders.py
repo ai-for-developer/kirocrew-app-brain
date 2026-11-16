@@ -259,3 +259,19 @@ def test_on_start_the_older_folders_move_into_their_repo_folder_and_the_one_that
                                               "KiroCrew 不让 app 移它",
                      "todo": "想放进去，就在 KiroCrew 侧栏里自己把它拖进「Brain 需求」里的「pay」；不拖也不影响用",
                      "fix": None, "repo": None, "raw": ""}]
+
+
+def test_cleanup_hides_the_folders_it_leaves_empty_at_every_level_and_never_the_repo_folder_of_one_it_keeps(tmp_path):
+    async def go():
+        gw = FakeGateway()
+        mgr = manager(tmp_path, gw)
+        for key, repo, folder in (("r1-PAY-1", "pay", "PAY-1 · refund"), ("r1-PAY-2", "pay", "PAY-2 · invoice"),
+                                  ("r2-SHOP-1", "shop", "SHOP-1 · cart")):
+            await open_local(mgr, key, repo, folder, str(tmp_path))
+        return gw, await mgr.cleanup({"brain:r1-PAY-1"})
+
+    gw, done = asyncio.run(go())
+    assert done == {"sessions": 2, "folders": 3}
+    assert tree(gw) == sorted(["Brain 需求", "Brain 需求 › pay", "Brain 需求 › pay › PAY-1 · refund",
+                               "Brain 需求 › pay › PAY-2 · invoice（隐藏）", "Brain 需求 › shop（隐藏）",
+                               "Brain 需求 › shop › SHOP-1 · cart（隐藏）"])

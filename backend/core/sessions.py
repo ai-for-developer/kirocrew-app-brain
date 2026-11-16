@@ -804,7 +804,8 @@ class SessionManager:
 
     async def cleanup(self, keep_parents: set[str]) -> dict[str, int]:
         """Delete every session this app opened, except those of *keep_parents*, and hide the folders they leave empty
-        under this app's root folders: Kiro Crew lets only a person delete a folder."""
+        under this app's root folders, at any depth (a repo folder holding a kept one stays): Kiro Crew lets only a
+        person delete a folder."""
         keep_slots = {i.slot for i in self._infos.values() if i.parent_session_key in keep_parents and i.slot}
         keep_folders = {str(v.get("id")) for k, v in self._folders.items() if k in keep_parents}
         roots = {v.get("root_name") or ROOT_FOLDER for v in self._folders.values()} | {ROOT_FOLDER}
@@ -817,12 +818,13 @@ class SessionManager:
             except Exception as exc:  # noqa: BLE001
                 self.log.info(self.app + ": deleting session %s: %s", r.get("key"), exc)
         folders = await self.gw.folders()
+        by_id = {str(f.get("id")): f for f in folders}
         root_ids = {str(f.get("id")) for f in folders if f.get("name") in roots and not f.get("parent_id")}
         gone = 0
         for f in folders:
             fid = str(f.get("id"))
-            if (str(f.get("parent_id") or "") in root_ids and fid not in keep_folders and f.get("owner_app") == self.app
-                    and not f.get("hidden")):
+            if (any(_inside(by_id, f, r) for r in root_ids) and fid not in keep_folders and f.get("owner_app") == self.app
+                    and not f.get("hidden") and not any(_inside(by_id, by_id[k], fid) for k in keep_folders if k in by_id)):
                 try:
                     await self.gw.hide_folder(fid)
                     gone += 1
