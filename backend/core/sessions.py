@@ -23,6 +23,7 @@ twice in a row and the transcript has the reply. State lives in ``sessions.json`
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import re
@@ -30,7 +31,12 @@ import secrets
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, AsyncIterator, Callable
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows: the folders are guarded within this process only
+    fcntl = None  # type: ignore[assignment]
 
 from .constants import LOCAL_AGENT
 from .gateway import GatewayError, said
@@ -452,10 +458,26 @@ class SessionManager:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    async def _folder_for(self, info: SessionInfo) -> str:
+    @contextlib.asynccontextmanager
+    async def _folders_held(self) -> AsyncIterator[None]:
+        """One change to KiroCrew's folders at a time, in this process and across starts of this app on its data dir
+        (a file lock, polled so the loop never waits on it; it goes with the process): two starts at once make one
+        repo folder, the second finding the first's."""
         if self._folder_lock is None:
             self._folder_lock = asyncio.Lock()
         async with self._folder_lock:
+            self.state_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.state_file.with_name(".folders.lock"), "a") as fh:
+                while fcntl is not None:
+                    try:
+                        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        await asyncio.sleep(0.05)
+                yield
+
+    async def _folder_for(self, info: SessionInfo) -> str:
+        async with self._folders_held():
             have = self._folders.get(info.parent_session_key)
             if have and have.get("id"):
                 return str(have["id"])
@@ -508,9 +530,7 @@ class SessionManager:
         that is a person's or holding a folder that is not this app's is left as it is (KiroCrew would refuse the last
         two; the repo folder is made for it all the same). Rerun on every start and while some stay. The ones that
         stay: 设置's rows saying so, one for a person's root. GatewayError: KiroCrew was not read."""
-        if self._folder_lock is None:
-            self._folder_lock = asyncio.Lock()
-        async with self._folder_lock:
+        async with self._folders_held():
             todo = [(rec, repo_of(k)[:60]) for k, rec in self._folders.items() if rec.get("root")]
             todo = [(rec, name) for rec, name in todo if name]
             if not todo:
