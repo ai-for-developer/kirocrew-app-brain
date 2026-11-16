@@ -146,6 +146,29 @@ def test_on_macos_osascript_asks_for_several_files_or_folders_and_answers_their_
     assert "choose folder" in rec.argv[2] and "multiple selections allowed" in rec.argv[2]
 
 
+def test_on_macos_the_dialog_opens_in_system_events_not_in_osascript_itself():
+    # osascript's own `activate` cost about 2.5 s per click on the user's Mac; System Events, once running, about 0.6 s
+    rec = Recorded(out="/Users/alice/Downloads/需求.docx\n")
+    for kind in picker.KINDS:
+        mac(kind, rec)
+        script = rec.argv[2]
+        assert script.startswith('tell application "System Events"'), script
+        assert script.index("activate") < script.index("choose"), script
+
+
+def test_on_macos_without_permission_for_system_events_the_plain_dialog_is_used():
+    calls = []
+
+    def run(argv, **kw):
+        calls.append(argv)
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(argv, 1, "", "execution error: Not authorized to send Apple events to System Events. (-1743)\n")
+        return subprocess.CompletedProcess(argv, 0, "/Users/alice/Downloads/需求.docx\n", "")
+
+    assert picker.pick("file", run=run, platform="darwin", env={}) == ["/Users/alice/Downloads/需求.docx"]
+    assert len(calls) == 2 and "System Events" in calls[0][2] and "System Events" not in calls[1][2]
+
+
 def test_on_macos_cancel_is_no_change_and_any_other_error_is_said():
     assert mac("file", Recorded(1, err="0:120: execution error: User canceled. (-128)\n")) == []
     with pytest.raises(AppError) as e:
