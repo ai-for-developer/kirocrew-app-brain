@@ -23,6 +23,7 @@ twice in a row and the transcript has the reply. State lives in ``sessions.json`
 from __future__ import annotations
 
 import asyncio
+import collections
 import json
 import os
 import re
@@ -54,6 +55,7 @@ STATS_EVERY = 5         # a tracked slot's credits and turns are read every this
 TRANSCRIPT_PAGES = 40   # pages of a transcript read at most (KiroCrew's 500 rows each): a turn, a slot's stats, 产出
 SETTLE_BACK = 100       # rows this far back from a transcript's newest are final: KiroCrew changes only its newest ones
                         # (the reply it streams, the credits it adds at the turn's end); a later read starts there
+KEPT_SLOTS = 8          # transcripts whose final rows kept_transcript keeps
 _FIELDS = ("id", "task", "parent_session_key", "slot", "title", "folder", "cwd", "model", "conv_root", "send_ids",
            "requested", "started", "sent_at", "done", "queued", "queued_reason", "result", "streaming_text", "error",
            "user_stopped", "turns", "tool_count", "last_tool", "last_activity", "stalled", "credits", "calls",
@@ -410,6 +412,7 @@ class SessionManager:
         self._stats: dict[str, dict[str, Any]] = {}    # slot → what slot_stats() answers
         self._tails: dict[str, dict[str, Any] | None] = {}   # slot → what it did last (tail): live only, never saved
         self._tally: dict[str, Tally] = {}             # slot → its transcript's final rows, added up: live only
+        self._kept: "collections.OrderedDict[str, tuple[Mark, list[dict[str, Any]]]]" = collections.OrderedDict()
         self._folder_lock: asyncio.Lock | None = None  # made on the loop (Python 3.9 binds a Lock at creation)
         self._tasks: set[asyncio.Task[Any]] = set()
         self._dirty = False
@@ -635,6 +638,21 @@ class SessionManager:
                 break
             before = nxt
         return [m for p in reversed(pages) for m in p], start
+
+    async def kept_transcript(self, slot: str) -> tuple[list[dict[str, Any]], bool]:
+        """transcript(slot), its final rows (all but the newest SETTLE_BACK) kept from the last read of it: a read
+        goes back only to them. Kept for the KEPT_SLOTS slots read last."""
+        kept = self._kept.get(slot)
+        rows, first, mark = await self._after(slot, kept[0] if kept else None)
+        start = mark.start if mark is not None else first
+        rows = (kept[1] if kept and mark is not None else []) + rows
+        cut = len(rows) - SETTLE_BACK
+        if cut > 0:
+            self._kept[slot] = (Mark(start + cut, _ident(rows[cut]), start), rows[:cut])
+            self._kept.move_to_end(slot)
+            while len(self._kept) > KEPT_SLOTS:
+                self._kept.popitem(last=False)
+        return rows, start == 0
 
     async def _after(self, slot: str, mark: Mark | None) -> tuple[list[dict[str, Any]], int, Mark | None]:
         """The rows of *slot*'s transcript from *mark* on, and the index of the first. With no mark, or one that no

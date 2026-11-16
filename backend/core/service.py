@@ -1143,7 +1143,7 @@ class Service:
         slots = []
         for s in turns_mod.sessions_to_read(fold, q):
             try:
-                rows, whole = await self.sessions.transcript(str(s["slot"]))
+                rows, whole = await self.sessions.kept_transcript(str(s["slot"]))
             except GatewayError as exc:
                 raise AppError("读不了这一轮的会话：%s" % gateway_said(exc), "transcript_unreadable", 502) from None
             root = self.sessions.by_slot(str(s["slot"]))
