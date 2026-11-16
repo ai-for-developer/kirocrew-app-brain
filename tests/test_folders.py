@@ -51,3 +51,56 @@ def test_the_fake_refuses_what_kirocrew_refuses_an_app():
                        (403, "folder_not_owned"), (400, "folder_cycle"), (403, "folder_not_owned"),
                        (403, "folder_not_owned")]
     assert a["parent_id"] == "f3"
+
+
+sessions = mod("sessions")
+
+
+def manager(tmp_path, gw):
+    import logging
+    return sessions.SessionManager(gw, app="brain", state_file=tmp_path / "sessions.json", log=logging.getLogger("t"))
+
+
+def tree(gw):
+    """Every folder as its path of names, a person's marked (人)."""
+    by_id = {f["id"]: f for f in gw.folder_rows}
+
+    def path(f):
+        names = []
+        while f is not None:
+            names.insert(0, f["name"] + ("" if f.get("owner_app") == gw.app else "（人）"))
+            f = by_id.get(f.get("parent_id") or "")
+        return " › ".join(names)
+
+    return sorted(path(f) + ("（隐藏）" if f.get("hidden") else "") for f in gw.folder_rows)
+
+
+async def open_local(mgr, key, repo, folder, cwd):
+    return await mgr.open_session("开工", parent_session_key="brain:" + key, cwd=cwd, title=key + " · 本地开发",
+                                  folder=folder, agent="brain-dev-crew", strict_agent=True, root_folder="Brain 需求",
+                                  repo_folder=repo, project_dir=cwd, kind="local", key=key)
+
+
+def test_a_requirement_session_opens_in_its_repo_folder_and_its_later_sessions_open_in_the_same_folder(tmp_path):
+    async def go():
+        gw = FakeGateway()
+        mgr = manager(tmp_path, gw)
+        first = await open_local(mgr, "r1-PAY-1", "pay", "PAY-1 · refund", str(tmp_path))
+        root = next(f for f in gw.folder_rows if f["name"] == "Brain 需求")
+        gw.folder_rows.append({"id": "p1", "name": "shop", "parent_id": root["id"]})   # a person's, of the same name
+        await open_local(mgr, "r1-PAY-2", "pay", "PAY-2 · invoice", str(tmp_path))
+        await open_local(mgr, "r2-SHOP-1", "shop", "SHOP-1 · cart", str(tmp_path))
+        review = await open_local(mgr, "r1-PAY-1", "pay", "PAY-1 · refund", str(tmp_path))   # 开审查会话, 重开
+        again = manager(tmp_path, gw)
+        await mgr.save()
+        again.load()
+        later = await open_local(again, "r1-PAY-1", "pay", "PAY-1 · refund", str(tmp_path))
+        await open_local(again, "r1-PAY-3", "pay", "PAY-3 · tax", str(tmp_path))
+        return gw, first, review, later
+
+    gw, first, review, later = asyncio.run(go())
+    assert tree(gw) == ["Brain 需求", "Brain 需求 › pay", "Brain 需求 › pay › PAY-1 · refund",
+                        "Brain 需求 › pay › PAY-2 · invoice", "Brain 需求 › pay › PAY-3 · tax", "Brain 需求 › shop",
+                        "Brain 需求 › shop › SHOP-1 · cart", "Brain 需求 › shop（人）"]
+    assert {gw.slot_rows[i.slot]["folder_id"] for i in (first, review, later)} == {
+        next(f["id"] for f in gw.folder_rows if f["name"] == "PAY-1 · refund")}

@@ -2,8 +2,8 @@
 reaches into the Crew process. Kept from the aidlc-team sample (its session runner was proven live on Kiro Crew 0.11.2)
 and extended for brain-kit:
 
-- a requirement's ``brain-dev`` session on this machine sits in a folder of the requirement under 「Brain 需求」, with
-  the requirement's worktree as its project directory; a team-runner ``brain-run`` session (dispatched by the bridge
+- a requirement's ``brain-dev`` session on this machine sits in a folder of the requirement, in its repo's folder under
+  「Brain 需求」, with the requirement's worktree as its project directory; a team-runner ``brain-run`` session (dispatched by the bridge
   through ``KiroCrewAdapter`` in team/crewadapter.py) sits under 「Brain 运行机」 and keeps the slot name the bridge
   chose (the run id);
 - *strict_agent*: the session boots exactly that template of ~/.kiro/agents (brain-dev / brain-run carry Lean's hooks)
@@ -56,7 +56,7 @@ _FIELDS = ("id", "task", "parent_session_key", "slot", "title", "folder", "cwd",
            "user_stopped", "turns", "tool_count", "last_tool", "last_activity", "stalled", "credits", "calls",
            "resends", "seen_busy", "idle", "missing", "sig", "agent", "agent_kind", "nudges", "root_folder",
            "project_dir", "slot_name", "first_send_id", "strict_agent", "resend_ok", "nudge_ok", "trust_ok", "kind",
-           "key", "memory_mode")
+           "key", "memory_mode", "repo_folder")
 KNOWLEDGE_TOOL = "local_knowledge_search"  # kirocrew-core's knowledge search: shown as 查知识库
 
 
@@ -166,6 +166,7 @@ class SessionInfo:
         self.agent_kind = ""   # what the session got: member, template, or "" (Crew's default agent)
         self.nudges = 0        # times a cut-short turn was continued
         self.root_folder = ROOT_FOLDER  # the sidebar folder its requirement's folder goes under
+        self.repo_folder = ""  # the folder between root_folder and the requirement's: its repo ("": none)
         self.project_dir: str | None = None  # the folder's project directory (default: the session's cwd)
         self.slot_name = ""    # an exact slot name (the bridge names runner slots after the run id)
         self.first_send_id = ""  # the first message's sendId (the bridge uses the voucher id)
@@ -233,7 +234,7 @@ class SessionManager:
                  scrub: Callable[[str], str] = lambda s: s) -> None:
         self.gw, self.app, self.state_file, self.log, self.now, self.scrub = gw, app, Path(state_file), log, now, scrub
         self._infos: dict[str, SessionInfo] = {}
-        self._folders: dict[str, dict[str, Any]] = {}  # parent → {"id", "name", "root"}
+        self._folders: dict[str, dict[str, Any]] = {}  # parent → {"id", "name", "root", "root_name", "repo", "repo_name"}
         self._stats: dict[str, dict[str, Any]] = {}    # slot → what slot_stats() answers
         self._folder_lock: asyncio.Lock | None = None  # made on the loop (Python 3.9 binds a Lock at creation)
         self._tasks: set[asyncio.Task[Any]] = set()
@@ -442,17 +443,32 @@ class SessionManager:
                          and f.get("owner_app") in (self.app, None, "")), None)
             if root is None:
                 root = await self.gw.create_folder(root_name)
+            at = str(root.get("id") or "")
+            repo = await self._repo_folder(folders, at, info.repo_folder) if info.repo_folder else ""
             if info.project_dir is not None:
                 project_dir = info.project_dir or None
             else:  # the sample's layout: <run>/wt/<role> → the run's folder
                 run_dir = str(Path(info.cwd).parents[1]) if info.cwd and len(Path(info.cwd).parents) > 1 else None
                 project_dir = run_dir
-            sub = await self.gw.create_folder(info.folder[:60], parent_id=str(root.get("id") or ""),
+            sub = await self.gw.create_folder(info.folder[:60], parent_id=repo or at,
                                               project_dir=project_dir if project_dir and Path(project_dir).is_dir() else None)
-            self._folders[info.parent_session_key] = {"id": str(sub.get("id") or ""), "name": info.folder[:60],
-                                                      "root": str(root.get("id") or ""), "root_name": root_name}
+            rec = {"id": str(sub.get("id") or ""), "name": info.folder[:60], "root": at, "root_name": root_name}
+            if repo:
+                rec.update(repo=repo, repo_name=info.repo_folder[:60])
+            self._folders[info.parent_session_key] = rec
             self._dirty = True
-            return self._folders[info.parent_session_key]["id"]
+            return rec["id"]
+
+    async def _repo_folder(self, folders: list[dict[str, Any]], root_id: str, name: str) -> str:
+        """This app's folder *name* right under *root_id*, made when there is none (a person's of that name is not
+        it: KiroCrew lets an app nest only in its own). *folders* gets the new one."""
+        name = name[:60]
+        got = next((f for f in folders if str(f.get("parent_id") or "") == root_id and f.get("name") == name
+                    and f.get("owner_app") == self.app), None)
+        if got is None:
+            got = await self.gw.create_folder(name, parent_id=root_id)
+            folders.append(got)
+        return str(got.get("id") or "")
 
     async def _open(self, info: SessionInfo) -> None:
         try:
