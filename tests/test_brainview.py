@@ -2,6 +2,7 @@
 (brain-kit's own command: a new brain/<KEY>-reflect-<n> branch)."""
 
 import json
+import os
 
 from appkit import mod
 from brainfix import brain, make_project, make_service, needs_brainkit, run, sh, start_in_worktree
@@ -74,6 +75,60 @@ def test_entries_usage_lint_and_reflect(tmp_path, home):
     assert again["ops"] == [] and again["notes"] == ["第 13 行的提议已经在回写分支 brain/PAY-1-reflect-1 上了（MR 还没合并），跳过"]
     assert again["raw"] == ["proposal at line 13: already on brain/PAY-1-reflect-1 (MR not merged yet), skipped"]
     assert applied["mr_url"] is None and applied["pushed"] is False
+
+
+def logged_git(tmp_path, monkeypatch):
+    """Every git the app and brain-kit start, logged: brain-kit's (git on PATH) and the app's (repo.GIT_BIN)."""
+    log = tmp_path / "git-calls"
+    shim = tmp_path / "gitbin" / "git"
+    shim.parent.mkdir()
+    shim.write_text("#!/bin/sh\necho \"$*\" >> '%s'\nexec '%s' \"$@\"\n" % (log, mod("repo").GIT_BIN), encoding="utf-8")
+    shim.chmod(0o755)
+    monkeypatch.setenv("PATH", "%s:%s" % (shim.parent, os.environ["PATH"]))
+    monkeypatch.setattr(mod("repo"), "GIT_BIN", str(shim))
+    return lambda: len(log.read_text().splitlines()) if log.exists() else 0
+
+
+def test_the_brain_page_is_made_once_until_main_or_a_runs_records_change(tmp_path, home, monkeypatch):
+    """The Brain page read the Brain on main four times and every run's records (40 git calls, 3 to 4 s): it is made
+    again only when the default branch moves or a run not merged yet changes (its branch, or its worktree's files)."""
+    repo = make_project(tmp_path)
+    brain(repo, "entry", "add", "TECH", "pitfall", "--key", "PAY-9", "--src", "D-1", "--text", "对账文件按自然日切分。")
+    sh("git", "-C", repo, "add", "-A")
+    sh("git", "-C", repo, "commit", "-qm", "brain entry")
+    wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
+    intent = json.loads((wt / "runs" / "PAY-1" / "run.json").read_text())["intent"]
+    dec = wt / "aidlc-docs" / intent / "decisions.md"
+    before = dec.read_text()
+    dec.write_text(before + "| D-2 | 2026-11-08 | requirements | 按 T-PAY-9-1 切分 | Brain | agent |\n")
+    svc = make_service(tmp_path, [repo])
+    gits = logged_git(tmp_path, monkeypatch)
+
+    async def go():
+        await svc.start()
+        try:
+            n0 = gits()
+            first = await svc.brain("r1")
+            n1 = gits()
+            again = await svc.brain("r1")
+            n2 = gits()
+            dec.write_text(before)                      # the run no longer cites the entry
+            uncited = await svc.brain("r1")
+            brain(repo, "entry", "add", "TECH", "pitfall", "--key", "PAY-8", "--src", "D-1", "--text", "退款按原路返回。")
+            sh("git", "-C", repo, "add", "-A")
+            sh("git", "-C", repo, "commit", "-qm", "another entry")
+            moved = await svc.brain("r1")
+            return first, again, uncited, moved, n1 - n0, n2 - n1
+        finally:
+            await svc.stop()
+
+    first, again, uncited, moved, made, kept = run(go())
+    assert first["usage"]["unmerged"] == [{"key": "PAY-1", "loaded": 1, "cited": ["T-PAY-9-1"], "where": "worktree"}]
+    assert again == first
+    assert made >= 15 and kept <= 6, (made, kept)
+    assert uncited["usage"]["unmerged"] == [{"key": "PAY-1", "loaded": 1, "cited": [], "where": "worktree"}]
+    tech = next(f for f in moved["files"] if f["key"] == "TECH")
+    assert tech["count"] == 2
 
 
 def test_a_bad_proposal_is_a_problem_in_the_preview(tmp_path, home):
