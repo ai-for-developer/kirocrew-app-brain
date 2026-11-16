@@ -890,6 +890,39 @@ def test_a_write_back_branch_says_when_it_was_merged_into_the_default_branch(tmp
     assert got["brain/DEMO-3-reflect-3"][1] is None
 
 
+def test_write_back_branches_are_read_with_git_again_only_when_a_brain_branch_or_the_default_branch_moves(
+        tmp_path, home, monkeypatch):
+    """The board polls every 2 s: its 回写 Brain branches cost no git while nothing moved, and are read again once a
+    branch is added, merged or main moves."""
+    from appkit import commit_file, git_calls, git_repo, sh
+    repo = git_repo(tmp_path / "r")
+    commit_file(repo, "a.md", "a\n", "init")
+    sh("git", "-C", repo, "checkout", "-q", "-b", "brain/DEMO-3-reflect-1", "main")
+    commit_file(repo, "b.md", "b\n", "Brain: DEMO-3 reflect 1")
+    sh("git", "-C", repo, "checkout", "-q", "main")
+    svc = make_service(tmp_path, [])
+    git = mod("repo").Git(repo)
+    calls = git_calls(monkeypatch)
+
+    def read():
+        calls.clear()
+        return {ref: merged for ref, _, merged in svc._reflects_of(git, "DEMO-3", "main")}, len(calls)
+
+    got, n = read()
+    assert got == {"brain/DEMO-3-reflect-1": None} and n > 0
+    assert read() == (got, 0)
+    sh("git", "-C", repo, "merge", "-q", "--ff-only", "brain/DEMO-3-reflect-1")
+    got, n = read()
+    assert got["brain/DEMO-3-reflect-1"] is not None and n > 0
+    assert read()[1] == 0
+    sh("git", "-C", repo, "branch", "brain/DEMO-3-reflect-2", "main")
+    got, n = read()
+    assert set(got) == {"brain/DEMO-3-reflect-1", "brain/DEMO-3-reflect-2"} and n > 0
+    sh("git", "-C", repo, "pack-refs", "--all")
+    commit_file(repo, "c.md", "c\n", "main moves on")
+    assert read()[1] > 0 and read()[1] == 0
+
+
 def test_the_runners_page_of_a_hand_over_it_cannot_read_yet_tells_one_story():
     """runner/PAY-9: the team runner has it in its ledger, so the bridge took it; the signer signs its contract and the
     runner has no working directory for it yet. The hand-over is behind it on every part of the board: no 等开工, no

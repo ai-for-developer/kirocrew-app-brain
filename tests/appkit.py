@@ -133,6 +133,22 @@ def sh(*cmd: str, cwd: Any = None, check: bool = True, env: dict | None = None) 
     return p
 
 
+def git_calls(monkeypatch: Any) -> list[list[str]]:
+    """The argv of every git started from now on, by the app, brain-kit or the test itself (clear it after the
+    test's own git)."""
+    seen: list[list[str]] = []
+
+    class Counted(subprocess.Popen):
+        def __init__(self, args: Any, *a: Any, **k: Any) -> None:
+            argv = [str(x) for x in (args if isinstance(args, (list, tuple)) else [args])]
+            if os.path.basename(argv[0]) == "git":
+                seen.append(argv)
+            super().__init__(args, *a, **k)
+
+    monkeypatch.setattr(subprocess, "Popen", Counted)
+    return seen
+
+
 KEEP_HOOKS = os.environ.get("BRAIN_TEST_KEEP_HOOKS") == "1"
 
 

@@ -100,6 +100,52 @@ class Git:
         return self.ok("remote", "get-url", "origin")
 
 
+def git_dirs(top: str) -> tuple[str, str]:
+    """(the git dir, the common dir) of the checkout at *top*: its .git folder, or a worktree's .git file and the
+    commondir its git dir names."""
+    gitdir = os.path.join(top, ".git")
+    try:
+        if os.path.isfile(gitdir):
+            with open(gitdir, encoding="utf-8") as f:
+                gitdir = os.path.join(top, f.read().strip().split("gitdir:", 1)[-1].strip())
+        with open(os.path.join(gitdir, "commondir"), encoding="utf-8") as f:
+            return gitdir, os.path.normpath(os.path.join(gitdir, f.read().strip()))
+    except OSError:
+        return gitdir, gitdir
+
+
+def _stat(path: str) -> tuple | None:
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return st.st_mtime_ns, st.st_size, st.st_ino
+
+
+def git_stamp(top: str, refs: tuple[str, ...]) -> tuple:
+    """What git rewrites when a ref under *refs* (names or prefixes), a HEAD or a worktree moves: packed-refs and the
+    loose refs (a reftable repo: its tables.list), HEAD, and each worktree's entry. No git is started."""
+    gitdir, common = git_dirs(top)
+    out: list[Any] = [_stat(os.path.join(common, "packed-refs")), _stat(os.path.join(common, "reftable", "tables.list")),
+                      _stat(os.path.join(gitdir, "HEAD"))]
+    for ref in refs:
+        p = os.path.join(common, ref)
+        if not os.path.isdir(p):
+            out.append((ref, _stat(p)))
+            continue
+        for d, dirs, names in os.walk(p):
+            dirs.sort()
+            out += [(os.path.relpath(os.path.join(d, n), common), _stat(os.path.join(d, n))) for n in sorted(names)]
+    wdir = os.path.join(common, "worktrees")
+    try:
+        names = sorted(os.listdir(wdir))
+    except OSError:
+        names = []
+    out += [(n, _stat(os.path.join(wdir, n, "HEAD")), _stat(os.path.join(wdir, n, "gitdir")),
+             _stat(os.path.join(wdir, n, "locked"))) for n in names]
+    return tuple(out)
+
+
 class Source:
     """Files of one place: a worktree's files, or a git ref. Both: the ref's files, but *mine* (the ones the person
     changed in the worktree and has not committed) from the worktree."""

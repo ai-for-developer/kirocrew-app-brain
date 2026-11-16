@@ -29,7 +29,7 @@ from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_FOLDER, REPO_ID_RE, TIC
 from .gateway import Gateway, GatewayError
 from .gateway import said as gateway_said
 from .httpkit import AppError
-from .repo import Git, Repo, Source, read_claim, read_facts
+from .repo import Git, Repo, Source, git_stamp, read_claim, read_facts
 from .repoids import RepoIds, from_records
 from .sessions import SessionManager, requirement_credits
 from . import store as store_mod
@@ -153,6 +153,7 @@ class Service:
         self.desc = mrdesc_view.DescCache()     # each requirement's 变更说明, by the commits it is made from
         self._subj: dict[tuple, tuple] = {}     # the board's commit subjects and changed files, by the commits asked for
         self._units: dict[tuple, list] = {}     # the units unit-of-work.md plans, by the commit it is read at
+        self._reflects: dict[tuple, tuple] = {}  # (repo, key, default branch) -> (git_stamp, _reflect_refs)
         self._folds: dict[tuple, tuple] = {}    # (repo, key) -> (when, outputs.Fold): the board's last fold, for 产出
         self.who = identity.Who(transport, log=self.log)
         self.families = family.Families()      # brain-kit's listing per repo (大需求 and their 小需求), made in the background
@@ -1017,6 +1018,18 @@ class Service:
                     out.append((m.group(1), at, merged))
         return out
 
+    def _reflects_of(self, git: Git, key: str, default_branch: str) -> list[tuple[str, float, float | None]]:
+        """_reflect_refs, read with git again only when a brain/ branch or the default branch moves."""
+        stamp = git_stamp(git.repo, ("refs/heads/brain/", "refs/remotes/origin/brain/", "refs/heads/" + default_branch,
+                                     "refs/remotes/origin/" + default_branch))
+        sig = (git.repo, key, default_branch)
+        got = self._reflects.get(sig)
+        if got is None or got[0] != stamp:
+            if len(self._reflects) > 200:
+                self._reflects.clear()
+            got = self._reflects[sig] = (stamp, self._reflect_refs(git, key, default_branch))
+        return got[1]
+
     def _planned_units(self, git: Git, f: dict[str, Any]) -> list[stages.UnitPlan]:
         """The units unit-of-work.md plans, as Lean reads its first table (brain-kit's split.parse_units), at the run
         branch's newest commit (on the team runner: its workspace's HEAD). Only a regular file of that commit is read,
@@ -1056,7 +1069,7 @@ class Service:
         g = board_mod.build(
             f, d["row"], t, mr=parts.get("mr"), sessions=sessions, app_events=app_events,
             team_decisions=parts.get("decisions") or [], subjects=subjects, changes=changes,
-            reflect_refs=self._reflect_refs(git, key, str(cfg.get("default_branch") or "main")) if git is not None else [],
+            reflect_refs=self._reflects_of(git, key, str(cfg.get("default_branch") or "main")) if git is not None else [],
             default_branch=str(cfg.get("default_branch") or "main"), local_only=bool(parts.get("local_only")),
             kit_rows=board_mod.kit_cells(self.crew.get("rows") or [], parts.get("path") or ""),
             decisions=d["decisions"], brain=d["brain"], me=parts.get("me"), now=self.now(), units=units, fold=kept,
