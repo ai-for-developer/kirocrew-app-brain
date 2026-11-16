@@ -333,7 +333,7 @@ function RoundsStrip({ n, runs, board }: Omit<LaneProps, 'run' | 'quiet'>) {
         return (
           <li key={r.n} className={`br-round tone-${ROUND_TONE[r.outcome.kind]}${i === n.rounds.length - 1 ? ' is-now' : ''}`}
             title={`第 ${r.n} 轮 · ${who} · ${at} 起 · ${cause ? `${cause} · ` : ''}${words}`}>
-            <b>第 {r.n} 轮</b>{cause && <span className="br-round-cause"> {cause}</span>} {ROUND_GLYPH[r.outcome.kind]} {clip(words, 14)}{many ? ` · ${who}` : ''} · {at}
+            <b>第 {r.n} 轮</b>{cause && <> <span className="br-round-cause">{cause}</span></>} <span>{ROUND_GLYPH[r.outcome.kind]} {clip(words, 14)}{many ? ` · ${who}` : ''}</span> <span>· {at}</span>
           </li>
         )
       })}

@@ -93,8 +93,10 @@ export const BOARD_EXTRA_CSS = `
 /* a lane's 「交什么 · 第 N 轮」 line wraps instead of cutting the round off */
 .br-board .kt-lane-doing { white-space: normal; }
 .br-board .br-rounds { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 5px; font-size: .8em; }
-.br-board .br-round { padding: 2px 8px; border-radius: 8px; white-space: nowrap; color: var(--text);
+/* a chip breaks only between its parts (第 n 轮 · the CI cause · the outcome · the time), never inside one */
+.br-board .br-round { padding: 2px 8px; border-radius: 8px; max-width: 100%; color: var(--text);
   border: 1px solid color-mix(in srgb, var(--kt-tone) 45%, var(--border)); background: color-mix(in srgb, var(--kt-tone) 8%, var(--card)); }
+.br-board .br-round > * { white-space: nowrap; }
 .br-board .br-round b { color: var(--kt-tone); font-weight: 800; }
 .br-board .br-round.is-now { border-width: 2px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-tone) 16%, transparent); }
 .br-board .br-round-cause { color: var(--kt-bad); font-weight: 700; }

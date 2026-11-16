@@ -36,6 +36,11 @@ const LONG_VIEWS = [['需求看板 PAY-9 长标题', 'view=board&repo=r1&key=PAY
 // boxes that scroll sideways by design, as on the reference board: the commit belt, the stage graph, 产出's steps;
 // and text kept for screen readers only
 const SCROLLS = '.kt-belt, .br-graph-scroll, .kt-steps, .br-sr'
+// The preview moves the fixture's times to now, so what fits depends on the hour fit runs at. The page's clock starts
+// at 00:05 today: most rounds then started the day before and their chips carry a date, the widest they get.
+const CLOCK = `(() => { const D = Date, S = D.now(), T = ${new Date().setHours(0, 5, 0, 0)}
+  class F extends D { constructor(...a) { super(...(a.length ? a : [T + D.now() - S])) } static now() { return T + D.now() - S } }
+  window.Date = F })()`
 const FIT = `(() => {
   document.body.style.cssText += ';margin-left:${SIDEBAR}px;width:calc(100vw - ${SIDEBAR}px);overflow-x:hidden'
   const settled = (since) => new Promise((go) => {
@@ -95,6 +100,7 @@ async function atWidth(width) {
   const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true })
   const page = (m, p) => send(m, p, sessionId)
   await page('Page.enable')
+  await page('Page.addScriptToEvaluateOnNewDocument', { source: CLOCK })
   await page('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false })
   const lines = []
   for (const [label, file, q, pv = 'light'] of runs) {
