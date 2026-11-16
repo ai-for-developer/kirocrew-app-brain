@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAppApi } from '@kirocrew/app-sdk'
 import { paths, useAction, usePoll } from '../api'
-import { fmtRate } from '../format'
+import { ago, fmtRate } from '../format'
 import { useReducedMotion } from '../hooks'
 import { fileOfEntry, type BrainEntryRef, type BrainFile } from '../nav'
 import type { BrainEntry, BrainFileView, BrainView, CheckRow, ReflectApplyBody, ReflectApplyResult, ReflectPreview } from '../types'
@@ -23,6 +23,8 @@ import { CheckRows, EmptyHero, ExtLink, Icon, Kpi, LoadState, RoleIcon, Segs, St
 import { ACT, GAP_KIND_NAME } from '../vocab'
 import type { ViewProps } from './props'
 
+/** how often the page asks again while the Brain on a moved default branch is being read behind it */
+export const STALE_POLL_MS = 2000
 const FILE_LABEL: Record<string, string> = { PRODUCT: '产品', TECH: '技术', IMPROVEMENT: '改进', PROJECT: '项目' }
 export const TYPE_LABEL: Record<string, string> = {
   principle: '原则', correction: '纠正', decision: '决定', model: '模型', guideline: '准则', pitfall: '坑', process: '流程',
@@ -73,7 +75,10 @@ export function BrainPage({ entry, ...props }: { entry: BrainEntryRef } & ViewPr
   const [repoPick, setRepoPick] = useState(entry.repo ?? '')
   const unreadable = repos.length > 0 ? listed.find((r) => r.id === repoPick && !r.ok) : undefined
   const repo = unreadable ? '' : repoPick && (!props.status || repos.some((r) => r.id === repoPick)) ? repoPick : repos[0]?.id ?? ''
-  const brain = usePoll<BrainView>(repo ? paths.brain(repo) : null, props.pollMs ?? 0)
+  const [staleSeen, setStaleSeen] = useState(false)
+  const brain = usePoll<BrainView>(repo ? paths.brain(repo) : null, staleSeen ? STALE_POLL_MS : props.pollMs ?? 0)
+  const stale = brain.data?.stale ?? null
+  useEffect(() => setStaleSeen(stale !== null), [stale])
   const data = brain.data
 
   const [filePick, setFilePick] = useState<BrainFile | undefined>(entry.file ?? (entry.id ? fileOfEntry(entry.id) : undefined))
@@ -215,6 +220,9 @@ export function BrainPage({ entry, ...props }: { entry: BrainEntryRef } & ViewPr
         </EmptyHero>
       )}
       <LoadState loading={brain.loading} error={brain.error} has={!!data} />
+      {stale !== null && (
+        <p className="br-note" role="status" data-testid="brain-stale">默认分支有新提交：这里先显示 {ago(stale)}读的 Brain，正在读新的…</p>
+      )}
       {data?.error && (
         <div className="br-banner is-error" role="alert">
           {data.error}

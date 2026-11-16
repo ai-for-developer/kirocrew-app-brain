@@ -1,8 +1,10 @@
 """Brain: entries by file and section with sources and usage, lint, reflect preview (nothing written) and apply
 (brain-kit's own command: a new brain/<KEY>-reflect-<n> branch)."""
 
+import asyncio
 import json
 import os
+import time
 
 from appkit import mod
 from brainfix import brain, make_project, make_service, needs_brainkit, run, sh, start_in_worktree
@@ -89,6 +91,16 @@ def logged_git(tmp_path, monkeypatch):
     return lambda: len(log.read_text().splitlines()) if log.exists() else 0
 
 
+async def fresh(svc, rid="r1"):
+    """The Brain page once the Brain read behind it is there (``stale`` None), as the page asks again."""
+    for _ in range(600):
+        got = await svc.brain(rid)
+        if got["stale"] is None:
+            return got
+        await asyncio.sleep(0.1)
+    raise AssertionError("the Brain was not read again within 60 s")
+
+
 def test_the_brain_page_is_made_once_until_main_or_a_runs_records_change(tmp_path, home, monkeypatch):
     """The Brain page read the Brain on main four times and every run's records (40 git calls, 3 to 4 s): it is made
     again only when the default branch moves or a run not merged yet changes (its branch, or its worktree's files)."""
@@ -117,7 +129,7 @@ def test_the_brain_page_is_made_once_until_main_or_a_runs_records_change(tmp_pat
             brain(repo, "entry", "add", "TECH", "pitfall", "--key", "PAY-8", "--src", "D-1", "--text", "退款按原路返回。")
             sh("git", "-C", repo, "add", "-A")
             sh("git", "-C", repo, "commit", "-qm", "another entry")
-            moved = await svc.brain("r1")
+            moved = await fresh(svc)
             return first, again, uncited, moved, n1 - n0, n2 - n1
         finally:
             await svc.stop()
@@ -129,6 +141,34 @@ def test_the_brain_page_is_made_once_until_main_or_a_runs_records_change(tmp_pat
     assert uncited["usage"]["unmerged"] == [{"key": "PAY-1", "loaded": 1, "cited": [], "where": "worktree"}]
     tech = next(f for f in moved["files"] if f["key"] == "TECH")
     assert tech["count"] == 2
+
+
+def test_once_main_moves_the_page_shows_the_brain_read_before_at_once_and_reads_the_new_one_behind(tmp_path, home):
+    """A merge moves the default branch: the page does not wait the seconds the Brain takes to read again. It gets the
+    Brain read before at once, with when that was (``stale``), while the new one is read behind it."""
+    repo = make_project(tmp_path)
+    brain(repo, "entry", "add", "TECH", "pitfall", "--key", "PAY-9", "--src", "D-1", "--text", "对账文件按自然日切分。")
+    sh("git", "-C", repo, "add", "-A")
+    sh("git", "-C", repo, "commit", "-qm", "brain entry")
+    svc = make_service(tmp_path, [repo])
+    count = lambda v: next(f for f in v["files"] if f["key"] == "TECH")["count"]  # noqa: E731
+
+    async def go():
+        await svc.start()
+        try:
+            first = await svc.brain("r1")
+            brain(repo, "entry", "add", "TECH", "pitfall", "--key", "PAY-8", "--src", "D-1", "--text", "退款按原路返回。")
+            sh("git", "-C", repo, "add", "-A")
+            sh("git", "-C", repo, "commit", "-qm", "another entry")
+            moved = await svc.brain("r1")
+            return first, moved, await fresh(svc)
+        finally:
+            await svc.stop()
+
+    first, moved, now = run(go())
+    assert first["stale"] is None and count(first) == 1
+    assert count(moved) == 1 and isinstance(moved["stale"], float) and moved["stale"] <= time.time()
+    assert now["stale"] is None and count(now) == 2
 
 
 def test_a_bad_proposal_is_a_problem_in_the_preview(tmp_path, home):

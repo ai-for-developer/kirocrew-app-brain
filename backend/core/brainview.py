@@ -19,6 +19,8 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import threading
+import time
 from typing import Any
 
 from . import bk, problems
@@ -164,7 +166,8 @@ def unmerged_usage(repo: Repo) -> list[dict[str, Any]]:
     return sorted(out, key=lambda x: x["key"])
 
 
-_views: dict[str, tuple[tuple, dict[str, Any]]] = {}   # repo path -> (main_key, the default branch's part of the view)
+_views: dict[str, tuple[tuple, dict[str, Any], float]] = {}   # repo path -> (main_key, the default branch's part, when)
+_making: dict[str, threading.Lock] = {}                         # repo path -> held while its part is being made
 _runs: dict[tuple, tuple[tuple, list[dict[str, Any]]]] = {}   # (src, ref) -> (its stamp, brain-kit's usage runs there)
 
 
@@ -198,19 +201,48 @@ def main_key(repo: Repo) -> tuple | None:
     return (_kit(), repo.cfg["brain_dir"], repo.cfg["runs_dir"], d, main) if any(main) else None
 
 
+def _make_kept(repo: Repo, key: tuple) -> dict[str, Any]:
+    """The default branch's part made for *key* and kept (one at a time per repo: a second caller gets the first's)."""
+    with _making.setdefault(repo.path, threading.Lock()):
+        kept = _views.get(repo.path)
+        if kept is not None and kept[0] == key:
+            return kept[1]
+        made = _make_view(repo)
+        if not made["error"]:
+            _views[repo.path] = (key, made, time.time())
+        return made
+
+
+def _make_behind(repo: Repo, key: tuple) -> None:
+    if _making.setdefault(repo.path, threading.Lock()).locked():
+        return
+
+    def go() -> None:
+        try:
+            _make_kept(repo, key)
+        except Exception:  # noqa: BLE001 - the next visit makes it again
+            pass
+    threading.Thread(target=go, daemon=True, name="brain-view").start()
+
+
 def view(repo: Repo, reflectable: list[dict[str, Any]]) -> dict[str, Any]:
     """BrainView (blocking: call it in a thread). The default branch's part (the Brain read several times over, dozens
     of git calls) is made again only when main_key changes, each run not merged yet only when its records change
-    (unmerged_usage)."""
+    (unmerged_usage). Once the branch has moved, the part made before is answered at once with when it was made
+    (``stale``) while the new one is made behind it; the page asks again until ``stale`` is None."""
     key = main_key(repo)
     kept = _views.get(repo.path)
-    if key is None or kept is None or kept[0] != key:
+    stale = None
+    if key is None:
         made = _make_view(repo)
-        if key is not None and not made["error"]:
-            _views[repo.path] = (key, made)
-    else:
+    elif kept is not None and kept[0] == key:
         made = kept[1]
-    return dict(made, usage=dict(made["usage"], unmerged=unmerged_usage(repo)), reflect=reflectable)
+    elif kept is not None:
+        _make_behind(repo, key)
+        made, stale = kept[1], kept[2]
+    else:
+        made = _make_kept(repo, key)
+    return dict(made, usage=dict(made["usage"], unmerged=unmerged_usage(repo)), reflect=reflectable, stale=stale)
 
 
 def _make_view(repo: Repo) -> dict[str, Any]:
@@ -218,7 +250,7 @@ def _make_view(repo: Repo) -> dict[str, Any]:
     out: dict[str, Any] = {"repo": repo.id, "ref": "", "files": [], "lint": {"errors": [], "warnings": []},
                            "usage": {"useful": [0, 0], "repeat_rate": [0, 0], "archived": 0, "purged": 0, "runs": [],
                                      "never_cited": [], "repeats_any": [], "unmerged": []},
-                           "reflect": [], "error": "", "raw": ""}
+                           "reflect": [], "error": "", "raw": "", "stale": None}
     try:
         brain, label = _brain(repo)
     except bk.brain_error() as exc:
