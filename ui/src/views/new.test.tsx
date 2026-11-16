@@ -383,6 +383,19 @@ describe('开需求', () => {
     expect(props.reloadStatus).toHaveBeenCalled()
   })
 
+  test('KiroCrew’s card says how old the checks it shows are, and that they are being checked again', async () => {
+    let answer: () => void = () => {}
+    const slow = new Promise<void>((r) => { answer = r })
+    const now = Date.now() / 1000
+    const status = fx.status()
+    status.crew = { ...status.crew, checked_at: now - 180 }
+    setup({ [`GET ${API}/crew`]: async () => { await slow; return { ...fx.crew(), checked_at: Date.now() / 1000 } } }, status)
+    const card = screen.getByRole('region', { name: 'KiroCrew 的检查' })
+    expect(within(card).getByTestId('crew-age')).toHaveTextContent('3 分钟前查的，正在重新查…')
+    answer()
+    await waitFor(() => expect(within(card).getByTestId('crew-age')).toHaveTextContent(/^刚刚查的$/))
+  })
+
   test('picking another repo rewrites the entry and reads its next key', async () => {
     const status = calmStatus()
     status.repos[1] = { ...status.repos[0], id: 'r2', name: 'shop-web', path: '/Users/alice/workplace/shop-web' }
