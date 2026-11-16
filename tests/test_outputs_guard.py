@@ -10,10 +10,12 @@ import time
 from types import SimpleNamespace
 
 from appkit import BRAINKIT, commit_file, git_repo, mod, sh
-from brainfix import needs_brainkit
+from brainfix import lean, make_project, make_service, needs_brainkit, request_requirements, run, start_in_worktree
 from test_outputs import RELEASE, REQS, call, fold, h, node, rnd, routes, view, waiting  # noqa: F401  (waiting: a fixture)
+from test_outputs_turns import hook
 
 outputs = mod("outputs")
+stages = mod("stages")
 AppError = mod("httpkit").AppError
 
 LEDGER = "aidlc-docs/audit/bob-mbp-111111.jsonl"
@@ -168,6 +170,64 @@ def test_lean_ledgers_are_never_listed_nor_read_at_any_depth_with_or_without_a_s
         for v in ("source", "diff"):
             resp = d.file(ref=c2, path=p, view=v)
             assert (resp.status, resp.body.get("code")) == (403, "not_shown"), (p, v, resp.body)
+
+
+def test_leans_state_and_audit_pages_are_refused_wherever_aidlc_docs_is_and_no_stage_document_is_one():
+    for p in ("aidlc-docs/audit.md", "aidlc-docs/261116-pay-1-refund/aidlc-state.md",
+              "apps/pay/aidlc-docs/261116-pay-1-refund/audit.md"):
+        try:
+            outputs.safe_path(p)
+            got = "read"
+        except AppError as e:
+            got = (e.status, e.code)
+        assert got == (403, "not_shown"), p
+    for st in (st for st in stages.STAGES if st.doc):
+        doc = stages.doc_path(st, "audit", "261116-pay-1-refund")
+        assert outputs.safe_path(doc) == doc
+
+
+@needs_brainkit
+def test_the_pages_lean_writes_from_its_ledger_are_never_listed_nor_read(tmp_path, home):
+    """aidlc-state.md (its Stage log and its table) and audit.md (`lean audit pack`) carry a rejection's words: Lean
+    writes them there from the ledger, and the agent commits both."""
+    repo = make_project(tmp_path)
+    wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
+    intent = json.loads((wt / "runs" / "PAY-1" / "run.json").read_text())["intent"]
+    request_requirements(wt, intent)
+    typed = "驳回 REQUIREMENTS 金额按分算，老板张三说先不做退款审核"
+    hook(wt, typed)
+    lean(wt, "audit", "pack")
+    pages = ["aidlc-docs/%s/%s" % (intent, n) for n in ("aidlc-state.md", "audit.md")]
+    for p in pages:
+        assert "老板张三" in (wt / p).read_text(encoding="utf-8"), p
+    (wt / "aidlc-docs" / intent / "inception" / "requirements" / "requirements.md").write_text(
+        "# Requirements\n\nSize: small\n\n- AC-1 退款，金额按分算\n", encoding="utf-8")
+    lean(wt, "request", "REQUIREMENTS")
+    sh("git", "-C", wt, "add", "-A")
+    later = "@%d +0000" % (time.time() + 2)      # git's whole seconds: after the request, inside round 2
+    sh("git", "-C", wt, "commit", "-q", "-m", "requirements: revise after rejection",
+       env={"GIT_AUTHOR_DATE": later, "GIT_COMMITTER_DATE": later})
+    tip = sh("git", "-C", wt, "rev-parse", "HEAD").stdout.strip()
+    svc = make_service(tmp_path, [repo])
+
+    async def go():
+        await svc.start()
+        try:
+            listed = await svc.outputs("r1", "PAY-1", outputs.node_query("requirements", None))
+            got = {}
+            for p in pages:
+                try:
+                    got[p] = await svc.outputs_file("r1", "PAY-1", outputs.file_query({"ref": tip, "path": p}))
+                except AppError as e:
+                    got[p] = (e.status, e.code)
+            return listed, got
+        finally:
+            await svc.stop()
+
+    listed, got = run(go())
+    assert not set(pages) & {f["path"] for f in listed["files"]}, listed["files"]
+    assert got == {p: (403, "not_shown") for p in pages}, got
+    assert "老板张三" not in json.dumps([listed, got], ensure_ascii=False)
 
 
 # ---------------------------------------------------------------- emails
