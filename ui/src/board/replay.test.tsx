@@ -100,7 +100,7 @@ const PAY2: BoardEntry = { repo: 'r1', key: 'PAY-2' }
 const SLOW = { timeout: 5000 }
 const SHA = (s12: string) => s12 + '0'.repeat(28)
 const DESIGN = 'aidlc-docs/261102-refund-id/inception/application-design/application-design.md'
-const STATE = 'aidlc-docs/261102-refund-id/aidlc-state.md'
+const STATE = 'aidlc-docs/261102-refund-id/decisions.md'
 const DRAFT = SHA('8bde8a1833b8') // 第 1 轮's commit, 23:35
 const FIXED = SHA('f843e8d2a8f6') // 按意见改设计, 00:21: 第 2 轮's version
 const ASKED_1 = 1793633760

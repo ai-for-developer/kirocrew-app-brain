@@ -15,11 +15,11 @@ submodule is refused, on either side of a diff too). The one exception is a loca
 before it is committed (Lean commits documents with the code): read from this machine's worktree only when the path
 is the stage table's document of one of the requirement's nodes, a local round of it recorded that very sha256, no
 part of the path is a symlink, and the bytes hash to it (pinned_file). A diff never runs a diff driver or a textconv
-the repo's .gitattributes names. Lean's ledgers (aidlc-docs/audit, wherever aidlc-docs is) are never listed nor read:
-they hold what people typed in their sessions. Emails become brain-kit's pseudonyms (G-<6 hex>) before anything is
-shown: release.md's approval table carries git emails. A text over TEXT_MAX is cut at a line end first, so the
-scrubber never gets part of a secret. git runs with GIT_NO_REPLACE_OBJECTS: a replace ref never swaps a commit's
-bytes.
+the repo's .gitattributes names. Lean's ledgers (aidlc-docs/audit, wherever aidlc-docs is) and the pages it writes
+from them (aidlc-state.md, audit.md) are never listed nor read: they hold what people typed in their sessions, a
+rejection's words among them. Emails become brain-kit's pseudonyms (G-<6 hex>) before anything is shown: release.md's
+approval table carries git emails. A text over TEXT_MAX is cut at a line end first, so the scrubber never gets part
+of a secret. git runs with GIT_NO_REPLACE_OBJECTS: a replace ref never swaps a commit's bytes.
 """
 
 from __future__ import annotations
@@ -50,7 +50,8 @@ HEX40 = re.compile(r"[0-9a-f]{40}")             # these four: whole strings only
 HEX64 = re.compile(r"[0-9a-f]{64}")
 NODE_RE = re.compile(r"[a-z][a-z-]{0,39}(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?")
 ROUND_RE = re.compile(r"[1-9][0-9]{0,2}")
-HIDDEN = re.compile(r"(?:^|/)aidlc-docs/audit(?:/|$)")      # Lean's ledgers, wherever aidlc-docs is
+# Lean's ledgers, and aidlc-state.md and audit.md, wherever aidlc-docs is (no stage's document is either)
+HIDDEN = re.compile(r"(?:^|/)aidlc-docs/(?:audit(?:/|$)|(?:[^/]+/)*(?:aidlc-state|audit)\.md$)")
 # brain-kit trace.EMAIL_RE and trace.pseudonym, so a person is the same G-xxxxxx here as everywhere on the board; the
 # part before the @ held to 64 characters (RFC 5321; the same matches up to it): unbounded, a 60 000-letter run took 4 s
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*")
@@ -69,7 +70,8 @@ NO_NODE = "看板上没有这一步：刷新看板再看"
 NO_ROUND = "这一步没有这一轮：刷新看板再看"
 NOT_OURS = "这个提交不是这个需求的：刷新看板，从看板上点开文件"
 NOT_OURS_FILE = "这个文件不是这个需求的：刷新看板，从看板上点开文件"
-NOT_SHOWN = "Lean 的账本不在这里显示，里面有人在会话里打的字：到看板的「事件」里看它记下的事"
+NOT_SHOWN = ("Lean 的账本和照账本写的 aidlc-state.md、audit.md 不在这里显示，里面有人在会话里打的字："
+             "到看板的「事件」里看它记下的事")
 NOT_RECORDED = "Lean 没有为这一步记下这个文件的这一版：从看板上点开文件"
 NO_WORKTREE = "这台机器上没有这个需求的工作区：这一版只能等提交以后看"
 CHANGED = "这一版还没提交，工作区里的文件也和 Lean 记下的不一样了：到会话里看"

@@ -146241,19 +146241,6 @@
      "base_round": null,
      "vs": [],
      "why": null
-    },
-    {
-     "path": "aidlc-docs/261102-refund-id/aidlc-state.md",
-     "output": false,
-     "status": "A",
-     "added": 3,
-     "removed": 0,
-     "ref": "cbf852bb4756c1d69459c0dd05fa1eaca8d2be48",
-     "pin": null,
-     "base_round": null,
-     "vs": [],
-     "why": null,
-     "base": null
     }
    ],
    "more": 0,
@@ -146291,32 +146278,6 @@
    "truncated": false,
    "size": 427
   },
-  "/outputs/r1/PAY-2/file?path=aidlc-docs/261102-refund-id/aidlc-state.md&ref=cbf852bb4756c1d69459c0dd05fa1eaca8d2be48&view=source": {
-   "path": "aidlc-docs/261102-refund-id/aidlc-state.md",
-   "view": "source",
-   "at": "cbf852bb4756c1d69459c0dd05fa1eaca8d2be48",
-   "base": null,
-   "pinned": false,
-   "lang": "markdown",
-   "asked": null,
-   "text": "# aidlc-state.md\n\nPAY-2 的第 1 版。\n",
-   "binary": false,
-   "truncated": false,
-   "size": 40
-  },
-  "/outputs/r1/PAY-2/file?path=aidlc-docs/261102-refund-id/aidlc-state.md&ref=cbf852bb4756c1d69459c0dd05fa1eaca8d2be48&view=diff": {
-   "path": "aidlc-docs/261102-refund-id/aidlc-state.md",
-   "view": "diff",
-   "at": "cbf852bb4756c1d69459c0dd05fa1eaca8d2be48",
-   "base": null,
-   "pinned": false,
-   "lang": "markdown",
-   "asked": null,
-   "text": "diff --git a/aidlc-docs/261102-refund-id/aidlc-state.md b/aidlc-docs/261102-refund-id/aidlc-state.md\nnew file\n--- /dev/null\n+++ b/aidlc-docs/261102-refund-id/aidlc-state.md\n@@ -0,0 +1,3 @@\n+# aidlc-state.md\n+\n+PAY-2 的第 1 版。\n",
-   "binary": false,
-   "truncated": false,
-   "size": 224
-  },
   "/outputs/r1/PAY-2/turns?node=requirements&round=1": {
    "node": "requirements",
    "round": 1,
@@ -146353,19 +146314,6 @@
      "base_round": null,
      "vs": [],
      "why": null
-    },
-    {
-     "path": "aidlc-docs/261102-refund-id/aidlc-state.md",
-     "output": false,
-     "status": "M",
-     "added": 1,
-     "removed": 1,
-     "ref": "8bde8a1833b8a297952efccb1c66294ae8bb60e1",
-     "pin": null,
-     "base_round": null,
-     "vs": [],
-     "why": null,
-     "base": "cbf852bb4756c1d69459c0dd05fa1eaca8d2be48"
     }
    ],
    "more": 0,
@@ -146402,32 +146350,6 @@
    "binary": false,
    "truncated": false,
    "size": 531
-  },
-  "/outputs/r1/PAY-2/file?path=aidlc-docs/261102-refund-id/aidlc-state.md&ref=8bde8a1833b8a297952efccb1c66294ae8bb60e1&view=source": {
-   "path": "aidlc-docs/261102-refund-id/aidlc-state.md",
-   "view": "source",
-   "at": "8bde8a1833b8a297952efccb1c66294ae8bb60e1",
-   "base": null,
-   "pinned": false,
-   "lang": "markdown",
-   "asked": null,
-   "text": "# aidlc-state.md\n\nPAY-2 的第 2 版。\n",
-   "binary": false,
-   "truncated": false,
-   "size": 40
-  },
-  "/outputs/r1/PAY-2/file?base=cbf852bb4756c1d69459c0dd05fa1eaca8d2be48&path=aidlc-docs/261102-refund-id/aidlc-state.md&ref=8bde8a1833b8a297952efccb1c66294ae8bb60e1&view=diff": {
-   "path": "aidlc-docs/261102-refund-id/aidlc-state.md",
-   "view": "diff",
-   "at": "8bde8a1833b8a297952efccb1c66294ae8bb60e1",
-   "base": "cbf852bb4756c1d69459c0dd05fa1eaca8d2be48",
-   "pinned": false,
-   "lang": "markdown",
-   "asked": null,
-   "text": "diff --git a/aidlc-docs/261102-refund-id/aidlc-state.md b/aidlc-docs/261102-refund-id/aidlc-state.md\nindex 1c6b78b..edce0aa 100644\n--- a/aidlc-docs/261102-refund-id/aidlc-state.md\n+++ b/aidlc-docs/261102-refund-id/aidlc-state.md\n@@ -1,3 +1,3 @@\n # aidlc-state.md\n \n-PAY-2 的第 1 版。\n+PAY-2 的第 2 版。\n",
-   "binary": false,
-   "truncated": false,
-   "size": 295
   },
   "/outputs/r1/PAY-2/turns?node=application-design&round=1": {
    "node": "application-design",
