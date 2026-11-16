@@ -870,7 +870,7 @@ def bounded(fn: Callable[[], Any], timeout: float, default: Any) -> Any:
         ex.shutdown(wait=False)
 
 
-def inspect(raw: Any, *, listed: dict[str, str], records: Records, token: bool = False,
+def inspect(raw: Any, *, listed: dict[str, str], records: Records, who: identity.Who, token: bool = False,
             team_of: Callable[[str, dict[str, Any]], bool] | None = None) -> dict[str, Any]:
     """Every check of the 检查 step (blocking: call it in a thread). Writes nothing. *team_of(top, cfg)*: the repo is
     handed to the team runner (its runner-only KiroCrew checks FAIL; a reminder otherwise); None: not known."""
@@ -1013,7 +1013,7 @@ def inspect(raw: Any, *, listed: dict[str, str], records: Records, token: bool =
     # who brain-kit will say the person is here (kit.json's GitLab, or the form's guess before an install)
     base = ((out["kit"]["values"] or {}) if out["kit"]["state"] == "checkout" else form_defaults(top, origin, d)).get(
         "gitlab_base") or ""
-    me = out["me"] = identity.of(top, base, token=token)
+    me = out["me"] = who.of(top, base)
     checks.append(row("me", "OK", "你是谁", me["text"]) if me["name"] or me["source"] == "token" else
                   row("me", "WARN", "你是谁", me["error"] or "brain-kit 还不知道你是谁：认领需求时要用",
                       "在下面填上%s，点「保存」" % me["label"] if me["ask"] else ""))

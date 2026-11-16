@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from . import outputs as outputs_mod
 from .constants import KEY_RE, REPO_ID_RE
 from .httpkit import AppError, Kit
 
@@ -66,6 +67,20 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
     async def board(request: Any) -> Any:
         return kit.json(await svc.board(_rid(request), _key(request)))
 
+    # 产出: siblings of /board/, not under it (a stub that matches the longest prefix would answer them with the board)
+    async def outputs(request: Any) -> Any:
+        rid, key = _rid(request), _key(request)
+        return kit.json(await svc.outputs(rid, key, outputs_mod.node_query(request.query.get("node"), request.query.get("round"))))
+
+    async def outputs_file(request: Any) -> Any:
+        rid, key = _rid(request), _key(request)
+        return kit.json(await svc.outputs_file(rid, key, outputs_mod.file_query(request.query)))
+
+    async def outputs_turns(request: Any) -> Any:
+        rid, key = _rid(request), _key(request)
+        return kit.json(await svc.outputs_turns(rid, key, outputs_mod.node_query(request.query.get("node"),
+                                                                                 request.query.get("round"))))
+
     async def open_session(request: Any) -> Any:
         body = await kit.body(request)
         if body.get("fresh") is True:      # 重开一个会话
@@ -74,6 +89,9 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
         return kit.json(await svc.open_session(_rid(request), _key(request), trust=body.get("trust", True) is not False,
                                                kickoff=body.get("kickoff", True) is not False,
                                                review=body.get("review") is True))
+
+    async def stop_session(request: Any) -> Any:
+        return kit.json(await svc.stop_session(_rid(request), _key(request)))
 
     async def answer(request: Any) -> Any:
         body = await kit.body(request)
@@ -233,7 +251,11 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
         AppRoute("GET", "/overview", kit.guarded(overview)),
         AppRoute("GET", "/requirements/{repo}/{key}", kit.guarded(requirement)),
         AppRoute("GET", "/board/{repo}/{key}", kit.guarded(board)),
+        AppRoute("GET", "/outputs/{repo}/{key}", kit.guarded(outputs)),
+        AppRoute("GET", "/outputs/{repo}/{key}/file", kit.guarded(outputs_file)),
+        AppRoute("GET", "/outputs/{repo}/{key}/turns", kit.guarded(outputs_turns)),
         AppRoute("POST", "/requirements/{repo}/{key}/session", kit.guarded(open_session)),
+        AppRoute("POST", "/requirements/{repo}/{key}/stop", kit.guarded(stop_session)),
         AppRoute("POST", "/requirements/{repo}/{key}/answer", kit.guarded(answer)),
         AppRoute("POST", "/requirements/{repo}/{key}/split", kit.guarded(split)),
         AppRoute("POST", "/requirements/{repo}/{key}/claim", kit.guarded(claim)),

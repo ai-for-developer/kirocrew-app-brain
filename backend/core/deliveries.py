@@ -24,6 +24,8 @@ KIND_LABEL = {"clarify": "澄清", "design": "设计", "plan": "计划", "accept
               "other": "其他", "requirements": "需求批准"}
 ASK_WHO = {"product": "product", "builder": "builder", "owner": "you", "security": "people", "data": "people"}
 ASK_NAME = {"product": "产品", "builder": "开发的人", "you": "你", "people": "人"}
+APPROVE_REJECT = "approve / reject"     # how an approval or an acceptance is answered on the MR (mr_ask)
+GATES = ("approve", "answer", "accept")      # the steps (waits.do) that are a human gate: a Lean approval, a question, the acceptance
 WATCH_S = 14 * 86400    # brain-kit's 14 days after a merge (eval.md: a delivery counts once they are over)
 # who settled a decision (brainkit.evaluate's categories and labels; "unclassified": a Who outside the runner's
 # vocabulary, listed and never guessed)
@@ -54,6 +56,17 @@ def park_waiting(park: Any) -> bool:
 def park_is_acceptance(park: dict[str, Any]) -> bool:
     lr = str(park.get("lean_request") or "")
     return park.get("kind") == "acceptance" or lr.startswith("RELEASE ")
+
+
+def question_label(kind: Any, lean_request: Any = None) -> str:
+    """What a question asks, in a word: a Lean request names its approval (代码生成计划审批; the runner asks for one as
+    a clarify, and the bridge labels it so), the release's is the acceptance (验收), any other its kind (澄清, 设计)."""
+    lean = str(lean_request or "").split(" ")[0]
+    if kind == "acceptance" or lean == "RELEASE":
+        return KIND_LABEL["acceptance"]
+    if lean:
+        return "%s审批" % lean_view.KIND_LABEL.get(lean, lean)
+    return KIND_LABEL.get(str(kind), str(kind or "问题"))
 
 
 HAN_RE, LATIN_RE = re.compile(r"[\u3400-\u9fff]"), re.compile(r"[A-Za-z0-9]")
@@ -93,15 +106,17 @@ def base_row(repo_id: str, f: dict[str, Any], *, local_only: bool = False) -> di
         "home": None,        # a runner row: the listed repo (r1 …) of its GitLab project, filled in by the service
         "source": str(claim.get("source") or "product"), "state": "claimed", "state_label": STATE_LABEL["claimed"],
         "where": f.get("where") or "claim", "branch": f.get("branch"), "intent": run.get("intent"),
-        "lean": lean, "stage": lean_view.stage_text(lean), "waits": waits("nobody", "none", ""),
+        "lean": lean, "stage": lean_view.stage_text(lean), "verify_fails": lean_view.verify_fails(f.get("events") or []),
+        "waits": waits("nobody", "none", ""),
         "summary": None,     # the first line of its 变更说明 (mrdesc_view), filled in by the service
-        "credits": None,
+        "credits": None, "credits_whole": True,
         "updated_at": None, "mr": None, "worktree": f.get("worktree"), "run_ids": [], "sessions": 0,
         "overlap": [], "open_questions": [],
         "expected_paths": [p for p in run.get("expected_paths") or [] if isinstance(p, str)][:50],
         "local_only": bool(local_only),
         "session_url": None,     # its brain-dev session on this machine (KiroCrew's chat URL), filled in by the service
         "family": None,      # a 大需求 or one of its 小需求 (family.families), filled in by the service
+        "progress_pushed_at": None,     # when this machine last pushed its run branch at a checkpoint (progress.py)
     }
 
 
@@ -129,19 +144,23 @@ def _merged(put: Any, f: dict[str, Any], *, now: float | None, reflected: bool, 
     return put("merged", "nobody", "none", text, since=at)
 
 
+def owns(me: str | None, owner: str | None) -> bool:
+    return not owner or owner == me
+
+
 def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | None, slot: dict[str, Any] | None,
              cfg: dict[str, Any], bot_commits: int = 0, at_handover: bool = False, me: str | None = None,
              reflected: bool = False, now: float | None = None, pushed: bool = True) -> None:
     """Fill in state, state_label and waits (person mode). *at_handover*: the branch tip is the hand-over commit
     `brain handoff` made (its parent is run.json's handoff.local_head). *me*: who this machine's person is (None: not
-    known, every requirement counts as theirs); someone else's requirement waits for them, not for "you". *reflected*:
-    its Brain proposals were written back already (a brain/<KEY>-reflect-<n> branch). *pushed*: the branch tip is on
-    the remote (False: a hand-over committed here whose push failed, so nothing was handed over; a repo done only on
-    this machine has nothing to push to)."""
+    known); someone else's requirement waits for them, not for "you".
+    *reflected*: its Brain proposals were written back already (a brain/<KEY>-reflect-<n> branch). *pushed*: the
+    branch tip is on the remote (False: a hand-over committed here whose push failed, so nothing was handed over; a
+    repo done only on this machine has nothing to push to)."""
     run, park, claim = f.get("run"), f.get("park"), f.get("claim") or {}
     pending = [a for a in f.get("approvals") or [] if a["state"] == "pending" and a.get("line")]
     owner = f.get("owner") or claim.get("owner")
-    mine = not me or not owner or me == owner
+    mine = owns(me, owner)
     you = "you" if mine else "people"
     them = "你" if mine else str(owner)
 
@@ -170,16 +189,17 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
         if park_waiting(park):
             kind = str(park.get("kind") or "other")
             here = mine and slot is not None and kind == "clarify" and not park.get("lean_request")
-            return put("parked", you, "answer", spaced("AI 停下等", them, "回答（%s）" % KIND_LABEL.get(kind, "问题")),
+            what = question_label(kind, park.get("lean_request"))
+            return put("parked", you, "answer", spaced("AI 停下等", them, "回答（%s）" % what),
                        where="app" if here else "session", since=f.get("park_at"))
         if not mine:
             return put("local", "people", "none", "%s 在自己的机器上做" % owner, since=f.get("tip_at"))
+        if slot and slot.get("awaiting"):      # KiroCrew counts a session asking for a tool as busy too
+            return put("local", "you", "tool", "会话里有一个工具调用等你批准", where="session",
+                       since=updated_at(f, slot))
         if slot and slot.get("busy"):
             nxt = (row.get("lean") or {}).get("next")
             return put("local", "agent", "none", "AI 在做" + ("「%s」" % nxt["label"] if nxt else ""))
-        if slot and slot.get("awaiting"):
-            return put("local", "you", "tool", "会话里有一个工具调用等你批准", where="session",
-                       since=updated_at(f, slot))
         rows = f.get("stages") or lean_view.stages([])
         review_ok = lean_view.review_current((f.get("review") or {}).get("at"), bool(f.get("review")),
                                              f.get("events") or [])
@@ -262,7 +282,16 @@ def mr_ask(who: str, what: str, did: Any, *, approval: bool, owner: str | None =
     name = owner if who == "people" and owner else ASK_NAME.get(who, "人")
     verb = "验收" if what == "验收" else "回答"
     return spaced("等", name, "在 MR 上%s%s（%s）" % (verb, " " + str(did) if did else "",
-                                                 "approve / reject" if approval else what))
+                                                 APPROVE_REJECT if approval else what))
+
+
+def wait_head(text: str) -> str:
+    """A ``waits`` sentence said to someone other than the one who acts: a 「等…」 sentence without how that one takes the
+    step (「等 carol 批准设计：读完再在会话里自己打那一行」 → 「等 carol 批准设计」), any other whole (its reason and what to
+    do: 「D-1 的回答签名服务不签：看运行机页的拒签原因」), and never the answers an MR question takes
+    (「等产品在 MR 上验收 D-3（approve / reject）」 → 「等产品在 MR 上验收 D-3」)."""
+    text = text.replace("（%s）" % APPROVE_REJECT, "")
+    return text.split("：", 1)[0] if text.startswith("等") else text
 
 
 # the bridge holds the answer while park.json at the tip still waits (who it waits on, the line)
@@ -451,21 +480,55 @@ def runner_takes(f: dict[str, Any] | None, row: dict[str, Any] | None, runner_ro
     return not (runner_row["state"] in ended and row["state"] in ended)
 
 
-def overlaps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Open requirements whose expected paths overlap (same path, or one inside the other), as the bridge warns."""
-    live = [r for r in rows if r["state"] in OPEN_STATES and r["expected_paths"]]
+def path_base(spec: str) -> str:
+    """The folder (or file) an expected path is about, brain-kit's rule (common.path_base): a glob (*, ?, [) is the
+    folder before its first wildcard ('' at the top: the whole repo), since Lean's globs match below it; brain split
+    writes each unit's Paths as globs."""
+    s = str(spec or "").strip().replace("\\", "/")
+    while s.startswith("./"):
+        s = s[2:]
+    cut = min([s.find(c) for c in "*?[" if c in s] or [-1])
+    if cut >= 0:
+        s = s[:cut]
+        s = s[:s.rfind("/")] if "/" in s else ""
+    return s.strip("/")
+
+
+def _covers(x: str, y: str) -> bool:
+    """Could one file be under both bases (brain-kit's paths_overlap)?"""
+    return not x or not y or x == y or x.startswith(y + "/") or y.startswith(x + "/")
+
+
+def _paths_of(r: dict[str, Any]) -> str | None:
+    """The repo a row's expected paths are in: a runner row's is its home, unknown (None) when this machine does not
+    list that project."""
+    return r.get("home") if r["repo"] == "runner" else r["repo"]
+
+
+def overlap_pairs(rows: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any], list[str]]]:
+    """(row, row, the first one's paths they share, as written) for each two open requirements of one repo whose
+    expected paths could hold the same file (path_base), as the bridge warns; each pair once, in the rows' order."""
+    live = [r for r in rows if r["state"] in OPEN_STATES and r["expected_paths"] and _paths_of(r)]
     out = []
     for i, a in enumerate(live):
-        mine = [p.rstrip("/") for p in a["expected_paths"] if p]
+        mine = [(p.rstrip("/"), path_base(p)) for p in a["expected_paths"] if p]
         for b in live[i + 1:]:
-            if a["repo"] != b["repo"] or a["key"] == b["key"]:
+            if _paths_of(a) != _paths_of(b) or a["key"] == b["key"]:
                 continue
-            theirs = [p.rstrip("/") for p in b["expected_paths"] if p]
-            both = sorted({x for x in mine for t in theirs if x == t or x.startswith(t + "/") or t.startswith(x + "/")})
+            theirs = [path_base(p) for p in b["expected_paths"] if p]
+            both = sorted({said for said, x in mine for y in theirs if _covers(x, y)})
             if both:
-                out.append({"keys": [a["key"], b["key"]], "paths": both[:10]})
-                a["overlap"].append(b["key"])
-                b["overlap"].append(a["key"])
+                out.append((a, b, both))
+    return out
+
+
+def overlaps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The overlapping pairs as 交付总览 lists them, each row told the keys it shares a path with (its ``overlap``)."""
+    out = []
+    for a, b, both in overlap_pairs(rows):
+        out.append({"keys": [a["key"], b["key"]], "paths": both[:10]})
+        a["overlap"].append(b["key"])
+        b["overlap"].append(a["key"])
     return out
 
 
@@ -887,6 +950,15 @@ def branch_words(refs: list[tuple[str, str | None]]) -> str | None:
     return "、".join(of(name + " ", w) for name, w in got)
 
 
+def cto_credits(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """每个需求的 credits over the rows that have some: per requirement, the total, how many; *cut*: how many of those
+    leave something out (credits_whole false: service._req_credits), so the numbers are at least these."""
+    with_c = [r for r in rows if isinstance(r.get("credits"), (int, float)) and r.get("credits")]
+    total = round(sum(float(r["credits"]) for r in with_c), 1) if with_c else None
+    return {"per_req": round(total / len(with_c), 1) if with_c else None, "total": total, "reqs": len(with_c),
+            "cut": sum(1 for r in with_c if r.get("credits_whole") is False)}
+
+
 def cto_numbers(parts: list[tuple[str, dict[str, Any]]], rows: list[dict[str, Any]], *, available: bool, now: float,
                 weeks: int = 12, names: dict[str, str] | None = None, local_repos: int = 0,
                 repos: int = 0) -> dict[str, Any]:
@@ -910,9 +982,7 @@ def cto_numbers(parts: list[tuple[str, dict[str, Any]]], rows: list[dict[str, An
         stepped = {"at_points": at_points, "outside": max(0, all_ - at_points),
                    "kinds": [{"label": lab, "n": n, "point": pt} for (lab, pt), n in
                              sorted(kinds.items(), key=lambda kv: (not kv[0][1], -kv[1]))]}
-    with_c = [r for r in rows if isinstance(r.get("credits"), (int, float)) and r.get("credits")]
-    total = round(sum(float(r["credits"]) for r in with_c), 1) if with_c else None
-    credits = {"per_req": round(total / len(with_c), 1) if with_c else None, "total": total, "reqs": len(with_c)}
+    credits = cto_credits(rows)
     # the weekly merges: a run brain-kit judged says how it went; a merged row it did not judge is counted as pending
     first = _week(now) if now else ""
     starts = []
@@ -956,5 +1026,6 @@ def cto_sentence(unattended: list[int] | None, stepped: dict[str, Any] | None, c
         n = stepped["at_points"] + stepped["outside"]
         parts.append("人介入了 %d 次（本机做的也算），%d 次落在判断点上" % (n, stepped["at_points"]) if n else "人还没有介入过")
     if credits.get("per_req") is not None:
-        parts.append("有 credits 的 %d 个需求，平均每个 %s credits" % (credits["reqs"], credits["per_req"]))
+        parts.append("有 credits 的 %d 个需求，平均每个 %s credits%s" % (
+            credits["reqs"], credits["per_req"], "（%d 个还有没算进来的，实际更多）" % credits["cut"] if credits["cut"] else ""))
     return ("。".join(parts) + "。") if parts else "还没有可以算的数：需求合并以后，这里会说它们是怎么交付的。"

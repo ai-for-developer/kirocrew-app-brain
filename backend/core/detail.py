@@ -8,8 +8,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from . import bk, lean_view, problems
-from .deliveries import KIND_LABEL, park_waiting
+from . import bk, lean_view, problems, stages
+from .deliveries import KIND_LABEL, park_waiting, question_label
 
 CITE_RE = re.compile(r"(?<![A-Za-z0-9-])([PTIJ]-[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}-[1-9][0-9]{0,3})(?![0-9-])")
 VOUCHER_RE = re.compile(r"(?<![0-9A-Za-z])V-[0-9a-f]{10}(?![0-9a-f])")
@@ -153,21 +153,25 @@ def decisions(text: str | None, path: str, bot_users: list[str]) -> list[dict[st
 
 # ---------------------------------------------------------------- questions
 
-def park_question(park: dict[str, Any] | None, *, answerable: bool, via: str | None) -> dict[str, Any] | None:
+def park_question(park: dict[str, Any] | None, *, answerable: bool, via: str | None, handed: bool = False,
+                  mr_url: str | None = None) -> dict[str, Any] | None:
+    """The question park.json asks: this machine's run's, answered in its session; *handed*: the runner's (its run
+    branch after the hand-over), answered on the MR (*mr_url*) once the bridge posts it."""
     if not isinstance(park, dict) or park.get("invalid"):
         return None
     kind = str(park.get("kind") or "other")
     opts = [{"id": str(o.get("id")), "text": str(o.get("text") or "")[:500]} for o in park.get("options") or []
             if isinstance(o, dict) and o.get("id")]
-    return {"source": "park", "id": None, "kind": kind, "kind_label": KIND_LABEL.get(kind, kind),
+    return {"source": "runner" if handed else "park", "id": None, "kind": kind,
+            "kind_label": question_label(kind, park.get("lean_request")),
             "question": str(park.get("question") or "")[:2000], "options": opts,
             "recommend": str(park["recommend"]) if park.get("recommend") else None,
             "lean_request": str(park["lean_request"]) if park.get("lean_request") else None,
             "refs": [str(x)[:60] for x in park.get("refs") or []][:10], "state": str(park.get("status") or "?"),
-            "answer": None, "answerer": None, "voucher_id": None, "mr_url": None, "at": None,
-            "answerable_here": bool(answerable and park_waiting(park) and kind == "clarify"
+            "answer": None, "answerer": None, "voucher_id": None, "mr_url": mr_url if handed else None, "at": None,
+            "answerable_here": bool(answerable and not handed and park_waiting(park) and kind == "clarify"
                                     and not park.get("lean_request")),
-            "answer_via": via if answerable else None}
+            "answer_via": via if answerable and not handed else None}
 
 
 def mr_questions(mr: dict[str, Any] | None, *, own: bool, can_post: bool) -> list[dict[str, Any]]:
@@ -175,7 +179,8 @@ def mr_questions(mr: dict[str, Any] | None, *, own: bool, can_post: bool) -> lis
     for q in (mr or {}).get("questions") or []:
         ok = own and can_post and q.get("state") == "open" and q.get("kind") == "clarify" and not q.get("lean_request")
         out.append({"source": "mr", "id": q.get("id"), "kind": q.get("kind") or "other",
-                    "kind_label": q.get("kind_label") or KIND_LABEL.get(str(q.get("kind")), "其他"),
+                    "kind_label": question_label(q.get("kind"), q.get("lean_request")) if q.get("lean_request")
+                    else q.get("kind_label") or KIND_LABEL.get(str(q.get("kind")), "其他"),
                     "question": q.get("question") or "", "options": q.get("options") or [],
                     "recommend": q.get("recommend"), "lean_request": q.get("lean_request"),
                     "refs": q.get("refs") or [], "state": q.get("state") or "open", "answer": q.get("answer"),
@@ -189,7 +194,8 @@ def ledger_questions(rows: list[dict[str, Any]], mr_url: str | None) -> list[dic
     out = []
     for d in rows:
         kind = str(d.get("kind") or "other")
-        out.append({"source": "bridge", "id": d.get("id"), "kind": kind, "kind_label": KIND_LABEL.get(kind, kind),
+        out.append({"source": "bridge", "id": d.get("id"), "kind": kind,
+                    "kind_label": question_label(kind, d.get("lean_request")),
                     "question": "", "options": [], "recommend": None, "lean_request": d.get("lean_request"),
                     "refs": [], "state": d.get("state") or "?", "answer": d.get("answer"),
                     "answerer": None, "voucher_id": d.get("voucher_id"), "mr_url": mr_url,
@@ -256,11 +262,17 @@ def trace_timeline(t: dict[str, Any]) -> list[dict[str, Any]]:
     def who(w: Any) -> Any:
         return OWNER if w and str(w) in mine else w
 
-    items = []
+    items, whole = [], set()
     for s in t.get("stages") or []:
+        if s.get("phase_skipped"):   # brainkit.trace gives each stage a phase skip covered its own row: said once
+            if (s["phase_skipped"], s.get("src")) not in whole:
+                whole.add((s["phase_skipped"], s.get("src")))
+                items.append({"at": s.get("at"), "kind": "stage", "label": lean_view.phase_skipped(s["phase_skipped"]),
+                              "detail": lean_view.say_note(s.get("note")), "who": None, "src": s.get("src")})
+            continue
         stage, _, unit = str(s.get("id", "")).partition("/")     # brainkit.trace: <stage>/<unit> for a unit's stage
         items.append({"at": s.get("at"), "kind": "stage",
-                      "label": "%s：%s" % (lean_view.STAGE_LABEL.get(stage, stage),
+                      "label": "%s：%s" % (stages.label(stage),
                                           {"started": "开始", "done": "完成", "skipped": "跳过"}.get(s.get("state"), s.get("state")))
                       + ("（%s）" % unit if unit else ""),
                       "detail": lean_view.say_note(s.get("note")), "who": None, "src": s.get("src")})
@@ -288,12 +300,10 @@ def trace_timeline(t: dict[str, Any]) -> list[dict[str, Any]]:
                       "detail": h.get("run_id") or why or str(h.get("commit") or "")[:12] or None, "who": who(h.get("by")),
                       "src": h.get("src")})
     for q in a.get("questions") or []:
-        what = KIND_LABEL.get(str(q.get("kind")), "问题")
-        lean = str(q.get("lean_request") or "").split(" ")[0]
+        what = question_label(q.get("kind"), q.get("lean_request"))
         items.append({"at": q.get("at"), "kind": "question",
                       "label": "%s的问题回答了，接着做" % what if q.get("status") == "answered" else "停下问人：%s" % what,
-                      "detail": "要批准%s" % lean_view.KIND_LABEL.get(lean, lean) if lean else None, "who": None,
-                      "src": q.get("src")})
+                      "detail": None, "who": None, "src": q.get("src")})
     for d in t.get("decisions") or []:
         if d.get("source") == "bridge":
             # 0d52e97: sha, the MR head the bridge asked it at

@@ -18,6 +18,7 @@ from urllib.parse import quote
 
 TOKEN_MAX_AGE = 240.0
 TIMEOUT_S = 30.0
+PAGE = 500    # KiroCrew 0.11.2 answers at most this many transcript rows a call
 
 try:  # the gateway always ships aiohttp; unit tests pass a fake
     import aiohttp
@@ -213,6 +214,17 @@ class Gateway:
         data = await self.request("GET", f"/api/chat/slots/{q(key)}", params={"limit": limit})
         rows = data.get("messages") if isinstance(data, dict) else None
         return [m for m in (rows or []) if isinstance(m, dict)]
+
+    async def page(self, key: str, before: int | None = None, limit: int = PAGE) -> tuple[list[dict[str, Any]], int | None]:
+        """The *limit* rows of a slot's transcript before row *before* (the newest when None), oldest first, and where the
+        page before them ends (KiroCrew's ``next_before``: the index of this page's first row), or None at the start."""
+        params: dict[str, Any] = {"limit": limit} if before is None else {"limit": limit, "before": before}
+        data = await self.request("GET", f"/api/chat/slots/{q(key)}", params=params)
+        data = data if isinstance(data, dict) else {}
+        rows = [m for m in data.get("messages") or [] if isinstance(m, dict)]
+        nxt = data.get("next_before")
+        more = data.get("has_more") is True and isinstance(nxt, int) and not isinstance(nxt, bool) and nxt >= 0
+        return rows, nxt if more else None
 
     async def stop(self, key: str) -> None:
         await self.request("POST", f"/api/chat/slots/{q(key)}/stop", body={})

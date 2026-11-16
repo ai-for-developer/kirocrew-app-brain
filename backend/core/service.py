@@ -18,17 +18,20 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import (bk, brainview, crewcheck, deliveries, detail, family, identity, importer, inplace, installer, intake,
-               landing, lean_view, mrdesc_view, mrinfo, picker)
-from . import problems
+               landing, lean_view, mrdesc_view, mrinfo, picker, progress, roster)
+from . import outputs as outputs_mod
+from . import problems, stages
 from . import board as board_mod
 from . import settings as settings_mod
 from . import todo as todo_mod
+from . import turns as turns_mod
 from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_FOLDER, REPO_ID_RE, TICK_S, VERSION
-from .gateway import Gateway
+from .gateway import Gateway, GatewayError
+from .gateway import said as gateway_said
 from .httpkit import AppError
 from .repo import Git, Repo, Source, read_claim, read_facts
 from .repoids import RepoIds, from_records
-from .sessions import SessionManager
+from .sessions import SessionManager, requirement_credits
 from . import store as store_mod
 from .store import Store
 
@@ -40,6 +43,10 @@ REVIEW_TITLE = " · 审查"     # a review session's title ends so (开审查会
 MR_EVERY_S = 30.0
 CREW_EVERY_S = 300.0
 TRACE_TTL_S = 15.0
+FOLD_TTL_S = 10.0     # the 产出 drawer reads the board's last fold; the board polls every 2 s while it is open
+RUNNER_ELSEWHERE = "交接以后，运行机上的会话这台机器读不到，没算进来"
+LOCAL_ELSEWHERE = "交接以前，开发者机器上的会话这台机器读不到，没算进来"
+RUNNER_TOOK = ("running", "parked", "acceptance", "merged", "closed")   # a hand-over's states once the runner has it
 
 
 def basic_scrub(text: str) -> str:
@@ -55,7 +62,8 @@ RECORD_SCOPE_RE = re.compile(r"^(r[1-9][0-9]{0,2})-([A-Z][A-Z0-9]{0,9}-[1-9][0-9
 
 SCRUB_KEYS = ("text", "why", "question", "label", "detail", "status", "next", "open_questions", "output", "reasons",
               "findings", "review", "blocking", "error", "session_error", "notes", "warnings", "problems", "summary",
-              "first", "todo", "raw", "doing", "facts", "title", "name", "checks")
+              "first", "todo", "raw", "doing", "facts", "title", "name", "checks", "note", "subject", "sub", "push_why",
+              "push_cmd", "reply", "task", "ticker", "why_not", "also", "cause", "missing", "here", "do")
 
 
 def scrub_tree(obj: Any, scrub: Callable[[str], str], key: str = "") -> Any:
@@ -71,25 +79,34 @@ def scrub_tree(obj: Any, scrub: Callable[[str], str], key: str = "") -> Any:
 
 
 def me_line(repos: list[dict[str, Any]], token: bool, env: str) -> dict[str, Any]:
-    """/status's machine-wide 你是谁: $BRAIN_USER (*env*), else the name of the first repo that has one (each repo's is
-    in its row: identity.of), and whether a GitLab token is there."""
     first = next((x["me"] for x in repos if x["me"] and x["me"]["name"]), None)
-    how = "GitLab 令牌（%s）" % ("有" if token else "没有") + (
-        "；这台机器的环境变量里设的 %s" % env if env else "；%s" % first["text"] if first else "")
-    return {"user": env or (first["name"] if first else None), "token": token, "how": how}
+    said = first["text"] if first else "%s（%s）" % (env, identity.FROM["env"]) if env else ""
+    return {"user": first["name"] if first else env or None, "token": token,
+            "how": "GitLab 令牌（%s）" % ("有" if token else "没有") + ("；" + said if said else "")}
+
+
+def last_record(info: Any, tail: dict[str, Any] | None) -> float | None:
+    """When a session last did something, by its records' own times (the app's message, the agent's last reply or
+    call), until the whole transcript is read: never the moment this app noticed a change."""
+    ats = [info.sent_at, (tail or {}).get("said_at"), ((tail or {}).get("call") or {}).get("at")]
+    ats = [a for a in ats if isinstance(a, (int, float)) and not isinstance(a, bool) and a > 0]
+    return max(ats) if ats else None
 
 
 def session_row(mgr: SessionManager, info: Any) -> dict[str, Any]:
     """A session this app opened, as the pages list it (and service._live picks from)."""
     st = mgr.slot_stats(info.slot) or {}
+    tail = mgr.slot_tail(info.slot)
     return {
         "slot": info.slot, "title": info.title, "agent": info.agent, "kind": info.kind or "local",
         "credits": mgr.slot_credits(info.slot),   # the very number credits_by_key adds up
         "turns": int(st.get("turns") or info.turns or 0), "busy": bool(st.get("busy")),
-        "awaiting": bool(st.get("awaiting")), "last_activity": st.get("last_activity") or info.last_activity,
+        "awaiting": bool(st.get("awaiting")), "last_activity": st.get("last_activity") or last_record(info, tail),
         "opened_at": st.get("opened_at") or info.started, "project": info.cwd or None,
         "url": "/chat?sid=%s" % info.slot, "error": info.error, "missing": bool(st.get("missing")),
-        "id": info.id, "opened": info.started is not None, "review": str(info.title or "").endswith(REVIEW_TITLE)}
+        "id": info.id, "tail": tail, "whole": st.get("whole"),
+        "subagents": int(st.get("subagents") or 0), "unreported": int(st.get("unreported") or 0),
+        "opened": info.started is not None, "review": str(info.title or "").endswith(REVIEW_TITLE)}
 
 
 def live_said(live: dict[str, Any]) -> str:
@@ -129,13 +146,17 @@ class Service:
         self.team: Any = None
         self._tasks: list[asyncio.Task] = []
         self._mr_wanted: dict[tuple, tuple[str, str]] = {}   # (base, project, branch) -> (scope, kit bridge_user)
+        self._mr_seen: set[tuple] = set()      # (project, branch, hand-over commit) whose MR was read at first sight
         self._eval: dict[str, tuple] = {}
         self._eval_running: set[str] = set()
         self._trace: dict[tuple, tuple] = {}
         self.desc = mrdesc_view.DescCache()     # each requirement's 变更说明, by the commits it is made from
         self._subj: dict[tuple, tuple] = {}     # the board's commit subjects and changed files, by the commits asked for
-        self._me: str | None = None
+        self._units: dict[tuple, list] = {}     # the units unit-of-work.md plans, by the commit it is read at
+        self._folds: dict[tuple, tuple] = {}    # (repo, key) -> (when, outputs.Fold): the board's last fold, for 产出
+        self.who = identity.Who(transport, log=self.log)
         self.families = family.Families()      # brain-kit's listing per repo (大需求 and their 小需求), made in the background
+        self.sync = progress.Sync(self.data_dir, self.log)     # pushes at Lean's checkpoints, fetches every few minutes
         self._opening: dict[str, asyncio.Lock] = {}     # 开会话 and 重开, one at a time per requirement
         self._handing: dict[str, asyncio.Future] = {}   # 交接给运行机, one at a time per requirement
         self._big_file = self.data_dir / "big.json"
@@ -164,7 +185,8 @@ class Service:
         await self._start_team()
         self.started = True
         loop = asyncio.get_running_loop()
-        self._tasks = [loop.create_task(self._forever()), loop.create_task(self._slow())]
+        self._tasks = [loop.create_task(self._forever()), loop.create_task(self._slow()),
+                       loop.create_task(self._sync_forever())]
         if self.team is not None:
             self._tasks.append(loop.create_task(self._team_forever()))
         self.log.info("brain: started, brain-kit %s, %d repos, team %s", bk.info().get("version"), len(self.repos),
@@ -211,6 +233,8 @@ class Service:
                 self.repos[rid] = Repo(rid, path, cfg)
             except Exception as exc:  # noqa: BLE001
                 self.repo_errors[rid] = (path, str(exc).split("\n", 1)[0][:300])
+        for r in self.repos.values():   # start asking now: the first page then usually finds GitLab's answer
+            self.who.want(self._gitlab_of(r)[0])
         self._eval.clear()
         self._trace.clear()
         self.crew = self.crew_sync()
@@ -289,6 +313,41 @@ class Service:
             except Exception:  # noqa: BLE001
                 self.log.exception("brain: background refresh failed")
 
+    async def _sync_forever(self) -> None:
+        """Teammates see each other's runs: the repos due for a fetch, then the checkpoints to push (progress.py)."""
+        while True:
+            try:
+                await asyncio.sleep(progress.TICK_S)
+                await asyncio.to_thread(self.sync_tick)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                self.log.exception("brain: pushing progress or fetching failed")
+
+    def sync_tick(self) -> None:
+        """One round of the loop (blocking): every run branch whose new checkpoint is due pushed
+        (progress.Sync.push_tick), then each repo with a remote fetched when due, in its own thread."""
+        repos = list(self.repos.items())
+        # pruned by the listed paths, not by self.repos: a settings save refills that dict while a tick may read it
+        self.sync.push_tick([(repo, self._push_ctx(repo)) for _, repo in repos], self.now(), set(self.settings["repos"]))
+        every = self.settings["fetch_every_min"] * 60
+        for rid, repo in repos:
+            if self.sync.fetches.take_turn(repo, every):
+                threading.Thread(target=self._fetch, args=(rid, repo, False), daemon=True, name="brain-fetch").start()
+
+    def _fetch(self, rid: str, repo: Repo, wait: bool) -> dict[str, Any] | None:
+        """repo.fetch() through progress.Fetches (one at a time per repo); None when one runs and *wait* is False."""
+        got = self.sync.fetches.fetch(repo, wait)
+        if got and got.get("ok") and bk.has("split"):
+            self.families.want(rid, repo.path, now=True)    # the 大需求 too: who claimed which small one
+        return got
+
+    def _push_ctx(self, repo: Repo) -> progress.Ctx:
+        return progress.Ctx(me=self.me_in(repo), prefix=str(repo.cfg["branch_prefix"]),
+                            default_branch=str(repo.cfg["default_branch"]), team_repo=not self._local_only(repo),
+                            auto_push=self.settings["auto_push"].get(repo.path, True),
+                            runner=bool(self.settings["team"].get("enabled")))
+
     def _pending_changed(self) -> bool:
         """A pending repo's checkout has kit.json now (pulled after the merge), or its state moved (merged, pushed, an
         MR, a commit): the list is read again. A few local git calls per pending repo; no network."""
@@ -354,23 +413,17 @@ class Service:
             raise AppError("没有这个仓库", "no_repo", 404)
         return self.repos[rid]
 
-    def me(self) -> str | None:
-        """Who this machine says the person is: $BRAIN_USER, else the name brain-kit goes by in a repo (never a token)."""
-        who = os.environ.get("BRAIN_USER", "").strip().lower()
-        if not who:
-            for r in self.repos.values():
-                who = self.me_in(r) or ""
-                if who:
-                    break
-        return who or None
+    def me(self, which: str) -> str | None:
+        """This machine's person on 交付总览's *which*: the name in that repo; on 全部 and the runner's view, the first
+        repo's that has one, the name /status's 你是谁 says (me_line)."""
+        repos = [self.repos[which]] if which in self.repos else self.repos.values()
+        return next((name for name in map(self.me_in, repos) if name), None)
 
     def me_in(self, repo: Repo) -> str | None:
-        """The name brain-kit goes by in *repo* (identity.of): $BRAIN_USER, git config brain.user, or the login name in
-        a repo without GitLab when brain-kit falls back to it. GitLab's username (with a token) is not asked for."""
-        return identity.of(repo.path, self._gitlab_of(repo)[0], token=False)["name"]
+        return self._me_view(repo)["name"]
 
-    def _me_view(self, repo: Repo, token: bool) -> dict[str, Any]:
-        return identity.of(repo.path, self._gitlab_of(repo)[0], token=token)
+    def _me_view(self, repo: Repo) -> dict[str, Any]:
+        return self.who.of(repo.path, self._gitlab_of(repo)[0])
 
     def _sessions_snapshot(self) -> dict[str, Any]:
         """{scope: [session rows]} and credits per scope, read on the event loop."""
@@ -379,6 +432,38 @@ class Service:
             if info.key and info.slot:
                 by.setdefault(info.key, []).append(session_row(self.sessions, info))
         return {"by": by, "credits": self.sessions.credits_by_key()}
+
+    @staticmethod
+    def _req_credits(snap: dict[str, Any], keys: list[str], elsewhere: str | None = None
+                     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """A requirement's sessions here, every one of *keys*' (its repo scope, its runs on the team runner here), and
+        its 成本 over them (sessions.requirement_credits)."""
+        rows = [s for k in keys for s in snap["by"].get(k, [])]
+        return rows, dict(requirement_credits(rows, elsewhere), note=detail.NO_TOKENS)
+
+    def _local_credits(self, snap: dict[str, Any], f: dict[str, Any], scope: str, state: str | None = None
+                       ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """A requirement of a repo here: its sessions on this machine, then its runs' when the team runner is here too
+        (run id RUN-<KEY>-<n>); taken by a runner on another machine (*state*, RUNNER_TOOK), the runner's are said to be
+        left out."""
+        runs = sorted((k for k in snap["by"] if re.fullmatch(r"RUN-%s-[1-9][0-9]*" % re.escape(f["key"]), k)),
+                      key=lambda k: int(k.rsplit("-", 1)[1]))
+        took = (f.get("run") or {}).get("handoff") and state in RUNNER_TOOK
+        gone = RUNNER_ELSEWHERE if took and not runs and not self._team_on() else None
+        return self._req_credits(snap, [scope] + runs, gone)
+
+    def _team_credits(self, snap: dict[str, Any], key: str, run_ids: list[str], project: Any
+                      ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """A requirement on the team runner here: the sessions of its repo's scope on this machine, then its runs'; with
+        none of the first here, the sessions before the hand-over are said to be left out."""
+        home = self._home_of(project)
+        mine = [scope_of(home.id, key)] if home is not None else []
+        here = any(snap["by"].get(k) for k in mine)
+        return self._req_credits(snap, mine + list(run_ids), None if here else LOCAL_ELSEWHERE)
+
+    def _home_of(self, project: Any) -> Repo | None:
+        """The repo here of a GitLab project (the first listed with it), None when this machine does not list it."""
+        return next((r for r in self.repos.values() if project and self._gitlab_of(r)[1] == project), None)
 
     @staticmethod
     def _live(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -397,10 +482,7 @@ class Service:
         return str(g.get("base") or ""), str(g.get("project") or "")
 
     def _token_present(self) -> bool:
-        try:
-            return bool(bk.m("rest").read_token())
-        except Exception:  # noqa: BLE001 - a token file others can read is refused, as brain-kit does
-            return False
+        return bool(identity.token())
 
     # ---- 交付总览 ------------------------------------------------------------------------------------- #
 
@@ -422,6 +504,12 @@ class Service:
         if run.get("handoff") and f.get("branch") and base and project:
             self._mr_wanted[(base, project, f["branch"])] = (scope, str(repo.cfg.get("bridge_user") or ""))
             mr = self.mr.get(project, f["branch"])
+            seen = (project, f["branch"], f.get("tip"))
+            if (mr or {}).get("sha") != f.get("tip") and seen not in self._mr_seen and repo.is_handover_tip(f):
+                # a hand-over just made: read its MR now, so a label that did not go on is said at once
+                self._mr_seen.add(seen)
+                mr = self.mr.refresh(base, project, f["branch"], transport=self.transport,
+                                     bridge_user=str(repo.cfg.get("bridge_user") or "") or None)
         bot = 0
         if run.get("handoff") and not mr:
             bot = repo.bot_commits_since((run.get("handoff") or {}).get("local_head"), f.get("origin_sha"))
@@ -433,10 +521,11 @@ class Service:
         fams = self._families_of(repo) if fams is None else fams
         row["family"] = fams.get(f["key"])
         family.classify(row, row["family"], f, self.me_in(repo) if row["family"] else None)
-        row["credits"] = snap["credits"].get(scope)
-        row["sessions"] = len(sess)
+        counted, cost = self._local_credits(snap, f, scope, row["state"])
+        row["credits"], row["credits_whole"], row["sessions"] = cost["total"], cost["whole"], len(counted)
         row["updated_at"] = deliveries.updated_at(f, live)
         row["session_url"] = live["url"] if live else None
+        row["progress_pushed_at"] = self.sync.pushed_at(repo.path, f.get("branch"))
         job = self._desc_job(repo, f, row["credits"])
         row["summary"] = mrdesc_view.plain_line(self.desc.first(*job)) if job else None
         if mr:
@@ -508,8 +597,8 @@ class Service:
             deliveries.team_classify(row, r, decs, facts.get("park"),
                                      notes=notices_by_run(led.get("notices") or [], led.get("outbox") or []).get(r["run_id"], []))
             row["run_ids"] = all_ids[key]
-            row["credits"] = round(sum(snap["credits"].get(x, 0.0) for x in all_ids[key]), 3) or None
-            row["sessions"] = sum(len(snap["by"].get(x, [])) for x in all_ids[key])
+            counted, cost = self._team_credits(snap, key, all_ids[key], r.get("project"))
+            row["credits"], row["credits_whole"], row["sessions"] = cost["total"], cost["whole"], len(counted)
             row["mr"] = {"iid": int(r["iid"]), "url": self.team.mr_url(r["project"], r["iid"]), "state": None}
             row["updated_at"] = lean_view.epoch(r.get("updated"))
             job = self._runner_desc(facts, key, row) if facts.get("run") else None
@@ -611,7 +700,8 @@ class Service:
                                      names={rid: r.name for rid, r in self.repos.items()}, repos=len(scope),
                                      local_repos=sum(1 for r in scope if self._local_only(r)))
         return {"at": self.now(), "rows": rows, "overlaps": overlaps, "funnel": funnel, "eval": view, "cto": cto,
-                "counts": deliveries.counts(rows), "errors": errors}
+                "counts": deliveries.counts(rows), "errors": errors,
+                "roster": roster.roster(rows, me=self.me(which), now=self.now(), settings=self.settings)}
 
     def _eval_view(self, which: str, snap: dict[str, Any],
                    parts: list[tuple[str, dict[str, Any]]] | None = None) -> tuple[dict[str, Any], dict | None]:
@@ -705,11 +795,9 @@ class Service:
         return scrub_tree(await asyncio.to_thread(self._overview_sync, which, snap), self.scrub)
 
     async def refresh(self, rid: str) -> dict[str, Any]:
+        """「从远端取最新」: after the background fetch of this repo, when one runs."""
         repo = self._repo(rid)
-        got = await asyncio.to_thread(repo.fetch)
-        if got.get("ok") and bk.has("split"):
-            self.families.want(rid, repo.path, now=True)    # the 大需求 too: who claimed which small one
-        return got
+        return await asyncio.to_thread(self._fetch, rid, repo, True)
 
     # ---- 需求详情 ------------------------------------------------------------------------------------- #
 
@@ -741,12 +829,16 @@ class Service:
         mr = self.mr.get(project, f["branch"]) if (base and project and f.get("branch")) else None
         can_post = own and bool(base and project) and self._token_present()
         questions = []
-        pq = detail.park_question(f.get("park"), answerable=own and not run.get("handoff") and bool(
-            self._live(snap["by"].get(scope, []))), via="session")
-        if pq:
-            questions.append(pq)
+        handed = bool(run.get("handoff"))
+        pq = detail.park_question(f.get("park"), answerable=own and not handed and bool(
+            self._live(snap["by"].get(scope, []))), via="session", handed=handed,
+            mr_url=(row.get("mr") or {}).get("url"))
+        posted = str(f.get("park_sha") or "")[:12]
+        if pq and not (handed and posted and any(q.get("park") == posted for q in (mr or {}).get("questions") or [])):
+            questions.append(pq)    # once the bridge posted it, its D-n on the MR is the same question
         questions += detail.mr_questions(mr, own=own, can_post=can_post)
         tl = self._timeline(repo, f, snap, scope)
+        counted, cost = self._local_credits(snap, f, scope, row["state"])
         if parts is not None:
             parts.update(repo=repo, facts=f, trace=tl.get("trace"), mr=mr, scope=scope, decisions=[], me=me,
                          cfg=repo.cfg, path=repo.path, local_only=row["local_only"])
@@ -760,6 +852,7 @@ class Service:
                                 if isinstance(run.get("handoff"), dict) else None)} if f.get("run") else None,
             "claim": self._claim_view(f.get("claim")),
             "lean": {"stages": f.get("stages") or lean_view.stages([]),
+                     "phases": lean_view.phases(f.get("stages") or lean_view.stages([])),
                      "approvals": [{k: a[k] for k in ("kind", "state", "sha8", "at", "line", "path")}
                                    for a in f.get("approvals") or []],
                      **lean_view.notes(f.get("state_text"))},
@@ -768,15 +861,15 @@ class Service:
             "questions": questions,
             "timeline": {"source": tl["source"], "items": tl["items"], "error": tl["error"],
                          "missing": board_mod.missing_sources(tl["missing"], local_only=row["local_only"],
-                                                              handed=bool(run.get("handoff"))),
+                                                              handed=bool(run.get("handoff")), ci_read=board_mod.pipelines_read(mr)),
                          "other_runs": tl.get("other_runs") or []},
             "sessions": [{k: s[k] for k in ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting",
                                              "last_activity", "opened_at", "project", "url", "error", "missing")}
-                         for s in snap["by"].get(scope, [])],
+                         for s in counted],
             "live_slot": (self._live(snap["by"].get(scope, [])) or {}).get("slot"),
-            "credits": {"total": snap["credits"].get(scope), "note": detail.NO_TOKENS},
+            "credits": cost,
             "brain": detail.brain_block(tl.get("brain"), None, f.get("decisions_text")),
-            "mr_desc": self._desc_now(self._desc_job(repo, f, snap["credits"].get(scope))),
+            "mr_desc": self._desc_now(self._desc_job(repo, f, cost["total"])),
         }
 
     def _desc_now(self, job: tuple[tuple, Callable[[], dict]] | None) -> dict[str, Any]:
@@ -791,8 +884,9 @@ class Service:
         if got and time.monotonic() - got[0] < TRACE_TTL_S:
             tl = dict(got[1])
         else:
-            src_repo, ref = (f["worktree"], None) if f.get("worktree") else (repo.path, f.get("ref"))
-            c = snap["credits"].get(scope)
+            behind = f.get("where") == "worktree" and f.get("ref")      # origin's run branch is ahead of the worktree
+            src_repo, ref = (f["worktree"], None) if f.get("worktree") and not behind else (repo.path, f.get("ref"))
+            c = self._local_credits(snap, f, scope)[1]["total"]
             tl = detail.timeline(src_repo, repo.cfg, f["key"], ref=ref, events=f.get("events") or [],
                                  credits={"runs": {f["key"]: {"credits": c}}} if c is not None else None,
                                  vouchers_dir=self._vouchers_dir(repo), has_run=bool(f.get("run")))
@@ -825,12 +919,13 @@ class Service:
             tl["items"] += self.store.events(rid)
         tl["items"].sort(key=lambda x: (x["at"] or "", x["kind"]))
         sess = [s for x in row["run_ids"] for s in snap["by"].get(x, [])]
+        counted, cost = self._team_credits(snap, key, row["run_ids"], f.get("project"))
         if parts is not None:
             try:
                 cfg_t = bk.m("config").load(path) if path else dict(bk.m("config").DEFAULTS)
             except Exception:  # noqa: BLE001
                 cfg_t = dict(bk.m("config").DEFAULTS)
-            home = next((r for r in self.repos.values() if f.get("project") and self._gitlab_of(r)[1] == f["project"]), None)
+            home = self._home_of(f.get("project"))
             parts.update(repo=None, facts=f, trace=tl.get("trace"), mr=None, scope=None, decisions=decs,
                          me=self.me_in(home) if home is not None else None,   # who reads it, as in its repo
                          cfg=cfg_t, path=path, local_only=False, sessions=sess,
@@ -844,6 +939,7 @@ class Service:
                                 if isinstance(run.get("handoff"), dict) else None)} if run else None,
             "claim": None,
             "lean": {"stages": f.get("stages") or lean_view.stages([]),
+                     "phases": lean_view.phases(f.get("stages") or lean_view.stages([])),
                      "approvals": [dict({k: a[k] for k in ("kind", "state", "sha8", "at", "path")}, line=None)
                                    for a in f.get("approvals") or []],
                      **lean_view.notes(f.get("state_text"))},
@@ -853,8 +949,8 @@ class Service:
                          "missing": board_mod.missing_sources(tl["missing"], local_only=False, handed=True),
                          "other_runs": tl.get("other_runs") or []},
             "sessions": [{k: s[k] for k in ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting",
-                                             "last_activity", "opened_at", "project", "url", "error")} for s in sess],
-            "credits": {"total": row["credits"], "note": detail.NO_TOKENS},
+                                             "last_activity", "opened_at", "project", "url", "error")} for s in counted],
+            "credits": cost,
             "brain": detail.brain_block(tl.get("brain"), None, f.get("decisions_text")),
             # no run read yet: the runner has not started on it, nothing is waiting for 开工
             "mr_desc": self._desc_now(self._runner_desc(f, key, row)) if run else mrdesc_view.empty(board_mod.RUNNER_NO_DESC),
@@ -921,6 +1017,28 @@ class Service:
                     out.append((m.group(1), at, merged))
         return out
 
+    def _planned_units(self, git: Git, f: dict[str, Any]) -> list[stages.UnitPlan]:
+        """The units unit-of-work.md plans, as Lean reads its first table (brain-kit's split.parse_units), at the run
+        branch's newest commit (on the team runner: its workspace's HEAD). Only a regular file of that commit is read,
+        so never a symlink and never the worktree's copy. None when it is not committed there or brain-kit cannot read
+        it: the fold then has the units Lean's records name."""
+        intent = (f.get("run") or {}).get("intent")
+        sha = f.get("tip") or (f.get("ref") if f.get("where") == "main" else None) or (
+            mrdesc_view.target(git, "HEAD") if f.get("where") == "runner" else None)
+        if not sha or not isinstance(intent, str) or not lean_view.INTENT_RE.match(intent) or not bk.has("split"):
+            return []
+        sig = (git.repo, sha, intent)
+        if sig not in self._units:
+            raw = mrdesc_view.committed_file(git, sha, stages.doc_path(stages.BY_ID["units"], None, intent))
+            try:
+                got = bk.m("split").parse_units(raw.decode("utf-8", "replace"))[0] if raw else []
+            except Exception:  # noqa: BLE001 - brain-kit could not read it: nothing planned
+                got = []
+            if len(self._units) > 200:
+                self._units.clear()
+            self._units[sig] = [stages.UnitPlan(u["name"], tuple(u["paths"])) for u in got]
+        return self._units[sig]
+
     def _board_sync(self, rid: str, key: str, snap: dict[str, Any]) -> dict[str, Any]:
         parts: dict[str, Any] = {}
         d = self._detail_sync(rid, key, snap, parts)
@@ -932,26 +1050,75 @@ class Service:
         sessions = parts["sessions"] if parts.get("sessions") is not None else snap["by"].get(parts.get("scope") or "", [])
         app_events = parts["app_events"] if parts.get("app_events") is not None else (
             self.store.events(parts["scope"]) if parts.get("scope") else [])
+        units = self._planned_units(git, f) if git is not None else []
+        kept: dict[str, Any] = {}
+        live_slot = (self._live(sessions) or {}).get("slot")
         g = board_mod.build(
             f, d["row"], t, mr=parts.get("mr"), sessions=sessions, app_events=app_events,
             team_decisions=parts.get("decisions") or [], subjects=subjects, changes=changes,
             reflect_refs=self._reflect_refs(git, key, str(cfg.get("default_branch") or "main")) if git is not None else [],
             default_branch=str(cfg.get("default_branch") or "main"), local_only=bool(parts.get("local_only")),
             kit_rows=board_mod.kit_cells(self.crew.get("rows") or [], parts.get("path") or ""),
-            decisions=d["decisions"], brain=d["brain"], me=parts.get("me"), now=self.now())
+            decisions=d["decisions"], brain=d["brain"], me=parts.get("me"), now=self.now(), units=units, fold=kept,
+            live_slot=live_slot)
+        if len(self._folds) > 50:
+            self._folds.clear()
+        self._folds[(rid, key)] = (time.monotonic(), outputs_mod.Fold(
+            reader=outputs_mod.GitReader(git) if git is not None else None, intent=(f.get("run") or {}).get("intent"),
+            branch=d["row"].get("branch"), nodes=tuple(kept["nodes"]), commits=tuple(kept["commits"]),
+            changes=changes, units=tuple(units),
+            worktree=f.get("worktree") if rid != "runner" and f.get("where") == "worktree" else None,
+            runs=tuple(kept["runs"]), turns=tuple(kept["turns"])))
         return {"at": self.now(), "row": d["row"], "branch": d["row"].get("branch"),
                 "base": str(cfg.get("default_branch") or "main"), "started_at": g["started_at"], "ended_at": g["ended_at"],
-                "live": g["live"], "person": g["person"], "actors": g["actors"],
-                "edges": [list(e) for e in board_edges([a["key"] for a in g["actors"]], g["direct"])], "direct": g["direct"],
-                "events": g["events"], "belt": g["belt"], "checks": g["checks"], "accept": g["accept"],
-                "brain": d["brain"], "decisions": d["decisions"], "questions": d["questions"], "mr_desc": d["mr_desc"],
-                "sessions": d["sessions"], "credits": d["credits"], "source": d["timeline"]["source"],
+                "live": g["live"], "person": g["person"], "phases": g["phases"], "nodes": g["nodes"], "runs": g["runs"],
+                "relays": g["relays"], "other_runs": g["other_runs"],
+                "events": g["events"], "lean_steps": g["lean_steps"], "belt": g["belt"], "checks": g["checks"],
+                "accept": g["accept"], "brain": d["brain"], "decisions": d["decisions"], "questions": d["questions"],
+                "mr_desc": d["mr_desc"],
+                "sessions": d["sessions"], "live_slot": live_slot, "credits": d["credits"], "source": d["timeline"]["source"],
                 "missing": g["missing"], "error": d["timeline"]["error"], "rollup": board_mod.rollup(t)}
 
     async def board(self, rid: str, key: str) -> dict[str, Any]:
         """需求看板: polled every 2 s; the trace, the facts and the 变更说明 come from their caches."""
         snap = self._sessions_snapshot()
         return scrub_tree(await asyncio.to_thread(self._board_sync, rid, key, snap), self.scrub)
+
+    def _fold(self, rid: str, key: str, snap: dict[str, Any]) -> outputs_mod.Fold:
+        """The board's last fold of the requirement, folded again (by the board's own code) when it is older than
+        FOLD_TTL_S: the drawer never folds on its own."""
+        got = self._folds.get((rid, key))
+        if got is None or time.monotonic() - got[0] > FOLD_TTL_S:
+            self._board_sync(rid, key, snap)
+            got = self._folds[(rid, key)]
+        return got[1]
+
+    async def outputs(self, rid: str, key: str, q: outputs_mod.NodeQuery) -> dict[str, Any]:
+        """产出: one round of one node, its files (outputs.node_output)."""
+        snap = self._sessions_snapshot()
+        return scrub_tree(await asyncio.to_thread(lambda: outputs_mod.node_output(self._fold(rid, key, snap), q)),
+                          self.scrub)
+
+    async def outputs_file(self, rid: str, key: str, q: outputs_mod.FileQuery) -> dict[str, Any]:
+        """产出: one file of it, its text or its change (outputs.file_view)."""
+        snap = self._sessions_snapshot()
+        return scrub_tree(await asyncio.to_thread(lambda: outputs_mod.file_view(self._fold(rid, key, snap), q)), self.scrub)
+
+    async def outputs_turns(self, rid: str, key: str, q: outputs_mod.NodeQuery) -> dict[str, Any]:
+        """产出's session tabs: the turns one round of one node was done in (turns.turn_views), each read from its
+        session's transcript on this machine."""
+        snap = self._sessions_snapshot()
+        fold = await asyncio.to_thread(self._fold, rid, key, snap)
+        slots = []
+        for s in turns_mod.sessions_to_read(fold, q):
+            try:
+                rows, whole = await self.sessions.transcript(str(s["slot"]))
+            except GatewayError as exc:
+                raise AppError("读不了这一轮的会话：%s" % gateway_said(exc), "transcript_unreadable", 502) from None
+            root = self.sessions.by_slot(str(s["slot"]))
+            slots.append(turns_mod.Slot(str(s["slot"]), str(s.get("url") or ""), root.cwd if root else "",
+                                        bool(s.get("busy")), rows, whole, self.sessions.sent(str(s["slot"]))))
+        return scrub_tree(turns_mod.turn_views(fold, q, slots, key, self.now(), self.scrub), self.scrub)
 
     # ---- sessions and answers ------------------------------------------------------------------------- #
 
@@ -970,6 +1137,27 @@ class Service:
             return await self._open_local(repo, key, f["branch"], f["worktree"], run, trust=trust, kickoff=kickoff,
                                           review=review)
 
+    async def stop_session(self, rid: str, key: str) -> dict[str, Any]:
+        """停止 on the board, once the person confirmed: the turn this requirement's own sessions on this machine are
+        working on (its 本机会话 and 审查会话), never another requirement's or the runner's. The session stays in KiroCrew:
+        打开会话 opens it to carry on."""
+        repo = self._repo(rid)
+        scope = scope_of(repo.id, key)
+        slots = [i.slot for i in self.sessions.roots(key=scope) if (i.kind or "local") == "local" and i.slot
+                 and (self.sessions.slot_stats(i.slot) or {}).get("busy")]
+        if not slots:
+            raise AppError("%s 在这台机器上没有在做的会话，没有要停的：刷新页面看看" % key, "nothing_to_stop", 409)
+        for slot in slots:
+            cancelled = [await self.sessions.cancel(i.id) for i in self.sessions.all_agents if i.slot == slot and not i.done]
+            if not any(cancelled):   # a turn the app does not follow (typed in KiroCrew after a stop): stop it there
+                try:
+                    await self.sessions.gw.stop(slot)
+                except Exception as exc:  # noqa: BLE001
+                    raise AppError("KiroCrew 没停下这个会话（%s）：在 KiroCrew 的会话里点停止" % exc, "stop_failed", 502)
+        await asyncio.to_thread(self.store.append, scope, "app", "停止了本机会话", None)
+        await self.sessions.save()
+        return {"ok": True, "stopped": slots}
+
     async def _open_local(self, repo: Repo, key: str, branch: str, wt: str, run: dict[str, Any], *, trust: bool,
                           kickoff: bool, review: bool = False, task: str | None = None, fresh: bool = False
                           ) -> dict[str, Any]:
@@ -982,7 +1170,7 @@ class Service:
             task = intake.review_task(key, branch, run.get("intent"))
             if not task:
                 raise AppError("这个需求的记录里找不到它在 Lean 里的名字：开不了审查会话", "no_intent", 409)
-            title, said = key + REVIEW_TITLE, "开了审查会话"
+            title, said, cause = key + REVIEW_TITLE, "开了审查会话", "审查会话的开工消息，只有编号"
         else:
             live = self._live_of(scope)
             if live and not fresh:
@@ -993,7 +1181,7 @@ class Service:
                     if kickoff else ""
                 if kickoff and scope_of(repo.id, key) in self._big:
                     task += "\n" + family.BIG_KICKOFF
-            title, said = "%s · 本地开发" % key, "开了本机会话"
+            title, said, cause = "%s · 本地开发" % key, "开了本机会话", "开工消息，只有编号"
             if fresh:
                 task += "\n" + intake.RESUME_KICKOFF
                 title, said = "%s · 本地开发（重开）" % key, "重开了本机会话"
@@ -1001,7 +1189,8 @@ class Service:
         info = await self.sessions.open_session(
             task, parent_session_key="%s:%s" % (self.name, scope), cwd=wt, title=title,
             folder="%s · %s" % (key, slug), agent=crewcheck.crew_agent(), root_folder=LOCAL_FOLDER, project_dir=wt,
-            strict_agent=True, resend_ok=True, nudge_ok=False, trust_ok=bool(trust), kind="local", key=scope)
+            strict_agent=True, resend_ok=True, nudge_ok=False, trust_ok=bool(trust), kind="local", key=scope,
+            shown={"by": "app", "cause": cause, "text": task} if task else None)   # task: ids only, by its builder
         if info.error or not info.slot:
             raise AppError(info.error or "会话没开成", "session_failed", 502)
         await asyncio.to_thread(self.store.append, scope, "app", said, store_mod.TRUSTED if trust else None)
@@ -1066,7 +1255,8 @@ class Service:
             if not live:
                 raise AppError("先开这个需求的 brain-dev 会话", "no_session", 409)
             text = local_answer(choice, note)
-            turn = await self.sessions.continue_conversation_async(live["id"], text, parent_session_key=self.sessions.get(
+            shown = {"by": "app", "cause": "澄清问题的回答", "text": local_answer(choice, NOTE_HIDDEN if note else "")}
+            turn = await self.sessions.continue_conversation_async(live["id"], text, shown=shown, parent_session_key=self.sessions.get(
                 live["id"]).parent_session_key)
             if turn.error:
                 raise AppError(turn.error, "send_failed", 502)
@@ -1115,7 +1305,7 @@ class Service:
         if not out["ok"]:
             out["problem"] = out.get("problem") or problems.who_row(out["output"], repo=repo.path)
             if (out["problem"] or {}).get("fix") == "me":
-                out["me"] = await asyncio.to_thread(self._me_view, repo, await asyncio.to_thread(self._token_present))
+                out["me"] = await asyncio.to_thread(self._me_view, repo)
             return out
         scope = scope_of(repo.id, out["key"])
         await asyncio.to_thread(self.store.append, scope, "app", "在 app 里开工",
@@ -1384,7 +1574,8 @@ class Service:
             entries.append({"row": row, "facts": f, "own": own, "has_session": bool(live),
                             "can_post": own and bool(base and project) and token,
                             "mr": self.mr.get(project, f.get("branch") or "") if base and project else None,
-                            "session": {"slot": live["slot"], "title": live["title"], "url": live["url"]} if live else None})
+                            "session": {"slot": live["slot"], "title": live["title"], "url": live["url"]} if live else None,
+                            "push_error": self.sync.push_error(repo.path, f)})
         out = todo_mod.build(entries, team=False, crew_rows=self.crew["rows"])
         if self._team_on():
             team_entries = [{"row": row, "decisions": decs, "mr_url": (row.get("mr") or {}).get("url")}
@@ -1429,9 +1620,12 @@ class Service:
         todo = await self.todo()
         token = await asyncio.to_thread(self._token_present)
         loaded = {x["id"]: self.repos[x["id"]] for x in repos if x["ok"] and x["id"] in self.repos}
-        mes = await asyncio.to_thread(lambda: {rid: self._me_view(r, token) for rid, r in loaded.items()})
+        mes = await asyncio.to_thread(lambda: {rid: self._me_view(r) for rid, r in loaded.items()})
+        syncs = await asyncio.to_thread(lambda: {rid: scrub_tree(self.sync.repo_view(r, self._push_ctx(r)), self.scrub)
+                                                 for rid, r in loaded.items()})
         for x in repos:
             x["me"] = mes.get(x["id"])
+            x["sync"] = syncs.get(x["id"])
         return {"app": {"name": self.name, "version": VERSION, "team": self.team is not None},
                 "brainkit": {"path": info["path"], "ok": info["ok"], "version": info["version"], "error": info["error"],
                              "modules": info["modules"]},
@@ -1441,7 +1635,7 @@ class Service:
                 "repo_ids_problem": self.repo_ids.problem}
 
     def settings_view(self) -> dict[str, Any]:
-        return {**self.settings, "team": dict(self.settings["team"])}
+        return {**self.settings, "team": dict(self.settings["team"]), "auto_push": dict(self.settings["auto_push"])}
 
     async def save_settings(self, body: Any) -> dict[str, Any]:
         """Check, save atomically, reload. A key the body leaves out keeps its value (the 设置 form sends no repos: the
@@ -1483,7 +1677,7 @@ class Service:
         token = await asyncio.to_thread(self._token_present)
         listed = self.repo_ids.of(self.settings["repos"])
         got = await asyncio.to_thread(importer.inspect, body.get("path"), listed=listed,
-                                      records=self.imports, token=token, team_of=runner_repo_at)
+                                      records=self.imports, token=token, who=self.who, team_of=runner_repo_at)
         return scrub_tree(got, self.scrub)
 
     def _start_job(self, kind: str, target: str, steps: tuple, work: Callable[[Callable[..., None]], Any],
@@ -1577,12 +1771,11 @@ class Service:
             raise AppError(str(exc), "invalid_name")
         rid = importer.listed_id(top, self.repo_ids.of(self.settings["repos"]))
         repo = self.repos.get(rid or "")
-        token = await asyncio.to_thread(self._token_present)
         if repo is not None:
-            me = await asyncio.to_thread(self._me_view, repo, token)
+            me = await asyncio.to_thread(self._me_view, repo)
         else:
             base = await asyncio.to_thread(lambda: ((installer._kit_of(top) or {}).get("gitlab") or {}).get("base") or "")
-            me = await asyncio.to_thread(lambda: identity.of(top, base, token=token))
+            me = await asyncio.to_thread(self.who.of, top, base)
         self.log.info("brain: git config brain.user set in %s", top)
         return {"ok": True, "text": "你在这个仓库的名字设成了 %s" % name, "raw": "git config brain.user %s" % name,
                 "me": me, "status": await self.status()}
@@ -1898,19 +2091,12 @@ def runner_repo_at(path: str, cfg: dict[str, Any]) -> bool:
         return True
 
 
-def board_edges(keys: list[str], direct: bool) -> list[tuple[str, str]]:
-    """The way's edges among *keys* (the UI's board/layout.ts edgesOf draws the same)."""
-    have = set(keys)
-    all_ = [("local", "req"), ("local", "design"), ("req", "handover"), ("design", "handover"), ("handover", "bridge"),
-            ("bridge", "signer"), ("signer", "runner"), ("runner", "ci"), ("ci", "release"), ("release", "reflect")]
-    if direct:
-        all_.append(("design", "ci"))
-    return [(a, b) for a, b in all_ if a in have and b in have]
-
-
 def answer_choices(options: list[str]) -> set[str]:
     """What counts as an answer (brain-kit's check_answer): one of the options; approve / reject when there are none."""
     return set(options) if options else {"approve", "reject"}
+
+
+NOTE_HIDDEN = "（你写的补充，没在这里显示）"   # the 产出 drawer's copy of an answer: the person's note never travels
 
 
 def local_answer(choice: str, note: str) -> str:
