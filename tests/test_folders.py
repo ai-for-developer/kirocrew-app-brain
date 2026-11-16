@@ -127,6 +127,35 @@ def test_a_repo_folder_a_person_renamed_or_moved_still_gets_its_repos_new_requir
     assert moved == ["Brain 需求", "pay", "pay › PAY-1 · refund", "pay › PAY-2 · invoice"]
 
 
+def test_a_repo_folder_a_person_deleted_gets_its_requirement_folders_back_in_a_new_one_and_one_they_moved_stays(tmp_path):
+    async def go():
+        gw = FakeGateway()
+        mgr = manager(tmp_path, gw)
+        for key, folder in (("r1-PAY-1", "PAY-1 · refund"), ("r1-PAY-2", "PAY-2 · invoice"), ("r1-PAY-4", "PAY-4 · kept")):
+            await open_local(mgr, key, "pay", folder, str(tmp_path))
+        gw.folder_rows.append({"id": "mine", "name": "我的", "parent_id": ""})
+        next(f for f in gw.folder_rows if f["name"] == "PAY-4 · kept")["parent_id"] = "mine"    # the person's choice
+        pay = next(f["id"] for f in gw.folder_rows if f["name"] == "pay")
+        for f in gw.folder_rows:                       # KiroCrew deleting a folder for a person: its own go to the top
+            if f.get("parent_id") == pay:
+                f["parent_id"] = ""
+        gw.folder_rows[:] = [f for f in gw.folder_rows if f["id"] != pay]
+        await mgr.save()
+        again = manager(tmp_path, gw)
+        again.load()
+        stuck = await again.regroup(lambda key: "pay")
+        reopened = await open_local(again, "r1-PAY-1", "pay", "PAY-1 · refund", str(tmp_path))
+        await open_local(again, "r1-PAY-3", "pay", "PAY-3 · tax", str(tmp_path))
+        return gw, stuck, reopened
+
+    gw, stuck, reopened = asyncio.run(go())
+    assert stuck == []
+    assert tree(gw) == ["Brain 需求", "Brain 需求 › pay", "Brain 需求 › pay › PAY-1 · refund",
+                        "Brain 需求 › pay › PAY-2 · invoice", "Brain 需求 › pay › PAY-3 · tax", "我的（人）",
+                        "我的（人） › PAY-4 · kept"]
+    assert gw.slot_rows[reopened.slot]["folder_id"] == next(f["id"] for f in gw.folder_rows if f["name"] == "PAY-1 · refund")
+
+
 def snapshot(gw):
     """KiroCrew's folders on the 2026-11-16 machine (the app's ids, a person's folders, another app's), plus a requirement
     folder a person nested a folder in, one a person moved into their own folder, and a hidden one."""
