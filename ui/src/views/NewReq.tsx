@@ -1,15 +1,16 @@
 /**
  * 开需求: claim a requirement and start it, in the sample's empty state + start form look. A hero says what happens
- * (认领 → 文档过五关 → 开工 → Lean 推进 → 交给运行机) as a Flow whose steps follow the form. Then three numbered cards:
+ * (认领 → 导入需求文档 → 开工 → Lean 推进 → 交给运行机) as a Flow whose steps follow the form. Then three numbered cards:
  *
  *   1 认领      repo, title, 英文短名 (suggested from the title), key (prefilled from GET /intake/next), the paths it is
  *              expected to change: a grid. Opened for a requirement claimed already (?key=&title=): its key is fixed and
  *              its title filled; 开工 starts that claim (`brain start --key`). And 「大需求：先拆成小需求」 (StartBody.big;
  *              off with IntakeNext.big.why when this repo cannot): Lean's requirements and design as usual, the design
  *              with the unit split, then 拆成小需求 on its 需求看板.
- *   2 文档过五关  the documents and the files left out, then the five gates as five cards whose state shows (green:
- *              done, magenta: waits for you, red: stopped, the check's or this repo's rule). Without documents they are
- *              one line. Gate 2 says up front when the repo takes no confidential material (kit.json
+ *   2 导入需求文档（选填）  the documents (选文件… / 选文件夹…: this machine's own dialog, POST /pick, adds the paths
+ *              chosen to the box; or pasted) and the files left out, then the five gates as five cards whose state
+ *              shows (green: done, magenta: waits for you, red: stopped, the check's or this repo's rule). Without
+ *              documents they are one line. Gate 2 says up front when the repo takes no confidential material (kit.json
  *              intake.allow_confidential), and a refused pick says what this repo refuses. 「先检查」 runs the gates as a
  *              dry run (POST /intake/check: nothing claimed, no document taken in); its answer: what stops it said as
  *              what to do on this page (the field it names marked), the counts, a card per file (what was found and
@@ -27,10 +28,10 @@
 import { useState, type ReactNode } from 'react'
 import { useAppApi, useNavigate } from '@kirocrew/app-sdk'
 import { paths, useAction, usePoll } from '../api'
-import { lines, splitPaths } from '../format'
+import { addPaths, lines, splitPaths } from '../format'
 import { KEY_RE, type NewEntry } from '../nav'
 import type { Tone } from '../styles'
-import { CLASS_LABEL, type CheckRow, type Classification, type CrewChecks, type IntakeBody, type IntakeCheck, type IntakeNext, type MeNameResult, type Overview, type StartBody, type StartResult } from '../types'
+import { CLASS_LABEL, type CheckRow, type Classification, type CrewChecks, type IntakeBody, type IntakeCheck, type IntakeNext, type MeNameResult, type Overview, type PickKind, type PickResult, type StartBody, type StartResult } from '../types'
 import { CheckRows, Flow, Icon, ImportCta, MeLine, PendingRepo, PushBox, RoleIcon, brainkitProblem, repoLabel, type FlowStep } from '../ui'
 import { ACT, CLASS_NAME, FAMILY_ACT } from '../vocab'
 import { BIG_HINT } from './Family'
@@ -154,6 +155,11 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
   const check = useAction((b: IntakeBody) => api.post<IntakeCheck>(paths.intakeCheck(), b))
   const start = useAction((b: StartBody) => api.post<StartResult>(paths.intakeStart(), b))
   const started = start.result
+  const pick = useAction((kind: PickKind) => api.post<PickResult>(paths.pick(), { kind }))
+  const runPick = async (kind: PickKind) => {
+    const r = await pick.run(kind)
+    if (r?.paths.length) setDocs((d) => addPaths(d, r.paths))
+  }
 
   const runCheck = async () => {
     const at = print
@@ -232,7 +238,7 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
   const flow: FlowStep[] = [
     { icon: 'new', title: '认领', text: claimed ? `${claimed} 已经认领了` : '仓库、标题、需求号', state: ok || basicsOk ? 'done' : 'now' },
     {
-      icon: 'security', title: '文档过五关', text: noDocs ? '没有文档：不用过' : '原件不进任何仓库',
+      icon: 'security', title: '导入需求文档', text: noDocs ? '选填：没有就跳过' : '过五关，原件不进任何仓库',
       state: noDocs ? 'off' : ok || passed ? 'done' : docsBad ? 'bad' : basicsOk ? 'now' : undefined,
     },
     { icon: 'laptop', title: '开工', text: '在它自己的工作目录里开 AI 开发会话', state: ok ? 'done' : started ? 'bad' : canStart ? 'now' : undefined },
@@ -376,9 +382,9 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
               {keyBad && <p className="br-error" role="alert">需求号的格式像 PAY-12。</p>}
             </div>
             <div className="br-field is-full">
-              <label htmlFor="new-paths">预计会改的路径（用逗号、空格或换行分开）</label>
-              <textarea id="new-paths" rows={2} value={expected} placeholder="src/refund/" onChange={(e) => setExpected(e.target.value)} />
-              <p className="br-hint">别的需求也改到这里时会提醒你。</p>
+              <label htmlFor="new-paths">这次大概改哪些代码目录（选填）</label>
+              <textarea id="new-paths" rows={2} value={expected} placeholder="src/refund/" aria-describedby="new-paths-hint" onChange={(e) => setExpected(e.target.value)} />
+              <p className="br-hint" id="new-paths-hint">填了，别的需求也改这些目录时会提醒你们，免得撞车。比如 src/refund/，多个用逗号或换行分开。</p>
             </div>
             {bigInfo && (
               <div className="br-field is-full nr-big" data-testid="new-big">
@@ -402,13 +408,20 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
           </div>
         </section>
 
-        <section className={`br-card nr-sec${noDocs ? ' is-quiet' : ''}`} aria-label="文档">
-          <StepHead n={2} title="文档过五关" state={stepOf(1)} sub={noDocs ? '没有文档：五关都不用过，也不用检查' : '前三关你来定，后两关自动'} />
+        <section className="br-card nr-sec" aria-label="文档">
+          <StepHead n={2} title="导入需求文档（选填）" state={noDocs ? undefined : stepOf(1)} sub={noDocs ? '没有文档：五关都不用过，也不用检查' : '前三关你来定，后两关自动'} />
           <div className="nr-grid">
             <div className="br-field is-4">
               <label htmlFor="new-docs">文档（一行一个路径）</label>
-              <textarea id="new-docs" rows={2} value={docs} placeholder="/Users/alice/Downloads/结算周报需求" onChange={(e) => setDocs(e.target.value)} />
-              <p className="br-hint">这台机器上的文件或文件夹，飞书 / Lark 导出的文件夹也行。{noDocs ? '填了文档，下面就展开五关。' : ''}</p>
+              <div className="nr-pick">
+                <button type="button" className="br-btn" disabled={pick.busy} onClick={() => void runPick('file')}><RoleIcon role="file" size={16} />选文件…</button>
+                <button type="button" className="br-btn" disabled={pick.busy} onClick={() => void runPick('folder')}><Icon name="FolderPlus" size={16} />选文件夹…</button>
+                {pick.busy && <span className="br-hint" role="status">选文件的窗口开着：在那里选好，或点「取消」。没看到的话，它可能在别的窗口后面。</span>}
+              </div>
+              {pick.error && <p className="br-error" role="alert">{pick.error}</p>}
+              <textarea id="new-docs" rows={Math.min(8, Math.max(2, docs.split('\n').length))} value={docs} placeholder="/Users/alice/Downloads/结算周报需求"
+                aria-describedby="new-docs-hint" onChange={(e) => setDocs(e.target.value)} />
+              <p className="br-hint" id="new-docs-hint">选好的文件会一行一个加进框里。也可以粘贴路径：Mac 上在访达里选中它，按 ⌥⌘C，粘贴到这里。飞书 / Lark 导出的文件夹也行。{noDocs ? '填了文档，下面就展开五关。' : ''}</p>
             </div>
             <div className={`br-field is-2${markExclude ? ' nr-hl' : ''}`} data-marked={markExclude || undefined}>
               <label htmlFor="new-exclude">不收这些文件（按文件名，可以用 *，一行一个）</label>
@@ -713,6 +726,7 @@ const NR_CSS = `
 .nr-grid > .br-field { align-content: start; }
 .nr-grid textarea { min-height: 2.9em; }
 .nr-grid input[readonly] { opacity: .8; cursor: not-allowed; }
+.nr-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .nr-hl { padding: 6px 8px; margin: -6px -8px; border-radius: 10px; box-shadow: 0 0 0 2px var(--kt-bad); background: color-mix(in srgb, var(--kt-bad) 7%, transparent); }
 .nr-who { display: grid; gap: 6px; }
 .nr-nodocs { margin: 0; display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 12px; border: 1px dashed var(--border-strong, var(--border));

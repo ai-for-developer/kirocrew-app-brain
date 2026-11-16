@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import (bk, brainview, crewcheck, deliveries, detail, family, identity, importer, inplace, installer, intake,
-               landing, lean_view, mrdesc_view, mrinfo, progress, roster)
+               landing, lean_view, mrdesc_view, mrinfo, picker, progress, roster)
 from . import outputs as outputs_mod
 from . import problems, stages
 from . import board as board_mod
@@ -1290,6 +1290,10 @@ class Service:
         repo = self._repo(str(body.get("repo") or ""))
         me = await asyncio.to_thread(self.me_in, repo)
         return scrub_tree(await asyncio.to_thread(intake.check, repo, body, me), self.scrub)
+
+    async def pick(self, kind: Any) -> dict[str, Any]:
+        """选文件… / 选文件夹…: this machine's own dialog (picker.pick), in a worker thread until it closes."""
+        return {"paths": await asyncio.to_thread(picker.pick, kind)}
 
     async def intake_start(self, body: dict[str, Any]) -> dict[str, Any]:
         repo = self._repo(str(body.get("repo") or ""))

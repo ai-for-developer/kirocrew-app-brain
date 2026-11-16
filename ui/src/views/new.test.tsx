@@ -33,13 +33,18 @@ function setup(routes: Parameters<typeof installFixtureRoutes>[0] = {}, status: 
   return { user: userEvent.setup(), props }
 }
 
-const PATHS = '预计会改的路径（用逗号、空格或换行分开）'
+const PATHS = '这次大概改哪些代码目录（选填）'
 const SLUG = '英文短名（用在分支名里）'
 const EXCLUDE = '不收这些文件（按文件名，可以用 *，一行一个）'
 const startBtn = () => screen.getByRole('button', { name: '开工' })
 const gateStates = () => [1, 2, 3, 4, 5].map((n) => screen.getByTestId(`gate-${n}`).dataset.state)
 const flowStates = () => within(screen.getByRole('list', { name: '开需求的步骤' })).getAllByRole('listitem').map((li) => li.dataset.state)
 const checkBtn = () => screen.getByRole('button', { name: '先检查' })
+const DOCS = '文档（一行一个路径）'
+const docsCard = () => screen.getByRole('region', { name: '文档' })
+const fileBtn = () => within(docsCard()).getByRole('button', { name: '选文件…' })
+const folderBtn = () => within(docsCard()).getByRole('button', { name: '选文件夹…' })
+const pickCalls = () => apiCalls.filter((c) => c.method === 'POST' && c.path === `${API}/pick`)
 
 async function fillBasics(user: ReturnType<typeof userEvent.setup>) {
   await waitFor(() => expect(screen.getByLabelText('需求号')).toHaveValue('PAY-8'))
@@ -277,9 +282,11 @@ describe('开需求', () => {
     expect(apiCalls.find((c) => c.path === `${API}/intake/start`)?.body).toMatchObject({ slug: 'refund-v2', title: '退款 refund v2' })
   })
 
-  test('the expected paths may be separated by commas, spaces or new lines: the start sends them as a list', async () => {
+  test('the expected paths say what they are for and that they are optional; commas, spaces or new lines: the start sends them as a list', async () => {
     const { user } = setup()
     await fillBasics(user)
+    expect(screen.getByLabelText(PATHS)).toHaveAccessibleDescription('填了，别的需求也改这些目录时会提醒你们，免得撞车。比如 src/refund/，多个用逗号或换行分开。')
+    expect(startBtn()).toBeEnabled()   // left empty, nothing waits for it
     await user.type(screen.getByLabelText(PATHS), 'calc.py, tests')
     await user.click(startBtn())
     await screen.findByTestId('start-result')
@@ -475,14 +482,14 @@ describe('开需求', () => {
     expect(flowStates()[4]).toBe('off')
   })
 
-  test('the hero says what happens; its steps follow the form: 认领 → 文档过五关 (not needed without documents) → 开工 → Lean 推进', async () => {
+  test('the hero says what happens; its steps follow the form: 认领 → 导入需求文档 (optional) → 开工 → Lean 推进', async () => {
     const { user } = setup()
     const hero = screen.getByRole('region', { name: '开需求' })
     expect(hero).toHaveTextContent(HERO_TEXT)
     expect(HERO_TEXT).not.toMatch(/brain start|slug/)
     const steps = within(screen.getByRole('list', { name: '开需求的步骤' })).getAllByRole('listitem')
     expect(steps.map((li) => li.textContent)).toEqual([
-      '1认领仓库、标题、需求号', '2文档过五关没有文档：不用过', '3开工在它自己的工作目录里开 AI 开发会话', '4Lean 推进需求和设计由你批准', '5交给运行机团队仓库：交接以后它接着做',
+      '1认领仓库、标题、需求号', '2导入需求文档选填：没有就跳过', '3开工在它自己的工作目录里开 AI 开发会话', '4Lean 推进需求和设计由你批准', '5交给运行机团队仓库：交接以后它接着做',
     ])
     expect(flowStates()).toEqual(['now', 'off', undefined, undefined, undefined])
     await fillBasics(user)
@@ -607,11 +614,11 @@ describe('开需求', () => {
     expect(box).toBeEnabled()
     expect(box).not.toBeChecked()
     const titles = () => within(screen.getByRole('list', { name: '开需求的步骤' })).getAllByRole('listitem').map((li) => li.querySelector('b')?.textContent?.replace(/^[0-9✓]+/, ''))
-    expect(titles()).toEqual(['认领', '文档过五关', '开工', 'Lean 推进', '交给运行机'])
+    expect(titles()).toEqual(['认领', '导入需求文档', '开工', 'Lean 推进', '交给运行机'])
     await user.click(box)
     expect(box).toBeChecked()
     expect(box.closest('label')).toHaveClass('is-on')
-    expect(titles()).toEqual(['认领', '文档过五关', '开工', 'Lean 推进', '拆成小需求', '交给运行机'])
+    expect(titles()).toEqual(['认领', '导入需求文档', '开工', 'Lean 推进', '拆成小需求', '交给运行机'])
     expect(screen.getByRole('list', { name: '开需求的步骤' })).toHaveTextContent('需求和设计由你批准，设计里拆单元')
     expect(startBtn()).toBeEnabled()   // the choice is not part of the gates: no check needed
     await user.click(startBtn())
@@ -722,3 +729,61 @@ describe('开需求', () => {
   })
 })
 
+describe('导入需求文档', () => {
+  test('without documents the step is titled 导入需求文档（选填）, drawn as usable, and offers this machine’s own picker and pasting', async () => {
+    setup()
+    const card = docsCard()
+    expect(within(card).getByRole('heading', { level: 3 })).toHaveTextContent('导入需求文档（选填）')
+    expect(card.querySelector('[data-step="2"]')).not.toHaveAttribute('data-state', 'off')
+    expect(fileBtn()).toBeEnabled()
+    expect(folderBtn()).toBeEnabled()
+    expect(screen.getByLabelText(DOCS)).toHaveAccessibleDescription(/在访达里选中它，按 ⌥⌘C，粘贴到这里/)
+    expect(screen.getByTestId('no-docs')).toBeInTheDocument()
+  })
+
+  test('选文件… and 选文件夹… add what was chosen to the box, one per line, each once; a cancel changes nothing; the five gates open', async () => {
+    const answers: Record<string, string[][]> = {
+      file: [['/Users/alice/Downloads/结算周报需求.docx'], ['/Users/alice/Downloads/结算周报需求.docx'], []],
+      folder: [['/Users/alice/Downloads/飞书导出', '/Users/alice/Downloads/结算周报需求.docx']],
+    }
+    const { user } = setup({ [`POST ${API}/pick`]: (body) => ({ paths: answers[(body as { kind: string }).kind].shift() ?? [] }) })
+    const box = screen.getByLabelText(DOCS)
+    await user.type(box, '/Users/alice/notes.md')                         // typed or pasted: kept
+    await user.click(fileBtn())
+    await waitFor(() => expect(box).toHaveValue('/Users/alice/notes.md\n/Users/alice/Downloads/结算周报需求.docx'))
+    await user.click(folderBtn())
+    const three = '/Users/alice/notes.md\n/Users/alice/Downloads/结算周报需求.docx\n/Users/alice/Downloads/飞书导出'
+    await waitFor(() => expect(box).toHaveValue(three))
+    for (const n of [3, 4]) {                                             // the same file again, then a cancel
+      await waitFor(() => expect(fileBtn()).toBeEnabled())
+      await user.click(fileBtn())
+      await waitFor(() => expect(pickCalls()).toHaveLength(n))
+    }
+    await waitFor(() => expect(fileBtn()).toBeEnabled())
+    expect(box).toHaveValue(three)
+    expect(pickCalls().map((c) => c.body)).toEqual([{ kind: 'file' }, { kind: 'folder' }, { kind: 'file' }, { kind: 'file' }])
+    expect(within(docsCard()).queryByRole('alert')).toBeNull()
+    expect(screen.queryByTestId('no-docs')).toBeNull()
+    expect(screen.getByTestId('gate-1')).toBeInTheDocument()
+  })
+
+  test('while the dialog is open both buttons wait and say where it is; no dialog on this machine says to paste, and the box still takes a path', async () => {
+    let close: (answer: unknown) => void = () => {}
+    const replies: (() => unknown)[] = [
+      () => new Promise((resolve) => { close = resolve }),
+      () => { throw apiError(501, 'no_picker', '这台机器上打不开选文件的窗口：把路径粘贴到下面的框里，一行一个') },
+    ]
+    const { user } = setup({ [`POST ${API}/pick`]: () => replies.shift()?.() })
+    await user.click(fileBtn())
+    await waitFor(() => expect(fileBtn()).toBeDisabled())
+    expect(folderBtn()).toBeDisabled()
+    expect(within(docsCard()).getByRole('status')).toHaveTextContent('选文件的窗口开着')
+    close({ paths: [] })
+    await waitFor(() => expect(folderBtn()).toBeEnabled())
+    expect(within(docsCard()).queryByRole('status')).toBeNull()
+    await user.click(folderBtn())
+    expect(await within(docsCard()).findByRole('alert')).toHaveTextContent('这台机器上打不开选文件的窗口：把路径粘贴到下面的框里，一行一个（501）')
+    await user.type(screen.getByLabelText(DOCS), '/Users/alice/Downloads/需求.docx')
+    expect(screen.getByLabelText(DOCS)).toHaveValue('/Users/alice/Downloads/需求.docx')
+  })
+})

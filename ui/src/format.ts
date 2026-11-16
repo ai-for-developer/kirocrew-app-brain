@@ -72,6 +72,22 @@ export function lines(text: string): string[] {
   return text.split('\n').map((l) => l.trim()).filter(Boolean)
 }
 
+/** *text* (one path per line) with the paths of *add* it does not have yet (a trailing / not counted) after it, one per
+ * line; *text* itself as it was. */
+export function addPaths(text: string, add: string[]): string {
+  const key = (p: string) => p.trim().replace(/(.)\/+$/, '$1')
+  const have = new Set(lines(text).map(key))
+  const fresh: string[] = []
+  for (const p of add.map((x) => x.trim())) {
+    if (!p || have.has(key(p))) continue
+    have.add(key(p))
+    fresh.push(p)
+  }
+  if (!fresh.length) return text
+  const kept = text.replace(/\s+$/, '')
+  return [...(kept ? [kept] : []), ...fresh].join('\n')
+}
+
 /** Paths typed into one box, separated by new lines, commas (also ，、), semicolons or whitespace, as the backend splits
  * one string of paths; empty ones dropped. */
 export function splitPaths(text: string): string[] {

@@ -142,6 +142,10 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
     async def intake_start(request: Any) -> Any:
         return kit.json(await svc.intake_start(await kit.body(request)))
 
+    # 选文件… / 选文件夹… (开需求's documents): a fixed command opens this machine's own dialog; only the kind is read
+    async def pick(request: Any) -> Any:
+        return kit.json(await svc.pick((await kit.body(request)).get("kind")))
+
     async def crew(request: Any) -> Any:
         return kit.json(await svc.crew_checks())
 
@@ -260,6 +264,7 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
         AppRoute("GET", "/intake/next", kit.guarded(intake_next)),
         AppRoute("POST", "/intake/check", kit.guarded(intake_check)),
         AppRoute("POST", "/intake/start", kit.guarded(intake_start)),
+        AppRoute("POST", "/pick", kit.guarded(pick)),
         AppRoute("GET", "/crew", kit.guarded(crew)),
         AppRoute("POST", "/crew/fix", kit.guarded(crew_fix)),
         AppRoute("GET", "/brain", kit.guarded(brain)),
