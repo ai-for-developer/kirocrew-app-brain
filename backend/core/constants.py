@@ -6,10 +6,10 @@ import shutil as _shutil
 from pathlib import Path as _Path
 
 APP_NAME = "brain"
-VERSION = "0.3.2"
+VERSION = "0.3.3"
 
 # Sidebar folders of the sessions this app opens (apart from aidlc-team's 「AI-DLC 团队」, so both apps can be installed).
-LOCAL_FOLDER = "Brain 需求"        # brain-dev sessions on this machine, one subfolder per requirement
+LOCAL_FOLDER = "Brain 需求"        # brain-dev sessions on this machine: a folder per repo, in it one per requirement
 RUNNER_FOLDER = "Brain 运行机"     # brain-run sessions the team runner dispatches, one subfolder per run
 
 # the agent of the sessions this app opens: ~/.kiro/agents/brain-dev-crew.json (brain crew-agent), Lean's three

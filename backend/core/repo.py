@@ -36,6 +36,12 @@ REFLECT_RE = re.compile(r"^refs/(?:heads|remotes/origin)/brain/(?P<key>[A-Z][A-Z
 BRANCH_RE = re.compile(r"^(?P<prefix>[a-z]+)/(?P<owner>[a-z0-9][a-z0-9._-]{0,63})/"
                        r"(?P<key>[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6})(?:-(?P<slug>[a-z0-9][a-z0-9-]{0,39}))?$")
 MAX_FILE = 4 * 1024 * 1024
+PLACES_TTL_S = 30.0    # refs and worktrees are listed again at least this often, even when git_stamp says nothing moved
+ORIGIN_TTL_S = 300.0   # the same for whether there is an origin, while the repo's git config file stays the same
+
+
+class GitFailed(RuntimeError):
+    """A git read that did not exit 0 (a time limit too): what it said is not an answer to keep."""
 
 
 class Git:
@@ -64,22 +70,29 @@ class Git:
         p = self.run("cat-file", "blob", "%s:%s" % (ref, path), text=False)
         return p.stdout[:MAX_FILE] if p.returncode == 0 else None
 
-    def ls(self, ref: str, prefix: str) -> list[str]:
-        p = self.run("ls-tree", "-r", "-z", "--name-only", ref, "--", prefix)
-        return sorted(x for x in p.stdout.split("\0") if x) if p.returncode == 0 else []
+    def _listed(self, strict: bool, *args: str) -> str:
+        """What git listed; when it failed: nothing, or GitFailed when *strict* (the answer is to be kept)."""
+        p = self.run(*args)
+        if p.returncode == 0:
+            return p.stdout
+        if strict:
+            raise GitFailed("git %s: exit %d" % (args[0], p.returncode))
+        return ""
 
-    def refs(self, *prefixes: str) -> dict[str, str]:
-        p = self.run("for-each-ref", "--format=%(refname) %(objectname)", *prefixes)
+    def ls(self, ref: str, prefix: str, *, strict: bool = False) -> list[str]:
+        return sorted(x for x in self._listed(strict, "ls-tree", "-r", "-z", "--name-only", ref, "--", prefix)
+                      .split("\0") if x)
+
+    def refs(self, *prefixes: str, strict: bool = False) -> dict[str, str]:
         out = {}
-        for line in p.stdout.splitlines() if p.returncode == 0 else []:
+        for line in self._listed(strict, "for-each-ref", "--format=%(refname) %(objectname)", *prefixes).splitlines():
             name, _, sha = line.partition(" ")
             out[name] = sha
         return out
 
-    def worktrees(self) -> list[dict[str, Any]]:
-        p = self.run("worktree", "list", "--porcelain")
+    def worktrees(self, *, strict: bool = False) -> list[dict[str, Any]]:
         out, cur = [], {}
-        for line in (p.stdout.splitlines() if p.returncode == 0 else []) + [""]:
+        for line in self._listed(strict, "worktree", "list", "--porcelain").splitlines() + [""]:
             if not line:
                 if cur.get("path"):
                     out.append(cur)
@@ -96,8 +109,57 @@ class Git:
         s = self.out("log", "-1", "--format=%ct", rev)
         return float(s) if s.isdigit() else None
 
-    def has_origin(self) -> bool:
-        return self.ok("remote", "get-url", "origin")
+    def has_origin(self) -> bool | None:
+        """There is a remote called origin; None: git could not say (it failed, or ran out of time)."""
+        code = self.run("remote", "get-url", "origin").returncode
+        return True if code == 0 else False if code == 2 else None   # 2: no such remote
+
+
+def git_dirs(top: str) -> tuple[str, str]:
+    """(the git dir, the common dir) of the checkout at *top*: its .git folder, or a worktree's .git file and the
+    commondir its git dir names."""
+    gitdir = os.path.join(top, ".git")
+    try:
+        if os.path.isfile(gitdir):
+            with open(gitdir, encoding="utf-8") as f:
+                gitdir = os.path.join(top, f.read().strip().split("gitdir:", 1)[-1].strip())
+        with open(os.path.join(gitdir, "commondir"), encoding="utf-8") as f:
+            return gitdir, os.path.normpath(os.path.join(gitdir, f.read().strip()))
+    except OSError:
+        return gitdir, gitdir
+
+
+def _stat(path: str) -> tuple | None:
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return st.st_mtime_ns, st.st_size, st.st_ino
+
+
+def git_stamp(top: str, refs: tuple[str, ...]) -> tuple:
+    """What git rewrites when a ref under *refs* (names or prefixes), a HEAD or a worktree moves: packed-refs and the
+    loose refs (a reftable repo: its tables.list), HEAD, and each worktree's entry (its HEAD, or with reftable its own
+    tables.list). No git is started."""
+    gitdir, common = git_dirs(top)
+    out: list[Any] = [_stat(os.path.join(common, "packed-refs")), _stat(os.path.join(common, "reftable", "tables.list")),
+                      _stat(os.path.join(gitdir, "HEAD"))]
+    for ref in refs:
+        p = os.path.join(common, ref)
+        if not os.path.isdir(p):
+            out.append((ref, _stat(p)))
+            continue
+        for d, dirs, names in os.walk(p):
+            dirs.sort()
+            out += [(os.path.relpath(os.path.join(d, n), common), _stat(os.path.join(d, n))) for n in sorted(names)]
+    wdir = os.path.join(common, "worktrees")
+    try:
+        names = sorted(os.listdir(wdir))
+    except OSError:
+        names = []
+    out += [(n, _stat(os.path.join(wdir, n, "HEAD")), _stat(os.path.join(wdir, n, "reftable", "tables.list")),
+             _stat(os.path.join(wdir, n, "gitdir")), _stat(os.path.join(wdir, n, "locked"))) for n in names]
+    return tuple(out)
 
 
 class Source:
@@ -241,9 +303,10 @@ class Repo:
         self._lock = threading.Lock()
         self._facts: dict[str, tuple[tuple, dict[str, Any]]] = {}
         self._scan: tuple[float, tuple, list[dict[str, Any]]] | None = None
-        self._main_sha: tuple[float, str | None] | None = None
-        self._origin: tuple[float, bool] | None = None
-        self._reflected: tuple[float, set[str]] | None = None
+        self._origin: tuple[float, bool, tuple | None] | None = None
+        self._kept_places: tuple[tuple, float, dict[str, Any]] | None = None   # (git_stamp, when listed, _places)
+        self._merged: tuple[str, list[str]] | None = None                      # (main's commit, its runs_dir files)
+        self._reflected: tuple[float, set[str], tuple] | None = None
 
     # ---- where things are ---------------------------------------------------------------------------- #
 
@@ -254,43 +317,64 @@ class Repo:
                 return r
         return None
 
-    def main_sha(self, ttl: float = 4.0) -> str | None:
-        """The default branch's commit (origin's, else the local one), reused for *ttl* seconds."""
-        now = time.monotonic()
-        got = self._main_sha
-        if got is not None and now - got[0] < ttl:
-            return got[1]
-        ref = self.main_ref()
-        sha = self.git.out("rev-parse", "-q", "--verify", ref + "^{commit}") if ref else ""
-        self._main_sha = (now, sha or None)
-        return sha or None
+    def main_sha(self) -> str | None:
+        """The default branch's commit (origin's, else the local one), from the refs a scan lists (_places)."""
+        d = self.cfg["default_branch"]
+        refs = self._places()["refs"]
+        return refs.get("refs/remotes/origin/" + d) or refs.get("refs/heads/" + d) or None
 
-    def has_origin(self, ttl: float = 30.0) -> bool:
-        """It has a remote (origin): its requirements may be handed over, 从远端取最新 works. Reused for *ttl* s."""
+    def has_origin(self) -> bool:
+        """It has a remote (origin): its requirements may be handed over, 从远端取最新 works. Reused while the repo's
+        git config file stays the same, for at most ORIGIN_TTL_S."""
         now = time.monotonic()
+        stamp = _stat(os.path.join(git_dirs(self.path)[1], "config"))
         got = self._origin
-        if got is None or now - got[0] >= ttl:
-            got = self._origin = (now, self.git.has_origin())
+        if got is None or got[2] != stamp or now - got[0] >= ORIGIN_TTL_S:
+            said = self.git.has_origin()
+            if said is None:
+                return False                 # not kept: asked again next time
+            got = self._origin = (now, said, stamp)
         return got[1]
 
-    def reflected(self, ttl: float = 10.0) -> set[str]:
+    def reflected(self) -> set[str]:
         """The keys whose Brain proposals `brain reflect --apply` wrote back already (a brain/<KEY>-reflect-<n> branch
-        here or on origin). Reused for *ttl* s."""
-        now = time.monotonic()
+        here or on origin). Listed again only when git_stamp of those refs moves, or after PLACES_TTL_S."""
+        names = ("refs/heads/brain/", "refs/remotes/origin/brain/")
+        now, stamp = time.monotonic(), git_stamp(self.path, names)
         got = self._reflected
-        if got is None or now - got[0] >= ttl:
-            keys = {m.group("key") for m in (REFLECT_RE.match(r) for r in self.git.refs(
-                "refs/heads/brain/", "refs/remotes/origin/brain/")) if m}
-            got = self._reflected = (now, keys)
+        if got is None or got[2] != stamp or now - got[0] >= PLACES_TTL_S:
+            try:
+                refs = self.git.refs(*names, strict=True)
+            except GitFailed:
+                return set()                 # not kept: listed again next time
+            got = self._reflected = (now, {m.group("key") for m in map(REFLECT_RE.match, refs) if m}, stamp)
         return got[1]
 
     def _places(self) -> dict[str, Any]:
+        """The refs and worktrees a scan reads: listed by git again only when git_stamp moves (or after PLACES_TTL_S)."""
         pre = self.cfg["branch_prefix"]
         d = self.cfg["default_branch"]
-        refs = self.git.refs("refs/heads/claim/", "refs/remotes/origin/claim/", "refs/heads/%s/" % pre,
-                             "refs/remotes/origin/%s/" % pre, "refs/heads/" + d, "refs/remotes/origin/" + d)
-        wts = self.git.worktrees()
-        return {"refs": refs, "worktrees": wts}
+        names = ("refs/heads/claim/", "refs/remotes/origin/claim/", "refs/heads/%s/" % pre,
+                 "refs/remotes/origin/%s/" % pre, "refs/heads/" + d, "refs/remotes/origin/" + d)
+        stamp, now = git_stamp(self.path, names), time.monotonic()
+        kept = self._kept_places
+        if kept is not None and kept[0] == stamp and now - kept[1] < PLACES_TTL_S:
+            return kept[2]
+        try:
+            got = {"refs": self.git.refs(*names, strict=True), "worktrees": self.git.worktrees(strict=True)}
+        except GitFailed:
+            return {"refs": {}, "worktrees": []}   # not kept: listed again next time
+        self._kept_places = (stamp, now, got)
+        return got
+
+    def _merged_files(self, main: str, sha: str) -> list[str]:
+        """The files under runs_dir on the default branch, listed again only when its commit moves (or git failed)."""
+        if self._merged is None or self._merged[0] != sha:
+            try:
+                self._merged = (sha, self.git.ls(main, self.cfg["runs_dir"], strict=True))
+            except GitFailed:
+                return []
+        return self._merged[1]
 
     def scan(self, ttl: float = 4.0) -> list[dict[str, Any]]:
         """The facts of every requirement key in the repo (see the module doc)."""
@@ -322,7 +406,7 @@ class Repo:
                                 row[kind + "_sha"] = sha
             merged = set()
             if main:
-                for path in self.git.ls(main, self.cfg["runs_dir"]):
+                for path in self._merged_files(main, refs[main]):
                     parts = path.split("/")
                     if len(parts) == 3 and parts[2] == "run.json" and KEY_RE.match(parts[1]):
                         merged.add(parts[1])
@@ -446,8 +530,8 @@ class Repo:
     def invalidate(self) -> None:
         with self._lock:
             self._scan = None
-            self._main_sha = None
             self._reflected = None
+            self._kept_places = None
 
 
 FETCH = "git -C {path} fetch origin"

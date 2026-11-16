@@ -161,6 +161,7 @@ class Service:
         self._handing: dict[str, asyncio.Future] = {}   # 交接给运行机, one at a time per requirement
         self._big_file = self.data_dir / "big.json"
         self._big = self._load_big()           # scopes opened here as 「大需求：先拆成小需求」
+        self.folders_stuck: list[dict[str, Any]] = []   # 设置 rows: the folders KiroCrew would not move (sessions.regroup)
 
     # ---- lifecycle ------------------------------------------------------------------------------------ #
 
@@ -189,6 +190,7 @@ class Service:
                        loop.create_task(self._sync_forever())]
         if self.team is not None:
             self._tasks.append(loop.create_task(self._team_forever()))
+        self._tasks.append(loop.create_task(self._regroup_soon()))
         self.log.info("brain: started, brain-kit %s, %d repos, team %s", bk.info().get("version"), len(self.repos),
                       "on" if self.team is not None else "off")
 
@@ -285,6 +287,41 @@ class Service:
                 self.log.exception("brain: polling the sessions failed")
             await asyncio.sleep(TICK_S)
 
+    async def _regroup_soon(self) -> None:
+        """regroup_folders once KiroCrew answers (it may not yet while it is starting this app)."""
+        while not await self.regroup_folders():
+            await asyncio.sleep(MR_EVERY_S)
+
+    async def regroup_folders(self) -> bool:
+        """The requirement folders made before repo folders, moved into 「Brain 需求」 › repo (sessions.regroup); the
+        ones that stay are said in 设置 (status: a KiroCrew row). False: KiroCrew could not be read, try again."""
+        try:
+            self.folders_stuck = await self.sessions.regroup(self._repo_of)
+        except GatewayError as exc:
+            self.log.info("brain: reading KiroCrew's folders: %s", exc)
+            return False
+        except Exception:  # noqa: BLE001 - the sidebar's layout never stops the app
+            self.log.exception("brain: moving the requirement folders into their repo folders failed")
+        await self.sessions.save()
+        return True
+
+    def _repo_of(self, parent: str) -> str:
+        """The repo folder of a requirement this app opened a session for (*parent*: <app>:<repo id>-<KEY>): the listed
+        repo's name as the app shows it, else (a repo no longer listed) the folder under work_root its worktree was
+        made in (<work_root>/<repo>/<slug>); "" when neither."""
+        app, _, scope = parent.partition(":")
+        m = RECORD_SCOPE_RE.match(scope)
+        if app != self.name or not m:
+            return ""
+        if m.group(1) in self.repos:
+            return self.repos[m.group(1)].name
+        top = os.path.realpath(os.path.expanduser(self.settings["work_root"]))
+        for i in self.sessions.roots(key=scope):
+            repo_dir = os.path.dirname(os.path.realpath(i.cwd)) if i.cwd else ""
+            if repo_dir and os.path.dirname(repo_dir) == top:
+                return os.path.basename(repo_dir)
+        return ""
+
     async def refresh_mrs(self) -> None:
         """The MRs of handed-over runs (person mode), each at most every mrinfo.TTL_S. Only the notes of the account
         the repo's kit.json names as bridge_user are the bridge's (when it names one)."""
@@ -307,6 +344,7 @@ class Service:
                     await asyncio.to_thread(self.reload_sync)
                 if time.monotonic() - last_crew > CREW_EVERY_S:
                     last_crew = time.monotonic()
+                    await asyncio.to_thread(crewcheck.refresh_engine)
                     self.crew = await asyncio.to_thread(self.crew_sync)
             except asyncio.CancelledError:
                 raise
@@ -1189,8 +1227,8 @@ class Service:
         info = await self.sessions.open_session(
             task, parent_session_key="%s:%s" % (self.name, scope), cwd=wt, title=title,
             folder="%s · %s" % (key, slug), agent=crewcheck.crew_agent(), root_folder=LOCAL_FOLDER, project_dir=wt,
-            strict_agent=True, resend_ok=True, nudge_ok=False, trust_ok=bool(trust), kind="local", key=scope,
-            shown={"by": "app", "cause": cause, "text": task} if task else None)   # task: ids only, by its builder
+            repo_folder=repo.name, strict_agent=True, resend_ok=True, nudge_ok=False, trust_ok=bool(trust), kind="local",
+            key=scope, shown={"by": "app", "cause": cause, "text": task} if task else None)   # task: ids only, by its builder
         if info.error or not info.slot:
             raise AppError(info.error or "会话没开成", "session_failed", 502)
         await asyncio.to_thread(self.store.append, scope, "app", said, store_mod.TRUSTED if trust else None)
@@ -1600,6 +1638,8 @@ class Service:
         return self.team.status()
 
     async def status(self) -> dict[str, Any]:
+        if self.folders_stuck:   # one folder list: a folder dragged in since, or KiroCrew answering again
+            await self.regroup_folders()
         info = bk.info()
         repos = []
         for path, rid in self.repo_ids.of(self.settings["repos"]).items():
@@ -1629,7 +1669,7 @@ class Service:
         return {"app": {"name": self.name, "version": VERSION, "team": self.team is not None},
                 "brainkit": {"path": info["path"], "ok": info["ok"], "version": info["version"], "error": info["error"],
                              "modules": info["modules"]},
-                "repos": repos, "crew": self.crew,
+                "repos": repos, "crew": dict(self.crew, rows=list(self.crew["rows"]) + self.folders_stuck),
                 "me": me_line(repos, token, os.environ.get("BRAIN_USER", "").strip().lower()),
                 "team": self._team_status(), "counts": {"todo": len(todo["items"])},
                 "repo_ids_problem": self.repo_ids.problem}
