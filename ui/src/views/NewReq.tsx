@@ -28,7 +28,7 @@
 import { useState, type ReactNode } from 'react'
 import { useAppApi, useNavigate } from '@kirocrew/app-sdk'
 import { paths, useAction, usePoll } from '../api'
-import { addPaths, lines, splitPaths } from '../format'
+import { addPaths, ago, lines, splitPaths } from '../format'
 import { KEY_RE, type NewEntry } from '../nav'
 import type { Tone } from '../styles'
 import { CLASS_LABEL, type CheckRow, type Classification, type CrewChecks, type IntakeBody, type IntakeCheck, type IntakeNext, type MeNameResult, type Overview, type PickKind, type PickResult, type StartBody, type StartResult } from '../types'
@@ -330,6 +330,9 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
           <header className="nr-head">
             {crewBad ? <RoleIcon role="blocked" size={20} className="nr-bad-icon" /> : <span className="br-prob-glyph tone-warn" aria-hidden="true">!</span>}
             <h3>{crewBad ? '开会话之前，KiroCrew 这边要先处理' : `KiroCrew 这边有 ${crewRows.length} 个提醒，不挡开工`}</h3>
+            {crewData.checked_at && (
+              <span className="br-dim br-small" data-testid="crew-age">{ago(crewData.checked_at)}查的{crew.loading ? '，正在重新查…' : ''}</span>
+            )}
           </header>
           <CheckRows rows={crewRows} fix={crewData.fix} onFixed={onFixed} />
         </section>

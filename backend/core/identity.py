@@ -26,7 +26,7 @@ from typing import Any, Callable
 
 from . import bk
 from .constants import GIT_BIN
-from .repo import Git
+from .repo import Git, git_dirs
 
 USER_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")   # brain-kit 48b6b97 common.USER_RE, while brain-kit is not loaded
 SET_TIMEOUT_S = 15
@@ -176,7 +176,7 @@ def of(top: str, gitlab_base: str, gitlab: Said | NotSaid | Asking | None = None
         out.update(name=said.name, source="token", text="%s（%s）" % (said.name, FROM["token"]))
         return out
     env = os.environ.get("BRAIN_USER", "").strip()
-    conf = "" if env else Git(top).out("config", "brain.user").strip()
+    conf = "" if env else git_name(top)
     who = env or conf
     if isinstance(said, NotSaid):
         not_said = "GitLab 没认出你（%s）" % said.why
@@ -221,6 +221,65 @@ def set_name(top: str, name: Any) -> str:
         raise NameRefused("名字%s" % RULE)
     from .importer import last_lines, run_quiet, tail       # here: importer imports this module
     p = run_quiet([GIT_BIN, "-C", top, "config", "--local", "brain.user", n], top, SET_TIMEOUT_S)
+    _names.clear()
     if p.returncode != 0:
         raise NameRefused("名字没存上，git 说：%s" % (last_lines(tail(p), 3) or "退出码 %d" % p.returncode))
     return n
+
+
+NAME_TTL_S = 60.0   # git config brain.user is read again at least this often (an onbranch include, the system's config)
+_names: dict[str, tuple[tuple[str, ...], tuple, float, str]] = {}   # top -> (the files stamped, their stamp, when, name)
+
+
+def config_files(top: str) -> tuple[str, ...]:
+    """The git config files a name is set in, as far as they are known before git is asked: the repo's own (a
+    worktree's common one and its config.worktree), ~/.gitconfig, git's user config and $GIT_CONFIG_GLOBAL's."""
+    home = os.path.expanduser("~")
+    gitdir, common = git_dirs(top)
+    alt = os.environ.get("GIT_CONFIG_GLOBAL")
+    return (os.path.join(common, "config"), os.path.join(gitdir, "config.worktree"), os.path.join(home, ".gitconfig"),
+            os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config"), "git", "config")) + (
+            (alt,) if alt else ())
+
+
+def _stats(files: tuple[str, ...]) -> tuple:
+    out: list[Any] = []
+    for p in files:
+        try:
+            st = os.stat(p)
+            out.append((st.st_mtime_ns, st.st_size))
+        except OSError:
+            out.append(None)
+    return tuple(out)
+
+
+def config_stamp(files: tuple[str, ...]) -> tuple:
+    """git's environment, and *files* (mtime and size; None: not there)."""
+    return (tuple(sorted((k, v) for k, v in os.environ.items() if k.startswith("GIT_CONFIG"))),) + _stats(files)
+
+
+def git_name(top: str) -> str:
+    """`git config brain.user` in *top*, read again only when a git config file it may come from changes (config_files,
+    each file git read a setting from, each file an include names), or after NAME_TTL_S."""
+    kept = _names.get(top)
+    if kept is not None and kept[1] == config_stamp(kept[0]) and time.monotonic() - kept[2] < NAME_TTL_S:
+        return kept[3]
+    at, files = time.monotonic(), config_files(top)
+    stamp = config_stamp(files)
+    p = Git(top).run("config", "--list", "--show-origin", "-z")
+    if p.returncode != 0:
+        return ""                       # a bad config file, a timeout: asked again next time
+    name, read = "", []
+    said = p.stdout.split("\0")
+    for origin, entry in zip(said[0::2], said[1::2]):
+        key, _, value = entry.partition("\n")
+        if key == "brain.user":
+            name = value.strip()         # the last one wins, as in `git config brain.user`
+        if origin.startswith("file:"):
+            path = os.path.join(top, origin[5:])
+            read.append(path)
+            if key == "include.path" or (key.startswith("includeif.") and key.endswith(".path")):
+                read.append(os.path.join(os.path.dirname(path), os.path.expanduser(value)))
+    more = tuple(dict.fromkeys(os.path.normpath(x) for x in read if os.path.normpath(x) not in files))
+    _names[top] = (files + more, stamp + _stats(more), at, name)
+    return name

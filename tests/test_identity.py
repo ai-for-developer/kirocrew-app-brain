@@ -233,6 +233,61 @@ def test_gitlabs_name_for_the_token_wins_and_a_name_set_here_answers_until_gitla
     assert refused["ask"] and refused["label"] == identity.LABEL_GITLAB and identity.REFUSED in refused["why"]
 
 
+def test_the_name_is_read_from_git_once_until_a_git_config_file_changes(tmp_path, home, login, monkeypatch):
+    """Every row of 待办 and 交付总览 says whose it is, so `git config brain.user` ran a dozen times per /status: the
+    name is read once and again when the repo's config, ~/.gitconfig or git's own user config changes (at once: a
+    name set in a terminal shows on the next page), or after NAME_TTL_S."""
+    repo = project(tmp_path)
+    sh("git", "-C", repo, "config", "brain.user", "alice")
+    log = tmp_path / "git-calls"
+    wrap = tmp_path / "bin" / "git-logged"
+    wrap.write_text("#!/bin/sh\necho \"$*\" >> '%s'\nexec '%s' \"$@\"\n" % (log, mod("repo").GIT_BIN), encoding="utf-8")
+    wrap.chmod(0o755)
+    monkeypatch.setattr(mod("repo"), "GIT_BIN", str(wrap))
+    reads = lambda: sum(line.split()[2:3] == ["config"] for line in log.read_text().splitlines()) if log.exists() else 0  # noqa: E731
+    name = lambda: identity.of(str(repo), "", token=False)["name"]  # noqa: E731
+    assert [name(), name(), name()] == ["alice"] * 3 and reads() == 1
+    sh("git", "-C", repo, "config", "brain.user", "bob")
+    assert name() == "bob" and name() == "bob" and reads() == 2
+    sh("git", "-C", repo, "config", "--unset", "brain.user")
+    sh("git", "config", "--global", "brain.user", "carol")
+    assert name() == "carol" and reads() == 3
+    identity.set_name(str(repo), "dave")
+    assert name() == "dave"
+    monkeypatch.setattr(identity, "NAME_TTL_S", 0.0)
+    n = reads()
+    name()
+    assert reads() == n + 1
+
+
+
+def test_a_name_set_in_a_git_config_file_another_one_names_shows_at_once(tmp_path, home, monkeypatch):
+    """The name may be set in a file ~/.gitconfig includes (include.path, includeIf) or in $GIT_CONFIG_GLOBAL's file:
+    a name set or changed there was not seen for up to a minute."""
+    repo = project(tmp_path)
+    said = lambda: sh("git", "-C", repo, "config", "brain.user", check=False).stdout.strip()  # noqa: E731
+    seen = []
+
+    def edit(path, text=None):
+        if text is not None:
+            path.write_text(text, encoding="utf-8")
+        seen.append((path.name, identity.git_name(str(repo)), said()))
+
+    edit(home / ".gitconfig", "[include]\n\tpath = ~/.gitconfig-brain\n")
+    edit(home / ".gitconfig-brain", "[brain]\n\tuser = bob\n")              # the included file appears
+    inc = tmp_path / "work.inc"
+    edit(inc, "[brain]\n\tuser = carol\n")
+    edit(home / ".gitconfig", '[includeIf "gitdir:%s/"]\n\tpath = %s\n' % (repo, inc))
+    edit(inc, "[brain]\n\tuser = dave1\n")                                    # the same size, edited
+    alt = tmp_path / "alt-global"
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(alt))                     # not there yet
+    edit(alt)
+    edit(alt, "[brain]\n\tuser = erin\n")
+    edit(alt, "[brain]\n\tuser = frank\n")
+    assert [(f, kept) for f, kept, _ in seen] == [(f, git) for f, _, git in seen]
+    assert [kept for _, kept, _ in seen] == ["", "bob", "bob", "carol", "dave1", "", "erin", "frank"]
+
+
 def test_the_name_route_takes_brainkits_names_only_runs_no_shell_and_stores_no_token(tmp_path, home, login):
     repo = project(tmp_path, kit=GITLAB)
     svc = make_service(tmp_path, [repo])

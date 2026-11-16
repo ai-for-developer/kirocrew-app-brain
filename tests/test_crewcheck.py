@@ -347,6 +347,42 @@ def test_the_engine_fix_says_why_it_did_not_change_in_words(tmp_path, monkeypatc
     assert str(e.value) == "引擎没换成 kas：KiroCrew 报了错。看下面它的原话，改好以后再点一次\nconfig: permission denied"
 
 
+def engine_row(rows):
+    return next(r for r in rows if "引擎" in r["text"])
+
+
+def test_the_engine_is_asked_once_until_kirocrews_config_changes(tmp_path, home, monkeypatch):
+    """`kirocrew config get` starts a whole KiroCrew CLI (seconds, every time): the checks ask it once, then again only
+    when KiroCrew's config.json or config.local.json changes, after the engine fix, or after ENGINE_TTL_S."""
+    monkeypatch.delenv("KIROCREW_HOME", raising=False)
+    calls, engine = tmp_path / "kc-calls", tmp_path / "engine"
+    kc = tmp_path / "bin" / "kirocrew"
+    kc.write_text("#!/bin/sh\necho \"$2\" >> '%s'\nif [ \"$2\" = get ]; then cat '%s'; exit 0; fi\n"
+                  "echo \"$4\" > '%s'; echo set\n" % (calls, engine, engine), encoding="utf-8")
+    cc = loaded(tmp_path)
+    gets = lambda: calls.read_text().split().count("get")  # noqa: E731
+    n = gets()
+    assert engine_row(cc.checks([])["rows"])["level"] == "OK" and gets() == n
+    engine.write_text("kiro\n")
+    crew = home / ".kiro" / "crew"
+    crew.mkdir(parents=True)
+    (crew / "config.json").write_text('{"agent": {"acp_backend": "kiro"}}')
+    assert engine_row(cc.checks([])["rows"])["text"] == "KiroCrew 引擎是 kiro，不是 kas" and gets() == n + 1
+    assert engine_row(cc.checks([])["rows"])["level"] == "WARN" and gets() == n + 1
+    engine.write_text("kas\n")
+    (crew / "config.local.json").write_text('{"agent": {"acp_backend": "kas"}}')
+    assert engine_row(cc.checks([])["rows"])["level"] == "OK" and gets() == n + 2
+    engine.write_text("kiro\n")
+    cc.fix_engine()
+    assert engine_row(cc.checks([])["rows"])["level"] == "OK" and gets() == n + 3 and engine.read_text().strip() == "kas"
+    engine.write_text("kiro\n")
+    cc.refresh_engine()                      # the app's own check every few minutes asks now
+    assert gets() == n + 4 and engine_row(cc.checks([])["rows"])["level"] == "WARN" and gets() == n + 4
+    monkeypatch.setattr(cc, "ENGINE_TTL_S", 0.0)
+    cc.checks([])
+    assert gets() == n + 5
+
+
 # ---- E2E-1: the app's sessions use brain-dev-crew, a name no repo agent takes ------------------------------------- #
 
 CREW = "brain-dev-crew"

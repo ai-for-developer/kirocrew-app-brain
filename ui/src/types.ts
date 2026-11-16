@@ -1307,6 +1307,9 @@ export interface BrainView {
   error: string
   /** brain-kit's own words when it could not read the Brain or its use (`error` says it in Chinese): for 细节 */
   raw?: string
+  /** null: the Brain on the default branch as it is now. Else the branch has moved since this Brain was read (epoch s):
+   * the new one is read behind this answer, and the page asks again until it is null */
+  stale: number | null
 }
 
 export interface ReflectOp { kind: string; target: string | null; file: string | null; type: string | null; section: string | null; src: string[]; text: string }

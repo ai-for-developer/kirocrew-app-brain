@@ -53,17 +53,53 @@ NEEDS = ("CREW_HOOK", "CREW_EVENTS", "agent_hook_commands", "missing_lean_hooks"
 AGENT_OK = P.AGENT_OK   # the one row agent_ok accepts (always the start of its text)
 
 
-def _engine() -> tuple[str | None, str, str]:
-    """(the engine, '' | no_kirocrew | failed, the error text)."""
+ENGINE_TTL_S = 600.0   # the engine is asked again at least this often, even when KiroCrew's config files stay the same
+_engine_memo: dict[tuple, tuple[float, tuple[str | None, str, str]]] = {}   # {key: (when asked, the answer)}
+
+
+def _config_stamp() -> tuple:
+    """KiroCrew's config.json and its config.local.json overlay (their mtime and size; None: not there), under
+    $KIROCREW_HOME or ~/.kiro/crew: `kirocrew config set` and KiroCrew's settings page write one of them."""
+    top = os.environ.get("KIROCREW_HOME") or os.path.join(os.path.expanduser("~"), ".kiro", "crew")
+    out = []
+    for name in ("config.json", "config.local.json"):
+        try:
+            st = os.stat(os.path.join(top, name))
+            out.append((st.st_mtime_ns, st.st_size))
+        except OSError:
+            out.append(None)
+    return tuple(out)
+
+
+def _engine(fresh: bool = False) -> tuple[str | None, str, str]:
+    """(the engine, '' | no_kirocrew | failed, the error text). `kirocrew config get` starts a whole KiroCrew CLI
+    (seconds), so its answer is kept while KiroCrew's config files stay the same, for at most ENGINE_TTL_S (*fresh*:
+    asked now); a failure is asked again next time."""
     kc = kirocrew_bin()
     if not kc:
         return None, "no_kirocrew", ""
+    key = (kc, os.path.expanduser("~"), _config_stamp())
+    kept = _engine_memo.get(key)
+    if kept is not None and not fresh and time.monotonic() - kept[0] < ENGINE_TTL_S:
+        return kept[1]
+    at = time.monotonic()
     try:
         p = subprocess.run([kc, "config", "get", "agent.acp_backend"], capture_output=True, text=True, timeout=20)
     except (OSError, subprocess.TimeoutExpired) as exc:
+        _engine_memo.pop(key, None)
         return None, "failed", str(exc)[:300]
     lines = [x.strip() for x in (p.stdout or "").splitlines() if x.strip()]
-    return (lines[-1] if lines else ""), "", ""
+    got = (lines[-1] if lines else ""), "", ""
+    _engine_memo.clear()
+    if p.returncode == 0:
+        _engine_memo[key] = (at, got)
+    return got
+
+
+def refresh_engine() -> None:
+    """Ask KiroCrew for the engine now (the app's own check every few minutes, so no page waits for it); the checks
+    meanwhile use the answer before."""
+    _engine(fresh=True)
 
 
 def _load(path: str) -> tuple[dict[str, Any] | None, str]:
@@ -321,6 +357,7 @@ def fix_engine() -> str:
         raise RuntimeError("没换成：找不到 KiroCrew 的命令行工具。确认 KiroCrew 装好了；也可以在终端里自己换："
                            "kirocrew config set agent.acp_backend kas")
     p = subprocess.run([kc, "config", "set", "agent.acp_backend", "kas"], capture_output=True, text=True, timeout=30)
+    _engine_memo.clear()
     if p.returncode != 0:
         raise RuntimeError("引擎没换成 kas：KiroCrew 报了错。看下面它的原话，改好以后再点一次\n%s"
                            % (p.stderr or p.stdout).strip()[:200])

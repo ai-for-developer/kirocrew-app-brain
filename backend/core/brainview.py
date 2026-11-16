@@ -19,11 +19,13 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import threading
+import time
 from typing import Any
 
 from . import bk, problems
 from .intake import brain_cmd
-from .repo import Repo
+from .repo import GitFailed, Repo
 
 MIN_RUNS = 3
 SECTION_RE = re.compile(r"^##\s+(.+?)\s*$")
@@ -122,13 +124,22 @@ def reflect_says(line: str) -> str:
     return reflect_row(line)["text"]
 
 
-def _brain(repo: Repo) -> tuple[Any, str]:
+def _brain(repo: Repo) -> tuple[Any, str, bool]:
+    """The Brain on the default branch (else in the working tree), where it was read, and whether it was read whole:
+    brain-kit reads a git listing that failed as no files, so an empty Brain is whole only when git lists no Brain
+    files on that branch."""
     E = bk.m("entries")
     ref = repo.main_ref()
-    if ref:
-        return E.Brain.from_git(repo.path, ref, repo.cfg["brain_dir"]), ref.replace("refs/remotes/", "").replace(
-            "refs/heads/", "").replace("origin/", "")
-    return E.Brain.load(os.path.join(repo.path, repo.cfg["brain_dir"])), "工作区"
+    if not ref:
+        return E.Brain.load(os.path.join(repo.path, repo.cfg["brain_dir"])), "工作区", True
+    brain = E.Brain.from_git(repo.path, ref, repo.cfg["brain_dir"])
+    label = ref.replace("refs/remotes/", "").replace("refs/heads/", "").replace("origin/", "")
+    if brain.files or brain.problems:
+        return brain, label, True
+    try:
+        return brain, label, not repo.git.ls(ref, repo.cfg["brain_dir"], strict=True)
+    except GitFailed:
+        return brain, label, False
 
 
 def unmerged_usage(repo: Repo) -> list[dict[str, Any]]:
@@ -142,11 +153,18 @@ def unmerged_usage(repo: Repo) -> list[dict[str, Any]]:
         groups.setdefault(_where(repo, f), []).append(f)
     out = []
     for (src, ref), facts in groups.items():
-        try:
-            u = bk.m("usage").collect(src, repo.cfg, ref=ref)
-        except Exception:  # noqa: BLE001 - one unreadable run does not take the page down
-            continue
-        runs = u.get("runs") or []
+        stamp = (_kit(), repo.cfg["brain_dir"], repo.cfg["runs_dir"],
+                 tuple(sorted(str(f.get("tip")) for f in facts)) if ref else
+                 _files_stamp(src, [repo.cfg["runs_dir"], "aidlc-docs", repo.cfg["brain_dir"]]))
+        kept = _runs.get((repo.path, src, ref))
+        if kept is not None and kept[0] == stamp:
+            runs = kept[1]
+        else:
+            try:
+                runs = bk.m("usage").collect(src, repo.cfg, ref=ref).get("runs") or []
+            except Exception:  # noqa: BLE001 - one unreadable run does not take the page down
+                continue
+            _runs[(repo.path, src, ref)] = (stamp, runs)
         for f in facts:
             intent = f["run"]["intent"]
             r = next((x for x in runs if x.get("intent") == intent and x.get("key") == f["key"]), None) or \
@@ -154,21 +172,105 @@ def unmerged_usage(repo: Repo) -> list[dict[str, Any]]:
             if r is not None:
                 out.append({"key": f["key"], "loaded": r.get("loaded"), "cited": list(r.get("cited") or []),
                             "where": "worktree" if f.get("worktree") else "branch"})
+    for k in [k for k in list(_runs) if k[0] == repo.path and k[1:] not in groups]:
+        _runs.pop(k, None)                   # merged since, or its worktree removed (another page may be at it too)
     return sorted(out, key=lambda x: x["key"])
 
 
+_views: dict[str, tuple[tuple, dict[str, Any], float]] = {}   # repo path -> (main_key, the default branch's part, when)
+_making: dict[str, threading.Lock] = {}                         # repo path -> held while its part is being made
+_runs: dict[tuple, tuple[tuple, list[dict[str, Any]]]] = {}   # (repo path, src, ref) -> (its stamp, brain-kit's runs there)
+
+
+def _kit() -> tuple:
+    info = bk.info()
+    return info["path"], info["version"], id(bk.m("usage"))
+
+
+def _files_stamp(top: str, rels: list[str]) -> tuple:
+    """Every file under *rels* in the worktree at *top*: its path, mtime and size."""
+    out = []
+    for rel in rels:
+        for d, dirs, names in os.walk(os.path.join(top, rel)):
+            dirs.sort()
+            for n in sorted(names):
+                p = os.path.join(d, n)
+                try:
+                    st = os.stat(p)
+                except OSError:
+                    continue
+                out.append((os.path.relpath(p, top), st.st_mtime_ns, st.st_size))
+    return tuple(out)
+
+
+def main_key(repo: Repo) -> tuple | None:
+    """What the default branch's part of the page is made from: brain-kit and the branch (origin's and the local one).
+    None: there is no default branch (the Brain is read from the working tree), not kept."""
+    d = repo.cfg["default_branch"]
+    refs = repo.git.refs("refs/remotes/origin/" + d, "refs/heads/" + d)
+    main = (refs.get("refs/remotes/origin/" + d), refs.get("refs/heads/" + d))
+    return (_kit(), repo.cfg["brain_dir"], repo.cfg["runs_dir"], d, main) if any(main) else None
+
+
+def _make_kept(repo: Repo, key: tuple) -> dict[str, Any]:
+    """The default branch's part made for *key* and kept (one at a time per repo: a second caller gets the first's)."""
+    with _making.setdefault(repo.path, threading.Lock()):
+        kept = _views.get(repo.path)
+        if kept is not None and kept[0] == key:
+            return kept[1]
+        made, whole = _make_view(repo)
+        if whole:
+            _views[repo.path] = (key, made, time.time())
+        else:
+            _views.pop(repo.path, None)      # the next visit makes it again (and shows why), as before anything was kept
+        return made
+
+
+def _make_behind(repo: Repo, key: tuple) -> None:
+    if _making.setdefault(repo.path, threading.Lock()).locked():
+        return
+
+    def go() -> None:
+        try:
+            _make_kept(repo, key)
+        except Exception:  # noqa: BLE001 - the next visit makes it in the open and shows the error
+            _views.pop(repo.path, None)
+    threading.Thread(target=go, daemon=True, name="brain-view").start()
+
+
 def view(repo: Repo, reflectable: list[dict[str, Any]]) -> dict[str, Any]:
-    """BrainView (blocking: call it in a thread)."""
+    """BrainView (blocking: call it in a thread). The default branch's part (the Brain read several times over, dozens
+    of git calls) is made again only when main_key changes, each run not merged yet only when its records change
+    (unmerged_usage). Once the branch has moved, the part made before is answered at once with when it was made
+    (``stale``) while the new one is made behind it; the page asks again until ``stale`` is None."""
+    key = main_key(repo)
+    kept = _views.get(repo.path)
+    stale = None
+    if key is None:
+        made = _make_view(repo)[0]
+    elif kept is not None and kept[0] == key:
+        made = kept[1]
+    elif kept is not None:
+        _make_behind(repo, key)
+        made, stale = kept[1], kept[2]
+    else:
+        made = _make_kept(repo, key)
+    unmerged = [] if made["error"] == UNREADABLE else unmerged_usage(repo)    # unreadable: the page shows nothing else
+    return dict(made, usage=dict(made["usage"], unmerged=unmerged), reflect=reflectable, stale=stale)
+
+
+def _make_view(repo: Repo) -> tuple[dict[str, Any], bool]:
+    """The default branch's part of the page, and whether it is whole (no error, the Brain read whole): to be kept."""
     E = bk.m("entries")
     out: dict[str, Any] = {"repo": repo.id, "ref": "", "files": [], "lint": {"errors": [], "warnings": []},
                            "usage": {"useful": [0, 0], "repeat_rate": [0, 0], "archived": 0, "purged": 0, "runs": [],
                                      "never_cited": [], "repeats_any": [], "unmerged": []},
-                           "reflect": reflectable, "error": "", "raw": ""}
+                           "reflect": [], "error": "", "raw": "", "stale": None}
     try:
-        brain, label = _brain(repo)
+        brain, label, whole = _brain(repo)
     except bk.brain_error() as exc:
         out["error"], out["raw"] = UNREADABLE, str(exc)[:2000]
-        return out
+        return out, False
     out["ref"] = label
     try:
         u = bk.m("usage").collect(repo.path, repo.cfg, ref=repo.main_ref())
@@ -215,8 +317,7 @@ def view(repo: Repo, reflectable: list[dict[str, Any]]) -> dict[str, Any]:
                       "unknown": list(r.get("unknown") or [])} for r in u.get("runs") or []],
             "never_cited": [x["id"] for x in u.get("entries") or [] if not x["cites"] and x["loaded_by"] >= MIN_RUNS],
             "repeats_any": [[i, n] for i, n in u.get("repeats_any") or []], "unmerged": []}
-    out["usage"]["unmerged"] = unmerged_usage(repo)
-    return out
+    return out, whole and not out["error"]
 
 
 def _where(repo: Repo, facts: dict[str, Any]) -> tuple[str, str | None]:

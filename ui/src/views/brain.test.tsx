@@ -42,6 +42,16 @@ function staged() {
 }
 
 describe('Brain', () => {
+  test('once the default branch moved, the Brain read before shows at once, says how old it is, and the page asks again until the new one is read', async () => {
+    let calls = 0
+    setup({ repo: 'r1' }, {
+      [`GET ${API}/brain?repo=r1`]: () => (++calls < 3 ? { ...fx.brain(), stale: Date.now() / 1000 - 120 } : fx.brain()),
+    })
+    expect(await screen.findByTestId('brain-stale')).toHaveTextContent('默认分支有新提交：这里先显示 2 分钟前读的 Brain，正在读新的…')
+    await waitFor(() => expect(screen.queryByTestId('brain-stale')).toBeNull(), { timeout: 8000 })
+    expect(calls).toBeGreaterThanOrEqual(3)
+  })
+
   test('a tab per file with its count; a tab rewrites the entry; the text and type filters', async () => {
     const { user, props } = setup()
     expect(await screen.findByRole('region', { name: '产品知识' })).toBeInTheDocument()
