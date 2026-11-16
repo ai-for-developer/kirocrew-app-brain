@@ -55,9 +55,9 @@ STATS_LIMIT = 1000      # rows read for a slot's stats
 _FIELDS = ("id", "task", "parent_session_key", "slot", "title", "folder", "cwd", "model", "conv_root", "send_ids",
            "requested", "started", "sent_at", "done", "queued", "queued_reason", "result", "streaming_text", "error",
            "user_stopped", "turns", "tool_count", "last_tool", "last_activity", "stalled", "credits", "calls",
-           "resends", "seen_busy", "idle", "missing", "sig", "agent", "agent_kind", "nudges", "root_folder",
+           "resends", "seen_busy", "idle", "missing", "sig", "agent", "agent_kind", "nudges", "root_folder", "repo_folder",
            "project_dir", "slot_name", "first_send_id", "strict_agent", "resend_ok", "nudge_ok", "trust_ok", "kind",
-           "key", "memory_mode", "repo_folder")
+           "key", "memory_mode")
 KNOWLEDGE_TOOL = "local_knowledge_search"  # kirocrew-core's knowledge search: shown as 查知识库
 
 
