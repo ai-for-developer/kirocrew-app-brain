@@ -383,7 +383,7 @@ function CreditsKpi({ board, reducedMotion, replaying, run }: { board: ReqBoard;
 type Way = { phase: string; title: string; steps: { icon: string; title: string; does: string }[][] }[]
 
 /** 0 认领: the one who claimed it, 你 only to them (BOARD-11). */
-const claimPhase = (who: string): Way[number] => ({ phase: '0 认领', title: '一个需求号，文档过五关', steps: [[{ icon: 'person', title: who, does: '认领、交文档、开工' }]] })
+const claimPhase = (who: string): Way[number] => ({ phase: '0 认领', title: '一个需求号，导入需求文档（选填）', steps: [[{ icon: 'person', title: who, does: '认领、交文档、开工' }]] })
 
 /** The way a requirement goes after its claim, before its run started (the sample's empty-state introduction of the
  * team). */
