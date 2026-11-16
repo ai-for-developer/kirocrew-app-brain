@@ -235,7 +235,7 @@ def test_start_makes_a_worktree_runs_brain_start_and_opens_brain_dev_there(tmp_p
     assert ("agent", "brain-dev-crew", "template") in gw.calls
     assert gw.slot_rows[out["slot"]]["project"] == str(wt) and gw.slot_rows[out["slot"]]["trust"]
     folders = [c[1] for c in gw.calls if c[0] == "folder"]
-    assert folders == ["Brain 需求", "PAY-1 · refund"]
+    assert folders == ["Brain 需求", "pay", "PAY-1 · refund"]   # 「Brain 需求」 › the repo › the requirement
     kick = gw.msgs[out["slot"]][0]["content"]
     assert "PAY-1" in kick and "PKG-PAY-1-1" in kick and "approve" not in kick.lower() and "退款" not in kick
     row = {r["key"]: r for r in view["rows"]}["PAY-1"]
