@@ -1,6 +1,8 @@
 """A repo's scan finds what changed without starting git when git's refs and worktrees stayed the same: every page's
 first step is a scan, and its three git calls per repo were most of /status (a real brain-kit project here)."""
 
+import pytest
+
 from appkit import commit_file, mod
 from brainfix import brain, make_project, make_service, needs_brainkit, sh, start_in_worktree
 
@@ -108,3 +110,23 @@ def test_a_git_read_that_failed_is_not_kept_and_is_asked_again_next_time(tmp_pat
     fail("for-each-ref")
     repo.reflected()
     assert repo.reflected() == {"PAY-9"}                               # the reflect branches: listed again
+
+
+def test_a_reftable_repo_sees_a_worktree_leave_its_run_branch_at_once(tmp_path, home, monkeypatch):
+    """With reftable (git 3's default) a linked worktree's HEAD is in that worktree's own reftable, not in its HEAD
+    file: a worktree that left its run branch was still where the run is for 30 s."""
+    monkeypatch.setenv("GIT_DEFAULT_REF_FORMAT", "reftable")
+    repo_dir = make_project(tmp_path)
+    monkeypatch.delenv("GIT_DEFAULT_REF_FORMAT")
+    if sh("git", "-C", repo_dir, "rev-parse", "--show-ref-format", check=False).stdout.strip() != "reftable":
+        pytest.skip("this git has no reftable")
+    svc = make_service(tmp_path, [repo_dir])
+    svc.reload_sync()
+    repo = svc.repos["r1"]
+    wt = start_in_worktree(repo_dir, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
+    run_branch = sh("git", "-C", wt, "branch", "--show-current").stdout.strip()
+    assert keys(repo)["PAY-1"]["where"] == "worktree"
+    sh("git", "-C", wt, "checkout", "-q", "--detach")
+    assert keys(repo)["PAY-1"]["where"] == "branch"
+    sh("git", "-C", wt, "checkout", "-q", run_branch)
+    assert keys(repo)["PAY-1"]["where"] == "worktree"
