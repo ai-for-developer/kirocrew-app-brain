@@ -171,6 +171,31 @@ def test_once_main_moves_the_page_shows_the_brain_read_before_at_once_and_reads_
     assert now["stale"] is None and count(now) == 2
 
 
+def test_a_brain_that_cannot_be_read_after_main_moved_is_said_not_shown_stale_for_ever(tmp_path, home, monkeypatch):
+    repo = make_project(tmp_path)
+    brain(repo, "entry", "add", "TECH", "pitfall", "--key", "PAY-9", "--src", "D-1", "--text", "对账文件按自然日切分。")
+    sh("git", "-C", repo, "add", "-A")
+    sh("git", "-C", repo, "commit", "-qm", "brain entry")
+    svc = make_service(tmp_path, [repo])
+
+    def broken(*a, **k):
+        raise RuntimeError("usage.collect: cannot read the runs")
+
+    async def go():
+        await svc.start()
+        try:
+            await svc.brain("r1")
+            sh("git", "-C", repo, "commit", "-q", "--allow-empty", "-m", "main moves")
+            monkeypatch.setattr(mod("bk").m("usage"), "collect", broken)
+            return await svc.brain("r1"), await fresh(svc)
+        finally:
+            await svc.stop()
+
+    moved, now = run(go())
+    assert moved["stale"] is not None and moved["error"] == ""
+    assert now["error"] == mod("brainview").NO_USAGE and now["raw"] == "usage.collect: cannot read the runs"
+
+
 def test_a_bad_proposal_is_a_problem_in_the_preview(tmp_path, home):
     repo = make_project(tmp_path)
     wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "x", "x", "x")

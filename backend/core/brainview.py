@@ -147,7 +147,7 @@ def unmerged_usage(repo: Repo) -> list[dict[str, Any]]:
         stamp = (_kit(), repo.cfg["brain_dir"], repo.cfg["runs_dir"],
                  tuple(sorted(str(f.get("tip")) for f in facts)) if ref else
                  _files_stamp(src, [repo.cfg["runs_dir"], "aidlc-docs", repo.cfg["brain_dir"]]))
-        kept = _runs.get((src, ref))
+        kept = _runs.get((repo.path, src, ref))
         if kept is not None and kept[0] == stamp:
             runs = kept[1]
         else:
@@ -155,7 +155,7 @@ def unmerged_usage(repo: Repo) -> list[dict[str, Any]]:
                 runs = bk.m("usage").collect(src, repo.cfg, ref=ref).get("runs") or []
             except Exception:  # noqa: BLE001 - one unreadable run does not take the page down
                 continue
-            _runs[(src, ref)] = (stamp, runs)
+            _runs[(repo.path, src, ref)] = (stamp, runs)
         for f in facts:
             intent = f["run"]["intent"]
             r = next((x for x in runs if x.get("intent") == intent and x.get("key") == f["key"]), None) or \
@@ -163,12 +163,14 @@ def unmerged_usage(repo: Repo) -> list[dict[str, Any]]:
             if r is not None:
                 out.append({"key": f["key"], "loaded": r.get("loaded"), "cited": list(r.get("cited") or []),
                             "where": "worktree" if f.get("worktree") else "branch"})
+    for k in [k for k in _runs if k[0] == repo.path and k[1:] not in groups]:
+        del _runs[k]                         # merged since, or its worktree removed
     return sorted(out, key=lambda x: x["key"])
 
 
 _views: dict[str, tuple[tuple, dict[str, Any], float]] = {}   # repo path -> (main_key, the default branch's part, when)
 _making: dict[str, threading.Lock] = {}                         # repo path -> held while its part is being made
-_runs: dict[tuple, tuple[tuple, list[dict[str, Any]]]] = {}   # (src, ref) -> (its stamp, brain-kit's usage runs there)
+_runs: dict[tuple, tuple[tuple, list[dict[str, Any]]]] = {}   # (repo path, src, ref) -> (its stamp, brain-kit's runs there)
 
 
 def _kit() -> tuple:
@@ -208,7 +210,9 @@ def _make_kept(repo: Repo, key: tuple) -> dict[str, Any]:
         if kept is not None and kept[0] == key:
             return kept[1]
         made = _make_view(repo)
-        if not made["error"]:
+        if made["error"]:
+            _views.pop(repo.path, None)      # the next visit makes it and shows why, as it did before anything was kept
+        else:
             _views[repo.path] = (key, made, time.time())
         return made
 
@@ -220,8 +224,8 @@ def _make_behind(repo: Repo, key: tuple) -> None:
     def go() -> None:
         try:
             _make_kept(repo, key)
-        except Exception:  # noqa: BLE001 - the next visit makes it again
-            pass
+        except Exception:  # noqa: BLE001 - the next visit makes it in the open and shows the error
+            _views.pop(repo.path, None)
     threading.Thread(target=go, daemon=True, name="brain-view").start()
 
 
