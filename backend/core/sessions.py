@@ -597,8 +597,13 @@ class SessionManager:
         if self._folder_lock is None:
             self._folder_lock = asyncio.Lock()
         async with self._folder_lock:
-            self.state_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.state_file.with_name(".folders.lock"), "a") as fh:
+            try:
+                self.state_file.parent.mkdir(parents=True, exist_ok=True)
+                fh = open(self.state_file.with_name(".folders.lock"), "a")
+            except OSError:     # a data dir the app cannot write (it saves nothing either): this process's lock only
+                yield
+                return
+            with fh:
                 while fcntl is not None:
                     try:
                         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)

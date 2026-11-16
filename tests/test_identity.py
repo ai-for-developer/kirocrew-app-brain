@@ -245,7 +245,7 @@ def test_the_name_is_read_from_git_once_until_a_git_config_file_changes(tmp_path
     wrap.chmod(0o755)
     monkeypatch.setattr(mod("repo"), "GIT_BIN", str(wrap))
     reads = lambda: sum(line.split()[2:3] == ["config"] for line in log.read_text().splitlines()) if log.exists() else 0  # noqa: E731
-    name = lambda: identity.of(str(repo), "", token=False)["name"]  # noqa: E731
+    name = lambda: identity.of(str(repo), "")["name"]  # noqa: E731
     assert [name(), name(), name()] == ["alice"] * 3 and reads() == 1
     sh("git", "-C", repo, "config", "brain.user", "bob")
     assert name() == "bob" and name() == "bob" and reads() == 2
