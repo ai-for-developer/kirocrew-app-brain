@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -1022,32 +1023,44 @@ class Service:
     def _reflect_refs(git: Git, key: str, default_branch: str) -> list[tuple[str, float, float | None]] | None:
         """brain reflect's branches for *key* (brain/<KEY>-reflect-<n>, local or origin's): when each was made, and
         when it was merged into the default branch (the merge commit on its first-parent line; its own time when the
-        branch is on that line, fast-forwarded), or None while it waits. None: git could not list the branches."""
-        p = git.run("for-each-ref", "--format=%(refname)", "refs/heads/brain/", "refs/remotes/origin/brain/")
-        if p.returncode != 0:
-            return None
+        branch is on that line, fast-forwarded), or None while it waits. None: a git call failed or timed out (any
+        exit but 0, or 1 for no such ref or not merged)."""
+        def run(*args: str) -> subprocess.CompletedProcess:
+            p = git.run(*args)
+            if p.returncode not in (0, 1):
+                raise subprocess.CalledProcessError(p.returncode, args)
+            return p
+
+        def time_of(rev: str) -> float | None:
+            s = run("log", "-1", "--format=%ct", rev).stdout.strip()
+            return float(s) if s.isdigit() else None
+
         out, seen = [], set()
-        main = next((r for r in ("refs/remotes/origin/" + default_branch, "refs/heads/" + default_branch)
-                     if git.ok("rev-parse", "-q", "--verify", r + "^{commit}")), None)
         rx = re.compile(r"^refs/(?:heads|remotes/origin)/(brain/%s-reflect-[1-9][0-9]*)$" % re.escape(key))
-        for ref in sorted(p.stdout.split()):
-            m = rx.match(ref)
-            if m and m.group(1) not in seen:
-                at = git.commit_time(ref)
-                if at:
-                    seen.add(m.group(1))
-                    merged = None
-                    if main and git.ok("merge-base", "--is-ancestor", ref, main):
-                        line = git.out("rev-list", "--first-parent", "--ancestry-path", "--reverse",
-                                       "%s..%s" % (ref, main)).split()
-                        ff = not line or git.out("rev-parse", line[0] + "^1") == git.out("rev-parse", ref)
-                        merged = at if ff else git.commit_time(line[0])
-                    out.append((m.group(1), at, merged))
+        try:
+            refs = run("for-each-ref", "--format=%(refname)", "refs/heads/brain/", "refs/remotes/origin/brain/")
+            main = next((r for r in ("refs/remotes/origin/" + default_branch, "refs/heads/" + default_branch)
+                         if run("rev-parse", "-q", "--verify", r + "^{commit}").returncode == 0), None)
+            for ref in sorted(refs.stdout.split()):
+                m = rx.match(ref)
+                if m and m.group(1) not in seen:
+                    at = time_of(ref)
+                    if at:
+                        seen.add(m.group(1))
+                        merged = None
+                        if main and run("merge-base", "--is-ancestor", ref, main).returncode == 0:
+                            line = run("rev-list", "--first-parent", "--ancestry-path", "--reverse",
+                                       "%s..%s" % (ref, main)).stdout.split()
+                            ff = not line or run("rev-parse", line[0] + "^1").stdout == run("rev-parse", ref).stdout
+                            merged = at if ff else time_of(line[0])
+                        out.append((m.group(1), at, merged))
+        except subprocess.CalledProcessError:
+            return None
         return out
 
     def _reflects_of(self, git: Git, key: str, default_branch: str) -> list[tuple[str, float, float | None]]:
-        """_reflect_refs, read with git again only when a brain/ branch or the default branch moves, or git could not
-        list them the last time."""
+        """_reflect_refs, read with git again only when a brain/ branch or the default branch moves, or a git call
+        failed the last time."""
         stamp = git_stamp(git.repo, ("refs/heads/brain/", "refs/remotes/origin/brain/", "refs/heads/" + default_branch,
                                      "refs/remotes/origin/" + default_branch))
         sig = (git.repo, key, default_branch)
