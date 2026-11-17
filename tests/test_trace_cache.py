@@ -1,8 +1,11 @@
 """需求详情 and 需求看板 poll every 2 to 5 s: brain-kit's trace of a requirement (a dozen git calls and more) is made
 again only when something it is made from changed, not every 15 s."""
 
-from appkit import git_calls, sh
-from brainfix import lean, make_project, make_service, needs_brainkit, start_in_worktree
+import time
+from types import SimpleNamespace
+
+from appkit import git_calls, mod, sh
+from brainfix import lean, make_project, make_service, needs_brainkit, run, start_in_worktree
 
 
 @needs_brainkit
@@ -35,3 +38,39 @@ def test_the_trace_is_made_again_only_when_what_it_reads_changed(tmp_path, home,
     assert timeline()[1] == 0
     clock[0] += 3600
     assert timeline()[1] > 0, "the 14 days after a merge are judged at most an hour late"
+
+
+@needs_brainkit
+def test_a_trace_that_failed_once_is_made_again_on_a_later_poll(tmp_path, home, monkeypatch):
+    """A failed read (git timed out under load) is not the answer while nothing it reads moves: within 15 s the
+    需求详情 says brain-kit could not read the run, after that it shows the trace."""
+    repo = make_project(tmp_path)
+    start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款导出")
+    svc = make_service(tmp_path, [repo])
+    svc.reload_sync()
+    t0 = time.monotonic()
+    clock = [t0]
+    shim = SimpleNamespace(**{k: getattr(time, k) for k in dir(time) if not k.startswith("_")})
+    shim.monotonic = lambda: clock[0]
+    monkeypatch.setattr(mod("service"), "time", shim)
+    trace = mod("detail").bk.m("trace")
+    real = trace.build
+    fail = [True]
+
+    def build(*a, **k):
+        if fail[0]:
+            raise RuntimeError("git for-each-ref timed out")
+        return real(*a, **k)
+
+    monkeypatch.setattr(trace, "build", build)
+
+    def error():
+        return run(svc.requirement("r1", "PAY-1"))["timeline"]["error"]
+
+    assert "git for-each-ref timed out" in error()
+    fail[0] = False
+    clock[0] = t0 + 5
+    assert "git for-each-ref timed out" in error(), "a failed read is kept for a few seconds, not made on every poll"
+    clock[0] = t0 + 30
+    assert error() == ""
+
