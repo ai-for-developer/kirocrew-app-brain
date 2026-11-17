@@ -1004,7 +1004,7 @@ class Service:
 
     def _commits(self, git: Git, shas: list[str]) -> tuple[dict[str, str], dict[str, list[dict[str, Any]]]]:
         """The commits' subjects and the files each changed (one git call, board_mod.GIT_LOG; kept by the commits
-        asked for)."""
+        asked for, unless git failed)."""
         shas = [x for x in shas if re.match(r"^[0-9a-f]{40}$", x or "")][-board_mod.MAX_BELT:]
         if not shas:
             return {}, {}
@@ -1012,8 +1012,9 @@ class Service:
         got = self._subj.get(sig)
         if got is None:
             p = git.run(*board_mod.GIT_LOG, *shas, timeout=20)
-            out = p.stdout if p.returncode == 0 else ""
-            got = (board_mod.subjects_from_log(out), board_mod.changes_from_log(out))
+            if p.returncode != 0:
+                return {}, {}
+            got = (board_mod.subjects_from_log(p.stdout), board_mod.changes_from_log(p.stdout))
             if len(self._subj) > 200:
                 self._subj.clear()
             self._subj[sig] = got
