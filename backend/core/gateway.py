@@ -1,8 +1,9 @@
 """The gateway's own chat API, called as this app (the backend runs inside the gateway process).
 
-Auth: the install secret ``<app dir>/.app_secret`` is exchanged at
-``POST /api/apps/<app>/token`` (header ``X-App-Secret``) for a 5-minute token sent as ``?token=``; it is renewed a
-minute early, and a credential refusal (``X-Auth-Required``) is retried once with a fresh one. Only loopback is
+Auth: a 5-minute app token sent as ``?token=``. KiroCrew 0.13+ mints it for code in the gateway process through the
+app's context (``ctx.app_token``) and deletes the old ``<app dir>/.app_secret``; before 0.13 that install secret is
+exchanged at ``POST /api/apps/<app>/token`` (header ``X-App-Secret``). It is renewed a minute early, and a credential
+refusal (``X-Auth-Required``) is retried once with a fresh one. Only loopback is
 ever called, and neither the secret nor the token goes into a log line or an error message.
 """
 
@@ -13,7 +14,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 from urllib.parse import quote
 
 TOKEN_MAX_AGE = 240.0
@@ -37,6 +38,7 @@ RELOAD = "这个 app 和 KiroCrew 没接上：在 KiroCrew 里重启这个 app"
 SAID = {"unreachable": "连不上 KiroCrew：看它是不是还开着，再试一次",
         "token_exchange": "KiroCrew 不认这个 app 了：在 KiroCrew 里重装这个 app",
         "no_secret": "KiroCrew 不认这个 app 了：在 KiroCrew 里重装这个 app",
+        "not_enabled": "KiroCrew 没给这个 app 发 token：在 KiroCrew 的 Apps 里启用它（关了再开一次）",
         "no_port": RELOAD, "no_loopback": RELOAD, "no_aiohttp": RELOAD}
 SAID_ELSE = "KiroCrew 没答应：等一会儿再试一次；一直这样，在 KiroCrew 里看一下它"
 
@@ -71,8 +73,10 @@ def q(key: str) -> str:
 
 class Gateway:
     def __init__(self, app: str, secret_file: Path, *, base: Callable[[], str] = base_url,
-                 clock: Callable[[], float] | None = None) -> None:
+                 clock: Callable[[], float] | None = None,
+                 token_source: Callable[[], Awaitable[str]] | None = None) -> None:
         self.app, self._secret_file, self._base = app, Path(secret_file), base
+        self._token_source = token_source   # KiroCrew 0.13+: ctx.app_token; it deletes <app dir>/.app_secret
         self._clock = clock
         self._token: str | None = None
         self._token_at = 0.0
@@ -103,7 +107,16 @@ class Gateway:
             if self._token and self._now() - self._token_at < TOKEN_MAX_AGE:
                 return self._token
             path = f"/api/apps/{self.app}/token"
-            secret = (await asyncio.to_thread(self._secret_file.read_text, encoding="utf-8")).strip()
+            if self._token_source is not None:
+                token = await self._token_source()
+                if not token:
+                    raise GatewayError(0, "KiroCrew gave the app no token", "not_enabled", path)
+                self._token, self._token_at = token, self._now()
+                return token
+            try:
+                secret = (await asyncio.to_thread(self._secret_file.read_text, encoding="utf-8")).strip()
+            except OSError:
+                raise GatewayError(0, "no app secret file", "no_secret", path) from None
             if not secret:
                 raise GatewayError(0, "the app secret is empty", "no_secret", path)
             try:
