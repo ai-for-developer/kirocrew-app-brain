@@ -406,6 +406,19 @@ describe('需求看板', () => {
     const g2 = await loaded()
     expect(within(g2).getByRole('group', { name: /^需求的路/ })).toHaveAccessibleName('需求的路：11 步，1 步在做，7 步做完；还没跑过检查。点一步只看它。')
   })
+  test('事件 says which records could not be read, in words; a board that read them all says nothing', async () => {
+    const b = fx.boardMerged()
+    installFixtureRoutes(boardRoute(() => structuredClone(b)))
+    renderBoard(PAY2)
+    await loaded()
+    expect(screen.getByTestId('kt-feed-missing')).toHaveTextContent(`这些记录没读到：${b.missing.join('；')}`)
+  })
+  test('事件 without a record left out has no 没读到 line', async () => {
+    installFixtureRoutes(boardRoute(() => ({ ...fx.boardMerged(), missing: [] })))
+    renderBoard(PAY2)
+    await loaded()
+    expect(screen.queryByTestId('kt-feed-missing')).toBeNull()
+  })
   test('a run is said as the 运行机 page says it (运行机 第 1 次), its id only in the graph’s list: the feed, the lanes, the conveyor', async () => {
     const b = fx.boardMerged()
     installFixtureRoutes(boardRoute(() => structuredClone(b)))

@@ -212,9 +212,6 @@ button.br-tag:hover { border-color: var(--accent); color: var(--text-strong); }
 .br-glyph { text-align: center; color: var(--br-tone); font-weight: 800; }
 .br-units { display: inline-flex; gap: 4px; flex-wrap: wrap; margin-left: 6px; }
 .br-day { margin: 8px 0 2px; font-size: .86em; font-weight: 700; color: var(--muted); }
-.br-tl { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.br-tl li { display: grid; grid-template-columns: 3.4em 18px 1fr; gap: 8px; align-items: start; }
-.br-tl time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: .88em; padding-top: 1px; }
 .br-q { display: grid; gap: 7px; padding: 11px 13px; border-radius: 12px; border: 1px solid var(--border); background: var(--kt-glass); }
 .br-q.is-open { border-color: color-mix(in srgb, var(--kt-approve) 55%, var(--border)); background: color-mix(in srgb, var(--kt-approve) 6%, var(--card)); }
 .br-q > *, .br-q .br-stack > * { min-width: 0; overflow-wrap: anywhere; }

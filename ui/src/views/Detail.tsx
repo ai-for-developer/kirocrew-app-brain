@@ -2,14 +2,14 @@
  * 需求详情: one requirement, between 交付总览 (every requirement) and its 需求看板 (how it went), as the sample's 交付详情
  * shows one delivery. First what to do now (此刻: who it waits on, since when, and the step right there: 打开会话,
  * 复制那一行, 开审查会话, 开工, 去 MR 上回答, 回写 Brain), then how long it took, where the time went (AI on this machine,
- * the runner, waiting for a person, done again), what it cost and what the checks say; the 价值流 on a time axis (图 /
- * 表格, every part and moment opens the board there); Lean's stages by phase and approvals; the decisions (each opens the
- * board at its stage); questions and answers (the answer form only where the person may answer here), the MR's 变更说明
- * (formatted, 复制 copies the Markdown), Lean's notes, the sessions, what the run used of the Brain and the timeline.
+ * the runner, waiting for a person, done again), what it cost and what the checks say; 看运行过程 → to its board, where
+ * the run is step by step (each stage's lane, the events, 产出, 回放); Lean's stages by phase and approvals; the decisions
+ * (each opens the board at its stage); questions and answers (the answer form only where the person may answer here),
+ * the MR's 变更说明 (formatted, 复制 copies the Markdown), Lean's notes, the sessions and what the run used of the Brain.
  * A requirement only claimed is one sentence and 开工; one that is not there says so and where to go.
  *
- * Polls GET /requirements/{repo}/{key} every 5 s, and the board's snapshot (GET /board/{repo}/{key}) for the value
- * stream (its stages' spans), the checks and the step; without a board the cards that need it say so.
+ * Polls GET /requirements/{repo}/{key} every 5 s, and the board's snapshot (GET /board/{repo}/{key}) for where the time
+ * went (its stages' spans), the checks and the step; without a board the cards that need it say so.
  *
  * A requirement of a family (row.family: a big one split into small ones, one of those, or a big one not split yet)
  * has its family panel under the four numbers (Family.tsx): the small ones as lanes with the roll-up, or the big one
@@ -23,15 +23,15 @@ import { PERSON, boardWho, todoLeft, whoThen, whoWord } from '../board/format'
 import { isReview, REVIEW_SENDS } from '../board/next'
 import { RoleIcon } from '../board/RoleIcon'
 import { Hit, Mini } from '../cto/charts'
-import { ago, fmtCredits, fmtIso, fmtSpan, fmtTime, isoDay } from '../format'
+import { ago, fmtCredits, fmtIso, fmtSpan, fmtTime } from '../format'
 import { VIEW_NAME, type BoardEntry, type ItemEntry } from '../nav'
 import type {
   CheckCell, Credits, Decision, LeanPhase, OpenSessionBody, OpenSessionResult, ReqBoard, RequirementDetail, SessionRow, Stage,
-  TimelineItem, TimelineKind, WaitDo, WaitWho, Waits,
+  WaitDo, WaitWho, Waits,
 } from '../types'
 import { APPROVAL_META, Icon, LoadState, MrLink, STAGE_META, StateChip, TYPE_IT_YOURSELF, isOpenQuestion } from '../ui'
 import {
-  ACT, CHECK_GROUP_NAME, CHILD_STATE_NAME, DECIDED_BY, DO_NAME, FAMILY_ACT, WHERE_NAME, approvalName, leanNow, missingSourceName,
+  ACT, CHECK_GROUP_NAME, CHILD_STATE_NAME, DECIDED_BY, DO_NAME, FAMILY_ACT, WHERE_NAME, approvalName, leanNow,
   sourceName, waitsOn,
 } from '../vocab'
 import { Inline, Paths, pathPieces } from './Markdown'
@@ -39,28 +39,13 @@ import { FamilyPanel, useFamily, type FamilyCtl } from './Family'
 import { Handover } from './Handover'
 import type { ViewProps } from './props'
 import { EntryChip, MrComment, MrDescCard, QuestionCard, ReviewButton, ReviewSay, useCopy } from './Question'
-import { PART_LABEL, PART_VAR, StreamCard, splitOf, valueStream, type Part } from './Stream'
+import { PART_LABEL, PART_VAR, splitOf, valueStream, type Part } from './Stream'
 import { NotFound, OnRunner, ReqSwitch, useOnRunner } from './ReqSwitch'
 import { runWords } from './Team'
 import { ReopenSession } from './Reopen'
 
 export { EntryChip, MR_DESC_COPY_HINT, MrDescCard, QuestionCard, mrDescSource } from './Question'
 export { PART_LABEL, PART_VAR, valueStream, type Part, type StreamSeg } from './Stream'
-
-const KIND_META: Record<TimelineKind, { icon: string; label: string }> = {
-  stage: { icon: 'design', label: '阶段' },
-  approval: { icon: 'approved', label: '审批' },
-  human: { icon: 'person', label: '人' },
-  commit: { icon: 'commit', label: '提交' },
-  handover: { icon: 'handover', label: '交接' },
-  question: { icon: 'question', label: '问题' },
-  decision: { icon: 'req', label: '决定' },
-  blocked: { icon: 'blocked', label: '拦下' },
-  verify: { icon: 'ci', label: '自动检查' },
-  merge: { icon: 'merge', label: '合并' },
-  session: { icon: 'laptop', label: '会话' },
-  app: { icon: 'brain', label: 'app' },
-}
 
 export const DETAIL_CSS = `
 .br-detail { container: br-detail / inline-size; }
@@ -152,23 +137,9 @@ export const DETAIL_CSS = `
   .br-detail .br-dec td[data-label="引用 Brain"] .br-dim { visibility: hidden; }
   .br-detail .br-dec td:is([data-label="为什么"], [data-label="谁定的"])::before { content: attr(data-label) '：'; color: var(--muted); font-size: .9em; }
 }
-.br-detail .br-vs { position: relative; margin-top: 10px; }
-.br-detail .br-vs svg { display: block; width: 100%; overflow: visible; }
-.br-detail .br-vs text { font-size: 12px; fill: var(--muted); font-variant-numeric: tabular-nums; }
-.br-detail .br-vs text.is-strong { fill: var(--text-strong); font-weight: 650; font-size: 12.5px; }
-.br-detail .br-vs .br-vs-n circle { fill: var(--text-strong); stroke: var(--card); stroke-width: 1.5; }
-.br-detail .br-vs .br-vs-n text { fill: var(--card); font-size: 10px; font-weight: 800; }
 .br-detail .br-sessions { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .br-detail .br-session { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-elevated, var(--card)); }
 .br-detail .br-session .kt-role-icon { color: var(--text-strong); }
-.br-detail .br-tl li { grid-template-columns: 3.4em 22px 1fr; }
-.br-detail .br-tl .kt-role-icon { color: var(--muted); }
-.br-detail .br-tl li[data-kind="merge"] .kt-role-icon, .br-detail .br-tl li[data-kind="approval"] .kt-role-icon, .br-detail .br-tl li[data-kind="human"] .kt-role-icon { color: var(--kt-ok); }
-.br-detail .br-tl li[data-kind="blocked"] .kt-role-icon { color: var(--kt-warn); }
-.br-detail .br-tl li[data-kind="handover"] .kt-role-icon { color: var(--kt-handoff); }
-.br-detail .br-tlbox { max-height: 520px; overflow: auto; }
-.br-detail .br-tl details summary { cursor: pointer; color: var(--muted); }
-.br-detail .br-tlmissing { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
 .br-detail .br-dec td:is(.br-key, [data-label="阶段"], [data-label="谁定的"]) { white-space: nowrap; }
 .br-detail .br-dec tr.is-picked { background: color-mix(in srgb, var(--kt-info) 12%, var(--card)); outline: 2px solid var(--kt-info); outline-offset: -2px; scroll-margin: 80px; }
 `
@@ -393,7 +364,10 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
       </section>
       <Cards x={x} board={board} at={at} localOnly={localOnly} replying={now.do === 'reply'} onBoard={toBoard} onSessions={() => scrollTo('会话')} />
       {familyPanel}
-      <StreamCard board={board} at={at} onAt={toAt} />
+      <div className="br-row">
+        <button type="button" className="kt-btn" onClick={() => toBoard()}>看运行过程 →</button>
+        <span className="cto-dim">AI 一步步怎么做的、每一步的产出、回放</span>
+      </div>
       <LeanCard x={x} sessionUrl={now.sessionUrl} mrUrl={now.mrUrl} waiter={waiter} />
       <DecisionsCard decisions={x.decisions} stages={x.lean.stages} repo={entry.repo} owner={x.row.owner} me={board?.person.me ?? false} go={props.go} onAt={toAt}
         picked={entry.decision ?? null} />
@@ -406,7 +380,6 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
           <NotesCard x={x} />
           <SessionsCard sessions={x.sessions} credits={x.credits} replying={now.do === 'reply'} at={at} />
           <BrainUseCard x={x} board={board} repo={entry.repo} reqKey={entry.key} go={props.go} />
-          <TimelineCard x={x} showMissing={handedOver(x) && !localOnly} me={board?.person.me ?? false} />
         </div>
       </div>
     </>
@@ -1019,8 +992,8 @@ function decidedBy(d: Decision, owner: string | null, me: boolean): string {
   return d.who ?? '—'
 }
 
-/** Scrolls *ref* to the middle once *on*, and again while the page above it still settles (the value stream and the
- * board's cards arrive after the detail and push it down), until the person scrolls themselves or 4 s are over. */
+/** Scrolls *ref* to the middle once *on*, and again while the page above it still settles (the board's cards arrive
+ * after the detail and push it down), until the person scrolls themselves or 4 s are over. */
 function useKeepInView(ref: { current: HTMLElement | null }, on: boolean) {
   useEffect(() => {
     const el = ref.current
@@ -1148,7 +1121,7 @@ function NotesCard({ x }: { x: RequirementDetail }) {
   )
 }
 
-// ------------------------------------------------------------------ sessions, the Brain, the timeline
+// ------------------------------------------------------------------ sessions, the Brain
 
 const RUN_ID = /^RUN-.+-\d+$/
 
@@ -1260,112 +1233,6 @@ function BrainUseCard({ x, board, repo, reqKey, go }: { x: RequirementDetail; bo
           <span className="br-bad-text br-small">Brain 里没有</span>
           {b.unknown.map((c) => <span key={c} className="br-tag br-mono">{c}</span>)}
         </div>
-      )}
-    </section>
-  )
-}
-
-/** The local time of an ISO time (14:05), or "—". */
-function clock(iso: string | null): string {
-  if (!iso) return '—'
-  const t = fmtIso(iso)
-  return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(t) ? t.slice(11) : '—'
-}
-
-const PSEUDONYM = /^[A-Z]-[0-9A-F]{4,}$/
-
-/** An item of the timeline in words: the app's own records said plainly (no slot ids, commands or flags). */
-function itemText(it: TimelineItem): { label: string; detail: string | null; title: string | null; english?: string } {
-  // a stage's note the AI wrote in English: the line stays Chinese, its words folded (Lean's own lines come in words)
-  if (it.kind === 'stage' && it.detail && !/[\u4e00-\u9fff]/.test(it.detail)) return { label: it.label, detail: null, title: null, english: it.detail }
-  // the write-back's detail is the branch it wrote
-  if (it.kind === 'app' && it.label.startsWith('回写 Brain') && it.detail) return { label: it.label, detail: `分支 ${it.detail}`, title: null }
-  if (it.kind === 'commit' && it.detail && /^[0-9a-f]{7,40}$/.test(it.detail)) return { label: it.label, detail: it.detail.slice(0, 8), title: it.detail }
-  if (it.detail && /^claim\/\S+ 推到 origin$/.test(it.detail)) return { label: it.label, detail: '认领推到了远端', title: it.detail }
-  // a hand-over names its run in words and keeps the run id and the commit for hover
-  if (it.kind === 'handover' && it.detail && RUN_ID.test(it.detail)) return { label: it.label, detail: runWords(it.detail, false), title: it.detail }
-  if (it.kind === 'handover' && it.detail && /^[0-9a-f]{7,40}$/.test(it.detail)) return { label: it.label, detail: null, title: `提交 ${it.detail}` }
-  const label = it.label.replace(/\s*[:：]\s*$/, '')
-  return { label, detail: it.detail ? it.detail.replace(/^工作区 /, '工作目录 ') : null, title: null }
-}
-
-/** The record brain-kit could not read: the backend says why in words (then that is the note, and what to do unless it
- * says so itself); an older one sent brain-kit's own English, which is folded under 细节 to pass on. */
-function TraceError({ error }: { error: string }) {
-  const words = /[\u4e00-\u9fff]/.test(error) && !/[A-Za-z]{4,}/.test(error.replace(/brain-kit|Lean|KiroCrew|trace/g, ''))
-  return (
-    <div className="br-note" role="status" data-testid="timeline-error">
-      <p style={{ margin: 0 }}>{words ? error : '这个需求的记录有一部分读不出来，下面只列读到的。'}</p>
-      {!(words && /设置/.test(error)) && (
-        <p className="br-hint">做什么：等一会儿它会自己再读；一直这样的话，{words ? '到设置里看 brain-kit 能不能用' : '把细节里的原话发给维护 app 的人'}。</p>
-      )}
-      {!words && <details className="br-raw"><summary>细节</summary><pre>{error}</pre></details>}
-    </div>
-  )
-}
-
-/** Who did a timeline item, in words: the owner's own acts (brain-kit's who 「owner」) are 你 to the owner and their
- * name to anyone else, as 需求看板 signs them; another person's pseudonym is 一位组员 (its name on hover). */
-function itemWho(who: string | null, owner: string | null, me: boolean): string | null {
-  if (!who) return null
-  if (who === 'owner' || who === owner) return me ? '你' : owner ?? '负责人'
-  return PSEUDONYM.test(who) ? '一位组员' : who
-}
-
-function TimelineCard({ x, showMissing, me }: { x: RequirementDetail; showMissing: boolean; me: boolean }) {
-  const t = x.timeline
-  const items = [...t.items].sort((a, b) => (isoSec(b.at) ?? 0) - (isoSec(a.at) ?? 0))
-  const days = new Map<string, TimelineItem[]>()
-  for (const it of items) {
-    const day = isoDay(it.at) ?? '没有时间'
-    days.set(day, [...(days.get(day) ?? []), it])
-  }
-  // the backend says each source in Chinese, with why; an older one sent brain-kit's English (named here, kept under 细节)
-  const english = t.missing.filter((m) => !/[\u4e00-\u9fff]/.test(m))
-  const missing = [...new Set(t.missing.map((m) => (english.includes(m) ? missingSourceName(m) : m)))]
-  return (
-    <section className="cto-card" aria-label="时间线">
-      <div className="cto-chart-head">
-        <h3>时间线</h3>
-        <span className="cto-dim">最新的在上面 · {t.source === 'trace' ? 'brain-kit 记下的' : 'app 从 Lean 记录和提交拼的'}</span>
-      </div>
-      {t.error && <TraceError error={t.error} />}
-      <div className="br-tlbox">
-        {items.length === 0 ? <p className="br-empty">还没有记录。</p> : [...days.entries()].map(([day, list]) => (
-          <div key={day}>
-            <p className="br-day">{day}</p>
-            <ol className="br-tl">
-              {list.map((it, i) => {
-                const k = KIND_META[it.kind] ?? { icon: 'commit', label: it.kind }
-                const s = itemText(it)
-                const long = !!s.detail && s.detail.length > 60
-                const who = itemWho(it.who, x.row.owner, me)
-                return (
-                  <li key={i} data-testid="tl-item" data-kind={it.kind} title={[s.title, it.who && PSEUDONYM.test(it.who) ? `化名 ${it.who}` : null].filter(Boolean).join(' · ') || undefined}>
-                    <time>{clock(it.at)}</time>
-                    <span title={k.label}><RoleIcon role={k.icon} size={16} /><span className="br-sr">{k.label}</span></span>
-                    <span>
-                      <span className="br-strong"><Paths text={s.label} /></span>
-                      {s.detail && !long && <span className="br-dim"> · <Inline text={s.detail} files /></span>}
-                      {who && <span className="br-dim br-small"> · {who}</span>}
-                      {long && <details><summary className="br-small">看说明</summary><span className="br-dim br-small"><Inline text={s.detail} files /></span></details>}
-                      {s.english && <details><summary className="br-small">AI 写的原话（英文）</summary><span className="br-dim br-small">{s.english}</span></details>}
-                    </span>
-                  </li>
-                )
-              })}
-            </ol>
-          </div>
-        ))}
-      </div>
-      {showMissing && missing.length > 0 && (
-        <div className="br-note br-small br-tlmissing">
-          时间线里缺这些记录：{missing.join('；')}
-          {english.length > 0 && <details className="br-raw"><summary>细节</summary><pre>{english.join('\n')}</pre></details>}
-        </div>
-      )}
-      {(t.other_runs ?? []).length > 0 && (
-        <div className="br-note br-small br-tlmissing" data-testid="tl-other-runs">它在别的分支上也跑过，没算进这条时间线：{t.other_runs.join('；')}</div>
       )}
     </section>
   )

@@ -52,6 +52,7 @@ export function EventFeed({ board, focus, onNode, fresh }: { board: ReqBoard; fo
           )
         })}
       </ol>
+      {board.missing.length > 0 && <p className="br-note" data-testid="kt-feed-missing">这些记录没读到：{board.missing.join('；')}</p>}
     </section>
   )
 }

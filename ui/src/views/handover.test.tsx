@@ -145,7 +145,7 @@ describe('交接给运行机', () => {
     const lean = await screen.findByRole('region', { name: 'Lean 进度' })
     expect(lean).toHaveTextContent('审批的那一行由你在会话里自己打')
     expect(lean).not.toHaveTextContent('交接以后')
-    expect(screen.getByRole('region', { name: '时间线' })).not.toHaveTextContent('交接以后')
+    expect(screen.getByTestId('br-detail')).not.toHaveTextContent('交接以后')
     expect(within(await card()).getByRole('button', { name: '交接给运行机' })).toBeEnabled()
   })
 
