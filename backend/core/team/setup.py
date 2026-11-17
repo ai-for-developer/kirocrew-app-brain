@@ -19,7 +19,6 @@ written, logged or answered, and text from GitLab or a command goes through Ctx.
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import re
@@ -37,6 +36,11 @@ from typing import Any, Callable, Mapping
 from .. import bk
 from ..constants import APP_ROOT, PYTHON_BIN
 from . import signerproc
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - not macOS or Linux: nothing keeps two runs apart
+    fcntl = None  # type: ignore[assignment]
 
 ROLES = ("product", "builder", "security", "data")
 ROLE_NAME = {"product": "产品", "builder": "开发", "security": "安全", "data": "数据"}
@@ -310,7 +314,8 @@ class Lock:
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
         fd = os.open(root / ".setup.lock", os.O_RDWR | os.O_CREAT, 0o600)
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if fcntl is not None:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             os.close(fd)
             raise Busy("已经有一次在建了：等它建完再跑") from None
@@ -330,6 +335,8 @@ class Lock:
 
 def busy(root: Path) -> bool:
     """Whether a run holds *root* now, this process's or another's (the lock is taken and given back at once)."""
+    if fcntl is None:
+        return False
     try:
         fd = os.open(root / ".setup.lock", os.O_RDWR)
     except OSError:
