@@ -49,8 +49,9 @@ LEVEL_NAME = {10: "Guest", 20: "Reporter", 30: "Developer", 40: "Maintainer", 50
 MAINTAINER, DEVELOPER, OWNER = 40, 30, 50
 TOKEN_DAYS = 30
 BRIDGE_SCOPES = ("api",)
-# GET /user, which the reuse check and the bot's username and address come from, needs read_user as well
-BOT_SCOPES = ("read_repository", "write_repository", "read_user")
+# GET /user, which the reuse check and the bot's username and address come from, takes read_api (GitLab gives a project
+# token no read_user: it answers 400 to one asked with it)
+BOT_SCOPES = ("read_repository", "write_repository", "read_api")
 SSH_BOT = ("brain-bot", "brain-bot@noreply.invalid")    # git_name, git_email of a runner pushing over this machine's SSH
 REACH_WAIT_S = 20
 KIT = ".brain/kit.json"
@@ -68,7 +69,8 @@ WORK_PARENTS = ("workplace", "workplaces", "workspace", "workspaces")
 USER_RE = re.compile(r"^[a-z0-9_.][a-z0-9_.-]{0,254}$")
 PROJECT_RE = re.compile(r"^[A-Za-z0-9_.][A-Za-z0-9_.-]*(?:/[A-Za-z0-9_.][A-Za-z0-9_.-]*)+$")
 CTRL_RE = re.compile(r"[\x00-\x20\x7f]")
-HTTP_SAID = {401: "GitLab 不认这个 token：过期了，或者填错了",
+HTTP_SAID = {400: "GitLab 不接受这一步的请求（HTTP 400）：再跑一次也一样，看细节里 GitLab 说的原因",
+             401: "GitLab 不认这个 token：过期了，或者填错了",
              403: "这个 token 做不了这一步：要有 api 权限，你在项目里要是 Maintainer 或 Owner",
              404: "GitLab 上找不到要用的东西：看细节"}
 SIGN_IN = "GitLab 回的是登录页：这个 GitLab 要单点登录，先放好它的登录辅助文件（~/.brain/local_transport.py），再跑一次"

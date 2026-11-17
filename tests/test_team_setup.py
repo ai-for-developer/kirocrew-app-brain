@@ -29,13 +29,16 @@ pytestmark = [needs_brainkit, pytest.mark.skipif(subprocess.run(["which", "ssh-k
 BASE = "https://gitlab.example.com"
 P, PID = "grp/pay", 42
 API = "/api/v4"
+# the scopes GitLab gives a project access token (its access token scopes docs): read_user, sudo, admin_mode are not
+PROJECT_TOKEN_SCOPES = {"api", "read_api", "read_repository", "write_repository", "read_registry", "write_registry",
+                        "self_rotate", "create_runner", "manage_runner", "ai_features", "k8s_proxy"}
 
 
 class FakeGitLab:
     """GitLab REST v4 for project grp/pay (id 42). Tokens: the person's (alice, Maintainer) and the project access
-    tokens it makes, each with its own bot user; GET /user needs api, read_api or read_user, as on GitLab. Every request
-    is kept in calls (method, path, query, body); fail holds one-shot answers (method, path, status, who): who is
-    None (any token), a token, or a test on the token."""
+    tokens it makes, each with its own bot user, and only with scopes a project token may have (400 otherwise); GET
+    /user needs api, read_api or read_user, as on GitLab. Every request is kept in calls (method, path, query, body);
+    fail holds one-shot answers (method, path, status, who): who is None (any token), a token, or a test on the token."""
 
     def __init__(self, admin, ssh_url, kit, level=40, members=("alice", "bob", "carol"), labels=("ai-handoff",)):
         self.users = {admin: {"id": 1, "username": "alice", "name": "Alice", "email": "alice@example.com"}}
@@ -101,6 +104,8 @@ class FakeGitLab:
             text = self.files.get(q.get("ref"), {}).get(m.group(1))
             return (200, text.encode()) if text is not None else ok({"message": "404 File Not Found"}, 404)
         if rest == "/access_tokens" and method == "POST":
+            if not data.get("scopes") or set(data["scopes"]) - PROJECT_TOKEN_SCOPES:
+                return ok({"error": "scopes does not have a valid value"}, 400)
             n = len(self.tokens) + 1
             value = "fake-bot-%d-%s" % (n, secrets.token_hex(8))
             user = "project_%d_bot_%s" % (PID, secrets.token_hex(4))
@@ -367,7 +372,7 @@ def test_push_auto_falls_back_to_a_project_token_when_ssh_does_not_reach_gitlab(
     push = next(s for s in view["steps"] if s["id"] == "push")
     assert push["message"].startswith("这台机器的 SSH 连不上 GitLab") and push["detail"]
     bot = gl.made("brain-bot")
-    assert len(bot) == 1 and bot[0]["scopes"] == ["read_repository", "write_repository", "read_user"]
+    assert len(bot) == 1 and bot[0]["scopes"] == ["read_repository", "write_repository", "read_api"]
     user = gl.users[bot[0]["token"]]
     r = json.loads(ps.runnerd_json.read_text())
     assert r["clone_url"] == "https://oauth2:%s@gitlab.example.com/{project}.git" % bot[0]["token"]
@@ -391,6 +396,18 @@ def test_a_bot_token_git_cannot_clone_with_fails_the_push_step(world):
     world["https_down"] = False
     view, _ = build(world)
     assert everything_done(view) and len(world["gl"].made("brain-bot")) == 1
+
+
+def test_a_scope_gitlab_does_not_give_project_tokens_is_said_as_its_refusal(world, monkeypatch):
+    """GitLab answers 400 to a project token asked with a scope project tokens cannot have: the step says GitLab
+    refused the request, which running again does not change, and GitLab's words are under 细节."""
+    setup = mod("team.setup")
+    world["gl"].ssh_url = str(world["tmp"] / "nowhere" / "grp" / "pay.git")
+    monkeypatch.setattr(setup, "BOT_SCOPES", setup.BOT_SCOPES + ("read_user",))
+    view, _ = build(world)
+    push = next(s for s in view["steps"] if s["id"] == "push")
+    assert push["status"] == "failed" and "HTTP 400" in push["message"] and "等一会儿" not in push["message"]
+    assert "scopes does not have a valid value" in push["detail"] and not world["gl"].made("brain-bot")
 
 
 def test_push_ssh_alone_fails_when_ssh_does_not_reach_gitlab(world):
