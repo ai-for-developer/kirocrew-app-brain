@@ -1019,15 +1019,18 @@ class Service:
         return got
 
     @staticmethod
-    def _reflect_refs(git: Git, key: str, default_branch: str) -> list[tuple[str, float, float | None]]:
+    def _reflect_refs(git: Git, key: str, default_branch: str) -> list[tuple[str, float, float | None]] | None:
         """brain reflect's branches for *key* (brain/<KEY>-reflect-<n>, local or origin's): when each was made, and
         when it was merged into the default branch (the merge commit on its first-parent line; its own time when the
-        branch is on that line, fast-forwarded), or None while it waits."""
+        branch is on that line, fast-forwarded), or None while it waits. None: git could not list the branches."""
+        p = git.run("for-each-ref", "--format=%(refname)", "refs/heads/brain/", "refs/remotes/origin/brain/")
+        if p.returncode != 0:
+            return None
         out, seen = [], set()
         main = next((r for r in ("refs/remotes/origin/" + default_branch, "refs/heads/" + default_branch)
                      if git.ok("rev-parse", "-q", "--verify", r + "^{commit}")), None)
         rx = re.compile(r"^refs/(?:heads|remotes/origin)/(brain/%s-reflect-[1-9][0-9]*)$" % re.escape(key))
-        for ref in sorted(git.refs("refs/heads/brain/", "refs/remotes/origin/brain/")):
+        for ref in sorted(p.stdout.split()):
             m = rx.match(ref)
             if m and m.group(1) not in seen:
                 at = git.commit_time(ref)
@@ -1043,15 +1046,19 @@ class Service:
         return out
 
     def _reflects_of(self, git: Git, key: str, default_branch: str) -> list[tuple[str, float, float | None]]:
-        """_reflect_refs, read with git again only when a brain/ branch or the default branch moves."""
+        """_reflect_refs, read with git again only when a brain/ branch or the default branch moves, or git could not
+        list them the last time."""
         stamp = git_stamp(git.repo, ("refs/heads/brain/", "refs/remotes/origin/brain/", "refs/heads/" + default_branch,
                                      "refs/remotes/origin/" + default_branch))
         sig = (git.repo, key, default_branch)
         got = self._reflects.get(sig)
         if got is None or got[0] != stamp:
+            refs = self._reflect_refs(git, key, default_branch)
+            if refs is None:
+                return []
             if len(self._reflects) > 200:
                 self._reflects.clear()
-            got = self._reflects[sig] = (stamp, self._reflect_refs(git, key, default_branch))
+            got = self._reflects[sig] = (stamp, refs)
         return got[1]
 
     def _planned_units(self, git: Git, f: dict[str, Any]) -> list[stages.UnitPlan]:
