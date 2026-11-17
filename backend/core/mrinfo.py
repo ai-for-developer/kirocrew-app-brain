@@ -23,7 +23,7 @@ person), a question nobody may answer. The newest such note since the last 「AI
 short Chinese, raw, at}.
 
 The same refresh reads the MR's newest pipelines (``pipelines``, parse_pipelines): one more GET with the same token, so
-the 需求看板 can say a round happened because CI failed (「CI 没过 #1234」). None when they could not be read (CI off, no
+the 运行过程 can say a round happened because CI failed (「CI 没过 #1234」). None when they could not be read (CI off, no
 access): the board then says what it said before.
 """
 

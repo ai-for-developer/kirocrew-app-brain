@@ -1,4 +1,4 @@
-"""产出: what each round of a stage produced, for the 需求看板's drawer.
+"""产出: what each round of a stage produced, for the 运行过程's drawer.
 
 ``GET /outputs/{repo}/{key}?node=<id>&round=<n>`` (node_output) lists a round's files: first the documents Lean
 recorded for it (约定它交的: its outputs, its approval request's document, ``lean release``'s release.md, each with the
@@ -66,13 +66,13 @@ BAD_ROUND = "页面说的第几轮不对：刷新页面再试"
 BAD_VIEW = "只能看内容、源码或改动：刷新页面再试"
 BAD_SHA = "页面说的提交不对：刷新页面再试"
 BAD_PIN = "页面说的文件指纹不对：刷新页面再试"
-NO_NODE = "看板上没有这一步：刷新看板再看"
-NO_ROUND = "这一步没有这一轮：刷新看板再看"
-NOT_OURS = "这个提交不是这个需求的：刷新看板，从看板上点开文件"
-NOT_OURS_FILE = "这个文件不是这个需求的：刷新看板，从看板上点开文件"
+NO_NODE = "看板上没有这一步：刷新运行过程再看"
+NO_ROUND = "这一步没有这一轮：刷新运行过程再看"
+NOT_OURS = "这个提交不是这个需求的：刷新运行过程，从运行过程里点开文件"
+NOT_OURS_FILE = "这个文件不是这个需求的：刷新运行过程，从运行过程里点开文件"
 NOT_SHOWN = ("Lean 的账本和照账本写的 aidlc-state.md、audit.md 不在这里显示，里面有人在会话里打的字："
-             "到看板的「事件」里看它记下的事")
-NOT_RECORDED = "Lean 没有为这一步记下这个文件的这一版：从看板上点开文件"
+             "到运行过程的「事件」里看它记下的事")
+NOT_RECORDED = "Lean 没有为这一步记下这个文件的这一版：从运行过程里点开文件"
 NO_WORKTREE = "这台机器上没有这个需求的工作区：这一版只能等提交以后看"
 CHANGED = "这一版还没提交，工作区里的文件也和 Lean 记下的不一样了：到会话里看"
 SYMLINK = "这是一个符号链接（或者路径里有符号链接），这里不读它指向的东西：到会话里看"

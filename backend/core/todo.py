@@ -10,7 +10,7 @@ the step it takes:
 - the person's own runs: a clarify question may be answered here (into the local session, or as their own MR
   comment); acceptance waits for the product on the MR; a refused hand-over says why; a hand-over that was pushed
   but carries no label on its MR (nothing was handed over: `brain handoff` exits 1 then) says so, and so does a
-  hand-over commit whose push failed (on this machine only: 交接给运行机 again, on 需求详情);
+  hand-over commit whose push failed (on this machine only: 交接给运行机 again, on 需求现状);
 - an idle local session (reply: open it, the text says what to tell it), a requirement claimed and not started
   (start: 开工), a merge whose Brain proposals are not written back yet (write_back);
 - a requirement of the person's closed with `brain intent close` whose run branch or MR is still there: delete the
@@ -71,7 +71,7 @@ def build(entries: list[dict[str, Any]], *, team: bool, crew_rows: list[dict[str
             for d in e.get("decisions") or []:
                 if d.get("state") != "open":      # on the MR, waiting for a person (brain-kit's states)
                     continue
-                q = ledger_questions([d], e.get("mr_url"))[0]     # as 需求详情 shows it: its kind in words
+                q = ledger_questions([d], e.get("mr_url"))[0]     # as 需求现状 shows it: its kind in words
                 kind = "acceptance" if d.get("kind") == "acceptance" else "question"
                 said = (row.get("open_questions") or [])[-1:] == [d["id"]] and w.get("text")   # the row's words: who answers it
                 items.append({**base, "kind": kind, "mr_url": e.get("mr_url"), "question": q,

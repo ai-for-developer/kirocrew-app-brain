@@ -1,12 +1,12 @@
 """The app's one stage table: AI-DLC Lean 0.3.1's 26 stages in Lean's order, the two steps brain records by other means
 (审查: Lean's release review, review.md; 回写 Brain: brain reflect's branch), and the phases they sit in. Every view
-that names, orders or counts a stage reads it: Lean's progress (lean_view), 需求详情, 交付总览 and the 需求看板.
+that names, orders or counts a stage reads it: Lean's progress (lean_view), 需求现状, 交付总览 and the 运行过程.
 
 It is a copy of Lean's own table (aidlc_lean.py STAGES), which the app never imports (lean_view.py says why), so
 tests/test_stages_contract.py parses brain-kit's vendored aidlc_lean.py and fails when an id, phase, per-unit flag or
 document differs. The names are brain-kit's (mrdesc.py STAGE_NAMES): the 变更说明 names a stage the same way.
 
-The 需求看板's stage graph is cut from the same table: a node per stage (per unit for a per-unit stage), its rounds (第
+The 运行过程's stage graph is cut from the same table: a node per stage (per unit for a per-unit stage), its rounds (第
 N 轮) derived from append-only records on every build (the round machine DOC_MACHINE, and one round per VERIFY, per
 commit of review.md, per reflect branch), the gates on it, and its status, which node_status alone writes. Pure: the
 records come in, words for a person go out only as node_status's short lines (the board says the rest).

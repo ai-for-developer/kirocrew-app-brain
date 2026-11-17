@@ -26,7 +26,7 @@ IDEATION = frozenset(s.id for s in LEAN if s.phase == "ideation")
 # the notes Lean writes itself (aidlc_lean.py: verify's build-and-test completion, the RELEASE approval's, `lean new`'s
 # Ideation skip), said in words; a note the agent wrote is its own and stays as written
 LEAN_NOTES = (
-    # as 需求看板 says a verify round (board.py: 「自动检查通过（1 项）」), never 「1 项…都过了」 (BOARD-29)
+    # as 运行过程 says a verify round (board.py: 「自动检查通过（1 项）」), never 「1 项…都过了」 (BOARD-29)
     (re.compile(r"^verify PASS: (\d+) checks? on code fingerprint [0-9a-f]*$"), lambda m: "自动检查通过（%s 项）" % m.group(1)),
     (re.compile(r"^RELEASE approved \(sha [0-9a-f]*\)$"), lambda m: "发布审批通过了"),
     (re.compile(r"^not requested \(lean new without --ideation\)$"), lambda m: "这次没要构思这一段"),
@@ -253,7 +253,7 @@ def _way(rows: list[dict[str, Any]], ph: list[dict[str, Any]]) -> list[dict[str,
 
 
 def summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """Lean's progress over the stages on the way (_way: the ones 交付总览, 需求详情 and 需求看板 count): the current
+    """Lean's progress over the stages on the way (_way: the ones 交付总览, 需求现状 and 运行过程 count): the current
     stage is the one furthest along that is started; else the next one to do after the last one done or skipped; else
     (nothing left after it) that last one, done; None while none of them is recorded. done_n / skipped_n / next say
     the progress the one way the app says it (ui/src/vocab.ts leanProgress): next is the stage to do now (the started

@@ -1,4 +1,4 @@
-"""需求看板: one requirement as the reference team board shows a run: AI-DLC phase bands with a node per stage Lean
+"""运行过程: one requirement as the reference team board shows a run: AI-DLC phase bands with a node per stage Lean
 ran (code generation per unit), each node's rounds (第 N 轮) and gates, who did each round (this machine's session, a
 run on the team runner, a small requirement of a split), each hand-over's steps, the run branch's commits on a
 conveyor, a check wall, the events placed on the graph, and 验收 (the sample's 签字单).
@@ -1048,8 +1048,8 @@ def _accept(f: dict[str, Any], row: dict[str, Any], nodes: list[stages.Node], ch
     elif do == "label_handoff":
         step = {"text": waits.get("text") or "在 MR 上补上交接标签", "who": who, "line": None, "mr_url": mr_url,
                 "session_url": None}
-    elif do == "push_handoff":   # 交接给运行机 is on 需求详情, not on the board
-        step = {"text": "交接提交了，但没推上去：什么也没交出去。推上去以后，在需求详情再点「交接给运行机」", "who": who,
+    elif do == "push_handoff":   # 交接给运行机 is on 需求现状, not on the board
+        step = {"text": "交接提交了，但没推上去：什么也没交出去。推上去以后，在需求现状再点「交接给运行机」", "who": who,
                 "line": None, "mr_url": None, "session_url": None}
     elif do == "write_back" and proposals:
         step = {"text": "去 Brain 页回写这次的 %d 条新知识：先预览，再写到新分支" % proposals, "who": who, "line": None,

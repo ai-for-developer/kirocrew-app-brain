@@ -1,6 +1,6 @@
 """Brain: the entries on the default branch by file and section with their sources, how runs use them
 (brainkit.usage: the runs merged into the default branch; a run not merged yet is listed on its own, read where
-需求详情 reads it, so the two pages say the same numbers), lint (brainkit.brainlint, static rules; each line a
+需求现状 reads it, so the two pages say the same numbers), lint (brainkit.brainlint, static rules; each line a
 CheckRow, the legacy ids one quiet note: problems.lint_rows), and reflect (brainkit.reflect).
 
 brain-kit says what reflect found in English (``proposal at line 27: already in the Brain as P-7, skipped``): the
@@ -143,7 +143,7 @@ def _brain(repo: Repo) -> tuple[Any, str, bool]:
 
 
 def unmerged_usage(repo: Repo) -> list[dict[str, Any]]:
-    """The Brain use of each run not merged into the default branch yet, read where 需求详情 reads it (its worktree,
+    """The Brain use of each run not merged into the default branch yet, read where 需求现状 reads it (its worktree,
     else its branch) with the same brainkit.usage row: its intent and key, else its intent."""
     groups: dict[tuple[str, str | None], list[dict[str, Any]]] = {}
     for f in repo.scan():

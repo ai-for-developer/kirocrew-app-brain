@@ -59,7 +59,7 @@ FIX_BUTTON = {"agent": "补上 Lean 的拦截", "engine": "把引擎换成 kas",
 AGENT_NEW = "装上 %s" % LOCAL_AGENT    # the agent fix when ~/.kiro/agents/brain-dev-crew.json is not there at all
 REINSTALL = "点「%s」：重装 brain-kit 并提交（默认直接在当前分支上，团队仓库可以选新分支开 MR）" % FIX_BUTTON["kit"]
 AGENT_NEW_TODO = "点「%s」：装上 brain-kit 带的那一份。app 开的会话都用它，Lean 的拦截在它里面" % AGENT_NEW
-OLD_PAIR_TODO = ("app 新开的会话用 %s，不受影响；以前开的会话，在需求详情里点「重开一个会话」换成新的。都换完了，删掉细节里那份旧的"
+OLD_PAIR_TODO = ("app 新开的会话用 %s，不受影响；以前开的会话，在需求现状里点「重开一个会话」换成新的。都换完了，删掉细节里那份旧的"
                  " %s 设置，这条就不再提醒" % (LOCAL_AGENT, OLD_AGENT))
 UNREADABLE_TODO = "自己修好它，或者删掉它再装一份新的（这里不会覆盖它）"
 ADAPTER = "Lean 的适配文件"         # .kiro/brain/lean-hook.py: KiroCrew sessions run Lean's hooks through it
@@ -374,7 +374,7 @@ START_RULES: list[tuple[re.Pattern, str, str]] = [(re.compile(rx), t, d) for rx,
     (r"^(?P<k>\S+) is (?:already )?claimed by (?P<o>\S+)$", "{k} 是 {o} 认领的", "只有 {o} 能开工：问问 {o}，或者开一个新需求"),
     (r"^(?P<k>\S+) is closed \((?P<why>.*)\)$", "{k} 已经关了（{why}）", "开一个新需求"),
     (r"^(?P<p>\S+) already exists on (?P<ref>\S+): this requirement already has a run$", "这个需求已经开过工了",
-     "{ref} 上已经有它的开工记录：去需求看板看它"),
+     "{ref} 上已经有它的开工记录：去运行过程看它"),
     (r"^branch (?P<b>\S+) already exists(?: on origin)?$", "分支 {b} 已经有了", "换一个英文短名再开工"),
     (r"^\.brain/kit\.json is missing", "开工的地方没有 brain-kit",
      "开工从远端的默认分支建分支，那里还没有 brain-kit：先推送默认分支（导入仓库里「推送」），或者等 MR 合并"),

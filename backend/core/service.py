@@ -848,7 +848,7 @@ class Service:
         repo = self._repo(rid)
         return await asyncio.to_thread(self._fetch, rid, repo, True)
 
-    # ---- 需求详情 ------------------------------------------------------------------------------------- #
+    # ---- 需求现状 ------------------------------------------------------------------------------------- #
 
     def _facts(self, repo: Repo, key: str) -> dict[str, Any]:
         if not KEY_RE.match(key or ""):
@@ -864,7 +864,7 @@ class Service:
         return d if os.path.isdir(d) else None
 
     def _detail_sync(self, rid: str, key: str, snap: dict[str, Any], parts: dict[str, Any] | None = None) -> dict[str, Any]:
-        """需求详情. *parts*, when given, gets what the board is built from as well (facts, the raw trace, the MR)."""
+        """需求现状. *parts*, when given, gets what the board is built from as well (facts, the raw trace, the MR)."""
         if rid == "runner":
             return self._team_detail(key, snap, parts)
         repo = self._repo(rid)
@@ -1039,7 +1039,7 @@ class Service:
         snap = self._sessions_snapshot()
         return scrub_tree(await asyncio.to_thread(self._detail_sync, rid, key, snap), self.scrub)
 
-    # ---- 需求看板 ------------------------------------------------------------------------------------- #
+    # ---- 运行过程 ------------------------------------------------------------------------------------- #
 
     def _commits(self, git: Git, shas: list[str]) -> tuple[dict[str, str], dict[str, list[dict[str, Any]]]]:
         """The commits' subjects and the files each changed (one git call, board_mod.GIT_LOG; kept by the commits
@@ -1177,7 +1177,7 @@ class Service:
                 "missing": g["missing"], "error": d["timeline"]["error"], "rollup": board_mod.rollup(t)}
 
     async def board(self, rid: str, key: str) -> dict[str, Any]:
-        """需求看板: polled every 2 s; the trace, the facts and the 变更说明 come from their caches."""
+        """运行过程: polled every 2 s; the trace, the facts and the 变更说明 come from their caches."""
         snap = self._sessions_snapshot()
         return scrub_tree(await asyncio.to_thread(self._board_sync, rid, key, snap), self.scrub)
 
