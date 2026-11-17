@@ -16,6 +16,7 @@ import secrets
 import subprocess
 import sys
 from dataclasses import replace
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import parse_qsl, quote, unquote, urlsplit
 
 import pytest
@@ -30,16 +31,24 @@ pytestmark = [needs_brainkit, pytest.mark.skipif(subprocess.run(["which", "ssh-k
 BASE = "https://gitlab.example.com"
 P, PID = "grp/pay", 42
 API = "/api/v4"
+KIT = ".brain/kit.json"
 # the scopes GitLab gives a project access token (its access token scopes docs): read_user, sudo, admin_mode are not
 PROJECT_TOKEN_SCOPES = {"api", "read_api", "read_repository", "write_repository", "read_registry", "write_registry",
                         "self_rotate", "create_runner", "manage_runner", "ai_features", "k8s_proxy"}
 
 
+def utc_today():
+    return datetime.now(timezone.utc).date()
+
+
 class FakeGitLab:
     """GitLab REST v4 for project grp/pay (id 42). Tokens: the person's (alice, Maintainer) and the project access
-    tokens it makes, each with its own bot user, and only with scopes a project token may have (400 otherwise); GET
-    /user needs api, read_api or read_user, as on GitLab. Every request is kept in calls (method, path, query, body);
-    fail holds one-shot answers (method, path, status, who): who is None (any token), a token, or a test on the token."""
+    tokens it makes, each with its own bot user, only with scopes a project token may have and ending at most 365 days
+    from today (400 otherwise); rotating one gives a new value of the same bot user and revokes the old one, and
+    rotating a revoked one revokes every token of its bot user (GitLab's reuse detection). A token ends at the start of
+    its expires_at (UTC). GET /user needs api, read_api or read_user, as on GitLab. Every request is kept in calls
+    (method, path, query, body); fail holds one-shot answers (method, path, status, who): who is None (any token), a
+    token, or a test on the token."""
 
     def __init__(self, admin, ssh_url, kit, level=40, members=("alice", "bob", "carol"), labels=("ai-handoff",)):
         self.users = {admin: {"id": 1, "username": "alice", "name": "Alice", "email": "alice@example.com"}}
@@ -56,7 +65,40 @@ class FakeGitLab:
                 "permissions": {"project_access": {"access_level": self.level}, "group_access": None}}
 
     def made(self, name):
-        return [t for t in self.tokens if t["name"] == name]
+        """The tokens of this name POST /access_tokens made (a rotation's new value is not one)."""
+        return [t for t in self.tokens if t["name"] == name and "rotated_from" not in t]
+
+    def live(self, name):
+        """The token of this name that is active now."""
+        got = [t for t in self.tokens if t["name"] == name and self.active(t)]
+        assert len(got) == 1, got
+        return got[0]
+
+    def active(self, t):
+        return t["token"] not in self.revoked and not (t.get("expires_at") and t["expires_at"] <= utc_today().isoformat())
+
+    def shown(self, t):
+        """A token as GET /access_tokens/:id shows it: no value, whether it is active or revoked."""
+        return dict({k: v for k, v in t.items() if k != "token"}, active=self.active(t), revoked=t["token"] in self.revoked)
+
+    def mint(self, fields, user_id=None):
+        """A new token value: of a new bot user, or of *user_id*'s (a rotation)."""
+        n = len(self.tokens) + 1
+        value = "fake-bot-%d-%s" % (n, secrets.token_hex(8))
+        if user_id is None:
+            user_id, user = 100 + n, "project_%d_bot_%s" % (PID, secrets.token_hex(4))
+            self.users[value] = {"id": user_id, "username": user, "name": fields["name"], "bot": True,
+                                 "email": "%s@noreply.gitlab.example.com" % user}
+        else:
+            self.users[value] = next(u for u in self.users.values() if u["id"] == user_id)
+        self.scopes[value] = list(fields["scopes"])
+        t = dict(fields, id=500 + n, user_id=user_id, token=value)
+        self.tokens.append(t)
+        return t
+
+    @staticmethod
+    def too_late(data):
+        return bool(data.get("expires_at")) and data["expires_at"] > (utc_today() + timedelta(days=365)).isoformat()
 
     def merge(self, iid):
         mr = next(m for m in self.mrs if m["iid"] == iid)
@@ -85,7 +127,8 @@ class FakeGitLab:
                 self.fail.remove(f)
                 return f[2], b'{"message": "500 (fake)"}'
         ok = lambda o, s=200: (s, json.dumps(o).encode())  # noqa: E731
-        if tok not in self.users or tok in self.revoked:
+        mine = next((t for t in self.tokens if t["token"] == tok), None)
+        if tok not in self.users or mine is not None and not self.active(mine):
             return ok({"message": "401 Unauthorized"}, 401)
         if path == API + "/user":
             if not {"api", "read_api", "read_user"} & set(self.scopes[tok]):
@@ -107,22 +150,27 @@ class FakeGitLab:
         if rest == "/access_tokens" and method == "POST":
             if not data.get("scopes") or set(data["scopes"]) - PROJECT_TOKEN_SCOPES:
                 return ok({"error": "scopes does not have a valid value"}, 400)
-            n = len(self.tokens) + 1
-            value = "fake-bot-%d-%s" % (n, secrets.token_hex(8))
-            user = "project_%d_bot_%s" % (PID, secrets.token_hex(4))
-            self.users[value] = {"id": 100 + n, "username": user, "name": data["name"], "bot": True,
-                                 "email": "%s@noreply.gitlab.example.com" % user}
-            self.scopes[value] = list(data["scopes"])
-            t = dict(data, id=500 + n, user_id=100 + n, token=value, active=True, revoked=False)
-            self.tokens.append(t)
-            return ok(t, 201)
-        m = re.fullmatch(r"/access_tokens/(\d+)", rest)
-        if m and method == "DELETE":
-            t = next((t for t in self.tokens if t["id"] == int(m.group(1))), None)
-            if t is None:
-                return ok({"message": "404"}, 404)
-            self.revoked.add(t["token"])
-            return 204, b""
+            if self.too_late(data):
+                return ok({"message": "400 Bad request - expires_at is more than 365 days away"}, 400)
+            t = self.mint(data)
+            return ok(dict(self.shown(t), token=t["token"]), 201)
+        m = re.fullmatch(r"/access_tokens/(\d+)(/rotate)?", rest)
+        old = m and next((t for t in self.tokens if t["id"] == int(m.group(1))), None)
+        if m and old is None:
+            return ok({"message": "404 Not Found"}, 404)
+        if m and method == "GET" and not m.group(2):
+            return ok(self.shown(old))
+        if m and method == "POST" and m.group(2):
+            if not self.active(old):
+                self.revoked |= {t["token"] for t in self.tokens if t["user_id"] == old["user_id"]}
+                return ok({"message": "401 Unauthorized"}, 401)
+            if self.too_late(data or {}):
+                return ok({"message": "400 Bad request - expires_at is more than 365 days away"}, 400)
+            self.revoked.add(old["token"])
+            end = (data or {}).get("expires_at") or (utc_today() + timedelta(days=7)).isoformat()
+            t = self.mint(dict({k: old[k] for k in ("name", "scopes", "access_level")}, expires_at=end,
+                               rotated_from=old["id"]), user_id=old["user_id"])
+            return ok(dict(self.shown(t), token=t["token"]))
         if rest == "/labels" and method == "GET":
             return ok(self.page([{"id": i, "name": n} for i, n in enumerate(self.labels)], q))
         if rest == "/labels" and method == "POST":
@@ -195,7 +243,7 @@ def fake_reach(world):
 
     def reach(url):
         if url.startswith("https://"):
-            live = [t["token"] for t in world["gl"].tokens if t["token"] not in world["gl"].revoked]
+            live = [t["token"] for t in world["gl"].tokens if world["gl"].active(t)]
             ok = not world.get("https_down") and any("oauth2:%s@" % quote(t, safe="") in url for t in live)
             return ok, "" if ok else "fatal: unable to access '%s': The requested URL returned error: 403" % url
         p = common.git_net(str(world["tmp"]), "ls-remote", url, "HEAD", timeout=20, check=False)
@@ -221,6 +269,19 @@ def build(world, **kw):
 
 def statuses(view):
     return {s["id"]: s["status"] for s in view["steps"]}
+
+
+def step(view, sid):
+    return next(s for s in view["steps"] if s["id"] == sid)
+
+
+def saved_tokens(state, base=BASE):
+    """The project tokens setup-state.json keeps for grp/pay on GitLab *base*."""
+    return state["tokens"]["%s/projects/%d" % (base, PID)]
+
+
+def days_left(expires_at):
+    return (date.fromisoformat(expires_at) - utc_today()).days
 
 
 def everything_done(view, kit_mr="waiting"):
@@ -251,7 +312,8 @@ def test_a_first_run_builds_the_runner_and_waits_for_the_kit_mr(world):
     by = {s["id"]: s for s in view["steps"]}
     bridge = gl.made("brain-bridge")
     assert len(bridge) == 1 and bridge[0]["scopes"] == ["api"] and bridge[0]["access_level"] == 30
-    assert bridge[0]["expires_at"] > "2026-" and not gl.made("brain-bot")     # this machine's git reaches the project
+    assert days_left(bridge[0]["expires_at"]) in (363, 364)                 # a year less a day, from today in UTC
+    assert not gl.made("brain-bot")                                         # this machine's git reaches the project
     bot = gl.users[bridge[0]["token"]]["username"]
     assert sorted(gl.labels) == ["ai-handoff", "ai-handoff-rejected", "ai-running", "brain-reflect"]
     # the token's value is in its own file only, 0600; the person's token is nowhere
@@ -293,7 +355,7 @@ def test_a_first_run_builds_the_runner_and_waits_for_the_kit_mr(world):
                               "runnerd_config": str(ps.runnerd_json), "dev_same_user": True}]
     assert "合并以前" in by["team_mode"]["message"] and world["signer"][0] == s
     state = json.loads(ps.state.read_text())
-    assert state["tokens"]["bridge"]["username"] == bot and state["project"]["id"] == PID and not state["running"]
+    assert saved_tokens(state)["bridge"]["username"] == bot and state["project"]["id"] == PID and not state["running"]
 
 
 def test_a_second_run_makes_nothing_new(world):
@@ -334,20 +396,92 @@ def test_a_run_that_stops_part_way_converges_when_run_again(world):
     assert len(gl.made("brain-bridge")) == 1 and len(gl.mrs) == 1 and gl.revoked == set()
     assert sorted(gl.labels) == ["ai-handoff", "ai-handoff-rejected", "ai-running", "brain-reflect"]
     token = gl.made("brain-bridge")[0]["token"]
-    assert json.loads(ps.state.read_text())["tokens"]["bridge"]["username"] == gl.users[token]["username"]
+    assert saved_tokens(json.loads(ps.state.read_text()))["bridge"]["username"] == gl.users[token]["username"]
 
 
-def test_a_lost_token_file_gets_a_new_token_and_the_old_one_is_revoked(world):
+def rotated(gl, since, token):
+    """Exactly one write since *since*: GitLab asked to rotate *token* (a project token of grp/pay)."""
+    return [c[:2] for c in gl.writes(since)] == [("POST", "%s/projects/%d/access_tokens/%d/rotate" % (API, PID, token["id"]))]
+
+
+def test_a_lost_token_file_gets_a_new_value_of_the_same_token_and_account(world):
+    """The token is rotated, not made again: its bot user, kit.json, its MR and signer.json stay as they were."""
     _, ps = build(world)
     gl = world["gl"]
-    old = gl.made("brain-bridge")[0]
+    old = gl.live("brain-bridge")
+    user, kit, signer = gl.users[old["token"]]["username"], gl.files["brain/runner-setup"][KIT], ps.signer_json.read_text()
     (ps.root / "bridge-gitlab-token").unlink()
+    seen = len(gl.calls)
     view, _ = build(world)
-    assert everything_done(view)
-    new = gl.made("brain-bridge")[1]
-    assert gl.revoked == {old["token"]} and (ps.root / "bridge-gitlab-token").read_text().strip() == new["token"]
-    assert json.loads(ps.signer_json.read_text())["bridge_users"] == [gl.users[new["token"]]["username"]]
-    assert json.loads(gl.files["brain/runner-setup"][".brain/kit.json"])["bridge_user"] == gl.users[new["token"]]["username"]
+    new = gl.live("brain-bridge")
+    assert everything_done(view) and rotated(gl, seen, old) and len(gl.made("brain-bridge")) == 1
+    assert old["token"] in gl.revoked and (ps.root / "bridge-gitlab-token").read_text().strip() == new["token"]
+    assert gl.users[new["token"]]["username"] == user and saved_tokens(json.loads(ps.state.read_text()))["bridge"]["id"] == new["id"]
+    assert len(gl.mrs) == 1 and gl.files["brain/runner-setup"][KIT] == kit and ps.signer_json.read_text() == signer
+    assert step(view, "bridge_token")["message"] == "这台机器上项目令牌 brain-bridge 的值丢了或者不对，换了新的值：账号还是 %s，%s 到期" % (
+        user, new["expires_at"])
+
+
+def test_a_token_with_two_weeks_or_less_to_go_is_rotated_to_a_year_on_the_same_account(world):
+    _, ps = build(world)
+    gl = world["gl"]
+    old = gl.live("brain-bridge")
+    user = gl.users[old["token"]]["username"]
+    old["expires_at"] = (utc_today() + timedelta(days=15)).isoformat()
+    seen = len(gl.calls)
+    build(world)
+    assert gl.writes(seen) == []                          # more than 14 days to go: kept
+    old["expires_at"] = (utc_today() + timedelta(days=14)).isoformat()
+    view, _ = build(world)
+    new = gl.live("brain-bridge")
+    assert everything_done(view) and rotated(gl, seen, old) and days_left(new["expires_at"]) in (363, 364)
+    assert gl.users[new["token"]]["username"] == user and len(gl.mrs) == 1
+    assert (ps.root / "bridge-gitlab-token").read_text().strip() == new["token"]
+    assert "快到期了，换了新的值：账号还是 %s" % user in step(view, "bridge_token")["message"]
+
+
+def test_a_token_revoked_on_gitlab_is_made_again(world):
+    """Its bot user is gone with it: the new token's account goes into kit.json through the MR."""
+    _, ps = build(world)
+    gl = world["gl"]
+    gl.revoked.add(gl.live("brain-bridge")["token"])
+    seen = len(gl.calls)
+    view, _ = build(world)
+    new = gl.made("brain-bridge")[-1]
+    assert everything_done(view) and len(gl.made("brain-bridge")) == 2
+    assert not [c for c in gl.calls[seen:] if c[1].endswith("/rotate") or c[0] == "DELETE"]
+    user = gl.users[new["token"]]["username"]
+    assert json.loads(ps.signer_json.read_text())["bridge_users"] == [user]
+    assert json.loads(gl.files["brain/runner-setup"][KIT])["bridge_user"] == user and len(gl.mrs) == 1
+
+
+def test_tokens_are_kept_per_gitlab_and_project_and_one_this_setup_did_not_make_is_never_touched(world):
+    """The same root set up on GitLab A, then on GitLab B whose grp/pay has the same id, and someone's token there the
+    same id as A's brain-bridge; then on A again, which rotates its own token (the file held B's)."""
+    setup, rest = mod("team.setup"), mod("bk").m("rest")
+    _, ps = build(world)
+    a = world["gl"]
+    mine = a.live("brain-bridge")
+    admin_b = "fake-" + secrets.token_hex(12)
+    b = FakeGitLab(admin_b, str(world["bare"]), a.files["main"][KIT])
+    _, payload = b("POST", "https://b.example.com/api/v4/projects/%d/access_tokens" % PID, {"PRIVATE-TOKEN": admin_b},
+                   json.dumps({"name": "someones-ci-token", "scopes": ["api"], "access_level": 30}).encode())
+    theirs = json.loads(payload)
+    assert theirs["id"] == mine["id"]
+    inp = setup.SetupInput.parse({"gitlab_base": "https://b.example.com", "project": P, "admin_token": admin_b,
+                                  "roles": {"builder": "bob"}})
+    ctx = setup.Ctx(inp, ps, gitlab=lambda tok: rest.GitLab("https://b.example.com", tok, b),
+                    team_mode=team_mode(world), signer=fake_signer(world), reach=fake_reach(world))
+    with setup.Lock(ps.root):
+        on_b = setup.run(ctx)
+    assert everything_done(on_b) and len(b.made("brain-bridge")) == 1
+    assert b.active(theirs) and not [c for c in b.calls if c[1].endswith("/rotate") or c[0] == "DELETE"]
+    seen = len(a.calls)
+    back, _ = build(world)
+    assert everything_done(back) and rotated(a, seen, mine)
+    assert a.users[a.live("brain-bridge")["token"]]["username"] == a.users[mine["token"]]["username"]
+    state = json.loads(ps.state.read_text())
+    assert saved_tokens(state, "https://b.example.com")["bridge"]["id"] == b.live("brain-bridge")["id"]
 
 
 def test_the_kit_mr_waits_until_it_is_merged_then_is_done(world):
@@ -515,16 +649,20 @@ def test_the_app_runs_it_in_the_background_and_team_mode_starts_with_the_signer(
             pid = signerproc.running(signer)
             python = mod("constants").PYTHON_BIN
             same = signerproc.ensure(signer, ROOT, python)              # signer.json as it was: that very signer
+            token = signer.parent / "bridge-gitlab-token"
+            token.write_text("rotated-" + secrets.token_hex(8) + "\n")  # its token rotated, signer.json the same
+            new_token = signerproc.ensure(signer, ROOT, python)
             doc = json.loads(signer.read_text())
             signer.write_text(json.dumps(dict(doc, keep_days=7)))       # a rerun that changes it: a new one
             changed = signerproc.ensure(signer, ROOT, python)
             old_gone = subprocess.run(["ps", "-p", str(pid)], capture_output=True).returncode != 0
-            return bad, started, again, end, got, team, signer, pid, same, changed, old_gone
+            return bad, started, again, end, got, team, signer, pid, same, new_token, changed, old_gone
         finally:
             await svc.stop()
 
-    bad, started, again, end, got, team, signer, pid, same, changed, old_gone = run(go())
-    assert same == (pid, False) and changed[1] is True and changed[0] != pid and old_gone
+    bad, started, again, end, got, team, signer, pid, same, new_token, changed, old_gone = run(go())
+    assert same == (pid, False) and new_token[1] is True and new_token[0] != pid and old_gone
+    assert changed[1] is True and changed[0] != new_token[0]
     assert bad.status == 400 and bad.body["code"] == "invalid_setup" and "组/仓库" in bad.body["error"]
     assert started.status == 200 and started.body["running"] is True
     assert {s["status"] for s in started.body["steps"]} <= {"todo", "running", "done"}

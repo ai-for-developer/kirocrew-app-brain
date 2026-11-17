@@ -29,7 +29,7 @@ import tempfile
 import time
 import urllib.parse
 from dataclasses import asdict, dataclass, field, replace
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -47,7 +47,13 @@ ROLE_NAME = {"product": "产品", "builder": "开发", "security": "安全", "da
 PUSH_MODES = ("auto", "ssh", "token")
 LEVEL_NAME = {10: "Guest", 20: "Reporter", 30: "Developer", 40: "Maintainer", 50: "Owner"}
 MAINTAINER, DEVELOPER, OWNER = 40, 30, 50
-TOKEN_DAYS = 30
+# a year less a day: GitLab takes no expires_at more than 365 days past its own today, which may be a day behind UTC's
+TOKEN_DAYS = 364
+RENEW_DAYS = 14         # a token with this many days or fewer to go gets a new value (rotated), its account the same
+TOKEN_SAID = {"kept": "用上次建的项目令牌 {name}：账号 {user}，{end} 到期",
+              "made": "建了项目令牌 {name}：账号 {user}，{end} 到期",
+              "ending": "项目令牌 {name} 快到期了，换了新的值：账号还是 {user}，{end} 到期",
+              "lost": "这台机器上项目令牌 {name} 的值丢了或者不对，换了新的值：账号还是 {user}，{end} 到期"}
 BRIDGE_SCOPES = ("api",)
 # GET /user, which the reuse check and the bot's username and address come from, takes read_api (GitLab gives a project
 # token no read_user: it answers 400 to one asked with it)
@@ -258,6 +264,12 @@ class Ctx:
     @property
     def pid(self) -> int:
         return int(self.state["project"]["id"])
+
+    @property
+    def tokens(self) -> dict:
+        """The project tokens this setup made for this project on this GitLab (bridge, bot), kept under
+        "<GitLab>/projects/<id>": another GitLab's project of the same id has its own."""
+        return self.state.setdefault("tokens", {}).setdefault("%s/projects/%d" % (self.inp.gitlab_base, self.pid), {})
 
     def remember(self, secret: str) -> None:
         if secret:
@@ -511,8 +523,7 @@ def step_project(ctx: Ctx) -> StepResult:
         return failed("默认分支上的 .brain/kit.json 读不懂：先在个人电脑上导入这个仓库，让它修好")
     old = ctx.state.get("project") if isinstance(ctx.state.get("project"), dict) else {}
     if old.get("id") not in (None, p["id"]):
-        ctx.state.pop("tokens", None)          # another project's tokens are not this one's
-        ctx.state.pop("kit_mr", None)
+        ctx.state.pop("kit_mr", None)          # another project's MR
     ctx.project, ctx.kit, ctx.kit_text, ctx.owner = p, kit, text, owner
     ctx.state["project"] = {"id": int(p["id"]), "path": path, "default_branch": branch, "web_url": p.get("web_url")}
     ctx.state["owner"] = owner
@@ -542,46 +553,90 @@ def access_level(gl: Any, project: Mapping[str, Any], me: Mapping[str, Any]) -> 
 # ---- 2 the bridge's token --------------------------------------------------------------------------------------- #
 
 def step_bridge_token(ctx: Ctx) -> StepResult:
-    """brain-bridge: the project access token the bridge and the signer use (Developer, api, 30 days)."""
-    rec, made = project_token(ctx, "bridge", "brain-bridge", BRIDGE_SCOPES)
-    return done("%s项目令牌 brain-bridge：账号 %s，%s 到期" % ("建了" if made else "用上次建的", rec["username"],
-                                                       rec.get("expires_at") or "?"))
+    """brain-bridge: the project access token the bridge and the signer use (Developer, api, a year)."""
+    rec, how = project_token(ctx, "bridge", "brain-bridge", BRIDGE_SCOPES)
+    return done(token_said(how, rec))
 
 
-def project_token(ctx: Ctx, key: str, name: str, scopes: tuple[str, ...]) -> tuple[dict, bool]:
-    """(the token's record, made now). The saved one when its file still signs in as the bot user GitLab made for it;
-    else a new one (Developer, *scopes*, TOKEN_DAYS days) whose value goes only into its own file, and the one it
-    replaces revoked (only ever a token this setup made)."""
-    pid, path = ctx.pid, ctx.paths.token(key)
-    tokens = ctx.state.setdefault("tokens", {})
-    saved = tokens.get(key) if isinstance(tokens.get(key), dict) else None
-    saved = saved if saved and saved.get("project_id") == pid else None
-    if saved:
-        tok = read_secret(path)
-        ctx.remember(tok)
-        me = whoami(ctx, tok) if tok else None
-        if me is not None and me.get("id") == saved.get("user_id"):
-            saved.update(bot_fields(me))
-            return saved, False
-    made = ctx.gl.call("POST", "/projects/%d/access_tokens" % pid, body={
-        "name": name, "scopes": list(scopes), "access_level": DEVELOPER,
-        "expires_at": (date.today() + timedelta(days=TOKEN_DAYS)).isoformat()}) or {}
-    tok = str(made.get("token") or "")
-    if not tok or not made.get("user_id"):
-        raise StepFailed("GitLab 建了项目令牌 %s，可是没把令牌给回来：在 GitLab 上撤掉它，再跑一次" % name)
+def project_token(ctx: Ctx, key: str, name: str, scopes: tuple[str, ...]) -> tuple[dict, str]:
+    """(the token's record, how: a TOKEN_SAID key). The one this setup made on this GitLab for this project while GitLab
+    has it active: kept while its file signs in as its bot user and it has more than RENEW_DAYS to go, else rotated (a
+    new value for the same bot user, so kit.json stays as it is). A new one (Developer, *scopes*) only when there is
+    none, or GitLab has it revoked, expired or gone. A token's value goes only into its own file. Nothing is revoked
+    here: rotating a token revokes its old value, and a token this setup did not make is never rotated."""
+    saved = ctx.tokens.get(key)
+    live = active_token(ctx, saved) if isinstance(saved, dict) else None
+    if live is None:
+        return keep(ctx, key, name, ctx.gl.call("POST", "/projects/%d/access_tokens" % ctx.pid, body={
+            "name": name, "scopes": list(scopes), "access_level": DEVELOPER, "expires_at": until()})), "made"
+    tok = read_secret(ctx.paths.token(key))
     ctx.remember(tok)
-    write_file(path, tok + "\n")
-    rec = {"id": made.get("id"), "user_id": made["user_id"], "name": name, "scopes": list(scopes), "project_id": pid,
-           "expires_at": made.get("expires_at"), "username": "", "email": "", "display": ""}
-    tokens[key] = rec
-    save_state(ctx)                 # the new token's id is on disk before anything else can go wrong
-    if saved and saved.get("id") not in (None, rec["id"]):
-        revoke(ctx, saved["id"])
+    me = whoami(ctx, tok) if tok else None
+    signs_in = me is not None and me.get("id") == saved["user_id"]
+    if signs_in and not ends_soon(live.get("expires_at")):
+        saved.update(bot_fields(me), expires_at=live.get("expires_at"))
+        return saved, "kept"
+    got = ctx.gl.call("POST", "/projects/%d/access_tokens/%d/rotate" % (ctx.pid, int(saved["id"])),
+                      body={"expires_at": until()})
+    return keep(ctx, key, name, got), "ending" if signs_in else "lost"
+
+
+def active_token(ctx: Ctx, saved: Mapping[str, Any]) -> dict | None:
+    """GitLab's record of the token *saved* names while it is active and still that token (its name, its bot user);
+    None when it is revoked, expired or gone."""
+    try:
+        got = ctx.gl.call("GET", "/projects/%d/access_tokens/%d" % (ctx.pid, int(saved["id"])))
+    except Exception as exc:  # noqa: BLE001 - gone: made again; anything else as every step says it
+        if _gitlab_status(exc) == 404:
+            return None
+        raise
+    if not isinstance(got, dict) or got.get("active") is not True or got.get("revoked") \
+            or (got.get("user_id"), got.get("name")) != (saved.get("user_id"), saved.get("name")):
+        return None
+    return got
+
+
+def keep(ctx: Ctx, key: str, name: str, got: Any) -> dict:
+    """A token GitLab just made or rotated: its value into its own file, its id into the state at once (before anything
+    else can go wrong), then its bot user."""
+    got = got if isinstance(got, dict) else {}
+    tok = str(got.get("token") or "")
+    if not tok or not got.get("user_id") or got.get("id") is None:
+        raise StepFailed("GitLab 回的项目令牌 %s 里没有令牌的值：在 GitLab 上撤掉它，再跑一次" % name)
+    ctx.remember(tok)
+    write_file(ctx.paths.token(key), tok + "\n")
+    rec = {"id": got["id"], "user_id": got["user_id"], "name": name, "scopes": list(got.get("scopes") or ()),
+           "expires_at": got.get("expires_at"), "username": "", "email": "", "display": ""}
+    ctx.tokens[key] = rec
+    save_state(ctx)
     me = whoami(ctx, tok)
     if me is None:
-        raise StepFailed("新建的项目令牌 %s 登不上 GitLab：再跑一次" % name)
+        raise StepFailed("项目令牌 %s 的新值登不上 GitLab：再跑一次" % name)
     rec.update(bot_fields(me))
-    return rec, True
+    return rec
+
+
+def token_said(how: str, rec: Mapping[str, Any]) -> str:
+    return TOKEN_SAID[how].format(name=rec["name"], user=rec["username"], end=rec.get("expires_at") or "?")
+
+
+def utc_today() -> date:
+    return datetime.now(timezone.utc).date()
+
+
+def until() -> str:
+    """A new token's last day (it ends at midnight UTC): TOKEN_DAYS days from today in UTC."""
+    return (utc_today() + timedelta(days=TOKEN_DAYS)).isoformat()
+
+
+def ends_soon(expires_at: Any) -> bool:
+    """Whether a token GitLab says expires on *expires_at* (YYYY-MM-DD) has RENEW_DAYS days or fewer to go; one
+    without a date never expires."""
+    try:
+        end = date.fromisoformat(str(expires_at)[:10])
+    except ValueError:
+        return False
+    return end - utc_today() <= timedelta(days=RENEW_DAYS)
 
 
 def whoami(ctx: Ctx, tok: str) -> dict | None:
@@ -597,15 +652,6 @@ def whoami(ctx: Ctx, tok: str) -> dict | None:
 def bot_fields(me: Mapping[str, Any]) -> dict[str, str]:
     return {"username": str(me.get("username") or "").lower(), "email": str(me.get("email") or me.get("commit_email") or ""),
             "display": str(me.get("name") or "")}
-
-
-def revoke(ctx: Ctx, token_id: Any) -> None:
-    """Revoke a project token this setup made and replaced. Best effort: one GitLab will not revoke expires anyway."""
-    try:
-        ctx.gl.call("DELETE", "/projects/%d/access_tokens/%d" % (ctx.pid, int(token_id)))
-    except Exception as exc:  # noqa: BLE001
-        if _gitlab_status(exc) is None:
-            raise
 
 
 # ---- 3 how the runner pushes ------------------------------------------------------------------------------------ #
@@ -632,7 +678,7 @@ def step_push(ctx: Ctx) -> StepResult:
     template = clone_template(str(p.get("http_url_to_repo") or ""), path)
     if not template:
         return failed("GitLab 没给这个项目的 HTTPS 地址", detail=why)
-    rec, made = project_token(ctx, "bot", "brain-bot", BOT_SCOPES)
+    rec, how = project_token(ctx, "bot", "brain-bot", BOT_SCOPES)
     ok, said = reach(with_token(template, read_secret(ctx.paths.token("bot"))).format(project=path))
     if not ok:
         return failed("这台机器的 git 用 SSH 和项目令牌 brain-bot 都连不上 %s：运行机拉不到代码" % host,
@@ -640,9 +686,8 @@ def step_push(ctx: Ctx) -> StepResult:
     email = rec.get("email") or "%s@noreply.%s" % (rec["username"], host)
     ctx.state["push"] = {"mode": "token", "clone_url": template, "git_name": rec.get("display") or "brain-bot",
                          "git_email": email, "bot_users": [rec["username"]]}
-    return done("%s运行机用项目令牌 brain-bot 拉取和推送：账号 %s%s"
-                % ("这台机器的 SSH 连不上 GitLab，" if ctx.inp.push == "auto" else "", rec["username"],
-                   "（新建的）" if made else ""), detail=why)
+    return done("%s运行机用项目令牌拉取和推送。%s"
+                % ("这台机器的 SSH 连不上 GitLab，" if ctx.inp.push == "auto" else "", token_said(how, rec)), detail=why)
 
 
 def clone_template(url: str, path: str) -> str:
@@ -752,7 +797,7 @@ def wanted_kit(ctx: Ctx) -> dict[str, Any]:
     """kit.json as it is on the default branch, with what the runner needs set."""
     push, project = ctx.state["push"], ctx.state["project"]
     want = json.loads(json.dumps(ctx.kit))
-    want["bridge_user"] = ctx.state["tokens"]["bridge"]["username"]
+    want["bridge_user"] = ctx.tokens["bridge"]["username"]
     want["bot_users"] = list(push["bot_users"])
     want["bot_emails"] = [push["git_email"]]
     gitlab = want.get("gitlab") if isinstance(want.get("gitlab"), dict) else {}
@@ -890,7 +935,7 @@ def signer_doc(ctx: Ctx, salt: str) -> dict[str, Any]:
         "publish_vouchers": False,
         "ledger": str(ps.root / "signer-ledger.sqlite"),
         "pseudonym_salt": salt,
-        "bridge_users": [ctx.state["tokens"]["bridge"]["username"]],
+        "bridge_users": [ctx.tokens["bridge"]["username"]],
     }
 
 
