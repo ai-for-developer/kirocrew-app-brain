@@ -130,7 +130,8 @@ class Service:
         self.started = False
         self.settings = settings_mod.load(self.data_dir / "settings.json")
         self.repo_ids = RepoIds(self.data_dir / "repo_ids.json")     # each listed repo's id, kept (UI-19)
-        self.sessions = sessions or SessionManager(Gateway(self.name, APP_ROOT / ".app_secret"), app=self.name,
+        self.sessions = sessions or SessionManager(Gateway(self.name, APP_ROOT / ".app_secret",
+                                                           token_source=getattr(ctx, "app_token", None)), app=self.name,
                                                    state_file=self.data_dir / "sessions.json", log=self.log,
                                                    scrub=self.scrub)
         self.store = Store(self.data_dir / "events")
