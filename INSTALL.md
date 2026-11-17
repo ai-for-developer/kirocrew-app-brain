@@ -6,6 +6,9 @@
 这个仓库本身就是 KiroCrew 的一个应用来源：`main` 是源码，`release` 分支是装好就能用的 app（界面已经构建好，brain-kit 和
 Lean 也在里面）。安装时不用 node，也不用另外装 brain-kit。各部分的版本见 `release` 分支的 `VERSIONS`。
 
+以前没装 app、直接在 KiroCrew 会话里用 brain-kit 的项目，照 [MIGRATE.md](MIGRATE.md) 迁过来：它也写了怎么把以前的需求接进
+app、怎么配团队运行机。
+
 ## 1. 前提
 
 1. KiroCrew 0.11 或更新，已经装好并登录。

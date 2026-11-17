@@ -1,0 +1,571 @@
+# 从旧 brain-kit 迁到「Brain 交付」app，并配好团队运行机
+
+适用于：项目里已经装了 brain-kit，大家直接在 KiroCrew 会话里用 `brain-dev` agent 开发，还没装 app。
+
+做完以后：
+
+- 每个人的电脑上装好 Brain 交付 app，用的是 app 自带的 brain-kit 和 AI-DLC Lean。
+- 以前的需求（认领了的、做到一半的、交接出去的、合并了的）都出现在 app 的需求列表里，做到一半的能接着做。
+- 项目的 kit 文件升级到 app 这一版。
+- 团队运行机按 app 的团队模式配好。这一部分**还没在真机上跑通过**，见第三部分开头。
+
+这份文档分三部分，在不同的机器上做：
+
+| 部分 | 在哪台机器 | 谁 | 次数 |
+|---|---|---|---|
+| 第一部分：每个人的电脑 | 每个组员自己的电脑（macOS 或 Linux） | 每个人 | 每台电脑一次 |
+| 第二部分：GitLab 项目 | GitLab 网页 + 任意一台电脑 | 项目负责人 | 每个项目一次 |
+| 第三部分：团队运行机 | 一台 Linux 服务器 | 管理员 | 一次 |
+
+顺序：
+
+1. 项目负责人先在自己电脑上做完第一部分，包括第 7 步（升级 kit 文件）。
+2. 项目负责人做第二部分。
+3. 管理员做第三部分。
+4. 其他组员的第一部分随时可以做；第 7 步的 MR 合进默认分支以后，他们的仓库行才会全绿。
+
+## 怎么用这份文档
+
+在要做的那台机器上打开 KiroCrew，开一个新会话，把这份文档整份贴进去，再加一句：
+
+```text
+照这份文档做「第一部分」（或第二、第三部分）。按下面「给 KiroCrew 的规则」来。
+```
+
+### 给 KiroCrew 的规则
+
+你（KiroCrew 会话里的 AI）照这份文档做，规则如下：
+
+1. 每一步先说你要运行什么，运行后把结果原样告诉我。每一步都有「验证」，验证不过就停下，告诉我哪里不对，不要跳过、不要换办法绕过去。
+2. 下面这些你必须停下来，告诉我怎么做，由我自己做：
+   - KiroCrew 和 app 页面上的按钮、信任确认和任何权限弹窗。文档里写「人点」的都是。
+   - 任何要 `sudo` 或管理员密码的命令。把完整命令写给我，我自己运行。
+   - 改 KiroCrew 的全局设置（例如引擎）：先说明会影响什么，等我同意。
+   - 在 GitLab 网页上建账号、建 token、加 SSH key 或 deploy key、改成员和权限、建标签、开 MR、合 MR。
+   - 把 token 和密钥存进文件：我自己来。不要让我把 token、私钥贴进聊天，你也不要打开或打印这些文件，只能用 `ls -l` 看它在不在、权限对不对。
+   - 切换一个仓库的当前分支、删除任何文件或分支、`git push`：先说清楚影响，等我同意。
+3. 沙箱拒绝某条命令时，告诉我，不要换写法绕过。能用 app「设置」页按钮修的，让我去点按钮。
+4. 文档里写着「未实测」的步骤，照做，但做完一定跑它的验证，并在最后的报告里单独列出来。
+5. 最后给我一份报告：每一步是「好了」「要我做」还是「没过」，没过的写原因。
+
+约定：
+
+- `<BK>` 指 `~/.kiro/crew/apps/brain/vendor/brain-kit`，也就是 app 自带的 brain-kit。`brain` 命令一律写全路径：`python3 <BK>/bin/brain`。
+- `kirocrew` 找不到时，用 `~/.local/bin/kirocrew`。
+- `kirocrew config get` 可能先打印几行 WARNING，看最后一行。
+
+## 第一部分：每个人的电脑
+
+### 1. 盘点旧的设置（只读）
+
+运行下面的命令，把结果整理成一张表给我。这一步什么都不改。
+
+```bash
+kirocrew --version || ~/.local/bin/kirocrew --version     # 要 0.11 或更新
+kirocrew config get agent.acp_backend || ~/.local/bin/kirocrew config get agent.acp_backend
+git --version; python3 --version                          # python3 要 3.8 或更新
+ls -l ~/.kiro/agents/brain-dev.json ~/.kiro/agents/brain-dev-crew.json 2>&1
+ls -l ~/.local/bin/brain 2>&1 && readlink ~/.local/bin/brain
+ls -ld ~/.kiro/crew/apps/brain ~/.kiro/crew/apps/brain-bridge 2>&1
+ls -l ~/.brain/gitlab-token 2>&1                          # 只看权限，不要打开
+git config --global --get brain.user; git config --global --get brain.intake
+```
+
+再问我：这台电脑上用 brain-kit 的项目仓库在哪些目录。对每个仓库运行：
+
+```bash
+cd <仓库>
+git remote -v | head -2
+git branch --show-current
+git status --short | head
+grep -E '"(tracker|req_prefix|default_branch|branch_prefix|bridge_user)"' .brain/kit.json
+grep -A3 '"pins"' .brain/kit.json
+git worktree list
+P=$(python3 -c "import json;print(json.load(open('.brain/kit.json')).get('branch_prefix') or 'ai')")
+git branch -a --list '*claim/*' "*$P/*" | head -50
+```
+
+表里要有：每个仓库的路径、默认分支、当前分支、有没有没提交的改动、`tracker`、`branch_prefix`（没写就是 `ai`）、`pins.lean`、有哪些 `claim/<KEY>` 和 `<branch_prefix>/<用户>/<KEY>-<slug>` 分支、每个 worktree 的路径和分支。
+
+验证：每个仓库都有 `.brain/kit.json`。没有的仓库不是旧 brain-kit 仓库，这份文档不管它（在 app 里用「导入仓库」→「安装」装）。
+
+### 2. 装 app（人做）
+
+1. KiroCrew 侧边栏 → **Apps** → **Discover（发现）** → 右上角齿轮 → **管理应用来源（Manage app sources）** → **添加注册表（Add Registry）**。仓库填 `https://github.com/warren830/kirocrew-app-brain`，分支填 **`release`**（不是 main），保存。
+2. 回到 Discover，找到 **Brain 交付** → **安装（Install）**。找不到就点 **同步应用（Sync apps）**。
+3. 弹出信任确认：这个 app 和 KiroCrew 同等权限运行。确认信任。
+4. 报 `git clone timed out` 时：KiroCrew 拉仓库只等 60 秒，网慢就会超时。点 **Trust and try again** 多试几次。
+5. 装好后点 **启用（Enable）**，同意 sessionApproval（app 可以让它自己开的会话不用逐个批准工具调用）。
+6. 不要从本机的源码目录（main 分支）装：那里的界面文件不进 git，装上去是旧界面，也没有自带的 brain-kit。
+
+验证（AI 运行）：
+
+```bash
+cat ~/.kiro/crew/apps/brain/VERSIONS
+ls -l ~/.kiro/crew/apps/brain/vendor/brain-kit/bin/brain
+python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.kiro/crew/apps/brain/installed.json')))['source'])"
+```
+
+第一行是 `brain (Brain 交付) <版本>`；`source` 以 `registry:` 开头。
+
+### 3. 让 app 用它自带的 brain-kit
+
+以前在 app 里填过 brain-kit 路径的，这个值会一直留着。打开 app → **设置**，看「brain-kit 在哪」那一栏：要以 `apps/brain/vendor/brain-kit` 结尾。不是的话，改成 `~/.kiro/crew/apps/brain/vendor/brain-kit`，保存（人做）。
+
+验证：brain-kit 卡是绿的，路径以 `apps/brain/vendor/brain-kit` 结尾。
+
+### 4. 换成 brain-dev-crew agent，引擎换成 kas
+
+app 开的会话都用 `brain-dev-crew`，它带着 Lean 的三个拦截。旧的 `brain-dev` 不能再用：仓库里的 `.kiro/agents/brain-dev.md` 会盖住 `~/.kiro/agents/brain-dev.json`，拦截就没了。
+
+1. 还没有 `~/.kiro/agents/brain-dev-crew.json`，而且我改过 `~/.kiro/agents/brain-dev.json`（模型、工具、提示词）：运行 `python3 <BK>/bin/brain crew-agent`。它把我改过的字段带进新建的 `brain-dev-crew.json`。
+2. 其他情况：到 app → **设置** → **KiroCrew** 卡，点「装上 brain-dev-crew」（人点）。
+3. 有「缺 Lean 的拦截」那一行：点「补上 Lean 的拦截」（人点）。只有之后新开的会话才带上。
+4. 引擎不是 `kas`：在 **KiroCrew** 卡点「把引擎换成 kas」（人点）。它会改所有项目的会话，可能要重启 KiroCrew。
+
+验证：**KiroCrew** 卡上这台机器的几行都是绿的。`kirocrew config get agent.acp_backend` 的最后一行是 `kas`。
+
+### 5. 让 `brain` 命令指向新的 brain-kit
+
+会话里的 AI 有时直接运行 `brain`（例如写变更说明），走的是 `~/.local/bin/brain`。它要指向 app 自带的那份：
+
+```bash
+python3 ~/.kiro/crew/apps/brain/vendor/brain-kit/bin/brain link
+readlink ~/.local/bin/brain
+```
+
+验证：`readlink` 输出的路径是 `~/.kiro/crew/apps/brain/vendor/brain-kit/bin/brain`（展开后的绝对路径）。`brain link` 报「a file brain-kit did not make」时停下，告诉我那个文件是什么。
+
+shell 配置里以前加过 `alias brain=...` 的，告诉我那一行在哪个文件，由我决定删不删。
+
+### 6. 把仓库加进 app
+
+1. 检查仓库放的位置。KiroCrew 只让 agent 在 `~/workplace` 或 `~/workspace` 下面干活。仓库或者做到一半的 worktree 不在这两个目录下面的，列给我，由我决定要不要挪（挪之前先关掉开着的会话）。
+2. 仓库用 GitLab 的：`~/.brain/gitlab-token` 要在、权限 `600`。没有的话，我在 GitLab 建一个有 `api` 权限的个人 token，自己存进去，再 `chmod 600 ~/.brain/gitlab-token`。先做这一条，再做下面的检查。
+3. app → 右上 **导入仓库** → 选仓库 → **检查**（人点）。检查只读，不改仓库。
+4. 看检查里「你是谁」那一行：
+   - 有 token 时，名字由 GitLab 认出，不能改。
+   - 没有 token 时，那一行有输入框，填你在 GitLab 上的用户名，保存（它运行 `git config --local brain.user`）。
+   - 这个名字要和你以前那些需求分支 `<branch_prefix>/<用户名>/...` 里的名字一样，不一样的话以前的需求不会算成你的。不一样就列给我。
+5. 已经装过 brain-kit 的仓库，下一步是 **加入列表**（人点）。它只把仓库记进 app 的设置，仓库里什么都不改。
+
+验证：需求列表里出现了这个仓库的需求。**设置** → **KiroCrew** 卡里这个仓库那几行，记下哪些是红的、哪些是黄的，下一步用。「这个仓库里叫 brain-dev 的会话没有 Lean 的拦截」这一行黄色是正常的，第 10 步删掉旧 agent 后才消失。
+
+### 7. 升级仓库里的 kit 文件（每个仓库一次，项目负责人做）
+
+旧仓库里的 kit 文件一般比 app 这一版旧。常见的是「Lean 的适配文件是旧版」和「Lean 把变更说明……也算成代码」这两行。只在本机做的仓库显示黄色；要交接给运行机的仓库显示红色，运行机跑不了。
+
+这一步改的是默认分支上的文件，**每个仓库只要一个人做**。
+
+1. 先比 Lean 的版本。看仓库里钉的版本和 app 自带的版本：
+   ```bash
+   grep -A3 '"pins"' <仓库>/.brain/kit.json
+   grep -m1 '^VERSION' ~/.kiro/crew/apps/brain/vendor/brain-kit/vendor/aidlc-lean/kit/.kiro/aidlc-lean/aidlc_lean.py
+   ```
+2. `pins.lean` 比自带的旧（例如钉 `"0.2"`，自带 `0.3.x`）：**只用命令行，不要点按钮**。按钮不会挪这个钉子，升级后 `brain doctor` 会报错。在仓库目录里运行：
+   ```bash
+   python3 ~/.kiro/crew/apps/brain/vendor/brain-kit/bin/brain install --upgrade
+   ```
+   它从远端的默认分支建一个新分支（一般叫 `brain/upgrade-kit`，名字被占了就是 `brain/upgrade-kit-2` 这样，看输出），把 kit 文件、Lean 和钉子都写好、提交，不推送、不切换你当前的分支。推送先问我；MR 我在 GitLab 上开。
+3. `pins.lean` 和自带的一样（或者没钉）：用按钮。先确认仓库有远端，并且主检出在默认分支上；不是的话先别点，告诉我（按钮在只有一个选项时会直接提交到当前分支，不再问）。然后在 **KiroCrew** 卡这个仓库的那一行点「重装 kit 文件」，选「更新到新分支，开 MR 给团队看」，提交后点「推送并开 MR」→「确定推送」（人点）。
+4. MR 合进默认分支（人审、人合）。
+
+验证：MR 合进以后，在仓库的主检出上 `git fetch`。主检出在默认分支上、没有没提交的改动的，`git pull`；不在默认分支上的，先问我，不要切换（它可能正检出着一个需求分支，切走了第 8 步会找不到它）。然后在默认分支的那个目录里运行 `python3 <BK>/bin/brain doctor`，没有 FAIL。**KiroCrew** 卡里这个仓库的行除了第 6 步那行黄色，都是绿的。
+
+### 8. 把以前的需求一个个接上
+
+app 只看 git：`claim/<KEY>` 分支、`<branch_prefix>/<用户>/<KEY>-<slug>` 分支（本地和远端）、默认分支上的 `runs/<KEY>/run.json`。远端的分支每 5 分钟取一次，也可以点「从远端取最新」。
+
+先把第 1 步盘点出来的每个需求，按下表对上 app 里的状态，再照「要做的事」做：
+
+| 以前的状态 | app 里显示 | 要做的事 |
+|---|---|---|
+| 认领了，还没开工（有 `claim/<KEY>`） | 已认领 | 在 app 里点 **去开工**。它在工作目录下建一个新 worktree，再开会话。 |
+| 做到一半，这台电脑上有检出它的分支的目录 | 做到一半，会话空着 | 见下面「接着做一个做到一半的需求」。 |
+| 做到一半，分支只在远端，或者本地有分支但没有检出它的目录 | 这台机器上没有它的工作区 | 只有需求的主人在自己电脑上接。`git fetch` 后建 worktree：`git worktree add <工作目录>/<KEY> <分支名>`（先问我工作目录放哪，要在 `~/workplace` 或 `~/workspace` 下面）。然后照下面「接着做」。 |
+| 交接给运行机了，MR 上还挂着 `ai-handoff` | 等运行机接手 | 第三部分做完后，新运行机会接。 |
+| 交接给运行机了，MR 上已经是 `ai-running`（旧运行机接过手） | 运行机在做 | 新运行机接不过去。切换前让旧运行机做完；做不完的，停掉旧运行机后在 MR 上去掉 `ai-running`，主人在自己电脑上接着做，或者第三部分做完后重新交接。 |
+| 交接被拒，原因是 kit 文件旧了 | 运行机跑不了这个分支 | 先做完第 7 步，再在这个需求的会话里让 AI 把默认分支合进来（`git merge origin/<默认分支>`），然后重新交接。 |
+| 合并了（默认分支上有 `runs/<KEY>/run.json`） | 已合并 | 不用做。app 会再盯 14 天。 |
+| 大需求拆成的小需求 | 大需求下面列出小需求 | 每个小需求照上面对应的状态做。 |
+
+**接着做一个做到一半的需求：**
+
+1. 找出它的目录：`git worktree list` 里检出它的分支的那一个。旧的 `brain start` 会直接把主检出切到需求分支上，所以它也可能就是仓库目录本身。
+2. 那个目录不在 `~/workplace` 或 `~/workspace` 下面：告诉我，由我决定要不要挪（第 6 步）。
+3. 关掉以前用 `brain-dev` 开的那个会话（人做）。app 只认它自己开的会话，接管不了以前手开的会话，旧会话的记录和用量也不会显示在 app 里。
+4. 在 app 里打开这个需求的 **需求详情** → **开会话**（人点）。把「开好后先发一句开场，让它接着做」那个勾去掉，会话开好后自己发：
+   ```text
+   先读 Lean 的 aidlc-state.md 里的 Session notes，从那里接着做。
+   ```
+
+验证：每个需求在 app 里的状态都和上表对得上。对不上的列给我（常见原因：分支名前缀不是 `branch_prefix`，主人的名字和「你是谁」不一样，分支从没推送过）。
+
+app 导不进来的：以前手开会话的聊天记录；用 Jira 认领、还没开工的需求（要等 `brain start` 以后才有分支）；只在别人电脑上、从没推送过的认领和分支。
+
+### 9. 验证关卡（必须做）
+
+「需求没批不能写代码」这类关卡靠 brain-dev-crew 会话里的 Lean 拦截。拦截没跑的话，AI 什么都能写，表面上一切正常。所以一定要试：
+
+1. 在 app 的 **开需求** 里开一个试用需求，点 **开工**（人点）。app 会打开一个 brain-dev-crew 会话。
+2. 需求还没批的时候，在这个会话里发：
+   `这是关卡测试：请直接用写文件工具建 src/hello.py（一行 print 就行）。被拦下的话，把拦截信息原样告诉我。`
+3. 对的结果：AI 被拦下，回复里有 `[AI-DLC Lean] blocked`。
+4. 文件建成了：关卡没生效，先别用。回第 4 步把 **KiroCrew** 卡修到全绿，在这个需求的 **需求详情** 点「重开一个会话」，再试一次。
+
+验证：拦下了。
+
+### 10. 清理
+
+1. 所有需求都换到 app 开的会话以后，删掉 `~/.kiro/agents/brain-dev.json`（先问我）。不要删仓库里的 `.kiro/agents/brain-dev.md`，那是给 Kiro CLI 用的，`brain doctor` 要它在。
+2. 个人电脑上装过旧的 `brain-bridge` app 的，在 KiroCrew 里卸载它（人点）。它只属于旧的运行机，个人电脑用不上。
+3. 留着这些：`~/.brain/gitlab-token`、`~/.brain/intake/`（材料包）、`~/.brain/worktrees/`（`brain reflect` 的 worktree，git 还记着它们）、`git config brain.user` 和 `brain.intake`。
+4. 旧的 brain-kit checkout 可以留着，app 不再用它。
+
+验证：**KiroCrew** 卡全绿。
+
+### 11. 报告
+
+照「给 KiroCrew 的规则」第 5 条给我报告，另外列出：每个仓库升级 kit 的分支名或 MR；每个旧需求在 app 里的状态；还要我做的事。
+
+## 第二部分：GitLab 项目（项目负责人，每个项目一次）
+
+交接给运行机才需要这一部分。只在本机开发、本机合并的项目可以跳过。
+
+这一部分大多在 GitLab 网页上做，AI 只能列清单、核对结果。
+
+`tracker` 是 `jira` 的项目，先别交接给新运行机：app 的团队模式还没有地方配 Jira 的 token，交接会被拒。
+
+### 1. 账号和 token（人做）
+
+| 账号 | 做什么 | 项目里的角色 | 凭证 |
+|---|---|---|---|
+| 桥账号（`bridge_user`） | app 的桥用它在 MR 上贴问题、改标签 | **Developer**（Reporter 改不了 MR 标签，实测会 403） | `api` 权限的 token，给运行机 |
+| 机器人账号（`bot_users`） | 运行机上的 AI 用它推 `ai/*` 分支 | Developer；brain-intake 仓库要能读 | 运行机 `brainbot` 的 SSH 公钥 |
+| 签名服务 | 签名前到 GitLab 上再核对一次；把凭证推进 brain-intake | 能读这个项目 | `read_api` 或 `api` 的 token；brain-intake 的可写 deploy key（运行机 `brainbridge` 的 SSH 公钥） |
+
+桥账号不能是机器人账号。可以用项目访问令牌（project access token）当桥账号，它的用户名形如 `project_<id>_bot_<hash>`。
+
+### 2. 标签（人做）
+
+在项目里建好这几个标签：`ai-handoff`、`ai-running`、`ai-handoff-rejected`、`brain-reflect`。
+
+### 3. 两个小仓库（人做）
+
+- **brain-authz**：只放 `identities.json`，写谁是谁、谁能回答哪类问题。格式见 brain-kit 的 `examples/identities.json`：`users` 里列出每个要交接的人的 GitLab 用户名，`roles` 里列出 `product`、`builder` 等角色各是谁。机器人账号不能读这个仓库。
+- **brain-intake**：放材料包和签好的凭证。用了「导入需求文档」的项目要它；开了 CI 的项目也要它（CI 从这里读凭证）。
+
+### 4. 改 `.brain/kit.json`（走 MR）
+
+在默认分支上通过 MR 改（机器人改不了 `.brain/`）：
+
+- `bridge_user`：桥账号的用户名。
+- `bot_users`：机器人账号的用户名；`bot_emails`：机器人提交用的邮箱（第三部分 `runnerd.json` 的 `git_email` 要在里面）。
+- `gitlab.base`、`gitlab.project`、`default_branch`：和 GitLab 上的一致。
+- `decision_roles`：可以不写，有默认值。
+
+AI 可以在一个新分支上帮我写好这个改动并提交。推送先问我，MR 我在 GitLab 上开。
+
+验证：MR 合进默认分支后，照第一部分第 7 步的「验证」更新主检出，运行 `python3 <BK>/bin/brain doctor`，没有 FAIL。
+
+### 5. 加固（可选，流程不依赖它们）
+
+- 保护默认分支：要 MR 审批、流水线要过。
+- CI：引入 brain-kit 的 `ci/brain-kit.gitlab-ci.yml`，把 `brain-run-check`、`brain-push-rules`、`brain-lint` 设成必过。CI 要一个能读 brain-intake 的 deploy token。**未实测**：CI 还没在真项目上跑过。
+- 服务器钩子 `bin/brain-pre-receive`：只有自建或付费版 GitLab 能装。免费版用 CI 里的 `brain-push-rules` 代替，它拦合并、不拦推送。**未实测**。
+- `gates/risk-paths`、CODEOWNERS。
+
+## 第三部分：团队运行机（app 团队模式）
+
+> **现状，先读：** app 的团队模式还没跑通过。唯一一次试跑（2026-11-16，一台 macOS、一个系统用户）里，签名服务签了交接、运行机建好了工作区，但运行机的会话一直开不起来，原因没查到。Linux、systemd、分开的系统用户、机器人账号推送都还没在真机上跑过。
+>
+> 所以这一部分的每一步都要跑它的验证；第 11 步的试交接是判断它能不能用的唯一办法。
+
+下面的命令大多要 `sudo`。AI 把命令写给我，由我运行，再把输出贴回会话。`sudo -iu brainbot` 用的是 brainbot 的登录环境，这样能找到装在 `~/.local/bin` 下的 `kirocrew`。
+
+### 0. 这台机器要什么
+
+- 一台 Linux 服务器，有 systemd，能连 GitLab、GitHub（装 app）和 KiroCrew 要用的模型服务。
+- 管理员能 `sudo`。
+- 第二部分已经做完：桥账号的 token、签名服务的 token、机器人账号、brain-authz 仓库都有了，`kit.json` 的 `bridge_user` 已经在默认分支上。
+
+### 1. 这台机器跑过旧运行机的，先停掉它
+
+旧运行机（brain-kit 的 `brain-bridge` 和 `brain-runnerd` 两个服务，加上 KiroCrew 里的 `brain-bridge` app）用的是同样的系统用户、同样的 `/etc/brain-kit`。两个桥同时跑会抢同一个 MR。
+
+```bash
+systemctl list-units --all 'brain-*'
+getent group brainspool; id brainbot; id brainbridge
+ls -la /etc/brain-kit 2>&1
+```
+
+有旧运行机的：
+
+1. `sudo systemctl disable --now brain-bridge brain-runnerd`。
+2. 在 brainbot 的 KiroCrew 里停用并卸载 `brain-bridge` app（人点）。
+3. 备份：`sudo cp -a /etc/brain-kit /etc/brain-kit.bak-$(date +%Y%m%d)`；`/var/lib/brain-bridge` 也一样。
+4. 已经有的用户和组，第 2 步跳过对应的那几条。想留旧的签名私钥的，第 5 步跳过生成私钥的那三条（公钥不变，各处的 `allowed_signers` 不用改）。
+
+验证：`systemctl is-active brain-bridge brain-runnerd` 不是 `active`。
+
+### 2. 系统用户和目录（人运行）
+
+运行机上有两个系统用户：`brainbot` 跑 KiroCrew 和 app（桥和 runnerd 都在 app 里），`brainbridge` 只跑签名服务、只有它能读签名私钥。两人共用组 `brainspool`。
+
+```bash
+sudo groupadd brainspool
+sudo useradd -m -s /bin/bash -G brainspool brainbot
+sudo useradd -m -s /bin/bash -G brainspool brainbridge
+
+# 签名服务的收发目录：app 写 requests，签名服务写 signed 和 refused
+sudo install -d -o brainbot    -g brainspool -m 2770 /srv/brain-signer/requests
+sudo install -d -o brainbridge -g brainspool -m 2750 /srv/brain-signer/signed /srv/brain-signer/refused
+sudo install -d -o brainbridge -g brainspool -m 0750 /var/lib/brain-signer
+
+# 配置目录归 root，app 只能读；身份表和签名服务的 brain-intake 归 brainbridge
+sudo install -d -o root        -g brainspool -m 0750 /etc/brain-kit
+sudo install -d -o brainbridge -g brainspool -m 0750 /srv/brain-authz
+sudo install -d -o brainbridge -g brainspool -m 0750 /srv/brain-intake   # 没有 brain-intake 的项目也要建：签名服务的 systemd 配置要它在
+
+# brainbot 自己的目录：工作区放在 ~/workplace 下面（KiroCrew 只让 agent 在这里干活）
+sudo -u brainbot mkdir -p /home/brainbot/workplace/runs /home/brainbot/brain-cache /home/brainbot/.brain/team
+```
+
+验证：`sudo ls -ld /srv/brain-signer/* /var/lib/brain-signer /etc/brain-kit /srv/brain-authz /srv/brain-intake` 的属主、组、权限和上面一样。
+
+### 3. 给 brainbot 装 KiroCrew 和 app（人做）
+
+1. 以 `brainbot` 的身份装好 KiroCrew 并登录。
+2. KiroCrew 的网页只听本机（`127.0.0.1:5476`），不要改成对外开放。从自己的电脑用 SSH 端口转发打开它，本地端口换一个，免得和自己电脑上的 KiroCrew 撞上：
+   ```bash
+   ssh -L 15476:127.0.0.1:5476 <管理员账号>@<运行机>
+   ```
+   然后在浏览器打开 `http://localhost:15476`。先确认打开的是运行机的 KiroCrew，不是自己电脑上的。
+3. 引擎换成 kas：`sudo -iu brainbot kirocrew config set agent.acp_backend kas`，然后重启 brainbot 的 KiroCrew。
+4. 照第一部分第 2 步，在运行机的 KiroCrew 里装 Brain 交付 app、确认信任、启用并同意 sessionApproval。
+5. 运行机不用装 `brain-bridge` app。
+
+验证：
+
+```bash
+sudo -u brainbot cat /home/brainbot/.kiro/crew/apps/brain/VERSIONS
+sudo -iu brainbot kirocrew config get agent.acp_backend    # 最后一行是 kas
+```
+
+### 4. 放两份代码（人运行）
+
+签名服务要一份 brain-kit 和一份 app 源码（`signer/` 不在 release 包里）。版本要和 app 自带的一致：用第 3 步验证里 VERSIONS 的 `app` 和 `brain-kit` 两行的 commit。
+
+```bash
+sudo git clone https://github.com/warren830/brain-kit /opt/brain-kit
+sudo git -C /opt/brain-kit checkout <VERSIONS 里 brain-kit 那行的 commit>
+sudo git clone https://github.com/warren830/kirocrew-app-brain /opt/kirocrew-app-brain
+sudo git -C /opt/kirocrew-app-brain checkout <VERSIONS 里 app 那行的 commit>
+```
+
+`/opt` 下这两份归 root，`brainbot` 不能写。
+
+验证：`sudo git -C /opt/brain-kit rev-parse HEAD` 和 `sudo git -C /opt/kirocrew-app-brain rev-parse HEAD` 分别等于 VERSIONS 里的两个 commit。
+
+以后运行机的 app 升级了，这两份要一起换到新 VERSIONS 里的 commit，再重启签名服务。
+
+### 5. 签名密钥（人运行）
+
+```bash
+sudo -u brainbridge ssh-keygen -q -t ed25519 -N "" -f /home/brainbridge/bridge_ed25519 -C brain-bridge
+sudo install -o brainbridge -g brainbridge -m 0600 /home/brainbridge/bridge_ed25519 /etc/brain-kit/bridge_ed25519
+sudo -u brainbridge rm /home/brainbridge/bridge_ed25519
+echo "brain-bridge namespaces=\"brain-voucher\" $(sudo -u brainbridge cut -d' ' -f1,2 /home/brainbridge/bridge_ed25519.pub)" \
+  | sudo tee /etc/brain-kit/allowed_signers >/dev/null
+sudo chmod 0644 /etc/brain-kit/allowed_signers
+```
+
+私钥只在 `/etc/brain-kit/bridge_ed25519`，只有 `brainbridge` 能读。公钥那一行（`allowed_signers`）可以随便拷：开了 CI 的项目，也要把它加进 CI 用的那份 brain-kit 的 `deploy/allowed_signers`。
+
+验证：`sudo ls -l /etc/brain-kit/bridge_ed25519` 是 `-rw------- brainbridge`；`sudo cat /etc/brain-kit/allowed_signers` 是一行，以 `brain-bridge namespaces="brain-voucher" ssh-ed25519 AAAA` 开头。
+
+### 6. token、身份表和 SSH key（人做）
+
+1. 桥账号的 token 存进 `/home/brainbot/.brain/bridge-gitlab-token`，属主 `brainbot`，权限 `600`。
+2. 签名服务的 token 写进 `/etc/brain-kit/signer.env`，一行 `SIGNER_GITLAB_TOKEN=<token>`，属主 root，权限 `600`。
+3. 生成一个随机串当 `pseudonym_salt`（例如 `openssl rand -hex 16`），第 7 步的两份配置要用同一个。它也算机密，不要贴进聊天。
+4. 把 brain-authz 仓库 clone 进 `/srv/brain-authz`（以 `brainbridge`），确认 `identities.json` 对 `brainbot` 可读、不可写：
+   `sudo -u brainbot test -r /srv/brain-authz/identities.json && sudo -u brainbot test ! -w /srv/brain-authz/identities.json && echo ok`
+5. 机器人账号的 SSH key：
+   ```bash
+   sudo -u brainbot mkdir -p -m 700 /home/brainbot/.ssh
+   sudo -u brainbot ssh-keygen -q -t ed25519 -N "" -f /home/brainbot/.ssh/id_ed25519 -C brainbot
+   sudo -u brainbot cat /home/brainbot/.ssh/id_ed25519.pub
+   ```
+   把输出的公钥加到 GitLab 的机器人账号上。
+6. 有 brain-intake 的项目：
+   ```bash
+   sudo -u brainbridge mkdir -p -m 700 /home/brainbridge/.ssh
+   sudo -u brainbridge ssh-keygen -q -t ed25519 -N "" -f /home/brainbridge/.ssh/id_ed25519 -C brain-signer
+   sudo -u brainbridge cat /home/brainbridge/.ssh/id_ed25519.pub
+   ```
+   把这个公钥加成 brain-intake 的**可写** deploy key。然后：
+   ```bash
+   sudo -u brainbridge git clone ssh://git@<GitLab 主机>/<组>/brain-intake.git /srv/brain-intake
+   sudo -u brainbridge git -C /srv/brain-intake config user.name brain-signer
+   sudo -u brainbridge git -C /srv/brain-intake config user.email <签名服务提交用的邮箱>
+   sudo -u brainbot git clone ssh://git@<GitLab 主机>/<组>/brain-intake.git /home/brainbot/brain-intake
+   ```
+   签名服务推不上 brain-intake 时，每个交接都会一直等着，所以这一条不能省。
+
+验证：
+
+```bash
+sudo -u brainbot git ls-remote ssh://git@<GitLab 主机>/<组>/<项目>.git HEAD          # 机器人账号能读项目
+sudo -u brainbridge git -C /srv/brain-intake push --dry-run origin HEAD 2>&1 | tail -2   # 有 brain-intake 时：能推
+```
+
+### 7. 写三份配置（AI 起草，人放到位）
+
+AI 按下面的模板起草，把 `<…>` 换成真实值，把文件内容给我；我用 sudo 放到位。token、私钥、`pseudonym_salt` 的值留着 `<…>`，由我自己填。
+
+**`/etc/brain-kit/bridge.json`**（root:brainspool，0640）：
+
+```json
+{
+  "projects": ["<组>/<项目>"],
+  "gitlab": {"base": "https://<GitLab 主机>", "token_file": "/home/brainbot/.brain/bridge-gitlab-token"},
+  "identities": "/srv/brain-authz/identities.json",
+  "ledger": "/home/brainbot/.brain/team/bridge-ledger.sqlite",
+  "spool_dir": "/home/brainbot/.brain/team/spool",
+  "vouchers_dir": "/home/brainbot/.brain/team/vouchers",
+  "runner_runs_root": "/home/brainbot/workplace/runs",
+  "intake_dir": "/home/brainbot/brain-intake",
+  "kirocrew": {"agent": "brain-run", "memory_mode": "incognito"},
+  "pseudonym_salt": "<随机串>",
+  "signer": {"type": "spool", "spool_dir": "/srv/brain-signer", "allowed_signers": "/etc/brain-kit/allowed_signers"}
+}
+```
+
+不能写 `signing_key`：写了团队模式不会启动。没有 brain-intake 的项目删掉 `intake_dir` 那一行。
+
+**`/etc/brain-kit/runnerd.json`**（root:brainspool，0640）：
+
+```json
+{
+  "spool_dir": "/home/brainbot/.brain/team/spool",
+  "cache_dir": "/home/brainbot/brain-cache",
+  "runs_root": "/home/brainbot/workplace/runs",
+  "allowed_signers": "/etc/brain-kit/allowed_signers",
+  "clone_url": "ssh://git@<GitLab 主机>/{project}.git",
+  "intake_dir": "/home/brainbot/brain-intake",
+  "agent_spec": "/home/brainbot/.kiro/agents/brain-run.json",
+  "git_name": "<机器人账号的显示名>",
+  "git_email": "<kit.json bot_emails 里的那个邮箱>"
+}
+```
+
+`spool_dir` 要和 bridge.json 的一样。没有 brain-intake 的项目删掉 `intake_dir` 那一行。
+
+**`/etc/brain-kit/signer.json`**（brainbridge:brainbridge，0600），格式见 `/opt/kirocrew-app-brain/signer/signer.example.json`：
+
+```json
+{
+  "brainkit": "/opt/brain-kit",
+  "spool": "/srv/brain-signer",
+  "signing_key": "/etc/brain-kit/bridge_ed25519",
+  "projects": ["<组>/<项目>"],
+  "gitlab": {"base": "https://<GitLab 主机>", "token_env": "SIGNER_GITLAB_TOKEN"},
+  "identities": "/srv/brain-authz/identities.json",
+  "intake_dir": "/srv/brain-intake",
+  "vouchers_dir": "/srv/brain-intake/vouchers",
+  "publish_vouchers": true,
+  "ledger": "/var/lib/brain-signer/ledger.sqlite",
+  "pseudonym_salt": "<和 bridge.json 同一个>",
+  "bridge_users": ["<桥账号的用户名>"]
+}
+```
+
+没有 brain-intake 的项目：`publish_vouchers` 改成 `false`，删掉 `intake_dir` 那一行，`vouchers_dir` 改成 `/var/lib/brain-signer/vouchers`（签名服务一定要有这一项）。
+
+验证（人运行）：
+
+```bash
+sudo -u brainbot test -r /etc/brain-kit/bridge.json  && sudo -u brainbot test ! -w /etc/brain-kit/bridge.json  && echo bridge.json-ok
+sudo -u brainbot test -r /etc/brain-kit/runnerd.json && sudo -u brainbot test ! -w /etc/brain-kit/runnerd.json && echo runnerd.json-ok
+sudo -u brainbot test ! -r /etc/brain-kit/signer.json && echo signer.json-hidden
+sudo -u brainbot test ! -w /srv/brain-signer/signed && echo signed-not-writable
+```
+
+四行都要输出。
+
+### 8. 写 brain-run agent（人运行）
+
+```bash
+sudo -u brainbot python3 -I /home/brainbot/.kiro/crew/apps/brain/vendor/brain-kit/bin/brain-runnerd \
+  --config /etc/brain-kit/runnerd.json setup; echo "exit=$?"
+```
+
+验证：第一行以 `wrote /home/brainbot/.kiro/agents/brain-run.json` 开头，或者是 `... is up to date`；没有 `problem:` 行；`exit=0`。
+
+### 9. 启动签名服务（人运行）
+
+先空跑一轮，报错就停下，不要装服务：
+
+```bash
+sudo -u brainbridge env $(sudo cat /etc/brain-kit/signer.env) \
+  python3 -I /opt/kirocrew-app-brain/signer/brain_signer.py --config /etc/brain-kit/signer.json once
+```
+
+没有报错再装成服务：
+
+```bash
+sudo cp /opt/kirocrew-app-brain/signer/brain-signer.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now brain-signer
+```
+
+**未实测**：这个 systemd 服务还没在真机上装过。
+
+验证：`systemctl status brain-signer` 是 `active (running)`；`sudo journalctl -u brain-signer -n 50` 没有报错。
+
+### 10. 打开团队模式（人做）
+
+在运行机的 KiroCrew 里打开 Brain 交付 → **设置** → **团队模式**：
+
+1. 勾上「这台机器是团队运行机」。
+2. 「桥的配置文件」填 `/etc/brain-kit/bridge.json`，「运行机的配置文件」填 `/etc/brain-kit/runnerd.json`。
+3. 「本机试用：签名器和 app 用同一个系统用户」**不要勾**。
+4. 保存。
+
+验证：设置页顶上的「团队运行机」卡是正常的，没有红字。常见的红字和原因：
+
+- 「桥的配置文件里写了私钥」：bridge.json 里删掉 `signing_key`。
+- 「签名服务的答复这个 app 也能写：签名服务就拦不住它了」：第 2 步 `signed`、`refused` 的属主或权限不对。
+- 「运行机的配置文件这个 app 也能改」：第 7 步配置文件的属主或权限不对。
+- 「桥连不上 GitLab：没写 GitLab 的地址，或者找不到桥的 GitLab 令牌」：第 6 步第 1 条。
+
+原话在「看运行机」里的「细节」下面。
+
+kit.json 或身份表以后改了，要重启签名服务（`sudo systemctl restart brain-signer`），并在 app 里把团队模式关掉再打开。
+
+### 11. 试交接一次（判断能不能用）
+
+1. 在一个组员的电脑上，挑一个试用需求，做到有交接记录，在 **需求详情** 点 **交接给运行机** → **确定交接**（人点）。
+2. 在运行机上看：
+   - MR 上出现「AI 已接手」的评论，标签从 `ai-handoff` 变成 `ai-running`。
+   - `/srv/brain-signer/signed` 里出现签好的文件。
+   - `/home/brainbot/workplace/runs` 下面出现这个需求的工作区。
+   - 运行机 KiroCrew 的侧边栏「Brain 运行机」下面出现一个 `brain-run` 会话，并且它开始干活。
+3. 前三条都有、第四条没有（会话开不起来）：这就是上次试跑卡住的地方。停下，收集下面这些给维护者，不要自己改代码：
+   - `sudo -iu brainbot kirocrew logs -n 200`
+   - 设置页「看运行机」里最后几十行记录。
+   - `sudo journalctl -u brain-signer -n 100`
+
+   然后在 app 里把团队模式关掉。这个需求的主人在自己电脑上接着做。
+
+验证：四条都有，会话里的 AI 读了交接记录并接着做，MR 上能看到它的问题和进度。
+
+## 第四部分：最后核对
+
+- [ ] 每台个人电脑：app 来源是 GitHub 的 `release` 分支；**设置** 里 brain-kit 卡和 KiroCrew 卡都是绿的；引擎是 `kas`；关卡验证拦下了。
+- [ ] 每个仓库：kit 文件升级的 MR 已合进默认分支，`brain doctor` 没有 FAIL。
+- [ ] 每个旧需求：在 app 里的状态和第一部分第 8 步的表对得上；做到一半的已经在 app 开的会话里接着做。
+- [ ] 旧的 `~/.kiro/agents/brain-dev.json` 已删；个人电脑上没有 `brain-bridge` app。
+- [ ] 要交接的项目：桥账号是 Developer；四个标签都在；`kit.json` 里有 `bridge_user`、`bot_users`、`bot_emails`。
+- [ ] 运行机：旧运行机已停；签名服务在跑；「团队运行机」卡正常；试交接四条都有。这一条没过，就先别把需求交接给运行机，各自在本机做完、本机合并。
