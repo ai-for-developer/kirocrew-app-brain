@@ -6,7 +6,7 @@
  * load and cite it; `code` in its text in monospace), filtered by text and type; the entry the URL names (`id`) is
  * picked out and scrolled to. Beside it the Brain's check and what is never cited or keeps coming back; below, every
  * run's use of the Brain (the numbers count the runs merged into the default branch: a run not merged yet is listed on
- * its own, with what 需求详情 says for it), and 回写 as steps: pick a requirement → 预览 → the changes → confirm →
+ * its own, with what 需求现状 says for it), and 回写 as steps: pick a requirement → 预览 → the changes → confirm →
  * written on a new branch (and an MR, linked); the merged requirements first, the usual time to write one back. An empty
  * Brain says what fills it and leads to 开需求; no repo leads to 导入仓库; a repo asked for that cannot be read says why
  * (never another repo's Brain in its place). A rate whose base is 0 says 还没有 and when it will have one. Breakpoints follow the view's own width (its root is the `kt-root` container), not the window: inside

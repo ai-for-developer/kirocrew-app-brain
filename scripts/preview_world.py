@@ -3,7 +3,7 @@
 
 Every requirement here is written as what brain-kit and Lean record — Lean's audit events, the run branch's commits,
 the hand-over, the bridge's acceptance and vouchers, park.json's questions, the MR's D-n, the merge — and turned into
-the 需求看板 snapshot by backend/core/board.py (the same fold the backend runs), the 需求详情's stages and timeline by
+the 运行过程 snapshot by backend/core/board.py (the same fold the backend runs), the 需求现状's stages and timeline by
 lean_view and detail, and 交付总览's numbers by deliveries.cto_numbers. So the preview and the UI tests see exactly the
 shapes the backend answers with, and timelines that look like real work: hours and days, waits for people, a rejection,
 a failed verify, questions on the MR.
@@ -553,7 +553,7 @@ def trace_row(u: dict, intent: str, key: str) -> dict | None:
 
 
 def no_trace_brain(r: Req) -> dict:
-    """需求详情's Brain block of a requirement brainkit.trace does not read (no run yet, or no brain-kit here)."""
+    """需求现状's Brain block of a requirement brainkit.trace does not read (no run yet, or no brain-kit here)."""
     return detail.brain_block(None, None, r.facts()["decisions_text"] if r.start_at is not None else None)
 
 
@@ -561,8 +561,8 @@ def brain_views(reqs: dict[str, list[Req]], rows: list[dict], said: dict[str, li
     """Each repo's Brain page (GET /brain) as brainview.view makes it with brain-kit, on a scratch git repo that holds
     what the world says: the Brain on main, each merged run (its run.json at the Brain it loaded, its decisions.md
     citing what it used) and the write-back that followed it, each run not merged yet on its branch (a local one in
-    its worktree). Its decisions.md holds the decisions 需求详情 shows for it (*said*, by "<repo>/<key>"), so its 决定
-    and its 用到的 Brain cite the same entries. And each run's Brain block, by "<repo>/<key>", as 需求详情 and 需求看板 get it: detail.brain_block of
+    its worktree). Its decisions.md holds the decisions 需求现状 shows for it (*said*, by "<repo>/<key>"), so its 决定
+    and its 用到的 Brain cite the same entries. And each run's Brain block, by "<repo>/<key>", as 需求现状 and 运行过程 get it: detail.brain_block of
     brainkit.trace's, the usage row of the run read where the service reads its trace (its worktree, else its ref), the
     very read and row the Brain page's numbers come from. And each run's 回写 Brain preview (POST /brain/reflect/preview)
     by "<repo>/<key>", for the runs the Brain page offers to write back. ({}, {}, {}) without brain-kit
@@ -804,7 +804,7 @@ def repo_sync(r: dict, local: set) -> dict:
         text, cmd = repo_mod.fetch_failed(128, raw)
         fetch = {"at": T0 - 600, "ok": False, "text": text, "raw": raw + ("\n\n做法：" + cmd.format(path=r["path"]) if cmd else "")}
     return progress.repo_view(r["path"], ctx, fetch)
-STAGES: dict[str, list] = {}   # each requirement's Lean stages as lean_view reads them (the 需求详情 the preview makes)
+STAGES: dict[str, list] = {}   # each requirement's Lean stages as lean_view reads them (the 需求现状 the preview makes)
 
 
 def classified(r: Req, row: dict, *, park: dict | None = None, mr: dict | None = None, slot: dict | None = None,
@@ -837,11 +837,11 @@ def live_of(sessions: list) -> dict | None:
 
 
 SESSION_KEYS = ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting", "last_activity", "opened_at",
-                "project", "url", "error", "missing")   # a session row of 需求详情 (service._detail_sync)
+                "project", "url", "error", "missing")   # a session row of 需求现状 (service._detail_sync)
 
 
 def cost_of(sess: list, elsewhere: str | None) -> dict:
-    """需求详情's 成本 over the sessions this machine reads (service._req_credits)."""
+    """需求现状's 成本 over the sessions this machine reads (service._req_credits)."""
     return dict(sessions_mod.requirement_credits(sess, elsewhere), note=detail.NO_TOKENS)
 
 
@@ -1060,7 +1060,7 @@ def intake_gates() -> dict:
 
 
 def detail_of(r: Req, row: dict, kw: dict, b: dict) -> dict:
-    """需求详情 (GET /requirements/<repo>/<key>) as service._detail_sync makes it from the same records as the board *b*:
+    """需求现状 (GET /requirements/<repo>/<key>) as service._detail_sync makes it from the same records as the board *b*:
     its facts, the Lean card, brainkit.trace's timeline with the app's own events, the sessions of its scope and their
     credits. Lean's Session notes stand in as its progress and what it waits on (the world writes no aidlc-state.md)."""
     f = r.facts(kw.get("park"))
@@ -1274,7 +1274,7 @@ def world(scratch: Path) -> None:
                "recommend": q3["recommend"], "refs": q3["refs"]}
     row = classified(p3, rows["PAY-3"], park=p3_park, slot=det["sessions"][0])
     det["row"] = row
-    f3 = p3.facts(p3_park)      # 需求详情's Lean card, as service._detail_sync sends it: the same records as the row
+    f3 = p3.facts(p3_park)      # 需求现状's Lean card, as service._detail_sync sends it: the same records as the row
     det["lean"] = dict({"stages": f3["stages"], "phases": lean_view.phases(f3["stages"])},
                        **{k: v for k, v in det["lean"].items() if k not in ("stages", "phases")})
     det["lean"]["approvals"] = [{k: a[k] for k in ("kind", "state", "sha8", "at", "line", "path")} for a in f3["approvals"]]
@@ -1836,12 +1836,12 @@ def world(scratch: Path) -> None:
         if bid not in details:
             details[bid] = detail_of(r_, row_, kw, boards[bid])
     det["brain"] = boards["r1/PAY-3"]["brain"]
-    # 需求详情's timeline as service._timeline makes it: brainkit.trace's record (detail.trace_timeline) and the app's own
+    # 需求现状's timeline as service._timeline makes it: brainkit.trace's record (detail.trace_timeline) and the app's own
     det["timeline"]["items"] = sorted(detail.trace_timeline(p3.trace(det["brain"])) + p3.app,
                                       key=lambda x: (x["at"] or "", x["kind"]))
     # team mode: the runner's runs (team.json's, and ORD-10's, whose answer the signer refused), each read from runnerd's
     # workspace as service._team_rows reads it (the run branch's records, the claim its clone has), with the bridge's
-    # decisions; 需求详情 and 需求看板 as _team_detail and _board_sync make them; 待办 is the person's own, then todo.build
+    # decisions; 需求现状 and 运行过程 as _team_detail and _board_sync make them; 待办 is the person's own, then todo.build
     # over these rows
     team_fx = json.loads((FIX / "team.json").read_text(encoding="utf-8"))
     o10 = reqs["r3"][-1]

@@ -58,29 +58,29 @@ describe('the app: one bar over the views', () => {
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Brain')
     expect(bar().getByRole('tab', { name: '交付总览' })).toHaveAttribute('aria-selected', 'true')
-    expect(bar().getAllByRole('tab').map((t) => t.textContent)).toEqual(['交付总览', '需求详情', '需求看板', '开需求', 'Brain', `待办${TODO_N}`])
-    expect(bar().getByRole('tab', { name: /^需求详情/ })).toBeEnabled() // nothing in hand yet: they still open one
-    expect(bar().getByRole('tab', { name: /^需求看板/ })).toBeEnabled()
+    expect(bar().getAllByRole('tab').map((t) => t.textContent)).toEqual(['交付总览', '需求现状', '运行过程', '开需求', 'Brain', `待办${TODO_N}`])
+    expect(bar().getByRole('tab', { name: /^需求现状/ })).toBeEnabled() // nothing in hand yet: they still open one
+    expect(bar().getByRole('tab', { name: /^运行过程/ })).toBeEnabled()
     expect(fx.status().counts.todo).toBe(TODO_N)
     expect(await bar().findByRole('tab', { name: TODO_TAB })).toBeInTheDocument()
     expect(badges).toContain(TODO_N) // the sidebar badge
     expect(bar().getByRole('button', { name: '设置' })).toBeInTheDocument()
   })
 
-  test('需求看板 with nothing opened yet opens the requirement that waits on you; it is still in hand after a reload', async () => {
+  test('运行过程 with nothing opened yet opens the requirement that waits on you; it is still in hand after a reload', async () => {
     const user = userEvent.setup()
     installFixtureRoutes()
     const want = pickRequirement(fx.overview().rows)
     expect(want?.waits.who).toBe('you')
     const { unmount } = render(<BrainApp pollMs={60_000} />)
     await screen.findByTestId('req-table')
-    await user.click(bar().getByRole('tab', { name: /^需求看板/ }))
+    await user.click(bar().getByRole('tab', { name: /^运行过程/ }))
     await waitFor(() => expect(parseView(window.location.search)).toMatchObject({ kind: 'board', repo: want!.repo, key: want!.key }))
     unmount()
     window.history.replaceState(null, '', '/apps/brain?view=overview')
     render(<BrainApp pollMs={60_000} />)
     await screen.findByTestId('req-table')
-    await user.click(bar().getByRole('tab', { name: /^需求详情/ }))
+    await user.click(bar().getByRole('tab', { name: /^需求现状/ }))
     expect(parseView(window.location.search)).toMatchObject({ kind: 'item', repo: want!.repo, key: want!.key })
   })
 
@@ -106,23 +106,23 @@ describe('the app: one bar over the views', () => {
     expect(screen.getByRole('tab', { name: '待办 3' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.queryByRole('tab', { name: '运行机' })).toBeNull()
     // the requirement in hand is on both of its tabs, from any view: what they open is said before the click
-    expect(screen.getByRole('tab', { name: '需求详情 PAY-3' })).toBeEnabled()
-    expect(screen.getByRole('tab', { name: '需求看板 PAY-3' })).toBeEnabled()
+    expect(screen.getByRole('tab', { name: '需求现状 PAY-3' })).toBeEnabled()
+    expect(screen.getByRole('tab', { name: '运行过程 PAY-3' })).toBeEnabled()
     screen.getByRole('tab', { name: 'Brain' }).click()
     screen.getByRole('tab', { name: '待办 3' }).click() // the view it is on: nothing
     expect(views).toEqual(['brain'])
     expect(screen.getByRole('button', { name: '导入仓库' })).toHaveAttribute('title', '本机目录或克隆：先检查它，没装 brain-kit 的直接装上')
   })
 
-  test('a requirement its repo does not have: 需求详情 says so, and the 需求看板 tab says it cannot open it rather than opening it', async () => {
+  test('a requirement its repo does not have: 需求现状 says so, and the 运行过程 tab says it cannot open it rather than opening it', async () => {
     window.history.replaceState(null, '', '/apps/brain?view=item&repo=r1&key=PAY-99')
     installFixtureRoutes({ [`GET ${API}/requirements/*`]: () => { throw apiError(404, 'not_found', '没有这个需求') } })
     const user = userEvent.setup()
     render(<BrainApp pollMs={60_000} />)
     expect(await screen.findByTestId('detail-missing')).toBeInTheDocument()
-    const tab = bar().getByRole('tab', { name: '需求看板 PAY-99' })
+    const tab = bar().getByRole('tab', { name: '运行过程 PAY-99' })
     await waitFor(() => expect(tab).toHaveAttribute('aria-disabled', 'true'))
-    expect(tab).toHaveAttribute('title', '没有 PAY-99 这个需求：需求看板打不开')
+    expect(tab).toHaveAttribute('title', '没有 PAY-99 这个需求：运行过程打不开')
     // it looks and feels off, in light mode too: faded, no hand cursor (DETAIL-21)
     expect(getComputedStyle(tab).cursor).toBe('not-allowed')
     expect(Number(getComputedStyle(tab).opacity)).toBeLessThan(0.6)
@@ -158,51 +158,51 @@ describe('the app: one bar over the views', () => {
     expect(window.location.search).toBe('?view=overview&state=acceptance')
   })
 
-  test('需求详情 on a ledger row opens 需求详情 (from=overview); its tab then holds it; ← 返回 goes back to the overview', async () => {
+  test('需求现状 on a ledger row opens 需求现状 (from=overview); its tab then holds it; ← 返回 goes back to the overview', async () => {
     const user = userEvent.setup()
     installFixtureRoutes()
     render(<BrainApp pollMs={60_000} />)
-    await user.click(within(await ledgerRow('PAY-3')).getByRole('button', { name: '需求详情' }))
+    await user.click(within(await ledgerRow('PAY-3')).getByRole('button', { name: '需求现状' }))
     expect(parseView(window.location.search)).toEqual({ kind: 'item', repo: 'r1', key: 'PAY-3', from: 'overview' })
     // the requirement, then its board (the value stream)
     await waitFor(() => expect(apiCalls.some((c) => c.path === `${API}/board/r1/PAY-3`)).toBe(true))
     const paths = apiCalls.map((c) => c.path)
     expect(paths.indexOf(`${API}/requirements/r1/PAY-3`)).toBeGreaterThanOrEqual(0)
     expect(paths.indexOf(`${API}/requirements/r1/PAY-3`)).toBeLessThan(paths.indexOf(`${API}/board/r1/PAY-3`))
-    const tab = bar().getByRole('tab', { name: /^需求详情/ })
+    const tab = bar().getByRole('tab', { name: /^需求现状/ })
     expect(tab).toHaveAttribute('aria-selected', 'true')
     expect(tab).toHaveTextContent('PAY-3') // the requirement in hand
     await user.click(screen.getByRole('button', { name: '← 返回交付总览' }))
     expect(await screen.findByTestId('req-table')).toBeInTheDocument()
     expect(parseView(window.location.search)).toEqual({ kind: 'overview' })
     expect(bar().getByRole('tab', { name: '交付总览' })).toHaveAttribute('aria-selected', 'true')
-    // 需求详情 and 需求看板 hold it from now on
-    await user.click(bar().getByRole('tab', { name: /^需求详情/ }))
+    // 需求现状 and 运行过程 hold it from now on
+    await user.click(bar().getByRole('tab', { name: /^需求现状/ }))
     expect(parseView(window.location.search)).toEqual({ kind: 'item', repo: 'r1', key: 'PAY-3' })
     await user.click(bar().getByRole('tab', { name: '开需求' }))
     expect(parseView(window.location.search)).toEqual({ kind: 'new', repo: 'r1' })
-    await user.click(bar().getByRole('tab', { name: /^需求看板/ }))
+    await user.click(bar().getByRole('tab', { name: /^运行过程/ }))
     expect(parseView(window.location.search)).toEqual({ kind: 'board', repo: 'r1', key: 'PAY-3' })
     expect(await screen.findByTestId('br-board')).toBeInTheDocument()
   }, 20_000)   // five views in a row (the banner test's limit): near 5 s on a loaded machine
 
-  test('a ledger row opens 需求看板 (from=overview); 需求详情 then holds the same requirement', async () => {
+  test('a ledger row opens 运行过程 (from=overview); 需求现状 then holds the same requirement', async () => {
     const user = userEvent.setup()
     installFixtureRoutes()
     render(<BrainApp pollMs={60_000} />)
     await user.click(within(await ledgerRow('PAY-5')).getByText('退款回调失败重试'))
     expect(parseView(window.location.search)).toEqual({ kind: 'board', repo: 'r1', key: 'PAY-5', from: 'overview' })
     expect(await screen.findByTestId('br-board')).toBeInTheDocument()
-    expect(bar().getByRole('tab', { name: /^需求看板/ })).toHaveAttribute('aria-selected', 'true')
-    await user.click(bar().getByRole('tab', { name: /^需求详情/ }))
+    expect(bar().getByRole('tab', { name: /^运行过程/ })).toHaveAttribute('aria-selected', 'true')
+    await user.click(bar().getByRole('tab', { name: /^需求现状/ }))
     expect(parseView(window.location.search)).toEqual({ kind: 'item', repo: 'r1', key: 'PAY-5' })
   })
 
-  test('切换需求 on 需求详情 and 需求看板 opens another requirement in the same view; ← 返回 still goes where it came from', async () => {
+  test('切换需求 on 需求现状 and 运行过程 opens another requirement in the same view; ← 返回 still goes where it came from', async () => {
     const user = userEvent.setup()
     installFixtureRoutes()
     render(<BrainApp pollMs={60_000} />)
-    await user.click(within(await ledgerRow('PAY-3')).getByRole('button', { name: '需求详情' }))
+    await user.click(within(await ledgerRow('PAY-3')).getByRole('button', { name: '需求现状' }))
     const pick = await screen.findByRole('combobox', { name: '切换需求' })
     expect(pick).toHaveValue(`r1\u0001PAY-3`)
     const keys = within(pick).getAllByRole('option').map((o) => o.textContent?.split(' ')[0])
@@ -210,15 +210,15 @@ describe('the app: one bar over the views', () => {
     await user.selectOptions(pick, `r1\u0001PAY-5`)
     expect(parseView(window.location.search)).toEqual({ kind: 'item', repo: 'r1', key: 'PAY-5', from: 'overview' })
     await waitFor(() => expect(apiCalls.some((c) => c.path === `${API}/requirements/r1/PAY-5`)).toBe(true))
-    expect(bar().getByRole('tab', { name: /^需求详情/ })).toHaveTextContent('PAY-5')
+    expect(bar().getByRole('tab', { name: /^需求现状/ })).toHaveTextContent('PAY-5')
     // its board, then another one there
-    await user.click(screen.getByRole('button', { name: '需求看板 ↗' }))
+    await user.click(screen.getByRole('button', { name: '运行过程 ↗' }))
     expect(parseView(window.location.search)).toMatchObject({ kind: 'board', repo: 'r1', key: 'PAY-5' })
     const onBoard = await within(await screen.findByTestId('br-board')).findByRole('combobox', { name: '切换需求' })
     await user.selectOptions(onBoard, `r1\u0001PAY-3`)
     expect(parseView(window.location.search)).toEqual({ kind: 'board', repo: 'r1', key: 'PAY-3', from: 'item' })
     await waitFor(() => expect(apiCalls.some((c) => c.path === `${API}/board/r1/PAY-3`)).toBe(true))
-    expect(bar().getByRole('tab', { name: /^需求详情/ })).toHaveAttribute('title', expect.stringContaining('PAY-3'))
+    expect(bar().getByRole('tab', { name: /^需求现状/ })).toHaveAttribute('title', expect.stringContaining('PAY-3'))
   })
 
   test('back and forward show the view the entry says', async () => {
@@ -322,8 +322,8 @@ describe('the app: one bar over the views', () => {
       ['team', () => user.click(bar().getByRole('tab', { name: '运行机' }))],
       ['import', () => user.click(bar().getByRole('button', { name: '导入仓库' }))],
       ['overview', () => user.click(bar().getByRole('tab', { name: '交付总览' }))],
-      ['item', async () => user.click(within(await ledgerRow('PAY-3')).getByRole('button', { name: '需求详情' }))],
-      ['board', () => user.click(bar().getByRole('tab', { name: /^需求看板/ }))],
+      ['item', async () => user.click(within(await ledgerRow('PAY-3')).getByRole('button', { name: '需求现状' }))],
+      ['board', () => user.click(bar().getByRole('tab', { name: /^运行过程/ }))],
     ]
     for (const [kind, open] of others) {
       await open()

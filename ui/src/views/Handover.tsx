@@ -1,5 +1,5 @@
 /**
- * 交接给运行机 on 需求详情 (E2E-10): `brain handoff` for this requirement in its worktree on this machine (POST
+ * 交接给运行机 on 需求现状 (E2E-10): `brain handoff` for this requirement in its worktree on this machine (POST
  * /requirements/{repo}/{key}/handoff), so nobody opens a terminal for it. It says first what will happen, then runs it,
  * then what came of it as the backend says it (backend/core/handover.py): what happened, 做什么, the MR, brain-kit's
  * warnings as rows (read only), its own words folded under 细节. Offered for a run on this machine not handed over yet,
@@ -26,7 +26,7 @@ const LOOK: Record<HandoffState, { cls: string; glyph: string }> = {
   failed: { cls: 'is-bad', glyph: '✕' },
 }
 
-/** 需求详情 offers it: a run with its worktree on this machine, in a repo with a remote, not a small requirement (that
+/** 需求现状 offers it: a run with its worktree on this machine, in a repo with a remote, not a small requirement (that
  * one's MR goes into its big one's branch), not handed over yet or to be handed over again. */
 export function canHandOver(x: RequirementDetail, localOnly: boolean): boolean {
   const r = x.row

@@ -1,4 +1,4 @@
-"""需求看板's stage graph, cut from the records: each node's rounds (第 N 轮), how each ended and why the next one
+"""运行过程's stage graph, cut from the records: each node's rounds (第 N 轮), how each ended and why the next one
 happened, the gates on a node, what a node says it does; and who did each round, told by the ledger file that holds it
 (one per clone: the owner's machine, each run on the team runner, a small requirement of a split). On a real Lean
 0.3.1 run past its release (its records copied below) and on the shapes the fixtures' requirements have."""

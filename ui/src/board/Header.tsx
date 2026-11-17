@@ -1,6 +1,6 @@
 /**
- * The top of the 需求看板 (the sample team board's Header.tsx): the requirement's key, title and state, its branch, the
- * actions (回放, 跟随, 需求详情, 打开会话, 停止), and the live counters: checks passed, Lean's stages, a person's acts (at the
+ * The top of the 运行过程 (the sample team board's Header.tsx): the requirement's key, title and state, its branch, the
+ * actions (回放, 跟随, 需求现状, 打开会话, 停止), and the live counters: checks passed, Lean's stages, a person's acts (at the
  * judgment points and outside them), the steps of the way done, credits. Also the introduction a requirement shows
  * before its run started: the way it will go (the repo's own way: one done only here never goes to the runner), and
  * how to start it.
@@ -61,7 +61,7 @@ export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail,
     <header className="kt-top">
       <div className="kt-title">
         {!titleOf(r) ? null : onDetail ? (
-          <button type="button" className="kt-run-title kt-run-link" onClick={onDetail} title="需求详情：周期、时间花在哪、成本、检查、决定和问题">{r.title}</button>
+          <button type="button" className="kt-run-title kt-run-link" onClick={onDetail} title="需求现状：周期、时间花在哪、成本、检查、决定和问题">{r.title}</button>
         ) : (
           <span className="kt-run-title">{r.title}</span>
         )}
@@ -96,7 +96,7 @@ export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail,
         )}
         {onOutputs && <button type="button" className="kt-btn" onClick={onOutputs} title="每一步每一轮交了什么：文档、代码和改动">产出</button>}
         <button type="button" className="kt-btn" aria-pressed={follow} onClick={onFollow} title="自动滚到正在动的那一环">跟随</button>
-        {onDetail && <button type="button" className="kt-btn" onClick={onDetail}>需求详情 ↗</button>}
+        {onDetail && <button type="button" className="kt-btn" onClick={onDetail}>需求现状 ↗</button>}
       </div>
     </header>
   )
@@ -147,7 +147,7 @@ function FamilyPills({ f, onParent, onFamily }: { f: ReqFamily; onParent?: (key:
       <>
         {onParent ? (
           <button type="button" className="kt-pill kt-pill-btn tone-handoff br-fam-parent" onClick={() => onParent(f.parent)}
-            title={`大需求 ${f.parent}${f.parent_title ? `：${f.parent_title}` : ''}（它的需求看板）`}>
+            title={`大需求 ${f.parent}${f.parent_title ? `：${f.parent_title}` : ''}（它的运行过程）`}>
             <i aria-hidden="true">↑</i>大需求 {f.parent}
           </button>
         ) : <span className="kt-pill tone-handoff"><i aria-hidden="true">↑</i>大需求 {f.parent}</span>}
@@ -198,7 +198,7 @@ function ChecksKpi({ board, reducedMotion }: { board: ReqBoard; reducedMotion: b
 }
 
 /** Lean's stages on the way, as Lean counts them: done green, skipped grey; the stage Lean is on or does next lit, as
- * 交付总览 and 需求详情 say it (vocab.leanNow); once the way is over, the rest grey. A phase skipped as a whole is not a
+ * 交付总览 and 需求现状 say it (vocab.leanNow); once the way is over, the rest grey. A phase skipped as a whole is not a
  * cell, it is said once under them. */
 function LeanKpi({ board }: { board: ReqBoard }) {
   const ln = leanOf(board.row.lean)
@@ -366,7 +366,7 @@ function CreditsKpi({ board, reducedMotion, replaying, run }: { board: ReqBoard;
         <div className="kt-kpi-label">credits</div>
         <div className="kt-kpi-value"><span className="kt-kpi-big">—</span></div>
         <div className="kt-kpi-note">{run.readable === 'here' ? '这次运行的会话还没报' : run.kind === 'runner' ? '运行机的花费在运行机上'
-          : run.kind === 'local' ? '会话不在这台机器上' : '花费记在它自己的看板上'}</div>
+          : run.kind === 'local' ? '会话不在这台机器上' : '花费记在它自己的运行过程里'}</div>
       </div>
     )
   }

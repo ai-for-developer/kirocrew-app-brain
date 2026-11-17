@@ -1,5 +1,5 @@
 /**
- * 需求看板: one requirement as the sample's 团队看板 shows a run (its main.tsx TeamPage, for a requirement's way).
+ * 运行过程: one requirement as the sample's 团队看板 shows a run (its main.tsx TeamPage, for a requirement's way).
  *
  * Polls GET /board/{repo}/{key} every 2 s (useBoard.ts) and renders only that contract (types.ts ReqBoard): the
  * header, 你要做的一步 (a narrow strip: what the person does now, and where), the live counters, the stage graph
@@ -106,7 +106,7 @@ function focusOf(b: ReqBoard, focus: string | null): { icon: string; title: stri
 export function boardProblem(b: ReqBoard): { text: string; todo: string; raw: string } | null {
   if (!b.error || b.row.state === 'claimed') return null
   if (!/[A-Za-z]{4,}/.test(b.error.replace(/brain-kit|Lean|KiroCrew/g, ''))) return { text: b.error, todo: '', raw: '' }
-  return { text: '这个需求的运行记录没读全：图上只画了 Lean 的记录和仓库里看得到的', todo: '到需求详情看细节；一直这样的话，到设置里看 brain-kit 能不能用', raw: b.error }
+  return { text: '这个需求的运行记录没读全：图上只画了 Lean 的记录和仓库里看得到的', todo: '到需求现状看细节；一直这样的话，到设置里看 brain-kit 能不能用', raw: b.error }
 }
 
 export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, push, status, pollMs, reloadStatus }: {
@@ -267,7 +267,7 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, pus
   const toStart = () => go({ kind: 'new', repo: entry.repo, key: entry.key, ...(board?.row.title ? { title: board.row.title } : {}) })
   const toBoard = (key: string) => go({ kind: 'board', repo: entry.repo, key })
   // a box that waits for the person: its run's session for what is said or approved there, 验收 for the acceptance,
-  // 需求详情 for the rest (a review is not said in the session that wrote the code: 需求详情 has 开审查会话)
+  // 需求现状 for the rest (a review is not said in the session that wrote the code: 需求现状 has 开审查会话)
   const onAct = useCallback((id: string, d: WaitDo) => {
     const runs = board?.runs ?? []
     const run = runs.find((r) => r.key === board?.nodes.find((n) => n.id === id)?.run)
@@ -306,20 +306,20 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, pus
             <span aria-hidden="true">›</span>
             {fam?.role === 'child' && (
               <>
-                <button type="button" onClick={() => toBoard(fam.parent)} title={`大需求 ${fam.parent} 的需求看板`}>{fam.parent}</button>
+                <button type="button" onClick={() => toBoard(fam.parent)} title={`大需求 ${fam.parent} 的运行过程`}>{fam.parent}</button>
                 <span aria-hidden="true">›</span>
               </>
             )}
-            {/* a key the repo does not have has no 需求详情 to go to: said, not linked */}
-            {gone ? <span data-testid="kt-where-key">{entry.key}</span> : <button type="button" onClick={toDetail} title="需求详情">{entry.key}</button>}
+            {/* a key the repo does not have has no 需求现状 to go to: said, not linked */}
+            {gone ? <span data-testid="kt-where-key">{entry.key}</span> : <button type="button" onClick={toDetail} title="需求现状">{entry.key}</button>}
             <span aria-hidden="true">›</span>
-            <b>需求看板{looked ? ` · ${looked.title}` : ''}{rp.on ? ' · 回放' : ''}</b>
+            <b>运行过程{looked ? ` · ${looked.title}` : ''}{rp.on ? ' · 回放' : ''}</b>
           </nav>
           <span className="cto-grow" />
           {!rp.on && <ReqSwitch repo={entry.repo} reqKey={entry.key} status={status} pollMs={pollMs} onPick={pick} />}
           {onBack && <button type="button" className="kt-btn" onClick={onBack}>← 返回{fromName}</button>}
         </div>
-        {onRunner && !rp.on && <OnRunner reqKey={entry.key} what="需求看板" onOpen={() => pick('runner', entry.key)} />}
+        {onRunner && !rp.on && <OnRunner reqKey={entry.key} what="运行过程" onOpen={() => pick('runner', entry.key)} />}
         {live.missing && !board
           ? !onRunner && <NotFound repoName={status?.repos.find((r) => r.id === entry.repo)?.name ?? (entry.repo === 'runner' ? '运行机' : null)} reqKey={entry.key}
               backName={onBack ? fromName : VIEW_NAME.overview} onBack={onBack ?? (() => go({ kind: 'overview', ...(entry.repo !== 'runner' ? { repo: entry.repo } : {}) }))}

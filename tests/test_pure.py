@@ -446,7 +446,7 @@ def test_commit_dates_and_how_a_run_was_merged_in_the_timeline():
 
 def test_the_timeline_signs_the_owners_own_acts_as_the_owner():
     """DETAIL-20: what was done on the owner's side before the hand-over (an approval line typed in their own session,
-    the run branch's commits) is the owner's, as 需求看板 says 「你批准了需求」: signed owner (the page says 你 to them),
+    the run branch's commits) is the owner's, as 运行过程 says 「你批准了需求」: signed owner (the page says 你 to them),
     and so is any later act of the same pseudonym; someone answering on the MR, or a push after the hand-over by another
     pseudonym, stays as brain-kit names them."""
     detail = mod("detail")
@@ -472,7 +472,7 @@ def test_the_timeline_signs_the_owners_own_acts_as_the_owner():
 
 def test_the_timeline_says_what_happened_in_words_never_the_record_codes():
     """REST-29: no 「verify 通过」, 「park：clarify（waiting）」, 「Lean 拦下（inception）」, 「D-1 delivered」 or 「桥：bridge
-    accepted」 on 需求详情's timeline; the board's words for the same records."""
+    accepted」 on 需求现状's timeline; the board's words for the same records."""
     detail, lv = mod("detail"), mod("lean_view")
     t = {"checks": {"verify": [{"at": "2026-11-09T01:00:00Z", "ok": False}]},
          "stages": [{"id": "functional-design/refund-api", "state": "done", "at": "2026-11-09T00:05:00Z"}],
@@ -670,7 +670,7 @@ def test_a_refused_hand_over_in_todo_says_the_reasons_own_todo_and_keeps_the_bri
 
 def test_a_hand_over_whose_push_failed_is_in_todo_with_its_words():
     """The hand-over commit is on this machine only (its push failed): 待办 lists it (交接没推上去), says what
-    happened and how to do it in a terminal, as the row does; its button is on 需求详情."""
+    happened and how to do it in a terminal, as the row does; its button is on 需求现状."""
     todo = mod("todo")
     f = {"key": "PAY-8", "owner": "alice", "claim": {"owner": "alice", "title": "t"}, "approvals": [], "park": None,
          "run": {"intent": "i", "branch": "ai/alice/PAY-8-x", "handoff": {"local_head": "a" * 40}}, "stages": [],
@@ -686,7 +686,7 @@ def test_a_hand_over_whose_push_failed_is_in_todo_with_its_words():
 
 def test_team_todo_says_a_runner_question_as_the_detail_does_its_kind_in_words():
     """Team 待办's question cards said 「design」 / 「acceptance」: the ledger has no kind_label. They are the ones
-    需求详情 shows for the same decisions (detail.ledger_questions)."""
+    需求现状 shows for the same decisions (detail.ledger_questions)."""
     todo, detail = mod("todo"), mod("detail")
     url = "https://gl.example/grp/repo/-/merge_requests/5"
     decs = [{"id": "D-2", "kind": "design", "state": "open", "created": "2026-11-09T01:00:00Z", "run_id": "RUN-PAY-4-1"},
@@ -752,7 +752,7 @@ def test_lean_s_own_stage_lines_are_said_in_words_and_the_agent_s_stay():
 
 
 def test_the_timeline_says_who_did_what_and_why_without_record_codes(tmp_path):
-    """REST-29 on 需求详情's timeline, in the board's words: an answer without its D-n or choice is not 「回答 ：」;
+    """REST-29 on 需求现状's timeline, in the board's words: an answer without its D-n or choice is not 「回答 ：」;
     approve / reject in words; a refused approval line says why (Lean's check), not the check's code; a tool call by
     its kind; the bridge's refusal, a Lean request asked on the MR and a squash merge's note in words; no brain-kit
     module named when brain-kit cannot read the run."""

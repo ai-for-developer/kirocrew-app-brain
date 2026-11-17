@@ -6,7 +6,7 @@
  * the weekly merges; 需求流动 (cto/Flow.tsx: the kanban of what is in progress, 按阶段 or 按人); the 交付清单 (every
  * requirement, a big requirement's small ones folded under it); brain-kit's eval batch (its big requirements split
  * into small ones among its rows). Every card and row opens the requirement's board
- * (需求看板). Polls GET /overview (Overview.cto has the numbers, from brainkit.evaluate). The repo pills and the
+ * (运行过程). Polls GET /overview (Overview.cto has the numbers, from brainkit.evaluate). The repo pills and the
  * ledger's state filter are in the URL; a big number, a legend entry, a week, a column, a lane or 「+N 个」 filters the
  * ledger once more (a LedgerPick, with its ✕) and scrolls to it.
  *
@@ -469,7 +469,7 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
               <h3>交付清单</h3>
               <StateFilter counts={data.counts} total={data.rows.length} value={state} onPick={pickState} />
               {pick && <span className="cto-filter" data-testid="ledger-pick">{pick.label}<button type="button" aria-label={`不按「${pick.label}」筛选`} onClick={() => setPick(null)}>✕</button></span>}
-              <span className="cto-dim" data-testid="ledger-count">共 {rows.length} 个 · 点一行打开它的需求看板</span>
+              <span className="cto-dim" data-testid="ledger-count">共 {rows.length} 个 · 点一行打开它的运行过程</span>
             </div>
             <div className="br-scroll">
               <table className="cto-table br-ledger" data-testid="req-table">
@@ -516,7 +516,7 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
           <ul>
             <li>无人值守：brain-kit 评估里的「自主度」。交给运行机以后，除了必经的审批（需求、设计、计划、发布、验收），没有人做过任何事，而且交付正确（一次通过验收，合并后 14 天没有回滚、热修或缺陷）；14 天没满的、还没合并的算「还没评」，不算进分母。只在本机做的需求不交给运行机，也不算进分母。</li>
             <li>人介入：人在判断点上的动作是 Lean 的审批（批准、退回，打了批准那一行却没被接受的也算）和等人回答的问题；交接后又推了代码、允许改验收测试、平台上的手动操作，都算判断点之外。本机做的和交给运行机的需求都算。</li>
-            <li>每个需求的 credits：这台机器上需求的 Kiro Crew 会话（本机开发、审查，运行机在这台机器上时也算它的）报的 credits 合计 ÷ 有 credits 的需求数；子代理、没报 credits 的回合和别的机器上的会话算不进来，需求详情的成本里写着。KiroCrew 只报 credits，没有别的用量数。</li>
+            <li>每个需求的 credits：这台机器上需求的 Kiro Crew 会话（本机开发、审查，运行机在这台机器上时也算它的）报的 credits 合计 ÷ 有 credits 的需求数；子代理、没报 credits 的回合和别的机器上的会话算不进来，需求现状的成本里写着。KiroCrew 只报 credits，没有别的用量数。</li>
             <li>决定 · 谁定的：<WhoSyntax />。每个决定只算一次，写了别的就算「没归类」，列出在哪一行，不猜是谁。还在分支上、没合并的需求也算；评估里的「知识有用率」只看默认分支上的引用，所以两个数的范围不一样。</li>
             <li>每周合并：合并进默认分支的那一周（周一起）；交付方式同上，没评估过的合并算「还没评」。</li>
             <li>轮到你、等别人：按每个需求此刻等谁；「已等」从它开始这样等的那一刻算起。</li>
@@ -635,7 +635,7 @@ function YourTurn({ rows, at, repoName, onGo, onOpen, onAll }: {
           return (
             <li key={idOf(r)} data-key={r.key}>
               {step && <StepButton step={step} onGo={onGo} />}
-              <button type="button" className="br-link br-key" onClick={() => onOpen(r)} title="打开它的需求看板">{r.key}</button>
+              <button type="button" className="br-link br-key" onClick={() => onOpen(r)} title="打开它的运行过程">{r.key}</button>
               <span className="br-yt-title">{r.title}</span>
               {name && <span className="cto-was">{name}</span>}
               <span>{r.waits.text}</span>
@@ -651,7 +651,7 @@ function YourTurn({ rows, at, repoName, onGo, onOpen, onAll }: {
 }
 
 /** 全队卡点: what is stuck across the team, the worst first, as the backend's roster says it, in 轮到你's look. Each key
- * opens that requirement's 需求看板, an overlap's other key too. */
+ * opens that requirement's 运行过程, an overlap's other key too. */
 function TeamStuck({ roster, rows, partial, repoName, onOpen, onAll }: {
   roster: Roster; rows: Requirement[]; partial: boolean; repoName: (id: string) => string | undefined; onOpen: (r: { repo: string; key: string }) => void; onAll: () => void
 }) {
@@ -659,7 +659,7 @@ function TeamStuck({ roster, rows, partial, repoName, onOpen, onAll }: {
   const kinds = (Object.keys(roster.counts) as StuckKind[]).filter((k) => roster.counts[k] > 0)
   const red = roster.stuck.some((s) => s.kind !== 'overlap')
   const { wait_timeout_h: wait, stale_after_h: stale, verify_fail_limit: fails } = roster.limits
-  const key = (repo: string, k: string) => <button type="button" className="br-link br-key" onClick={() => onOpen({ repo, key: k })} title="打开它的需求看板">{k}</button>
+  const key = (repo: string, k: string) => <button type="button" className="br-link br-key" onClick={() => onOpen({ repo, key: k })} title="打开它的运行过程">{k}</button>
   return (
     <section className={`cto-card br-yours br-stuck${red ? ' is-bad' : kinds.length ? ' is-warn' : ' is-ok'}`} aria-label="全队卡点" data-testid="team-stuck">
       <div className="cto-chart-head">
@@ -802,7 +802,7 @@ function PeopleCard({ c, computing, onPick }: { c: CtoNumbers; computing: boolea
  * app's own count stands in while brain-kit evaluates, and brain-kit's comes out different: 正在算, not a number that jumps. */
 function FunnelCard({ f, team, steppedIn, onDecision, computing }: { f: Funnel; team: boolean; steppedIn: number | null; onDecision: (key: string, id: string) => void; computing: boolean }) {
   const people = f.rows.find((r) => r.id === 'person')?.count ?? 0
-  // the app's words for who decided (需求详情's decisions say the same), not brain-kit's labels with agent / Who in them
+  // the app's words for who decided (需求现状's decisions say the same), not brain-kit's labels with agent / Who in them
   const rows = f.rows.map((r) => ({ ...r, label: DECIDED_BY[r.id] ?? r.label }))
   return (
     <article className={`cto-card${f.unclassified.length ? ' is-warn' : ''}`} aria-label="决定 · 谁定的" data-testid="funnel-card">
@@ -1015,14 +1015,14 @@ function Row({ r, at, run, ev, repoName, tree, fold, late, verifyLimit, onOpen, 
         {step && <StepButton step={step} onGo={onGo} primary={false} />}
       </td>
       <td data-label="交付方式"><HowCell r={r} run={run} /></td>
-      <td className="is-num" data-label="credits" title={r.credits !== null && !r.credits_whole ? '至少这么多：有的没算进来，需求详情的成本里有' : undefined}>
+      <td className="is-num" data-label="credits" title={r.credits !== null && !r.credits_whole ? '至少这么多：有的没算进来，需求现状的成本里有' : undefined}>
         {r.credits !== null && !r.credits_whole ? '至少 ' : ''}{fmtCredits(r.credits)}
       </td>
       <td className="br-col-nowrap" data-label="MR" onClick={(e) => e.stopPropagation()}><MrLink mr={r.mr} /></td>
       <td onClick={(e) => e.stopPropagation()}>
         <span className="br-acts">
           <button type="button" className="kt-btn is-small" onClick={onItem}>{ACT.openDetail}</button>
-          {r.state === 'merged' && <button type="button" className="kt-btn is-small" onClick={onReplay} title="在需求看板上从头回放">▶ 回放</button>}
+          {r.state === 'merged' && <button type="button" className="kt-btn is-small" onClick={onReplay} title="在运行过程页上从头回放">▶ 回放</button>}
         </span>
       </td>
     </tr>
@@ -1104,7 +1104,7 @@ function EvalCard({ ev, noModule, onBoard, onItem, onSettings, onFamily }: {
               {families.map((f) => (
                 <li key={`f-${f.repo}/${f.key}`} data-testid="eval-family" data-family={f.key}>
                   <span className="kt-pill tone-info">大需求</span>
-                  <button type="button" className="br-link br-key" onClick={() => onFamily(f)} title="打开它的需求看板">{f.key} ↗</button>
+                  <button type="button" className="br-link br-key" onClick={() => onFamily(f)} title="打开它的运行过程">{f.key} ↗</button>
                   <span className={`br-chip tone-${FAMILY_TONE[f.state] ?? 'idle'}`}>{f.state_label || f.state}</span>
                   <span className="br-tag" data-n="merged" title={f.children.length ? `小需求：${f.children.join('、')}` : undefined}>已合并<b>{f.merged}/{f.total}</b></span>
                   {(f.not_started?.length ?? 0) > 0 && <span className="br-tag" data-n="not_started" title={f.not_started!.join('、')}>没开工<b>{f.not_started!.length}</b></span>}

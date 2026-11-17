@@ -1,4 +1,4 @@
-"""需求看板 (GET /board/{repo}/{key}): on real brain-kit projects, the stage graph's nodes, runs and hand-overs, the
+"""运行过程 (GET /board/{repo}/{key}): on real brain-kit projects, the stage graph's nodes, runs and hand-overs, the
 events placed on it, the conveyor, the check wall and 验收: a local requirement waiting for its requirements approval,
 one approved and handed over, one merged; the approval line is shown, never sent; the route is the owner's only. And
 the snapshot board.build folds from Lean's own records, read the way the page reads it: where the time went (a quiet
@@ -114,7 +114,7 @@ def test_an_approved_requirement_handed_over_and_one_merged(tmp_path, home):
         # BOARD-21: each commit with the files it changed, as git says it
         export = next(x for x in b1["belt"] if x["kind"] == "commit" and "refund: the CSV export" in x["text"])
         assert {"path": "src/refund.py", "added": 2, "removed": 0, "status": "A"} in export["changes"]
-        # the sources brain-kit could not read, in words, said the same on the board and in 需求详情 (DETAIL-6)
+        # the sources brain-kit could not read, in words, said the same on the board and in 需求现状 (DETAIL-6)
         assert b1["missing"] and b1["missing"] == d1["timeline"]["missing"]
         assert not any(w in json.dumps(b1["missing"]) for w in ("ledger", "--", "not given"))
     cells = {c["id"]: c for c in b1["checks"]["cells"]}
@@ -393,7 +393,7 @@ def run_now(b, key):
 
 
 def spent(b, kinds, end):
-    """Seconds of the nodes' spans of *kinds*, an open one drawn to *end* (as 需求详情's 时间花在哪 draws it)."""
+    """Seconds of the nodes' spans of *kinds*, an open one drawn to *end* (as 需求现状's 时间花在哪 draws it)."""
     return sum((s["b"] if s["b"] is not None else end) - s["a"] for n in b["nodes"] for s in n["spans"] if s["kind"] in kinds)
 
 
@@ -542,7 +542,7 @@ def test_a_design_lean_skipped_is_not_needed_and_the_wall_says_what_is_still_to_
 
 def test_a_design_skipped_for_size_small_is_never_waited_for_on_any_page():
     """UI-20: DEMO-3's design was skipped (Size: small) and the board still said its code generation waited for the
-    design approval. From the skip on, no line of the board, 交付总览, 需求详情 or 待办 (the row's waits) waits on it."""
+    design approval. From the skip on, no line of the board, 交付总览, 需求现状 or 待办 (the row's waits) waits on it."""
     deliveries, lv = mod("deliveries"), mod("lean_view")
     evs = demo3_events()
     skip = next(i for i, e in enumerate(evs) if e["data"].get("stage") == "application-design")
@@ -766,7 +766,7 @@ def test_a_push_without_its_label_waits_on_the_person_not_on_the_runner():
     assert [(s["key"], s["status"], s["todo"]) for s in relay["steps"]] == [
         ("handover", "stalled", "在 MR 上补上交接标签，或者在分支上再交接一次"), ("bridge", "waiting", None),
         ("signer", "waiting", None), ("workspace", "waiting", None)]
-    # the check wall (and 需求详情's 检查, which shows it) says the label is missing, as the relay's 桥 step does:
+    # the check wall (and 需求现状's 检查, which shows it) says the label is missing, as the relay's 桥 step does:
     # nothing is being checked, the person labels it
     cell = next(c for c in b["checks"]["cells"] if c["group"] == "handover" and c["id"] == "bridge")
     assert (cell["label"], cell["name"], cell["status"], cell["node"], cell["run"]) == ("标签", "补上交接标签", "wait", None, None)
@@ -777,7 +777,7 @@ def test_a_push_without_its_label_waits_on_the_person_not_on_the_runner():
 def test_a_hand_over_whose_push_failed_is_not_handed_over_on_the_board():
     """main's push_handoff: the hand-over commit is here but never reached the remote, so nothing went out. The board
     said 交给运行机 in its events, 交接了 in the relay and 桥 在核对 on its check wall. Like the row, it says the push
-    did not go out and what to do (需求详情's 交接给运行机 again); the hours since are the person's, on this machine."""
+    did not go out and what to do (需求现状's 交接给运行机 again); the hours since are the person's, on this machine."""
     hand = T + 30 * M
     f = facts(demo3_events()[:12], handoff={"requested_at": iso(hand), "by": "dana"})
     row = row_of("local", "you", deliveries.NOT_PUSHED, do="push_handoff", since=hand)
@@ -787,7 +787,7 @@ def test_a_hand_over_whose_push_failed_is_not_handed_over_on_the_board():
     [relay] = b["relays"]
     assert relay["to"] is None
     assert [(s["key"], s["status"], s["text"], s["todo"]) for s in relay["steps"]] == [
-        ("handover", "failed", "交接提交了，但没推上去", "推上去以后，在需求详情再点「交接给运行机」"),
+        ("handover", "failed", "交接提交了，但没推上去", "推上去以后，在需求现状再点「交接给运行机」"),
         ("bridge", "waiting", "什么也没交出去：桥收不到", None), ("signer", "waiting", "等桥核对完", None),
         ("workspace", "waiting", "等签名", None)]
     cell = next(c for c in b["checks"]["cells"] if c["group"] == "handover" and c["id"] == "bridge")

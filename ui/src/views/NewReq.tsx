@@ -6,7 +6,7 @@
  *              expected to change: a grid. Opened for a requirement claimed already (?key=&title=): its key is fixed and
  *              its title filled; 开工 starts that claim (`brain start --key`). And 「大需求：先拆成小需求」 (StartBody.big;
  *              off with IntakeNext.big.why when this repo cannot): Lean's requirements and design as usual, the design
- *              with the unit split, then 拆成小需求 on its 需求看板.
+ *              with the unit split, then 拆成小需求 on its 运行过程.
  *   2 导入需求文档（选填）  the documents (选文件… / 选文件夹…: this machine's own dialog, POST /pick, adds the paths
  *              chosen to the box; or pasted) and the files left out, then the five gates as five cards whose state
  *              shows (green: done, magenta: waits for you, red: stopped, the check's or this repo's rule). Without
@@ -19,7 +19,7 @@
  *              open the session (a ✗ above), the default branch not on origin yet (推送 right there), the form, a check
  *              of exactly what the form says now. Above it, one line when you already have as many open as the limit
  *              (GET /overview's roster): it never turns 开工 off. The answer: a success card (branch, worktree) saying
- *              what happens in the session, with 打开会话, 需求看板, 需求详情; a failure says why in words and what to do.
+ *              what happens in the session, with 打开会话, 运行过程, 需求现状; a failure says why in words and what to do.
  *
  * KiroCrew's failing or doubtful checks are listed above the form with their fix buttons: /status has them at once,
  * GET /crew checks again. Without a usable repo there is no form: 导入仓库, or the way forward of a repo on its way;
@@ -50,7 +50,7 @@ export const NO_CONFIDENTIAL = '这个仓库不收机密材料：机密、绝密
 export const NO_SECRET = '绝密材料不收：先请产品写一份脱敏摘要，交摘要。'
 export const CHECK_HINT = '只检查：不认领，文档也不收进任何地方。'
 export const CREW_OK = 'KiroCrew 的检查都过了：开工以后能开会话。'
-export const STARTED_NEXT = '打开会话：AI 先写需求文档；写好会请你批准（待办和需求看板会提醒，批准那一行要你在会话里自己打）。'
+export const STARTED_NEXT = '打开会话：AI 先写需求文档；写好会请你批准（待办和运行过程会提醒，批准那一行要你在会话里自己打）。'
 const CLASSES = Object.keys(CLASS_LABEL) as Classification[]
 
 /** A gate's state: ok (done), wait (waits for you), bad (stopped: the check, or this repo's rule), warn (请你确认),
@@ -107,7 +107,7 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
   const picked = repos.find((r) => r.id === repo) ?? null
   const me = picked?.me ?? null     // who brain-kit will say claims it (认领人)
   const localOnly = picked?.remote === false
-  // a requirement claimed already (from 需求看板 / 需求详情): its key is fixed, in its own repo only
+  // a requirement claimed already (from 运行过程 / 需求现状): its key is fixed, in its own repo only
   const claimed = !!entry.key && (!entry.repo || entry.repo === repo) ? entry.key : ''
 
   const next = usePoll<IntakeNext>(repo ? paths.intakeNext(repo) : null, 0)
@@ -657,7 +657,7 @@ function StartOut({ r, big = false, path, onOpen, onBoard, onItem, onMe }: {
         </dl>
       )}
       {r.ok && big && (
-        <p className="nr-big-next" data-testid="start-big"><RoleIcon role="scope" size={16} /><span><b>大需求：</b>在会话里做需求和设计，设计里拆单元（unit-of-work.md）；批完设计，在需求看板上点「{FAMILY_ACT.split}」。</span></p>
+        <p className="nr-big-next" data-testid="start-big"><RoleIcon role="scope" size={16} /><span><b>大需求：</b>在会话里做需求和设计，设计里拆单元（unit-of-work.md）；批完设计，在运行过程页上点「{FAMILY_ACT.split}」。</span></p>
       )}
       <div className="br-row">
         {r.url && (

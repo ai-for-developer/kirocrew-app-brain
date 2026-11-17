@@ -7,7 +7,7 @@ import { apiCalls, apiError } from '../test/stubs/app-sdk'
 import type { HandoffResult, RequirementDetail } from '../types'
 import { DetailView } from './Detail'
 
-// 交接给运行机 on 需求详情 (E2E-10): the fixture is PAY-3, alice's run in its worktree on this machine, in a repo with a
+// 交接给运行机 on 需求现状 (E2E-10): the fixture is PAY-3, alice's run in its worktree on this machine, in a repo with a
 // remote, its session idle
 
 const POST = `${API}/requirements/r1/PAY-3/handoff`

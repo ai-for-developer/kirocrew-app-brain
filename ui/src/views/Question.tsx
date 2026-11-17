@@ -1,5 +1,5 @@
 /**
- * Pieces 需求详情, 需求看板 and 待办 share: a question with its answer form, a Brain entry chip, the MR's 变更说明
+ * Pieces 需求现状, 运行过程 and 待办 share: a question with its answer form, a Brain entry chip, the MR's 变更说明
  * with 复制, and 开审查会话. Text is never rendered as HTML: Markdown is built into elements (Markdown.tsx).
  */
 import { useState } from 'react'

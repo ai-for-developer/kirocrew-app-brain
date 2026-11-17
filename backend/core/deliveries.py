@@ -787,21 +787,21 @@ STUCK_ON = (("run 没接着做（park.json 还在等：去 KiroCrew 看 slot）"
 
 # what to do about a run on brain-kit's review queue (evaluate.review_reasons / open_reasons), by its rule
 QUEUE_TODO = {
-    "stuck": "打开它的需求看板，看它停在哪一步、在等谁，请那个人接着做；不做了就关掉它",
+    "stuck": "打开它的运行过程，看它停在哪一步、在等谁，请那个人接着做；不做了就关掉它",
     "closed_unmerged": "确认它是不做了；还要做的话，在开需求里重新认领",
     "runner_failed": "请运行机负责人看一下运行机的记录，修好再交接一次",
     "state_unknown": "去 KiroCrew 看一下它的会话：没收到就再交接一次",
     "merge_not_here": "点上面的「从远端取最新」",
-    "question_problem": "打开它的需求详情，看是哪个问题，在 MR 上重新回答，或者请运行机负责人看一下",
+    "question_problem": "打开它的需求现状，看是哪个问题，在 MR 上重新回答，或者请运行机负责人看一下",
     "not_readable": "点上面的「从远端取最新」再看；还读不到就请运行机负责人看一下",
-    "acceptance_rejected": "打开需求看板看产品为什么退回；学到的在合并以后回写 Brain，下次就不会再犯",
+    "acceptance_rejected": "打开运行过程看产品为什么退回；学到的在合并以后回写 Brain，下次就不会再犯",
     "reverted_or_hotfixed": "看看合并以后为什么要回滚或修补，学到的回写 Brain",
     "verify_fail_rounds": "看看自动检查为什么老是没过：是检查的问题就修检查，不是就把原因写进 Brain",
     "repeat_corrections": "同一个纠正又来了：把它回写进 Brain，下次 AI 就照着做",
     "stale_citations": "在 Brain 里看看那一条是不是该换成新的",
     "outside_judgment": "看看为什么要在判断点之外插手：能写进 Brain 或检查里的，下次就不用人插手",
     "cost_outlier": "回放一遍看钱花在哪：会话绕了远路，或者需求太大，下次拆小一点",
-    "": "打开它的需求看板看一遍",
+    "": "打开它的运行过程看一遍",
 }
 
 
@@ -826,7 +826,7 @@ def eval_reason(r: Any) -> str:
             "%m-%d %H:%M", time.localtime(lean_view.epoch(m.group(0)) or 0)), text)
     for was, now in STUCK_ON:
         text = text.replace(was, now)
-    return acts_in_words(text.replace("驳回", "退回"))     # the board's and 需求详情's word for a rejection
+    return acts_in_words(text.replace("驳回", "退回"))     # the board's and 需求现状's word for a rejection
 
 
 def skip_why(x: dict[str, Any]) -> str:

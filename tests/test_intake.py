@@ -153,7 +153,7 @@ def test_gate_2_without_the_switch_set_does_what_this_brain_kit_does_by_default(
 
 
 def test_a_requirement_claimed_already_is_started_with_its_own_key(tmp_path, home):
-    """需求看板 / 需求详情 send a claimed requirement to 开需求 with its key: `brain start --key` takes the person's own
+    """运行过程 / 需求现状 send a claimed requirement to 开需求 with its key: `brain start --key` takes the person's own
     claim (no new key); someone else's says whose it is, in words."""
     repo = make_project(tmp_path)
     brain(repo, "claim", "--title", "只认领")                        # PAY-1, alice's

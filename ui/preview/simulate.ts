@@ -1,5 +1,5 @@
 /**
- * ?simulate=1 on the preview's 需求看板 (the sample preview's simulate): the requirement plays forward by itself, one
+ * ?simulate=1 on the preview's 运行过程 (the sample preview's simulate): the requirement plays forward by itself, one
  * moment every 3.2 s (?stepMs=… for another pace; ?step=n holds it at the n-th moment), the way a live board changes
  * while the work goes on: nodes change colour, check cells flip, commits slide onto the conveyor, particles fly. Each
  * poll answers with the board as it stood just after the next event (timeline.ts replayAt), that moment as its `at`;

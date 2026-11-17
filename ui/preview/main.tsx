@@ -156,7 +156,7 @@ const reqOf = (path: string) => {
   return { repo, key, id: `${repo}/${key}` }
 }
 
-/** A requirement's 需求详情: PAY-3's is the fixture; any other is made from its board (the same records). */
+/** A requirement's 需求现状: PAY-3's is the fixture; any other is made from its board (the same records). */
 function detailFor(path: string): RequirementDetail {
   const { key, id } = reqOf(path)
   if (W.details[id]) return clone(W.details[id])

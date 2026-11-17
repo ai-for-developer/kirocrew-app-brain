@@ -1,11 +1,11 @@
 /**
- * 大需求拆成小需求 (brain-kit's split, docs/安装和使用.md §4.7): the family panel of 需求详情 and 需求看板.
+ * 大需求拆成小需求 (brain-kit's split, docs/安装和使用.md §4.7): the family panel of 需求现状 and 运行过程.
  *
  * - a big requirement split into small ones (role parent): 「拆成的小需求」 with the roll-up (已合并 n/m, 待认领, 认领了,
  *   在做, 已关闭), the family's state and whether it is released, and each small one as a lane in the board's lane look:
- *   its key, unit, state, owner, what it depends on and what blocks it; a lane opens that small one's 需求看板. On the
+ *   its key, unit, state, owner, what it depends on and what blocks it; a lane opens that small one's 运行过程. On the
  *   board also the family's numbers from its trace (ReqBoard.rollup), what nobody knows said so.
- * - a small one (role child): 「PAY-1 的小需求 · 单元 api」 with its big one (its 需求看板), its paths and contracts, its
+ * - a small one (role child): 「PAY-1 的小需求 · 单元 api」 with its big one (its 运行过程), its paths and contracts, its
  *   dependencies and how far each is, what blocks it.
  * - a big one not split yet (role big): what comes next, in one line.
  *
@@ -30,7 +30,7 @@ import { ACT, APPROVAL_NAME, CHECK_GROUP_NAME, CHILD_STATE_NAME, FAMILY_ACT, SYN
 import type { ViewProps } from './props'
 
 /** what 开需求 says of 「大需求：先拆成小需求」, and a big one not split yet of what comes next */
-export const BIG_HINT = `Lean 照常做需求和设计，设计里拆单元（unit-of-work.md）；你批了设计，就是批了这个拆法；批完在需求看板上点「${FAMILY_ACT.split}」。`
+export const BIG_HINT = `Lean 照常做需求和设计，设计里拆单元（unit-of-work.md）；你批了设计，就是批了这个拆法；批完在运行过程页上点「${FAMILY_ACT.split}」。`
 
 /** A small one's state: its tone (the board's), its drawing, the glyph in its pill, its cell in the roll-up. */
 export const CHILD_META: Record<ChildState, { tone: string; icon: string; glyph: string; seg: string }> = {
@@ -132,7 +132,7 @@ export interface FamilyPanelProps {
   repo: string
   reqKey: string
   ctl: FamilyCtl
-  /** board: the board's card (kt-card); detail: 需求详情's (cto-card) */
+  /** board: the board's card (kt-card); detail: 需求现状's (cto-card) */
   look: 'board' | 'detail'
   go: ViewProps['go']
   /** the family's numbers from its trace (the board's) */
@@ -226,7 +226,7 @@ function ParentPart({ f, look, rollup, onOpen, split, ctl }: {
 }
 
 /** One small one as a lane (the board's lane look): who it is and its state; its title, what it depends on and what
- * blocks it; who has it, and (on the board) its numbers from the trace. The lane opens its 需求看板. */
+ * blocks it; who has it, and (on the board) its numbers from the trace. The lane opens its 运行过程. */
 function ChildLane({ c, numbers, onOpen }: { c: FamilyChild; numbers?: FamilyNumbers | null; onOpen: () => void }) {
   const m = CHILD_META[c.state] ?? CHILD_META.unclaimed
   const live = c.state !== 'merged' && c.state !== 'closed'
@@ -237,7 +237,7 @@ function ChildLane({ c, numbers, onOpen }: { c: FamilyChild; numbers?: FamilyNum
         <span className="kt-avatar" aria-hidden="true"><RoleIcon role={m.icon} size={22} /></span>
         <div className="kt-lane-who">
           <div className="kt-lane-name">
-            <button type="button" className="br-fam-key" title="看它的需求看板" onClick={(e) => { e.stopPropagation(); onOpen() }}>{c.key}</button>
+            <button type="button" className="br-fam-key" title="看它的运行过程" onClick={(e) => { e.stopPropagation(); onOpen() }}>{c.key}</button>
           </div>
           <div className="kt-lane-doing">{c.unit ? `单元 ${c.unit}` : '没有单元名'}</div>
           <div className="kt-lane-tag"><span className={`kt-pill tone-${m.tone}`}><i aria-hidden="true">{m.glyph}</i>{c.state_label}</span></div>
@@ -321,7 +321,7 @@ function ChildPart({ f, look, onParent }: { f: ReqFamily; look: 'board' | 'detai
   const live = f.state !== 'merged' && f.state !== 'closed'
   const title = (
     <>
-      <button type="button" className="br-link br-fam-up" title={`大需求 ${f.parent} 的需求看板`} onClick={onParent}>{f.parent}</button>
+      <button type="button" className="br-link br-fam-up" title={`大需求 ${f.parent} 的运行过程`} onClick={onParent}>{f.parent}</button>
       {' 的小需求'}{f.unit ? ` · 单元 ${f.unit}` : ''}
     </>
   )
@@ -494,7 +494,7 @@ export function ClaimOut({ r }: { r: ClaimResult }) {
 
 /**
  * A small one's start (the panel's, 待办's): its words; refused for its dependencies: each with who has it (and, when
- * brain-kit allows it, 「在 <DEP> 的分支上先做」 right there); started: its branch and worktree, 打开会话, 看需求看板.
+ * brain-kit allows it, 「在 <DEP> 的分支上先做」 right there); started: its branch and worktree, 打开会话, 看运行过程.
  */
 export function ChildStartOut({ r, onOpen, onBoard, onOn, busy = false }: {
   r: ChildStartResult

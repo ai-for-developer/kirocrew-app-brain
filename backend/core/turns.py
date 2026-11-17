@@ -1,4 +1,4 @@
-"""产出's session tabs (它的回复 · 接到的任务 · 做了什么): the session turns a round was done in, for the 需求看板's drawer.
+"""产出's session tabs (它的回复 · 接到的任务 · 做了什么): the session turns a round was done in, for the 运行过程's drawer.
 
 ``GET /outputs/{repo}/{key}/turns?node&round`` (turn_views). Lean records each message its hook sees arrive in a
 session (HUMAN_TURN: a person's or the app's, by the sha256 of its text, aidlc_lean.py hook_prompt). The same text is
@@ -174,8 +174,8 @@ def why_not(n: stages.Node, r: stages.Round, run: Optional[RunView], key: str) -
     asked = r.ask.at if r.ask is not None else None
     if run is None or run.kind in ("child", "parent"):
         who = run.label if run is not None else "别的需求"
-        return {"title": "这一轮是%s做的" % who, "missing": "它的回复、接到的消息和工具调用在它自己的需求看板上。",
-                "here": here, "do": "在%s的需求看板上打开这一步。" % who, "asked": asked}
+        return {"title": "这一轮是%s做的" % who, "missing": "它的回复、接到的消息和工具调用在它自己的运行过程页上。",
+                "here": here, "do": "在%s的运行过程页上打开这一步。" % who, "asked": asked}
     if run.kind == "runner":
         return {"title": "这一轮是运行机做的（%s）" % (run.run_id or run.label),
                 "missing": "它的回复、接到的消息和工具调用留在运行机上，这台机器读不到。", "here": here,

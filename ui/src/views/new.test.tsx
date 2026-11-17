@@ -127,9 +127,9 @@ describe('开需求', () => {
 
     await user.click(within(out).getByRole('button', { name: '打开会话' }))
     expect(navigations).toEqual(['/chat?sid=brain-PAY-8-2c9d'])
-    await user.click(within(out).getByRole('button', { name: '需求看板' }))
+    await user.click(within(out).getByRole('button', { name: '运行过程' }))
     expect(props.go).toHaveBeenCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-8' })
-    await user.click(within(out).getByRole('button', { name: '需求详情' }))
+    await user.click(within(out).getByRole('button', { name: '需求现状' }))
     expect(props.go).toHaveBeenLastCalledWith({ kind: 'item', repo: 'r1', key: 'PAY-8' })
   })
 
@@ -304,7 +304,7 @@ describe('开需求', () => {
     expect(startBtn()).toBeEnabled()
   })
 
-  test('a requirement claimed already (from 需求看板): its key fixed, its title filled, 开工 starts that claim', async () => {
+  test('a requirement claimed already (from 运行过程): its key fixed, its title filled, 开工 starts that claim', async () => {
     const { user } = setup({}, calmStatus(), { repo: 'r1', key: 'PAY-2', title: '对账单按自然日切分' })
     expect(screen.getByRole('heading', { name: '开工：PAY-2' })).toBeInTheDocument()
     expect(screen.getByLabelText('需求号')).toHaveValue('PAY-2')
@@ -637,7 +637,7 @@ describe('开需求', () => {
     await user.click(startBtn())
     const out = await screen.findByTestId('start-result')
     expect(startBody()).toMatchObject({ big: true, open_session: true })
-    expect(within(out).getByTestId('start-big')).toHaveTextContent('批完设计，在需求看板上点「拆成小需求」')
+    expect(within(out).getByTestId('start-big')).toHaveTextContent('批完设计，在运行过程页上点「拆成小需求」')
   })
 
   test('not chosen: the start sends no big', async () => {

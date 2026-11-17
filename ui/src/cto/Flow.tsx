@@ -91,7 +91,7 @@ export function stepOf(r: Requirement): Step | null {
   if (d === 'start') return { label: DO_NAME.start, view: { kind: 'new', repo: r.repo, key: r.key, title: r.title } }
   if (d === 'answer' && r.waits.where === 'mr' && r.mr?.url) return { label: ACT.answerOnMr, href: r.mr.url }
   if (d === 'write_back') return { label: DO_NAME.write_back, view: { kind: 'brain', repo: r.repo, reflect: r.key } }
-  if (d === 'push_handoff') return { label: DO_NAME.push_handoff, view: { kind: 'item', repo: r.repo, key: r.key, from: 'overview' } }   // 交接给运行机 is on 需求详情
+  if (d === 'push_handoff') return { label: DO_NAME.push_handoff, view: { kind: 'item', repo: r.repo, key: r.key, from: 'overview' } }   // 交接给运行机 is on 需求现状
   return { label: DO_NAME[d], view: { kind: 'board', repo: r.repo, key: r.key, from: 'overview', ...(d === 'accept' ? { focus: 'accept' as const } : {}) } }
 }
 
@@ -255,7 +255,7 @@ function Card({ r, at, hl, repoName, late = [], h }: { r: Requirement; at: numbe
   if (blocks.some((d) => focus.includes(d.key))) focus = child?.state_label || r.state_label
   return (
     <div className={`cto-kcard cto-pick${wait ? ' is-live is-wait' : live ? ' is-live is-agent' : ''}${free ? ' br-kfree' : ''}${late.length ? ' is-late' : ''}${hl === r.key ? ' is-hl' : ''}`} data-key={r.key} data-testid="flow-card"
-      data-role={f?.role ?? undefined} role="button" tabIndex={0} title="打开它的需求看板" onClick={() => h.onOpen(r)} onKeyDown={(e) => e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), h.onOpen(r))}>
+      data-role={f?.role ?? undefined} role="button" tabIndex={0} title="打开它的运行过程" onClick={() => h.onOpen(r)} onKeyDown={(e) => e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), h.onOpen(r))}>
       <div className="cto-ktop">
         <span className={wait ? 'cto-gate' : ''}>{wait && <RoleIcon role={lane === 'you' ? 'person' : 'wait'} size={13} />}<b className="kt-mono">{r.key}</b></span>
         {when && <span>{when}</span>}
@@ -344,7 +344,7 @@ export function Flow({ rows, roster, partial = false, at, hl, onNew, repoName, l
       <div className="cto-flow-head">
         <span className="cto-live" aria-hidden="true" />
         <h3>需求流动</h3>
-        <span className="cto-dim">此刻 · 每 5 秒刷新 · 点卡片打开它的需求看板，点列名、行名看下方交付清单里的这些</span>
+        <span className="cto-dim">此刻 · 每 5 秒刷新 · 点卡片打开它的运行过程，点列名、行名看下方交付清单里的这些</span>
         <span className="cto-grow" />
         <div className="cto-seg br-flow-by" role="group" aria-label="需求流动按什么分行" data-testid="flow-by">
           <button type="button" aria-pressed={by === 'stage'} onClick={() => setBy('stage')}>按阶段</button>
@@ -424,7 +424,7 @@ function LaneRow({ spec, first, span, cols, cell, at, hl, repoName, merged, loca
           {merged.slice(0, 5).map((r) => {
             const p = r.family?.role === 'parent' ? familyProgress(r.family) : null
             return laneOf(r) === 'you' ? <Card key={`${r.repo}/${r.key}`} r={r} at={at} hl={hl} repoName={repoName(homeOf(r))} h={h} /> : (
-              <button type="button" key={`${r.repo}/${r.key}`} data-key={r.key} className={`cto-kcard is-real${hl === r.key ? ' is-hl' : ''}`} title="打开它的需求看板（可以回放）" onClick={() => h.onOpen(r)}>
+              <button type="button" key={`${r.repo}/${r.key}`} data-key={r.key} className={`cto-kcard is-real${hl === r.key ? ' is-hl' : ''}`} title="打开它的运行过程（可以回放）" onClick={() => h.onOpen(r)}>
                 <span className="cto-ktop"><b className="kt-mono">{r.key}</b><span>{ago(r.updated_at, at)}</span></span>
                 <span className="cto-ktitle">{r.title}</span>
                 <span className="cto-kmeta">{[r.owner, p ? `小需求 ${p.merged}/${p.total}` : '', r.credits !== null ? `${r.credits_whole ? '' : '至少 '}${fmtCredits(r.credits)} credits` : ''].filter(Boolean).join(' · ')}</span>

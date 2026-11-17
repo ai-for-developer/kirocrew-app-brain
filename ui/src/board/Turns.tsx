@@ -73,7 +73,7 @@ function TaskBody({ t, run }: { t: TaskView; run: Run | undefined }) {
   if (t.kind === 'hidden') return <div className="kt-hidden" data-testid="out-task-hidden"><span>{t.why}</span></div>
   return (
     <div className="kt-hidden" data-testid="out-task-person">
-      <span>{run?.kind === 'local' ? '你' : '有人'}打的话（{t.chars} 字）不在这里显示：看板上不放有人写的话。</span>
+      <span>{run?.kind === 'local' ? '你' : '有人'}打的话（{t.chars} 字）不在这里显示：运行过程里不放有人写的话。</span>
       <button type="button" className="br-link" onClick={() => navigate(t.url)}>在会话里看 ↗</button>
     </div>
   )

@@ -61,7 +61,7 @@ def test_entries_usage_lint_and_reflect(tmp_path, home):
     assert e["id"] == "T-PAY-9-1" and e["type"] == "pitfall" and e["src"] == ["D-1"] and "自然日" in e["text"]
     assert view["lint"]["errors"] == [] and view["ref"] == "main"
     # the run is not merged: the Brain's numbers (merged runs only) leave it out, and it is listed on its own with the
-    # numbers 需求详情 shows for it
+    # numbers 需求现状 shows for it
     assert view["usage"]["runs"] == [] and view["usage"]["useful"] == [0, 1]
     assert view["usage"]["unmerged"] == [{"key": "PAY-1", "loaded": 1, "cited": ["T-PAY-9-1"], "where": "worktree"}]
     assert (item["brain"]["loaded"], item["brain"]["cited"]) == (1, ["T-PAY-9-1"])

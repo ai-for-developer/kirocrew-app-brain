@@ -207,7 +207,7 @@ describe('产出', () => {
     expect(within(tasks).getAllByText(/^第 \d 回合/).map((h) => h.textContent)).toEqual(
       ['第 1 回合 · 10:05 · app 发的（开工消息，只有编号）', '第 2 回合 · 10:21 · 你在会话里打的'])
     expect(within(tasks).getByTestId('out-task-text').textContent).toBe(KICKOFF)
-    expect(within(tasks).getByTestId('out-task-person').textContent).toBe('你打的话（64 字）不在这里显示：看板上不放有人写的话。在会话里看 ↗')
+    expect(within(tasks).getByTestId('out-task-person').textContent).toBe('你打的话（64 字）不在这里显示：运行过程里不放有人写的话。在会话里看 ↗')
 
     fireEvent.click(within(pane).getByRole('tab', { name: /做了什么/ }))
     const calls = await within(pane).findByTestId('out-calls')

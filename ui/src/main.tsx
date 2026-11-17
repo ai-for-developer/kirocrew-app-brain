@@ -19,7 +19,7 @@
  * The app root is a size container (`br-app`): a view's breakpoints follow the app's own width, not the window's
  * (inside KiroCrew the dashboard's sidebar takes ~230 px of it).
  *
- * Views: 交付总览 (views/Overview.tsx, the default: the sample's CTO 视图), 需求详情 (Detail: its 交付详情), 需求看板
+ * Views: 交付总览 (views/Overview.tsx, the default: the sample's CTO 视图), 需求现状 (Detail: its 交付详情), 运行过程
  * (board/BoardPage.tsx: its 团队看板, for one requirement), 开需求 (NewReq), Brain (Brain), 待办 (Todo), 运行机 (Team,
  * team mode only), 设置 (Settings), 导入仓库 (Import: the bar's button, and every place that has no repo).
  */
@@ -58,7 +58,7 @@ export default function BrainApp({ pollMs }: { pollMs?: number } = {}) {
   const [held, setHeld] = useState<Held>(() => heldOf(parseView(window.location.search), loadHeld()))
   const api = useAppApi()
   const [picking, setPicking] = useState(false)
-  // the requirement in hand that its repo does not have (需求详情 / 需求看板 got 404): its other tab cannot open it either
+  // the requirement in hand that its repo does not have (需求现状 / 运行过程 got 404): its other tab cannot open it either
   const [gone, setGone] = useState<string | null>(null)
   const onMissing = useCallback((repo: string, key: string, missing: boolean) => {
     const id = `${repo}/${key}`
@@ -131,7 +131,7 @@ export default function BrainApp({ pollMs }: { pollMs?: number } = {}) {
   useEffect(() => {  // the view that just opened starts at its top (the host page scrolls, not this app)
     if (view.n) rootRef.current?.scrollIntoView?.({ block: 'start' })
   }, [view.n])
-  // 切换需求 on 需求详情 / 需求看板: the same view of another requirement in the place of this one (no new history entry,
+  // 切换需求 on 需求现状 / 运行过程: the same view of another requirement in the place of this one (no new history entry,
   // so ← 返回 still goes where the view was opened from)
   const swap = useCallback((v: View) => {
     replace(v)
@@ -158,7 +158,7 @@ export default function BrainApp({ pollMs }: { pollMs?: number } = {}) {
     go({ kind: k })
   }, [go, held, api])
 
-  // 需求详情 and 需求看板 say which view they were opened from (their crumb and ← 返回)
+  // 需求现状 and 运行过程 say which view they were opened from (their crumb and ← 返回)
   const goView = useCallback((v: View) => {
     const from = current.current.kind
     if (v.kind === 'item' && !v.from && (from === 'overview' || from === 'todo' || from === 'brain' || from === 'board' || from === 'team')) return go({ ...v, from })
@@ -306,7 +306,7 @@ function saveHeld(h: Held): void {
   }
 }
 
-/** What 需求详情 / 需求看板 open when no requirement was opened yet: the one that waits on you, else any;
+/** What 需求现状 / 运行过程 open when no requirement was opened yet: the one that waits on you, else any;
  * the newest activity first; null when there is none. */
 export function pickRequirement(rows: Requirement[]): Requirement | null {
   if (!rows.length) return null
@@ -316,7 +316,7 @@ export function pickRequirement(rows: Requirement[]): Requirement | null {
   return [...rows].sort((a, b) => t(b) - t(a))[0]
 }
 
-/** The requirement in hand after a move to *v*: the 需求详情 or 需求看板 it is; else the one before. */
+/** The requirement in hand after a move to *v*: the 需求现状 or 运行过程 it is; else the one before. */
 function heldOf(v: View, before: Held): Held {
   if (v.kind !== 'item' && v.kind !== 'board') return before
   return before && before.repo === v.repo && before.key === v.key ? before : { repo: v.repo, key: v.key }

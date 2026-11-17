@@ -1,5 +1,5 @@
 /**
- * The frame every graph of the 需求看板 is drawn in: the scroller that keeps it at its scale (layout.ts SCALE), the
+ * The frame every graph of the 运行过程 is drawn in: the scroller that keeps it at its scale (layout.ts SCALE), the
  * SVG's dotted background, hatching and arrow heads, the halo of a node at work or waiting for the person looking (one
  * shared beat), the check ring, the particle layer, a hover card's delay, and the owner's card.
  */

@@ -1,5 +1,5 @@
 /**
- * The one card kit of the app's views (from the sample: its CTO 视图, 交付详情, 团队看板; here 交付总览, 需求详情, 需求看板 and the
+ * The one card kit of the app's views (from the sample: its CTO 视图, 交付详情, 团队看板; here 交付总览, 需求现状, 运行过程 and the
  * form views, whose `br-card` / `br-kpi` are framed here too). Their components keep their own class names
  * and inner layout; how a card is framed is defined here only, so the views cannot drift apart again:
  *

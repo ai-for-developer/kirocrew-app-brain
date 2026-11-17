@@ -1,5 +1,5 @@
 /**
- * 切换需求: the select on 需求详情 and 需求看板 (the sample board's 选择运行) that opens another requirement in the same
+ * 切换需求: the select on 需求现状 and 运行过程 (the sample board's 选择运行) that opens another requirement in the same
  * view, so neither view is stuck on the one first opened. It lists what 交付总览 lists (GET /overview?repo=all, read
  * again every 30 s): grouped by repo when there is more than one, the newest activity first, and 「等你」 on the ones
  * that wait on the person. Nothing to switch to (one requirement, or the list did not come): it is not shown.
@@ -27,14 +27,14 @@ export function runnerRow(rows: Requirement[], repo: string, key: string): Requi
   return rows.find((r) => r.repo === 'runner' && r.key === key) ?? null
 }
 
-/** 需求详情 / 需求看板 of a repo's requirement: the runner's row standing for it in team mode, from the list 切换需求 reads. */
+/** 需求现状 / 运行过程 of a repo's requirement: the runner's row standing for it in team mode, from the list 切换需求 reads. */
 export function useOnRunner(repo: string, key: string, status: Status | null, pollMs?: number): Requirement | null {
   const o = usePoll<Overview>(status?.app.team && repo !== 'runner' ? paths.overview('all') : null, Math.max(pollMs ?? 0, SWITCH_POLL_MS))
   return o.data ? runnerRow(o.data.rows, repo, key) : null
 }
 
 /** Where a handed-over requirement is now, and the way to it. */
-export function OnRunner({ reqKey, what, onOpen }: { reqKey: string; what: '需求详情' | '需求看板'; onOpen: () => void }) {
+export function OnRunner({ reqKey, what, onOpen }: { reqKey: string; what: '需求现状' | '运行过程'; onOpen: () => void }) {
   return (
     <div className="br-banner is-info" role="status" data-testid="on-runner">
       <div className="br-row">
@@ -84,7 +84,7 @@ export function ReqSwitch({ repo, reqKey, status, onPick, pollMs }: {
   )
 }
 
-/** A requirement its repo does not have (需求详情, 需求看板): which repo, what may have happened, and what to do. */
+/** A requirement its repo does not have (需求现状, 运行过程): which repo, what may have happened, and what to do. */
 /** *backName* / *onBack*: the way back the crumb names (the view it was opened from, else 交付总览). */
 export function NotFound({ repoName, reqKey, backName, onBack, testId }: { repoName: string | null; reqKey: string; backName: string; onBack: () => void; testId: string }) {
   return (

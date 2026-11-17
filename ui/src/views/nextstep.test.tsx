@@ -15,7 +15,7 @@ const props = (): ViewProps => ({ status: w.status, go: vi.fn(), replace: vi.fn(
 /** Where Lean's progress says the requirement is (在做：代码生成, 下一步：发布, 全部做完, 还没开工), as a page says it. */
 const said = (text: string | null | undefined) => (text ?? '').split(' · ').find((p) => /^(在做|下一步)：|^全部做完|^还没开/.test(p)) ?? ''
 
-test('下一步 is one rule: every preview requirement says the same on 交付总览, 需求详情 and the board', async () => {
+test('下一步 is one rule: every preview requirement says the same on 交付总览, 需求现状 and the board', async () => {
   const keys = w.overview.rows.map((r) => `${r.repo}/${r.key}`).filter((k) => w.details[k] && w.boards[k])
   expect(keys).toContain('r1/PAY-16')
   installFixtureRoutes({ [`GET ${API}/overview*`]: () => w.overview })

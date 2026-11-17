@@ -55,7 +55,7 @@ describe('nav: the URL of every view', () => {
     expect(searchOf({ kind: 'item', repo: 'r1', key: 'PAY-4', decision: 'x' })).toBe('?view=item&repo=r1&key=PAY-4')
   })
 
-  test('需求看板: repo and key or nothing; replay only as 1; a focus and a from of its own, else left out', () => {
+  test('运行过程: repo and key or nothing; replay only as 1; a focus and a from of its own, else left out', () => {
     expect(searchOf({ kind: 'board', repo: 'r1', key: 'PAY-2', replay: true, focus: 'checks', from: 'overview' }))
       .toBe('?view=board&repo=r1&key=PAY-2&replay=1&focus=checks&from=overview')
     expect(searchOf({ kind: 'board', repo: 'r1', key: 'PAY-2', replay: false })).toBe('?view=board&repo=r1&key=PAY-2')
@@ -66,7 +66,7 @@ describe('nav: the URL of every view', () => {
     expect(parseView('?view=board&key=PAY-2')).toEqual({ kind: 'overview' })
     expect(parseView('?view=board&repo=x1&key=PAY-2')).toEqual({ kind: 'overview' })
     expect(parseView('?view=board&repo=r1&key=pay-2')).toEqual({ kind: 'overview' })
-    // replay is 1 or absent; a focus or a from it does not know is dropped (brain and board are 需求详情's, not its)
+    // replay is 1 or absent; a focus or a from it does not know is dropped (brain and board are 需求现状's, not its)
     const bare = { kind: 'board', repo: 'r1', key: 'PAY-2' }
     expect(parseView('?view=board&repo=r1&key=PAY-2')).toEqual(bare)
     expect(parseView('?view=board&repo=r1&key=PAY-2&replay=true')).toEqual(bare)
@@ -77,7 +77,7 @@ describe('nav: the URL of every view', () => {
     expect(parseView('?view=board&repo=r1&key=PAY-2&from=evil&focus=%3Cb%3E&replay=yes')).toEqual(bare)
   })
 
-  test('需求看板’s 产出 drawer: a stage, a round and a file of its own, else left out', () => {
+  test('运行过程’s 产出 drawer: a stage, a round and a file of its own, else left out', () => {
     const v: View = { kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'code-generation/api', round: 2, file: 'services/api/notify.py' } }
     expect(parseView(searchOf(v))).toEqual(v)
     const bad = parseView('?view=board&repo=r1&key=PAY-9&out=release&round=0&file=../etc/passwd')

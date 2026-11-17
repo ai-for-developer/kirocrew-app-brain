@@ -218,9 +218,9 @@ class LabelledGitLab(FakeGitLab):
 
 
 def test_right_after_the_hand_over_the_first_look_reads_the_mr_at_the_hand_over_commit(tmp_path, home):
-    """E2E-13: right after `brain handoff`, 需求详情 said 「等桥核对交接」 until the MR was read in the background, a label
+    """E2E-13: right after `brain handoff`, 需求现状 said 「等桥核对交接」 until the MR was read in the background, a label
     that did not go on included. The first look at a hand-over commit the MR read has not seen reads the MR at once:
-    without its label nothing was handed over, with it the bridge has it, and 交付总览 and 需求详情 say the same."""
+    without its label nothing was handed over, with it the bridge has it, and 交付总览 and 需求现状 say the same."""
     repo = make_project(tmp_path, kit={"gitlab": {"base": "https://gl.example", "project": "grp/pay"},
                                        "bridge_user": "brain-bridge"})
     wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
@@ -259,7 +259,7 @@ def test_right_after_the_hand_over_the_first_look_reads_the_mr_at_the_hand_over_
     for v, d, want in ((v1, d1, ("handed_over", "you", "label_handoff")), (v2, d2, ("handed_over", "bridge", "none"))):
         w = v["rows"][0]["waits"]
         assert (v["rows"][0]["state"], w["who"], w["do"]) == want
-        assert d["row"]["waits"] == w, "需求详情's 此刻 is the overview's"
+        assert d["row"]["waits"] == w, "需求现状's 此刻 is the overview's"
 
 
 def test_a_pushed_hand_over_without_its_label_is_nothing_handed_over(tmp_path, home):

@@ -1,4 +1,4 @@
-"""需求详情's 变更说明 and the overview row's first line of it (brain-kit's `brain mr-desc`, 72b278e; 48b6b97 commits
+"""需求现状's 变更说明 and the overview row's first line of it (brain-kit's `brain mr-desc`, 72b278e; 48b6b97 commits
 runs/<KEY>/MR.md into the hand-over): MR.md as committed when the branch has it, else made from the run's records at
 that commit (mrdesc.build / render). Never from uncommitted files, never through a symlink, and never by running the
 project's own Lean; the text is inert (no @mention, HTML, quick action, approval or answer line acts when it is pasted

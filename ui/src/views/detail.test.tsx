@@ -58,7 +58,7 @@ const handedOver = (d: RequirementDetail) => {
   d.timeline.missing = ['桥的账本（这台机器上没有：交接以后的问答在 MR 上看）', 'CI 流水线（在 GitLab 上，这里读不到）']
 }
 
-describe('需求详情', () => {
+describe('需求现状', () => {
   beforeEach(() => installFixtureRoutes())
 
   test('the head: title, key, state, whose and where in words; the facts without code names (those are under 细节)', async () => {
@@ -288,7 +288,7 @@ describe('需求详情', () => {
     expect(within(bar).getByRole('button', { name: '打开会话' })).toBeInTheDocument()
   })
 
-  test('此刻 for a refused hand-over says how to hand it over again as 需求看板 says it, the reason once', async () => {
+  test('此刻 for a refused hand-over says how to hand it over again as 运行过程 says it, the reason once', async () => {
     const waits = { who: 'you' as const, text: '接手被拒：标签是 bob 打的，不是负责人 alice', line: null, raw: '', do: 'redo_handoff' as const, since: null, where: 'session' as const }
     const b = fx.board()
     b.row.waits = waits
@@ -338,7 +338,7 @@ describe('需求详情', () => {
     })
   })
 
-  test('team mode, a requirement handed to the runner opened at its repo: it says so and opens the runner’s 需求详情; never that it is not there', async () => {
+  test('team mode, a requirement handed to the runner opened at its repo: it says so and opens the runner’s 需求现状; never that it is not there', async () => {
     const o = fx.overview()
     o.rows = o.rows.map((r) => (r.key === 'PAY-4' ? { ...r, repo: 'runner', where: 'runner' } : r))
     const s = fx.status()
@@ -348,7 +348,7 @@ describe('需求详情', () => {
     const note = await screen.findByTestId('on-runner')
     expect(note).toHaveTextContent('PAY-4 已交给运行机交付总览把它列在运行机下，以那边的为准。')
     expect(document.body).not.toHaveTextContent(/shop-pay (仓库)?里没有/)
-    fireEvent.click(within(note).getByRole('button', { name: '打开运行机上的需求详情' }))
+    fireEvent.click(within(note).getByRole('button', { name: '打开运行机上的需求现状' }))
     expect(go).toHaveBeenCalledWith({ kind: 'item', repo: 'runner', key: 'PAY-4' })
     cleanup()
     installFixtureRoutes({ [`GET ${API}/overview*`]: () => o, [`GET ${API}/requirements/*`]: () => { throw apiError(404, 'not_found', '没有这个需求') } })
@@ -362,14 +362,14 @@ describe('需求详情', () => {
     expect(screen.queryByTestId('on-runner')).toBeNull()
   })
 
-  test('a requirement that is not there: which repo, what to do, back where it was opened from (as the crumb); no HTTP code, no 需求看板', async () => {
+  test('a requirement that is not there: which repo, what to do, back where it was opened from (as the crumb); no HTTP code, no 运行过程', async () => {
     installFixtureRoutes({ [`GET ${API}/requirements/*`]: () => { throw apiError(404, 'not_found', '没有这个需求') } })
     const { go, onBack } = renderDetail({ repo: 'r1', key: 'PAY-99', from: 'todo' })
     const card = await screen.findByRole('region', { name: '没有这个需求' })
     expect(card).toHaveTextContent('shop-pay 仓库里没有 PAY-99')
     expect(card).toHaveTextContent('做什么：在上面「切换需求」里换一个，或者回待办找。')
     expect(document.body).not.toHaveTextContent('404')
-    expect(screen.queryByRole('button', { name: '需求看板 ↗' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '运行过程 ↗' })).toBeNull()
     fireEvent.click(within(card).getByRole('button', { name: '回待办' }))
     expect(onBack).toHaveBeenCalledTimes(1)
     expect(go).not.toHaveBeenCalled()
@@ -625,7 +625,7 @@ describe('需求详情', () => {
     const card = await screen.findByRole('region', { name: '决定' })
     await waitFor(() => expect(within(card).getByText('D-2').closest('tr')!).toHaveTextContent('你（负责人）'))   // the board says me
     const stage = fx.detail().lean.stages.find((s) => s.id === 'requirements')!
-    fireEvent.click(within(within(card).getByText('D-1').closest('tr')!).getByRole('button', { name: '在看板上看 ↗' }))
+    fireEvent.click(within(within(card).getByText('D-1').closest('tr')!).getByRole('button', { name: '在运行过程里看 ↗' }))
     expect(go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-3', from: 'item', at: stage.at })
   })
 
@@ -792,7 +792,7 @@ describe('需求详情', () => {
     await screen.findByRole('region', { name: 'Lean 进度' })
     await waitFor(() => expect(apiCalls.map((c) => c.path)).toContain(`${API}/board/r1/PAY-3`))
     await act(async () => { await new Promise((r) => setTimeout(r, 0)) })   // let the failed board answer land
-    expect(within(screen.getByRole('article', { name: '时间花在哪' })).getByText('看板的数据还没来')).toBeInTheDocument()
+    expect(within(screen.getByRole('article', { name: '时间花在哪' })).getByText('运行过程的数据还没来')).toBeInTheDocument()
     expect(within(screen.getByRole('article', { name: '检查' })).queryByRole('button')).toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.queryByText(/看板读不到/)).toBeNull()
@@ -881,7 +881,7 @@ describe('需求详情', () => {
     const card = await screen.findByRole('article', { name: '检查' })
     await waitFor(() => expect(within(card).getByTestId('checks-say')).toHaveTextContent('目前 4 项都过 · 还剩 发布审批'))
     expect(card).not.toHaveClass('is-ok')
-    fireEvent.click(within(card).getByRole('button', { name: '在需求看板的检查墙上看每一项' }))
+    fireEvent.click(within(card).getByRole('button', { name: '在运行过程的检查墙上看每一项' }))
     expect(go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-3', from: 'item', focus: 'checks' })
   })
 
@@ -1005,11 +1005,11 @@ describe('需求详情', () => {
     expect(card).not.toHaveTextContent('RUN-PAY-3-1')
   })
 
-  test('需求看板 ↗ and the time card’s parts go to this requirement’s board; no 回放 before it is merged', async () => {
+  test('运行过程 ↗ and the time card’s parts go to this requirement’s board; no 回放 before it is merged', async () => {
     const { go } = renderDetail()
     await screen.findByRole('region', { name: 'Lean 进度' })
     const toBoard = { kind: 'board', repo: 'r1', key: 'PAY-3', from: 'item' }
-    fireEvent.click(screen.getByRole('button', { name: '需求看板 ↗' }))
+    fireEvent.click(screen.getByRole('button', { name: '运行过程 ↗' }))
     expect(go).toHaveBeenLastCalledWith(toBoard)
     go.mockClear()
     fireEvent.click(screen.getByRole('button', { name: '看运行过程 →' }))
@@ -1054,7 +1054,7 @@ const fromWorld = (key: string, change: (d: RequirementDetail, b: ReqBoard) => v
   installFixtureRoutes({ [`GET ${API}/requirements/*`]: () => d, [`GET ${API}/board/*`]: () => b })
 }
 
-describe('需求详情 · 别人的需求只看 (F1)', () => {
+describe('需求现状 · 别人的需求只看 (F1)', () => {
   test('PAY-15, carol’s, alice looking: 此刻 says it waits on carol; no 去回答, no approval line, no 开会话 (her branch is not checked out here)', async () => {
     fromWorld('r1/PAY-15')
     renderDetail({ repo: 'r1', key: 'PAY-15', from: 'overview' })
@@ -1105,7 +1105,7 @@ describe('需求详情 · 别人的需求只看 (F1)', () => {
   })
 })
 
-describe('需求详情 · 重开一个会话 (E2E-7, E2E-12)', () => {
+describe('需求现状 · 重开一个会话 (E2E-7, E2E-12)', () => {
   const second = { slot: 'brain-PAY-3-9c1d', kind: 'local' as const, title: 'PAY-3 · 本地开发（重开）', agent: 'brain-dev-crew', credits: null, turns: 0,
     busy: false, awaiting: false, last_activity: null, opened_at: null, project: null, url: '/chat?sid=brain-PAY-3-9c1d', error: null, missing: false }
 
@@ -1162,10 +1162,10 @@ describe('需求详情 · 重开一个会话 (E2E-7, E2E-12)', () => {
   })
 })
 
-describe('需求详情 · 大需求拆成小需求', () => {
+describe('需求现状 · 大需求拆成小需求', () => {
   beforeEach(() => installFixtureRoutes())
 
-  test('a small one: its family panel under the four numbers; 开工 posts start, then 打开会话 and 看需求看板; the detail reads itself again', async () => {
+  test('a small one: its family panel under the four numbers; 开工 posts start, then 打开会话 and 看运行过程; the detail reads itself again', async () => {
     const started: ChildStartResult = {
       ok: true, key: 'PAY-3', branch: 'ai/carol/PAY-3-web', worktree: '/Users/carol/.brain/worktrees/shop-pay/PAY-3', on: null, text: '开工了：PAY-3',
       blocked: [], can_on: null, problem: null, output: 'Started PAY-3', slot: 'brain-PAY-3-a1b2', url: '/chat?sid=brain-PAY-3-a1b2', session_error: '',
@@ -1188,14 +1188,14 @@ describe('需求详情 · 大需求拆成小需求', () => {
     expect(reloadStatus).toHaveBeenCalled()
     fireEvent.click(within(out).getByRole('button', { name: '打开会话' }))
     expect(navigations).toEqual(['/chat?sid=brain-PAY-3-a1b2'])
-    fireEvent.click(within(out).getByRole('button', { name: '需求看板' }))
+    fireEvent.click(within(out).getByRole('button', { name: '运行过程' }))
     expect(go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-3', from: 'item' })
-    // its big one: that one's 需求看板
+    // its big one: that one's 运行过程
     fireEvent.click(within(panel).getByRole('button', { name: 'PAY-1' }))
     expect(go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-1', from: 'item' })
   })
 
-  test('a big one split into small ones: its lanes with the roll-up; a lane opens that one’s 需求看板; no trace numbers here', async () => {
+  test('a big one split into small ones: its lanes with the roll-up; a lane opens that one’s 运行过程; no trace numbers here', async () => {
     const d = fx.detail()
     d.row.key = 'PAY-1'
     d.row.family = {

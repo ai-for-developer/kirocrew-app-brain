@@ -1,8 +1,8 @@
 /**
  * The bar every view shares (the sample's app bar): the app's name, the views as tabs — 交付总览 (every requirement),
- * 需求详情 and 需求看板 (the requirement in hand: the last one opened), 开需求, Brain, 待办 (with its count), 运行机 (team
+ * 需求现状 and 运行过程 (the requirement in hand: the last one opened), 开需求, Brain, 待办 (with its count), 运行机 (team
  * mode only) — and at the right 导入仓库 (how a repo gets into the app) and 设置. It stays where it is when the view
- * changes. Without a requirement in hand, 需求详情 and 需求看板 open the one that waits on you (else the newest one); with one
+ * changes. Without a requirement in hand, 需求现状 and 运行过程 open the one that waits on you (else the newest one); with one
  * in hand both tabs carry its key, so a person sees which one they open; one its repo does not have (*gone*) opens in
  * neither, and the other tab says so instead of opening it. 运行机 opened on a machine that is not a team
  * runner is still a tab there (selected, greyed): the page says why it is empty. Next to the name: the app's version, and
@@ -29,11 +29,11 @@ const TABS: [Tab, string, string][] = ([
 export function AppBar({ view, onView, item, gone = false, picking, todo, team }: {
   view: ViewKind
   onView: (v: ViewKind) => void
-  /** the requirement in hand (KEY), what 需求详情 and 需求看板 open */
+  /** the requirement in hand (KEY), what 需求现状 and 运行过程 open */
   item?: string
   /** its repo does not have it (the view in hand got 404) */
   gone?: boolean
-  /** 需求详情 / 需求看板 clicked with nothing in hand: the app is picking one */
+  /** 需求现状 / 运行过程 clicked with nothing in hand: the app is picking one */
   picking?: boolean
   /** status.counts.todo */
   todo: number

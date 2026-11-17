@@ -95,7 +95,7 @@ export const TAIL_PCT = 16
 
 export interface Axis {
   t0: number
-  /** what happened at t0, in the words 需求详情 uses for it: 开工 (the run's start), else 认領 (the claim); '' when
+  /** what happened at t0, in the words 需求现状 uses for it: 开工 (the run's start), else 认領 (the claim); '' when
    * neither is recorded */
   from: '开工' | '认领' | ''
   /** the last activity (the end of the even part) */
@@ -117,7 +117,7 @@ export function lastActivity(b: ReqBoard): number | null {
   return ts.length ? Math.max(...ts) : null
 }
 
-/** The axis starts where 需求详情's cycle does, at 开工 (the run's start event); before it nothing works or waits on a
+/** The axis starts where 需求现状's cycle does, at 开工 (the run's start event); before it nothing works or waits on a
  * lane (the claim is the event before it). A board with no 开工 recorded starts at its first event, said as what that
  * was. */
 export function axisStart(b: Pick<ReqBoard, 'events' | 'started_at' | 'at'>): { t0: number; from: Axis['from'] } {

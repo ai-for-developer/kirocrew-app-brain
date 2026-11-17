@@ -19,7 +19,7 @@ export const WHO_NAME: Record<WaitWho, string> = {
 export const waitsOn = (who: WaitWho): string => (who === 'nobody' ? '' : `等${WHO_NAME[who]}`)
 
 /** the step a person takes (Waits.do) → the button / the verb, the same everywhere. `start` (去开工) is the jump to
- * 开需求 with a claimed requirement's key and title, on every page that has it (交付总览, 待办, 需求详情, 需求看板);
+ * 开需求 with a claimed requirement's key and title, on every page that has it (交付总览, 待办, 需求现状, 运行过程);
  * ACT.start (开工) is 开需求's own button only, the one that starts the run */
 export const DO_NAME: Record<WaitDo, string> = {
   approve: '去批准', reply: '去回话', tool: '去批准工具调用', start: '去开工', answer: '去回答', accept: '去验收',
@@ -36,17 +36,17 @@ export const ACT = {
   /** 开需求's own button (POST /intake/start): never the jump to it, which is DO_NAME.start */
   start: '开工',
   answerOnMr: '去 MR 上回答',
-  openBoard: '需求看板',
-  openDetail: '需求详情',
+  openBoard: '运行过程',
+  openDetail: '需求现状',
   me: '你是谁',
   review: '开审查会话',
   writeBack: '回写 Brain',
-  onBoard: '在看板上看 ↗',
+  onBoard: '在运行过程里看 ↗',
   acceptOnMr: '去 MR 上验收',
   viewMr: '看 MR',
 } as const
 
-/** 大需求拆成小需求 (brain-kit's split): the family's actions, the same on 需求看板, 需求详情, 待办 and 开需求 */
+/** 大需求拆成小需求 (brain-kit's split): the family's actions, the same on 运行过程, 需求现状, 待办 and 开需求 */
 export const FAMILY_ACT = {
   split: '拆成小需求',
   splitConfirm: '确定拆',
@@ -99,7 +99,7 @@ export function leanProgress(lean: Pick<LeanSummary, 'done_n' | 'skipped_n' | 'n
   return parts.join(' · ')
 }
 
-/** Where a requirement is on Lean's way: the one rule 交付总览, 需求详情 and 需求看板 say it by. Nothing recorded yet
+/** Where a requirement is on Lean's way: the one rule 交付总览, 需求现状 and 运行过程 say it by. Nothing recorded yet
  * (claimed, or Lean has no record) is 还没开工; a way that is over (merged, merged into its big one, closed) has nothing
  * next; else Lean's own progress (backend lean_view.summary), its next stage 在做 once started. */
 export function leanNow(r: { state: ReqState; lean: LeanSummary }, skipped_phases: string[] = r.lean.skipped_phases): string {
@@ -127,7 +127,7 @@ export const PHRASE_BREAK: Record<string, number> = {
   [DO_NAME.redo_handoff]: 3, [DO_NAME.label_handoff]: 2, [DO_NAME.tool]: 3, [ACT.review]: 1,
 }
 
-/** where a requirement's facts were read (Requirement.where) → where it is, in words (需求详情's head) */
+/** where a requirement's facts were read (Requirement.where) → where it is, in words (需求现状's head) */
 export const WHERE_NAME: Record<string, string> = {
   worktree: '在这台机器上做', branch: '在运行分支上（这台机器没检出）', main: '已合并到默认分支', runner: '在运行机上', claim: '只有认领',
 }

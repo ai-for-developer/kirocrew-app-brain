@@ -1,5 +1,5 @@
 /**
- * Words, tones and number formats every part of the 需求看板 shares (the sample team board's format.ts, in a
+ * Words, tones and number formats every part of the 运行过程 shares (the sample team board's format.ts, in a
  * requirement's words). Pure: no React, no DOM.
  *
  * A tone is a meaning, not a colour: styles.ts maps each to a colour per host mode (kiro-dark / kiro-light), so the

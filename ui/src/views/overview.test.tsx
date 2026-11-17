@@ -267,7 +267,7 @@ describe('交付总览', () => {
     expect(p.go).not.toHaveBeenCalled()
   })
 
-  test('credits that leave something out say 至少 wherever 交付总览 says them, as 需求详情 does: 交付清单 and 需求流动 (E2E-14)', async () => {
+  test('credits that leave something out say 至少 wherever 交付总览 says them, as 需求现状 does: 交付清单 and 需求流动 (E2E-14)', async () => {
     installFixtureRoutes()
     render(<OverviewView entry={{}} {...props()} />)
     const flow = await screen.findByTestId('flow')
@@ -280,7 +280,7 @@ describe('交付总览', () => {
     expect(cardOf(flow, 'PAY-3')).not.toHaveTextContent('至少')
   })
 
-  test('a hand-over whose push failed: 再交接一次 opens 需求详情, where 交接给运行机 is (the board has no such button)', async () => {
+  test('a hand-over whose push failed: 再交接一次 opens 需求现状, where 交接给运行机 is (the board has no such button)', async () => {
     const ov = fx.overview()
     const r = ov.rows.find((x) => x.key === 'PAY-3')!
     Object.assign(r, { state: 'local', state_label: '本地开发中', mr: null,
@@ -404,7 +404,7 @@ describe('交付总览', () => {
     expect(reqRows(table)).toHaveLength(6)
   })
 
-  test('a Flow card opens that requirement’s 需求看板: view=board for its key in the URL', async () => {
+  test('a Flow card opens that requirement’s 运行过程: view=board for its key in the URL', async () => {
     const user = userEvent.setup()
     installFixtureRoutes()
     render(<BrainApp pollMs={60_000} />)
@@ -500,7 +500,7 @@ describe('交付总览', () => {
     expect(cell('PAY-6')).toHaveTextContent(/^还没开工$/)
   })
 
-  test('a row opens its 需求看板; 需求详情 opens its 需求详情; the overlap card names both, their owners and what they share', async () => {
+  test('a row opens its 运行过程; 需求现状 opens its 需求现状; the overlap card names both, their owners and what they share', async () => {
     const user = userEvent.setup()
     installFixtureRoutes()
     const p = props()
@@ -508,7 +508,7 @@ describe('交付总览', () => {
     const table = await screen.findByTestId('req-table')
     await user.click(within(rowOf(table, 'PAY-4')).getByText('对账单按商户拆分'))
     expect(p.go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-4', from: 'overview' })
-    await user.click(within(rowOf(table, 'PAY-4')).getByRole('button', { name: '需求详情' }))
+    await user.click(within(rowOf(table, 'PAY-4')).getByRole('button', { name: '需求现状' }))
     expect(p.go).toHaveBeenLastCalledWith({ kind: 'item', repo: 'r1', key: 'PAY-4', from: 'overview' })
     expect(p.go).toHaveBeenCalledTimes(2) // the button does not open the board as well
     const overlaps = screen.getByTestId('overlaps')
@@ -518,12 +518,12 @@ describe('交付总览', () => {
     expect(p.go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-3', from: 'overview' })
   })
 
-  test('a narrow ledger (1050) stacks a row’s 需求详情 and ▶ 回放, so the table fits its card without a sideways scroll', () => {
+  test('a narrow ledger (1050) stacks a row’s 需求现状 and ▶ 回放, so the table fits its card without a sideways scroll', () => {
     const narrow = OV_CSS.slice(OV_CSS.indexOf('@container brov (max-width: 1180px)'))
     expect(narrow.slice(0, narrow.indexOf('\n}'))).toMatch(/\.br-ledger \.br-acts \{ flex-direction: column;/)
   })
 
-  test('▶ 回放 is on a merged row only, and opens its 需求看板 replaying (replay=1)', async () => {
+  test('▶ 回放 is on a merged row only, and opens its 运行过程 replaying (replay=1)', async () => {
     const user = userEvent.setup()
     installFixtureRoutes()
     const p = props()
@@ -671,7 +671,7 @@ describe('交付总览', () => {
     const user = userEvent.setup()
     const ov = fx.overview()
     ov.eval.metrics = ov.eval.metrics.map((m) => (m.id === 'repeat_rate' ? { ...m, value: [0, 0] as [number, number] } : m))
-    ov.eval.queue = ov.eval.queue.map((q) => ({ ...q, todo: '打开需求看板看产品为什么退回；学到的在合并以后回写 Brain，下次就不会再犯' }))
+    ov.eval.queue = ov.eval.queue.map((q) => ({ ...q, todo: '打开运行过程看产品为什么退回；学到的在合并以后回写 Brain，下次就不会再犯' }))
     installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
     const p = props()
     render(<OverviewView entry={{}} {...p} />)
@@ -688,7 +688,7 @@ describe('交付总览', () => {
     const queue = within(batch).getByTestId('eval-queue')
     expect(queue).toHaveTextContent('要复看PAY-4 ↗验收被退回 1 次')
     // OVERVIEW-20: its own 做什么, in the one-line form of the other notes
-    expect(queue).toHaveTextContent('做什么：打开需求看板看产品为什么退回')
+    expect(queue).toHaveTextContent('做什么：打开运行过程看产品为什么退回')
     await user.click(within(queue).getByRole('button', { name: 'PAY-4 ↗' }))
     expect(p.go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-4', from: 'overview' })
     const skipped = within(batch).getByTestId('eval-skipped')
@@ -744,7 +744,7 @@ describe('交付总览', () => {
     expect(Array.from(card.querySelectorAll('[data-row]')).map((r) => r.getAttribute('data-row'))).toEqual(['person', 'check', 'brain', 'unclassified', 'unknown'])
     expect(card.querySelector('[data-row="person"]')).toHaveTextContent(/^人4$/)
     expect(within(card).getByRole('img', { name: /^决定：人 4，检查定的 5，照 Brain 3，AI 自己定的 0，/ })).toBeInTheDocument()
-    expect(card).not.toHaveTextContent(/agent|Who/) // the app's words for who decided, as 需求详情 says them
+    expect(card).not.toHaveTextContent(/agent|Who/) // the app's words for who decided, as 需求现状 says them
     expect(within(card).queryByTestId('funnel-questions')).toBeNull() // a person's machine: always 0, not shown
     unmount()
     const s = fx.status()
@@ -753,7 +753,7 @@ describe('交付总览', () => {
     expect(await screen.findByTestId('funnel-questions')).toHaveTextContent('问人 4 次 · 答了 3 · 送回运行机 2')
   })
 
-  test('the funnel names the unclassified decisions (each opens its 需求详情); how Who is written is in 口径 only', async () => {
+  test('the funnel names the unclassified decisions (each opens its 需求现状); how Who is written is in 口径 only', async () => {
     const user = userEvent.setup()
     installFixtureRoutes()
     const p = props()
@@ -1096,7 +1096,7 @@ describe('交付总览: 大需求和小需求', () => {
     expect(keysOf(table).slice(-2)).toEqual(['PAY-200', 'PAY-201'])
   })
 
-  test('the eval families: one summary row per big requirement (n/m merged, state, acts, questions, credits); its key opens its 需求看板', async () => {
+  test('the eval families: one summary row per big requirement (n/m merged, state, acts, questions, credits); its key opens its 运行过程', async () => {
     const user = userEvent.setup()
     const ov = splitOverview()
     ov.eval.families = [
@@ -1218,7 +1218,7 @@ describe('交付总览: 全队卡点和按人看', () => {
   }
   const lineOf = (card: HTMLElement, key: string) => card.querySelector(`li[data-key="${key}"]`) as HTMLElement
 
-  test('全队卡点 sits beside 轮到你, in its look: the counts by kind, a line per stuck requirement the worst first, each key opening its 需求看板', async () => {
+  test('全队卡点 sits beside 轮到你, in its look: the counts by kind, a line per stuck requirement the worst first, each key opening its 运行过程', async () => {
     const user = userEvent.setup()
     installFixtureRoutes({ [`GET ${API}/overview*`]: () => stuckWorld() })
     const p = props()

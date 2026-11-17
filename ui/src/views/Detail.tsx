@@ -1,5 +1,5 @@
 /**
- * 需求详情: one requirement, between 交付总览 (every requirement) and its 需求看板 (how it went), as the sample's 交付详情
+ * 需求现状: one requirement, between 交付总览 (every requirement) and its 运行过程 (how it went), as the sample's 交付详情
  * shows one delivery. First what to do now (此刻: who it waits on, since when, and the step right there: 打开会话,
  * 复制那一行, 开审查会话, 开工, 去 MR 上回答, 回写 Brain), then how long it took, where the time went (AI on this machine,
  * the runner, waiting for a person, done again), what it cost and what the checks say; 看运行过程 → to its board, where
@@ -252,7 +252,7 @@ function reflectBranch(x: RequirementDetail, board: ReqBoard | null): string | n
 export function DetailView({ entry, onBack, onSwitch, onMissing, ...props }: {
   entry: ItemEntry
   onBack?: () => void
-  /** 切换需求: open another requirement here (default: a move to its 需求详情) */
+  /** 切换需求: open another requirement here (default: a move to its 需求现状) */
   onSwitch?: (repo: string, key: string) => void
   /** told whether the repo has this requirement (the app bar's other tab cannot open one it does not have) */
   onMissing?: (missing: boolean) => void
@@ -294,12 +294,12 @@ export function DetailView({ entry, onBack, onSwitch, onMissing, ...props }: {
         <span className="cto-grow" />
         <ReqSwitch repo={entry.repo} reqKey={entry.key} status={props.status} pollMs={props.pollMs} onPick={pick} />
         <div className="cto-item-act">
-          {x && <button type="button" className="kt-btn is-primary" onClick={() => toBoard()}>需求看板 ↗</button>}
+          {x && <button type="button" className="kt-btn is-primary" onClick={() => toBoard()}>运行过程 ↗</button>}
           {x && x.row.state === 'merged' && <button type="button" className="kt-btn" onClick={() => toBoard({ replay: true })}>▶ 回放 ↗</button>}
           {onBack && <button type="button" className="kt-btn" onClick={onBack}>← 返回{from}</button>}
         </div>
       </div>
-      {onRunner && <OnRunner reqKey={entry.key} what="需求详情" onOpen={() => pick('runner', entry.key)} />}
+      {onRunner && <OnRunner reqKey={entry.key} what="需求现状" onOpen={() => pick('runner', entry.key)} />}
       {missing ? !onRunner && <NotFound repoName={repoInfo?.name ?? null} reqKey={entry.key} backName={back.name} onBack={back.go} testId="detail-missing" /> : <LoadState loading={d.loading} error={d.error} has={!!x} />}
       {x && (
         <Page x={x} board={board} live={live} entry={entry} props={props} opened={opened} localOnly={x.row.local_only ?? repoInfo?.remote === false}
@@ -712,12 +712,12 @@ function Cards({ x, board, at, localOnly, replying, onBoard, onSessions }: {
       <article className="cto-card" aria-label="时间花在哪">
         <div className="cto-eyebrow">时间花在哪</div>
         <div className="cto-value">{board ? fmtSpan(busy) : '—'}</div>
-        <div className="cto-desc">{board ? `AI 在做 · 等人 ${fmtSpan(split.find((s) => s.p === 'person')!.s)}${waits.length ? `（${waits.length} 段）` : ''}` : '看板的数据还没来'}</div>
+        <div className="cto-desc">{board ? `AI 在做 · 等人 ${fmtSpan(split.find((s) => s.p === 'person')!.s)}${waits.length ? `（${waits.length} 段）` : ''}` : '运行过程的数据还没来'}</div>
         {board && <SplitBar split={split} />}
         {board && (
           <div className="cto-legend">
             {split.filter((s) => s.s > 0).map(({ p, s }) => (
-              <button type="button" key={p} onClick={() => toPart(p)} title={p === 'person' ? '到看板上第一次等人的那一刻' : '在需求看板的泳道上看'}>
+              <button type="button" key={p} onClick={() => toPart(p)} title={p === 'person' ? '到运行过程里第一次等人的那一刻' : '在运行过程的泳道上看'}>
                 <i className="cto-sw" style={{ background: PART_VAR[p] }} />{PART_LABEL[p]}<b>{fmtSpan(s)}</b>
               </button>
             ))}
@@ -797,7 +797,7 @@ function ChecksCard({ board, localOnly, sent, blocked, onBoard }: {
   const ahead = w ? w.cells.filter((c) => c.status === 'skip' && todo.includes(cellName(c))) : []
   const groups = [...new Set([...shown, ...ahead].map((c) => CHECK_GROUP_NAME[c.group] ?? c.group))]
   const ok = !!w && w.total > 0 && w.passed === w.total && !todo.length && !waiting.length
-  const say = !w ? '看板的数据还没来'
+  const say = !w ? '运行过程的数据还没来'
     : w.total === 0 && !todo.length ? '还没有检查结果'
       : [failed.length ? `没过：${failed.join('、')}` : `目前 ${w.passed === 1 ? '1 项过了' : `${w.passed} 项都过`}`, waiting.length ? `${board && PERSON.has(board.row.waits.who) ? boardWho(board) : '等人'}：${waiting.join('、')}` : '',
         watching.length ? `观察中：${watching.join('、')}` : '', todo.length ? `还剩 ${todo.join('、')}` : '']
@@ -808,7 +808,7 @@ function ChecksCard({ board, localOnly, sent, blocked, onBoard }: {
       <div className="cto-value">{w && w.total ? <>{w.passed}<span className="cto-of">/{w.total}</span></> : w ? <span className="cto-of" style={{ marginLeft: 0 }}>还没有</span> : '—'}</div>
       <div className="cto-desc" data-testid="checks-say"><Phrases text={say} /></div>
       {w && shown.length + ahead.length > 0 && (
-        <button type="button" className="kt-segs cto-segs" aria-label="在需求看板的检查墙上看每一项" onClick={() => onBoard({ focus: 'checks' })}>
+        <button type="button" className="kt-segs cto-segs" aria-label="在运行过程的检查墙上看每一项" onClick={() => onBoard({ focus: 'checks' })}>
           {[...shown, ...ahead].map((c) => (
             <i key={c.id} title={`${cellName(c)}：${c.detail}`}
               className={c.status === 'pass' ? 'is-pass' : c.status === 'fail' ? 'is-fail' : c.status === 'wait' ? 'is-wait' : c.status === 'watch' ? 'is-watch' : 'is-todo'} />
@@ -985,7 +985,7 @@ function StageCell({ s, next }: { s: Stage; next: boolean }) {
 /** Who settled a decision, in words: the owner (you, when it is you), a person by their pseudonym, the Brain entries,
  * the AI itself, a check, the bridge; a Who cell outside brain-kit's vocabulary stays 没归类 (never a guessed name). */
 function decidedBy(d: Decision, owner: string | null, me: boolean): string {
-  // a person other than the owner is a pseudonym (brain-kit never writes a real name): 一位组员, as 需求看板 says it
+  // a person other than the owner is a pseudonym (brain-kit never writes a real name): 一位组员, as 运行过程 says it
   if (d.by === 'person') return d.who === 'owner' ? (me ? '你（负责人）' : `负责人${owner ? ` ${owner}` : ''}`) : d.who ? '一位组员' : '人'
   if (d.by === 'brain') return `${DECIDED_BY.brain}${d.who ? ` ${d.who}` : ''}`
   if (d.by) return DECIDED_BY[d.by] ?? d.by
@@ -1036,7 +1036,7 @@ function DecisionsCard({ decisions, stages, repo, owner, me, go, onAt, picked }:
     <section className="cto-card" aria-label="决定">
       <div className="cto-chart-head">
         <h3>决定</h3>
-        <span className="cto-dim">{decisions.length} 条 · 人定了 {people} 条 · 每一条都能在需求看板上看它那个阶段 · 引用的 Brain 条目点开看</span>
+        <span className="cto-dim">{decisions.length} 条 · 人定了 {people} 条 · 每一条都能在运行过程页上看它那个阶段 · 引用的 Brain 条目点开看</span>
       </div>
       {picked && !found && decisions.length > 0 && <p className="br-note br-small" role="status">这个需求的决定里没有 {picked}：决定记录可能改过了，下面是现在的样子。</p>}
       {decisions.length === 0 ? <p className="br-empty">还没有记下决定。</p> : (
@@ -1061,7 +1061,7 @@ function DecisionsCard({ decisions, stages, repo, owner, me, go, onAt, picked }:
                   <td className="br-dim" data-label="为什么">{dd.why ? <Inline text={dd.why} /> : '—'}</td>
                   <td data-label="谁定的" title={tip || undefined}>{decidedBy(dd, owner, me)}</td>
                   <td data-label="引用 Brain"><span className="br-row" style={{ gap: 4 }}>{dd.cites.length ? dd.cites.map((c) => <EntryChip key={c} id={c} repo={repo} go={go} />) : <span className="br-dim">—</span>}</span></td>
-                  <td><button type="button" className="cto-link" onClick={() => onAt(t)} title={t ? `看板回放到 ${fmtTime(t)}` : '打开需求看板'}>{ACT.onBoard}</button></td>
+                  <td><button type="button" className="cto-link" onClick={() => onAt(t)} title={t ? `运行过程回放到 ${fmtTime(t)}` : '打开运行过程'}>{ACT.onBoard}</button></td>
                 </tr>
               )
             })}

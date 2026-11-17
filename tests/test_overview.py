@@ -1,4 +1,4 @@
-"""交付总览 and 需求详情 on real brain-kit projects: claimed, local (with a pending Lean approval), handed over,
+"""交付总览 and 需求现状 on real brain-kit projects: claimed, local (with a pending Lean approval), handed over,
 merged; overlaps; the approval line is shown, never sent."""
 
 import json
@@ -143,8 +143,8 @@ def test_after_the_hand_over_the_page_follows_the_runner_on_origin_and_keeps_the
 
 def test_an_approval_the_runner_asks_for_is_answered_on_the_mr_not_in_a_session(tmp_path, home):
     """UI-23: after the hand-over the runner stops for a Lean approval (park.json with a Lean request, asked as a
-    clarify). It is answered on the MR, approve / reject, once the bridge posts it: 需求详情's question is the runner's
-    and names the approval (never 澄清, never 「在会话里打那一行」), and 需求看板's step points at the MR with no
+    clarify). It is answered on the MR, approve / reject, once the bridge posts it: 需求现状's question is the runner's
+    and names the approval (never 澄清, never 「在会话里打那一行」), and 运行过程's step points at the MR with no
     session line."""
     repo = make_project(tmp_path, origin=True, kit={"bot_emails": ["bot@example.com"]})
     wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")

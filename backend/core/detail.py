@@ -1,4 +1,4 @@
-"""需求详情: one requirement in full — Lean progress, Session notes, decisions with their Brain citations, the questions
+"""需求现状: one requirement in full — Lean progress, Session notes, decisions with their Brain citations, the questions
 it parked and their answers, the run trace timeline (brainkit.trace when present, else the Lean ledger), the sessions
 this app opened for it with their credits, and what it took from the Brain.
 """
@@ -256,7 +256,7 @@ def owner_marks(t: dict[str, Any]) -> set[str]:
 
 def trace_timeline(t: dict[str, Any]) -> list[dict[str, Any]]:
     """Timeline items from brainkit.trace.build's record (who is a username, a pseudonym or a role, never an email; the
-    owner's own acts are signed OWNER, so the page says 你 to them as 需求看板 does)."""
+    owner's own acts are signed OWNER, so the page says 你 to them as 运行过程 does)."""
     mine = owner_marks(t) | ({str(t["owner"])} if t.get("owner") else set())   # and the owner by their user name
 
     def who(w: Any) -> Any:

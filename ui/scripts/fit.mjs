@@ -18,12 +18,12 @@ const LONG = '退款成功以后给用户发短信通知，旧订单没有手机
 const VIEWS = [
   ['交付总览', 'view=overview'],
   ['交付总览 r1', 'view=overview&repo=r1'],
-  ['需求详情 PAY-9', 'view=item&repo=r1&key=PAY-9'],
-  ['需求详情 PAY-11', 'view=item&repo=r1&key=PAY-11'],
-  ['需求看板 PAY-9', 'view=board&repo=r1&key=PAY-9'],
-  ['需求看板 PAY-2', 'view=board&repo=r1&key=PAY-2'],
-  ['需求看板 PAY-11', 'view=board&repo=r1&key=PAY-11'],
-  ['需求看板 PAY-9 产出', 'view=board&repo=r1&key=PAY-9&out=release&round=3'],
+  ['需求现状 PAY-9', 'view=item&repo=r1&key=PAY-9'],
+  ['需求现状 PAY-11', 'view=item&repo=r1&key=PAY-11'],
+  ['运行过程 PAY-9', 'view=board&repo=r1&key=PAY-9'],
+  ['运行过程 PAY-2', 'view=board&repo=r1&key=PAY-2'],
+  ['运行过程 PAY-11', 'view=board&repo=r1&key=PAY-11'],
+  ['运行过程 PAY-9 产出', 'view=board&repo=r1&key=PAY-9&out=release&round=3'],
   ['开需求', 'view=new&repo=r1'],
   ['Brain', 'view=brain&repo=r1'],
   ['待办', 'view=todo'],
@@ -31,7 +31,7 @@ const VIEWS = [
   ['导入仓库', 'view=import'],
   ['团队', 'view=team', 'light,team'],
 ]
-const LONG_VIEWS = [['需求看板 PAY-9 长标题', 'view=board&repo=r1&key=PAY-9'], ['需求详情 PAY-9 长标题', 'view=item&repo=r1&key=PAY-9']]
+const LONG_VIEWS = [['运行过程 PAY-9 长标题', 'view=board&repo=r1&key=PAY-9'], ['需求现状 PAY-9 长标题', 'view=item&repo=r1&key=PAY-9']]
 
 // boxes that scroll sideways by design, as on the reference board: the commit belt, the stage graph, 产出's steps;
 // and text kept for screen readers only

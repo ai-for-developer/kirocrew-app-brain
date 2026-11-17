@@ -1,4 +1,4 @@
-"""The working box's ticker on the 需求看板: what a run whose session is on this machine did last (its last call, the end of
+"""The working box's ticker on the 运行过程: what a run whose session is on this machine did last (its last call, the end of
 the last line its agent wrote), cut and pseudonymized the way the 产出 drawer's replies are, and never a person's typed
 words."""
 

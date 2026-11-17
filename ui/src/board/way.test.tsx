@@ -38,7 +38,7 @@ describe('the AI-DLC Lean card and the graph say the same next step', () => {
     expect(p.lean.querySelectorAll('.kt-segs .is-next, .kt-segs .is-run')).toHaveLength(0)
   })
 
-  test('PAY-16 waits for its INCEPTION approval: 下一步 is Lean’s 功能设计, as on 交付总览 and 需求详情, and the graph draws its box next', () => {
+  test('PAY-16 waits for its INCEPTION approval: 下一步 is Lean’s 功能设计, as on 交付总览 and 需求现状, and the graph draws its box next', () => {
     const b = worldBoard('r1/PAY-16')
     expect(b.row.lean.next?.label).toBe('功能设计')
     const p = page(b)

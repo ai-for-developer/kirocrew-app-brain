@@ -16,7 +16,7 @@ export const paths = {
   refresh: () => `${BASE}/refresh`,
   overview: (repo: string) => `${BASE}/overview?repo=${enc(repo || 'all')}`,
   requirement: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}`,
-  /** 需求看板: the requirement's board snapshot (stages, runs, lanes, belt, checks, events), polled every 2 s */
+  /** 运行过程: the requirement's board snapshot (stages, runs, lanes, belt, checks, events), polled every 2 s */
   board: (repo: string, key: string) => `${BASE}/board/${enc(repo)}/${enc(key)}`,
   /** 产出: one round of one node's files (round omitted: its latest) */
   outputs: (repo: string, key: string, node: string, round: number | null) =>

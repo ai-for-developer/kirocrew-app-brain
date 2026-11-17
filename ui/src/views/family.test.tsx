@@ -148,7 +148,7 @@ describe('家族面板 · 拆成的小需求（大需求）', () => {
     expect(within(panel()).getByText('已关闭').closest('li')).not.toHaveClass('is-zero')
   })
 
-  test('a lane opens that small one’s 需求看板: from 需求详情 it comes back to the detail; on the board plainly', async () => {
+  test('a lane opens that small one’s 运行过程: from 需求现状 it comes back to the detail; on the board plainly', async () => {
     const { go, user } = renderPanel(parent())
     await user.click(screen.getAllByTestId('fam-child')[2])
     expect(go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-4', from: 'item' })
@@ -190,7 +190,7 @@ describe('家族面板 · 拆成的小需求（大需求）', () => {
 describe('家族面板 · 小需求', () => {
   beforeEach(() => installFixtureRoutes())
 
-  test('「PAY-1 的小需求 · 单元 web」 with its big one (its 需求看板), its paths, contracts, each dependency with how far it is, what blocks it', async () => {
+  test('「PAY-1 的小需求 · 单元 web」 with its big one (its 运行过程), its paths, contracts, each dependency with how far it is, what blocks it', async () => {
     const { go, user } = renderPanel(child())
     const p = panel()
     expect(p).toHaveAccessibleName('PAY-1 的小需求')
@@ -311,7 +311,7 @@ describe('家族面板 · 操作', () => {
     expect(btn('放弃认领')).toHaveAccessibleDescription('已经开了 run 分支：不让放回')
   })
 
-  test('开工 posts start with its session; the answer: its branch and worktree, 打开会话, and in 需求详情 看需求看板', async () => {
+  test('开工 posts start with its session; the answer: its branch and worktree, 打开会话, and in 需求现状 看运行过程', async () => {
     installFixtureRoutes({ [`POST ${API}/requirements/r1/PAY-3/start`]: () => STARTED })
     const { user, go, onChanged } = renderPanel(child({ blocked_by: [], depends_on: [DEP5], state: 'claimed', owner: 'carol', acts: { ...NO_ACTS, start: { ok: true, why: '' } } }))
     expect(btn('开工')).toHaveClass('is-primary')
@@ -325,16 +325,16 @@ describe('家族面板 · 操作', () => {
     expect(onChanged).toHaveBeenCalled()
     await user.click(within(out).getByRole('button', { name: '打开会话' }))
     expect(navigations).toEqual(['/chat?sid=brain-PAY-3-a1b2'])
-    await user.click(within(out).getByRole('button', { name: '需求看板' }))
+    await user.click(within(out).getByRole('button', { name: '运行过程' }))
     expect(go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-3', from: 'item' })
   })
 
-  test('on the board the start offers no 看需求看板 (it is this one); a session that did not open says why', async () => {
+  test('on the board the start offers no 看运行过程 (it is this one); a session that did not open says why', async () => {
     installFixtureRoutes({ [`POST ${API}/requirements/r1/PAY-3/start`]: () => ({ ...STARTED, url: null, slot: null, session_error: 'KiroCrew 没有回应' }) })
     const { user } = renderPanel(child({ acts: { ...NO_ACTS, start: { ok: true, why: '' } } }), { look: 'board' })
     await user.click(btn('开工'))
     const out = await screen.findByTestId('fam-start-result')
-    expect(within(out).queryByRole('button', { name: '需求看板' })).toBeNull()
+    expect(within(out).queryByRole('button', { name: '运行过程' })).toBeNull()
     expect(within(out).queryByRole('button', { name: '打开会话' })).toBeNull()
     expect(within(out).getByRole('alert')).toHaveTextContent('会话没开成：KiroCrew 没有回应')
   })

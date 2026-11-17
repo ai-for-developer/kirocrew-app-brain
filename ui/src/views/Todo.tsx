@@ -14,17 +14,17 @@
  *   start               claimed by you, not started                                 去开工 (开需求 with its key)
  *   child_start         a small requirement you claimed, its dependencies merged    开工 here (brain start --key, then
  *                                                                                  its session; the answer stays)
- *   parent_release      a big requirement whose small ones all merged              需求看板 (review and release it)
+ *   parent_release      a big requirement whose small ones all merged              运行过程 (review and release it)
  *   write_back          merged, its new knowledge not written back yet               回写 Brain (Brain's 回写, on it)
  *   handoff_rejected    the hand-over was refused: why, and what to say to the AI   打开会话 · 看 MR
  *   handoff_unlabelled  pushed, but the MR has no hand-over label                   补上交接标签 · 看 MR
- *   handoff_unpushed    the hand-over commit's push failed: nothing went out        再交接一次 (需求详情, its button)
+ *   handoff_unpushed    the hand-over commit's push failed: nothing went out        再交接一次 (需求现状, its button)
  *   closed_leftover     closed with brain intent close, its run branch or MR left   看 MR (delete it, close it)
  *   push_failed         your progress at a Lean checkpoint, refused by origin       what to do, git's words (细节)
  *   stuck               a run on the runner that no answer can move any more        看 MR
  *   crew                KiroCrew's failing checks, with their fix buttons
  *
- * A key opens 需求详情, 需求看板 opens the board. Polls GET /todo every 10 s; the tab's count and the sidebar badge come
+ * A key opens 需求现状, 运行过程 opens the board. Polls GET /todo every 10 s; the tab's count and the sidebar badge come
  * from /status (the app shell), read again when they disagree with this list.
  */
 import { Fragment, useEffect, useRef, useState } from 'react'
@@ -58,7 +58,7 @@ const GROUPS: Group[] = [
   { key: 'write_back', heading: '等回写 Brain', icon: 'brain', tone: 'wait', hint: '合并了：把学到的写回 Brain' },
   { key: 'handoff_rejected', heading: '接手被拒', icon: 'handover', tone: 'bad', hint: '改好再交接' },
   { key: 'handoff_unlabelled', heading: '没交出去的交接', icon: 'handover', tone: 'warn', hint: 'MR 上没有交接标签' },
-  { key: 'handoff_unpushed', heading: '交接没推上去', icon: 'handover', tone: 'warn', hint: '在需求详情再点「交接给运行机」' },
+  { key: 'handoff_unpushed', heading: '交接没推上去', icon: 'handover', tone: 'warn', hint: '在需求现状再点「交接给运行机」' },
   { key: 'closed_leftover', heading: '关了的需求还留着分支或 MR', icon: 'settings', tone: 'warn', hint: '用不着就删掉、关掉' },
   { key: 'push_failed', heading: '进度没推上去', icon: 'commit', tone: 'warn', hint: '队友看不到你的新进度' },
   { key: 'stuck', heading: '卡住了的运行', icon: 'blocked', tone: 'bad', hint: '这一步答不了了：找负责人' },
@@ -285,7 +285,7 @@ function Item({ it, group, now, go, onAnswered, started, onStarted }: {
         <span className="br-grow" />
         {it.key && (
           <button type="button" className={`br-btn is-small${it.kind === 'parent_release' ? ' is-primary' : ''}`}
-            title={it.kind === 'parent_release' ? '在大需求的需求看板上评审、发布' : '在需求看板上看它走到哪了'}
+            title={it.kind === 'parent_release' ? '在大需求的运行过程页上评审、发布' : '在运行过程页上看它走到哪了'}
             onClick={() => go({ kind: 'board', repo: it.repo, key: it.key, from: 'todo' })}>
             <Icon name="LayoutDashboard" size={13} />{ACT.openBoard}
           </button>

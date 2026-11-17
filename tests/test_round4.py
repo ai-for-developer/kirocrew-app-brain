@@ -301,7 +301,7 @@ def test_eval_batch_states_and_families_reach_the_numbers():
 
 def test_the_timeline_says_a_bridge_decisions_state_and_commit_and_the_runs_on_another_branch():
     """brain-kit 0d52e97 trace: decisions[].sha (the MR head the bridge asked at) and other_runs (rule H0: this key's
-    runs on another branch, not read into this trace), in words on 需求详情."""
+    runs on another branch, not read into this trace), in words on 需求现状."""
     detail = mod("detail")
     t = {"decisions": [{"id": "D-2", "source": "bridge", "state": "delivered", "choice": "B", "who": "carol",
                         "at": "2026-11-09T10:00:00Z", "sha": SHA, "src": ["bridge ledger decisions"]},

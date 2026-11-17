@@ -361,7 +361,7 @@ export function OutputsDrawer({ board, repo, reqKey, at, onAt, onClose, moment =
           ))}
         </nav>
         {n ? <NodePane key={`${n.id}#${r?.n ?? 0}`} board={board} repo={repo} reqKey={reqKey} n={n} r={r} at={at} onAt={onAt} moment={moment} />
-          : <p className="kt-pad kt-dim">看板上没有这一步了：点上面的一步看它的产出</p>}
+          : <p className="kt-pad kt-dim">运行过程里没有这一步了：点上面的一步看它的产出</p>}
       </aside>
     </div>
   )

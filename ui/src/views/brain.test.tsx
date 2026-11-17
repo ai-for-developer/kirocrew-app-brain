@@ -198,7 +198,7 @@ describe('Brain', () => {
     expect(props.go).toHaveBeenCalledWith({ kind: 'item', repo: 'r1', key: 'PAY-2', from: 'brain' })
   })
 
-  test('a run not merged yet is listed on its own, with the numbers 需求详情 says for it; the merged runs’ numbers leave it out', async () => {
+  test('a run not merged yet is listed on its own, with the numbers 需求现状 says for it; the merged runs’ numbers leave it out', async () => {
     const { user, props } = setup()
     const own = await screen.findByTestId('usage-unmerged')
     expect(own).toHaveTextContent('还没合并的（合并以后才算进上面的数）')

@@ -184,7 +184,7 @@ RULES: list[tuple[re.Pattern, str, str]] = [(re.compile(rx, re.S), t, d) for rx,
     (r"^%s depends on unit (?P<u>\S+), which has no open child" % K, "{k} 依赖的单元 {u} 没有对应的小需求",
      "请大需求的负责人再拆一次"),
     (r"^(?P<f>\S+) already exists on (?P<r>\S+): this requirement already has a run", "它已经有运行记录了（{r}）", ""),
-    (r"^%s already has your run: (?P<b>.+)$" % K, "你已经开工了：{b}", "在需求看板上打开它的会话"),
+    (r"^%s already has your run: (?P<b>.+)$" % K, "你已经开工了：{b}", "在运行过程页上打开它的会话"),
     (r"^(?P<w>\S+) exists and is not empty", "工作区目录 {w} 已经有东西了", "换一个目录，或者先把它删掉"),
     (r"^AIDLC_LEAN_TEAM is set", "这台机器的环境变量里设了 Lean 的团队", "去掉那个环境变量再开工"),
     # brain sync (split.sync)
@@ -597,7 +597,7 @@ def split(worktree: str, key: str, apply: bool) -> dict[str, Any]:
     head = ("会拆成 %d 个小需求" % len(acts) if not apply else "拆好了：%d 个小需求" % len(acts))
     parts = [x for x in ("新登记 %d 个（待认领）" % len(new) if new else "", "没变 %d 个" % len(keep) if keep else "",
                          "%d 个已经有人认领或开工，没改：要和他们说一声" % len(need) if need else "") if x]
-    tail = "" if not apply else "。大家可以认领了：在交付总览的「待认领」里，或者在每个小需求的需求看板上"
+    tail = "" if not apply else "。大家可以认领了：在交付总览的「待认领」里，或者在每个小需求的运行过程页上"
     out.update(ok=True, branch=str(data.get("branch") or "") or None,
                units_sha=str(data.get("units_sha256") or "")[:8] or None,
                design_sha=str(data.get("design_sha256") or "")[:8] or None, actions=acts,

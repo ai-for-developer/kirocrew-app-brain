@@ -414,7 +414,7 @@ def relays(bounds: Sequence[float], t: Optional[Mapping[str, Any]], row: Mapping
         later = phase in ("signing", "preparing", "started")
         if phase == "unpushed":
             steps = [_step("handover", "交接", "failed", b, "交接提交了，但没推上去",
-                           "推上去以后，在需求详情再点「交接给运行机」"),
+                           "推上去以后，在需求现状再点「交接给运行机」"),
                      _step("bridge", "桥核对", "waiting", None, "什么也没交出去：桥收不到"),
                      _step("signer", "签名", "waiting", None, "等桥核对完"),
                      _step("workspace", "运行机建工作区", "waiting", None, "等签名")]

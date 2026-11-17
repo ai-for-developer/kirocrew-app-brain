@@ -131,7 +131,7 @@ export interface LeanSummary {
 
 export interface MrRef { iid: number; url: string | null; state: string | null }
 
-/** One row of 交付总览; also the header of 需求详情. */
+/** One row of 交付总览; also the header of 需求现状. */
 export interface Requirement {
   /** repo id from /status (r1, r2 …); team-mode rows use 'runner' */
   repo: string
@@ -1299,7 +1299,7 @@ export interface BrainView {
     never_cited: string[]
     repeats_any: [string, number][]
     /** the numbers above count the runs merged into the default branch only; these runs are not merged yet, read where
-     * 需求详情 reads them (their worktree, else their branch), with its numbers. The backend always sends it */
+     * 需求现状 reads them (their worktree, else their branch), with its numbers. The backend always sends it */
     unmerged?: { key: string; loaded: number | null; cited: string[]; where: 'worktree' | 'branch' }[]
   }
   /** requirements whose run can be reflected (they have a decisions.md) */
@@ -1347,7 +1347,7 @@ export interface ReflectApplyResult {
 // ---------------------------------------------------------------- GET /todo
 
 /** handoff_unlabelled: pushed, but its MR carries no hand-over label (nothing was handed over); handoff_unpushed: the
- * hand-over commit is on this machine only, its push failed (再交接一次, on 需求详情) */
+ * hand-over commit is on this machine only, its push failed (再交接一次, on 需求现状) */
 /** reply: a local session idle, your turn to talk (opens it); start: claimed by you, no run yet (开工) */
 /** child_start: a small requirement you claimed whose dependencies have all merged (开工 now); parent_release: a big
  * requirement whose small ones have all merged (review and release it); closed_leftover: your requirement closed with
@@ -1483,7 +1483,7 @@ export interface RefreshResult {
   raw?: string
 }
 
-// ---------------------------------------------------------------- GET /board/{repo}/{key}: 需求看板
+// ---------------------------------------------------------------- GET /board/{repo}/{key}: 运行过程
 
 /**
  * The state of a node, a run or a hand-over step on a requirement's board, in the sample team board's words and looks
@@ -1686,7 +1686,7 @@ export interface Gate {
   docs: string[]
 }
 
-/** A node's lane time: a span with the run that was at it (需求详情's 价值流 tells this machine's AI from the runner by it). */
+/** A node's lane time: a span with the run that was at it (需求现状's 时间花在哪 tells this machine's AI from the runner by it). */
 export interface NodeSpan extends ActorSpan {
   run: RunKey | null
 }
@@ -1866,7 +1866,7 @@ export interface ReqBoard {
   questions: Question[]
   mr_desc: MrDesc
   sessions: SessionRow[]
-  /** the live brain-dev session on this machine (service._live, as on 需求详情): where the person replies, never a review
+  /** the live brain-dev session on this machine (service._live, as on 需求现状): where the person replies, never a review
    * session */
   live_slot: string | null
   credits: Credits

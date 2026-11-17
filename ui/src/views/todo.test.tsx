@@ -64,7 +64,7 @@ describe('待办', () => {
     expect(within(raw).getByText('细节')).toBeInTheDocument()
     expect(raw).toHaveTextContent('[rejected]')
     expect(raw).toHaveTextContent('做法：git -C /Users/alice/workplace/brain-app/shop-pay/refund-stats pull --no-rebase origin ai/alice/PAY-1-refund-stats')
-    await user.click(within(item).getByRole('button', { name: '需求看板' }))
+    await user.click(within(item).getByRole('button', { name: '运行过程' }))
     expect(p.go).toHaveBeenCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-1', from: 'todo' })
   })
 
@@ -136,7 +136,7 @@ describe('待办', () => {
     expect(go).toHaveBeenCalledWith({ kind: 'brain', repo: 'r1', reflect: 'PAY-2' })
   })
 
-  test('a hand-over whose push failed is 交接没推上去: what happened, the terminal way under 细节, and 再交接一次 opens 需求详情, where its button is', async () => {
+  test('a hand-over whose push failed is 交接没推上去: what happened, the terminal way under 细节, and 再交接一次 opens 需求现状, where its button is', async () => {
     const it = { ...fx.todo().items[3], kind: 'handoff_unpushed', repo: 'r1', key: 'PAY-3', title: '退款单导出 CSV', approval: null, question: null,
       line: null, session: null, mr_url: null, todo: '', text: '交接提交了，但没推上去：什么也没交出去。弄好以后再点「交接给运行机」',
       raw: '在终端里也一样：在这个需求的分支上跑 brain handoff（它会推送、打标签）' } as unknown as TodoItem
@@ -167,17 +167,17 @@ describe('待办', () => {
     expect(card('没交出去的交接')).toHaveClass('is-warn')
   })
 
-  test('a key opens its 需求详情 from 待办; a crew item has no key', async () => {
+  test('a key opens its 需求现状 from 待办; a crew item has no key', async () => {
     const { go } = renderTodo()
     await screen.findByRole('region', { name: '运行机上的问题' })
     fireEvent.click(within(group('运行机上的问题')).getByRole('button', { name: 'PAY-4' }))
     expect(go).toHaveBeenCalledWith({ kind: 'item', repo: 'runner', key: 'PAY-4', from: 'todo' })
-    // the second way: its 需求看板
-    fireEvent.click(within(group('接手被拒')).getByRole('button', { name: '需求看板' }))
+    // the second way: its 运行过程
+    fireEvent.click(within(group('接手被拒')).getByRole('button', { name: '运行过程' }))
     expect(go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-7', from: 'todo' })
     const crew = group('KiroCrew 的问题')
     expect(within(crew).queryByRole('button', { name: /^PAY-/ })).toBeNull()
-    expect(within(crew).queryByRole('button', { name: '需求看板' })).toBeNull()
+    expect(within(crew).queryByRole('button', { name: '运行过程' })).toBeNull()
     expect(crew).toHaveTextContent('brain-dev-crew 的设置缺 Lean 的拦截')
   })
 
@@ -408,7 +408,7 @@ describe('待办', () => {
     const big = group('等评审、发布的大需求')
     expect(big).toHaveTextContent('PAY-1 的 3 个小需求都合并了：评审、发布')
     expect(within(big).queryByRole('button', { name: '开工' })).toBeNull()
-    const board = within(big).getByRole('button', { name: '需求看板' })
+    const board = within(big).getByRole('button', { name: '运行过程' })
     expect(board).toHaveClass('is-primary')
     fireEvent.click(board)
     expect(go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-1', from: 'todo' })

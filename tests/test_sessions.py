@@ -282,7 +282,7 @@ def test_slot_stats_sum_credits_over_the_whole_transcript(tmp_path):
 
 
 def test_a_session_row_shows_the_credits_its_requirement_total_adds_up(tmp_path):
-    """需求详情's 成本 and 会话 card (DETAIL 待确认): before a slot's whole transcript is read, a session the bridge sent
+    """需求现状's 成本 and 会话 card (DETAIL 待确认): before a slot's whole transcript is read, a session the bridge sent
     two turns to has one number, the same in its row and in the total (the row once said the first turn's 24.2 under
     a total of 31.0)."""
     async def go():

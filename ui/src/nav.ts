@@ -4,10 +4,10 @@
  *
  *   /apps/brain                                   交付总览 (the default)
  *     ?view=overview&repo=<id>&state=<ReqState>   …filtered to one repo / one state
- *   ?view=item&repo=<id>&key=<KEY>                需求详情
+ *   ?view=item&repo=<id>&key=<KEY>                需求现状
  *     &from=overview|todo|brain|board|team        …opened from that view: the crumb says the way back
  *     &decision=D-<n>                             …scrolled to that decision, picked out
- *   ?view=board&repo=<id>&key=<KEY>               需求看板 (the requirement's team-board view, polled every 2 s)
+ *   ?view=board&repo=<id>&key=<KEY>               运行过程 (the requirement's team-board view, polled every 2 s)
  *     &replay=1                                   …its 回放 starts (a finished requirement)
  *     &focus=accept|checks|lanes|feed             …scrolled to 验收, the check wall, the lanes or the events
  *     &from=overview|item|todo                    …opened from that view: the crumb says the way back
@@ -39,10 +39,10 @@ export const BRAIN_FILES: readonly BrainFile[] = ['PRODUCT', 'TECH', 'IMPROVEMEN
 
 export type OverviewEntry = { repo?: string; state?: ReqState }
 export type ItemEntry = { repo: string; key: string; from?: ItemFrom
-  /** one of its decisions (decisions.md's D-<n>): 需求详情 scrolls to its row and picks it out (?decision=) */
+  /** one of its decisions (decisions.md's D-<n>): 需求现状 scrolls to its row and picks it out (?decision=) */
   decision?: string }
 export type BoardEntry = { repo: string; key: string; replay?: boolean; focus?: BoardFocus; from?: BoardFrom
-  /** a moment of it (epoch s): 需求详情's 价值流 and 决定 open the board there (?at=) */
+  /** a moment of it (epoch s): 需求现状's 时间花在哪 and 决定 open the board there (?at=) */
   at?: number
   /** the 产出 drawer, open (?out=&round=&file=) */
   out?: OutAt
@@ -230,6 +230,6 @@ export function fileOfEntry(id: string): BrainFile | undefined {
 
 /** Each view's name, the one a crumb and ← 返回 say for the view a page was opened from (UI问题清单 REST-16, 17). */
 export const VIEW_NAME: Record<ViewKind, string> = {
-  overview: '交付总览', item: '需求详情', board: '需求看板', new: '开需求', brain: 'Brain', todo: '待办', team: '运行机',
+  overview: '交付总览', item: '需求现状', board: '运行过程', new: '开需求', brain: 'Brain', todo: '待办', team: '运行机',
   settings: '设置', import: '导入仓库',
 }

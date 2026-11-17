@@ -1,5 +1,5 @@
 /**
- * What the 需求看板 adds to the sample team board's stylesheet (styles.ts BOARD_CSS stays the sample's): the owner in
+ * What the 运行过程 adds to the sample team board's stylesheet (styles.ts BOARD_CSS stays the sample's): the owner in
  * the orchestrator's slot, a refused node's ✕, the merge dot on the rail, the check cells that wait for a
  * person, the spans and marks of a requirement's lanes, the conveyor's hand-over / runner / merge chips, the counters'
  * extras, 验收's step, the introduction's five phases. Only the board's tones and the host's variables.
@@ -126,7 +126,7 @@ export const BOARD_EXTRA_CSS = `
 .br-board .kt-intro-name b { white-space: nowrap; }
 .br-board .kt-intro-does { overflow-wrap: normal; }
 .br-board .kt-intro-does .br-phrase { display: inline-block; white-space: nowrap; }
-/* a requirement the repo does not have: the same card as 需求详情's */
+/* a requirement the repo does not have: the same card as 需求现状's */
 .br-board .br-notfound { padding: 16px 20px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); max-width: 720px; }
 .br-board .br-notfound h3 { margin: 0 0 6px; }
 /* a step said on two lines (what happened, then what to do) keeps its lines */
