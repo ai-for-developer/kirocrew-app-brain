@@ -946,6 +946,63 @@ def test_a_for_each_ref_that_failed_once_is_not_kept_as_no_write_back_branch(tmp
     assert [ref for ref, _, _ in svc._reflects_of(git, "DEMO-3", "main")] == ["brain/DEMO-3-reflect-1"]
 
 
+def test_any_git_call_on_the_write_back_branches_that_failed_once_is_not_kept(tmp_path, home, monkeypatch):
+    """Each git call after for-each-ref (which default branch, each branch's time, merged or not, its merge commit)
+    timed out once (rc 124): the next poll, nothing moved, answers as a cold read does. reflect-1 is merged with a
+    merge commit, reflect-2 fast-forwarded; origin's main has both, the local main has neither."""
+    from appkit import commit_file, git_repo, sh
+    repo, origin = git_repo(tmp_path / "r"), tmp_path / "origin.git"
+    sh("git", "init", "-q", "--bare", "-b", "main", origin)
+    sh("git", "-C", repo, "remote", "add", "origin", origin)
+
+    def at(t):
+        monkeypatch.setenv("GIT_COMMITTER_DATE", "@%d +0000" % t)
+        monkeypatch.setenv("GIT_AUTHOR_DATE", "@%d +0000" % t)
+        return t
+
+    at(1800000000)
+    base = commit_file(repo, "a.md", "a\n", "init")
+    sh("git", "-C", repo, "checkout", "-q", "-b", "brain/DEMO-3-reflect-1")
+    t1 = at(1800003600)
+    commit_file(repo, "b1.md", "b\n", "Brain: DEMO-3 reflect 1")
+    sh("git", "-C", repo, "checkout", "-q", "main")
+    t2 = at(1800007200)
+    sh("git", "-C", repo, "merge", "-q", "--no-ff", "-m", "merge reflect 1", "brain/DEMO-3-reflect-1")
+    sh("git", "-C", repo, "checkout", "-q", "-b", "brain/DEMO-3-reflect-2")
+    t3 = at(1800010800)
+    commit_file(repo, "b2.md", "b\n", "Brain: DEMO-3 reflect 2")
+    sh("git", "-C", repo, "checkout", "-q", "main")
+    sh("git", "-C", repo, "merge", "-q", "--ff-only", "brain/DEMO-3-reflect-2")
+    at(1800014400)
+    commit_file(repo, "c.md", "c\n", "main moves on")
+    sh("git", "-C", repo, "push", "-q", "origin", "main")
+    sh("git", "-C", repo, "reset", "-q", "--hard", base)
+    Git, Service = mod("repo").Git, mod("service").Service
+    git = Git(repo)
+    cold = Service._reflect_refs(git, "DEMO-3", "main")
+    assert cold == [("brain/DEMO-3-reflect-1", t1, t2), ("brain/DEMO-3-reflect-2", t3, t3)]
+    real, calls, fail = Git.run, [], [0]
+
+    def git_run(self, *args, **kw):
+        calls.append(" ".join(args))
+        if len(calls) == fail[0]:
+            return subprocess.CompletedProcess(args, 124, "", "timed out")
+        return real(self, *args, **kw)
+
+    monkeypatch.setattr(Git, "run", git_run)
+    Service._reflect_refs(git, "DEMO-3", "main")
+    kept = []
+    for k in range(2, len(calls) + 1):
+        svc = make_service(tmp_path / ("s%d" % k), [])
+        calls.clear()
+        fail[0] = k
+        svc._reflects_of(git, "DEMO-3", "main")
+        failed, fail[0] = calls[k - 1], 0
+        if svc._reflects_of(git, "DEMO-3", "main") != cold:
+            kept.append(failed)
+    assert kept == []
+
+
 def test_the_runners_page_of_a_hand_over_it_cannot_read_yet_tells_one_story():
     """runner/PAY-9: the team runner has it in its ledger, so the bridge took it; the signer signs its contract and the
     runner has no working directory for it yet. The hand-over is behind it on every part of the board: no 等开工, no
