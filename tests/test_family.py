@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -371,3 +372,49 @@ def test_a_small_one_s_answer_voucher_shows_on_the_big_one_s_board_at_once(world
     fresh = started(cold_w, cold_poll)
     assert fresh != before, "the answer changes the big one's roll-up"
     assert warm == fresh
+
+
+def test_a_small_one_s_trace_that_failed_once_is_made_again(world, monkeypatch):
+    """brain-kit catches a small one's failed trace inside the big one's (its numbers None, the big one's trace has no
+    error): PAY-1's board shows PAY-4's numbers again on a later poll, as on a service that never cached a trace."""
+    scan = mod("repo").Repo.scan
+    monkeypatch.setattr(mod("repo").Repo, "scan", lambda self, ttl=4.0: scan(self, 0))
+    w = world
+
+    async def split():
+        await w.svc.family_split("r1", "PAY-1", True)
+        on = await w.svc.family_start("r1", "PAY-4", None, True, True)
+        assert on["ok"], on
+        await w.svc.refresh("r1")
+    started(w, split)
+    hour = int(w.svc.now() // 3600) * 3600 + 5
+    clock = [hour]
+    w.svc.now = lambda: clock[0]
+    t0 = time.monotonic()
+    shim = SimpleNamespace(**{k: getattr(time, k) for k in dir(time) if not k.startswith("_")})
+    shim.monotonic = lambda: t0 + (clock[0] - hour)
+    monkeypatch.setattr(mod("service"), "time", shim)
+    fail = [True]
+
+    async def polls():
+        trace = mod("detail").bk.m("trace")      # brain-kit is loaded once the service started
+        real = trace.build
+
+        def build(repo, cfg, key, *a, **k):
+            if fail[0] and key == "PAY-4":
+                raise trace.BrainError("command failed (128): git log ... fatal: unable to read tree")
+            return real(repo, cfg, key, *a, **k)
+        monkeypatch.setattr(trace, "build", build)
+        first = (await w.svc.board("r1", "PAY-1"))["rollup"]
+        fail[0] = False
+        clock[0] = hour + 30
+        return first, (await w.svc.board("r1", "PAY-1"))["rollup"]
+    first, later = started(w, polls)
+    cold = make_service(w.tmp, [w.repo], gw=w.gw)
+    cold.now = lambda: hour + 30
+
+    async def cold_poll():
+        return (await cold.board("r1", "PAY-1"))["rollup"]
+    fresh = started(SimpleNamespace(svc=cold), cold_poll)
+    assert first != fresh, "the failed small one shows on the big one's board"
+    assert later == fresh
