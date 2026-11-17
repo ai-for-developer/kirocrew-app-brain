@@ -277,6 +277,18 @@ AI 可以在一个新分支上帮我写好这个改动并提交。推送先问�
 
 ## 第三部分：团队运行机（app 团队模式）
 
+### 试用：在 app 里一键建（同一个系统用户）
+
+只想在一台机器上试团队运行机的，不用照下面一步步做。app 的「一键建运行机」替你做第二部分的令牌、标签、身份表和 kit.json 的改动，也做这一部分的第 2 到第 10 步。人只要做三件事：
+
+1. 在这台机器上装好 KiroCrew 和 Brain 交付 app（第一部分第 2 步）。项目的默认分支上要已经有 `.brain/kit.json`（第一部分第 6、7 步）。
+2. 填表（人做）：app → **设置** → **团队模式** 下面的「一键建运行机」，填 GitLab 地址、项目和一个一次性的个人 token，点「开始建」。token 要有 `api` 权限，你在项目里要是 Maintainer 或 Owner。token 只用这一次，不存到任何地方。
+3. 合并 MR（人做）：在 GitLab 上合并它开的「运行机：更新 .brain/kit.json」，再回到 app 点「再跑一次」。
+
+验证：每一步都是 ✓，最后一步写着「团队模式开了」。然后照第 11 步试交接一次。
+
+这样建的运行机里，签名服务、app 和 AI 的会话是同一个系统用户。它跳过了第 2 步分开系统用户的那层保护，签名挡不住 app 自己，所以只能用来试。正式给团队用，照下面第 0 到第 11 步做。它的文件在 `~/.brain/team-setup/`（令牌、密钥、三份配置）和 `~/workplace/brain-team/`（运行的工作区和缓存）。
+
 > **现状，先读：** app 的团队模式还没跑通过。唯一一次试跑（2026-11-16，一台 macOS、一个系统用户）里，签名服务签了交接、运行机建好了工作区，但运行机的会话一直开不起来，原因没查到。Linux、systemd、分开的系统用户、机器人账号推送都还没在真机上跑过。
 >
 > 所以这一部分的每一步都要跑它的验证；第 11 步的试交接是判断它能不能用的唯一办法。
@@ -354,7 +366,7 @@ sudo -iu brainbot kirocrew config get agent.acp_backend    # 最后一行是 kas
 
 ### 4. 放两份代码（人运行）
 
-签名服务要一份 brain-kit 和一份 app 源码（`signer/` 不在 release 包里）。版本要和 app 自带的一致：用第 3 步验证里 VERSIONS 的 `app` 和 `brain-kit` 两行的 commit。
+签名服务要一份 brain-kit 和一份 app 源码，放在 brainbot 改不了的地方（app 自带的 `signer/` 归 brainbot，签名服务不能用它）。版本要和 app 自带的一致：用第 3 步验证里 VERSIONS 的 `app` 和 `brain-kit` 两行的 commit。
 
 ```bash
 sudo git clone https://github.com/warren830/brain-kit /opt/brain-kit
