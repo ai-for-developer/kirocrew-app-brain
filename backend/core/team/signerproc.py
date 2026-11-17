@@ -1,5 +1,6 @@
 """The signer as a child process of this app, for the team runner 一键建运行机 built (setup.py): signer/brain_signer.py
-with the signer.json beside team mode's bridge.json, started when team mode starts and stopped when it stops.
+with the signer.json beside team mode's bridge.json, started when team mode starts (and by a round of it when its
+process is gone), started again when what it read at its start has changed, and stopped when team mode stops.
 
 Same-user mode only (settings team.dev_same_user): the signer runs as this app's OS user, so it is no boundary
 (MIGRATE.md 第三部分 runs it as another user). A pid file beside signer.json lets a later app process find a signer an
@@ -33,6 +34,10 @@ class SignerFailed(RuntimeError):
     def __init__(self, text: str, detail: str = "") -> None:
         super().__init__(text)
         self.text, self.detail = text, detail
+
+    def team_error(self) -> str:
+        """How team mode says it (TeamRuntime.error, which problems.team_start knows by FAILED)."""
+        return ("%s：%s %s" % (FAILED, self.text, self.detail)).strip()[:400]
 
 
 def config_for(team: dict[str, Any]) -> Path | None:

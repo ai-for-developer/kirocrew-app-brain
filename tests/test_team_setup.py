@@ -13,8 +13,10 @@ import json
 import os
 import re
 import secrets
+import signal
 import subprocess
 import sys
+import time
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import parse_qsl, quote, unquote, urlsplit
@@ -764,9 +766,39 @@ def test_a_rerun_starts_team_mode_again_once_a_file_it_read_has_changed(world, t
     assert last is not None and last_d == last and signer_d == signer_c
 
 
+def test_a_round_of_team_mode_starts_the_signer_again_once_its_process_is_gone(world, tmp_path):
+    """The signer 一键建运行机 set up is killed while team mode runs: the next round starts it again, and runs."""
+    signerproc = mod("team.signerproc")
+    svc, routes, setup = the_app(world, tmp_path)
+
+    def gone(signer, wait_s=10.0):
+        end = time.monotonic() + wait_s
+        while signerproc.running(signer) is not None and time.monotonic() < end:
+            time.sleep(0.05)
+        return signerproc.running(signer) is None
+
+    async def go():
+        await svc.start()
+        try:
+            assert everything_done(await setup())
+            signer = svc._setup_paths().signer_json
+            first = signerproc.running(signer)
+            os.kill(first, signal.SIGKILL)
+            killed = gone(signer)
+            loop = await call(routes, "POST", "/team/loop")
+            return first, killed, loop, signerproc.running(signer), svc._team_status()
+        finally:
+            await svc.stop()
+
+    first, killed, loop, again, status = run(go())
+    assert first and killed and again and again != first
+    assert loop.body["ok"] is True and status["ok"] is True, (loop.body, status)
+
+
 def test_the_command_line_says_one_line_per_step(world):
     """scripts/runner_setup.py, its own process, against the fake GitLab behind a loopback HTTP server: a line per step
-    as it ends, team mode started and stopped again to check it, exit 0 with the MR waiting; again, nothing new."""
+    as it ends, team mode started and stopped again to check it, and a last line for the signer it leaves running (its
+    pid, how to stop it); exit 0 with the MR waiting; again, nothing new and the same signer."""
     from teamfix import Served
     served = Served(world["gl"])
     token_file = world["tmp"] / "token"
@@ -786,9 +818,11 @@ def test_the_command_line_says_one_line_per_step(world):
         served.stop()
     assert left is not None
     lines = first.stdout.splitlines()
-    assert first.returncode == 0 and len(lines) == 12, first.stdout + first.stderr
+    assert first.returncode == 0 and len(lines) == 13, first.stdout + first.stderr
     assert lines[0].startswith("✓ 找到项目  grp/pay") and lines[5].startswith("… kit.json 的 MR  开了 MR !7")
     assert lines[11].startswith("✓ 打开团队模式  团队模式的配置能用") and lines[11].endswith("交接都会被拒")
+    for last in (lines[12], second.stdout.splitlines()[-1]):
+        assert last.startswith("签名服务还在跑（进程 %d）" % left) and last.endswith("kill %d" % left), last
     assert second.returncode == 0 and world["gl"].writes(seen) == [], second.stdout + second.stderr
     assert "✓ 桥的令牌  用上次建的项目令牌 brain-bridge" in second.stdout
     assert world["admin"] not in first.stdout + first.stderr + second.stdout + second.stderr

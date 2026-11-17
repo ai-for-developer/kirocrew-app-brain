@@ -10,7 +10,8 @@
 the clone cache go (default ~/workplace/brain-team); --agent-spec where brain-run goes (default
 ~/.kiro/agents/brain-run.json); --brainkit the brain-kit (default: the one the app would load). The last step starts team
 mode the way the app does, here and only to check it (a TeamRuntime starts and stops again): from outside KiroCrew it
-cannot switch the app's own team mode on. --no-team-mode skips that check.
+cannot switch the app's own team mode on. --no-team-mode skips that check. The signer it starts keeps running after it
+exits: its last line says the signer's pid and how to stop it.
 
 Exit 0: no step failed (one waiting for a person, the kit.json MR, is no failure); 1: a step failed; 2: the arguments,
 brain-kit, or another run holding the root.
@@ -27,14 +28,14 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 MARK = {"done": "✓", "waiting": "…", "failed": "✗", "skipped": "-"}
 CHECKED = "团队模式的配置能用（在这里开了一下又关了）：到 app 的设置 → 团队模式里打开它"
+SIGNER_LEFT = "签名服务还在跑（进程 %d），这个命令退出以后也不停：要停就 kill %d"
 
 
-def app_modules() -> tuple[Any, Any, Any]:
+def app_modules() -> tuple[Any, Any, Any, Any]:
     sys.path.insert(0, str(ROOT))
     import backend.routes  # noqa: F401  (bootstraps the private namespace the app's modules live in)
     core = "_brainapp_backend.core."
-    return (importlib.import_module(core + "bk"), importlib.import_module(core + "team.setup"),
-            importlib.import_module(core + "team.bridgehost"))
+    return tuple(importlib.import_module(core + m) for m in ("bk", "team.setup", "team.bridgehost", "team.signerproc"))
 
 
 def team_check(bridgehost: Any) -> Any:
@@ -71,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--work")
     ap.add_argument("--agent-spec")
     a = ap.parse_args(argv)
-    bk, setup, bridgehost = app_modules()
+    bk, setup, bridgehost, signerproc = app_modules()
     kit = a.brainkit or bk.default_path()
     info = bk.load(kit)
     if not info["ok"]:
@@ -108,6 +109,9 @@ def main(argv: list[str] | None = None) -> int:
     for s in got["steps"]:
         if s["status"] == "todo":
             print("  %s  （没做到）" % s["title"])
+    pid = signerproc.running(paths.signer_json)
+    if pid:
+        print(SIGNER_LEFT % (pid, pid))
     return 1 if any(s["status"] == "failed" for s in got["steps"]) else 0
 
 

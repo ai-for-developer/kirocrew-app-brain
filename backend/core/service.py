@@ -287,7 +287,7 @@ class Service:
             try:
                 await asyncio.to_thread(signerproc.ensure, signer, APP_ROOT, PYTHON_BIN)
             except signerproc.SignerFailed as exc:
-                rt.error = ("%s：%s %s" % (signerproc.FAILED, exc.text, exc.detail)).strip()[:400]
+                rt.error = exc.team_error()
         self.team = rt
 
     async def _stop_team(self) -> None:
@@ -435,13 +435,30 @@ class Service:
     async def _team_forever(self) -> None:
         while True:
             try:
-                if self.team is not None and self.team.host is not None:
-                    await self._in_team(self.team.loop_once)
+                rt = self.team
+                if rt is not None and rt.host is not None:
+                    await self._in_team(lambda: self._team_round(rt))
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001
                 self.log.exception("brain: the bridge loop failed")
             await asyncio.sleep(self.team.interval() if self.team is not None else 60)
+
+    def _team_round(self, rt: Any) -> dict[str, int]:
+        """One round of team mode on its worker (blocking): the signer 一键建运行机 set up started again when its process
+        is gone, then the bridge's round."""
+        signer = signerproc.config_for(rt.team)
+        if signer is not None and signerproc.running(signer) is None:
+            try:
+                pid, _ = signerproc.ensure(signer, APP_ROOT, PYTHON_BIN)
+            except signerproc.SignerFailed as exc:
+                rt.error = exc.team_error()
+                self.log.warning("brain: the signer was gone and does not start again: %s", rt.error)
+            else:
+                if rt.error.startswith(signerproc.FAILED):
+                    rt.error = ""
+                self.log.info("brain: the signer was gone: started it again (pid %d)", pid)
+        return rt.loop_once()
 
     # ---- small helpers -------------------------------------------------------------------------------- #
 
@@ -2166,14 +2183,14 @@ class Service:
                 "hooks": await asyncio.to_thread(self.team.hook_rows)}
 
     async def team_loop(self) -> dict[str, Any]:
-        if self.team is None or self.team.host is None:
-            raise AppError((problems.team_start(self.team.error)["text"] if self.team else "") or "运行机模式没打开",
-                           "team_off", 409)
+        rt = self.team
+        if rt is None or rt.host is None:
+            raise AppError((problems.team_start(rt.error)["text"] if rt else "") or "运行机模式没打开", "team_off", 409)
         try:
-            summary = await self._in_team(self.team.loop_once)
+            summary = await self._in_team(lambda: self._team_round(rt))
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "summary": {}, "error": str(exc)[:300]}
-        return {"ok": not self.team.loop_error, "summary": summary, "error": self.team.loop_error}
+        return {"ok": not rt.loop_error, "summary": summary, "error": rt.loop_error}
 
     # ---- 一键建运行机 ---------------------------------------------------------------------------------- #
 
