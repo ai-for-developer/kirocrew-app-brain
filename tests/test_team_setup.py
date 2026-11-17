@@ -716,7 +716,7 @@ def test_the_app_runs_it_in_the_background_and_team_mode_starts_with_the_signer(
 
 
 def the_app(world, tmp_path):
-    """The app on the fake GitLab, its routes, and the run's body; setup(): one run through the routes, to its end."""
+    """The app on the fake GitLab and its routes; setup(): one run through POST /team/setup, to its end."""
     svc = make_service(tmp_path / "app", [], transport=world["gl"])
     routes = mod("handlers").build_routes(svc, __import__("http_fakes").AppRoute, web=FakeWeb(), is_owner=lambda _r: True)
     body = {"gitlab_base": BASE, "project": P, "admin_token": world["admin"], "roles": {"builder": "bob"}}
@@ -730,8 +730,8 @@ def the_app(world, tmp_path):
 
 def test_a_rerun_starts_team_mode_again_once_a_file_it_read_has_changed(world, tmp_path):
     """The review's runs through the app. A builds the runner: team mode and the signer start on the bridge's token T1.
-    B finds the token file gone, gets a new token (T1 no longer signs in) and stops at brain-run's setup, before the
-    signer and team mode. C writes nothing, and still both start again, as T1 is what they read when they started:
+    B finds the token file gone, gets a new value of that token (T1 no longer signs in) and stops at brain-run's setup,
+    before the signer and team mode. C writes nothing, and still both start again, as T1 is what they read when they started:
     a round of the bridge then signs in to GitLab. D changes nothing either: team mode goes on as it was."""
     signerproc = mod("team.signerproc")
     svc, routes, setup = the_app(world, tmp_path)
