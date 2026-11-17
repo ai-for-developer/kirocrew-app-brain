@@ -47,7 +47,8 @@ ROLE_NAME = {"product": "产品", "builder": "开发", "security": "安全", "da
 PUSH_MODES = ("auto", "ssh", "token")
 LEVEL_NAME = {10: "Guest", 20: "Reporter", 30: "Developer", 40: "Maintainer", 50: "Owner"}
 MAINTAINER, DEVELOPER, OWNER = 40, 30, 50
-# a year less a day: GitLab takes no expires_at more than 365 days past its own today, which may be a day behind UTC's
+# a year less a day from today in UTC: GitLab refuses an expires_at more than 365 days past its own today, which is
+# UTC's (this machine's may be a day ahead), or a day behind it on a GitLab set to a zone west of UTC
 TOKEN_DAYS = 364
 RENEW_DAYS = 14         # a token with this many days or fewer to go gets a new value (rotated), its account the same
 TOKEN_SAID = {"kept": "用上次建的项目令牌 {name}：账号 {user}，{end} 到期",
