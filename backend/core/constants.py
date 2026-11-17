@@ -6,7 +6,7 @@ import shutil as _shutil
 from pathlib import Path as _Path
 
 APP_NAME = "brain"
-VERSION = "0.3.6"
+VERSION = "0.3.7"
 
 # Sidebar folders of the sessions this app opens (apart from aidlc-team's 「AI-DLC 团队」, so both apps can be installed).
 LOCAL_FOLDER = "Brain 需求"        # brain-dev sessions on this machine: a folder per repo, in it one per requirement
