@@ -58,6 +58,13 @@ def scope_of(rid: str, key: str) -> str:
     return "%s-%s" % (rid, key)
 
 
+def trace_failed(tl: dict[str, Any]) -> bool:
+    """brain-kit could not make the trace, or a 小需求's inside a 大需求's: it catches that one and leaves its numbers
+    None (only started 小需求 are children, and a made trace always has numbers)."""
+    kids = (((tl.get("trace") or {}).get("family") or {}).get("children")) or []
+    return bool(tl["error"]) or any(c.get("numbers") is None for c in kids)
+
+
 RECORD_SCOPE_RE = re.compile(r"^(r[1-9][0-9]{0,2})-([A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6})$")   # a local scope_of
 
 
@@ -890,7 +897,7 @@ class Service:
 
     def _timeline(self, repo: Repo, f: dict[str, Any], snap: dict[str, Any], scope: str) -> dict[str, Any]:
         """The requirement's trace, made again only when something it is made from changed (_trace_stamp), or when
-        brain-kit could not make it FAILED_TRACE_S ago."""
+        brain-kit could not make it (trace_failed) FAILED_TRACE_S ago."""
         behind = f.get("where") == "worktree" and f.get("ref")      # origin's run branch is ahead of the worktree
         src_repo, ref = (f["worktree"], None) if f.get("worktree") and not behind else (repo.path, f.get("ref"))
         c = self._local_credits(snap, f, scope)[1]["total"]
@@ -898,7 +905,7 @@ class Service:
         sig = (f.get("tip"), f.get("worktree"), len(f.get("events") or []), f.get("park_sha"), bool(f.get("run")),
                src_repo, ref, c, vouchers, self._trace_stamp(repo.cfg, src_repo, ref, vouchers))
         got = self._trace.get(scope)
-        if got is not None and got[0] == sig and not (got[1]["error"] and time.monotonic() - got[2] > FAILED_TRACE_S):
+        if got is not None and got[0] == sig and not (trace_failed(got[1]) and time.monotonic() - got[2] > FAILED_TRACE_S):
             tl = dict(got[1])
         else:
             tl = detail.timeline(src_repo, repo.cfg, f["key"], ref=ref, events=f.get("events") or [],
