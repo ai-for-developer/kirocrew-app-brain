@@ -42,6 +42,7 @@ from datetime import timedelta
 from typing import Any
 
 from .. import bk, problems
+from . import signerproc
 from .crewadapter import KiroCrewAdapter
 
 REQ_RE = re.compile(r"^[a-z]+-[A-Za-z0-9-]{1,80}-[0-9a-f]{12}\.json$")
@@ -84,6 +85,22 @@ def load_config(path: str) -> dict[str, Any]:
     return cfg
 
 
+def start_inputs(team: dict[str, Any]) -> list[str]:
+    """What a TeamRuntime reads when it starts: bridge.json, runnerd.json, and the files bridge.json names (its GitLab
+    token, the identities, the allowed signers); with it the signer.json 一键建运行机 wrote beside bridge.json."""
+    try:
+        with open(team["bridge_config"], encoding="utf-8") as fh:
+            cfg = json.load(fh)
+    except (KeyError, OSError, ValueError):
+        cfg = None
+    cfg = cfg if isinstance(cfg, dict) else {}
+    gitlab = cfg.get("gitlab") if isinstance(cfg.get("gitlab"), dict) else {}
+    signer = cfg.get("signer") if isinstance(cfg.get("signer"), dict) else {}
+    named = [team.get("bridge_config"), team.get("runnerd_config"), gitlab.get("token_file"), cfg.get("identities"),
+             signer.get("allowed_signers"), signerproc.config_for(team)]
+    return [os.path.expanduser(str(p)) for p in named if p]
+
+
 class TeamRuntime:
     """The hosted bridge + runnerd of one enable of the app. ``start`` builds brain-kit's Bridge with the spool
     signer; ``loop_once`` runs one round; ``stop`` closes the ledger after the round in progress."""
@@ -106,13 +123,19 @@ class TeamRuntime:
         self.last_handovers: list[dict[str, Any]] = []   # what Bridge.process said for each labelled MR, last round
         self.lines: deque = deque(maxlen=200)
         self.same_user = False
+        self.inputs = ""            # signerproc.digest of start_inputs, taken as start() read them
         self._lock = threading.Lock()
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="brain-bridge")
 
     # ---- setup ---------------------------------------------------------------------------------------- #
 
+    def changed(self) -> bool:
+        """Whether a file it read when it started is different now: it holds the old one until it starts again."""
+        return signerproc.digest(start_inputs(self.team)) != self.inputs
+
     def start(self) -> bool:
         common = bk.m("common")
+        self.inputs = signerproc.digest(start_inputs(self.team))
         try:
             cfg = load_config(self.team["bridge_config"])
             s = cfg["signer"]

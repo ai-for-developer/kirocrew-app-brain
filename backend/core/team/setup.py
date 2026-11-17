@@ -233,7 +233,7 @@ class Ctx:
     inp: SetupInput
     paths: Paths
     gitlab: Callable[[str], Any]                                # token -> brain-kit's rest.GitLab for inp.gitlab_base
-    team_mode: Callable[[dict, bool], dict] | None = None       # (settings team, restart) -> TeamStatus; None: not here
+    team_mode: Callable[[dict], dict] | None = None             # settings team -> TeamStatus; None: not here
     signer: Callable[[Paths], tuple[int, bool]] | None = None   # -> (pid, started now); None: signerproc.ensure
     reach: Callable[[str], tuple[bool, str]] | None = None      # clone URL -> (git reaches it, what git said)
     state: dict = field(default_factory=dict)
@@ -242,7 +242,6 @@ class Ctx:
     kit: dict = field(default_factory=dict)           # .brain/kit.json on the default branch, and its text
     kit_text: str = ""
     owner: str = ""                                   # the token's GitLab username
-    rewrote: list = field(default_factory=list)       # files team mode reads at its start that this run changed
     _admin: Any = field(default=None, repr=False)
     _secrets: set = field(default_factory=set, repr=False)
 
@@ -576,7 +575,6 @@ def project_token(ctx: Ctx, key: str, name: str, scopes: tuple[str, ...]) -> tup
            "expires_at": made.get("expires_at"), "username": "", "email": "", "display": ""}
     tokens[key] = rec
     save_state(ctx)                 # the new token's id is on disk before anything else can go wrong
-    ctx.rewrote.append(path.name)
     if saved and saved.get("id") not in (None, rec["id"]):
         revoke(ctx, saved["id"])
     me = whoami(ctx, tok)
@@ -819,8 +817,6 @@ def step_signing_key(ctx: Ctx) -> StepResult:
     if len(pub) < 2:
         raise StepFailed("签名密钥 %s 读不出公钥：它坏了的话，删掉它再跑一次" % ps.key)
     wrote = write_file(ps.allowed, 'brain-bridge namespaces="brain-voucher" %s %s\n' % (pub[0], pub[1]), mode=0o644)
-    if wrote:
-        ctx.rewrote.append(ps.allowed.name)
     return done("生成了签名密钥" if made else "签名密钥已经有了" if not wrote else "签名密钥已经有了，重写了公钥名单")
 
 
@@ -836,7 +832,6 @@ def step_configs(ctx: Ctx) -> StepResult:
     docs = ((ps.bridge_json, bridge_doc(ctx, salt)), (ps.runnerd_json, runnerd_doc(ctx)),
             (ps.signer_json, signer_doc(ctx, salt)))
     wrote = [path.name for path, doc in docs if write_file(path, dumps(doc))]
-    ctx.rewrote += wrote
     return done("写了 %s" % "、".join(wrote) if wrote else "三份配置都没变")
 
 
@@ -935,14 +930,15 @@ def step_signer(ctx: Ctx) -> StepResult:
 
 def step_team_mode(ctx: Ctx) -> StepResult:
     """Team mode on with the two configs and the same-user trial, through the app's settings (its TeamRuntime starts,
-    and the signer with it), and what it says then. Started again only when a file it reads at its start changed."""
+    and the signer with it), and what it says then. The app starts it again when a file it read at its start has
+    changed since, whichever run changed it."""
     ps = ctx.paths
     if ctx.team_mode is None:
         return skipped("这次没打开团队模式：在设置 → 团队模式里填上 %s 和 %s，勾上本机试用"
                        % (tilde(ps.bridge_json), tilde(ps.runnerd_json)))
     want = {"enabled": True, "bridge_config": str(ps.bridge_json), "runnerd_config": str(ps.runnerd_json),
             "dev_same_user": True}
-    st = ctx.team_mode(want, bool(ctx.rewrote)) or {}
+    st = ctx.team_mode(want) or {}
     if not st.get("ok"):
         return failed(str(st.get("error") or "团队模式没开起来"), detail=str(st.get("error_raw") or ""))
     said = str(st.get("said") or "团队模式开了")

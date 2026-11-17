@@ -39,7 +39,7 @@ def app_modules() -> tuple[Any, Any, Any]:
 
 def team_check(bridgehost: Any) -> Any:
     """Team mode as the app starts it, started and stopped again here: its TeamRuntime's own words."""
-    def team_mode(want: dict[str, Any], _restart: bool) -> dict[str, Any]:
+    def team_mode(want: dict[str, Any]) -> dict[str, Any]:
         rt = bridgehost.TeamRuntime(want, None, None, None)
         try:
             rt.start()

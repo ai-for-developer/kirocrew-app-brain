@@ -2197,8 +2197,8 @@ class Service:
         loop = asyncio.get_running_loop()
         rest, transport = bk.m("rest"), self.transport
 
-        def team_mode(want: dict[str, Any], restart: bool) -> dict[str, Any]:
-            return asyncio.run_coroutine_threadsafe(self._setup_team_mode(want, restart), loop).result(600)
+        def team_mode(want: dict[str, Any]) -> dict[str, Any]:
+            return asyncio.run_coroutine_threadsafe(self._setup_team_mode(want), loop).result(600)
 
         ctx = setup_mod.Ctx(inp, paths, gitlab=lambda tok: rest.GitLab(inp.gitlab_base, tok, transport),
                              team_mode=team_mode)
@@ -2232,11 +2232,14 @@ class Service:
         running = await asyncio.to_thread(setup_mod.busy, paths.root)
         return scrub_tree(setup_mod.view(state, paths, running=running), self.scrub)
 
-    async def _setup_team_mode(self, want: dict[str, Any], restart: bool) -> dict[str, Any]:
+    async def _setup_team_mode(self, want: dict[str, Any]) -> dict[str, Any]:
         """一键建运行机's last step: team mode on with its configs through the settings (its TeamRuntime starts, and the
-        signer with it), again only when a file it reads at its start changed or it is not running well."""
-        fine = self.team is not None and self.team.host is not None and not self.team.error
-        if restart or not fine or self.settings["team"] != want:
+        signer with it). Started again unless it runs well with these settings and every file it read at its start is
+        still the same (TeamRuntime.changed): a token or config an earlier run replaced and stopped before this step
+        is read then too."""
+        rt = self.team
+        fine = rt is not None and rt.host is not None and not rt.error and not await asyncio.to_thread(rt.changed)
+        if not fine or self.settings["team"] != want:
             await self.save_settings({"team": want})
         return self._team_status()
 

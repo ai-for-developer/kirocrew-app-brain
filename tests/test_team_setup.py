@@ -15,6 +15,7 @@ import re
 import secrets
 import subprocess
 import sys
+from dataclasses import replace
 from urllib.parse import parse_qsl, quote, unquote, urlsplit
 
 import pytest
@@ -174,8 +175,8 @@ def world(tmp_path, home):
 
 
 def team_mode(world, ok=True):
-    def on(want, restart):
-        world["team"].append((want, restart))
+    def on(want):
+        world["team"].append(want)
         return {"ok": ok, "error": "" if ok else "桥没准备好", "error_raw": "" if ok else "bridge config: x"}
     return on
 
@@ -288,8 +289,8 @@ def test_a_first_run_builds_the_runner_and_waits_for_the_kit_mr(world):
     assert changed == {'  "bridge_user": "%s",' % bot, '    "base": "%s",' % BASE, '    "project": "%s"' % P}, changed
     assert json.loads(new)["bot_users"] == ["brain-bot"] and json.loads(new)["bot_emails"] == ["brain-bot@noreply.invalid"]
     # team mode: on with the two configs, the same-user trial; hand-overs refused until the MR is merged
-    assert world["team"] == [({"enabled": True, "bridge_config": str(ps.bridge_json),
-                               "runnerd_config": str(ps.runnerd_json), "dev_same_user": True}, True)]
+    assert world["team"] == [{"enabled": True, "bridge_config": str(ps.bridge_json),
+                              "runnerd_config": str(ps.runnerd_json), "dev_same_user": True}]
     assert "合并以前" in by["team_mode"]["message"] and world["signer"][0] == s
     state = json.loads(ps.state.read_text())
     assert state["tokens"]["bridge"]["username"] == bot and state["project"]["id"] == PID and not state["running"]
@@ -310,7 +311,6 @@ def test_a_second_run_makes_nothing_new(world):
         {k: v for k, v in before.items() if not k.endswith("setup-state.json")}
     by = {s["id"]: s for s in view["steps"]}
     assert by["bridge_token"]["message"].startswith("用上次建的") and "还没合并" in by["kit_mr"]["message"]
-    assert world["team"][-1][1] is False                 # nothing team mode reads changed: not started again
 
 
 def test_a_run_that_stops_part_way_converges_when_run_again(world):
@@ -348,7 +348,6 @@ def test_a_lost_token_file_gets_a_new_token_and_the_old_one_is_revoked(world):
     assert gl.revoked == {old["token"]} and (ps.root / "bridge-gitlab-token").read_text().strip() == new["token"]
     assert json.loads(ps.signer_json.read_text())["bridge_users"] == [gl.users[new["token"]]["username"]]
     assert json.loads(gl.files["brain/runner-setup"][".brain/kit.json"])["bridge_user"] == gl.users[new["token"]]["username"]
-    assert world["team"][-1][1] is True                  # its token and signer.json changed: started again
 
 
 def test_the_kit_mr_waits_until_it_is_merged_then_is_done(world):
@@ -543,6 +542,57 @@ def test_the_app_runs_it_in_the_background_and_team_mode_starts_with_the_signer(
     # the page's fixture has exactly the keys the backend answers with
     from test_contract import diff_keys, fixture
     assert diff_keys(fixture("team-setup.json"), json.loads(json.dumps(end))) == []
+
+
+def the_app(world, tmp_path):
+    """The app on the fake GitLab, its routes, and the run's body; setup(): one run through the routes, to its end."""
+    svc = make_service(tmp_path / "app", [], transport=world["gl"])
+    routes = mod("handlers").build_routes(svc, __import__("http_fakes").AppRoute, web=FakeWeb(), is_owner=lambda _r: True)
+    body = {"gitlab_base": BASE, "project": P, "admin_token": world["admin"], "roles": {"builder": "bob"}}
+
+    async def setup():
+        started = await call(routes, "POST", "/team/setup", json_body=body)
+        assert started.status == 200, started.body
+        return await svc.wait_setup()
+    return svc, routes, setup
+
+
+def test_a_rerun_starts_team_mode_again_once_a_file_it_read_has_changed(world, tmp_path):
+    """The review's runs through the app. A builds the runner: team mode and the signer start on the bridge's token T1.
+    B finds the token file gone, gets a new token (T1 no longer signs in) and stops at brain-run's setup, before the
+    signer and team mode. C writes nothing, and still both start again, as T1 is what they read when they started:
+    a round of the bridge then signs in to GitLab. D changes nothing either: team mode goes on as it was."""
+    signerproc = mod("team.signerproc")
+    svc, routes, setup = the_app(world, tmp_path)
+
+    async def go():
+        await svc.start()
+        try:
+            a = await setup()
+            paths = svc._setup_paths()
+            t1, signer_a = paths.token("bridge").read_text().strip(), signerproc.running(paths.signer_json)
+            paths.token("bridge").unlink()
+            svc._setup_paths = lambda: replace(paths, python="/usr/bin/false")     # brain-run's setup fails
+            b = await setup()
+            del svc._setup_paths
+            c = await setup()
+            signer_c = signerproc.running(paths.signer_json)
+            loop = await call(routes, "POST", "/team/loop")
+            last = svc._team_status()["last_loop_at"]
+            d = await setup()
+            return (a, b, c, d, t1, signer_a, signer_c, loop, last, svc._team_status()["last_loop_at"],
+                    signerproc.running(paths.signer_json))
+        finally:
+            await svc.stop()
+
+    a, b, c, d, t1, signer_a, signer_c, loop, last, last_d, signer_d = run(go())
+    assert everything_done(a) and everything_done(c) and everything_done(d)
+    assert statuses(b)["bridge_token"] == "done" and statuses(b)["agent"] == "failed"
+    assert {statuses(b)[k] for k in ("signer", "team_mode")} == {"todo"}
+    assert t1 in world["gl"].revoked
+    assert signer_a and signer_c and signer_c != signer_a       # the signer read T1 when it started: a new one
+    assert loop.status == 200 and loop.body["ok"] is True and loop.body["error"] == "", loop.body
+    assert last is not None and last_d == last and signer_d == signer_c
 
 
 def test_the_command_line_says_one_line_per_step(world):

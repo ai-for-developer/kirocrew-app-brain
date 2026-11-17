@@ -17,7 +17,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 SCRIPT = Path("signer") / "brain_signer.py"
 PID_FILE = "signer.pid"
@@ -56,8 +56,30 @@ def _record(signer_json: Path) -> dict[str, Any]:
     return rec if isinstance(rec, dict) else {}
 
 
-def _sha(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def digest(files: Iterable[Any]) -> str:
+    """One hash of *files* as they are now (a missing one counts as missing): what a process read when it started,
+    kept to tell later whether it must start again to read them."""
+    h = hashlib.sha256()
+    for f in files:
+        h.update(os.fsencode(str(f)) + b"\0")
+        try:
+            h.update(hashlib.sha256(Path(f).read_bytes()).digest())
+        except OSError:
+            h.update(b"-")
+    return h.hexdigest()
+
+
+def inputs(signer_json: Path) -> list[Path]:
+    """What the signer reads when it starts: signer.json and the files it names (its GitLab token, the identities, the
+    signing key)."""
+    try:
+        doc = json.loads(signer_json.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        doc = None
+    doc = doc if isinstance(doc, dict) else {}
+    gitlab = doc.get("gitlab") if isinstance(doc.get("gitlab"), dict) else {}
+    named = (gitlab.get("token_file"), doc.get("identities"), doc.get("signing_key"))
+    return [signer_json] + [Path(os.path.expanduser(p)) for p in named if isinstance(p, str) and p]
 
 
 def running(signer_json: Path) -> int | None:
@@ -82,13 +104,14 @@ def running(signer_json: Path) -> int | None:
 
 
 def ensure(signer_json: Path, app_dir: Path, python: str) -> tuple[int, bool]:
-    """(pid, started now): the signer for *signer_json* runs with that file as it is now. One that runs with an older
-    signer.json is stopped first; a new one is tried with one pass (``once``) before ``loop`` starts."""
+    """(pid, started now): the signer for *signer_json* runs with what it reads at its start (inputs) as it is now.
+    One that started with an older one (signer.json, its token after a rotation, …) is stopped first; a new one is
+    tried with one pass (``once``) before ``loop`` starts."""
     signer_json = Path(signer_json)
     with _lock:
-        sha = _sha(signer_json)
+        sha = digest(inputs(signer_json))
         pid = running(signer_json)
-        if pid and _record(signer_json).get("config_sha256") == sha:
+        if pid and _record(signer_json).get("inputs_sha256") == sha:
             return pid, False
         _stop(signer_json)
         if not (Path(app_dir) / SCRIPT).is_file():
@@ -107,7 +130,7 @@ def ensure(signer_json: Path, app_dir: Path, python: str) -> tuple[int, bool]:
                                      stdout=log, stderr=subprocess.STDOUT, cwd=str(signer_json.parent),
                                      start_new_session=True)
         _children[child.pid] = child
-        rec = {"pid": child.pid, "config": str(signer_json), "config_sha256": sha, "started": time.time()}
+        rec = {"pid": child.pid, "config": str(signer_json), "inputs_sha256": sha, "started": time.time()}
         tmp = signer_json.parent / (".%s.%d" % (PID_FILE, os.getpid()))
         tmp.write_text(json.dumps(rec) + "\n", encoding="utf-8")
         os.replace(tmp, signer_json.parent / PID_FILE)
