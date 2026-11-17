@@ -1003,6 +1003,30 @@ def test_any_git_call_on_the_write_back_branches_that_failed_once_is_not_kept(tm
     assert kept == []
 
 
+def test_a_commit_log_that_failed_once_is_not_kept_as_no_subjects(tmp_path, home, monkeypatch):
+    """git timed out reading the board's commits (board.GIT_LOG, rc 124): the next poll, the same commits, reads them
+    again and answers as a cold service does."""
+    from appkit import commit_file, git_repo
+    repo = git_repo(tmp_path / "r")
+    shas = [commit_file(repo, "a.md", "a\n", "init"), commit_file(repo, "b.md", "b\n", "Brain: DEMO-3 add b")]
+    Git = mod("repo").Git
+    git = Git(repo)
+    cold = make_service(tmp_path / "cold", [])._commits(git, shas)
+    assert cold[0] == {shas[0]: "init", shas[1]: "Brain: DEMO-3 add b"}
+    real, fail = Git.run, [True]
+
+    def git_run(self, *args, **kw):
+        if fail[0] and args[:1] == ("log",):
+            return subprocess.CompletedProcess(args, 124, "", "timed out")
+        return real(self, *args, **kw)
+
+    monkeypatch.setattr(Git, "run", git_run)
+    svc = make_service(tmp_path / "warm", [])
+    assert svc._commits(git, shas) == ({}, {})
+    fail[0] = False
+    assert svc._commits(git, shas) == cold
+
+
 def test_the_runners_page_of_a_hand_over_it_cannot_read_yet_tells_one_story():
     """runner/PAY-9: the team runner has it in its ledger, so the bridge took it; the signer signs its contract and the
     runner has no working directory for it yet. The hand-over is behind it on every part of the board: no 等开工, no
