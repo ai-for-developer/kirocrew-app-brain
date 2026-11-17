@@ -41,6 +41,7 @@ _SECRETS = re.compile(r"(?i)((?:password|passwd|secret|token|api[_-]?key|authori
                       r"|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{16,}")
 EVAL_TTL_S = 120.0
 REVIEW_TITLE = " · 审查"     # a review session's title ends so (开审查会话): it is never the live dev session
+REVIEW_OPEN = "这个需求的审查会话还开着，审查还没写好：打开它接着审，没有另开一个"
 MR_EVERY_S = 30.0
 CREW_EVERY_S = 300.0
 FOLD_TTL_S = 10.0     # the 产出 drawer reads the board's last fold; the board polls every 2 s while it is open
@@ -1220,8 +1221,9 @@ class Service:
 
     async def open_session(self, rid: str, key: str, trust: bool = True, kickoff: bool = True,
                            review: bool = False) -> dict[str, Any]:
-        """The requirement's brain-dev session on this machine: the live one, else a new one. *review*: a new one in
-        any case (开审查会话: the session that wrote the code may not review it), told Lean's review line."""
+        """The requirement's brain-dev session on this machine: the live one, else a new one. *review*: its review
+        session still on its review (_review_of), else a new one (开审查会话: the session that wrote the code may not
+        review it), told Lean's review line."""
         repo = self._repo(rid)
         f = await asyncio.to_thread(self._facts, repo, key)
         run = f.get("run") or {}
@@ -1229,9 +1231,22 @@ class Service:
             raise AppError("只有本地开发中的需求能在这里开会话", "not_local", 409)
         if not f.get("worktree"):
             raise AppError("这台机器上没有检出 %s 的分支：先在开需求里开工" % f.get("branch"), "no_worktree", 409)
-        async with self._opening.setdefault(scope_of(repo.id, key), asyncio.Lock()):
+        scope = scope_of(repo.id, key)
+        async with self._opening.setdefault(scope, asyncio.Lock()):
+            mine = self._review_of(scope, (f.get("review") or {}).get("at")) if review else None
+            if mine:
+                return {"ok": True, "slot": mine["slot"], "url": mine["url"], "said": REVIEW_OPEN}
             return await self._open_local(repo, key, f["branch"], f["worktree"], run, trust=trust, kickoff=kickoff,
                                           review=review)
+
+    def _review_of(self, scope: str, review_at: float | None) -> dict[str, Any] | None:
+        """The requirement's review session whose review is not written yet, the one 开审查会话 hands back: the newest
+        that KiroCrew still has, whose first message went in, opened after review.md last changed (a review.md written
+        since is its review: the code changed after it, and the next review is a new session's)."""
+        rows = [session_row(self.sessions, i) for i in self.sessions.roots(key=scope) if i.slot]
+        mine = [r for r in rows if r["review"] and r["kind"] == "local" and not r["missing"] and not r["error"]
+                and (review_at is None or not r["opened_at"] or r["opened_at"] > review_at)]
+        return mine[-1] if mine else None
 
     async def stop_session(self, rid: str, key: str) -> dict[str, Any]:
         """停止 on the board, once the person confirmed: the turn this requirement's own sessions on this machine are
