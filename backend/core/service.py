@@ -918,15 +918,15 @@ class Service:
     def _trace_stamp(self, cfg: dict[str, Any], src: str, ref: str | None, vouchers: str | None) -> tuple:
         """What brain-kit's trace reads besides commits, which never change: the branches, the run's records when they
         are read in the worktree (trace and usage read runs_dir, aidlc-docs and brain_dir there), every run's vouchers
-        (a big one's trace reads each small one's too), and the hour, since it judges the 14 days after a merge at the
-        time it is made."""
+        (a big one's trace reads each small one's too), and the minute: it judges the 14 days after a merge at the time
+        it is made, and reads some git calls without a check (a failed one reads as not there, with no error)."""
         files = files_stamp(src, [cfg["runs_dir"], lean_view.DOCS, cfg["brain_dir"]]) if ref is None else ()
         try:
             runs = [d for d in sorted(os.listdir(vouchers)) if d.startswith("RUN-")] if vouchers else []
         except OSError:
             runs = []
         return (git_stamp(src, ("refs/heads/", "refs/remotes/origin/")), files,
-                files_stamp(vouchers, runs) if vouchers else (), int(self.now() // 3600))
+                files_stamp(vouchers, runs) if vouchers else (), int(self.now() // 60))
 
     def _team_detail(self, key: str, snap: dict[str, Any], parts: dict[str, Any] | None = None) -> dict[str, Any]:
         hit = next(((r, f, d) for r, f, d in self._team_rows(snap) if r["key"] == key), None)
