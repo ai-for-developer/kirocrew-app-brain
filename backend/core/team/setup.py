@@ -444,8 +444,9 @@ def _said(exc: BaseException) -> tuple[str, str]:
 
 def view(state: Mapping[str, Any], paths: Paths, running: bool | None = None) -> dict[str, Any]:
     """GET /team/setup (TeamSetup in ui/src/types.ts): every step of the table with the last run's result, the one in
-    progress, or todo; that run's input without the token. *running*: whether a run holds the root now (a run cut off by
-    a restart left running in its file)."""
+    progress, or todo; that run's input without the token. *running*: whether a run holds the root now. A run cut off
+    part-way (the app or the command stopped) left running in its file with no one holding the root: cut_off is the
+    step it had not finished."""
     on = bool(state.get("running")) if running is None else bool(running)
     got = {s.get("id"): s for s in state.get("steps") or [] if isinstance(s, dict)}
     steps = []
@@ -454,10 +455,12 @@ def view(state: Mapping[str, Any], paths: Paths, running: bool | None = None) ->
         status = str(r.get("status") or ("running" if on and state.get("current") == st.id else "todo"))
         steps.append({"id": st.id, "title": st.title, "status": status, "message": str(r.get("message") or ""),
                       "link": r.get("link") or None, "detail": str(r.get("detail") or "")})
+    cut = bool(state.get("running")) and not on
     inp = state.get("input") if isinstance(state.get("input"), dict) else {}
     roles = inp.get("roles") if isinstance(inp.get("roles"), dict) else {}
     return {"running": on, "started_at": _time(state.get("started_at")),
             "ended_at": None if on else _time(state.get("ended_at")),
+            "cut_off": next((s["id"] for s in steps if s["status"] == "todo"), None) if cut else None,
             "input": {"gitlab_base": str(inp.get("gitlab_base") or ""), "project": str(inp.get("project") or ""),
                       "roles": {r: [str(n) for n in roles.get(r) or []] for r in ROLES},
                       "push": str(inp.get("push") or "auto")},

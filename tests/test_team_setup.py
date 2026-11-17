@@ -488,6 +488,22 @@ def test_tokens_are_kept_per_gitlab_and_project_and_one_this_setup_did_not_make_
     assert saved_tokens(state, "https://b.example.com")["bridge"]["id"] == b.live("brain-bridge")["id"]
 
 
+def test_a_run_cut_off_part_way_says_the_step_it_had_not_finished(world):
+    """A run whose process ended part-way (an app restart) is left running in its file: the page reads it as not
+    running, cut off at the step it was in. A run that ended, or one going on now, is not cut off."""
+    setup = mod("team.setup")
+    view, ps = build(world)
+    assert view["cut_off"] is None
+    state = json.loads(ps.state.read_text())
+    state.update(running=True, current="kit_mr", ended_at=None, steps=state["steps"][:5])
+    ps.state.write_text(json.dumps(state))
+    cut = setup.view(setup.load_state(ps), ps, running=setup.busy(ps.root))
+    assert (cut["running"], cut["cut_off"], cut["ended_at"]) == (False, "kit_mr", None)
+    with setup.Lock(ps.root):
+        live = setup.view(setup.load_state(ps), ps, running=setup.busy(ps.root))
+    assert (live["running"], live["cut_off"]) == (True, None) and step(live, "kit_mr")["status"] == "running"
+
+
 def test_the_kit_mr_waits_until_it_is_merged_then_is_done(world):
     view, ps = build(world)
     gl = world["gl"]

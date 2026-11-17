@@ -101,6 +101,23 @@ describe('一键建运行机', () => {
     expect(within(card).getByLabelText('一次性 token')).toHaveValue('')
   })
 
+  test.each([
+    ['kit_mr', 'kit.json 的 MR', 5],
+    ['project', '找到项目', 0],
+  ])('a run cut off at %s (the app stopped) says where it stopped, not 建好了, and offers 再跑一次', async (id, title, done) => {
+    const s = fx.teamSetup()
+    s.ended_at = null
+    s.cut_off = id
+    s.steps = s.steps.map((x, i) => (i < done ? x : { ...x, status: 'todo', message: '', link: null, detail: '' }))
+    installFixtureRoutes({ [`GET ${API}/team/setup`]: () => s })
+    render(<RunnerSetupCard repos={[]} />)
+    const card = await screen.findByRole('region', { name: '一键建运行机' })
+    expect(await within(card).findByTestId('setup-cut-off')).toHaveTextContent(`上次跑到「${title}」就停了，没跑完`)
+    expect(within(card).getByTestId('setup-state')).toHaveTextContent('没建完')
+    expect(within(card).getByRole('list', { name: '建运行机的每一步' })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: '再跑一次' })).toBeEnabled()
+  })
+
   test('再跑一次 without the token asks for it and posts nothing', async () => {
     const user = userEvent.setup()
     installFixtureRoutes()

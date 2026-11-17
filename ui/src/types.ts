@@ -1496,6 +1496,8 @@ export interface TeamSetup {
   running: boolean
   started_at: number | null
   ended_at: number | null
+  /** the step a run cut off part-way had not finished (the app or the command stopped while it ran); null otherwise */
+  cut_off: string | null
   /** that run's input; never the token */
   input: { gitlab_base: string; project: string; roles: Record<SetupRole, string[]>; push: 'auto' | 'ssh' | 'token' }
   /** every step of the table, in order */

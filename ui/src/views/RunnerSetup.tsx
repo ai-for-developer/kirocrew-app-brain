@@ -2,8 +2,9 @@
  * 一键建运行机 (设置, with 团队模式): the team runner in same-user mode, built by the app from one GitLab token typed once
  * (backend/core/team/setup.py). POST /team/setup starts its steps in the background; GET /team/setup is read every
  * second while they run. Each step says ✓ when done, 等人 when it waits for a person (the kit.json MR, with its link),
- * ✕ when it stopped the run, then its words, and what GitLab or a command said under 细节. The token goes in that one
- * request: this page keeps it in its field while it is open (for 再跑一次), the backend nowhere.
+ * ✕ when it stopped the run, then its words, and what GitLab or a command said under 细节; a run cut off part-way (the
+ * app stopped) says where. The token goes in that one request: this page keeps it in its field while it is open (for
+ * 再跑一次), the backend nowhere.
  */
 import { useEffect, useRef, useState } from 'react'
 import { useAppApi } from '@kirocrew/app-sdk'
@@ -19,6 +20,7 @@ export const TOKEN_HINT = '只用这一次：建令牌、标签和 MR，用完�
 export const ROLES_HINT = '填 GitLab 用户名，几个人用逗号隔开；空着就是 token 的主人。安全和数据两个角色也是 token 的主人。'
 export const SAME_USER_NOTE = '签名服务、app 和 AI 的会话都用这台机器的同一个系统用户：签名挡不住 app 自己，只适合试用。'
 export const TOKEN_FIRST = '先填一次性 token：它只用这一次，不存'
+export const cutOffSaid = (title: string) => `上次跑到「${title}」就停了，没跑完（app 关了或者重启了）：再跑一次，接着把没做的建完`
 
 /** A step's state as the list shows it: its glyph, its word, its colour, and the check row's look it borrows. */
 export const STEP_LOOK: Record<SetupStepStatus, { glyph: string; word: string; tone: Tone; look: string }> = {
@@ -45,10 +47,10 @@ function formOf(s: TeamSetup, repos: RepoInfo[]): Form {
   }
 }
 
-/** The last run in a word: still going, waiting for a person, stopped at a step, or done. */
+/** The last run in a word: still going, waiting for a person, stopped at a step or cut off part-way, or done. */
 function runLook(s: TeamSetup): { label: string; tone: Tone } | null {
   if (s.running) return { label: '正在建', tone: 'run' }
-  if (s.steps.some((x) => x.status === 'failed')) return { label: '没建完', tone: 'bad' }
+  if (s.cut_off || s.steps.some((x) => x.status === 'failed')) return { label: '没建完', tone: 'bad' }
   if (s.steps.every((x) => x.status === 'todo')) return null
   if (s.steps.some((x) => x.status === 'waiting')) return { label: '等人', tone: 'warn' }
   return { label: '建好了', tone: 'ok' }
@@ -98,7 +100,8 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
     }
   }
   const look = data ? runLook(data) : null
-  const ran = !!data && data.steps.some((s) => s.status !== 'todo')
+  const ran = !!data && (!!data.cut_off || data.steps.some((s) => s.status !== 'todo'))
+  const cutAt = data?.cut_off ? data.steps.find((s) => s.id === data.cut_off)?.title ?? data.cut_off : null
   const busy = running || start.busy
   const said = (
     <>
@@ -162,6 +165,7 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
       )}
       {data && ran && (
         <>
+          {!running && cutAt && <p className="br-banner br-small rs-note" role="status" data-testid="setup-cut-off">{cutOffSaid(cutAt)}</p>}
           <ol className="br-probs rs-steps" aria-label="建运行机的每一步">
             {data.steps.map((s) => <StepRow key={s.id} s={s} />)}
           </ol>
