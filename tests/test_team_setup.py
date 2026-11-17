@@ -497,11 +497,18 @@ def test_the_app_runs_it_in_the_background_and_team_mode_starts_with_the_signer(
             team = (svc.settings["team"], svc.team is not None and svc.team.host is not None, svc._team_status())
             signer = signerproc.config_for(svc.settings["team"])
             pid = signerproc.running(signer)
-            return bad, started, again, end, got, team, signer, pid
+            python = mod("constants").PYTHON_BIN
+            same = signerproc.ensure(signer, ROOT, python)              # signer.json as it was: that very signer
+            doc = json.loads(signer.read_text())
+            signer.write_text(json.dumps(dict(doc, keep_days=7)))       # a rerun that changes it: a new one
+            changed = signerproc.ensure(signer, ROOT, python)
+            old_gone = subprocess.run(["ps", "-p", str(pid)], capture_output=True).returncode != 0
+            return bad, started, again, end, got, team, signer, pid, same, changed, old_gone
         finally:
             await svc.stop()
 
-    bad, started, again, end, got, team, signer, pid = run(go())
+    bad, started, again, end, got, team, signer, pid, same, changed, old_gone = run(go())
+    assert same == (pid, False) and changed[1] is True and changed[0] != pid and old_gone
     assert bad.status == 400 and bad.body["code"] == "invalid_setup" and "组/仓库" in bad.body["error"]
     assert started.status == 200 and started.body["running"] is True
     assert {s["status"] for s in started.body["steps"]} <= {"todo", "running", "done"}
