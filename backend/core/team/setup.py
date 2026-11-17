@@ -180,6 +180,11 @@ class Step:
     run: Callable[["Ctx"], StepResult]
 
 
+def _under(base: str, *parts: str) -> Any:
+    """A path of Paths: *parts* under its *base* folder (root or work)."""
+    return property(lambda self: getattr(self, base).joinpath(*parts))
+
+
 @dataclass(frozen=True)
 class Paths:
     """Where the runner's files go: one root for the configs, tokens, keys, spools and ledgers; the work folder for the
@@ -203,61 +208,20 @@ class Paths:
     def token(self, key: str) -> Path:
         return self.root / ("%s-gitlab-token" % key)
 
-    @property
-    def state(self) -> Path:
-        return self.root / "setup-state.json"
-
-    @property
-    def identities(self) -> Path:
-        return self.root / "identities.json"
-
-    @property
-    def keys(self) -> Path:
-        return self.root / "keys"
-
-    @property
-    def key(self) -> Path:
-        return self.keys / "bridge_ed25519"
-
-    @property
-    def allowed(self) -> Path:
-        return self.keys / "allowed_signers"
-
-    @property
-    def spool(self) -> Path:
-        return self.root / "spool"
-
-    @property
-    def signer_spool(self) -> Path:
-        return self.root / "signer-spool"
-
-    @property
-    def vouchers(self) -> Path:
-        return self.root / "vouchers"
-
-    @property
-    def signer_vouchers(self) -> Path:
-        return self.root / "signer-vouchers"
-
-    @property
-    def bridge_json(self) -> Path:
-        return self.root / "bridge.json"
-
-    @property
-    def runnerd_json(self) -> Path:
-        return self.root / "runnerd.json"
-
-    @property
-    def signer_json(self) -> Path:
-        return self.root / "signer.json"
-
-    @property
-    def runs(self) -> Path:
-        return self.work / "runs"
-
-    @property
-    def cache(self) -> Path:
-        return self.work / "cache"
+    state = _under("root", "setup-state.json")
+    identities = _under("root", "identities.json")
+    keys = _under("root", "keys")
+    key = _under("root", "keys", "bridge_ed25519")
+    allowed = _under("root", "keys", "allowed_signers")
+    spool = _under("root", "spool")
+    signer_spool = _under("root", "signer-spool")
+    vouchers = _under("root", "vouchers")
+    signer_vouchers = _under("root", "signer-vouchers")
+    bridge_json = _under("root", "bridge.json")
+    runnerd_json = _under("root", "runnerd.json")
+    signer_json = _under("root", "signer.json")
+    runs = _under("work", "runs")
+    cache = _under("work", "cache")
 
 
 @dataclass
