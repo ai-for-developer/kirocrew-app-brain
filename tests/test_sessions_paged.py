@@ -3,21 +3,24 @@ however far back it is, is never sent twice into a session that took it, and the
 whole transcript's."""
 
 import asyncio
+import itertools
 import logging
 
 from appkit import FakeGateway, mod
 
 sessions = mod("sessions")
 T0 = 1_800_000_000.0
+MIDS = itertools.count()    # KiroCrew gives each row of a transcript its own id (meta.mid)
 
 
 def tool(i):
-    return {"role": "tool", "content": "🔧 Reading f%d.py" % i, "meta": {"tool_name": "read"}, "ts": "2026-11-08T10:01:00Z"}
+    return {"role": "tool", "content": "🔧 Reading f%d.py" % i, "meta": {"tool_name": "read", "mid": "m-%d" % next(MIDS)},
+            "ts": "2026-11-08T10:01:00Z"}
 
 
 def reply(text, credits=None):
     meta = {"turn_stats": {"credits": credits}} if credits is not None else {}
-    return {"role": "assistant", "content": text, "meta": meta, "ts": "2026-11-08T10:02:00Z"}
+    return {"role": "assistant", "content": text, "meta": dict(meta, mid="m-%d" % next(MIDS)), "ts": "2026-11-08T10:02:00Z"}
 
 
 def manager(tmp_path, gw):
@@ -110,7 +113,8 @@ def long_session(turns, rows_each):
     """*turns* turns, each a message, its calls and one reply of 1.5 credits: rows_each + 2 rows a turn."""
     out = []
     for t in range(turns):
-        out.append({"role": "user", "content": "第 %d 轮" % t, "meta": {"human": True}, "ts": "2026-11-08T10:00:00Z"})
+        out.append({"role": "user", "content": "第 %d 轮" % t, "meta": {"human": True, "mid": "m-%d" % next(MIDS)},
+                    "ts": "2026-11-08T10:00:00Z"})
         out += [tool(i) for i in range(rows_each)]
         out.append(reply("做完第 %d 轮" % t, 1.5))
     return out
@@ -177,6 +181,33 @@ def test_a_long_session_s_stats_read_only_what_came_after_the_last_read(tmp_path
         assert len(gw.msgs[info.slot]) > n, "other rows where the last read stopped"
         st = await stats_of(mgr, gw, info.slot)
         assert said(st) == whole_says() and st["credits"] == 1.5 * (6 + 14)    # 6 turns left of the 20, the 14 new
+
+    asyncio.run(go())
+
+
+def test_a_session_replaced_by_look_alike_rows_without_ids_is_read_whole(tmp_path):
+    """Rows without KiroCrew's row id (meta.mid) look the same at one index in another session: one put in the slot
+    with the same calls and replies but other credits is counted and shown as read whole, not from the old one."""
+    def no_ids(rows):
+        for m in rows:
+            m["meta"].pop("mid", None)
+        return rows
+
+    async def go():
+        gw = FakeGateway()
+        mgr, _ = manager(tmp_path, gw)
+        info = await opened(mgr, gw)
+        gw.finish(info.slot)
+        gw.msgs[info.slot] = no_ids(long_session(20, 85))
+        assert (await stats_of(mgr, gw, info.slot))["credits"] == 30.0
+        assert (await mgr.kept_transcript(info.slot))[0] == gw.msgs[info.slot]
+        gw.msgs[info.slot] = no_ids(long_session(20, 85))
+        for m in gw.msgs[info.slot][:200]:
+            if m["role"] == "assistant":
+                m["meta"]["turn_stats"]["credits"] = 4.0
+        st = await stats_of(mgr, gw, info.slot)
+        assert (st["credits"], st["whole"]) == (sessions.spend(gw.msgs[info.slot], False)["credits"], True) == (35.0, True)
+        assert (await mgr.kept_transcript(info.slot))[0] == gw.msgs[info.slot]
 
     asyncio.run(go())
 
