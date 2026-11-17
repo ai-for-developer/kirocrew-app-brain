@@ -50,7 +50,7 @@
       "id": "identities",
       "title": "身份表",
       "status": "done",
-      "message": "写好了身份表：产品 carol；开发 dave；安全 alice；数据 alice",
+      "message": "写好了身份表：5 个 Developer 以上的人能交接；产品 carol；开发 dave；安全 alice；数据 alice",
       "link": null,
       "detail": ""
     },

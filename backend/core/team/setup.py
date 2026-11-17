@@ -73,6 +73,7 @@ LABELS = (("handoff_label", "ai-handoff", "#1f75cb"), ("running_label", "ai-runn
 NO_TOKEN_ENV = {"bridge": "BRAIN_TEAM_NO_TOKEN_ENV", "signer": "BRAIN_SIGNER_NO_TOKEN_ENV"}
 WORK_PARENTS = ("workplace", "workplaces", "workspace", "workspaces")
 USER_RE = re.compile(r"^[a-z0-9_.][a-z0-9_.-]{0,254}$")
+BOT_USER_RE = re.compile(r"^(?:project|group)_\d+_bot(?:_[0-9a-f]+)?\d*$")   # GitLab's users of project and group tokens
 PROJECT_RE = re.compile(r"^[A-Za-z0-9_.][A-Za-z0-9_.-]*(?:/[A-Za-z0-9_.][A-Za-z0-9_.-]*)+$")
 CTRL_RE = re.compile(r"[\x00-\x20\x7f]")
 HTTP_SAID = {400: "GitLab 不接受这一步的请求（HTTP 400）：再跑一次也一样，看细节里 GitLab 说的原因",
@@ -747,19 +748,24 @@ def step_labels(ctx: Ctx) -> StepResult:
 # ---- 5 who is who ------------------------------------------------------------------------------------------------- #
 
 def step_identities(ctx: Ctx) -> StepResult:
-    """identities.json in brain-authz's shape (brain-kit's examples/identities.json): every person named in a role, and
-    the roles; a role left empty is the token's owner. Each one must be a member of the project."""
+    """identities.json in brain-authz's shape (brain-kit's examples/identities.json): in users every member of the
+    project with Developer or more (each of them may hand over), the bots left out (project and group token users, the
+    accounts the runner pushes as); the roles as typed, a role left empty the token's owner, each one a member."""
     roles = {r: list(ctx.inp.roles.get(r) or ()) or [ctx.owner] for r in ROLES}
-    names = list(dict.fromkeys(n for r in ROLES for n in roles[r]))
-    members = {str(m.get("username") or "").lower()
-               for m in ctx.gl.pages("/projects/%d/members/all" % ctx.pid, {}, 100, 50, "members")}
-    unknown = [n for n in names if n not in members]
+    bots = set(ctx.state["push"]["bot_users"])
+    level: dict[str, int] = {}
+    for m in ctx.gl.pages("/projects/%d/members/all" % ctx.pid, {}, 100, 50, "members"):
+        name = str(m.get("username") or "").lower()
+        if name and name not in bots and not BOT_USER_RE.match(name):
+            level[name] = max(level.get(name, 0), int(m.get("access_level") or 0))
+    unknown = list(dict.fromkeys(n for r in ROLES for n in roles[r] if n not in level))
     if unknown:
         return failed("这些人不是 %s 的成员：%s。先在 GitLab 上把他们加进项目，或者改填别人"
                       % (ctx.state["project"]["path"], "、".join(unknown)))
-    wrote = write_file(ctx.paths.identities, dumps({"users": {n: {} for n in names}, "roles": roles}))
+    users = sorted(n for n, lv in level.items() if lv >= DEVELOPER)
+    wrote = write_file(ctx.paths.identities, dumps({"users": {n: {} for n in users}, "roles": roles}))
     said = "；".join("%s %s" % (ROLE_NAME[r], "、".join(roles[r])) for r in ROLES)
-    return done(("写好了身份表：" if wrote else "身份表没变：") + said)
+    return done("%s：%d 个 Developer 以上的人能交接；%s" % ("写好了身份表" if wrote else "身份表没变", len(users), said))
 
 
 # ---- 6 kit.json, through an MR ------------------------------------------------------------------------------------- #

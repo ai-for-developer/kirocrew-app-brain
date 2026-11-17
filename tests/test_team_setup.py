@@ -46,11 +46,13 @@ class FakeGitLab:
     tokens it makes, each with its own bot user, only with scopes a project token may have and ending at most 365 days
     from today (400 otherwise); rotating one gives a new value of the same bot user and revokes the old one, and
     rotating a revoked one revokes every token of its bot user (GitLab's reuse detection). A token ends at the start of
-    its expires_at (UTC). GET /user needs api, read_api or read_user, as on GitLab. Every request is kept in calls
+    its expires_at (UTC). members: (username, access level), and a token's bot user at its level, as GitLab adds it.
+    GET /user needs api, read_api or read_user, as on GitLab. Every request is kept in calls
     (method, path, query, body); fail holds one-shot answers (method, path, status, who): who is None (any token), a
     token, or a test on the token."""
 
-    def __init__(self, admin, ssh_url, kit, level=40, members=("alice", "bob", "carol"), labels=("ai-handoff",)):
+    def __init__(self, admin, ssh_url, kit, level=40,
+                 members=(("alice", 40), ("bob", 30), ("carol", 30), ("rita", 20)), labels=("ai-handoff",)):
         self.users = {admin: {"id": 1, "username": "alice", "name": "Alice", "email": "alice@example.com"}}
         self.scopes = {admin: ["api"]}
         self.level, self.members, self.labels = level, list(members), list(labels)
@@ -89,6 +91,7 @@ class FakeGitLab:
             user_id, user = 100 + n, "project_%d_bot_%s" % (PID, secrets.token_hex(4))
             self.users[value] = {"id": user_id, "username": user, "name": fields["name"], "bot": True,
                                  "email": "%s@noreply.gitlab.example.com" % user}
+            self.members.append((user, fields["access_level"]))
         else:
             self.users[value] = next(u for u in self.users.values() if u["id"] == user_id)
         self.scopes[value] = list(fields["scopes"])
@@ -179,7 +182,8 @@ class FakeGitLab:
             self.labels.append(data["name"])
             return ok({"name": data["name"], "color": data["color"]}, 201)
         if rest == "/members/all" and method == "GET":
-            return ok(self.page([{"id": i, "username": n} for i, n in enumerate(self.members)], q))
+            return ok(self.page([{"id": i, "username": n, "access_level": lv}
+                                 for i, (n, lv) in enumerate(self.members)], q))
         m = re.fullmatch(r"/repository/branches/(.+)", rest)
         if m and method == "GET":
             return ok({"name": m.group(1)}) if m.group(1) in self.files else ok({"message": "404 Branch Not Found"}, 404)
@@ -319,8 +323,8 @@ def test_a_first_run_builds_the_runner_and_waits_for_the_kit_mr(world):
     # the token's value is in its own file only, 0600; the person's token is nowhere
     assert (ps.root / "bridge-gitlab-token").read_text().strip() == bridge[0]["token"]
     assert mode(ps.root / "bridge-gitlab-token") == "0o600" and mode(ps.key) == "0o600" and mode(ps.root) == "0o700"
-    ids = json.loads(ps.identities.read_text())
-    assert ids == {"users": {"alice": {}, "bob": {}},
+    ids = json.loads(ps.identities.read_text())            # rita, a Reporter, and the bridge's bot user are no users
+    assert ids == {"users": {"alice": {}, "bob": {}, "carol": {}},
                    "roles": {"product": ["alice"], "builder": ["bob"], "security": ["alice"], "data": ["alice"]}}
     pub = subprocess.run(["ssh-keygen", "-y", "-f", str(ps.key)], capture_output=True, text=True).stdout.split()
     assert ps.allowed.read_text() == 'brain-bridge namespaces="brain-voucher" %s %s\n' % (pub[0], pub[1])
@@ -568,6 +572,17 @@ def test_the_persons_token_is_never_written(world):
     state = ps.state.read_text()
     assert world["admin"] not in state and bridge_token not in state and bot_token not in state and salt not in state
     assert "admin_token" not in state
+
+
+def test_everyone_on_the_project_who_can_push_may_hand_over_and_the_roles_stay_as_typed(world):
+    """users: each member with Developer or more, not only the people in a role; no bot (the account the runner
+    pushes as, the bridge's token user); a role may name a Reporter."""
+    world["gl"].members.append(("brain-bot", 30))
+    view, ps = build(world, roles={"product": "rita", "builder": "carol"})
+    assert json.loads(ps.identities.read_text()) == {
+        "users": {"alice": {}, "bob": {}, "carol": {}},
+        "roles": {"product": ["rita"], "builder": ["carol"], "security": ["alice"], "data": ["alice"]}}
+    assert step(view, "identities")["message"].startswith("写好了身份表：3 个 Developer 以上的人能交接；产品 rita")
 
 
 def test_a_role_names_only_members_of_the_project(world):
