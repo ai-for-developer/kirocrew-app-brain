@@ -17,6 +17,7 @@ import type { RemoveResult, RepoInfo, RepoSync, Settings, Status, TeamLimits } f
 import { CheckRows, CommandLine, Flow, IMPORT_FLOW, LEVEL_TONE, LoadState, MeLine, PendingRepo, RoleIcon, brainkitProblem } from '../ui'
 import { ACT, MODULE_NAME, TRACKER_NAME } from '../vocab'
 import type { ViewProps } from './props'
+import { RunnerSetupCard } from './RunnerSetup'
 import { SIGNER_SAME_USER } from './Team'
 
 export const SAME_USER_WARNING = '签名器和 app 用同一个系统用户，签名私钥这个用户就能读到，签名挡不住 app 自己：只适合本机试用，不能用在正式的运行机上。'
@@ -32,6 +33,7 @@ const settingsOf = (f: Form): Form => ({ ...f, brainkit: f.brainkit.trim(), work
   auto_push: { ...f.auto_push }, team: { ...f.team } })
 
 export const FETCH_HINT = '队友推上去的进度，app 隔这么久自己取一次，交付总览里就能看到；填 0 就只在点「从远端取最新」时取。'
+export const SETUP_POINTER = '只想在这台机器上试用：用下面的「一键建运行机」，它替你建好这两个配置文件，再勾上这一项。'
 export const PUSH_HINT = 'Lean 每过一个关卡，就把你自己的 run 分支上已经提交的推到远端，队友就能看到你做到哪了；不交接，不开 MR。只在本机做的仓库不推，也不列在这里。'
 
 /** the team runner's two config files (brain-kit's bridge.json and runnerd.json): the field's label, what is typed */
@@ -86,6 +88,16 @@ export function SettingsView({ status, setStatus, reloadStatus, go }: ViewProps)
     setSaved(r.ok)
   }
   const onImport = (path?: string) => go({ kind: 'import', ...(path ? { path } : {}) })
+  /** 一键建运行机 saved the team settings itself: the form takes them, or a later 保存 would put the old ones back. */
+  const afterSetup = async () => {
+    reloadStatus()
+    try {
+      setForm(formOf(await api.get<Settings>(paths.settings())))
+      setSaved(false)
+    } catch {
+      // the form keeps what it has; the next visit reads the settings again
+    }
+  }
 
   const kitField = form && (
     <div className="br-field">
@@ -166,6 +178,7 @@ export function SettingsView({ status, setStatus, reloadStatus, go }: ViewProps)
                 <b>这台机器是团队运行机</b>
               </label>
               <p className="br-hint" id="set-team-hint">只有给团队跑交接的那台机器才勾：它看 MR 上的交接，派给运行机会话。普通组员不用管。</p>
+              {!form.team.enabled && <p className="br-hint" data-testid="setup-pointer">{SETUP_POINTER}</p>}
             </div>
             {form.team.enabled && (
               <>
@@ -212,6 +225,7 @@ export function SettingsView({ status, setStatus, reloadStatus, go }: ViewProps)
         <div className="st-col">
           {status && <ReposCard repos={status.repos} idsProblem={status.repo_ids_problem} kitOk={status.brainkit.ok} onImport={onImport} onRemoved={setStatus} onChanged={reloadStatus} />}
           {formCard}
+          <RunnerSetupCard repos={status?.repos ?? []} onDone={() => void afterSetup()} />
         </div>
         <div className="st-col">
           {status && <CrewCard crew={status.crew} onFixed={reloadStatus} kitCard={kitProblem?.text} />}

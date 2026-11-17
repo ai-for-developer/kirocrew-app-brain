@@ -20,6 +20,7 @@ export function fixtureRoutes(): Record<string, RouteHandler> {
     [`GET ${API}/brain*`]: () => fx.brain(),
     [`GET ${API}/todo`]: () => fx.todo(),
     [`GET ${API}/team`]: () => fx.team(),
+    [`GET ${API}/team/setup`]: () => fx.teamSetup(),
     [`GET ${API}/import/defaults`]: () => fx.importDefaults(),
   }
 }

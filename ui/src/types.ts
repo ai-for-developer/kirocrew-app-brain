@@ -1473,6 +1473,46 @@ export interface TeamView {
 }
 export interface TeamLoopResult { ok: boolean; summary: Record<string, number>; error: string }
 
+// ---------------------------------------------------------------- 一键建运行机: GET/POST /team/setup
+
+/** A step's state: done, waiting (for a person: the kit.json MR to merge), failed (the run stopped there), skipped;
+ * running (the one in progress), todo (not reached by the last run). */
+export type SetupStepStatus = 'done' | 'waiting' | 'failed' | 'skipped' | 'running' | 'todo'
+export type SetupRole = 'product' | 'builder' | 'security' | 'data'
+export interface SetupStep {
+  id: string
+  title: string
+  status: SetupStepStatus
+  /** short plain Chinese ('' when not reached) */
+  message: string
+  /** a page on GitLab: the project, the MR to merge */
+  link: string | null
+  /** what GitLab or a command said, for 细节 */
+  detail: string
+}
+/** The same-user team runner the app builds itself (backend/core/team/setup.py), as the last run left it. */
+export interface TeamSetup {
+  /** a run holds the setup now (poll until it is false) */
+  running: boolean
+  started_at: number | null
+  ended_at: number | null
+  /** that run's input; never the token */
+  input: { gitlab_base: string; project: string; roles: Record<SetupRole, string[]>; push: 'auto' | 'ssh' | 'token' }
+  /** every step of the table, in order */
+  steps: SetupStep[]
+  /** where its configs, tokens and keys are */
+  root: string
+}
+/** POST /team/setup (answers TeamSetup, running). admin_token: a one-time personal token with api, used for this run
+ * only; roles: GitLab usernames, a role left out is the token's owner. */
+export interface TeamSetupBody {
+  gitlab_base: string
+  project: string
+  admin_token: string
+  roles: Partial<Record<SetupRole, string[]>>
+  push?: 'auto' | 'ssh' | 'token'
+}
+
 // ---------------------------------------------------------------- POST /refresh {repo}
 
 export interface RefreshResult {

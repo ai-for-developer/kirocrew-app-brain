@@ -443,6 +443,9 @@ setApiRoutes({
     }
   },
   [`POST ${API}/team/loop`]: () => ({ ok: true, summary: { poll: 3, prepared: 0, dispatch: 1, watch: 2, collect: 1, reconcile: 0 }, error: '' }),
+  // 一键建运行机: the last run (the kit.json MR waits to be merged); 再跑一次 answers that run again, nothing is made
+  [`GET ${API}/team/setup`]: () => shift(fx.teamSetup()),
+  [`POST ${API}/team/setup`]: () => shift(fx.teamSetup()),
 })
 
 /** 运行机 in the preview: the fixture with what brain-kit 0d52e97's bridge also keeps (the outbox, the notices on a run,

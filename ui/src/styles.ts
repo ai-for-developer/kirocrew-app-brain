@@ -182,7 +182,7 @@ button.br-tag:hover { border-color: var(--accent); color: var(--text-strong); }
 .br-field > label, .br-field > .br-label, .br-fieldset legend { font-weight: 750; color: var(--text-strong); }
 .br-fieldset { border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px 12px; margin: 0; display: grid; gap: 7px; background: var(--kt-glass); min-width: 0; }
 .br-fieldset legend { padding: 0 6px; }
-.br-app :is(input[type="text"], input:not([type]), input[type="number"], textarea, select) { font: inherit; padding: 8px 10px; border-radius: 10px;
+.br-app :is(input[type="text"], input:not([type]), input[type="number"], input[type="password"], textarea, select) { font: inherit; padding: 8px 10px; border-radius: 10px;
   border: 1px solid var(--border-strong, var(--border)); background: var(--bg); color: var(--text); max-width: 100%; }
 .br-app :is(input, textarea)::placeholder { color: var(--muted); }
 .br-app textarea { resize: vertical; min-height: 64px; font-family: var(--mono, ui-monospace, monospace); font-size: .92em; }

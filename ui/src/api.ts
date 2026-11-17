@@ -52,6 +52,8 @@ export const paths = {
   todo: () => `${BASE}/todo`,
   team: () => `${BASE}/team`,
   teamLoop: () => `${BASE}/team/loop`,
+  /** 一键建运行机: GET the last run's steps, POST to run them (in the background: GET until it is not running) */
+  teamSetup: () => `${BASE}/team/setup`,
   importDefaults: () => `${BASE}/import/defaults`,
   importInspect: () => `${BASE}/import/inspect`,
   importClone: () => `${BASE}/import/clone`,
