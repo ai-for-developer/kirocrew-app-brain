@@ -890,7 +890,7 @@ class Service:
         c = self._local_credits(snap, f, scope)[1]["total"]
         vouchers = self._vouchers_dir(repo)
         sig = (f.get("tip"), f.get("worktree"), len(f.get("events") or []), f.get("park_sha"), bool(f.get("run")),
-               src_repo, ref, c, vouchers, self._trace_stamp(repo.cfg, src_repo, ref, f["key"], vouchers))
+               src_repo, ref, c, vouchers, self._trace_stamp(repo.cfg, src_repo, ref, vouchers))
         got = self._trace.get(scope)
         if got is not None and got[0] == sig:
             tl = dict(got[1])
@@ -902,13 +902,14 @@ class Service:
         tl["items"] = sorted(tl["items"] + self.store.events(scope), key=lambda x: (x["at"] or "", x["kind"]))
         return tl
 
-    def _trace_stamp(self, cfg: dict[str, Any], src: str, ref: str | None, key: str, vouchers: str | None) -> tuple:
+    def _trace_stamp(self, cfg: dict[str, Any], src: str, ref: str | None, vouchers: str | None) -> tuple:
         """What brain-kit's trace reads besides commits, which never change: the branches, the run's records when they
-        are read in the worktree (trace and usage read runs_dir, aidlc-docs and brain_dir there), the key's vouchers,
-        and the hour, since it judges the 14 days after a merge at the time it is made."""
+        are read in the worktree (trace and usage read runs_dir, aidlc-docs and brain_dir there), every run's vouchers
+        (a big one's trace reads each small one's too), and the hour, since it judges the 14 days after a merge at the
+        time it is made."""
         files = files_stamp(src, [cfg["runs_dir"], lean_view.DOCS, cfg["brain_dir"]]) if ref is None else ()
         try:
-            runs = [d for d in sorted(os.listdir(vouchers)) if d.startswith("RUN-%s-" % key)] if vouchers else []
+            runs = [d for d in sorted(os.listdir(vouchers)) if d.startswith("RUN-")] if vouchers else []
         except OSError:
             runs = []
         return (git_stamp(src, ("refs/heads/", "refs/remotes/origin/")), files,
