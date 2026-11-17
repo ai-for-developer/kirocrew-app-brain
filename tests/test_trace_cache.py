@@ -1,6 +1,7 @@
 """需求详情 and 需求看板 poll every 2 to 5 s: brain-kit's trace of a requirement (a dozen git calls and more) is made
 again only when something it is made from changed, not every 15 s."""
 
+import subprocess
 import time
 from types import SimpleNamespace
 
@@ -74,3 +75,28 @@ def test_a_trace_that_failed_once_is_made_again_on_a_later_poll(tmp_path, home, 
     clock[0] = t0 + 30
     assert error() == ""
 
+
+def test_a_git_config_that_failed_once_is_read_again(tmp_path, home, monkeypatch):
+    """`git config brain.intake` timed out once (rc 124): that is not "not set", so the trace still reads the
+    configured intake's vouchers (hand-overs, bridge answers) on the next poll."""
+    monkeypatch.delenv("BRAIN_INTAKE_DIR", raising=False)
+    repo = make_project(tmp_path)
+    intake = tmp_path / "runner-intake"
+    (intake / "vouchers").mkdir(parents=True)
+    sh("git", "-C", repo, "config", "brain.intake", intake)
+    svc = make_service(tmp_path, [repo])
+    svc.reload_sync()
+    r = svc.repos["r1"]
+    Git = mod("repo").Git
+    real = Git.run
+    fail = [True]
+
+    def git_run(self, *args, **kw):
+        if fail[0] and args[:1] == ("config",):
+            return subprocess.CompletedProcess(args, 124, "", "timed out")
+        return real(self, *args, **kw)
+
+    monkeypatch.setattr(Git, "run", git_run)
+    assert svc._vouchers_dir(r) is None
+    fail[0] = False
+    assert [svc._vouchers_dir(r) for _ in range(2)] == [str(intake / "vouchers")] * 2
