@@ -815,7 +815,10 @@ class Service:
         stamp = config_stamp(repo.path)
         got = self._intake.get(repo.path)
         if got is None or got[0] != stamp:
-            got = self._intake[repo.path] = (stamp, repo.git.out("config", "brain.intake"))
+            p = repo.git.run("config", "brain.intake")
+            got = (stamp, p.stdout.strip() if p.returncode == 0 else "")
+            if p.returncode in (0, 1):     # 1: not set; anything else, git did not answer: asked again next time
+                self._intake[repo.path] = got
         s = os.environ.get("BRAIN_INTAKE_DIR") or got[1] or "~/.brain/intake"
         d = os.path.join(os.path.abspath(os.path.expanduser(s)), "vouchers")
         return d if os.path.isdir(d) else None
