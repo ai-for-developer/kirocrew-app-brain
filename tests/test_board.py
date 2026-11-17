@@ -923,6 +923,29 @@ def test_write_back_branches_are_read_with_git_again_only_when_a_brain_branch_or
     assert read()[1] > 0 and read()[1] == 0
 
 
+def test_a_for_each_ref_that_failed_once_is_not_kept_as_no_write_back_branch(tmp_path, home, monkeypatch):
+    """git timed out listing the brain/ branches (rc 124): the next poll reads them again, nothing moved or not."""
+    from appkit import commit_file, git_repo, sh
+    repo = git_repo(tmp_path / "r")
+    commit_file(repo, "a.md", "a\n", "init")
+    sh("git", "-C", repo, "branch", "brain/DEMO-3-reflect-1", "main")
+    svc = make_service(tmp_path, [])
+    Git = mod("repo").Git
+    real = Git.run
+    fail = [True]
+
+    def git_run(self, *args, **kw):
+        if fail[0] and args[:1] == ("for-each-ref",):
+            return subprocess.CompletedProcess(args, 124, "", "timed out")
+        return real(self, *args, **kw)
+
+    monkeypatch.setattr(Git, "run", git_run)
+    git = Git(repo)
+    assert svc._reflects_of(git, "DEMO-3", "main") == []
+    fail[0] = False
+    assert [ref for ref, _, _ in svc._reflects_of(git, "DEMO-3", "main")] == ["brain/DEMO-3-reflect-1"]
+
+
 def test_the_runners_page_of_a_hand_over_it_cannot_read_yet_tells_one_story():
     """runner/PAY-9: the team runner has it in its ledger, so the bridge took it; the signer signs its contract and the
     runner has no working directory for it yet. The hand-over is behind it on every part of the board: no 等开工, no
