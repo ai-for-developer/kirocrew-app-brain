@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -29,7 +30,7 @@ from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_FOLDER, REPO_ID_RE, TIC
 from .gateway import Gateway, GatewayError
 from .gateway import said as gateway_said
 from .httpkit import AppError
-from .repo import Git, Repo, Source, read_claim, read_facts
+from .repo import Git, Repo, Source, files_stamp, git_stamp, read_claim, read_facts
 from .repoids import RepoIds, from_records
 from .sessions import SessionManager, requirement_credits
 from . import store as store_mod
@@ -42,8 +43,8 @@ EVAL_TTL_S = 120.0
 REVIEW_TITLE = " · 审查"     # a review session's title ends so (开审查会话): it is never the live dev session
 MR_EVERY_S = 30.0
 CREW_EVERY_S = 300.0
-TRACE_TTL_S = 15.0
 FOLD_TTL_S = 10.0     # the 产出 drawer reads the board's last fold; the board polls every 2 s while it is open
+FAILED_TRACE_S = 15.0  # a trace brain-kit could not make (git timed out under load) is made again this soon
 RUNNER_ELSEWHERE = "交接以后，运行机上的会话这台机器读不到，没算进来"
 LOCAL_ELSEWHERE = "交接以前，开发者机器上的会话这台机器读不到，没算进来"
 RUNNER_TOOK = ("running", "parked", "acceptance", "merged", "closed")   # a hand-over's states once the runner has it
@@ -55,6 +56,13 @@ def basic_scrub(text: str) -> str:
 
 def scope_of(rid: str, key: str) -> str:
     return "%s-%s" % (rid, key)
+
+
+def trace_failed(tl: dict[str, Any]) -> bool:
+    """brain-kit could not make the trace, or a 小需求's inside a 大需求's: it catches that one and leaves its numbers
+    None (only started 小需求 are children, and a made trace always has numbers)."""
+    kids = (((tl.get("trace") or {}).get("family") or {}).get("children")) or []
+    return bool(tl["error"]) or any(c.get("numbers") is None for c in kids)
 
 
 RECORD_SCOPE_RE = re.compile(r"^(r[1-9][0-9]{0,2})-([A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6})$")   # a local scope_of
@@ -150,10 +158,11 @@ class Service:
         self._mr_seen: set[tuple] = set()      # (project, branch, hand-over commit) whose MR was read at first sight
         self._eval: dict[str, tuple] = {}
         self._eval_running: set[str] = set()
-        self._trace: dict[tuple, tuple] = {}
+        self._trace: dict[str, tuple] = {}      # scope -> (what it was made from, detail.timeline, when)
         self.desc = mrdesc_view.DescCache()     # each requirement's 变更说明, by the commits it is made from
         self._subj: dict[tuple, tuple] = {}     # the board's commit subjects and changed files, by the commits asked for
         self._units: dict[tuple, list] = {}     # the units unit-of-work.md plans, by the commit it is read at
+        self._reflects: dict[tuple, tuple] = {}  # (repo, key, default branch) -> (git_stamp, _reflect_refs)
         self._folds: dict[tuple, tuple] = {}    # (repo, key) -> (when, outputs.Fold): the board's last fold, for 产出
         self.who = identity.Who(transport, log=self.log)
         self.families = family.Families()      # brain-kit's listing per repo (大需求 and their 小需求), made in the background
@@ -849,7 +858,7 @@ class Service:
         return f
 
     def _vouchers_dir(self, repo: Repo) -> str | None:
-        s = os.environ.get("BRAIN_INTAKE_DIR") or repo.git.out("config", "brain.intake") or "~/.brain/intake"
+        s = os.environ.get("BRAIN_INTAKE_DIR") or identity.git_config(repo.path).get("brain.intake") or "~/.brain/intake"
         d = os.path.join(os.path.abspath(os.path.expanduser(s)), "vouchers")
         return d if os.path.isdir(d) else None
 
@@ -918,21 +927,37 @@ class Service:
         return self.desc.get_or_make(*job)
 
     def _timeline(self, repo: Repo, f: dict[str, Any], snap: dict[str, Any], scope: str) -> dict[str, Any]:
-        sig = (scope, f.get("tip"), f.get("worktree"), len(f.get("events") or []), f.get("park_sha"))
-        got = self._trace.get(sig)
-        if got and time.monotonic() - got[0] < TRACE_TTL_S:
+        """The requirement's trace, made again only when something it is made from changed (_trace_stamp), or when
+        brain-kit could not make it (trace_failed) FAILED_TRACE_S ago."""
+        behind = f.get("where") == "worktree" and f.get("ref")      # origin's run branch is ahead of the worktree
+        src_repo, ref = (f["worktree"], None) if f.get("worktree") and not behind else (repo.path, f.get("ref"))
+        c = self._local_credits(snap, f, scope)[1]["total"]
+        vouchers = self._vouchers_dir(repo)
+        sig = (f.get("tip"), f.get("worktree"), len(f.get("events") or []), f.get("park_sha"), bool(f.get("run")),
+               src_repo, ref, c, vouchers, self._trace_stamp(repo.cfg, src_repo, ref, vouchers))
+        got = self._trace.get(scope)
+        if got is not None and got[0] == sig and not (trace_failed(got[1]) and time.monotonic() - got[2] > FAILED_TRACE_S):
             tl = dict(got[1])
         else:
-            behind = f.get("where") == "worktree" and f.get("ref")      # origin's run branch is ahead of the worktree
-            src_repo, ref = (f["worktree"], None) if f.get("worktree") and not behind else (repo.path, f.get("ref"))
-            c = self._local_credits(snap, f, scope)[1]["total"]
             tl = detail.timeline(src_repo, repo.cfg, f["key"], ref=ref, events=f.get("events") or [],
                                  credits={"runs": {f["key"]: {"credits": c}}} if c is not None else None,
-                                 vouchers_dir=self._vouchers_dir(repo), has_run=bool(f.get("run")))
-            self._trace = {k: v for k, v in self._trace.items() if time.monotonic() - v[0] < TRACE_TTL_S}
-            self._trace[sig] = (time.monotonic(), dict(tl))
+                                 vouchers_dir=vouchers, has_run=bool(f.get("run")))
+            self._trace[scope] = (sig, dict(tl), time.monotonic())
         tl["items"] = sorted(tl["items"] + self.store.events(scope), key=lambda x: (x["at"] or "", x["kind"]))
         return tl
+
+    def _trace_stamp(self, cfg: dict[str, Any], src: str, ref: str | None, vouchers: str | None) -> tuple:
+        """What brain-kit's trace reads besides commits, which never change: the branches, the run's records when they
+        are read in the worktree (trace and usage read runs_dir, aidlc-docs and brain_dir there), every run's vouchers
+        (a big one's trace reads each small one's too), and the minute: it judges the 14 days after a merge at the time
+        it is made, and reads some git calls without a check (a failed one reads as not there, with no error)."""
+        files = files_stamp(src, [cfg["runs_dir"], lean_view.DOCS, cfg["brain_dir"]]) if ref is None else ()
+        try:
+            runs = [d for d in sorted(os.listdir(vouchers)) if d.startswith("RUN-")] if vouchers else []
+        except OSError:
+            runs = []
+        return (git_stamp(src, ("refs/heads/", "refs/remotes/origin/")), files,
+                files_stamp(vouchers, runs) if vouchers else (), int(self.now() // 60))
 
     def _team_detail(self, key: str, snap: dict[str, Any], parts: dict[str, Any] | None = None) -> dict[str, Any]:
         hit = next(((r, f, d) for r, f, d in self._team_rows(snap) if r["key"] == key), None)
@@ -1017,7 +1042,7 @@ class Service:
 
     def _commits(self, git: Git, shas: list[str]) -> tuple[dict[str, str], dict[str, list[dict[str, Any]]]]:
         """The commits' subjects and the files each changed (one git call, board_mod.GIT_LOG; kept by the commits
-        asked for)."""
+        asked for, unless git failed)."""
         shas = [x for x in shas if re.match(r"^[0-9a-f]{40}$", x or "")][-board_mod.MAX_BELT:]
         if not shas:
             return {}, {}
@@ -1025,36 +1050,68 @@ class Service:
         got = self._subj.get(sig)
         if got is None:
             p = git.run(*board_mod.GIT_LOG, *shas, timeout=20)
-            out = p.stdout if p.returncode == 0 else ""
-            got = (board_mod.subjects_from_log(out), board_mod.changes_from_log(out))
+            if p.returncode != 0:
+                return {}, {}
+            got = (board_mod.subjects_from_log(p.stdout), board_mod.changes_from_log(p.stdout))
             if len(self._subj) > 200:
                 self._subj.clear()
             self._subj[sig] = got
         return got
 
     @staticmethod
-    def _reflect_refs(git: Git, key: str, default_branch: str) -> list[tuple[str, float, float | None]]:
+    def _reflect_refs(git: Git, key: str, default_branch: str) -> list[tuple[str, float, float | None]] | None:
         """brain reflect's branches for *key* (brain/<KEY>-reflect-<n>, local or origin's): when each was made, and
         when it was merged into the default branch (the merge commit on its first-parent line; its own time when the
-        branch is on that line, fast-forwarded), or None while it waits."""
+        branch is on that line, fast-forwarded), or None while it waits. None: a git call failed or timed out (any
+        exit but 0, or 1 for no such ref or not merged)."""
+        def run(*args: str) -> subprocess.CompletedProcess:
+            p = git.run(*args)
+            if p.returncode not in (0, 1):
+                raise subprocess.CalledProcessError(p.returncode, args)
+            return p
+
+        def time_of(rev: str) -> float | None:
+            s = run("log", "-1", "--format=%ct", rev).stdout.strip()
+            return float(s) if s.isdigit() else None
+
         out, seen = [], set()
-        main = next((r for r in ("refs/remotes/origin/" + default_branch, "refs/heads/" + default_branch)
-                     if git.ok("rev-parse", "-q", "--verify", r + "^{commit}")), None)
         rx = re.compile(r"^refs/(?:heads|remotes/origin)/(brain/%s-reflect-[1-9][0-9]*)$" % re.escape(key))
-        for ref in sorted(git.refs("refs/heads/brain/", "refs/remotes/origin/brain/")):
-            m = rx.match(ref)
-            if m and m.group(1) not in seen:
-                at = git.commit_time(ref)
-                if at:
-                    seen.add(m.group(1))
-                    merged = None
-                    if main and git.ok("merge-base", "--is-ancestor", ref, main):
-                        line = git.out("rev-list", "--first-parent", "--ancestry-path", "--reverse",
-                                       "%s..%s" % (ref, main)).split()
-                        ff = not line or git.out("rev-parse", line[0] + "^1") == git.out("rev-parse", ref)
-                        merged = at if ff else git.commit_time(line[0])
-                    out.append((m.group(1), at, merged))
+        try:
+            refs = run("for-each-ref", "--format=%(refname)", "refs/heads/brain/", "refs/remotes/origin/brain/")
+            main = next((r for r in ("refs/remotes/origin/" + default_branch, "refs/heads/" + default_branch)
+                         if run("rev-parse", "-q", "--verify", r + "^{commit}").returncode == 0), None)
+            for ref in sorted(refs.stdout.split()):
+                m = rx.match(ref)
+                if m and m.group(1) not in seen:
+                    at = time_of(ref)
+                    if at:
+                        seen.add(m.group(1))
+                        merged = None
+                        if main and run("merge-base", "--is-ancestor", ref, main).returncode == 0:
+                            line = run("rev-list", "--first-parent", "--ancestry-path", "--reverse",
+                                       "%s..%s" % (ref, main)).stdout.split()
+                            ff = not line or run("rev-parse", line[0] + "^1").stdout == run("rev-parse", ref).stdout
+                            merged = at if ff else time_of(line[0])
+                        out.append((m.group(1), at, merged))
+        except subprocess.CalledProcessError:
+            return None
         return out
+
+    def _reflects_of(self, git: Git, key: str, default_branch: str) -> list[tuple[str, float, float | None]]:
+        """_reflect_refs, read with git again only when a brain/ branch or the default branch moves, or a git call
+        failed the last time."""
+        stamp = git_stamp(git.repo, ("refs/heads/brain/", "refs/remotes/origin/brain/", "refs/heads/" + default_branch,
+                                     "refs/remotes/origin/" + default_branch))
+        sig = (git.repo, key, default_branch)
+        got = self._reflects.get(sig)
+        if got is None or got[0] != stamp:
+            refs = self._reflect_refs(git, key, default_branch)
+            if refs is None:
+                return []
+            if len(self._reflects) > 200:
+                self._reflects.clear()
+            got = self._reflects[sig] = (stamp, refs)
+        return got[1]
 
     def _planned_units(self, git: Git, f: dict[str, Any]) -> list[stages.UnitPlan]:
         """The units unit-of-work.md plans, as Lean reads its first table (brain-kit's split.parse_units), at the run
@@ -1095,7 +1152,7 @@ class Service:
         g = board_mod.build(
             f, d["row"], t, mr=parts.get("mr"), sessions=sessions, app_events=app_events,
             team_decisions=parts.get("decisions") or [], subjects=subjects, changes=changes,
-            reflect_refs=self._reflect_refs(git, key, str(cfg.get("default_branch") or "main")) if git is not None else [],
+            reflect_refs=self._reflects_of(git, key, str(cfg.get("default_branch") or "main")) if git is not None else [],
             default_branch=str(cfg.get("default_branch") or "main"), local_only=bool(parts.get("local_only")),
             kit_rows=board_mod.kit_cells(self.crew.get("rows") or [], parts.get("path") or ""),
             decisions=d["decisions"], brain=d["brain"], me=parts.get("me"), now=self.now(), units=units, fold=kept,
@@ -1151,7 +1208,7 @@ class Service:
         slots = []
         for s in turns_mod.sessions_to_read(fold, q):
             try:
-                rows, whole = await self.sessions.transcript(str(s["slot"]))
+                rows, whole = await self.sessions.kept_transcript(str(s["slot"]))
             except GatewayError as exc:
                 raise AppError("读不了这一轮的会话：%s" % gateway_said(exc), "transcript_unreadable", 502) from None
             root = self.sessions.by_slot(str(s["slot"]))

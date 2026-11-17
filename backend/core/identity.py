@@ -221,14 +221,14 @@ def set_name(top: str, name: Any) -> str:
         raise NameRefused("名字%s" % RULE)
     from .importer import last_lines, run_quiet, tail       # here: importer imports this module
     p = run_quiet([GIT_BIN, "-C", top, "config", "--local", "brain.user", n], top, SET_TIMEOUT_S)
-    _names.clear()
+    _configs.clear()
     if p.returncode != 0:
         raise NameRefused("名字没存上，git 说：%s" % (last_lines(tail(p), 3) or "退出码 %d" % p.returncode))
     return n
 
 
-NAME_TTL_S = 60.0   # git config brain.user is read again at least this often (an onbranch include, the system's config)
-_names: dict[str, tuple[tuple[str, ...], tuple, float, str]] = {}   # top -> (the files stamped, their stamp, when, name)
+NAME_TTL_S = 60.0   # a repo's git config is read again at least this often (an onbranch include, the system's config)
+_configs: dict[str, tuple[tuple[str, ...], tuple, float, dict[str, str]]] = {}   # top -> (files stamped, stamp, when, config)
 
 
 def config_files(top: str) -> tuple[str, ...]:
@@ -259,27 +259,33 @@ def config_stamp(files: tuple[str, ...]) -> tuple:
 
 
 def git_name(top: str) -> str:
-    """`git config brain.user` in *top*, read again only when a git config file it may come from changes (config_files,
-    each file git read a setting from, each file an include names), or after NAME_TTL_S."""
-    kept = _names.get(top)
+    """`git config brain.user` in *top* (git_config)."""
+    return git_config(top).get("brain.user", "")
+
+
+def git_config(top: str) -> dict[str, str]:
+    """`git config --list` in *top*, each key's value as `git config <key>` says it, read again only when a git config
+    file it may come from changes (config_files, each file git read a setting from, each file an include names), or
+    after NAME_TTL_S."""
+    kept = _configs.get(top)
     if kept is not None and kept[1] == config_stamp(kept[0]) and time.monotonic() - kept[2] < NAME_TTL_S:
         return kept[3]
     at, files = time.monotonic(), config_files(top)
     stamp = config_stamp(files)
     p = Git(top).run("config", "--list", "--show-origin", "-z")
     if p.returncode != 0:
-        return ""                       # a bad config file, a timeout: asked again next time
-    name, read = "", []
+        return {}                       # a bad config file, a timeout: asked again next time
+    got: dict[str, str] = {}
+    read = []
     said = p.stdout.split("\0")
     for origin, entry in zip(said[0::2], said[1::2]):
         key, _, value = entry.partition("\n")
-        if key == "brain.user":
-            name = value.strip()         # the last one wins, as in `git config brain.user`
+        got[key] = value.strip()         # the last one wins, as in `git config <key>`
         if origin.startswith("file:"):
             path = os.path.join(top, origin[5:])
             read.append(path)
             if key == "include.path" or (key.startswith("includeif.") and key.endswith(".path")):
                 read.append(os.path.join(os.path.dirname(path), os.path.expanduser(value)))
     more = tuple(dict.fromkeys(os.path.normpath(x) for x in read if os.path.normpath(x) not in files))
-    _names[top] = (files + more, stamp + _stats(more), at, name)
-    return name
+    _configs[top] = (files + more, stamp + _stats(more), at, got)
+    return got

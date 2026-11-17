@@ -6,6 +6,7 @@ into GitLab)."""
 
 import json
 import os
+import threading
 import time
 
 from appkit import mod
@@ -175,3 +176,39 @@ def test_first_line_and_the_cache():
     assert cache.first(("p", "s", "m", "K", 2.5), make) == "一句"             # other credits: the same commits
     assert cache.get_or_make(("p", "s", "m", "K", 1.0), make)["text"] == "x" and len(made) == 1
     assert cache.get_or_make(("p", "s2", "m", "K", None), make) and len(made) == 2
+
+
+def test_a_desc_asked_for_while_it_is_queued_or_made_in_the_background_is_made_once():
+    """The first open of a requirement: its row queues the 变更说明 for the background thread and the page asks for it
+    at once. It was made twice at the same time (about 80 git calls each on a demo repo)."""
+    mv = mod("mrdesc_view")
+    cache = mv.DescCache()
+    made, go = [], threading.Event()
+
+    def make(text):
+        def f():
+            made.append(text)
+            go.wait(10)
+            return {"first": text, "text": text}
+        return f
+
+    def wait_for(cond, s=10.0):
+        deadline = time.monotonic() + s
+        while not cond() and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+    being_made, queued = ("p", "s1", "m", "K", 1.0), ("p", "s2", "m", "K", 1.0)
+    assert cache.first(being_made, make("a")) is None
+    wait_for(lambda: made == ["a"])
+    assert cache.first(queued, make("b")) is None                 # behind "a" on the background thread
+    got = {}
+    threads = [threading.Thread(target=lambda s=s: got.setdefault(s, cache.get_or_make(s, make(s[1]))))
+               for s in (being_made, queued)]
+    for t in threads:
+        t.start()
+    wait_for(lambda: len(made) > 2, 0.5)
+    go.set()
+    for t in threads:
+        t.join(10)
+    assert got[being_made]["text"] == "a" and got[queued]["text"] == "s2"
+    assert sorted(made) == ["a", "s2"]

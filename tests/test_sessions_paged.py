@@ -3,21 +3,24 @@ however far back it is, is never sent twice into a session that took it, and the
 whole transcript's."""
 
 import asyncio
+import itertools
 import logging
 
 from appkit import FakeGateway, mod
 
 sessions = mod("sessions")
 T0 = 1_800_000_000.0
+MIDS = itertools.count()    # KiroCrew gives each row of a transcript its own id (meta.mid)
 
 
 def tool(i):
-    return {"role": "tool", "content": "🔧 Reading f%d.py" % i, "meta": {"tool_name": "read"}, "ts": "2026-11-08T10:01:00Z"}
+    return {"role": "tool", "content": "🔧 Reading f%d.py" % i, "meta": {"tool_name": "read", "mid": "m-%d" % next(MIDS)},
+            "ts": "2026-11-08T10:01:00Z"}
 
 
 def reply(text, credits=None):
     meta = {"turn_stats": {"credits": credits}} if credits is not None else {}
-    return {"role": "assistant", "content": text, "meta": meta, "ts": "2026-11-08T10:02:00Z"}
+    return {"role": "assistant", "content": text, "meta": dict(meta, mid="m-%d" % next(MIDS)), "ts": "2026-11-08T10:02:00Z"}
 
 
 def manager(tmp_path, gw):
@@ -110,7 +113,8 @@ def long_session(turns, rows_each):
     """*turns* turns, each a message, its calls and one reply of 1.5 credits: rows_each + 2 rows a turn."""
     out = []
     for t in range(turns):
-        out.append({"role": "user", "content": "第 %d 轮" % t, "meta": {"human": True}, "ts": "2026-11-08T10:00:00Z"})
+        out.append({"role": "user", "content": "第 %d 轮" % t, "meta": {"human": True, "mid": "m-%d" % next(MIDS)},
+                    "ts": "2026-11-08T10:00:00Z"})
         out += [tool(i) for i in range(rows_each)]
         out.append(reply("做完第 %d 轮" % t, 1.5))
     return out
@@ -134,6 +138,100 @@ def test_a_session_longer_than_a_page_counts_every_turn_s_credits(tmp_path):
         st = await stats_of(mgr, gw, info.slot)
         assert st["credits"] == 30.0 and st["whole"] is True
         assert mgr.credits_by_key() == {"r1:PAY-1": 30.0}
+
+    asyncio.run(go())
+
+
+def test_a_long_session_s_stats_read_only_what_came_after_the_last_read(tmp_path):
+    """Every STATS_EVERY polls a tracked slot's credits and turns are read: once its transcript was read whole, the
+    next read is its newest page, and the totals stay the whole transcript's. One rewound (shorter, or other rows
+    where the last read stopped) is read whole again."""
+    async def go():
+        gw = FakeGateway()
+        mgr, _ = manager(tmp_path, gw)
+        info = await opened(mgr, gw)
+        gw.finish(info.slot)
+        gw.msgs[info.slot] += long_session(20, 85)
+        pages = lambda: sum(1 for c in gw.calls if c[:2] == ("page", info.slot))
+
+        def whole_says(busy=False):
+            return dict(sessions.spend(gw.msgs[info.slot], busy), whole=True)
+
+        def said(st):
+            return {k: st[k] for k in ("credits", "turns", "subagents", "unreported", "whole")}
+
+        st = await stats_of(mgr, gw, info.slot)
+        assert info.done and said(st) == whole_says() and st["credits"] == 30.0
+        gw.msgs[info.slot] += long_session(2, 30)
+        n = pages()
+        st = await stats_of(mgr, gw, info.slot)
+        assert pages() - n == 1 and said(st) == whole_says() and st["credits"] == 33.0 and st["turns"] == 23
+        cut_short = st["unreported"]
+        gw.msgs[info.slot].append({"role": "user", "content": "再来", "meta": {"human": True}})
+        gw.msgs[info.slot] += [tool(i) for i in range(3)]
+        gw.slot_rows[info.slot]["running"] = True
+        st = await stats_of(mgr, gw, info.slot)
+        assert said(st) == whole_says(busy=True) and st["unreported"] == cut_short, "the turn at work is not cut short"
+        gw.slot_rows[info.slot]["running"] = False
+        st = await stats_of(mgr, gw, info.slot)
+        assert said(st) == whole_says() and st["unreported"] == cut_short + 1
+        n = len(gw.msgs[info.slot])
+        del gw.msgs[info.slot][600:]
+        gw.msgs[info.slot] += long_session(14, 85)
+        assert len(gw.msgs[info.slot]) > n, "other rows where the last read stopped"
+        st = await stats_of(mgr, gw, info.slot)
+        assert said(st) == whole_says() and st["credits"] == 1.5 * (6 + 14)    # 6 turns left of the 20, the 14 new
+
+    asyncio.run(go())
+
+
+def test_a_session_replaced_by_look_alike_rows_without_ids_is_read_whole(tmp_path):
+    """Rows without KiroCrew's row id (meta.mid) look the same at one index in another session: one put in the slot
+    with the same calls and replies but other credits is counted and shown as read whole, not from the old one."""
+    def no_ids(rows):
+        for m in rows:
+            m["meta"].pop("mid", None)
+        return rows
+
+    async def go():
+        gw = FakeGateway()
+        mgr, _ = manager(tmp_path, gw)
+        info = await opened(mgr, gw)
+        gw.finish(info.slot)
+        gw.msgs[info.slot] = no_ids(long_session(20, 85))
+        assert (await stats_of(mgr, gw, info.slot))["credits"] == 30.0
+        assert (await mgr.kept_transcript(info.slot))[0] == gw.msgs[info.slot]
+        gw.msgs[info.slot] = no_ids(long_session(20, 85))
+        for m in gw.msgs[info.slot][:200]:
+            if m["role"] == "assistant":
+                m["meta"]["turn_stats"]["credits"] = 4.0
+        st = await stats_of(mgr, gw, info.slot)
+        assert (st["credits"], st["whole"]) == (sessions.spend(gw.msgs[info.slot], False)["credits"], True) == (35.0, True)
+        assert (await mgr.kept_transcript(info.slot))[0] == gw.msgs[info.slot]
+
+    asyncio.run(go())
+
+
+def test_the_rows_kept_of_all_sessions_stay_within_kept_rows(tmp_path, monkeypatch):
+    """产出 keeps the final rows of the transcripts it read last, KEPT_ROWS rows in all: one with more than that is
+    read whole every time, and the oldest kept are dropped (read whole on their next read) to keep the rest."""
+    monkeypatch.setattr(sessions, "KEPT_ROWS", 1000, raising=False)
+
+    async def go():
+        gw = FakeGateway()
+        mgr, _ = manager(tmp_path, gw)
+        for slot, n in (("a", 600), ("b", 600), ("c", 1300), ("d", 400)):
+            gw.msgs[slot] = [tool(i) for i in range(n)]
+
+        async def pages(slot):
+            gw.calls.clear()
+            rows, whole = await mgr.kept_transcript(slot)
+            assert rows == gw.msgs[slot] and whole
+            return len(gw.calls)
+
+        assert [await pages(x) for x in "abab"] == [2, 2, 1, 1]
+        assert [await pages("c"), await pages("c"), await pages("b")] == [3, 3, 1], "a long one is never kept"
+        assert [await pages("d"), await pages("b"), await pages("a")] == [1, 1, 2], "a was kept longest: dropped"
 
     asyncio.run(go())
 

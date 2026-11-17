@@ -76,6 +76,24 @@ def test_a_cursor_that_does_not_move_back_stops_the_read():
     assert not whole and len(gw.calls) == 2
 
 
+def test_a_transcript_read_again_reads_only_its_newest_rows_and_the_same_as_read_whole():
+    """产出's session tabs read their sessions on every request (every 4 s while the round is at work): a transcript
+    read before is read back only to the rows kept of it. One rewound since is read whole again."""
+    gw = KiroCrewSlots([row(i) for i in range(1234)])
+    mgr = manager(gw)
+    rows, whole = asyncio.run(mgr.kept_transcript("s"))
+    assert whole and rows == gw.rows and len(gw.calls) == 3
+    gw.calls.clear()
+    gw.rows += [row(i) for i in range(2000, 2010)]
+    rows, whole = asyncio.run(mgr.kept_transcript("s"))
+    assert whole and rows == gw.rows and [c.get("before") for c in gw.calls] == [None]
+    gw.calls.clear()
+    del gw.rows[1000:]
+    gw.rows += [row(i) for i in range(3000, 3300)]      # longer than before: other rows where the last read stopped
+    rows, whole = asyncio.run(mgr.kept_transcript("s"))
+    assert whole and rows == gw.rows and len(gw.calls) > 1
+
+
 # ---------------------------------------------------------------- what the drawer may show, written when it is sent
 
 def test_a_bridge_message_shows_by_its_kind_and_anything_else_not_at_all():
