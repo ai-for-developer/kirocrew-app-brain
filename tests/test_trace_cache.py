@@ -76,6 +76,38 @@ def test_a_trace_that_failed_once_is_made_again_on_a_later_poll(tmp_path, home, 
     assert error() == ""
 
 
+@needs_brainkit
+def test_a_trace_made_while_a_quiet_git_call_failed_is_made_again_within_a_minute(tmp_path, home, monkeypatch):
+    """brain-kit reads some git calls without a check (trace.py _g, _show, _ancestor): one that failed reads as "not
+    there" and its trace has no error. The trace cache cannot tell, so a kept trace lives at most a minute."""
+    repo = make_project(tmp_path)
+    start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款导出")
+    svc = make_service(tmp_path, [repo])
+    svc.reload_sync()
+    t0 = int(svc.now() // 60) * 60 + 5
+    clock = [t0]
+    svc.now = lambda: clock[0]
+    trace = mod("detail").bk.m("trace")
+    fail = [True]
+    for name, none in (("_g", None), ("_show", None), ("_ancestor", False)):
+        real = getattr(trace, name)
+        monkeypatch.setattr(trace, name, (lambda real, none: lambda *a, **k: none if fail[0] else real(*a, **k))(real, none))
+
+    def page(s):
+        t = run(s.requirement("r1", "PAY-1"))["timeline"]
+        return {k: t.get(k) for k in ("items", "missing", "error")}
+
+    first = page(svc)
+    fail[0] = False
+    clock[0] = t0 + 60
+    later = page(svc)
+    cold = make_service(tmp_path, [repo])
+    cold.reload_sync()
+    fresh = page(cold)
+    assert first["error"] == "" and first != fresh, "the failed calls change the trace and leave no error"
+    assert later == fresh
+
+
 def test_a_git_config_that_failed_once_is_read_again(tmp_path, home, monkeypatch):
     """`git config brain.intake` timed out once (rc 124): that is not "not set", so the trace still reads the
     configured intake's vouchers (hand-overs, bridge answers) on the next poll."""
