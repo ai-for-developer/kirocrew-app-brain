@@ -491,3 +491,33 @@ def test_the_app_runs_it_in_the_background_and_team_mode_starts_with_the_signer(
     # the page's fixture has exactly the keys the backend answers with
     from test_contract import diff_keys, fixture
     assert diff_keys(fixture("team-setup.json"), json.loads(json.dumps(end))) == []
+
+
+def test_the_command_line_says_one_line_per_step(world):
+    """scripts/runner_setup.py, its own process, against the fake GitLab behind a loopback HTTP server: a line per step
+    as it ends, team mode started and stopped again to check it, exit 0 with the MR waiting; again, nothing new."""
+    from teamfix import Served
+    served = Served(world["gl"])
+    token_file = world["tmp"] / "token"
+    token_file.write_text(world["admin"] + "\n")
+    token_file.chmod(0o600)
+    root = world["tmp"] / "cli-setup"
+    cmd = [sys.executable, "-I", str(ROOT / "scripts" / "runner_setup.py"), "--root", str(root), "--gitlab", served.base,
+           "--project", P, "--token-file", str(token_file), "--role", "builder=bob", "--brainkit", str(BRAINKIT)]
+    signerproc = mod("team.signerproc")
+    try:
+        first = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        seen = len(world["gl"].calls)
+        second = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        left = signerproc.running(root / "signer.json")      # the signer stays: the app's team mode takes it on
+    finally:
+        signerproc.stop(root / "signer.json")
+        served.stop()
+    assert left is not None
+    lines = first.stdout.splitlines()
+    assert first.returncode == 0 and len(lines) == 12, first.stdout + first.stderr
+    assert lines[0].startswith("✓ 找到项目  grp/pay") and lines[5].startswith("… kit.json 的 MR  开了 MR !7")
+    assert lines[11].startswith("✓ 团队模式  团队模式的配置能用") and lines[11].endswith("交接都会被拒")
+    assert second.returncode == 0 and world["gl"].writes(seen) == [], second.stdout + second.stderr
+    assert "✓ 桥的令牌  用上次建的项目令牌 brain-bridge" in second.stdout
+    assert world["admin"] not in first.stdout + first.stderr + second.stdout + second.stderr
