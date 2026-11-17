@@ -162,6 +162,18 @@ def git_stamp(top: str, refs: tuple[str, ...]) -> tuple:
     return tuple(out)
 
 
+def files_stamp(top: str, rels: list[str]) -> tuple:
+    """Every file under *rels* (folders or files) in the folder *top*: its path, mtime and size."""
+    out = []
+    for rel in rels:
+        p = os.path.join(top, rel)
+        walk = os.walk(p) if os.path.isdir(p) else [(os.path.dirname(p), [], [os.path.basename(p)])]
+        for d, dirs, names in walk:
+            dirs.sort()
+            out += [(os.path.relpath(os.path.join(d, n), top), _stat(os.path.join(d, n))) for n in sorted(names)]
+    return tuple(out)
+
+
 class Source:
     """Files of one place: a worktree's files, or a git ref. Both: the ref's files, but *mine* (the ones the person
     changed in the worktree and has not committed) from the worktree."""

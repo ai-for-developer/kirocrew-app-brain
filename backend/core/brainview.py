@@ -25,7 +25,7 @@ from typing import Any
 
 from . import bk, problems
 from .intake import brain_cmd
-from .repo import GitFailed, Repo
+from .repo import GitFailed, Repo, files_stamp
 
 MIN_RUNS = 3
 SECTION_RE = re.compile(r"^##\s+(.+?)\s*$")
@@ -155,7 +155,7 @@ def unmerged_usage(repo: Repo) -> list[dict[str, Any]]:
     for (src, ref), facts in groups.items():
         stamp = (_kit(), repo.cfg["brain_dir"], repo.cfg["runs_dir"],
                  tuple(sorted(str(f.get("tip")) for f in facts)) if ref else
-                 _files_stamp(src, [repo.cfg["runs_dir"], "aidlc-docs", repo.cfg["brain_dir"]]))
+                 files_stamp(src, [repo.cfg["runs_dir"], "aidlc-docs", repo.cfg["brain_dir"]]))
         kept = _runs.get((repo.path, src, ref))
         if kept is not None and kept[0] == stamp:
             runs = kept[1]
@@ -185,22 +185,6 @@ _runs: dict[tuple, tuple[tuple, list[dict[str, Any]]]] = {}   # (repo path, src,
 def _kit() -> tuple:
     info = bk.info()
     return info["path"], info["version"], id(bk.m("usage"))
-
-
-def _files_stamp(top: str, rels: list[str]) -> tuple:
-    """Every file under *rels* in the worktree at *top*: its path, mtime and size."""
-    out = []
-    for rel in rels:
-        for d, dirs, names in os.walk(os.path.join(top, rel)):
-            dirs.sort()
-            for n in sorted(names):
-                p = os.path.join(d, n)
-                try:
-                    st = os.stat(p)
-                except OSError:
-                    continue
-                out.append((os.path.relpath(p, top), st.st_mtime_ns, st.st_size))
-    return tuple(out)
 
 
 def main_key(repo: Repo) -> tuple | None:
