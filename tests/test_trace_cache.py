@@ -1,4 +1,4 @@
-"""需求详情 and 需求看板 poll every 2 to 5 s: brain-kit's trace of a requirement (a dozen git calls and more) is made
+"""需求现状 and 运行过程 poll every 2 to 5 s: brain-kit's trace of a requirement (a dozen git calls and more) is made
 again only when something it is made from changed, not every 15 s."""
 
 import subprocess
@@ -44,7 +44,7 @@ def test_the_trace_is_made_again_only_when_what_it_reads_changed(tmp_path, home,
 @needs_brainkit
 def test_a_trace_that_failed_once_is_made_again_on_a_later_poll(tmp_path, home, monkeypatch):
     """A failed read (git timed out under load) is not the answer while nothing it reads moves: within 15 s the
-    需求详情 says brain-kit could not read the run, after that it shows the trace."""
+    需求现状 says brain-kit could not read the run, after that it shows the trace."""
     repo = make_project(tmp_path)
     start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款导出")
     svc = make_service(tmp_path, [repo])
