@@ -104,7 +104,7 @@
     },
     {
       "id": "team_mode",
-      "title": "团队模式",
+      "title": "打开团队模式",
       "status": "done",
       "message": "团队模式开了；可是上面那个 MR 合并以前，交接都会被拒",
       "link": null,

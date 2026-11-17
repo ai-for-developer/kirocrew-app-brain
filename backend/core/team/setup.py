@@ -984,5 +984,5 @@ STEPS: tuple[Step, ...] = (
     Step("configs", "三份配置", step_configs),
     Step("agent", "brain-run agent", step_agent),
     Step("signer", "签名服务", step_signer),
-    Step("team_mode", "团队模式", step_team_mode),
+    Step("team_mode", "打开团队模式", step_team_mode),
 )

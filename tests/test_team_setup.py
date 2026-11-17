@@ -517,7 +517,7 @@ def test_the_command_line_says_one_line_per_step(world):
     lines = first.stdout.splitlines()
     assert first.returncode == 0 and len(lines) == 12, first.stdout + first.stderr
     assert lines[0].startswith("✓ 找到项目  grp/pay") and lines[5].startswith("… kit.json 的 MR  开了 MR !7")
-    assert lines[11].startswith("✓ 团队模式  团队模式的配置能用") and lines[11].endswith("交接都会被拒")
+    assert lines[11].startswith("✓ 打开团队模式  团队模式的配置能用") and lines[11].endswith("交接都会被拒")
     assert second.returncode == 0 and world["gl"].writes(seen) == [], second.stdout + second.stderr
     assert "✓ 桥的令牌  用上次建的项目令牌 brain-bridge" in second.stdout
     assert world["admin"] not in first.stdout + first.stderr + second.stdout + second.stderr
