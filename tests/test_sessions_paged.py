@@ -231,7 +231,7 @@ def test_the_rows_kept_of_all_sessions_stay_within_kept_rows(tmp_path, monkeypat
 
         assert [await pages(x) for x in "abab"] == [2, 2, 1, 1]
         assert [await pages("c"), await pages("c"), await pages("b")] == [3, 3, 1], "a long one is never kept"
-        assert [await pages("d"), await pages("a"), await pages("b")] == [1, 2, 1], "a was kept longest: dropped"
+        assert [await pages("d"), await pages("b"), await pages("a")] == [1, 1, 2], "a was kept longest: dropped"
 
     asyncio.run(go())
 
