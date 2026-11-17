@@ -99,28 +99,18 @@ describe('需求看板', () => {
     expect(credits).toHaveTextContent(`${b.sessions.length} 个会话合计`)
   })
 
-  test('你要做的一步: every thing that waits for the person, one row each, the means beside it; nothing is sent', async () => {
+  test('你要做的一步: one line, the first thing that waits for the person and how many; 去需求详情 → is where they are done', async () => {
     installFixtureRoutes()
-    renderBoard()
+    const { go } = renderBoard()
     await loaded()
     const b = fx.board()
     const strip = region('你要做的一步')
-    expect(strip).toHaveTextContent('3 件事等你')
-    const steps = within(strip).getAllByTestId('br-next-step')
-    // the question answerable right here comes first, then 验收's step (the line to type), then the tool call
-    expect(steps.map((x) => x.dataset.do)).toEqual(['answer', 'approve', 'tool'])
-    expect(steps[0]).toHaveTextContent(b.questions[0].question)
-    expect(steps[1]).toHaveTextContent(b.accept.step.text)
-    const line = within(steps[1]).getByTestId('type-line')
-    expect(within(line).getByText(b.accept.step.line as string)).toHaveClass('br-mono')
-    expect(line).toHaveAttribute('title', TYPE_IT_YOURSELF)
-    fireEvent.click(within(line).getByRole('button', { name: '复制那一行' }))
-    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('approve PLAN 5d1e7a90'))
-    expect(await within(line).findByText('已复制')).toBeInTheDocument()
-    fireEvent.click(within(line).getByRole('button', { name: '打开会话' }))
-    expect(steps[2]).toHaveTextContent('会话里有一个工具调用等你批准')
-    fireEvent.click(within(steps[2]).getByRole('button', { name: '去批准工具调用' }))
-    expect(navigations).toEqual([b.accept.step.session_url, b.runs[0].sessions[0].url])
+    expect(within(strip).getByTestId('br-next-text')).toHaveTextContent(`回答：${b.questions[0].question}`)
+    expect(strip).toHaveTextContent('共 3 件事等你')
+    for (const name of ['复制那一行', '打开会话', '去批准工具调用', '回答']) expect(within(strip).queryByRole('button', { name })).toBeNull()
+    expect(within(strip).queryByTestId('type-line')).toBeNull()
+    fireEvent.click(within(strip).getByRole('button', { name: '去需求详情 →' }))
+    expect(go).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'item', repo: 'r1', key: 'PAY-3' }))
     expect(apiCalls.filter((c) => c.method !== 'GET')).toEqual([])
   })
 
@@ -140,7 +130,8 @@ describe('需求看板', () => {
     renderBoard()
     await loaded()
     expect(order()).toEqual(['br-next', 'br-accept', 'kt-graph', 'kt-lanes'])
-    expect(within(region('你要做的一步')).getByRole('link', { name: '去 MR 上验收 ↗' })).toHaveAttribute('href', b.accept.step.mr_url)
+    expect(within(region('你要做的一步')).queryByRole('link')).toBeNull()
+    expect(within(region('你要做的一步')).getByRole('button', { name: '去需求详情 →' })).toBeInTheDocument()
   })
 
   test('验收: the requirement, its 变更说明, what the checks say, who decided (in words), what it cost', async () => {
@@ -174,7 +165,7 @@ describe('需求看板', () => {
 
   test('the graph: a box per stage on the way, none for a skipped one; its state in data attributes and in words; the approval asked of you has its chip', async () => {
     installFixtureRoutes()
-    renderBoard()
+    const { go } = renderBoard()
     const graph = await loaded()
     const b = fx.board()
     expect(Array.from(graph.querySelectorAll<SVGGElement>('g.kt-node')).map((n) => [n.dataset.node, n.dataset.status])).toEqual([
@@ -194,14 +185,11 @@ describe('需求看板', () => {
     expect(stageBox(graph, 'requirements').querySelector('.kt-node-sub')).toHaveTextContent(/^✓ 本机 · \d+:\d\d$/)
     expect(said(stageBox(graph, 'requirements').querySelectorAll('.kt-node-badge'))).toEqual(['✓ 你批了'])
     expect(stageBox(graph, 'build-and-test').querySelector('.kt-node-sub')).toHaveTextContent(/^等代码生成$/)
-    // the approval asked of you: one chip under its box (and 看文档, the plan it asks for); it brings the step strip,
-    // where the line to type is
-    const scroll = vi.mocked(HTMLElement.prototype.scrollIntoView)
-    scroll.mockClear()
+    // the approval asked of you: one chip under its box (and 看文档, the plan it asks for); it opens 需求详情, where the
+    // line to type is
     expect(said(within(graph).getAllByTestId('kt-gate-pill'))).toEqual(['等你批 · 代码生成计划', '看文档'])
     fireEvent.click(within(graph).getByRole('button', { name: '代码生成：等你批 · 代码生成计划' }))
-    expect(scroll.mock.contexts).toContain(screen.getByTestId('br-next'))
-    expect(plan).toHaveAttribute('aria-pressed', 'true')
+    expect(go).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'item', repo: 'r1', key: 'PAY-3' }))
     // the dashed line from 本机会话's row to the box it waits at, magenta: it waits on you
     const cmds = within(graph).getAllByTestId('kt-cmd')
     expect(cmds.map((c) => c.getAttribute('data-run'))).toEqual(['local'])
@@ -309,7 +297,7 @@ describe('需求看板', () => {
     expect(plan).toHaveTextContent('本机会话')   // who did it
     expect(within(within(plan).getByTestId('type-line')).getByText('approve PLAN 5d1e7a90')).toBeInTheDocument()
     // one approval covering two stages is typed once: in the last lane it covers, as its chip stands under the last box
-    expect(screen.getAllByTestId('type-line')).toHaveLength(2)   // this one and 验收's step
+    expect(screen.getAllByTestId('type-line')).toHaveLength(1)
     expect(within(lane('code-generation/refund-export')).queryByTestId('type-line')).toBeNull()
     expect(within(plan).getByRole('img')).toHaveAccessibleName(/^代码生成 · refund-api的时间线：/)
     // one that is through says what it handed in (its own note of the last round) and how long it took
@@ -323,7 +311,7 @@ describe('需求看板', () => {
     expect(navigations).toEqual([b.runs[0].sessions[0].url])
   })
 
-  test('one approval covering two stages: its line in the last lane it covers, and once in the step strip', async () => {
+  test('one approval covering two stages: its line in the last lane it covers, once on the page', async () => {
     installFixtureRoutes(boardRoute(() => pay16()))
     renderBoard({ repo: 'r1', key: 'PAY-16' })
     await loaded()
@@ -331,8 +319,7 @@ describe('需求看板', () => {
     expect(lane('requirements')).toHaveAttribute('data-status', 'awaiting_approval')
     expect(within(lane('requirements')).queryByTestId('type-line')).toBeNull()
     expect(within(within(lane('application-design')).getByTestId('type-line')).getByText('approve INCEPTION 3fa2c1d0')).toBeInTheDocument()
-    // and the step strip asks for it once, not once per stage
-    expect(within(region('你要做的一步')).getAllByText('approve INCEPTION 3fa2c1d0')).toHaveLength(1)
+    expect(within(region('你要做的一步')).queryByText('approve INCEPTION 3fa2c1d0')).toBeNull()
   })
 
   test('a lane names its stage as its box does: the unit whole after the stage, 发布 without its phase’s ✓', async () => {
@@ -550,24 +537,20 @@ describe('需求看板', () => {
     expect(items().map((li) => Number(li.dataset.seq))).toEqual(b.events.filter((e) => !e.detail).map((e) => e.seq).reverse())
   })
 
-  test('the open questions: one answerable here is at the top (回答 opens its form there); the others beside the wall', async () => {
+  test('the open questions beside the wall: the one answerable here with its form, Lean’s approval as typed in the session', async () => {
     installFixtureRoutes()
     renderBoard()
     await loaded()
     const b = fx.board()
     const [here, lean] = b.questions.filter((q) => q.state === 'waiting' || q.state === 'open')
-    const strip = region('你要做的一步')
-    expect(within(strip).queryByTestId('question')).toBeNull()
-    fireEvent.click(within(strip).getByRole('button', { name: '回答' }))
-    expect(within(strip).getByTestId('question')).toHaveTextContent(here.question)
-    expect(within(strip).getByRole('button', { name: '收起' })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(region('你要做的一步')).queryByTestId('question')).toBeNull()
     const qs = region('等回答的问题')
-    expect(within(qs).getByText('1')).toHaveClass('kt-badge')
+    expect(within(qs).getByText('2')).toHaveClass('kt-badge')
     const cards = within(qs).getAllByTestId('question')
-    expect(cards).toHaveLength(1)
-    // the PLAN approval is Lean's: typed in the session, not answered here
-    expect(cards[0]).toHaveTextContent(lean.question)
-    expect(cards[0]).toHaveTextContent('这是 Lean 的代码生成计划审批请求：在会话里自己打批准那一行，这里不能回答。')
+    expect(cards).toHaveLength(2)
+    expect(cards[0]).toHaveTextContent(here.question)
+    expect(cards[1]).toHaveTextContent(lean.question)
+    expect(cards[1]).toHaveTextContent('这是 Lean 的代码生成计划审批请求：在会话里自己打批准那一行，这里不能回答。')
     expect(qs).not.toHaveTextContent(b.questions.find((q) => q.state === 'delivered')!.question)
   })
 
@@ -851,18 +834,18 @@ describe('需求看板 · 轮到谁、做什么', () => {
     expect(raw).toHaveTextContent('run.json not found in working tree')
   })
 
-  test('an idle session: the step says what to say and where, 去回话 right there; the lane draws the wait as a wait', async () => {
+  test('an idle session: the step in one line, 去回话 on its box; the lane draws the wait as a wait', async () => {
     const b = idle()
     installFixtureRoutes(boardRoute(() => structuredClone(b)))
     renderBoard()
     const graph = await loaded()
     const strip = region('你要做的一步')
     expect(strip).toHaveTextContent('已经等了 11 小时 30 分')
-    expect(strip).toHaveTextContent(b.accept.step.text)
-    fireEvent.click(within(strip).getByRole('button', { name: '去回话' }))
-    // the chip under the box the session stopped before says the same step and opens the session too, never 去回答
+    expect(within(strip).getByTestId('br-next-text')).toHaveTextContent(b.accept.step.text.split('\n')[0])
+    expect(within(strip).queryByRole('button', { name: '去回话' })).toBeNull()
+    // the chip under the box the session stopped before says the step and opens the session, never 去回答
     fireEvent.click(within(graph).getByRole('button', { name: '发布：去回话' }))
-    expect(navigations).toEqual([b.accept.step.session_url, b.runs[0].sessions[0].url])
+    expect(navigations).toEqual([b.runs[0].sessions[0].url])
     expect(graph).not.toHaveTextContent('去回答')
     const release = lane('release')
     expect(release).toHaveTextContent('⏱ 等了 11 小时 30 分')
@@ -898,7 +881,7 @@ describe('需求看板 · 轮到谁、做什么', () => {
     expect(bts).toHaveTextContent('运行机 第 1 次')
     expect(bts.querySelector('.kt-track-span.is-wait.is-other')).not.toBeNull()
   })
-  test('a refused hand-over: why first, then what to do and where (the command to copy), the bridge’s words under 细节', async () => {
+  test('a refused hand-over: the step says why in one line; what to do and the bridge’s words are on 需求详情', async () => {
     const b = fx.board()
     Object.assign(b.row, { state: 'rejected', state_label: '接手被拒' })
     b.row.waits = { who: 'you', text: '接手被拒：标签是 bob 打的，不是负责人 alice', line: null, raw: "label 'ai-handoff' was added by bob, not by the branch owner alice", do: 'redo_handoff', since: b.at - H, where: null }
@@ -909,13 +892,10 @@ describe('需求看板 · 轮到谁、做什么', () => {
     renderBoard()
     await loaded()
     const strip = region('你要做的一步')
-    expect(strip).toHaveTextContent('为什么被拒标签是 bob 打的，不是负责人 alice')
-    expect(strip).toHaveTextContent(`怎么办${b.accept.step.text}`)
-    expect(strip).toHaveTextContent('在哪做在这个需求的工作目录里开一个终端，敲：brain handoff')
-    fireEvent.click(within(strip).getByRole('button', { name: '复制命令' }))
-    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(`cd "${b.row.worktree}" && brain handoff`))
-    expect(within(strip).getByText('细节').closest('details')).toHaveTextContent('was added by bob')
-    expect(within(strip).getByRole('link', { name: '看 MR ↗' })).toHaveAttribute('href', b.accept.step.mr_url)
+    expect(within(strip).getByTestId('br-next-text')).toHaveTextContent(/^接手被拒：标签是 bob 打的，不是负责人 alice$/)
+    for (const name of ['复制命令', '复制那一行']) expect(within(strip).queryByRole('button', { name })).toBeNull()
+    expect(within(strip).queryByRole('link')).toBeNull()
+    expect(within(strip).getByRole('button', { name: '去需求详情 →' })).toBeInTheDocument()
   })
 
   test('a refused hand-over as the backend says it (the reason, then what to do): the reason once; no wait time it does not know', async () => {
@@ -930,44 +910,27 @@ describe('需求看板 · 轮到谁、做什么', () => {
     await loaded()
     const strip = region('你要做的一步')
     expect(strip.textContent!.match(/标签是 bob 打的/g)).toHaveLength(1)
-    expect(strip).toHaveTextContent('怎么办改好后，在终端里、这个需求的分支上重新跑 brain handoff')
     expect(strip).not.toHaveTextContent('已经等了')
   })
 
-  test('an idle session whose next step is Lean’s review in a new session: that step, 开审查会话 right there, the line it says folded', async () => {
+  test('an idle session whose next step is Lean’s review in a new session: that step in one line; its chip opens 需求详情, where 开审查会话 is', async () => {
     const said = 'Review intent 261107-refund-export against its requirements, design and plans, using the diff, and write construction/build-and-test/review.md.'
     const b = idle()
-    b.row.waits = { ...b.row.waits, text: '构建测试做完了，下一步是发布：先开一个新会话做审查（这个会话写了代码，不能自己审）', review: false }
+    b.row.waits = { ...b.row.waits, text: '构建测试做完了，下一步是发布：先开一个新会话做审查（这个会话写了代码，不能自己审）', review: true }
+    b.accept.step = { ...b.accept.step, line: said }
     b.nodes = b.nodes.map((n) => (n.id === 'review' ? { ...n, status: 'waiting' as const, doing: '等构建测试', since: null, run: null, rounds: [] } : n))
     b.runs = b.runs.map((r) => ({ ...r, now: { ...r.now, node: 'review' as NodeId } }))
     installFixtureRoutes(boardRoute(() => structuredClone(b)))
-    renderBoard()
-    await loaded()
-    // the backend's judgment, not the words
-    expect(within(region('你要做的一步')).queryByRole('button', { name: '开审查会话' })).toBeNull()
-    cleanup()
-    b.row.waits.review = true
-    b.accept.step = { ...b.accept.step, line: said }
-    installFixtureRoutes({ ...boardRoute(() => structuredClone(b)), [`POST ${API}/requirements/r1/PAY-3/session`]: () => ({ ok: true, slot: 'brain-PAY-3-r2', url: '/chat?sid=brain-PAY-3-r2' }) })
-    renderBoard()
+    const { go } = renderBoard()
     await loaded()
     const strip = region('你要做的一步')
     expect(strip).toHaveTextContent('先开一个新会话做审查（这个会话写了代码，不能自己审）')
-    expect(strip).toHaveTextContent('开审查会话会把 Lean 的审查要求发给新会话')
     expect(within(strip).queryByTestId('type-line')).toBeNull()
-    // never the session that wrote the code under another name (REST-18)
-    expect(within(strip).queryByRole('button', { name: /^(去回话|打开会话)$/ })).toBeNull()
-    const fold = within(strip).getByTestId('review-say')
-    expect(fold.tagName).toBe('DETAILS')
-    expect(fold).toHaveTextContent(`细节：开审查会话对新会话说的那一句${said}`)
-    fireEvent.click(within(fold).getByRole('button', { name: '复制那一句' }))
-    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(said))
-    // the chip under 审查 names the same step and brings the strip, not the session that wrote the code
+    expect(within(strip).queryByRole('button', { name: /^(开审查会话|去回话|打开会话)$/ })).toBeNull()
+    // the chip under 审查 names the step and opens 需求详情, never the session that wrote the code
     fireEvent.click(within(screen.getByTestId('kt-graph')).getByRole('button', { name: '审查：开审查会话' }))
     expect(navigations).toEqual([])
-    fireEvent.click(within(strip).getByRole('button', { name: '开审查会话' }))
-    await waitFor(() => expect(apiCalls.find((c) => c.method === 'POST')).toMatchObject({ body: { trust: true, kickoff: true, review: true } }))
-    await waitFor(() => expect(navigations).toEqual(['/chat?sid=brain-PAY-3-r2']))
+    expect(go).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'item', repo: 'r1', key: 'PAY-3' }))
   })
 
   test('a repo done only here: no hand-over on the graph, only 本机会话 in its list and on its rail; the top says so', async () => {
@@ -1244,7 +1207,7 @@ describe('需求看板 · 回放', () => {
     renderBoard()
     await loaded()
     const ask = { name: '代码生成：等你批 · 代码生成计划' }
-    expect(screen.getAllByTestId('type-line')).toHaveLength(2) // 验收's step and 代码生成 · refund-api's lane
+    expect(screen.getAllByTestId('type-line')).toHaveLength(1) // 代码生成 · refund-api's lane
     expect(within(screen.getByTestId('kt-graph')).getByRole('button', ask)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '▶ 回放' }))
     expect(bar()).toBeInTheDocument()
@@ -1260,7 +1223,7 @@ describe('需求看板 · 回放', () => {
     expect(screen.getAllByTestId('kt-gate-pill').every((x) => x.classList.contains('is-static'))).toBe(true)
     expect(screen.queryByRole('button', { name: '本机会话' })).toBeNull()
     fireEvent.click(within(bar()).getByRole('button', { name: '退出回放' }))
-    expect(screen.getAllByTestId('type-line')).toHaveLength(2)
+    expect(screen.getAllByTestId('type-line')).toHaveLength(1)
     expect(region('等回答的问题')).toBeInTheDocument()
   })
 
@@ -1403,7 +1366,7 @@ describe('需求看板 · 谁做的、等谁、看得清', () => {
     expect(said(stageBox(graph, 'code-generation/refund-api').querySelectorAll('.kt-node-badge'))).toEqual(['等别人'])
     expect(graph).not.toHaveTextContent('等 alice')
   })
-  test('a pushed hand-over without its label: the counter counts it as waiting on you, the button is 补上交接标签', async () => {
+  test('a pushed hand-over without its label: the counter counts it as waiting on you, the step says it', async () => {
     const b = fx.board()
     const text = '推上去了，但 MR 上没有交接标签：什么也没交出去。看一眼 MR，再交接一次'
     Object.assign(b.row, { state: 'handed_over', state_label: '已交接' })
@@ -1417,7 +1380,8 @@ describe('需求看板 · 谁做的、等谁、看得清', () => {
     renderBoard()
     await loaded()
     expect(screen.getByRole('group', { name: '指标' })).toHaveTextContent('没有在做的 · 1 个等你')
-    expect(within(region('你要做的一步')).getByRole('link', { name: '补上交接标签 ↗' })).toHaveAttribute('href', b.accept.step.mr_url)
+    expect(within(region('你要做的一步')).getByTestId('br-next-text')).toHaveTextContent(text)
+    expect(within(region('你要做的一步')).queryByRole('link')).toBeNull()
     expect(screen.queryByRole('link', { name: '去 MR ↗' })).toBeNull()
   })
 

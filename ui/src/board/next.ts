@@ -6,7 +6,7 @@
 import type { Question, ReqBoard, WaitDo, Waits, WaitWho } from '../types'
 import { isOpenQuestion } from '../ui'
 import { ACT } from '../vocab'
-import { leanOf, openGate, replySession, waitsOnMe } from './format'
+import { openGate, waitsOnMe } from './format'
 
 export interface Step {
   id: string
@@ -15,23 +15,9 @@ export interface Step {
   text: string
   /** why it came to this (a refused hand-over's reasons, in short Chinese) */
   why?: string
-  /** a line under it: what to say, where */
-  hint?: string
-  /** the line the person types themselves in the session */
+  /** the line the person types themselves in the session (one approval is one step, however many stages it covers) */
   line?: string | null
-  /** what they write on the MR after the hand-over (`answer D-3 approve`) */
-  comment?: string | null
-  /** Lean's next step is a review in a new session (the session that wrote the code may not review it): 开审查会话 */
-  review?: boolean
-  /** the line 开审查会话 says to the new session (Lean's own), to copy for a session opened by hand */
-  say?: string | null
-  /** a command typed in a terminal, in this directory */
-  command?: { text: string; cwd: string | null } | null
-  session?: string | null
-  mr?: string | null
   question?: Question
-  /** the original words (folded under 细节) */
-  raw?: string
 }
 
 export interface Next {
@@ -74,8 +60,6 @@ function guessDo(b: ReqBoard): WaitDo {
 
 export const doOf = (b: ReqBoard): WaitDo => b.row.waits.do ?? guessDo(b)
 
-/** This machine's session: 验收's, else the local run's. */
-const localSession = (b: ReqBoard) => b.accept.step.session_url ?? replySession(b)?.url ?? null
 
 export function nextOf(b: ReqBoard): Next {
   const w = b.row.waits
@@ -91,25 +75,14 @@ export function nextOf(b: ReqBoard): Next {
   })
   const st = b.accept.step
   const d = doOf(b)
-  const session = localSession(b)
   const text = st.text || w.text
   if (text && d !== 'none' && d !== 'watch') {
-    const main: Step = { id: 'main', do: d, text, line: st.line, comment: st.comment ?? null, mr: st.mr_url, session: st.session_url }
-    if (d === 'reply') {
-      const next = leanOf(b.row.lean).next
-      main.session = st.session_url ?? session
-      if (reviewNext(w)) Object.assign(main, { text: w.text, line: null, review: true, hint: REVIEW_SENDS, say: w.review !== undefined ? st.line : null })
-      else if (next && !text.includes(next.label)) main.hint = `Lean 的下一步是「${next.label}」：在会话里让它接着做`
-    }
-    if (d === 'tool') main.session = st.session_url ?? session
+    const main: Step = { id: 'main', do: d, text, line: st.line }
+    if (d === 'reply' && reviewNext(w)) Object.assign(main, { text: w.text, line: null })
     if (d === 'redo_handoff') {
       main.why = w.text.replace(/^接手被拒[：:]\s*/, '')
-      // the step's own first line says the refusal again: the why above says it
+      // the step's own first line says the refusal again: the why says it
       main.text = text.split('\n').filter((l) => !l.startsWith('接手被拒')).join('\n') || text
-      main.command = { text: 'brain handoff', cwd: b.row.worktree }
-      main.raw = w.raw || undefined
-      main.session = st.session_url ?? session
-      main.mr = st.mr_url ?? mr
     }
     if (d === 'answer' && steps.some((s) => s.question)) main.text = ''
     if (main.text) steps.push(main)
@@ -118,12 +91,11 @@ export function nextOf(b: ReqBoard): Next {
   for (const n of b.nodes) {
     const g = openGate(n)
     if (g?.line && g.who === 'you' && g.line !== st.line && !steps.some((x) => x.line === g.line)) {
-      const run = b.runs.find((r) => r.key === n.run)
-      steps.push({ id: `g-${n.id}`, do: 'approve', text: n.doing, line: g.line, session: replySession(b, run)?.url ?? session })
+      steps.push({ id: `g-${n.id}`, do: 'approve', text: n.doing, line: g.line })
     }
   }
   for (const r of waiting) {
-    if (r.now.who === 'you' && r.now.do === 'tool' && d !== 'tool') steps.push({ id: `r-${r.key}`, do: 'tool', text: r.now.doing, session: replySession(b, r)?.url ?? session })
+    if (r.now.who === 'you' && r.now.do === 'tool' && d !== 'tool') steps.push({ id: `r-${r.key}`, do: 'tool', text: r.now.doing })
   }
   return { who: w.who, mine, since, steps, text: w.text, mr }
 }

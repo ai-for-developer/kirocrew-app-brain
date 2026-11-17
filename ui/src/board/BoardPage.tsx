@@ -46,7 +46,7 @@ import { BOARD_EXTRA_CSS } from './extra'
 import { PERSON, WORKING, boardWho, replySession } from './format'
 import { NextStep } from './NextStep'
 import { OutputsDrawer } from './Outputs'
-import { openHere, reviewNext } from './next'
+import { reviewNext } from './next'
 import { Intro, Kpis, TopBar } from './Header'
 import { ClockContext, useReducedMotion, type SnapshotClock } from './hooks'
 import { Lanes, laneNodes } from './Lanes'
@@ -266,8 +266,8 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, pus
   const startable = !!board && entry.repo !== 'runner' && (board.person.you ?? (board.person.me || !board.person.owner || !me))
   const toStart = () => go({ kind: 'new', repo: entry.repo, key: entry.key, ...(board?.row.title ? { title: board.row.title } : {}) })
   const toBoard = (key: string) => go({ kind: 'board', repo: entry.repo, key })
-  // a box that waits for the person: its run's session for what is said or approved there, the step strip for the rest
-  // (a review is not said in the session that wrote the code: the strip has 开审查会话)
+  // a box that waits for the person: its run's session for what is said or approved there, 验收 for the acceptance,
+  // 需求详情 for the rest (a review is not said in the session that wrote the code: 需求详情 has 开审查会话)
   const onAct = useCallback((id: string, d: WaitDo) => {
     const runs = board?.runs ?? []
     const run = runs.find((r) => r.key === board?.nodes.find((n) => n.id === id)?.run)
@@ -275,12 +275,14 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, pus
     const review = !!board && reviewNext(board.row.waits)
     if (((d === 'reply' && !review) || d === 'tool') && url) return navigate(url)
     if (d === 'write_back') return toBrain()
-    rootRef.current?.querySelector(d === 'accept' && !rootRef.current?.querySelector('#br-next') ? '#br-accept' : '#br-next')?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+    const accept = d === 'accept' ? rootRef.current?.querySelector('#br-accept') : null
+    if (!accept) return toDetail()
+    accept.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
     setFocus(id)
   }, [board, navigate]) // eslint-disable-line react-hooks/exhaustive-deps
   const quiet = rp.on
   const looked = board ? focusOf(board, focus) : null
-  const side = board ? board.questions.filter((q) => (q.state === 'waiting' || q.state === 'open') && !(board.row.waits.who === 'you' && openHere(q))) : []
+  const side = board ? board.questions.filter((q) => q.state === 'waiting' || q.state === 'open') : []
   // whom those wait on when it is not the person looking (the one rule, as the strip says it)
   const waiter = !board || board.row.waits.who === 'you' ? null : PERSON.has(board.row.waits.who) ? boardWho(board) : '等人' 
   const acceptTop = !!board && board.accept.state !== 'not_yet'
@@ -343,7 +345,7 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, pus
               </>
             ) : (
               <>
-                {!quiet && <NextStep board={board} repo={entry.repo} reqKey={entry.key} onAnswered={live.reload} onBrain={toBrain} onDetail={toDetail} />}
+                {!quiet && <NextStep board={board} onDetail={toDetail} />}
                 <Kpis key={`${rp.on ? 'replay' : 'live'}`} board={view} run={picked} reducedMotion={reducedMotion} onNode={onNode} replaying={rp.on} />
                 {acceptTop && <Accept board={board} onDetail={toDetail} quiet={quiet} />}
                 {fam?.role === 'big' && famCard}

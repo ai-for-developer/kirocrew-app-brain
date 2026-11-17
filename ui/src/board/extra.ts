@@ -130,7 +130,6 @@ export const BOARD_EXTRA_CSS = `
 .br-board .br-notfound { padding: 16px 20px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); max-width: 720px; }
 .br-board .br-notfound h3 { margin: 0 0 6px; }
 /* a step said on two lines (what happened, then what to do) keeps its lines */
-.br-next .br-pre-line { white-space: pre-line; }
 .br-btn-big { padding: 10px 20px; font-size: 1.02em; border-radius: 12px; }
 
 /* whom it waits for: magenta is the person looking only; anyone else is a calm blue, no blinking */
@@ -191,24 +190,12 @@ export const BOARD_EXTRA_CSS = `
 .br-commit-rows .br-commit-files .kt-file-bar { width: 56px; }
 .br-board .kt-owned { margin-top: 2px; }
 
-/* 你要做的一步: the strip above the graph */
+/* 你要做的一步: one line above the graph */
 .br-next { display: grid; gap: 8px; padding: 10px 14px; border-radius: 14px; border: 1px solid var(--kit-wait, var(--kt-approve));
   background: color-mix(in srgb, var(--kt-approve) 7%, var(--card)); }
-.br-next-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.br-next.is-mine { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; }
 .br-next-who { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; color: var(--kt-approve); white-space: nowrap; }
-.br-next-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.br-next-item + .br-next-item { border-top: 1px dashed color-mix(in srgb, var(--kt-approve) 30%, var(--border)); padding-top: 8px; }
-.br-next-row { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; }
-.br-next-text { flex: 1 1 340px; min-width: 0; display: grid; gap: 4px; }
-.br-next-text p { margin: 0; }
-.br-next-text .br-line { margin-top: 2px; }
-.br-next-acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.br-next-k { display: inline-block; min-width: 5.2em; margin-right: 8px; color: var(--muted); font-size: .88em; }
-.br-next-hint { color: var(--text); }
-.br-next-cmd { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; }
-.br-next-cmd code { padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--kt-glass); }
-.br-next-cwd { font-size: .8em; overflow-wrap: anywhere; }
-.br-next .br-q { margin: 0; }
+.br-next-text { flex: 1 1 240px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .br-next.is-other { display: flex; align-items: baseline; gap: 6px 10px; flex-wrap: wrap; margin: 0; padding: 8px 14px; border-color: var(--border); background: var(--card); }
 .br-next.is-other .br-next-who { color: var(--muted); font-weight: 700; }
 
