@@ -324,18 +324,20 @@ def spend(rows: list[dict[str, Any]], busy: bool) -> dict[str, Any]:
     return Spent().add(rows).result(busy)
 
 
-def _ident(m: dict[str, Any]) -> tuple:
-    """What tells a transcript row from another one at the same index (the transcript rewound, or the row edited)."""
+def _ident(m: dict[str, Any]) -> tuple | None:
+    """What tells a transcript row from another one at the same index (the transcript rewound or replaced, or the row
+    edited): KiroCrew's id of it and what it says. None for a row without an id: its look-alike in another transcript
+    (same words, same second) cannot be told from it."""
     meta = m.get("meta") if isinstance(m.get("meta"), dict) else {}
-    return m.get("role"), m.get("ts"), meta.get("mid"), str(m.get("content") or "")
+    return (meta["mid"], m.get("role"), m.get("ts"), str(m.get("content") or "")) if meta.get("mid") else None
 
 
 @dataclass(frozen=True)
 class Mark:
     """Row *at* of a transcript as it was read: what is kept of the rows before it starts at row *start* (0: the
-    transcript's first), and the next read starts at it."""
+    transcript's first), and the next read starts at it (*ident* None: it never holds)."""
     at: int
-    ident: tuple
+    ident: tuple | None
     start: int
 
 
@@ -356,7 +358,7 @@ class Tally:
     @staticmethod
     def empty(start: int) -> "Tally":
         """Nothing kept: a read that starts at row *start*."""
-        return Tally(Mark(start, (), start), Spent(), [], None)
+        return Tally(Mark(start, None, start), Spent(), [], None)
 
     def settled(self, rows: list[dict[str, Any]], first: int) -> "Tally":
         """This tally with *rows* (the transcript from row *first* on) added to it, all but their newest SETTLE_BACK."""
@@ -657,7 +659,7 @@ class SessionManager:
     async def _after(self, slot: str, mark: Mark | None) -> tuple[list[dict[str, Any]], int, Mark | None]:
         """The rows of *slot*'s transcript from *mark* on, and the index of the first. With no mark, or one that no
         longer holds (the row there is another one), as far back as transcript() reads, and no mark."""
-        if mark is not None:
+        if mark is not None and mark.ident is not None:
             rows, start = await self._pages(slot, since=mark.at)
             i = mark.at - start
             if 0 <= i < len(rows) and _ident(rows[i]) == mark.ident:
