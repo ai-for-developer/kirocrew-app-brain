@@ -14,8 +14,9 @@
 # What goes in: the app at the COMMITTED HEAD of this checkout (git archive; the working tree never), brain-kit at
 # BRAINKIT_COMMIT from $BRAINKIT_REPO and Lean at the vendor/aidlc-lean commit brain-kit records there, from
 # $LEAN_REPO; both must be on a remote branch (public), both exported with git archive (tracked files only), their
-# tests/ left out. What stays out: tests, the preview, scripts, signer/ (the team runner's, deployed from main),
-# BRAINKIT_REQUESTS.md, the dev README, ui/ sources and package files. INSTALL.md becomes the branch's README.md.
+# tests/ left out; and signer/, which the app runs itself for a team runner it set up (一键建运行机, one OS user). What
+# stays out: tests, the preview, scripts, BRAINKIT_REQUESTS.md, the dev README, ui/ sources and package files.
+# INSTALL.md becomes the branch's README.md.
 # Bump app.json's "version" for a release people should be offered as an update.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -100,6 +101,7 @@ cat > "$A/app-registry.json" <<'EOF'
 ]
 EOF
 cp -R "$SRC/backend" "$A/backend"
+cp -R "$SRC/signer" "$A/signer"
 cp -R "$SRC/ui/dist" "$A/ui/dist"
 git -C "$BRAINKIT_REPO" archive "$BK" | tar -x -C "$A/vendor/brain-kit"
 rm -rf "$A/vendor/brain-kit/tests" "$A/vendor/brain-kit/.gitmodules" "$A/vendor/brain-kit/vendor/aidlc-lean"
@@ -120,7 +122,8 @@ for f in package.json pyproject.toml setup.py requirements.txt; do
   [ ! -e "$A/$f" ] || die "$f would make KiroCrew run npm or pip on install"
 done
 [ -z "$(find "$REL" -type l)" ] || die "symlinks in the release: $(find "$REL" -type l | head -3)"
-[ -f "$A/ui/dist/index.mjs" ] && [ -f "$A/backend/routes.py" ] && [ -f "$A/backend/hooks.py" ] || die "app files missing"
+[ -f "$A/ui/dist/index.mjs" ] && [ -f "$A/backend/routes.py" ] && [ -f "$A/backend/hooks.py" ] && [ -f "$A/signer/brain_signer.py" ] \
+  || die "app files missing"
 [ -x "$A/vendor/brain-kit/bin/brain" ] && [ -f "$A/vendor/brain-kit/vendor/aidlc-lean/install.sh" ] || die "brain-kit or Lean incomplete"
 # The app's own loader, on the release tree: no $BRAINKIT_HOME, so the bundled brain-kit is found and passes the app's
 # checks (its required modules and the interfaces of VERSION_NEEDED). -B: no __pycache__ in the tree.
