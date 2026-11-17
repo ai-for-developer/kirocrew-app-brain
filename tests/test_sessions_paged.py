@@ -212,6 +212,30 @@ def test_a_session_replaced_by_look_alike_rows_without_ids_is_read_whole(tmp_pat
     asyncio.run(go())
 
 
+def test_the_rows_kept_of_all_sessions_stay_within_kept_rows(tmp_path, monkeypatch):
+    """产出 keeps the final rows of the transcripts it read last, KEPT_ROWS rows in all: one with more than that is
+    read whole every time, and the oldest kept are dropped (read whole on their next read) to keep the rest."""
+    monkeypatch.setattr(sessions, "KEPT_ROWS", 1000, raising=False)
+
+    async def go():
+        gw = FakeGateway()
+        mgr, _ = manager(tmp_path, gw)
+        for slot, n in (("a", 600), ("b", 600), ("c", 1300), ("d", 400)):
+            gw.msgs[slot] = [tool(i) for i in range(n)]
+
+        async def pages(slot):
+            gw.calls.clear()
+            rows, whole = await mgr.kept_transcript(slot)
+            assert rows == gw.msgs[slot] and whole
+            return len(gw.calls)
+
+        assert [await pages(x) for x in "abab"] == [2, 2, 1, 1]
+        assert [await pages("c"), await pages("c"), await pages("b")] == [3, 3, 1], "a long one is never kept"
+        assert [await pages("d"), await pages("a"), await pages("b")] == [1, 2, 1], "a was kept longest: dropped"
+
+    asyncio.run(go())
+
+
 def test_a_session_too_long_to_read_whole_says_so(tmp_path, monkeypatch):
     monkeypatch.setattr(sessions, "TRANSCRIPT_PAGES", 2)
 
