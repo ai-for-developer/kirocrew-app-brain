@@ -48,7 +48,7 @@ BRIDGE_SCOPES = ("api",)
 # GET /user, which the reuse check and the bot's username and address come from, needs read_user as well
 BOT_SCOPES = ("read_repository", "write_repository", "read_user")
 SSH_BOT = ("brain-bot", "brain-bot@noreply.invalid")    # git_name, git_email of a runner pushing over this machine's SSH
-SSH_WAIT_S = 20
+REACH_WAIT_S = 20
 KIT = ".brain/kit.json"
 BRANCH = "brain/runner-setup"
 MR_TITLE = "运行机：更新 .brain/kit.json"
@@ -265,6 +265,7 @@ class Ctx:
     gitlab: Callable[[str], Any]                                # token -> brain-kit's rest.GitLab for inp.gitlab_base
     team_mode: Callable[[dict, bool], dict] | None = None       # (settings team, restart) -> TeamStatus; None: not here
     signer: Callable[[Paths], tuple[int, bool]] | None = None   # -> (pid, started now); None: signerproc.ensure
+    reach: Callable[[str], tuple[bool, str]] | None = None      # clone URL -> (git reaches it, what git said)
     state: dict = field(default_factory=dict)
     results: list = field(default_factory=list)
     project: dict = field(default_factory=dict)       # GitLab's answer for the project, this run
@@ -641,14 +642,15 @@ def revoke(ctx: Ctx, token_id: Any) -> None:
 def step_push(ctx: Ctx) -> StepResult:
     """How runnerd clones and the runs push. auto: this machine's SSH when `git ls-remote` reaches the project (the
     commits are brain-bot's, kit.json's bot_users kept), else a project token brain-bot over HTTPS (its own account and
-    address); ssh or token: that one only."""
+    address), once git reaches the project with it too; ssh or token: that one only."""
     p, path = ctx.project, ctx.state["project"]["path"]
     host = urllib.parse.urlsplit(ctx.inp.gitlab_base).hostname or ""
+    reach = ctx.reach or (lambda url: git_reaches(ctx, url))
     why = ""
     if ctx.inp.push != "token":
         url = str(p.get("ssh_url_to_repo") or "")
         template = clone_template(url, path)
-        ok, why = ssh_works(ctx, url) if template else (False, "GitLab 没给这个项目的 SSH 地址")
+        ok, why = reach(url) if template else (False, "GitLab 没给这个项目的 SSH 地址")
         if ok:
             bots = [str(u).lower() for u in ctx.kit.get("bot_users") or [] if str(u).strip()] or [SSH_BOT[0]]
             ctx.state["push"] = {"mode": "ssh", "clone_url": template, "git_name": SSH_BOT[0], "git_email": SSH_BOT[1],
@@ -660,6 +662,10 @@ def step_push(ctx: Ctx) -> StepResult:
     if not template:
         return failed("GitLab 没给这个项目的 HTTPS 地址", detail=why)
     rec, made = project_token(ctx, "bot", "brain-bot", BOT_SCOPES)
+    ok, said = reach(with_token(template, read_secret(ctx.paths.token("bot"))).format(project=path))
+    if not ok:
+        return failed("这台机器的 git 用 SSH 和项目令牌 brain-bot 都连不上 %s：运行机拉不到代码" % host,
+                      detail="\n".join(x for x in (why, said) if x))
     email = rec.get("email") or "%s@noreply.%s" % (rec["username"], host)
     ctx.state["push"] = {"mode": "token", "clone_url": template, "git_name": rec.get("display") or "brain-bot",
                          "git_email": email, "bot_users": [rec["username"]]}
@@ -684,12 +690,12 @@ def with_token(template: str, token: str) -> str:
                                     "", ""))
 
 
-def ssh_works(ctx: Ctx, url: str) -> tuple[bool, str]:
+def git_reaches(ctx: Ctx, url: str) -> tuple[bool, str]:
     """Whether this machine's git reaches *url* the way runnerd will (brain-kit's git_net: no prompt), within
-    SSH_WAIT_S. -> (it does, what git said)."""
+    REACH_WAIT_S. -> (it does, what git said)."""
     common = bk.m("common")
     try:
-        p = common.git_net(str(ctx.paths.root), "ls-remote", url, "HEAD", timeout=SSH_WAIT_S, check=False)
+        p = common.git_net(str(ctx.paths.root), "ls-remote", url, "HEAD", timeout=REACH_WAIT_S, check=False)
     except common.NetworkError as exc:
         return False, str(exc)
     return p.returncode == 0, (p.stderr or p.stdout).strip()[-2000:]

@@ -15,7 +15,7 @@ import re
 import secrets
 import subprocess
 import sys
-from urllib.parse import parse_qsl, unquote, urlsplit
+from urllib.parse import parse_qsl, quote, unquote, urlsplit
 
 import pytest
 
@@ -182,13 +182,28 @@ def fake_signer(world):
     return ensure
 
 
+def fake_reach(world):
+    """git ls-remote, but for GitLab's HTTPS address (no network): that one is reached with a live token the fake
+    GitLab made, unless world["https_down"]. Every other address (the local bare repo, a path not there) is real git."""
+    common = mod("bk").m("common")
+
+    def reach(url):
+        if url.startswith("https://"):
+            live = [t["token"] for t in world["gl"].tokens if t["token"] not in world["gl"].revoked]
+            ok = not world.get("https_down") and any("oauth2:%s@" % quote(t, safe="") in url for t in live)
+            return ok, "" if ok else "fatal: unable to access '%s': The requested URL returned error: 403" % url
+        p = common.git_net(str(world["tmp"]), "ls-remote", url, "HEAD", timeout=20, check=False)
+        return p.returncode == 0, (p.stderr or p.stdout).strip()
+    return reach
+
+
 def setup_ctx(world, push="auto", roles=None):
     setup, rest = mod("team.setup"), mod("bk").m("rest")
     inp = setup.SetupInput.parse({"gitlab_base": BASE, "project": P, "admin_token": world["admin"],
                                   "roles": roles or {"builder": "bob"}, "push": push})
     paths = setup.Paths.default(BRAINKIT, root=world["tmp"] / "team-setup")
     return setup.Ctx(inp, paths, gitlab=lambda tok: rest.GitLab(BASE, tok, world["gl"]), team_mode=team_mode(world),
-                     signer=fake_signer(world))
+                     signer=fake_signer(world), reach=fake_reach(world))
 
 
 def build(world, **kw):
@@ -363,6 +378,19 @@ def test_push_auto_falls_back_to_a_project_token_when_ssh_does_not_reach_gitlab(
     seen = len(gl.calls)
     view, _ = build(world)                               # the bot's token is used again, as the bridge's is
     assert everything_done(view) and gl.writes(seen) == []
+
+
+def test_a_bot_token_git_cannot_clone_with_fails_the_push_step(world):
+    world["gl"].ssh_url = str(world["tmp"] / "nowhere" / "grp" / "pay.git")
+    world["https_down"] = True                           # e.g. HTTPS git behind the single sign-on the API is not
+    view, ps = build(world)
+    push = next(s for s in view["steps"] if s["id"] == "push")
+    assert push["status"] == "failed" and "SSH 和项目令牌 brain-bot 都连不上" in push["message"]
+    token = world["gl"].made("brain-bot")[0]["token"]
+    assert "error: 403" in push["detail"] and token not in push["detail"] and not ps.runnerd_json.exists()
+    world["https_down"] = False
+    view, _ = build(world)
+    assert everything_done(view) and len(world["gl"].made("brain-bot")) == 1
 
 
 def test_push_ssh_alone_fails_when_ssh_does_not_reach_gitlab(world):
