@@ -43,6 +43,7 @@ REVIEW_TITLE = " · 审查"     # a review session's title ends so (开审查会
 MR_EVERY_S = 30.0
 CREW_EVERY_S = 300.0
 FOLD_TTL_S = 10.0     # the 产出 drawer reads the board's last fold; the board polls every 2 s while it is open
+FAILED_TRACE_S = 15.0  # a trace brain-kit could not make (git timed out under load) is made again this soon
 RUNNER_ELSEWHERE = "交接以后，运行机上的会话这台机器读不到，没算进来"
 LOCAL_ELSEWHERE = "交接以前，开发者机器上的会话这台机器读不到，没算进来"
 RUNNER_TOOK = ("running", "parked", "acceptance", "merged", "closed")   # a hand-over's states once the runner has it
@@ -148,7 +149,7 @@ class Service:
         self._mr_seen: set[tuple] = set()      # (project, branch, hand-over commit) whose MR was read at first sight
         self._eval: dict[str, tuple] = {}
         self._eval_running: set[str] = set()
-        self._trace: dict[str, tuple] = {}      # scope -> (what it was made from, detail.timeline)
+        self._trace: dict[str, tuple] = {}      # scope -> (what it was made from, detail.timeline, when)
         self._intake: dict[str, tuple] = {}     # repo -> (config_stamp, its git config brain.intake)
         self.desc = mrdesc_view.DescCache()     # each requirement's 变更说明, by the commits it is made from
         self._subj: dict[tuple, tuple] = {}     # the board's commit subjects and changed files, by the commits asked for
@@ -884,7 +885,8 @@ class Service:
         return self.desc.get_or_make(*job)
 
     def _timeline(self, repo: Repo, f: dict[str, Any], snap: dict[str, Any], scope: str) -> dict[str, Any]:
-        """The requirement's trace, made again only when something it is made from changed (_trace_stamp)."""
+        """The requirement's trace, made again only when something it is made from changed (_trace_stamp), or when
+        brain-kit could not make it FAILED_TRACE_S ago."""
         behind = f.get("where") == "worktree" and f.get("ref")      # origin's run branch is ahead of the worktree
         src_repo, ref = (f["worktree"], None) if f.get("worktree") and not behind else (repo.path, f.get("ref"))
         c = self._local_credits(snap, f, scope)[1]["total"]
@@ -892,13 +894,13 @@ class Service:
         sig = (f.get("tip"), f.get("worktree"), len(f.get("events") or []), f.get("park_sha"), bool(f.get("run")),
                src_repo, ref, c, vouchers, self._trace_stamp(repo.cfg, src_repo, ref, vouchers))
         got = self._trace.get(scope)
-        if got is not None and got[0] == sig:
+        if got is not None and got[0] == sig and not (got[1]["error"] and time.monotonic() - got[2] > FAILED_TRACE_S):
             tl = dict(got[1])
         else:
             tl = detail.timeline(src_repo, repo.cfg, f["key"], ref=ref, events=f.get("events") or [],
                                  credits={"runs": {f["key"]: {"credits": c}}} if c is not None else None,
                                  vouchers_dir=vouchers, has_run=bool(f.get("run")))
-            self._trace[scope] = (sig, dict(tl))
+            self._trace[scope] = (sig, dict(tl), time.monotonic())
         tl["items"] = sorted(tl["items"] + self.store.events(scope), key=lambda x: (x["at"] or "", x["kind"]))
         return tl
 
