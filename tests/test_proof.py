@@ -174,12 +174,13 @@ def test_a_verify_round_lists_what_it_sealed_labelled_by_plan_row(K, tmp_path):
     r1 = w["r1"]
     assert [f["path"] for f in files if not f["output"]] == ["src/refund.py"]
     assert got == [
-        ("tests/output.txt", r1, True, {"set": "tests", "label": "命令输出 tests：pytest -q", "result": None, "note": ""}),
-        ("tests/AC-2-refund.jpg", r1, True, {"set": "tests", "label": "AC-2-refund.jpg · AC-2", "result": "ok", "note": ""}),
-        ("ui/output.txt", r1, True, {"set": "ui", "label": "截图", "result": None, "note": ""}),
-        ("ui/app-P-1.png", r1, True, {"set": "ui", "label": "P-1 · AC-1 · 已付款订单有「退款」按钮", "result": "ok", "note": ""}),
+        ("tests/output.txt", r1, True, {"set": "tests", "label": "命令输出 tests：pytest -q", "result": None, "mark": "", "note": ""}),
+        ("tests/AC-2-refund.jpg", r1, True, {"set": "tests", "label": "AC-2-refund.jpg · AC-2", "result": "ok", "mark": "", "note": ""}),
+        ("ui/output.txt", r1, True, {"set": "ui", "label": "截图", "result": None, "mark": "", "note": ""}),
+        ("ui/app-P-1.png", r1, True, {"set": "ui", "label": "P-1 · AC-1 · 已付款订单有「退款」按钮", "result": "ok", "mark": "",
+                                     "note": ""}),
         ("ui/app-P-2.png", r1, True, {"set": "ui", "label": "P-2 · AC-2 · 点退款以后状态是「已退款」", "result": "failed",
-                                     "note": "没等到「已退款」（10 秒）"}),
+                                     "mark": "没看到", "note": "没等到「已退款」（10 秒）"}),
     ]
 
 

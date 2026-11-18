@@ -32,6 +32,7 @@ NO_RUN = "还没开工：开工以后，verify 留下的截图和测试输出在
 MARK = {"current": "", "missed": "没看到", "old": "旧代码", "unknown": "核对不了", "planned": "还没拍", "not_taken": "没拍成",
         "void": "不算"}
 FRESH = {"current": "current", "stale": "old", "unknown": "unknown"}     # a log's freshness, as a row's state
+RESULT_MARK = {"ok": MARK["current"], "failed": MARK["missed"], "skipped": MARK["not_taken"]}   # one capture's, in 产出
 CLONE_RE = re.compile(r"^[0-9a-f]{6}$")
 
 

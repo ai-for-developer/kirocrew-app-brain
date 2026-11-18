@@ -42,7 +42,7 @@ import stat
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from . import bk, mrdesc_view, stages
+from . import bk, evidence, mrdesc_view, stages
 from .httpkit import AppError
 from .repo import Git
 from .runs import LOCAL, RunView
@@ -438,9 +438,11 @@ def _evidence(fold: Fold, n: stages.Node, r: stages.Round, sets: Optional[str]) 
         name, folder = K.set_output_of(hit[1])[2], hit[1].rsplit("/", 1)[0]
         several = len({i.unit for i in items if i.unit}) > 1
         got.append((hit[1], c.output_sha256, {"set": name, "label": K.check_label(c.cmd) or name, "result": None,
-                                              "note": ""}))
+                                              "mark": "", "note": ""}))
         got += [("%s/%s" % (folder, i.file), i.sha256, {"set": name, "label": _item_label(i, several),
-                                                         "result": i.result.value, "note": i.note})
+                                                         "result": i.result.value,
+                                                         "mark": evidence.RESULT_MARK.get(i.result.value, ""),
+                                                         "note": i.note})
                 for i in items if i.file]
     return got
 

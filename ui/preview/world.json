@@ -149097,6 +149097,7 @@
       "set": "tests",
       "label": "命令输出 tests：pytest -q",
       "result": null,
+      "mark": "",
       "note": ""
      }
     },
@@ -149116,6 +149117,7 @@
       "set": "ui",
       "label": "截图",
       "result": null,
+      "mark": "",
       "note": ""
      }
     },
@@ -149135,6 +149137,7 @@
       "set": "ui",
       "label": "P-1 · AC-4 · 退款详情页显示「短信已发送」",
       "result": "failed",
+      "mark": "没看到",
       "note": "没等到「短信已发送」（10 秒）"
      }
     },
@@ -149154,6 +149157,7 @@
       "set": "ui",
       "label": "P-2 · AC-2 · 短信内容里有退款金额和预计到账时间",
       "result": "failed",
+      "mark": "没看到",
       "note": "没找到「短信内容」（10 秒）"
      }
     },
@@ -149173,6 +149177,7 @@
       "set": "ui",
       "label": "P-3 · AC-4 · 发送失败的退款显示「短信没发出去」",
       "result": "failed",
+      "mark": "没看到",
       "note": "没等到「短信没发出去」（10 秒）"
      }
     }
@@ -149416,6 +149421,7 @@
       "set": "tests",
       "label": "命令输出 tests：pytest -q",
       "result": null,
+      "mark": "",
       "note": ""
      }
     },
@@ -149435,6 +149441,7 @@
       "set": "ui",
       "label": "截图",
       "result": null,
+      "mark": "",
       "note": ""
      }
     },
@@ -149454,6 +149461,7 @@
       "set": "ui",
       "label": "P-1 · AC-4 · 退款详情页显示「短信已发送」",
       "result": "ok",
+      "mark": "",
       "note": ""
      }
     },
@@ -149473,6 +149481,7 @@
       "set": "ui",
       "label": "P-2 · AC-2 · 短信内容里有退款金额和预计到账时间",
       "result": "ok",
+      "mark": "",
       "note": ""
      }
     },
@@ -149492,6 +149501,7 @@
       "set": "ui",
       "label": "P-3 · AC-4 · 发送失败的退款显示「短信没发出去」",
       "result": "failed",
+      "mark": "没看到",
       "note": "没等到「短信没发出去」（10 秒）"
      }
     }
@@ -149765,6 +149775,7 @@
       "set": "tests",
       "label": "命令输出 tests：pytest -q",
       "result": null,
+      "mark": "",
       "note": ""
      }
     },
@@ -149784,6 +149795,7 @@
       "set": "ui",
       "label": "截图",
       "result": null,
+      "mark": "",
       "note": ""
      }
     },
@@ -149803,6 +149815,7 @@
       "set": "ui",
       "label": "P-1 · AC-4 · 退款详情页显示「短信已发送」",
       "result": "ok",
+      "mark": "",
       "note": ""
      }
     },
@@ -149822,6 +149835,7 @@
       "set": "ui",
       "label": "P-2 · AC-2 · 短信内容里有退款金额和预计到账时间",
       "result": "ok",
+      "mark": "",
       "note": ""
      }
     },
@@ -149841,6 +149855,7 @@
       "set": "ui",
       "label": "P-3 · AC-4 · 发送失败的退款显示「短信没发出去」",
       "result": "failed",
+      "mark": "没看到",
       "note": "没等到「短信没发出去」（10 秒）"
      }
     }
@@ -150011,6 +150026,7 @@
       "set": "tests",
       "label": "命令输出 tests：pytest -q",
       "result": null,
+      "mark": "",
       "note": ""
      }
     },
@@ -150030,6 +150046,7 @@
       "set": "ui",
       "label": "截图",
       "result": null,
+      "mark": "",
       "note": ""
      }
     },
@@ -150049,6 +150066,7 @@
       "set": "ui",
       "label": "P-1 · AC-4 · 退款详情页显示「短信已发送」",
       "result": "ok",
+      "mark": "",
       "note": ""
      }
     },
@@ -150068,6 +150086,7 @@
       "set": "ui",
       "label": "P-2 · AC-2 · 短信内容里有退款金额和预计到账时间",
       "result": "ok",
+      "mark": "",
       "note": ""
      }
     },
@@ -150087,6 +150106,7 @@
       "set": "ui",
       "label": "P-3 · AC-4 · 发送失败的退款显示「短信没发出去」",
       "result": "failed",
+      "mark": "没看到",
       "note": "没等到「短信没发出去」（10 秒）"
      }
     },
@@ -150315,6 +150335,7 @@
       "set": "tests",
       "label": "命令输出 tests：pytest -q",
       "result": null,
+      "mark": "",
       "note": ""
      }
     },
@@ -150334,6 +150355,7 @@
       "set": "ui",
       "label": "截图",
       "result": null,
+      "mark": "",
       "note": ""
      }
     },
@@ -150353,6 +150375,7 @@
       "set": "ui",
       "label": "P-1 · AC-4 · 退款详情页显示「短信已发送」",
       "result": "ok",
+      "mark": "",
       "note": ""
      }
     },
@@ -150372,6 +150395,7 @@
       "set": "ui",
       "label": "P-2 · AC-2 · 短信内容里有退款金额和预计到账时间",
       "result": "ok",
+      "mark": "",
       "note": ""
      }
     },
@@ -150391,6 +150415,7 @@
       "set": "ui",
       "label": "P-3 · AC-4 · 发送失败的退款显示「短信没发出去」",
       "result": "failed",
+      "mark": "没看到",
       "note": "没等到「短信没发出去」（10 秒）"
      }
     },
