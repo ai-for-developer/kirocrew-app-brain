@@ -802,6 +802,8 @@ TEAM_START_RULES: list[tuple[re.Pattern, str, str]] = [(re.compile(rx, re.S), t,
     (r"^\[Errno 13\]|^Permission denied", "这个 app 读不了配置文件", "让这个 app 的系统用户能读那个文件（只读就够）"),
     (r"^(?:Expecting|Extra data|Unterminated|Invalid control)", "配置文件不是合法的 JSON", "按细节里的原话改好那个文件"),
     (r"^brain-kit 没装载", "brain-kit 没装载", "在设置里写对 brain-kit 的位置"),
+    (r"^签名服务起不来", "签名服务起不来：交接和回答都等着签名",
+     "在设置里「一键建运行机」点「再跑一次」；还不行，把「细节」里的原话发给管运行机的人"),
 )]
 
 

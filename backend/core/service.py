@@ -26,7 +26,7 @@ from . import board as board_mod
 from . import settings as settings_mod
 from . import todo as todo_mod
 from . import turns as turns_mod
-from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_FOLDER, REPO_ID_RE, TICK_S, VERSION
+from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_FOLDER, PYTHON_BIN, REPO_ID_RE, TICK_S, VERSION
 from .gateway import Gateway, GatewayError
 from .gateway import said as gateway_said
 from .httpkit import AppError
@@ -35,6 +35,8 @@ from .repoids import RepoIds, from_records
 from .sessions import SessionManager, requirement_credits
 from . import store as store_mod
 from .store import Store
+from .team import setup as setup_mod
+from .team import signerproc
 
 _REGISTRY: dict[str, "Service"] = {}
 _SECRETS = re.compile(r"(?i)((?:password|passwd|secret|token|api[_-]?key|authorization)\s*[=:]\s*|bearer\s+)\S+"
@@ -154,6 +156,7 @@ class Service:
         self.jobs = importer.Jobs(now)                                      # clone / install in the background
         self.crew: dict[str, Any] = {"rows": [], "fix": {"agent": False, "engine": False}, "checked_at": None}
         self.team: Any = None
+        self._setup_task: asyncio.Task | None = None    # 一键建运行机's run (team/setup.py), in a worker thread
         self._tasks: list[asyncio.Task] = []
         self._mr_wanted: dict[tuple, tuple[str, str]] = {}   # (base, project, branch) -> (scope, kit bridge_user)
         self._mr_seen: set[tuple] = set()      # (project, branch, hand-over commit) whose MR was read at first sight
@@ -211,9 +214,7 @@ class Service:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks = []
-        if self.team is not None:
-            await asyncio.to_thread(self.team.stop)
-            self.team = None
+        await self._stop_team()
         if hasattr(self.sessions.gw, "close"):
             await self.sessions.gw.close()
         bk.unload()
@@ -270,10 +271,10 @@ class Service:
         return crewcheck.checks([r.path for r in self.repos.values()], team_paths=self.team_paths())
 
     async def _start_team(self) -> None:
+        """Team mode from the settings: brain-kit's bridge and runnerd in a TeamRuntime, and, for the same-user trial
+        一键建运行机 made, the signer beside its bridge.json as a child process (team/signerproc.py)."""
         team = self.settings["team"]
-        if self.team is not None:
-            await asyncio.to_thread(self.team.stop)
-            self.team = None
+        await self._stop_team()
         if not team.get("enabled") or not bk.ok():
             return
         from .team.bridgehost import TeamRuntime
@@ -281,7 +282,23 @@ class Service:
         rt = TeamRuntime(team, loop, self.sessions, self.log, transport=self.transport, kick=self.signer_kick,
                          sign_timeout=self.sign_timeout, scrub=self.scrub)
         await loop.run_in_executor(rt.executor, rt.start)
+        signer = signerproc.config_for(team) if rt.host is not None else None
+        if signer is not None:
+            try:
+                await asyncio.to_thread(signerproc.ensure, signer, APP_ROOT, PYTHON_BIN)
+            except signerproc.SignerFailed as exc:
+                rt.error = exc.team_error()
         self.team = rt
+
+    async def _stop_team(self) -> None:
+        """Team mode stops: its TeamRuntime after the round in progress, and the signer started with it."""
+        rt, self.team = self.team, None
+        if rt is None:
+            return
+        await asyncio.to_thread(rt.stop)
+        signer = signerproc.config_for(rt.team)
+        if signer is not None:
+            await asyncio.to_thread(signerproc.stop, signer)
 
     async def _in_team(self, fn: Callable[[], Any]) -> Any:
         """Run on the team runtime's own worker: one round at a time, off the event loop and the default pool (a round
@@ -418,13 +435,30 @@ class Service:
     async def _team_forever(self) -> None:
         while True:
             try:
-                if self.team is not None and self.team.host is not None:
-                    await self._in_team(self.team.loop_once)
+                rt = self.team
+                if rt is not None and rt.host is not None:
+                    await self._in_team(lambda: self._team_round(rt))
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001
                 self.log.exception("brain: the bridge loop failed")
             await asyncio.sleep(self.team.interval() if self.team is not None else 60)
+
+    def _team_round(self, rt: Any) -> dict[str, int]:
+        """One round of team mode on its worker (blocking): the signer 一键建运行机 set up started again when its process
+        is gone, then the bridge's round."""
+        signer = signerproc.config_for(rt.team)
+        if signer is not None and signerproc.running(signer) is None:
+            try:
+                pid, _ = signerproc.ensure(signer, APP_ROOT, PYTHON_BIN)
+            except signerproc.SignerFailed as exc:
+                rt.error = exc.team_error()
+                self.log.warning("brain: the signer was gone and does not start again: %s", rt.error)
+            else:
+                if rt.error.startswith(signerproc.FAILED):
+                    rt.error = ""
+                self.log.info("brain: the signer was gone: started it again (pid %d)", pid)
+        return rt.loop_once()
 
     # ---- small helpers -------------------------------------------------------------------------------- #
 
@@ -1760,9 +1794,7 @@ class Service:
             raise AppError("；".join(probs), "invalid_settings")
         await asyncio.to_thread(settings_mod.save, self.data_dir / "settings.json", clean)
         self.settings = clean
-        if self.team is not None:
-            await asyncio.to_thread(self.team.stop)
-            self.team = None
+        await self._stop_team()
         await asyncio.to_thread(bk.unload)
         await asyncio.to_thread(self.reload_sync)
         if self.started:
@@ -2151,14 +2183,82 @@ class Service:
                 "hooks": await asyncio.to_thread(self.team.hook_rows)}
 
     async def team_loop(self) -> dict[str, Any]:
-        if self.team is None or self.team.host is None:
-            raise AppError((problems.team_start(self.team.error)["text"] if self.team else "") or "运行机模式没打开",
-                           "team_off", 409)
+        rt = self.team
+        if rt is None or rt.host is None:
+            raise AppError((problems.team_start(rt.error)["text"] if rt else "") or "运行机模式没打开", "team_off", 409)
         try:
-            summary = await self._in_team(self.team.loop_once)
+            summary = await self._in_team(lambda: self._team_round(rt))
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "summary": {}, "error": str(exc)[:300]}
-        return {"ok": not self.team.loop_error, "summary": summary, "error": self.team.loop_error}
+        return {"ok": not rt.loop_error, "summary": summary, "error": rt.loop_error}
+
+    # ---- 一键建运行机 ---------------------------------------------------------------------------------- #
+
+    def _setup_paths(self) -> "setup_mod.Paths":
+        return setup_mod.Paths.default(kit_dir=bk.root())
+
+    async def team_setup(self, body: Any) -> dict[str, Any]:
+        """POST /team/setup: team/setup.py's steps on a worker thread (they wait on GitLab, git and brain-kit for longer
+        than a request may take); the page polls GET /team/setup. The person's token stays in this run's memory."""
+        try:
+            inp = setup_mod.SetupInput.parse(body)
+        except setup_mod.SetupRefused as exc:
+            raise AppError(str(exc), "invalid_setup")
+        if not bk.ok():
+            raise AppError("brain-kit 没装载：先在设置里写对 brain-kit 的位置", "no_brainkit", 409)
+        paths = self._setup_paths()
+        try:
+            lock = await asyncio.to_thread(setup_mod.Lock, paths.root)
+        except setup_mod.Busy as exc:
+            raise AppError(str(exc), "setup_busy", 409)
+        loop = asyncio.get_running_loop()
+        rest, transport = bk.m("rest"), self.transport
+
+        def team_mode(want: dict[str, Any]) -> dict[str, Any]:
+            return asyncio.run_coroutine_threadsafe(self._setup_team_mode(want), loop).result(600)
+
+        ctx = setup_mod.Ctx(inp, paths, gitlab=lambda tok: rest.GitLab(inp.gitlab_base, tok, transport),
+                             team_mode=team_mode)
+        try:
+            await asyncio.to_thread(setup_mod.begin, ctx)
+        except BaseException:
+            lock.release()
+            raise
+
+        async def go() -> None:
+            try:
+                await asyncio.to_thread(setup_mod.run, ctx)
+            except Exception:  # noqa: BLE001 - each step's failure is in the state; this is a bug: the log has it
+                self.log.exception("brain: 一键建运行机 stopped")
+            finally:
+                lock.release()
+
+        self._setup_task = loop.create_task(go())
+        return await self.team_setup_view()
+
+    async def wait_setup(self) -> dict[str, Any]:
+        """The end of the run in progress (tests, and any caller that wants it)."""
+        if self._setup_task is not None:
+            await self._setup_task
+        return await self.team_setup_view()
+
+    async def team_setup_view(self) -> dict[str, Any]:
+        """GET /team/setup: the steps and the last run's results (setup-state.json, nothing secret)."""
+        paths = self._setup_paths()
+        state = await asyncio.to_thread(setup_mod.load_state, paths)
+        running = await asyncio.to_thread(setup_mod.busy, paths.root)
+        return scrub_tree(setup_mod.view(state, paths, running=running), self.scrub)
+
+    async def _setup_team_mode(self, want: dict[str, Any]) -> dict[str, Any]:
+        """一键建运行机's last step: team mode on with its configs through the settings (its TeamRuntime starts, and the
+        signer with it). Started again unless it runs well with these settings and every file it read at its start is
+        still the same (TeamRuntime.changed): a token or config an earlier run replaced and stopped before this step
+        is read then too."""
+        rt = self.team
+        fine = rt is not None and rt.host is not None and not rt.error and not await asyncio.to_thread(rt.changed)
+        if not fine or self.settings["team"] != want:
+            await self.save_settings({"team": want})
+        return self._team_status()
 
 
 def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
