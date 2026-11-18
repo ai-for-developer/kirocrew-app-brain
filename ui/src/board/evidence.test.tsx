@@ -133,3 +133,14 @@ describe('证据 on 需求现状', () => {
     expect(screen.queryByTestId('now-proof')).toBeNull()
   })
 })
+
+test('a command’s whole output opens as it printed it, not as its change from the verify before', async () => {
+  const b = worldBoard('r1/PAY-9')
+  const log = chipOf(b, '测试输出 tests')
+  installFixtureRoutes({ [`GET ${API}/board/*`]: () => b, [`GET ${API}/outputs/*`]: (_b, path) => worldOutput(path) })
+  render(<BoardPage entry={{ repo: 'r1', key: 'PAY-9', out: { node: 'build-and-test', round: log.round!, file: log.path! } }} {...props()} />)
+  const pane = await screen.findByTestId('out-pane')
+  expect(await within(pane).findByTestId('out-code')).toHaveTextContent('11 passed')
+  expect(within(pane).getByRole('button', { name: '源码' })).toHaveAttribute('aria-pressed', 'true')
+  expect(within(pane).getByTestId('out-proof')).toHaveTextContent('命令输出 tests：pytest -q')
+})

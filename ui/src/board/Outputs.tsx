@@ -172,7 +172,8 @@ function FileRow({ f, on, onPick }: { f: OutFile; on: boolean; onPick: () => voi
 function FilePane({ repo, reqKey, f, round, asked }: { repo: string; reqKey: string; f: OutFile; round: number; asked: boolean }) {
   const doc = isDoc(f.path)
   const pic = isPicture(f.path)
-  const [mode, setMode] = useState<Mode>(pic ? 'image' : doc ? 'content' : 'diff')
+  // evidence opens whole (a command's output as it printed it), any other file at its change
+  const [mode, setMode] = useState<Mode>(pic ? 'image' : doc ? 'content' : f.proof ? 'source' : 'diff')
   const [vs, setVs] = useState<string | null>(f.base)
   const diff = mode === 'diff'
   const view = diff ? 'diff' : mode === 'image' ? 'image' : 'source'
