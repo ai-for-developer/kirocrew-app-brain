@@ -216,6 +216,8 @@ class CheckResult:
     cmd: str                 # as Lean ran it; check_name says it short
     ok: bool
     secs: Optional[float]
+    # Lean's sha256 of the check's whole output: an evidence check's set is the one whose output.txt hashes to it
+    output_sha256: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -617,7 +619,8 @@ def _verify_rounds(stage: StageDef, unit: Optional[str], rec: Records) -> List[R
     out: List[Round] = []
     for i, e in enumerate(verifies):
         d, at, run = _data(e), float(e["_at"]), rec.run_of(e)
-        checks = tuple(CheckResult(str(x.get("cmd") or ""), x.get("exit") in (0, None), _secs(x.get("secs")))
+        checks = tuple(CheckResult(str(x.get("cmd") or ""), x.get("exit") in (0, None), _secs(x.get("secs")),
+                                   x["output_sha256"] if SHA256_RE.match(str(x.get("output_sha256") or "")) else None)
                        for x in d.get("results") or [] if isinstance(x, dict))
         prev = out[-1] if out else None
         after_red = prev is not None and prev.end.outcome is Outcome.FAILED
