@@ -3881,6 +3881,21 @@
     "ref": "69bc4ac06c1b",
     "error": ""
   },
+  "proof": {
+    "available": true,
+    "state": "off",
+    "line": "不留证据",
+    "late": "",
+    "at": "ee4de4f71086",
+    "chips": [],
+    "gaps": [
+      {
+        "kind": "no_proof_check",
+        "text": "这个项目的 lean verify 不留证据：aidlc-docs/lean.json 的 checks 里没有 .kiro/brain/proof.py（`brain doctor` 给出要加的行）"
+      }
+    ],
+    "error": ""
+  },
   "sessions": [
     {
       "slot": "brain-PAY-2-1c4e",

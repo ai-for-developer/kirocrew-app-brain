@@ -91,7 +91,7 @@ describe('选择运行 · the board shows the picked run only', () => {
     const shown = Array.from(feed.querySelectorAll<HTMLElement>('.kt-ev')).map((e) => Number(e.dataset.seq))
     expect(shown.length).toBe(b.events.filter((e) => e.run === RUNNER).length)
     expect(shown.every((seq) => b.events.find((e) => e.seq === seq)?.run === RUNNER)).toBe(true)
-    expect(screen.getByTestId('kt-station')).toHaveAccessibleName('检查 3/3')
+    expect(screen.getByTestId('kt-station')).toHaveAccessibleName('检查 4/4')
     expect(screen.getByTestId('br-checks-say')).toHaveTextContent('第 5 轮 · 5 轮都过')
     const kpis = within(screen.getByRole('group', { name: '指标' }))
     expect(kpis.getByText('AI-DLC Lean').parentElement).toHaveAccessibleName('AI-DLC Lean（运行机 第 1 次）：做完 2 · 跳过 4 · 在做：发布 · 运维整段不需要')

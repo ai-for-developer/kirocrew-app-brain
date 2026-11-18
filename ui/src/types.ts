@@ -478,8 +478,9 @@ export interface Status {
     ok: boolean
     version: string | null
     error: string
-    /** optional brain-kit modules: true when importable (split: brain split, claim, start --key, sync; 0d52e97) */
-    modules: { trace: boolean; evaluate: boolean; golden: boolean; intents: boolean; mrdesc: boolean; split: boolean }
+    /** optional brain-kit modules: true when importable (split: brain split, claim, start --key, sync; 0d52e97; proof:
+     * 证据, what `lean verify` sealed) */
+    modules: { trace: boolean; evaluate: boolean; golden: boolean; intents: boolean; mrdesc: boolean; split: boolean; proof: boolean }
   }
   repos: RepoInfo[]
   crew: { rows: CheckRow[]; fix: { agent: boolean; engine: boolean }; checked_at: number | null }
@@ -1916,6 +1917,48 @@ export interface Acceptance {
   done: { at: number; who: string | null; how: string } | null
 }
 
+/**
+ * 证据: what `lean verify` sealed for the requirement, judged by brain-kit (brainkit.proof.bind) at the commit under
+ * review (backend evidence.py). Its words are brain-kit's (the MR description says them the same way); the page keeps
+ * tones only.
+ */
+export interface Evidence {
+  /** brain-kit has its proof module (an older one: false, and *error* says so) */
+  available: boolean
+  /** off: the project's verify keeps no evidence · none: none counts yet · stale: some of it is of other code ·
+   * unknown: whether it is this code cannot be told · failed: a screenshot did not show what it waits for, or a file
+   * changed after · current; null when it was not read (*error* says why) */
+  state: 'off' | 'none' | 'stale' | 'unknown' | 'failed' | 'current' | null
+  /** 截图 3 张（1 张没看到） · 测试输出 1 份 · 是这份代码的; '' when not read */
+  line: string
+  /** the newest verify took no screenshot, so the ones shown are an earlier verify's: said so, else '' */
+  late: string
+  /** the commit it was judged at (12 hex) */
+  at: string | null
+  /** one per plan row, then one per test output */
+  chips: EvidenceChip[]
+  /** what is missing or wrong, one sentence each (brain-kit's proof.TEXT, as it fills them in) */
+  gaps: { kind: string; text: string }[]
+  error: string
+}
+
+export interface EvidenceChip {
+  kind: 'shot' | 'log'
+  /** P-2 (web/P-2 when the plan has several units) · 测试输出 tests */
+  label: string
+  ac: string[]
+  /** the plan row's 看什么; a test output's command */
+  what: string
+  /** current, or what is wrong with it */
+  state: 'current' | 'missed' | 'old' | 'unknown' | 'planned' | 'not_taken' | 'void'
+  /** the MR's mark for that state, '' when current: 没看到 · 旧代码 · 核对不了 · 还没拍 · 没拍成 · 不算 */
+  mark: string
+  /** the build-and-test round whose VERIFY sealed what it shows, and its file: where the 产出 drawer opens it; null
+   * when nothing of it counts */
+  round: number | null
+  path: string | null
+}
+
 export interface ReqBoard {
   at: number
   row: Requirement
@@ -1953,6 +1996,8 @@ export interface ReqBoard {
   decisions: Decision[]
   questions: Question[]
   mr_desc: MrDesc
+  /** 证据 on the 验收 card (and 需求现状): what verify sealed, at the commit under review */
+  proof: Evidence
   sessions: SessionRow[]
   /** the live brain-dev session on this machine (service._live, as on 需求现状): where the person replies, never a review
    * session */
@@ -1988,6 +2033,10 @@ export interface OutFile {
   /** the versions the node's earlier rounds handed in, newest first: 和第 N 轮比 */
   vs: { round: number; ref: string }[]
   why: string | null
+  /** a build-and-test round's evidence (what its VERIFY sealed): its set; its words, P-2 · AC-2 · 看什么 (a set's
+   * output.txt: 截图, 命令输出 tests：pytest -q); how it went (failed: it did not show what it waits for; null for an
+   * output.txt) and why not. null for any other file */
+  proof: { set: string; label: string; result: 'ok' | 'failed' | 'skipped' | null; note: string } | null
 }
 
 export interface NodeOutput {
@@ -2009,7 +2058,7 @@ export interface NodeOutput {
 /** One file as GET /outputs/{repo}/{key}/file?ref&base&path&view&pin reads it: emails already pseudonyms. */
 export interface FileView {
   path: string
-  view: 'content' | 'source' | 'diff'
+  view: 'content' | 'source' | 'diff' | 'image'
   /** the commit it was read at, or 'worktree' (pinned) */
   at: string
   base: string | null
@@ -2023,6 +2072,8 @@ export interface FileView {
   truncated: boolean
   size: number
   text: string
+  /** view image: the file as a data: URL, a PNG or a JPEG by its first bytes (never SVG) */
+  image?: string
 }
 
 /** What a turn's message was (backend turns.py, default deny). A person's words never travel, the owner's included:
