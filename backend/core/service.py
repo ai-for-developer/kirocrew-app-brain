@@ -1224,7 +1224,7 @@ class Service:
 
     def _evidence(self, parts: dict[str, Any], f: dict[str, Any], nodes: list[stages.Node]) -> dict[str, Any]:
         """证据 (evidence.row): bind()'s JSON at the commit under review (evidence.py says which), read again only when
-        that commit, the requirement's records or the brain-kit changed."""
+        that commit, the requirement's verifies (the only records bind() reads) or the brain-kit changed."""
         if not bk.has("proof"):
             return evidence.empty(evidence.NO_MODULE)
         path, repo, intent = parts.get("path"), parts.get("repo"), (f.get("run") or {}).get("intent")
@@ -1235,8 +1235,10 @@ class Service:
         if not (path and sha and isinstance(intent, str) and lean_view.INTENT_RE.match(intent)):
             return evidence.empty(evidence.NO_RUN)
         events, clone, units = evidence.scope(f)
-        last = events[-1] if events else {}
-        sig = (path, sha, intent, clone, len(events), last.get("_file"), last.get("seq"), last.get("ts"), bk.info()["path"])
+        verifies = [e for e in events if e.get("event") == "VERIFY"]
+        last = verifies[-1] if verifies else {}
+        sig = (path, sha, intent, clone, len(verifies), last.get("_file"), last.get("seq"), last.get("ts"),
+               bk.info()["path"])
         if sig not in self._proofs:
             try:
                 got = evidence.read(path, sha, intent, events, clone, units)
