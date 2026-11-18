@@ -40,7 +40,7 @@ describe('一键建运行机', () => {
     const done = vi.fn()
     render(<RunnerSetupCard repos={fx.status().repos} onDone={done} pollMs={5} />)
     const card = await screen.findByRole('region', { name: '一键建运行机' })
-    expect(within(card).getByLabelText('GitLab 地址')).toHaveValue('https://gitlab.example.com')
+    expect(await within(card).findByLabelText('GitLab 地址')).toHaveValue('https://gitlab.example.com')
     expect(within(card).getByLabelText('项目')).toHaveValue('shop/shop-pay')
     const token = within(card).getByLabelText('一次性 token')
     expect(token).toHaveAttribute('type', 'password')
