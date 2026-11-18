@@ -108,6 +108,12 @@ export const BOARD_EXTRA_CSS = `
 .br-board .kt-sign-head .kt-pill { align-self: center; }
 .br-board .kt-sign-grid dd { color: var(--text-strong); }
 .br-board .br-accept-desc dt { display: flex; align-items: center; gap: 8px; }
+.br-board .br-accept-proof { grid-column: 1 / -1; }
+/* 产出: a piece of evidence by its words, a screenshot as a picture */
+.br-board .kt-frow-mark { font-size: .92em; font-weight: 750; white-space: nowrap; }
+.br-board .kt-fview-proof { margin: 0; padding: 6px 12px; border-bottom: 1px solid var(--border); font-size: .9em; overflow-wrap: anywhere; }
+.br-board .kt-fview-img { margin: 0; padding: 12px; }
+.br-board .kt-fview-img img { display: block; max-width: 100%; height: auto; margin: 0 auto; border: 1px solid var(--border); border-radius: 8px; }
 .br-board .br-accept-desc dd > span { font-weight: 650; }
 .br-step { display: grid; gap: 8px; margin-top: 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--kit-wait);
   background: color-mix(in srgb, var(--kt-approve) 8%, var(--card)); }

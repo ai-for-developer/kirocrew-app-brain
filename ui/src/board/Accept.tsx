@@ -5,9 +5,11 @@
  * (NextStep.tsx); the app takes none of these steps for them.
  */
 import type { ReactNode } from 'react'
+import type { OutAt } from '../nav'
 import type { ReqBoard } from '../types'
 import { Icon } from '../ui'
 import { useCopy } from '../views/Question'
+import { EvidenceRow } from './Evidence'
 import { boardWho, checksSay, fmtCredits, fmtWhen, localOnly, titleOf, whoThen } from './format'
 import { RoleIcon } from './RoleIcon'
 
@@ -42,7 +44,8 @@ export function DescLine({ text }: { text: string }) {
   )
 }
 
-export function Accept({ board, onDetail, quiet = false }: { board: ReqBoard; onDetail?: () => void; quiet?: boolean }) {
+/** *onOutputs*: open the 产出 drawer at a piece of evidence (its round and file) */
+export function Accept({ board, onDetail, onOutputs, quiet = false }: { board: ReqBoard; onDetail?: () => void; onOutputs?: (at: OutAt) => void; quiet?: boolean }) {
   const ac = board.accept
   const m = board.mr_desc
   const { copied, copy } = useCopy(m.text)
@@ -60,7 +63,7 @@ export function Accept({ board, onDetail, quiet = false }: { board: ReqBoard; on
       <header className="kt-sign-head">
         <h2>{title}</h2>
         <span className={`kt-pill tone-${TONE[ac.state]}`}>{label}</span>
-        <p className="kt-dim">合并前由人确认：变更、决定、检查</p>
+        <p className="kt-dim">合并前由人确认：变更、证据、决定、检查</p>
       </header>
       <dl className="kt-sign-grid">
         <div>
@@ -83,6 +86,10 @@ export function Accept({ board, onDetail, quiet = false }: { board: ReqBoard; on
         <div>
           <dt>检查</dt>
           <dd><b className={`tone-${say.tone}`} data-testid="accept-checks">{say.text}</b></dd>
+        </div>
+        <div className="br-accept-proof">
+          <dt>证据</dt>
+          <dd>{quiet ? '回放时不列：证据按现在的提交核对' : <EvidenceRow proof={board.proof} onOpen={onOutputs} />}</dd>
         </div>
         <div>
           <dt>决定 · 谁定的</dt>

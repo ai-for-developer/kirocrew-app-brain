@@ -2035,8 +2035,8 @@ export interface OutFile {
   why: string | null
   /** a build-and-test round's evidence (what its VERIFY sealed): its set; its words, P-2 · AC-2 · 看什么 (a set's
    * output.txt: 截图, 命令输出 tests：pytest -q); how it went (failed: it did not show what it waits for; null for an
-   * output.txt) and why not. null for any other file */
-  proof: { set: string; label: string; result: 'ok' | 'failed' | 'skipped' | null; note: string } | null
+   * output.txt), the MR's mark for that ('' when ok: 没看到, 没拍成) and why not. null for any other file */
+  proof: { set: string; label: string; result: 'ok' | 'failed' | 'skipped' | null; mark: string; note: string } | null
 }
 
 export interface NodeOutput {
