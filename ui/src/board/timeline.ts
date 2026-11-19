@@ -1,18 +1,20 @@
 /**
  * 回放: a requirement played again (the sample team board's timeline.ts). The board at any moment *t*, rebuilt from the
- * snapshot itself: each node's status history, its rounds started by then (one that ended later is still open), its
- * gates (one decided later waits while its node waited then), spans and marks up to *t*; each run where its open round
- * was then; each hand-over's steps done by then; the events, the conveyor, the check cells decided by then, Lean's
- * progress at its stage records, whom it waited for then, what each band had skipped by then. Runs and hand-overs are never left out, so the graph keeps
- * its picture. What has no time of its own (the decisions, what the Brain was cited for, credits) is not shown until
- * the end. Pure: the same snapshot and *t* always give the same board, so the replay can be scrubbed.
+ * snapshot itself: each node's status history, its rounds started by then (one that ended later is still open; each
+ * with the commits made by then, as its run may commit its work after Lean recorded it over), its gates (one decided
+ * later waits while its node waited then), spans and marks up to *t*; each run where its open round was then; each
+ * hand-over's steps done by then; the events, the conveyor, the check cells decided by then, Lean's progress at its
+ * stage records, whom it waited for then, what each band had skipped by then. Runs and hand-overs are never left out,
+ * so the graph keeps its picture. What has no time of its own (the decisions, what the Brain was cited for, credits)
+ * is not shown until the end. Pure: the same snapshot and *t* always give the same board, so the replay can be
+ * scrubbed.
  *
  * A requirement takes hours or days with long quiet gaps (a night, a wait for a person): the replay's clock is
  * compressed — every quiet gap plays as at most GAP_S — so what happened is what plays, and the bar still says the
  * real time. The replay holds on each decision a person made (decisionStops), as the sample's replay holds on a gate.
  *
- * The 产出 drawer at a moment (filesAt, turnsAt): a round over by then as it ended; one still going then, only what it
- * had by then.
+ * The 产出 drawer at a moment (filesAt, turnsAt): only what a round had by then, and what it hands in once over or
+ * asked for.
  */
 import type { ActorStatus, BoardPhase, CheckCell, Gate, NodeId, NodeTurns, OutFile, Relay, ReqBoard, ReqState, Round, Run, StageNode, WaitWho } from '../types'
 import { ownerIsYou } from './format'
@@ -80,7 +82,7 @@ const DECIDED: ReadonlySet<Gate['state']> = new Set<Gate['state']>(['approved', 
 
 /** A node at *t*: its state then (before its first change it waits: with the line it has while waiting, if it still
  * waits and that line has always been its line, else the plain words; a stage never on this way stays skipped), the
- * rounds started by then, its gates then. */
+ * rounds started by then with the commits made by then, its gates then. */
 function nodeAt(n: StageNode, t: number, owner: WaitWho, committed: (sha: string) => boolean): { node: StageNode; who: WaitWho | null } {
   const h = [...n.history].reverse().find((x) => x.at <= t)
   const off = n.status === 'skipped' && !n.history.length
@@ -89,8 +91,10 @@ function nodeAt(n: StageNode, t: number, owner: WaitWho, committed: (sha: string
   const now = h ? { status: h.status, doing: h.doing, since: last ? n.since : h.at } : off ? { status: n.status, doing: n.doing, since: null } : { status: 'waiting' as ActorStatus, doing: n.status === 'waiting' && !n.history.length ? n.doing : '还没轮到', since: null }
   const waits = now.status === 'awaiting_approval'
   const who = waits ? h?.who ?? owner : null
-  const rounds = n.rounds.filter((r) => r.started <= t).map((r): Round => (r.ended !== null && r.ended <= t ? r
-    : { ...r, ended: null, outcome: OPEN, note: null, outputs: [], commits: r.commits.filter(committed) }))
+  const rounds = n.rounds.filter((r) => r.started <= t).map((r): Round => {
+    const commits = r.commits.filter(committed)
+    return r.ended !== null && r.ended <= t ? { ...r, commits } : { ...r, ended: null, outcome: OPEN, note: null, outputs: [], commits }
+  })
   const had = new Set(rounds.map((r) => r.n))
   const gates = n.gates.flatMap((g): Gate[] => {
     if (!had.has(g.round)) return []
@@ -323,11 +327,11 @@ export function momentOf(b: Pick<ReqBoard, 'belt'>, t: number): Moment {
   return { t, made: (ref) => (at.get(ref.slice(0, 12)) ?? -Infinity) <= t }
 }
 
-/** A round's files at the moment. Over by then: all of them, each at that round's version. Still going: what its commits
- * had by then, and what it hands in once it had asked for approval with it; *later* counts the rest. */
+/** A round's files at the moment: each at a commit made by then, and what it hands in once it was over or had asked for
+ * approval with it (Lean recorded that version); *later* counts the rest: a round still going commits more, and its
+ * run commits its work after Lean recorded it over. */
 export function filesAt(files: OutFile[], r: Round, asked: boolean, m: Moment): { files: OutFile[]; later: number } {
-  if (r.ended !== null) return { files, later: 0 }
-  const kept = files.filter((f) => (f.output && asked) || (f.ref !== null && f.ref !== 'worktree' && m.made(f.ref)))
+  const kept = files.filter((f) => (f.output && (asked || r.ended !== null)) || (f.ref !== null && f.ref !== 'worktree' && m.made(f.ref)))
   return { files: kept, later: files.length - kept.length }
 }
 

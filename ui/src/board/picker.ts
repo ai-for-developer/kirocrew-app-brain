@@ -93,7 +93,11 @@ export function inRun(b: ReqBoard, run: RunFilter): ReqBoard {
     const rounds = n.rounds.filter(its)
     if (rounds.length === n.rounds.length) return n
     const within = (t: number) => rounds.some((r) => t >= r.started && (r.ended === null || t <= r.ended))
-    return { ...n, rounds, spans: n.spans.filter(its), gates: n.gates.filter((g) => rounds.some((r) => r.n === g.round)), marks: n.marks.filter((m) => within(m.at)) }
+    // a round holds its run's commits after it ended too (its work, committed after Lean recorded it over)
+    const held = new Set(rounds.flatMap((r) => r.commits))
+    const madeAt = new Set(b.belt.filter((x) => x.node === n.id && held.has(x.sha)).map((x) => x.at))
+    return { ...n, rounds, spans: n.spans.filter(its), gates: n.gates.filter((g) => rounds.some((r) => r.n === g.round)),
+      marks: n.marks.filter((m) => within(m.at) || (m.kind === 'commit' && madeAt.has(m.at))) }
   })
   const cells = b.checks.cells.filter((c) => c.run === run || c.run === null)
   const verify = nodes.find((n) => n.stage === 'build-and-test')?.rounds.filter((r) => r.outcome.kind === 'passed' || r.outcome.kind === 'failed') ?? []

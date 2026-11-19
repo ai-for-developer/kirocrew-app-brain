@@ -408,10 +408,26 @@ describe('the 产出 drawer at a moment', () => {
     expect([m.made(sha(DESIGN_DRAFT)), m.made(sha(FIXED)), m.made('e'.repeat(40))]).toEqual([true, false, true])
   })
 
-  it('a round over by then: every file of it, each at that round’s version', () => {
-    const r1 = replayAt(fx.boardMerged(), 1793635080 + 60).nodes.find((n) => n.id === 'application-design')!.rounds[0]
-    const files = [file({ ref: sha(DESIGN_DRAFT), output: true }), file({ path: 'later.py', ref: sha(FIXED) })]
-    expect(filesAt(files, r1, false, momentOf(fx.boardMerged(), 1793635080 + 60))).toEqual({ files, later: 0 })
+  it('a round over by then: what it hands in, and each other file once the commit it is read at was made', () => {
+    const b = fx.boardMerged()
+    const t = 1793635080 + 60
+    const r1 = replayAt(b, t).nodes.find((n) => n.id === 'application-design')!.rounds[0]
+    expect(r1.ended).not.toBeNull()
+    // Lean recorded the round over, then its run committed the design with the code
+    const doc = file({ path: 'application-design.md', output: true, ref: sha(FIXED) })
+    const code = file({ path: 'later.py', ref: sha(FIXED) })
+    expect(filesAt([doc, code], r1, false, momentOf(b, t))).toEqual({ files: [doc], later: 1 })
+    expect(filesAt([doc, code], r1, false, momentOf(b, 1793636460))).toEqual({ files: [doc, code], later: 0 })
+  })
+
+  it('a round over by then has the commits made by then, not the one its run made after Lean recorded it over', () => {
+    const b = fx.boardMerged()
+    const n = b.nodes.find((x) => x.id === 'application-design')!
+    const r1 = n.rounds[0]
+    n.rounds[0] = { ...r1, commits: [...r1.commits, FIXED] }
+    const at = (t: number) => replayAt(b, t).nodes.find((x) => x.id === 'application-design')!.rounds[0]
+    expect(at(1793635080 + 60)).toMatchObject({ ended: r1.ended, commits: r1.commits })
+    expect(at(1793636460).commits).toEqual([...r1.commits, FIXED])
   })
 
   it('a round still going: what its commits had by then, what it hands in once it had asked; the rest counted as later', () => {

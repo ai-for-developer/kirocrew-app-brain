@@ -127,14 +127,14 @@ const designTurns = (round: number): NodeTurns => ({
     calls: [{ at: ASKED_1 - 2000, tool: '读文件', detail: 'requirements.md', in_round: true }, { at: ASKED_1 - 60, tool: '写文件', detail: 'application-design.md', in_round: true }] }],
 })
 
-function renderPage(entry: BoardEntry) {
+function renderPage(entry: BoardEntry, files: (round: number) => NodeOutput = designFiles) {
   installFixtureRoutes({
     [`GET ${API}/board/*`]: () => fx.boardMerged(),
     [`GET ${API}/outputs/*`]: (_b, path) => {
       const q = new URLSearchParams(path.split('?')[1])
       const round = Number(q.get('round') ?? 2)
       if (path.includes('/turns?')) return designTurns(round)
-      if (!path.includes('/file?')) return designFiles(round)
+      if (!path.includes('/file?')) return files(round)
       const v: FileView = { path: q.get('path') ?? '', view: q.get('view') as FileView['view'], at: q.get('ref') ?? '', base: q.get('base'), pinned: false,
         lang: 'markdown', asked: null, binary: false, truncated: false, size: 10, text: `# 应用设计 @ ${q.get('ref')?.slice(0, 7)}\n` }
       return v
@@ -203,6 +203,15 @@ describe('回放 on the page: the hold and the drawer at the moment', () => {
     const lists = apiCalls.filter((c) => c.path.includes('/outputs/') && !c.path.includes('/file?')).map((c) => c.path)
     expect(lists.length).toBeGreaterThan(0)
     expect(lists.filter((x) => !x.includes('round=1'))).toEqual([])
+  })
+
+  test('a round over by then whose run committed its work after Lean recorded it over: those files wait, and it says so', async () => {
+    const code = file({ path: 'web/refund.ts', output: false, ref: FIXED, base: null, base_round: null, vs: [] })
+    renderPage({ ...PAY2, at: BACK + 60, out: { node: 'application-design', round: 1 } },
+      (round) => (round === 1 ? { ...designFiles(1), files: [...designFiles(1).files, code] } : designFiles(round)))
+    await waitFor(() => expect(shownFiles()).toEqual([DESIGN, STATE]), SLOW)
+    expect(roundPills()).toEqual(['第 1 轮退回'])
+    expect(drawer().getByTestId('out-later')).toHaveTextContent('这一轮那时已经结束：那以后才提交的 1 个文件这里没列')
   })
 
   test('scrubbing back and forth keeps the drawer at the moment; 退出回放 brings back the live drawer', async () => {

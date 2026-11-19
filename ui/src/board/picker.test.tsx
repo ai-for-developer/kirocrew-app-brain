@@ -117,6 +117,20 @@ describe('选择运行 · the board shows the picked run only', () => {
     expect(inRun(b, 'all')).toBe(b)
   })
 
+  test('a commit its run made after Lean recorded the round over keeps its mark with that run: the round holds it', () => {
+    const b = worldBoard('r1/PAY-9')
+    const ci = b.nodes.find((n) => n.id === 'build-and-test')!
+    ci.rounds[0] = { ...ci.rounds[0], run: LOCAL }
+    const last = ci.rounds[ci.rounds.length - 1]
+    const at = (last.ended as number) + 30
+    const sha = 'e'.repeat(12)
+    ci.rounds[ci.rounds.length - 1] = { ...last, commits: [...last.commits, sha] }
+    ci.marks = [...ci.marks, { at, kind: 'commit', title: '运行机提交 eeeeeeee：检查的总结' }]
+    b.belt = [...b.belt, { kind: 'commit', at, sha, by: 'bot', text: '检查的总结', files: 1, records_only: true, run: RUNNER, node: ci.id }]
+    const marks = (run: RunKey) => inRun(b, run).nodes.find((n) => n.id === ci.id)!.marks.filter((m) => m.at === at)
+    expect([marks(RUNNER).length, marks(LOCAL).length]).toEqual([1, 0])
+  })
+
   test('a lane of a round from the middle says its own number (第 4 轮), not how many it shows', async () => {
     const b = worldBoard('r1/PAY-9')
     const ci = b.nodes.find((n) => n.id === 'build-and-test')!

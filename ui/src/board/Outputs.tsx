@@ -295,7 +295,7 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt, moment }: {
                 {declared.length > 0 && <><p className="kt-flist-h">约定它交的</p><ul>{declared.map((f) => <FileRow key={f.path} f={f} on={f === pick} onPick={() => onAt({ ...at, file: f.path })} />)}</ul></>}
                 {others.length > 0 && <><p className="kt-flist-h">其他改动</p><ul>{others.map((f) => <FileRow key={f.path} f={f} on={f === pick} onPick={() => onAt({ ...at, file: f.path })} />)}</ul></>}
                 {out.data.more > 0 && <p className="kt-dim kt-flist-foot">还有 {out.data.more} 个文件没列出来</p>}
-                {later > 0 && <p className="kt-dim kt-flist-foot" data-testid="out-later">这一轮那时还在做：那以后才提交的 {later} 个文件这里没列</p>}
+                {later > 0 && <p className="kt-dim kt-flist-foot" data-testid="out-later">这一轮那时{r?.ended !== null ? '已经结束' : '还在做'}：那以后才提交的 {later} 个文件这里没列</p>}
                 {run?.kind === 'runner' && <p className="kt-dim kt-flist-foot">都在运行机推上来的提交里：这台机器取回来以后能看全</p>}
               </div>
               {pick && <FilePane key={`${pick.path}@${pick.ref}`} repo={repo} reqKey={reqKey} f={pick} round={r?.n ?? 0} asked={asked} />}

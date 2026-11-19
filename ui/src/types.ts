@@ -1702,7 +1702,8 @@ export interface Round {
   /** what the round declared: Lean's outputs, an approval's files, VERIFY's summary, `lean release`'s release.md:
    * path relative to the repo, sha256's first 8 */
   outputs: { path: string; sha8: string }[]
-  /** this run's commits inside the round, 12 hex, oldest first, at most 20 */
+  /** this run's commits inside the round, and those after it ended (before the node's next round) that hold a version
+   * Lean recorded for it: 12 hex, oldest first, at most 20 */
   commits: string[]
 }
 
