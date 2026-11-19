@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import subprocess
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -307,3 +308,44 @@ def test_the_service_reads_the_boards_own_fold_for_the_drawer(tmp_path, home):
     assert (listed["files"][0]["path"], listed["files"][0]["ref"]) == (path, "worktree")
     assert got["pinned"] and got["asked"]["kind"] == "REQUIREMENTS" and "AC-1 退款" in got["text"]
     assert "dave@example.com" not in json.dumps([listed, got], ensure_ascii=False)
+
+
+@needs_brainkit
+def test_code_generation_has_the_code_its_run_committed_after_lean_recorded_it_done(tmp_path, home):
+    """Lean records the stage done, then the run commits its work: the plan Lean recorded and the code (OMS-5 on the
+    runner: done 11:28:54, its commit 11:29:14). That commit is the round's, so the drawer lists the code at it; the
+    run's next commit, which holds nothing Lean recorded for the round, is not."""
+    repo = make_project(tmp_path)
+    wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款短信")
+    intent = json.loads((wt / "runs" / "PAY-1" / "run.json").read_text())["intent"]
+    plan = "aidlc-docs/%s/construction/plans/app-code-generation-plan.md" % intent
+    lean(wt, "stage", "start", "code-generation")
+    (wt / plan).write_text("# Code generation plan\n\n- [x] Step 1: services/refund.py sends the SMS\n", encoding="utf-8")
+    (wt / "services").mkdir()
+    (wt / "services" / "refund.py").write_text("def notify(order):\n    return True\n", encoding="utf-8")
+    lean(wt, "stage", "done", "code-generation", "--note", "services/refund.py")
+    shas = []
+    for secs, rel, msg in ((20, None, "PAY-1: refund SMS"), (40, "runs/PAY-1/notes.md", "PAY-1: notes")):
+        if rel:
+            (wt / rel).write_text("next: review\n", encoding="utf-8")
+        later = "@%d +0000" % (time.time() + secs)
+        sh("git", "-C", wt, "add", "-A")
+        sh("git", "-C", wt, "commit", "-qm", msg, env={"GIT_AUTHOR_DATE": later, "GIT_COMMITTER_DATE": later})
+        shas.append(sh("git", "-C", wt, "rev-parse", "HEAD").stdout.strip())
+    svc = make_service(tmp_path, [repo])
+
+    async def go():
+        await svc.start()
+        try:
+            return (await svc.outputs("r1", "PAY-1", outputs.node_query("code-generation/app", None)),
+                    await svc.board("r1", "PAY-1"))
+        finally:
+            await svc.stop()
+
+    got, b = run(go())
+    work = shas[0]
+    assert [(f["path"], f["output"], f["ref"]) for f in got["files"]] == [
+        (plan, True, work), ("services/refund.py", False, work)]
+    assert got["head"] == work
+    cg = next(n for n in b["nodes"] if n["id"] == "code-generation/app")
+    assert [r["commits"] for r in cg["rounds"]] == [[work[:12]]]
