@@ -119,9 +119,10 @@ def rec(t, event, file=HERE, **data):
     return {"event": event, "ts": "", "_at": t, "_file": file, "intent": I, "data": data}
 
 
-def commit(t, subject, by="bot", records_only=False, paths=(), after_handover=None):
+def commit(t, subject, by="bot", records_only=False, paths=(), after_handover=None, docs=None):
     return {"sha": ("%08x" % int(t)) * 5, "at": t, "by": by, "records_only": records_only, "subject": subject,
-            "paths": list(paths), "after_handover": by == "bot" if after_handover is None else after_handover}
+            "paths": list(paths), "after_handover": by == "bot" if after_handover is None else after_handover,
+            "docs": dict(docs or {})}
 
 
 def records(evs, commits=(), bounds=(), run_ids=(), family=None, **kw):
@@ -313,6 +314,26 @@ def test_a_review_round_per_commit_of_review_md_and_a_write_back_round_per_branc
     assert told(refl) == [(1, "local", "approved", "first"), (2, "local", "done", "reopened")]
     assert status("reflect", refl[:1]) == ("merged", "已合进 Brain")
     assert status("reflect", refl, over=("merged", T - H)) == ("done", "写好了回写分支：等合进 Brain")
+
+
+def test_a_round_has_its_runs_commits_after_it_ended_that_hold_what_lean_recorded_for_it():
+    """Lean records a stage done, then the run commits its work (OMS-5's code generation on the runner: done 11:28:54,
+    its commit 11:29:14). A commit of the round's run after it ended is the round's while it holds a version Lean
+    recorded for it and the node's next round has not begun; a plan changed after the record, or another run's commit
+    of the same version, is not."""
+    v1, v2 = "1" * 64, "2" * 64
+    evs = [rec(T, "STAGE_STARTED", RUNNER, stage="code-generation", unit="api", path=PLAN_API),
+           rec(T + H, "STAGE_COMPLETED", RUNNER, stage="code-generation", unit="api", outputs={PLAN_API: v1})]
+    code = commit(T + H + 20, "PAY-9：api 的代码", paths=[PLAN_API, "services/api/a.py"], docs={PLAN_API: v1})
+    edited = commit(T + H + 40, "PAY-9：计划又改了", paths=[PLAN_API], docs={PLAN_API: v2})
+    mine = commit(T + H + 60, "本机也提交了这一版", by="person", after_handover=False, paths=[PLAN_API], docs={PLAN_API: v1})
+    rs = rounds_of("code-generation", evs, "api", commits=[code, edited, mine], bounds=[T - M])
+    assert [(r.n, r.run, r.commits) for r in rs] == [(1, "runner-1", (code["sha"],))]
+    # started again: the same version committed once round 2 began is round 2's alone
+    again = evs + [rec(T + 2 * H, "STAGE_STARTED", RUNNER, stage="code-generation", unit="api", path=PLAN_API)]
+    late = commit(T + 2 * H + M, "PAY-9：api 的代码（第 2 轮）", paths=[PLAN_API, "services/api/b.py"], docs={PLAN_API: v1})
+    rs = rounds_of("code-generation", again, "api", commits=[code, late], bounds=[T - M])
+    assert [r.commits for r in rs] == [(code["sha"],), (late["sha"],)]
 
 
 # ---------------------------------------------------------------- who did each round

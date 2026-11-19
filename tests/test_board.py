@@ -372,7 +372,8 @@ def row_of(state, who, text, **waits):
 
 
 def snapshot(f, row, *, t=None, sessions=(), me="dana", now=T + 11.5 * H, local_only=True, mr=None,
-             app_events=(), reflect_refs=(), brain_=None, team_decisions=(), changes=None, units=(), live=None):
+             app_events=(), reflect_refs=(), brain_=None, team_decisions=(), changes=None, docs=None, units=(),
+             live=None):
     """*live*: the live dev session's slot as service._live names it; by default the last local session given."""
     sessions = list(sessions)
     if live is None:
@@ -380,7 +381,7 @@ def snapshot(f, row, *, t=None, sessions=(), me="dana", now=T + 11.5 * H, local_
     return board.build(f, row, t, mr=mr, sessions=sessions, app_events=list(app_events),
                        team_decisions=list(team_decisions), subjects={}, reflect_refs=list(reflect_refs),
                        default_branch="main", local_only=local_only, kit_rows=[], decisions=[], brain=brain_, me=me, now=now,
-                       changes=changes, units=units, live_slot=live)
+                       changes=changes, docs=docs, units=units, live_slot=live)
 
 
 def session(last, busy=False, awaiting=False):
@@ -1189,6 +1190,29 @@ def test_an_event_never_travels_to_a_stage_the_graph_draws_no_box_for():
     quiet = snapshot(facts(evs), row_of("local", "you", "会话空着：轮到你回话"), sessions=[session(T + 23 * M)],
                      now=T + H)
     assert quiet["runs"][0]["now"]["node"] == "review"
+
+
+def test_a_commit_is_placed_at_the_round_that_holds_it():
+    """A commit made after code generation was recorded done, holding the plan Lean recorded for it, is that round's
+    though another round of its run came between (the review, written in a session of its own, committed first): its
+    event and its place on the conveyor are code generation's, so the node's lane lists it as the drawer does."""
+    plan = "aidlc-docs/261109-x/construction/plans/app-code-generation-plan.md"
+    review = "aidlc-docs/261109-x/construction/build-and-test/review.md"
+    h = "c" * 64
+    evs = started() + [ev(T + 10 * M, "STAGE_COMPLETED", stage="requirements"),
+                       ev(T + 12 * M, "STAGE_STARTED", stage="code-generation", unit="app", path=plan),
+                       ev(T + 20 * M, "STAGE_COMPLETED", stage="code-generation", unit="app", outputs={plan: h})]
+    rv, code = "%040x" % 5, "%040x" % 6
+    t = {"actions": {"commits": [{"sha": rv, "at": iso(T + 21 * M), "by": "person", "files": 1},
+                                 {"sha": code, "at": iso(T + 22 * M), "by": "person", "files": 2}]}}
+    changes = {rv: [{"path": review, "added": 3, "removed": 0, "status": "A"}],
+               code: [{"path": plan, "added": 1, "removed": 1, "status": "M"},
+                      {"path": "calc.py", "added": 5, "removed": 0, "status": "A"}]}
+    b = snapshot(facts(evs), row_of("local", "agent", "AI 在做"), t=t, changes=changes, docs={code: {plan: h}}, now=T + H)
+    assert [r["commits"] for r in node(b, "code-generation/app")["rounds"]] == [[code[:12]]]
+    made = next(e for e in b["events"] if e["kind"] == "commit" and e["at"] == T + 22 * M)
+    assert (made["node"], made["round"]) == ("code-generation/app", 1)
+    assert [(x["sha"], x["node"]) for x in b["belt"]] == [(rv[:12], "review"), (code[:12], "code-generation/app")]
 
 
 def test_a_small_requirement_builds_its_own_unit_of_its_big_ones_plan():
