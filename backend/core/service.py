@@ -1094,6 +1094,15 @@ class Service:
         return got
 
     @staticmethod
+    def _docs(git: Git, intent: Any, changes: dict[str, list[dict[str, Any]]]) -> board_mod.DocsByCommit:
+        rd = outputs_mod.GitReader(git)
+        out = {}
+        for sha, cs in changes.items():
+            got = {c["path"]: rd.digest(sha, c["path"]) for c in cs if stages.is_doc(c["path"], intent)}
+            out[sha] = {p: h for p, h in got.items() if h}
+        return out
+
+    @staticmethod
     def _reflect_refs(git: Git, key: str, default_branch: str) -> list[tuple[str, float, float | None]] | None:
         """brain reflect's branches for *key* (brain/<KEY>-reflect-<n>, local or origin's): when each was made, and
         when it was merged into the default branch (the merge commit on its first-parent line; its own time when the
@@ -1187,6 +1196,7 @@ class Service:
         g = board_mod.build(
             f, d["row"], t, mr=parts.get("mr"), sessions=sessions, app_events=app_events,
             team_decisions=parts.get("decisions") or [], subjects=subjects, changes=changes,
+            docs=self._docs(git, (f.get("run") or {}).get("intent"), changes) if git is not None else {},
             reflect_refs=self._reflects_of(git, key, str(cfg.get("default_branch") or "main")) if git is not None else [],
             default_branch=str(cfg.get("default_branch") or "main"), local_only=bool(parts.get("local_only")),
             kit_rows=board_mod.kit_cells(self.crew.get("rows") or [], parts.get("path") or ""),

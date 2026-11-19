@@ -286,9 +286,10 @@ class Round:
 class Records:
     """What one requirement's rounds are cut from, gathered once per board: Lean's records of the intent, oldest first
     (lean_view.events: each with _at and _file); the run branch's commits, oldest first (sha, at, by, records_only,
-    subject, paths: the files it changed); brain reflect's branches (ref, made, merged); who did a record
-    (runs.attribute); who decided an approval (你 · a user name · 产品在 MR 上); the MR question a decision answered;
-    the MR's pipelines when this machine read them (person mode), else none."""
+    subject, paths: the files it changed, docs: the sha256 of each document of the intent it changed); brain reflect's
+    branches (ref, made, merged); who did a record (runs.attribute); who decided an approval (你 · a user name · 产品在
+    MR 上); the MR question a decision answered; the MR's pipelines when this machine read them (person mode), else
+    none."""
     events: Sequence[Mapping[str, Any]]
     intent: Optional[str]
     run_of: Callable[[Mapping[str, Any]], RunKey]
@@ -427,6 +428,15 @@ def _covers(d: Mapping[str, Any]) -> Dict[str, str]:
 def doc_path(stage: StageDef, unit: Optional[str], intent: Optional[str]) -> Optional[str]:
     """The node's document, repo-relative: aidlc-docs/<intent>/<the stage's doc>."""
     return "aidlc-docs/%s/%s" % (intent, stage.doc.format(unit=unit or "")) if intent and stage.doc else None
+
+
+DOC_RE = re.compile("|".join(re.escape(s.doc).replace(re.escape("{unit}"), "[^/]+") for s in STAGES if s.doc))
+
+
+def is_doc(path: str, intent: Optional[str]) -> bool:
+    """Is *path* a stage's document of *intent* (doc_path, of any unit)?"""
+    top = "aidlc-docs/%s/" % intent
+    return bool(intent) and path.startswith(top) and DOC_RE.fullmatch(path[len(top):]) is not None
 
 
 def _feeds(stage: StageDef, unit: Optional[str], e: Mapping[str, Any], doc: Optional[str]) -> bool:
@@ -659,16 +669,23 @@ CUT: Mapping[str, Callable[[StageDef, Optional[str], Records], List[Round]]] = {
 }
 
 
+def _holds(c: Mapping[str, Any], r: Round) -> bool:
+    return not set(r.outputs).isdisjoint((c.get("docs") or {}).items())
+
+
 def rounds_of(stage: StageDef, unit: Optional[str], rec: Records) -> List[Round]:
     """The node's rounds, oldest first: a doc or release node's by DOC_MACHINE; build-and-test one per VERIFY; review
-    one per commit of review.md; reflect one per reflect branch. Each round lists its run's commits inside it (at
-    most MAX_COMMITS, the newest); at most MAX_ROUNDS rounds, the newest, still numbered from the first. Pure and
-    total: the ledger is append-only and hash-chained and the rest is git's, so the same records give the same rounds
-    and nothing about them is stored."""
+    one per commit of review.md; reflect one per reflect branch. Each round lists its run's commits inside it, and
+    those after it ended, before the node's next round began, that hold a version Lean recorded for it; at most
+    MAX_COMMITS, the newest. At most MAX_ROUNDS rounds, the newest, still numbered from the first. Pure and total: the
+    ledger is append-only and hash-chained and the rest is git's, so the same records give the same rounds and nothing
+    about them is stored."""
+    rs = CUT[stage.rounds](stage, unit, rec)
     out = []
-    for r in CUT[stage.rounds](stage, unit, rec):
+    for r, nxt in zip(rs, [x.started for x in rs[1:]] + [float("inf")]):
         end = r.ended if r.ended is not None else float("inf")
-        shas = [str(c["sha"]) for c in rec.commits if r.started <= c["at"] <= end and rec.run_of(c) == r.run]
+        shas = [str(c["sha"]) for c in rec.commits if rec.run_of(c) == r.run
+                and (r.started <= c["at"] <= end or (end < c["at"] < nxt and _holds(c, r)))]
         out.append(replace(r, commits=tuple(shas[-MAX_COMMITS:])))
     return out[-MAX_ROUNDS:]
 

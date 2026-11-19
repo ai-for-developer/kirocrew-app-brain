@@ -364,8 +364,11 @@ MARKS = {"request": "request", "approve": "approved", "reject": "rejected", "ref
 ASKS = {"RELEASE": "acceptance", "DESIGN": "design", "INCEPTION": "design", "PLAN": "plan", "REQUIREMENTS": "requirements"}
 
 
-def _branch_commits(t: dict[str, Any] | None, subjects: dict[str, str],
-                    changes: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+DocsByCommit = dict[str, dict[str, str]]
+
+
+def _branch_commits(t: dict[str, Any] | None, subjects: dict[str, str], changes: dict[str, list[dict[str, Any]]],
+                    docs: DocsByCommit) -> list[dict[str, Any]]:
     """The run branch's commits as the stage graph reads them, oldest first: when, by whom, records only or not, after
     the hand-over or not, the subject, the files changed."""
     out = []
@@ -374,7 +377,7 @@ def _branch_commits(t: dict[str, Any] | None, subjects: dict[str, str],
         if at is not None and sha:
             out.append({"sha": sha, "at": at, "by": c.get("by"), "records_only": bool(c.get("records_only")),
                         "after_handover": bool(c.get("after_handover")), "subject": subjects.get(sha) or "",
-                        "paths": [x["path"] for x in changes.get(sha) or []]})
+                        "paths": [x["path"] for x in changes.get(sha) or []], "docs": docs.get(sha) or {}})
     return sorted(out, key=lambda c: c["at"])
 
 
@@ -519,7 +522,7 @@ def _quiet(evs: list[dict[str, Any]], records: list[dict[str, Any]], who: runs.A
 
 def stage_graph(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, evs: list[dict[str, Any]], *,
                 mr: dict[str, Any] | None, sessions: list[dict[str, Any]], team_decisions: list[dict[str, Any]],
-                subjects: dict[str, str], changes: dict[str, list[dict[str, Any]]],
+                subjects: dict[str, str], changes: dict[str, list[dict[str, Any]]], docs: DocsByCommit,
                 reflect_refs: list[tuple[str, float, float | None]], you: str, me: str | None, hand_at: float | None,
                 merged_at: float | None, proposals: int, units: Any, now: float, live_slot: str | None = None
                 ) -> dict[str, Any]:
@@ -531,7 +534,7 @@ def stage_graph(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None
     lean = sorted((e for e in f.get("events") or [] if isinstance(e, dict) and isinstance(e.get("_at"), (int, float))),
                   key=lambda e: e["_at"])
     family = runs.family_of(row.get("family"), run)
-    commits = _branch_commits(t, subjects, changes)
+    commits = _branch_commits(t, subjects, changes, docs)
     waits = row.get("waits") or {}
     bounds = runs.boundaries(f, t)
     if not bounds and runner_blind(f, row):   # the team runner has the hand-over in its ledger, nothing else yet
@@ -619,7 +622,10 @@ def stage_graph(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None
             return run_at(who.run_of(e["_rec"]), at)
         if how == "commit":
             c = e["_commit"]
-            return run_at(who.run_of({"by": c.get("by"), "at": at, "after_handover": c.get("after_handover")}), at)
+            r = who.run_of({"by": c.get("by"), "at": at, "after_handover": c.get("after_handover")})
+            held = [(x.started, i) for i, n in enumerate(nodes) for x in n.rounds
+                    if e["sha"] in x.commits and x.end.outcome is not stages.Outcome.SKIPPED]
+            return (nodes[max(held)[1]], r) if held else run_at(r, at)
         if how == "side_at":
             return run_at(runs.LOCAL if e["_side"] == "local" else who.runner_at(at), at)
         if how == "local_at":
@@ -668,13 +674,15 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
           subjects: dict[str, str], reflect_refs: list[tuple[str, float, float | None]], default_branch: str, local_only: bool,
           kit_rows: list[dict[str, Any]], decisions: list[dict[str, Any]], brain: dict[str, Any] | None,
           me: str | None, now: float, changes: dict[str, list[dict[str, Any]]] | None = None,
-          units: Any = (), fold: dict[str, Any] | None = None, live_slot: str | None = None) -> dict[str, Any]:
+          docs: DocsByCommit | None = None, units: Any = (), fold: dict[str, Any] | None = None,
+          live_slot: str | None = None) -> dict[str, Any]:
     """The board's graph part (the stage graph: phases, nodes, runs, relays, other_runs; the events placed on it, belt,
     checks, accept, person, live, missing, and Lean's progress at each of its stage records for 回放: lean_view.steps);
     the service adds the requirement's detail (decisions, questions, 变更说明, sessions, credits). *changes*:
-    changes_from_log of the commits (GIT_LOG), by full sha. *units*: the planned units (stages.UnitPlan), when the
-    service read unit-of-work.md. *fold*, when given, gets the stage graph's nodes and runs, the run branch's commits
-    and Lean's session turns: what the 产出 drawer reads (outputs.Fold)."""
+    changes_from_log of the commits (GIT_LOG), by full sha; *docs*: by full sha, the sha256 of each document of the
+    intent the commit changed. *units*: the planned units (stages.UnitPlan), when the service read unit-of-work.md.
+    *fold*, when given, gets the stage graph's nodes and runs, the run branch's commits and Lean's session turns: what
+    the 产出 drawer reads (outputs.Fold)."""
     run = f.get("run") or {}
     handoff = run.get("handoff") if isinstance(run.get("handoff"), dict) else None
     hand_at = _epoch((handoff or {}).get("requested_at"))
@@ -686,7 +694,7 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
     proposals = ((brain or {}).get("proposals") or 0) if isinstance(brain, dict) else 0
     merged_at = next((e["at"] for e in evs if e["kind"] == "merge"), None)
     sg = stage_graph(f, row, t, evs, mr=mr, sessions=sessions, team_decisions=team_decisions, subjects=subjects,
-                     changes=changes or {}, reflect_refs=reflect_refs, you=you, me=me, hand_at=hand_at,
+                     changes=changes or {}, docs=docs or {}, reflect_refs=reflect_refs, you=you, me=me, hand_at=hand_at,
                      merged_at=merged_at, proposals=proposals, units=units, now=now, live_slot=live_slot)
     wait_who = str((row.get("waits") or {}).get("who"))
     asked = you if wait_who == "you" else ASK_NAME.get(wait_who, "人")
