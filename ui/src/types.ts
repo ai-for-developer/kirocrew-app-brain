@@ -1473,6 +1473,46 @@ export interface TeamView {
 }
 export interface TeamLoopResult { ok: boolean; summary: Record<string, number>; error: string }
 
+// ---------------------------------------------------------------- MR 巡检: GET /team/patrol
+
+/** What one open MR is to MR 巡检 (backend/core/team/patrol.py) as its last round left it: working (a brain-patrol
+ * session is on it), queued (waiting for one of the sessions, at most cap at once), waiting (its session is still on an
+ * earlier turn, or the MR just moved), done (these problems were given to a session that ended its turn: waiting for
+ * the MR to change), blocked (two attempts failed: it said so on the MR), ok (nothing to fix), skipped (skip says why),
+ * error (this round could not look at it or dispatch it: note says why). Another value is shown as it is. */
+export type PatrolState = 'working' | 'queued' | 'waiting' | 'done' | 'blocked' | 'ok' | 'skipped' | 'error'
+export type PatrolSkip = '' | 'handoff' | 'opt_out' | 'fork' | 'claimed' | 'bots_only'
+export interface PatrolMr {
+  project: string
+  iid: number
+  title: string
+  url: string | null
+  author: string
+  state: PatrolState
+  /** what there is to fix, in words: a failed pipeline, an open review thread, a conflict */
+  problems: { kind: 'ci_failed' | 'review' | 'conflict'; text: string }[]
+  /** why it is skipped, in words ('' unless state is skipped) */
+  skip: string
+  skip_code: PatrolSkip
+  /** one more line in words (why it waits, why it was not dispatched; '' when nothing) */
+  note: string
+  /** sessions given its current problems */
+  attempts: number
+  slot: string | null
+  updated_at: string | null
+}
+export interface TeamPatrol {
+  /** some project's kit.json switches work source mr-patrol on */
+  on: boolean
+  cap: number
+  working: number
+  /** epoch seconds of the last round; null before the first */
+  last_at: number | null
+  projects: { project: string; on: boolean; error: string }[]
+  /** every open MR of the projects patrol is on, as the last round saw it */
+  items: PatrolMr[]
+}
+
 // ---------------------------------------------------------------- 一键建运行机: GET/POST /team/setup
 
 /** A step's state: done, waiting (for a person: the kit.json MR to merge), failed (the run stopped there), skipped;

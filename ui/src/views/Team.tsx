@@ -7,14 +7,15 @@
  * table with their MRs, sessions and what the bridge holds about each (its notes, a line under the run); the runner's
  * Lean hooks as brain-runnerd checks them; the signer's pending and refused requests and the vouchers it has not
  * answered yet (asked for again next round) as cards; the bridge.json and runnerd.json settings brain-kit reads, by
- * file. Every state, step and kind is said in words (a round's steps, the vouchers' kinds); brain-kit's own words are
- * folded under 细节.
+ * file; MR 巡检 (GET /team/patrol): every open MR its last round looked at, what it has to fix, where it is and why one
+ * is left alone. Every state, step and kind is said in words (a round's steps, the vouchers' kinds); brain-kit's own
+ * words are folded under 细节.
  */
 import { Fragment } from 'react'
 import { useAppApi, useNavigate } from '@kirocrew/app-sdk'
 import { paths, useAction, usePoll } from '../api'
 import { ago, fmtIso } from '../format'
-import type { CheckRow, HandoverResult, RunState, TeamConfigRow, TeamHandover, TeamLoopResult, TeamNote, TeamStatus, TeamView } from '../types'
+import type { CheckRow, HandoverResult, PatrolState, RunState, TeamConfigRow, TeamHandover, TeamLoopResult, TeamNote, TeamPatrol, TeamStatus, TeamView } from '../types'
 import { CheckRows, EmptyHero, ExtLink, Icon, LEVEL_LABEL, LoadState, RoleIcon, questionMeta, type FlowStep } from '../ui'
 import type { Tone } from '../styles'
 import { ACT } from '../vocab'
@@ -33,6 +34,7 @@ export const LOOP_STEP: Record<string, { name: string; did: string }> = {
   watch: { name: '看会话', did: '看了会话' },
   collect: { name: '收结果', did: '收回结果' },
   reconcile: { name: '对账', did: '对了账' },
+  patrol: { name: '巡检 MR', did: '巡检了 MR' },
 }
 /** what a signature is for (the signer spool's request kinds) */
 export const SIGN_KIND: Record<string, string> = { answer: '回答的凭证', handoff: '交接的合同' }
@@ -97,6 +99,21 @@ export const NOTE_TONE: Record<string, Tone> = {
 export const noteTone = (kind: string): Tone => NOTE_TONE[kind] ?? (/^(ci|runnerd)_/.test(kind) ? 'warn' : 'idle')
 const NOTE_GLYPH: Partial<Record<Tone, string>> = { bad: '✕', warn: '!' }
 
+/** MR 巡检's states of an open MR (team/patrol.py), in words, in the order the list shows them; another one as it is. */
+export const PATROL_STATE: Record<PatrolState, { label: string; tone: Tone }> = {
+  working: { label: '在修', tone: 'run' },
+  waiting: { label: '等会话', tone: 'hand' },
+  queued: { label: '排队', tone: 'idle' },
+  error: { label: '这一轮没成', tone: 'warn' },
+  blocked: { label: '没修好', tone: 'bad' },
+  done: { label: '修过一轮', tone: 'info' },
+  ok: { label: '没问题', tone: 'ok' },
+  skipped: { label: '不管', tone: 'idle' },
+}
+export const patrolMeta = (state: string) => PATROL_STATE[state as PatrolState] ?? { label: state, tone: 'idle' as Tone }
+const patrolRank = (state: string) => { const i = Object.keys(PATROL_STATE).indexOf(state); return i < 0 ? 99 : i }
+export const PATROL_OFF = '还没有项目打开巡检：项目的 .brain/kit.json 里 work_sources 写上 mr-patrol 就开始。一键建运行机勾上「巡检所有开着的 MR」，它开的 kit.json MR 会写好。'
+
 /** The config files brain-kit reads on a team runner, in this order, and what each is for. */
 const CONFIG_FILES: { file: string; what: string }[] = [
   { file: 'bridge.json', what: '桥' },
@@ -138,11 +155,13 @@ export function TeamPage({ status, go, reloadStatus, pollMs }: ViewProps) {
   const navigate = useNavigate()
   const team = !!status?.app.team
   const tv = usePoll<TeamView>(team ? paths.team() : null, pollMs ?? TEAM_POLL_MS)
+  const pv = usePoll<TeamPatrol>(team ? paths.teamPatrol() : null, pollMs ?? TEAM_POLL_MS)
   const loop = useAction(() => api.post<TeamLoopResult>(paths.teamLoop(), {}))
   const runLoop = async () => {
     const r = await loop.run()
     if (r) {
       tv.reload()
+      pv.reload()
       reloadStatus()
     }
   }
@@ -225,6 +244,7 @@ export function TeamPage({ status, go, reloadStatus, pollMs }: ViewProps) {
             <SignerKpi signer={data.signer} />
           </section>
           <Handovers rows={data.handovers} at={st?.last_loop_at ?? null} />
+          {pv.data && <Patrol view={pv.data} openSession={(slot) => navigate(`/chat?sid=${encodeURIComponent(slot)}`)} />}
           <section className="br-card" aria-label="运行">
             <header>
               <RoleIcon role="runner" size={18} />
@@ -431,6 +451,72 @@ function Handovers({ rows, at }: { rows: TeamHandover[]; at: number | null }) {
           </span>
         </div>
       )}
+    </section>
+  )
+}
+
+/** MR 巡检: every open MR its last round looked at, the ones at work first: what it has to fix, its state in words with
+ * why it waits or is left alone, and its session. */
+function Patrol({ view, openSession }: { view: TeamPatrol; openSession: (slot: string) => void }) {
+  const rows = [...view.items].sort((a, b) => patrolRank(a.state) - patrolRank(b.state))
+  const on = view.projects.filter((p) => p.on).map((p) => p.project)
+  return (
+    <section className="br-card" aria-label="MR 巡检" data-testid="patrol">
+      <header>
+        <RoleIcon role="pr" size={18} />
+        <h3>MR 巡检</h3>
+        <span className="br-dim br-small">
+          {view.on ? `${on.join('、')}：开着的 MR 流水线没过、评审意见没回、有冲突的，运行机自己修，同时最多 ${view.cap} 个` : '没打开'}
+        </span>
+        <span className="br-grow" />
+        {view.on && <span className="br-small">在修 <b>{view.working}</b>/{view.cap}</span>}
+      </header>
+      {!view.on ? <p className="br-empty">{PATROL_OFF}</p> : rows.length === 0 ? (
+        <p className="br-empty">{view.last_at ? `上一轮（${ago(view.last_at)}）没有开着的 MR。` : '还没巡检过：下一轮就看。'}</p>
+      ) : (
+        <div className="br-scroll">
+          <table className="cto-table tm-runs">
+            <thead><tr><th>MR</th><th>要修的</th><th>状态</th><th>会话</th></tr></thead>
+            <tbody>
+              {rows.map((i) => {
+                const m = patrolMeta(i.state)
+                const why = i.skip || i.note
+                return (
+                  <tr key={`${i.project}!${i.iid}`} data-state={i.state}>
+                    <td>
+                      <span className="tm-pt-mr">
+                        <ExtLink href={i.url} className="tm-mr">{i.project}!{i.iid}</ExtLink>
+                        <span className="tm-pt-title">{i.title}</span>
+                      </span>
+                    </td>
+                    <td>
+                      {i.problems.length === 0 ? <span className="br-dim">—</span> : (
+                        <ul className="tm-pt-probs">{i.problems.map((p, n) => <li key={n} data-kind={p.kind}>{p.text}</li>)}</ul>
+                      )}
+                    </td>
+                    <td>
+                      <span className="tm-state">
+                        <span className={`br-chip kt-pill tone-${m.tone}${i.state === 'working' ? ' is-live' : ''}`}>{m.label}</span>
+                        {why && <span className="tm-state-hint">{why}</span>}
+                      </span>
+                    </td>
+                    <td>
+                      {i.slot ? (
+                        <button type="button" className="br-btn is-small" onClick={() => openSession(i.slot as string)}>
+                          <Icon name="MessageSquare" size={13} />{ACT.openSession}
+                        </button>
+                      ) : <span className="br-dim">—</span>}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {view.projects.filter((p) => p.error).map((p) => (
+        <p key={p.project} className="br-bad-text br-small" role="alert">{p.project} 这一轮没巡检成：{p.error}</p>
+      ))}
     </section>
   )
 }
@@ -671,4 +757,8 @@ const TM_CSS = `
 .tm-sig.is-wait { border-color: var(--kit-wait); }
 .tm-sig.is-bad { border-color: var(--kit-bad); background: color-mix(in srgb, var(--kt-bad) 6%, var(--card)); }
 .tm-sig.is-warn { border-style: dashed; border-color: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); }
+.tm-pt-mr { display: inline-grid; gap: .15em; }
+.tm-pt-title { font-size: .86em; color: var(--muted); max-width: 22em; white-space: normal; overflow-wrap: anywhere; }
+.tm-pt-probs { list-style: none; margin: 0; padding: 0; display: grid; gap: .2em; font-size: .9em; }
+.tm-pt-probs li { white-space: normal; overflow-wrap: anywhere; }
 `

@@ -52,6 +52,8 @@ export const paths = {
   todo: () => `${BASE}/todo`,
   team: () => `${BASE}/team`,
   teamLoop: () => `${BASE}/team/loop`,
+  /** MR 巡检: every open MR the last round looked at */
+  teamPatrol: () => `${BASE}/team/patrol`,
   /** 一键建运行机: GET the last run's steps, POST to run them (in the background: GET until it is not running) */
   teamSetup: () => `${BASE}/team/setup`,
   importDefaults: () => `${BASE}/import/defaults`,

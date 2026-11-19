@@ -7,7 +7,7 @@ import { API, installFixtureRoutes } from '../test/routes'
 import { apiCalls, navigations } from '../test/stubs/app-sdk'
 import type { CheckRow, TeamConfigRow, TeamNote } from '../types'
 import type { ViewProps } from './props'
-import { HANDOVER_RESULT, OUTBOX_STATE, RUN_STATE, TeamPage, handoverMeta, noteTone, outboxMeta, runStateMeta } from './Team'
+import { HANDOVER_RESULT, OUTBOX_STATE, PATROL_OFF, PATROL_STATE, RUN_STATE, TeamPage, handoverMeta, noteTone, outboxMeta, patrolMeta, runStateMeta } from './Team'
 
 function teamStatus() {
   const s = fx.status()
@@ -395,16 +395,62 @@ describe('运行机', () => {
     expect(p.go).toHaveBeenCalledWith({ kind: 'item', repo: 'runner', key: 'PAY-5', from: 'team' })
   })
 
+  test('MR 巡检: every open MR of its last round, the ones at work first, what to fix, its state in words, why one is left alone', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes()
+    render(<TeamPage {...props()} />)
+    const pt = await screen.findByRole('region', { name: 'MR 巡检' })
+    const row = (iid: number) => within(pt).getByRole('link', { name: `shop/shop-pay!${iid}` }).closest('tr') as HTMLElement
+    expect(pt).toHaveTextContent('shop/shop-pay：开着的 MR 流水线没过、评审意见没回、有冲突的，运行机自己修，同时最多 2 个')
+    expect(pt).toHaveTextContent('在修 2/2')
+    expect(within(row(52)).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['流水线 #4119304 没过：test', '@carol 的评审意见（src/discount.py:12）'])
+    expect(within(row(52)).getByText('在修')).toHaveClass('tone-run', 'is-live')
+    expect(row(52)).toHaveTextContent('折扣按百分比算')
+    expect(row(41)).toHaveTextContent('不管交接给运行机的 MR（标签 ai-running）：交接那边管它')
+    expect(row(36)).toHaveTextContent('不管只有机器人写的评论，没有要修的')
+    expect(row(44)).toHaveTextContent('没修好试了 2 次没修好，在 MR 上说了：等它有新变化')
+    expect(row(47)).toHaveTextContent('排队')
+    expect(row(38)).toHaveTextContent('没问题')
+    // the ones at work first, then waiting, failed, worked once, fine, left alone
+    expect(Array.from(pt.querySelectorAll('tbody tr')).map((tr) => tr.getAttribute('data-state'))).toEqual(
+      ['working', 'working', 'queued', 'blocked', 'done', 'ok', 'skipped', 'skipped'])
+    expect(within(row(47)).queryByRole('button')).toBeNull()
+    await user.click(within(row(52)).getByRole('button', { name: '打开会话' }))
+    expect(navigations).toEqual(['/chat?sid=patrol-12-52'])
+    // every state patrol.py answers has words; another one is shown as it is
+    expect(Object.keys(PATROL_STATE).sort()).toEqual(['blocked', 'done', 'error', 'ok', 'queued', 'skipped', 'waiting', 'working'])
+    expect(patrolMeta('later')).toEqual({ label: 'later', tone: 'idle' })
+  })
+
+  test('MR 巡检 off: says how to switch it on; a project it could not read says so', async () => {
+    const pv = fx.teamPatrol()
+    pv.on = false
+    pv.items = []
+    pv.projects = [{ project: 'shop/shop-pay', on: false, error: '' }]
+    installFixtureRoutes({ [`GET ${API}/team/patrol`]: () => pv })
+    const { unmount } = render(<TeamPage {...props()} />)
+    const pt = await screen.findByRole('region', { name: 'MR 巡检' })
+    expect(pt).toHaveTextContent(PATROL_OFF)
+    expect(within(pt).queryByRole('table')).toBeNull()
+    unmount()
+    const bad = fx.teamPatrol()
+    bad.projects[0].error = 'GitLab 401 Unauthorized'
+    installFixtureRoutes({ [`GET ${API}/team/patrol`]: () => bad })
+    render(<TeamPage {...props()} />)
+    const again = await screen.findByRole('region', { name: 'MR 巡检' })
+    expect(within(again).getByRole('alert')).toHaveTextContent('shop/shop-pay 这一轮没巡检成：GitLab 401 Unauthorized')
+  })
+
   test('现在跑一轮 posts /team/loop and says what the round did, step by step in words', async () => {
     const user = userEvent.setup()
-    installFixtureRoutes({ [`POST ${API}/team/loop`]: () => ({ ok: true, summary: { poll: 2, prepared: 0, dispatch: 1, watch: 1, collect: 0, reconcile: 0 }, error: '' }) })
+    installFixtureRoutes({ [`POST ${API}/team/loop`]: () => ({ ok: true, summary: { poll: 2, prepared: 0, dispatch: 1, watch: 1, collect: 0, reconcile: 0, patrol: 3 }, error: '' }) })
     const p = props()
     render(<TeamPage {...p} />)
     await screen.findByRole('region', { name: '运行' })
     await user.click(screen.getByRole('button', { name: '现在跑一轮' }))
     const result = await screen.findByTestId('loop-result')
     expect(result).toHaveTextContent('这一轮跑完了')
-    expect(within(result).getAllByText(/ 个$/).map((t) => t.textContent)).toEqual(['看了 MR 2 个', '准备好工作区 0 个', '派给会话 1 个', '看了会话 1 个', '收回结果 0 个', '对了账 0 个'])
+    expect(within(result).getAllByText(/ 个$/).map((t) => t.textContent)).toEqual(['看了 MR 2 个', '准备好工作区 0 个', '派给会话 1 个', '看了会话 1 个', '收回结果 0 个', '对了账 0 个', '巡检了 MR 3 个'])
     expect(result).not.toHaveTextContent('poll')
     expect(apiCalls.some((c) => c.method === 'POST' && c.path === `${API}/team/loop`)).toBe(true)
     await waitFor(() => expect(p.reloadStatus).toHaveBeenCalled())
@@ -437,6 +483,6 @@ describe('运行机', () => {
     expect(document.querySelector('style')?.textContent).toContain('.tm-root .br-flow > li { word-break: keep-all;')
     await userEvent.setup().click(within(hero).getByRole('button', { name: '去设置' }))
     expect(p.go).toHaveBeenCalledWith({ kind: 'settings' })
-    expect(apiCalls.filter((c) => c.path === `${API}/team`)).toHaveLength(0)
+    expect(apiCalls.filter((c) => c.path === `${API}/team` || c.path === `${API}/team/patrol`)).toHaveLength(0)
   })
 })
