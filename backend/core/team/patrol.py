@@ -614,8 +614,9 @@ class Patrol:
                     e.standing, e.note = "error", "这一轮没看成：%s" % _said(exc)
                     errors.append("%s!%s: %s" % (project, mr.get("iid"), _said(exc)))
                 entries.append(e)
-        self._forget(listed, open_mrs)
-        self._dispatch(entries, now)
+        if listed:
+            self._forget(listed, open_mrs)
+            self._dispatch(entries, now)
         self.last = view_of(projects, entries, now)
         if errors:
             raise common.BrainError("not done this round: " + "; ".join(errors))
@@ -702,17 +703,22 @@ class Patrol:
         """The rows of MRs merged or closed since (in the projects read this round): their turns stopped, then gone."""
         for row in self.led.rows():
             if row.project in projects and (row.project, row.iid) not in open_mrs:
-                if row.state == WORKING or (row.outcome == "moved" and self._turn(row) == "running"):
+                if self._busy(row):
                     self._stop(row)
                 self.led.drop(row.project, row.iid)
 
+    def _busy(self, row: MrRow) -> bool:
+        """Its session is at work: a turn patrol waits on, or one the MR head moved past that has not ended yet."""
+        return row.state == WORKING or (row.outcome == "moved" and self._turn(row) == "running")
+
     def _dispatch(self, entries: list[Entry], now: float) -> None:
+        """The MRs with work to give, the ones open before patrol started first, then by when each last changed, while
+        fewer than CAP sessions are at work (every project's, also one this round could not read)."""
+        busy = sum(1 for r in self.led.rows() if self._busy(r))
         todo = [e for e in entries if e.standing == "todo"]
-        busy_after_move = [e for e in todo if e.row and e.row.outcome == "moved" and self._turn(e.row) == "running"]
-        busy = sum(1 for e in entries if e.standing == "working") + len(busy_after_move)
         for e in sorted(todo, key=lambda e: (_ts(e.mr.get("created_at")) >= e.since, _ts(e.mr.get("updated_at")),
                                              e.project, int(e.mr["iid"]))):
-            if e in busy_after_move:
+            if e.row is not None and self._busy(e.row):
                 e.standing, e.note = "waiting", "它的会话还在做上一轮：做完再派"
             elif busy >= CAP:
                 e.standing = "queued"

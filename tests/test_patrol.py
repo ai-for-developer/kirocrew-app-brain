@@ -220,6 +220,27 @@ def test_two_sessions_at_a_time_and_the_mrs_open_before_patrol_started_go_first(
     assert w.slots()[-1] == "patrol-42-4"
 
 
+def test_a_session_at_work_in_a_project_this_round_could_not_read_still_counts(bk, tmp_path):
+    w = World(tmp_path, kits={P: kit(), "grp/other": kit()})
+    gl = w.gl
+    gl.mr(P, 1, created=w.clock.t - 300, **conflicted())
+    gl.mr("grp/other", 1, created=w.clock.t - 200, **conflicted())
+    gl.mr("grp/other", 2, created=w.clock.t - 100, **conflicted())
+    w.round()
+    assert w.slots() == ["patrol-42-1", "patrol-43-1"]
+
+    def kit_of(project):
+        if project == P:
+            raise bk.brain_error()("grp/repo: .brain/kit.json not found on main")
+        return w.kits[project]
+    w.patrol.kit = kit_of
+    w.later()
+    with pytest.raises(bk.brain_error(), match="grp/repo"):
+        w.round()
+    assert w.slots() == ["patrol-42-1", "patrol-43-1"] and w.item(2, "grp/other")["state"] == "queued"
+    assert w.patrol.view()["projects"][0] == {"project": P, "on": False, "error": "grp/repo: .brain/kit.json not found on main"}
+
+
 def test_two_failed_attempts_on_one_fingerprint_block_the_mr_with_one_comment(bk, tmp_path):
     patrol = mod("team.patrol")
     w = World(tmp_path)
@@ -310,6 +331,9 @@ def test_work_sources_switch_kinds_on_per_project_and_default_to_the_hand_over(b
     assert sources.enabled({"work_sources": ["mr-patrol", "issues-later", "mr-patrol"]}) == ("mr-patrol",)
     assert sources.enabled({"work_sources": []}) == ()
     cfg = bk.m("config")
+    off = World(tmp_path / "off", kits={P: cfg.merged(cfg.DEFAULTS, {})})
+    off.gl.mr(P, 1, **conflicted())
+    assert off.round() == 0 and off.slots() == [] and not (tmp_path / "off" / "patrol.sqlite").exists()
     w = World(tmp_path, kits={P: cfg.merged(cfg.DEFAULTS, {}), "grp/other": kit()})
     w.gl.mr(P, 1, **conflicted())
     w.gl.mr("grp/other", 1, **conflicted())
