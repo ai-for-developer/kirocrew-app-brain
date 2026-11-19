@@ -1094,10 +1094,7 @@ class Service:
         return got
 
     @staticmethod
-    def _docs(git: Git, intent: Any, changes: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, str]]:
-        """By commit, the sha256 of each document of the intent it changed (never Lean's ledgers or the pages written
-        from them), as the drawer reads a committed file (outputs.GitReader keeps each digest): what a round's
-        recorded outputs are matched with (stages.rounds_of)."""
+    def _docs(git: Git, intent: Any, changes: dict[str, list[dict[str, Any]]]) -> board_mod.DocsByCommit:
         if not intent:
             return {}
         rd, top = outputs_mod.GitReader(git), "aidlc-docs/%s/" % intent

@@ -1,20 +1,16 @@
 /**
  * 回放: a requirement played again (the sample team board's timeline.ts). The board at any moment *t*, rebuilt from the
- * snapshot itself: each node's status history, its rounds started by then (one that ended later is still open; each
- * with the commits made by then, as its run may commit its work after Lean recorded it over), its gates (one decided
- * later waits while its node waited then), spans and marks up to *t*; each run where its open round was then; each
- * hand-over's steps done by then; the events, the conveyor, the check cells decided by then, Lean's progress at its
- * stage records, whom it waited for then, what each band had skipped by then. Runs and hand-overs are never left out,
- * so the graph keeps its picture. What has no time of its own (the decisions, what the Brain was cited for, credits)
- * is not shown until the end. Pure: the same snapshot and *t* always give the same board, so the replay can be
- * scrubbed.
+ * snapshot itself: each node's status history, its rounds started by then (one that ended later is still open), its
+ * gates (one decided later waits while its node waited then), spans and marks up to *t*; each run where its open round
+ * was then; each hand-over's steps done by then; the events, the conveyor, the check cells decided by then, Lean's
+ * progress at its stage records, whom it waited for then, what each band had skipped by then. Runs and hand-overs are
+ * never left out, so the graph keeps its picture. What has no time of its own (the decisions, what the Brain was cited
+ * for, credits) is not shown until the end. Pure: the same snapshot and *t* always give the same board, so the replay
+ * can be scrubbed.
  *
  * A requirement takes hours or days with long quiet gaps (a night, a wait for a person): the replay's clock is
  * compressed — every quiet gap plays as at most GAP_S — so what happened is what plays, and the bar still says the
  * real time. The replay holds on each decision a person made (decisionStops), as the sample's replay holds on a gate.
- *
- * The 产出 drawer at a moment (filesAt, turnsAt): only what a round had by then, and what it hands in once over or
- * asked for.
  */
 import type { ActorStatus, BoardPhase, CheckCell, Gate, NodeId, NodeTurns, OutFile, Relay, ReqBoard, ReqState, Round, Run, StageNode, WaitWho } from '../types'
 import { ownerIsYou } from './format'
@@ -82,7 +78,7 @@ const DECIDED: ReadonlySet<Gate['state']> = new Set<Gate['state']>(['approved', 
 
 /** A node at *t*: its state then (before its first change it waits: with the line it has while waiting, if it still
  * waits and that line has always been its line, else the plain words; a stage never on this way stays skipped), the
- * rounds started by then with the commits made by then, its gates then. */
+ * rounds started by then, its gates then. */
 function nodeAt(n: StageNode, t: number, owner: WaitWho, committed: (sha: string) => boolean): { node: StageNode; who: WaitWho | null } {
   const h = [...n.history].reverse().find((x) => x.at <= t)
   const off = n.status === 'skipped' && !n.history.length
@@ -328,8 +324,7 @@ export function momentOf(b: Pick<ReqBoard, 'belt'>, t: number): Moment {
 }
 
 /** A round's files at the moment: each at a commit made by then, and what it hands in once it was over or had asked for
- * approval with it (Lean recorded that version); *later* counts the rest: a round still going commits more, and its
- * run commits its work after Lean recorded it over. */
+ * approval with it (Lean recorded that version); *later* counts the rest. */
 export function filesAt(files: OutFile[], r: Round, asked: boolean, m: Moment): { files: OutFile[]; later: number } {
   const kept = files.filter((f) => (f.output && (asked || r.ended !== null)) || (f.ref !== null && f.ref !== 'worktree' && m.made(f.ref)))
   return { files: kept, later: files.length - kept.length }

@@ -3,19 +3,18 @@
  *
  * A step pill per stage a run did (in band order), its rounds (第 1 轮 退回 · 第 2 轮 CI 没过 #1234 …), what the round picked
  * was about (done because a pipeline failed, sent back by whom, asked for, changed after the request), then its files:
- * what Lean recorded it hands in (约定它交的) and what else its commits changed (其他改动); a code generation's code comes
- * first (代码改动), then its plan, then the records it changed. A file shows as it was in that round: a document rendered
- * (内容), the source (源码), or its change (改动), from the round before's version (和第 N 轮比) or the commit before.
- * 「就是请批的那一版」 marks the very version an approval was asked for. A document waiting for approval and not committed
- * yet is read from this machine's worktree, only as the bytes Lean recorded (the backend checks).
+ * what Lean recorded it hands in (约定它交的) and what else its commits changed (其他改动). A file shows as it was in that
+ * round: a document rendered (内容), the source (源码), or its change (改动), from the round before's version (和第 N 轮比) or
+ * the commit before. 「就是请批的那一版」 marks the very version an approval was asked for. A document waiting for approval and
+ * not committed yet is read from this machine's worktree, only as the bytes Lean recorded (the backend checks).
  *
  * GET /outputs/{repo}/{key}?node&round lists a round's files, GET /outputs/{repo}/{key}/file reads one; the rest
  * (rounds, gates, runs) is the board's own snapshot. Where it stands is in the URL (nav.ts out): the parent replaces
  * the history entry, so 后退 never steps through the drawer.
  *
- * In a replay it reads the replayed board at its moment (timeline.ts): only the rounds started by then, each with what
- * it had by then and what it hands in once over or asked for (filesAt, turnsAt); nothing is read for a step not
- * started then. The replay's controls come along, so it can be played and scrubbed with the drawer open.
+ * In a replay it reads the replayed board at its moment (timeline.ts): only the rounds started by then; nothing is
+ * read for a step not started then. The replay's controls come along, so it can be played and scrubbed with the
+ * drawer open.
  */
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { paths, usePoll } from '../api'
@@ -23,7 +22,7 @@ import type { OutAt } from '../nav'
 import type { FileView, Gate, NodeOutput, NodeTurns, OutFile, ReqBoard, Round, Run, StageNode } from '../types'
 import { ExtLink, TYPE_IT_YOURSELF } from '../ui'
 import { Markdown } from '../views/Markdown'
-import { laneNodes } from './Lanes'
+import { biggestFirst, laneNodes } from './Lanes'
 import { ROUND_TONE, actorMeta, ciCause, ciWords, clockAt, decider, fmtWhen, gateVerb, gateWhat, nodeLabel, roundWords, whoOf } from './format'
 import { RoleIcon } from './RoleIcon'
 import { filesAt, turnsAt, type Moment } from './timeline'
@@ -65,15 +64,11 @@ const isDoc = (p: string): boolean => /\.(md|markdown)$/i.test(p)
 /** Kept for the run by Lean (aidlc-docs/) or brain-kit (runs/: the MR's description, park.json), not code it wrote. */
 const isRecord = (p: string): boolean => /^(aidlc-docs|runs)\//.test(p)
 
-const changed = (f: OutFile): number => (f.added ?? 0) + (f.removed ?? 0)
-
-/** The round's files in the list's groups and order: what Lean recorded it hands in, then the rest; a code generation's
- * code first, the biggest change first (the lane's 改动 order), then its plan, then the records. */
 function fileGroups(n: StageNode, files: OutFile[]): [string, OutFile[]][] {
   const declared = files.filter((f) => f.output)
   const others = files.filter((f) => !f.output)
   if (n.stage !== 'code-generation') return [['约定它交的', declared], ['其他改动', others]]
-  return [['代码改动', others.filter((f) => !isRecord(f.path)).sort((x, y) => changed(y) - changed(x))], ['约定它交的', declared],
+  return [['代码改动', others.filter((f) => !isRecord(f.path)).sort(biggestFirst)], ['约定它交的', declared],
     ['其他改动', others.filter((f) => isRecord(f.path))]]
 }
 

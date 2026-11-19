@@ -1193,9 +1193,6 @@ def test_an_event_never_travels_to_a_stage_the_graph_draws_no_box_for():
 
 
 def test_a_commit_is_placed_at_the_round_that_holds_it():
-    """A commit made after code generation was recorded done, holding the plan Lean recorded for it, is that round's
-    though another round of its run came between (the review, written in a session of its own, committed first): its
-    event and its place on the conveyor are code generation's, so the node's lane lists it as the drawer does."""
     plan = "aidlc-docs/261109-x/construction/plans/app-code-generation-plan.md"
     review = "aidlc-docs/261109-x/construction/build-and-test/review.md"
     h = "c" * 64

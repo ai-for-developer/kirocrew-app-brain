@@ -413,7 +413,6 @@ describe('the 产出 drawer at a moment', () => {
     const t = 1793635080 + 60
     const r1 = replayAt(b, t).nodes.find((n) => n.id === 'application-design')!.rounds[0]
     expect(r1.ended).not.toBeNull()
-    // Lean recorded the round over, then its run committed the design with the code
     const doc = file({ path: 'application-design.md', output: true, ref: sha(FIXED) })
     const code = file({ path: 'later.py', ref: sha(FIXED) })
     expect(filesAt([doc, code], r1, false, momentOf(b, t))).toEqual({ files: [doc], later: 1 })

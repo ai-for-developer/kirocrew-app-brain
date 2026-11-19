@@ -661,17 +661,16 @@ CUT: Mapping[str, Callable[[StageDef, Optional[str], Records], List[Round]]] = {
 
 
 def _holds(c: Mapping[str, Any], r: Round) -> bool:
-    """Does commit *c* hold a version Lean recorded for *r*: a document it changed, at the sha256 recorded?"""
     return not set(r.outputs).isdisjoint((c.get("docs") or {}).items())
 
 
 def rounds_of(stage: StageDef, unit: Optional[str], rec: Records) -> List[Round]:
     """The node's rounds, oldest first: a doc or release node's by DOC_MACHINE; build-and-test one per VERIFY; review
     one per commit of review.md; reflect one per reflect branch. Each round lists its run's commits inside it, and
-    those after it ended, before the node's next round began, that hold a version Lean recorded for it (_holds: Lean
-    records a stage done, then the run commits its work); at most MAX_COMMITS, the newest. At most MAX_ROUNDS rounds,
-    the newest, still numbered from the first. Pure and total: the ledger is append-only and hash-chained and the rest
-    is git's, so the same records give the same rounds and nothing about them is stored."""
+    those after it ended, before the node's next round began, that hold a version Lean recorded for it; at most
+    MAX_COMMITS, the newest. At most MAX_ROUNDS rounds, the newest, still numbered from the first. Pure and total: the
+    ledger is append-only and hash-chained and the rest is git's, so the same records give the same rounds and nothing
+    about them is stored."""
     rs = CUT[stage.rounds](stage, unit, rec)
     out = []
     for r, nxt in zip(rs, [x.started for x in rs[1:]] + [float("inf")]):

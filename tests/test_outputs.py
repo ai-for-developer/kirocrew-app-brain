@@ -312,9 +312,6 @@ def test_the_service_reads_the_boards_own_fold_for_the_drawer(tmp_path, home):
 
 @needs_brainkit
 def test_code_generation_has_the_code_its_run_committed_after_lean_recorded_it_done(tmp_path, home):
-    """Lean records the stage done, then the run commits its work: the plan Lean recorded and the code (OMS-5 on the
-    runner: done 11:28:54, its commit 11:29:14). That commit is the round's, so the drawer lists the code at it; the
-    run's next commit, which holds nothing Lean recorded for the round, is not."""
     repo = make_project(tmp_path)
     wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款短信")
     intent = json.loads((wt / "runs" / "PAY-1" / "run.json").read_text())["intent"]

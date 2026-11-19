@@ -93,7 +93,6 @@ export function inRun(b: ReqBoard, run: RunFilter): ReqBoard {
     const rounds = n.rounds.filter(its)
     if (rounds.length === n.rounds.length) return n
     const within = (t: number) => rounds.some((r) => t >= r.started && (r.ended === null || t <= r.ended))
-    // a round holds its run's commits after it ended too (its work, committed after Lean recorded it over)
     const held = new Set(rounds.flatMap((r) => r.commits))
     const madeAt = new Set(b.belt.filter((x) => x.node === n.id && held.has(x.sha)).map((x) => x.at))
     return { ...n, rounds, spans: n.spans.filter(its), gates: n.gates.filter((g) => rounds.some((r) => r.n === g.round)),

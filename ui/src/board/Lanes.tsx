@@ -383,6 +383,10 @@ function Work({ n, board, onFile }: { n: StageNode; board: ReqBoard; onFile?: (f
 
 type FileChange = NonNullable<BeltItem['changes']>[number]
 
+type Sized = { added: number | null; removed: number | null }
+
+export const biggestFirst = (x: Sized, y: Sized): number => (y.added ?? 0) + (y.removed ?? 0) - ((x.added ?? 0) + (x.removed ?? 0))
+
 /** The files a node's commits changed, one row each, biggest first (lines added / removed summed over its commits). */
 export function filesOf(commits: BeltItem[]): FileChange[] {
   const by = new Map<string, FileChange>()
@@ -392,7 +396,7 @@ export function filesOf(commits: BeltItem[]): FileChange[] {
       by.set(f.path, had ? { ...had, added: had.added + f.added, removed: had.removed + f.removed, status: had.status === 'A' ? 'A' : f.status } : { ...f })
     }
   }
-  return [...by.values()].sort((x, y) => y.added + y.removed - (x.added + x.removed))
+  return [...by.values()].sort(biggestFirst)
 }
 
 /** The newest of *commits* that changed *path*. */
