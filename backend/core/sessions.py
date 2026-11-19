@@ -1117,6 +1117,18 @@ class SessionManager:
         self._runner_slot(name)
         return {"key": name, "messages": await self.gw.messages(name, limit=PAGE)}
 
+    async def adapter_turn(self, name: str, send_id: str) -> str:
+        """The turn the message *send_id* started in runner slot *name*: running; ended (the reply is in and the slot
+        went idle); failed (it never went in, ended without a reply or with KiroCrew's error, was stopped, or the
+        session is gone); unknown (no message of that sendId here)."""
+        info = next((i for i in self._infos.values() if i.slot == name and i.kind == "runner"
+                     and send_id in i.send_ids), None)
+        if info is None:
+            return "unknown"
+        if info.done:
+            return "failed" if info.error or info.user_stopped else "ended"
+        return "failed" if info.queued else "running"
+
     # ---- cleaning up ----------------------------------------------------------------------------------- #
 
     async def cleanup(self, keep_parents: set[str]) -> dict[str, int]:
