@@ -6,14 +6,14 @@ import { API, installFixtureRoutes } from '../test/routes'
 import { apiCalls } from '../test/stubs/app-sdk'
 import type { Settings, TeamSetup } from '../types'
 import type { ViewProps } from './props'
-import { RunnerSetupCard, TOKEN_FIRST, TOKEN_HINT } from './RunnerSetup'
+import { PATROL_HINT, RunnerSetupCard, TOKEN_FIRST, TOKEN_HINT } from './RunnerSetup'
 import { SETUP_POINTER, SettingsView } from './Settings'
 
 /** The setup before any run: every step todo, nothing typed yet. */
 function never(): TeamSetup {
   const s = fx.teamSetup()
   s.started_at = s.ended_at = null
-  s.input = { gitlab_base: '', project: '', roles: { product: [], builder: [], security: [], data: [] }, push: 'auto' }
+  s.input = { gitlab_base: '', project: '', roles: { product: [], builder: [], security: [], data: [] }, push: 'auto', patrol: true }
   s.steps = s.steps.map((x) => ({ ...x, status: 'todo', message: '', link: null, detail: '' }))
   return s
 }
@@ -55,7 +55,7 @@ describe('一键建运行机', () => {
     const posts = apiCalls.filter((c) => c.method === 'POST')
     expect(posts).toHaveLength(1)
     expect(posts[0].body).toEqual({ gitlab_base: 'https://gitlab.example.com', project: 'shop/shop-pay', admin_token: TOKEN,
-      roles: { product: ['carol'], builder: ['dave', 'erin'] } })
+      roles: { product: ['carol'], builder: ['dave', 'erin'] }, patrol: true })
     expect(apiCalls.filter((c) => c.method === 'GET').every((c) => !c.path.includes(TOKEN) && c.body === undefined)).toBe(true)
     expect(done).toHaveBeenCalledTimes(1)
     // each step: its title, ✓ / 等人 / ✕, its words; the MR to merge with its link
@@ -67,6 +67,29 @@ describe('一键建运行机', () => {
     expect(within(signer).getByRole('img', { name: '好了' })).toHaveTextContent('✓')
     expect(steps.querySelector('[data-step="team_mode"]')).toHaveTextContent('交接都会被拒')
     expect(within(card).getByRole('button', { name: '再跑一次' })).toBeEnabled()
+  })
+
+  test('巡检所有开着的 MR is ticked unless the last run left it off, says what it does, and goes in the post', async () => {
+    const user = userEvent.setup()
+    const off = never()
+    off.input.patrol = false
+    installFixtureRoutes({ [`GET ${API}/team/setup`]: () => off, [`POST ${API}/team/setup`]: () => going() })
+    const { unmount } = render(<RunnerSetupCard repos={fx.status().repos} pollMs={60_000} />)
+    const card = await screen.findByRole('region', { name: '一键建运行机' })
+    const patrol = await within(card).findByRole('checkbox', { name: '巡检所有开着的 MR' })
+    expect(patrol).not.toBeChecked()
+    expect(patrol).toHaveAccessibleDescription(PATROL_HINT)
+    unmount()
+    installFixtureRoutes({ [`GET ${API}/team/setup`]: () => never(), [`POST ${API}/team/setup`]: () => going() })
+    render(<RunnerSetupCard repos={fx.status().repos} pollMs={60_000} />)
+    const again = await screen.findByRole('region', { name: '一键建运行机' })
+    const box = await within(again).findByRole('checkbox', { name: '巡检所有开着的 MR' })
+    expect(box).toBeChecked()
+    await user.click(box)
+    await user.type(within(again).getByLabelText('一次性 token'), TOKEN)
+    await user.click(within(again).getByRole('button', { name: '开始建' }))
+    await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).toMatchObject({ patrol: false })
   })
 
   test('while a run goes on, its step in progress is said and the form waits', async () => {

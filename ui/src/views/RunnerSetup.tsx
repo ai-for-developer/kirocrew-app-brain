@@ -4,7 +4,8 @@
  * second while they run. Each step says ✓ when done, 等人 when it waits for a person (the kit.json MR, with its link),
  * ✕ when it stopped the run, then its words, and what GitLab or a command said under 细节; a run cut off part-way (the
  * app stopped) says where. The token goes in that one request: this page keeps it in its field while it is open (for
- * 再跑一次), the backend nowhere.
+ * 再跑一次), the backend nowhere. 巡检所有开着的 MR (on unless unticked) adds brain-patrol and switches work source
+ * mr-patrol on in the kit.json MR.
  */
 import { useEffect, useRef, useState } from 'react'
 import { useAppApi } from '@kirocrew/app-sdk'
@@ -19,6 +20,7 @@ export const SETUP_POLL_MS = 1000
 export const TOKEN_HINT = '只用这一次：建令牌、标签和 MR，用完就丢，不存到任何地方。要有 api 权限，你在项目里要是 Maintainer 或 Owner。'
 export const ROLES_HINT = '填 GitLab 用户名，几个人用逗号隔开；空着就是 token 的主人。安全和数据两个角色也是 token 的主人。'
 export const SAME_USER_NOTE = '签名服务、app 和 AI 的会话都用这台机器的同一个系统用户：签名挡不住 app 自己，只适合试用。'
+export const PATROL_HINT = '运行机每一轮看这个项目所有开着的 MR，以前开的也算：流水线没过、评审意见没回、和目标分支有冲突的，派 brain-patrol 去修，同时最多 2 个。交接过来的 MR 还是交接那边管。'
 export const TOKEN_FIRST = '先填一次性 token：它只用这一次，不存'
 export const cutOffSaid = (title: string) => `上次跑到「${title}」就停了，没跑完（app 关了或者重启了）：再跑一次，接着把没做的建完`
 
@@ -32,7 +34,7 @@ export const STEP_LOOK: Record<SetupStepStatus, { glyph: string; word: string; t
   todo: { glyph: '○', word: '还没做', tone: 'idle', look: 'is-quiet' },
 }
 
-interface Form { base: string; project: string; product: string; builder: string }
+interface Form { base: string; project: string; product: string; builder: string; patrol: boolean }
 
 const names = (s: string) => s.split(/[,，、\s]+/).map((x) => x.trim()).filter(Boolean)
 
@@ -44,6 +46,7 @@ function formOf(s: TeamSetup, repos: RepoInfo[]): Form {
     project: s.input.project || kit?.gitlab_project || '',
     product: s.input.roles.product.join(', '),
     builder: s.input.roles.builder.join(', '),
+    patrol: s.input.patrol !== false,
   }
 }
 
@@ -92,7 +95,7 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
     setAsk('')
     const r = await start.run({
       gitlab_base: form.base.trim(), project: form.project.trim(), admin_token: token.trim(),
-      roles: { product: names(form.product), builder: names(form.builder) },
+      roles: { product: names(form.product), builder: names(form.builder) }, patrol: form.patrol,
     })
     if (r) {
       following.current = true
@@ -120,7 +123,7 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
         {look && <span className={`br-chip kt-pill tone-${look.tone}${running ? ' is-live' : ''}`} data-testid="setup-state">{look.label}</span>}
       </header>
       <p className="rs-lead">
-        填一次 GitLab 地址、项目和一个一次性 token，app 自己建好运行机要的一切：两个项目令牌、MR 标签、身份表、签名密钥、三份配置、brain-run、签名服务，最后打开团队模式。你只要在 GitLab 上合并它开的 kit.json MR。
+        填一次 GitLab 地址、项目和一个一次性 token，app 自己建好运行机要的一切：两个项目令牌、MR 标签、身份表、签名密钥、三份配置、brain-run 和 brain-patrol、签名服务，最后打开团队模式。你只要在 GitLab 上合并它开的 kit.json MR。
       </p>
       <p className="br-banner br-small rs-note" role="note">{SAME_USER_NOTE}</p>
       <LoadState loading={got.loading} error={got.error} has={!!data} />
@@ -154,6 +157,13 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
               </div>
             </div>
             <p className="br-hint" id="rs-roles-hint">{ROLES_HINT}</p>
+            <div className="br-field">
+              <label className="br-check">
+                <input type="checkbox" checked={form.patrol} aria-describedby="rs-patrol-hint" onChange={(e) => edit({ patrol: e.target.checked })} />
+                <b>巡检所有开着的 MR</b>
+              </label>
+              <p className="br-hint" id="rs-patrol-hint">{PATROL_HINT}</p>
+            </div>
           </fieldset>
           {!ran && (
             <div className="br-row">

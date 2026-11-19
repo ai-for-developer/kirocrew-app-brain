@@ -12,7 +12,8 @@
       "security": [],
       "data": []
     },
-    "push": "auto"
+    "push": "auto",
+    "patrol": true
   },
   "steps": [
     {
@@ -94,6 +95,14 @@
       "message": "写好了 brain-run 的设置：~/.kiro/agents/brain-run.json",
       "link": null,
       "detail": "wrote /Users/alice/.kiro/agents/brain-run.json: brain-run's hooks run /Users/alice/.kiro/crew/apps/brain/vendor/brain-kit with /Users/alice/.brain/team-setup/runnerd.json\nworkspaces commit as brain-bot <brain-bot@noreply.invalid> (runnerd.json git_name / git_email): it must be one of each project's kit.json bot_emails"
+    },
+    {
+      "id": "patrol_agent",
+      "title": "brain-patrol agent",
+      "status": "done",
+      "message": "写好了 brain-patrol 的设置：~/.kiro/agents/brain-patrol.json",
+      "link": null,
+      "detail": ""
     },
     {
       "id": "signer",

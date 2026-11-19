@@ -257,10 +257,10 @@ def fake_reach(world):
     return reach
 
 
-def setup_ctx(world, push="auto", roles=None):
+def setup_ctx(world, push="auto", roles=None, patrol=True):
     setup, rest = mod("team.setup"), mod("bk").m("rest")
     inp = setup.SetupInput.parse({"gitlab_base": BASE, "project": P, "admin_token": world["admin"],
-                                  "roles": roles or {"builder": "bob"}, "push": push})
+                                  "roles": roles or {"builder": "bob"}, "push": push, "patrol": patrol})
     paths = setup.Paths.default(BRAINKIT, root=world["tmp"] / "team-setup")
     return setup.Ctx(inp, paths, gitlab=lambda tok: rest.GitLab(BASE, tok, world["gl"]), team_mode=team_mode(world),
                      signer=fake_signer(world), reach=fake_reach(world))
@@ -345,16 +345,23 @@ def test_a_first_run_builds_the_runner_and_waits_for_the_kit_mr(world):
               "signer-spool/refused"):
         assert (ps.root / d).is_dir(), d
     assert ps.runs.is_dir() and ps.cache.is_dir() and str(ps.runs).startswith(str(world["home"] / "workplace"))
-    # brain-kit wrote brain-run, its hooks on this runnerd.json
+    # brain-kit wrote brain-run, its hooks on this runnerd.json; brain-patrol beside it, brain-run's shape without them
     spec = json.loads(ps.agent_spec.read_text())
     assert str(ps.runnerd_json) in json.dumps(spec["hooks"])
+    patrol = json.loads((ps.agent_spec.parent / "brain-patrol.json").read_text())
+    assert patrol["name"] == "brain-patrol" and "hooks" not in patrol and mode(ps.agent_spec.parent / "brain-patrol.json") == "0o644"
+    assert {k: patrol[k] for k in ("tools", "allowedTools", "permissions", "resources", "model")} == \
+        {k: spec[k] for k in ("tools", "allowedTools", "permissions", "resources", "model")}
+    assert "不要 rebase，不要强推" in patrol["prompt"] and "在 MR 上说清楚修不了什么，然后停下" in patrol["prompt"]
     # kit.json: on a branch, in an MR the person merges; only what the runner needs changed, brain-kit's formatting kept
     mr = gl.mrs[0]
     assert len(gl.mrs) == 1 and mr["title"] == "运行机：更新 .brain/kit.json" and mr["target_branch"] == "main"
     assert by["kit_mr"]["link"] == mr["web_url"] and "请在 GitLab 上合并这个 MR" in by["kit_mr"]["message"]
     old, new = gl.files["main"][".brain/kit.json"], gl.files["brain/runner-setup"][".brain/kit.json"]
     changed = set(new.splitlines()) - set(old.splitlines())
-    assert changed == {'  "bridge_user": "%s",' % bot, '    "base": "%s",' % BASE, '    "project": "%s"' % P}, changed
+    assert changed == {'  "bridge_user": "%s",' % bot, '    "base": "%s",' % BASE, '    "project": "%s"' % P,
+                       '  "version": 1,', '  "work_sources": [', '    "mr-handoff",', '    "mr-patrol"', '  ]'}, changed
+    assert json.loads(new)["work_sources"] == ["mr-handoff", "mr-patrol"] and "mr-patrol" in mr["description"]
     assert json.loads(new)["bot_users"] == ["brain-bot"] and json.loads(new)["bot_emails"] == ["brain-bot@noreply.invalid"]
     # team mode: on with the two configs, the same-user trial; hand-overs refused until the MR is merged
     assert world["team"] == [{"enabled": True, "bridge_config": str(ps.bridge_json),
@@ -369,7 +376,7 @@ def test_a_second_run_makes_nothing_new(world):
     gl, ps = world["gl"], mod("team.setup").Paths.default(BRAINKIT, root=world["tmp"] / "team-setup")
     before, seen = files_under(ps.root), len(gl.calls)
     stamps = {p: os.stat(p).st_mtime_ns for p in (ps.bridge_json, ps.runnerd_json, ps.signer_json, ps.identities,
-                                                  ps.allowed, ps.key, ps.agent_spec)}
+                                                  ps.allowed, ps.key, ps.agent_spec, ps.patrol_spec)}
     view, _ = build(world)
     assert everything_done(view)
     assert gl.writes(seen) == []                         # no token, label, branch, commit or MR made
@@ -506,6 +513,25 @@ def test_a_run_cut_off_part_way_says_the_step_it_had_not_finished(world):
     assert (live["running"], live["cut_off"]) == (True, None) and step(live, "kit_mr")["status"] == "running"
 
 
+def test_patrol_off_writes_no_brain_patrol_and_its_kit_mr_switches_mr_patrol_off(world):
+    """巡检所有开着的 MR left off: no brain-patrol, and a kit.json that has mr-patrol among its work sources loses only it
+    (another kind someone named stays); on, the two are added after the ones already there."""
+    world["gl"].files["main"][KIT] = kit_file(world["tmp"], work_sources=["mr-handoff", "mr-patrol", "issues-later"])
+    view, ps = build(world, patrol=False)
+    assert step(view, "patrol_agent")["status"] == "skipped" and not ps.patrol_spec.exists()
+    assert json.loads(branch_kit(world))["work_sources"] == ["mr-handoff", "issues-later"]
+    assert view["input"]["patrol"] is False
+    world["gl"].files["main"][KIT] = kit_file(world["tmp"], work_sources=["issues-later"])
+    view, ps = build(world)
+    assert step(view, "patrol_agent")["status"] == "done" and ps.patrol_spec.exists()
+    assert json.loads(branch_kit(world))["work_sources"] == ["issues-later", "mr-handoff", "mr-patrol"]
+
+
+def branch_kit(world):
+    """kit.json on the setup's branch: what the kit.json MR would merge."""
+    return world["gl"].files["brain/runner-setup"][KIT]
+
+
 def test_the_kit_mr_waits_until_it_is_merged_then_is_done(world):
     view, ps = build(world)
     gl = world["gl"]
@@ -630,11 +656,14 @@ def test_the_input_is_read_at_the_boundary():
     got = setup.SetupInput.parse({"gitlab_base": BASE + "/", "project": BASE + "/grp/sub/pay/-/tree/main",
                                   "admin_token": " tok-123456 ", "roles": {"product": "@Carol，dave", "builder": []}})
     assert (got.gitlab_base, got.project, got.admin_token, got.push) == (BASE, "grp/sub/pay", "tok-123456", "auto")
+    assert got.patrol is True and got.public()["patrol"] is True     # 巡检所有开着的 MR: on unless the page says no
+    assert setup.SetupInput.parse({"gitlab_base": BASE, "project": P, "admin_token": "tok-123456",
+                                   "patrol": False}).public()["patrol"] is False
     assert got.roles == {"product": ("carol", "dave"), "builder": ()} and "tok-123456" not in repr(got)
     assert "tok-123456" not in json.dumps(got.public())
     for bad in ({"gitlab_base": "gitlab.example.com"}, {"gitlab_base": "https://u:p@gitlab.example.com"},
                 {"project": "pay"}, {"admin_token": ""}, {"admin_token": "a b"}, {"roles": {"boss": "x"}},
-                {"roles": {"product": "a/b"}}, {"push": "ftp"}):
+                {"roles": {"product": "a/b"}}, {"push": "ftp"}, {"patrol": "yes"}):
         body = dict({"gitlab_base": BASE, "project": P, "admin_token": "tok-123456"}, **bad)
         with pytest.raises(setup.SetupRefused):
             setup.SetupInput.parse(body)
@@ -818,10 +847,11 @@ def test_the_command_line_says_one_line_per_step(world):
         served.stop()
     assert left is not None
     lines = first.stdout.splitlines()
-    assert first.returncode == 0 and len(lines) == 13, first.stdout + first.stderr
+    assert first.returncode == 0 and len(lines) == 14, first.stdout + first.stderr
     assert lines[0].startswith("✓ 找到项目  grp/pay") and lines[5].startswith("… kit.json 的 MR  开了 MR !7")
-    assert lines[11].startswith("✓ 打开团队模式  团队模式的配置能用") and lines[11].endswith("交接都会被拒")
-    for last in (lines[12], second.stdout.splitlines()[-1]):
+    assert lines[10].startswith("✓ brain-patrol agent  写好了 brain-patrol 的设置")
+    assert lines[12].startswith("✓ 打开团队模式  团队模式的配置能用") and lines[12].endswith("交接都会被拒")
+    for last in (lines[13], second.stdout.splitlines()[-1]):
         assert last.startswith("签名服务还在跑（进程 %d）" % left) and last.endswith("kill %d" % left), last
     assert second.returncode == 0 and world["gl"].writes(seen) == [], second.stdout + second.stderr
     assert "✓ 桥的令牌  用上次建的项目令牌 brain-bridge" in second.stdout
