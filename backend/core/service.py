@@ -1095,13 +1095,10 @@ class Service:
 
     @staticmethod
     def _docs(git: Git, intent: Any, changes: dict[str, list[dict[str, Any]]]) -> board_mod.DocsByCommit:
-        if not intent:
-            return {}
-        rd, top = outputs_mod.GitReader(git), "aidlc-docs/%s/" % intent
+        rd = outputs_mod.GitReader(git)
         out = {}
         for sha, cs in changes.items():
-            got = {c["path"]: rd.digest(sha, c["path"]) for c in cs
-                   if c["path"].startswith(top) and not outputs_mod.HIDDEN.search(c["path"])}
+            got = {c["path"]: rd.digest(sha, c["path"]) for c in cs if stages.is_doc(c["path"], intent)}
             out[sha] = {p: h for p, h in got.items() if h}
         return out
 

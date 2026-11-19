@@ -430,6 +430,15 @@ def doc_path(stage: StageDef, unit: Optional[str], intent: Optional[str]) -> Opt
     return "aidlc-docs/%s/%s" % (intent, stage.doc.format(unit=unit or "")) if intent and stage.doc else None
 
 
+DOC_RE = re.compile("|".join(re.escape(s.doc).replace(re.escape("{unit}"), "[^/]+") for s in STAGES if s.doc))
+
+
+def is_doc(path: str, intent: Optional[str]) -> bool:
+    """Is *path* a stage's document of *intent* (doc_path, of any unit)?"""
+    top = "aidlc-docs/%s/" % intent
+    return bool(intent) and path.startswith(top) and DOC_RE.fullmatch(path[len(top):]) is not None
+
+
 def _feeds(stage: StageDef, unit: Optional[str], e: Mapping[str, Any], doc: Optional[str]) -> bool:
     """Is *e* one of the node's own records, or an approval covering its document? An approval record that names no
     document (a refused line with no request to answer) goes by its kind: the node whose gates column has it."""
