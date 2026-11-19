@@ -1,0 +1,64 @@
+{
+  "on": true,
+  "cap": 2,
+  "working": 2,
+  "last_at": 1762610400,
+  "projects": [
+    { "project": "shop/shop-pay", "on": true, "error": "" },
+    { "project": "shop/shop-web", "on": false, "error": "" }
+  ],
+  "items": [
+    {
+      "project": "shop/shop-pay", "iid": 52, "title": "折扣按百分比算", "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/52",
+      "author": "dave", "state": "working",
+      "problems": [
+        { "kind": "ci_failed", "text": "流水线 #4119304 没过：test" },
+        { "kind": "review", "text": "@carol 的评审意见（src/discount.py:12）" }
+      ],
+      "skip": "", "skip_code": "", "note": "", "attempts": 1, "slot": "patrol-12-52", "updated_at": "2026-11-08T13:40:00.000Z"
+    },
+    {
+      "project": "shop/shop-pay", "iid": 50, "title": "退款页面改版", "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/50",
+      "author": "erin", "state": "working",
+      "problems": [{ "kind": "conflict", "text": "和 main 有冲突" }],
+      "skip": "", "skip_code": "", "note": "", "attempts": 1, "slot": "patrol-12-50", "updated_at": "2026-11-08T13:20:00.000Z"
+    },
+    {
+      "project": "shop/shop-pay", "iid": 47, "title": "对账报表加导出", "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/47",
+      "author": "dave", "state": "queued",
+      "problems": [{ "kind": "review", "text": "@carol 的评审意见（src/report/export.py:40）" }],
+      "skip": "", "skip_code": "", "note": "", "attempts": 0, "slot": null, "updated_at": "2026-11-08T13:50:00.000Z"
+    },
+    {
+      "project": "shop/shop-pay", "iid": 44, "title": "升级支付 SDK", "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/44",
+      "author": "bob", "state": "blocked",
+      "problems": [{ "kind": "ci_failed", "text": "流水线 #4118870 没过：integration" }],
+      "skip": "", "skip_code": "", "note": "试了 2 次没修好，在 MR 上说了：等它有新变化", "attempts": 2, "slot": "patrol-12-44",
+      "updated_at": "2026-11-08T11:05:00.000Z"
+    },
+    {
+      "project": "shop/shop-pay", "iid": 41, "title": "退款审核", "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/41",
+      "author": "alice", "state": "skipped", "problems": [],
+      "skip": "交接给运行机的 MR（标签 ai-running）：交接那边管它", "skip_code": "handoff", "note": "", "attempts": 0, "slot": null,
+      "updated_at": "2026-11-08T13:55:00.000Z"
+    },
+    {
+      "project": "shop/shop-pay", "iid": 39, "title": "金额格式统一", "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/39",
+      "author": "erin", "state": "done",
+      "problems": [{ "kind": "ci_failed", "text": "流水线 #4118702 没过：lint" }],
+      "skip": "", "skip_code": "", "note": "这些已经交给会话做过一轮：等 MR 有新变化", "attempts": 1, "slot": "patrol-12-39",
+      "updated_at": "2026-11-08T12:30:00.000Z"
+    },
+    {
+      "project": "shop/shop-pay", "iid": 38, "title": "README 补安装步骤", "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/38",
+      "author": "bob", "state": "ok", "problems": [],
+      "skip": "", "skip_code": "", "note": "", "attempts": 0, "slot": null, "updated_at": "2026-11-08T10:15:00.000Z"
+    },
+    {
+      "project": "shop/shop-pay", "iid": 36, "title": "依赖升级（机器人）", "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/36",
+      "author": "project_12_bot_7f3a", "state": "skipped", "problems": [],
+      "skip": "只有机器人写的评论，没有要修的", "skip_code": "bots_only", "note": "", "attempts": 0, "slot": null,
+      "updated_at": "2026-11-08T09:00:00.000Z"
+    }
+  ]
+}
