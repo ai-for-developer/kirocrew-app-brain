@@ -3,20 +3,21 @@
  *
  * A step pill per stage a run did (in band order), its rounds (第 1 轮 退回 · 第 2 轮 CI 没过 #1234 …), what the round picked
  * was about (done because a pipeline failed, sent back by whom, asked for, changed after the request), then its files:
- * what Lean recorded it hands in (约定它交的) and what else its commits changed (其他改动). A file shows as it was in that
- * round: a document rendered (内容), the source (源码), or its change (改动), from the round before's version (和第 N 轮比) or
- * the commit before. 「就是请批的那一版」 marks the very version an approval was asked for. A document waiting for approval and
- * not committed yet is read from this machine's worktree, only as the bytes Lean recorded (the backend checks).
+ * what Lean recorded it hands in (约定它交的) and what else its commits changed (其他改动); a code generation's code comes
+ * first (代码改动), then its plan, then the records it changed. A file shows as it was in that round: a document rendered
+ * (内容), the source (源码), or its change (改动), from the round before's version (和第 N 轮比) or the commit before.
+ * 「就是请批的那一版」 marks the very version an approval was asked for. A document waiting for approval and not committed
+ * yet is read from this machine's worktree, only as the bytes Lean recorded (the backend checks).
  *
  * GET /outputs/{repo}/{key}?node&round lists a round's files, GET /outputs/{repo}/{key}/file reads one; the rest
  * (rounds, gates, runs) is the board's own snapshot. Where it stands is in the URL (nav.ts out): the parent replaces
  * the history entry, so 后退 never steps through the drawer.
  *
- * In a replay it reads the replayed board at its moment (timeline.ts): only the rounds started by then, a round over
- * by then as it ended, one still going then with what it had by then (filesAt, turnsAt); nothing is read for a step
- * not started then. The replay's controls come along, so it can be played and scrubbed with the drawer open.
+ * In a replay it reads the replayed board at its moment (timeline.ts): only the rounds started by then, each with what
+ * it had by then and what it hands in once over or asked for (filesAt, turnsAt); nothing is read for a step not
+ * started then. The replay's controls come along, so it can be played and scrubbed with the drawer open.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { paths, usePoll } from '../api'
 import type { OutAt } from '../nav'
 import type { FileView, Gate, NodeOutput, NodeTurns, OutFile, ReqBoard, Round, Run, StageNode } from '../types'
@@ -60,6 +61,21 @@ const runName = (run: Run | undefined): string => (run ? `${run.label}${run.run_
 const shortPath = (p: string): string => p.replace(/^aidlc-docs\/[^/]+\//, '')
 
 const isDoc = (p: string): boolean => /\.(md|markdown)$/i.test(p)
+
+/** Kept for the run by Lean (aidlc-docs/) or brain-kit (runs/: the MR's description, park.json), not code it wrote. */
+const isRecord = (p: string): boolean => /^(aidlc-docs|runs)\//.test(p)
+
+const changed = (f: OutFile): number => (f.added ?? 0) + (f.removed ?? 0)
+
+/** The round's files in the list's groups and order: what Lean recorded it hands in, then the rest; a code generation's
+ * code first, the biggest change first (the lane's 改动 order), then its plan, then the records. */
+function fileGroups(n: StageNode, files: OutFile[]): [string, OutFile[]][] {
+  const declared = files.filter((f) => f.output)
+  const others = files.filter((f) => !f.output)
+  if (n.stage !== 'code-generation') return [['约定它交的', declared], ['其他改动', others]]
+  return [['代码改动', others.filter((f) => !isRecord(f.path)).sort((x, y) => changed(y) - changed(x))], ['约定它交的', declared],
+    ['其他改动', others.filter((f) => isRecord(f.path))]]
+}
 
 /** What the round was about, above its files: sent back (who, the D-n, never their words), asked for, changed after
  * the request, its checks red, approved. */
@@ -234,9 +250,9 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt, moment }: {
   // a round still going then had asked with its version only if its gate was open then (replayAt's gates)
   const asked = !moment || !r || r.ended !== null || !!openAsk(n, r)
   const { files, later } = moment && r ? filesAt(listed, r, asked, moment) : { files: listed, later: 0 }
-  const pick = files.find((f) => f.path === at.file) ?? files.find((f) => f.ref) ?? files[0]
-  const declared = files.filter((f) => f.output)
-  const others = files.filter((f) => !f.output)
+  const groups = fileGroups(n, files)
+  const shown = groups.flatMap(([, fs]) => fs)
+  const pick = shown.find((f) => f.path === at.file) ?? shown.find((f) => f.ref) ?? shown[0]
   const meta = actorMeta(n.status)
   const head = moment ? r?.commits[r.commits.length - 1] : out.data?.head
   const title = n.unit ? `${n.title} · ${n.unit}` : n.title
@@ -292,8 +308,9 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt, moment }: {
           : (
             <div className="kt-files-pane">
               <div className="kt-flist">
-                {declared.length > 0 && <><p className="kt-flist-h">约定它交的</p><ul>{declared.map((f) => <FileRow key={f.path} f={f} on={f === pick} onPick={() => onAt({ ...at, file: f.path })} />)}</ul></>}
-                {others.length > 0 && <><p className="kt-flist-h">其他改动</p><ul>{others.map((f) => <FileRow key={f.path} f={f} on={f === pick} onPick={() => onAt({ ...at, file: f.path })} />)}</ul></>}
+                {groups.map(([label, fs]) => fs.length > 0 && (
+                  <Fragment key={label}><p className="kt-flist-h">{label}</p><ul>{fs.map((f) => <FileRow key={f.path} f={f} on={f === pick} onPick={() => onAt({ ...at, file: f.path })} />)}</ul></Fragment>
+                ))}
                 {out.data.more > 0 && <p className="kt-dim kt-flist-foot">还有 {out.data.more} 个文件没列出来</p>}
                 {later > 0 && <p className="kt-dim kt-flist-foot" data-testid="out-later">这一轮那时{r?.ended !== null ? '已经结束' : '还在做'}：那以后才提交的 {later} 个文件这里没列</p>}
                 {run?.kind === 'runner' && <p className="kt-dim kt-flist-foot">都在运行机推上来的提交里：这台机器取回来以后能看全</p>}

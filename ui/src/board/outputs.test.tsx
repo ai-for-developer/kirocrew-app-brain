@@ -61,13 +61,13 @@ const releaseTurns: NodeTurns = {
     asked: at('13:26') },
 }
 
-function routes(board: () => ReqBoard) {
+function routes(board: () => ReqBoard, lists: Record<string, NodeOutput> = {}) {
   installFixtureRoutes({
     [`GET ${API}/board/*`]: () => board(),
     [`GET ${API}/outputs/*`]: (_b, path) => {
       const q = new URLSearchParams(path.split('?')[1])
       if (path.includes('/turns?')) return q.get('node') === 'release' ? { ...releaseTurns, round: Number(q.get('round') ?? 1) } : designTurns
-      if (!path.includes('/file?')) return { ...listed, round: Number(q.get('round') ?? 4) }
+      if (!path.includes('/file?')) return lists[q.get('node') ?? ''] ?? { ...listed, round: Number(q.get('round') ?? 4) }
       const v: FileView = { path: q.get('path') ?? '', view: q.get('view') as FileView['view'], at: q.get('ref') ?? '', base: q.get('base'), pinned: false,
         lang: (q.get('path') ?? '').endsWith('.md') ? 'markdown' : 'python', asked: q.get('ref') === R4 ? { kind: 'RELEASE', sha8: '73b5061f' } : null,
         binary: false, truncated: false, size: 10,
@@ -77,8 +77,8 @@ function routes(board: () => ReqBoard) {
   })
 }
 
-function renderBoard(entry: BoardEntry, board: () => ReqBoard = pay9) {
-  routes(board)
+function renderBoard(entry: BoardEntry, board: () => ReqBoard = pay9, lists: Record<string, NodeOutput> = {}) {
+  routes(board, lists)
   const p: ViewProps = { status: fx.status(), go: vi.fn(), replace: vi.fn(), reloadStatus: vi.fn(), setStatus: vi.fn(), pollMs: 60_000 }
   render(<BoardPage entry={entry} {...p} />)
   return p
@@ -244,6 +244,36 @@ describe('产出', () => {
     expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'release', round: 1, tab: 'reply' } })
     fireEvent.click(screen.getAllByTestId('out-step')[1])
     expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-9', out: { node: 'application-design', tab: 'reply' } })
+  })
+})
+
+describe('产出 of a code generation: the code it wrote first', () => {
+  const PLAN = 'aidlc-docs/261111-refund-sms/construction/plans/api-code-generation-plan.md'
+  const other = (path: string, added: number, removed: number) => file({ path, output: false, added, removed, base: null, base_round: null, vs: [] })
+  const api: NodeOutput = {
+    ...listed, node: 'code-generation/api' as NodeOutput['node'], round: 1,
+    files: [file({ path: PLAN, base: null, base_round: null, vs: [] }), other('aidlc-docs/261111-refund-sms/decisions.md', 12, 0),
+      other('runs/PAY-9/park.json', 9, 2), other('services/api/notify.py', 18, 1), other('services/api/test_notify.py', 89, 3)],
+  }
+  const heads = (pane: HTMLElement) => Array.from(pane.querySelectorAll('.kt-flist-h')).map((h) => h.textContent)
+  const paths = (pane: HTMLElement) => within(pane).getAllByTestId('out-file').map((f) => f.getAttribute('title'))
+
+  test('代码改动 comes first, the biggest change first, and is opened; then 约定它交的 (the plan), then 其他改动 (the records)', async () => {
+    renderBoard({ ...PAY9, out: { node: 'code-generation/api' } }, pay9, { 'code-generation/api': api })
+    const pane = await screen.findByTestId('out-pane')
+    await waitFor(() => expect(heads(pane)).toEqual(['代码改动', '约定它交的', '其他改动']))
+    expect(paths(pane)).toEqual(['services/api/test_notify.py', 'services/api/notify.py', PLAN,
+      'aidlc-docs/261111-refund-sms/decisions.md', 'runs/PAY-9/park.json'])
+    expect(within(pane).getByTestId('out-view').querySelector('.kt-fview-path')?.textContent).toBe('services/api/test_notify.py')
+    expect(within(pane).getAllByTestId('out-file')[0]).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  test('another stage keeps what it hands in first and every other file under 其他改动, code among them', async () => {
+    renderBoard({ ...PAY9, out: { node: 'release', round: 4 } }, pay9, { 'code-generation/api': api })
+    const pane = await screen.findByTestId('out-pane')
+    await waitFor(() => expect(heads(pane)).toEqual(['约定它交的', '其他改动']))
+    expect(paths(pane)).toEqual([RELEASE, 'runs/PAY-9/MR.md', 'services/api/notify.py'])
+    expect(within(pane).getAllByTestId('out-file')[0]).toHaveAttribute('aria-pressed', 'true')
   })
 })
 
