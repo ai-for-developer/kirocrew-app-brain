@@ -136,10 +136,10 @@ def _checks(f: dict[str, Any], fast: FastFacts, mr: Optional[dict[str, Any]], ki
         cell("ci", "ci", "CI", "MR 的流水线", status, (pipe or {}).get("at") if status in ("pass", "fail") else None,
              detail)
     if fast.risky:
-        cell("risk", "risk", "风险目录", "风险目录（gates/risk-paths）", "fail", None,
+        cell("risk", "risk", "风险", "风险目录（gates/risk-paths）", "fail", None,
              "改到了 %d 个：快速需求不能合并，转完整流程" % len(fast.risky))
     else:
-        cell("risk", "risk", "风险目录", "风险目录（gates/risk-paths）", "pass", None, "没改到风险目录")
+        cell("risk", "risk", "风险", "风险目录（gates/risk-paths）", "pass", None, "没改到风险目录")
     for i, k in enumerate(kit_rows):     # a ! reminder is about the team runner, which never takes a fast run
         level = k.get("level")
         cell("kit-%d" % i, "brain", k.get("label") or board_mod.KIT_LABEL, k.get("text") or "",

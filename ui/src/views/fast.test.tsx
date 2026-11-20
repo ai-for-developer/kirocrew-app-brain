@@ -35,6 +35,7 @@ describe('需求现状 of a fast run (快速)', () => {
     expect(screen.queryByTestId('handover')).toBeNull()
     expect(screen.queryByText('AI-DLC Lean')).toBeNull()
     expect(screen.queryByTestId('lean-phases')).toBeNull()
+    expect(screen.queryByRole('region', { name: '会话记录' })).toBeNull()      // Lean's Session notes: a fast run keeps none
   })
 
   test('its way in words where Lean’s progress was, and the MR it does not have yet says how it comes', async () => {

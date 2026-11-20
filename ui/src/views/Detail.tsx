@@ -380,7 +380,7 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
           <MrDescCard m={x.mr_desc} />
         </div>
         <div className="br-col">
-          <NotesCard x={x} />
+          {flowOf(x.row).intent && <NotesCard x={x} />}
           <SessionsCard sessions={x.sessions} credits={x.credits} replying={now.do === 'reply'} at={at} />
           <BrainUseCard x={x} board={board} repo={entry.repo} reqKey={entry.key} go={props.go} />
         </div>

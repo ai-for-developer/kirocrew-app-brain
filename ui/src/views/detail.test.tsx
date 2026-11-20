@@ -71,6 +71,7 @@ describe('需求现状', () => {
     const branch = within(facts).getByTitle('ai/alice/PAY-3-refund-export')
     expect([...branch.querySelectorAll(':scope > span > span')].map((x) => x.textContent)).toEqual(['ai', '/alice', '/PAY-3-refund-export'])
     expect(facts).toHaveTextContent('Lean 记录aidlc-docs/261107-refund-export/')
+    expect(screen.getByRole('region', { name: '会话记录' })).toHaveTextContent('Lean 记下的现状和下一步')
     expect(facts).toHaveTextContent('MR还没有：交接时开')
     expect(facts).toHaveTextContent('来自产品需求')
     expect(facts).toHaveTextContent('带进来的文档1 份')
