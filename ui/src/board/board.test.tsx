@@ -790,9 +790,9 @@ describe('运行过程 · 轮到谁、做什么', () => {
     const intro = await screen.findByTestId('br-board-intro')
     expect(within(intro).getByTestId('br-intro-start')).toHaveTextContent('carol 认领的，等 carol 开工')
     expect(screen.queryByRole('button', { name: /^去开工/ })).toBeNull()
-    // the way's first step is carol's: 「0 认领 · carol · 认领、交文档、开工」, no 你 anywhere in it (BOARD-11)
+    // the way's first step is carol's: 「0 认领 · carol · 认领、交一段话或文档、开工」, no 你 anywhere in it (BOARD-11)
     const claim = intro.querySelector('.kt-intro-phase') as HTMLElement
-    expect(claim).toHaveTextContent('0 认领一个需求号，导入需求文档（选填）carol认领、交文档、开工')
+    expect(claim).toHaveTextContent('0 认领一个需求号，一段话或文档（选填）carol认领、交一段话或文档、开工')
     expect(intro).not.toHaveTextContent('你')
   })
 
@@ -803,7 +803,7 @@ describe('运行过程 · 轮到谁、做什么', () => {
     installFixtureRoutes(boardRoute(() => structuredClone(b)))
     renderBoard()
     let intro = await screen.findByTestId('br-board-intro')
-    expect(intro.querySelector('.kt-intro-phase')).toHaveTextContent('0 认领一个需求号，导入需求文档（选填）你认领、交文档、开工')
+    expect(intro.querySelector('.kt-intro-phase')).toHaveTextContent('0 认领一个需求号，一段话或文档（选填）你认领、交一段话或文档、开工')
     expect(within(intro).getByRole('button', { name: '去开工 PAY-3' })).toBeInTheDocument()
     cleanup()
     // erin's claim in a repo where 你是谁 is not set yet: the backend named erin, so does the introduction
