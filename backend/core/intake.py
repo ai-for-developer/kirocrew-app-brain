@@ -9,9 +9,6 @@
 - ``start``: ``brain start`` itself, run as a command in a fresh worktree of the repo (one folder per requirement
   under work_root, so several requirements can be open at once and each session has its own directory); its output
   verbatim. Materials go to the person's intake store, never into a repo.
-- What the person typed on the page (「用一段话说需求」) is one more document, 需求描述.md (``documents``): the same five
-  gates, and the session reads it only as it reads every document, in the material package, never in its first
-  message (``kickoff``).
 """
 
 from __future__ import annotations
@@ -127,8 +124,6 @@ def expected_paths(v: Any) -> list[str]:
 
 
 def typed_text(v: Any) -> str:
-    """「用一段话说需求」 as the form or the API sends it: a string, trimmed ('' when none). Anything else, or more than
-    MAX_TEXT characters, is an IntakeError."""
     if v is None:
         return ""
     if not isinstance(v, str):
@@ -140,8 +135,7 @@ def typed_text(v: Any) -> str:
 
 
 def clean_body(repo: Repo, body: dict[str, Any], *, start: bool) -> dict[str, Any]:
-    """The form, checked; IntakeError says what is wrong (in Chinese). Documents and a typed paragraph are the same
-    material: either one needs gates 1 and 2."""
+    """The form, checked; IntakeError says what is wrong (in Chinese)."""
     cfg = repo.cfg
     slug = str(body.get("slug") or "").strip().lower()
     if not SLUG_RE.match(slug):
@@ -185,9 +179,8 @@ def clean_body(repo: Repo, body: dict[str, Any], *, start: bool) -> dict[str, An
 
 @contextlib.contextmanager
 def documents(b: dict[str, Any]) -> Iterator[list[str]]:
-    """What brain-kit takes in for the form *b* (clean_body): the typed paragraph as TEXT_DOC, first, as the page shows
-    it, then the documents. TEXT_DOC is in a folder only this user can read, gone when the block ends: brain-kit reads
-    it while it builds the package, which records only its name and sha256."""
+    """TEXT_DOC's folder is readable only by this user (tempfile.mkdtemp) and goes when the block ends: brain-kit reads
+    --doc files only while it builds the package, whose manifest names its sources without their paths."""
     if not b["text"]:
         yield b["docs"]
         return

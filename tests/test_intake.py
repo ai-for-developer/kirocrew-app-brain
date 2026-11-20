@@ -452,9 +452,7 @@ SAID = "每周一早上给商户发上周的结算周报。\n对接电话：1381
 MARK = "每周一早上给商户发上周的结算周报"
 
 
-def held_by(root, words):
-    """Every file under *root* holding *words*, relative to it. The app's temporary files go under *root* too (the
-    tests set tempfile's folder there), so a copy of what was typed left behind is found."""
+def files_holding(root, words):
     return sorted(str(p.relative_to(root)) for p in root.rglob("*")
                   if p.is_file() and not p.is_symlink() and words.encode("utf-8") in p.read_bytes())
 
@@ -468,9 +466,6 @@ def temp_dir(tmp_path, monkeypatch):
 
 
 def test_a_typed_paragraph_is_checked_as_one_more_document_first_and_nothing_is_left_of_it(tmp_path, home, temp_dir):
-    """brain-kit takes what the person typed in as 需求描述.md, before the documents, as the page shows it: the same
-    gates (a phone number masked, a line that reads like an approval quoted); the masked value never comes back, and
-    先检查 leaves no copy of the words anywhere."""
     repo = make_project(tmp_path)
     svc = make_service(tmp_path, [repo])
     (tmp_path / "b").mkdir()
@@ -491,14 +486,11 @@ def test_a_typed_paragraph_is_checked_as_one_more_document_first_and_nothing_is_
     assert "像审批的行 1 处：已标成引用，不会被当成指令" in said["items"], said
     assert both["ok"] is True and [f["name"] for f in both["files"]] == ["需求描述.md", "需求文档/退款需求.md"], both
     assert "13812345678" not in json.dumps([alone, both])
-    assert held_by(tmp_path, MARK) == [] and list(temp_dir.iterdir()) == []
+    assert files_holding(tmp_path, MARK) == [] and list(temp_dir.iterdir()) == []
 
 
 def test_a_typed_paragraph_starts_a_run_with_its_material_package_and_never_reaches_the_session_prompt(
         tmp_path, home, temp_dir):
-    """开工 with only a typed paragraph: brain start takes it in like a document, run.json names the package, the
-    session's first message has the package id and none of the words; afterwards the words are only in the package
-    (masked as it masks a document), not in a file the app wrote for brain-kit."""
     repo = make_project(tmp_path)
     install_brain_dev(home)
     gw = FakeGateway()
@@ -523,10 +515,10 @@ def test_a_typed_paragraph_starts_a_run_with_its_material_package_and_never_reac
     assert json.loads((pkg / "manifest.json").read_text())["sources"][0]["name"] == "需求描述.md"
     kick = gw.msgs[out["slot"]][0]["content"]
     assert "PKG-PAY-1-1" in kick and MARK not in kick and "13812345678" not in kick and "approve" not in kick.lower()
-    held = held_by(tmp_path, MARK)
+    held = files_holding(tmp_path, MARK)
     assert held and all("/PKG-PAY-1-1/segments/" in p for p in held), held
     assert any(p.startswith("home/.brain/intake/packages/") for p in held), held
-    assert held_by(tmp_path, "13812345678") == [] and list(temp_dir.iterdir()) == []
+    assert files_holding(tmp_path, "13812345678") == [] and list(temp_dir.iterdir()) == []
 
 
 def test_a_typed_paragraph_needs_gates_1_and_2_as_documents_do_and_is_text_of_at_most_20000_characters(tmp_path, home):
@@ -558,5 +550,5 @@ def test_a_typed_paragraph_needs_gates_1_and_2_as_documents_do_and_is_text_of_at
     assert said[4].startswith("「用一段话说需求」最多 20000 个字（现在 20001 个）"), said[4]
     assert refused == [(400, s) for s in said]
     assert longest["ok"] is True and longest["files"][0]["name"] == "需求描述.md", longest
-    assert blank["error"] == "没有文档，也没写一段话：不用检查，可以直接开工"    # spaces only: nothing was typed
-    assert not (home / "workplace" / "brain-app" / "pay" / "weekly").exists()     # refused before any worktree
+    assert blank["error"] == "没有文档，也没写一段话：不用检查，可以直接开工"
+    assert not (home / "workplace" / "brain-app" / "pay" / "weekly").exists()
