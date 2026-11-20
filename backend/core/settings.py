@@ -6,7 +6,11 @@
   fetch_every_min  every repo with a remote is fetched this often by itself, in minutes (0: only on 「从远端取最新」)
   auto_push   {repo path: false} for a listed repo whose run branches are not pushed at Lean's checkpoints (on when
               left out; progress.py)
-  team        team mode (the team runner only): the bridge loop and runnerd run inside the app
+  role        what this install is: personal (the default, a person's own machine: it never runs the team runner,
+              运行机 shows the team runner as GitLab shows it) or team_server (the team's one runner: 设置 has 团队模式
+              and 一键建运行机, 运行机 is its own bridge). Settings of 0.4.2 and before name none: a machine in team mode
+              then is the team server, any other a personal one
+  team        team mode (the team server only): the bridge loop and runnerd run inside the app
     enabled          on / off
     bridge_config    brain-kit's bridge.json (projects, gitlab, identities, ledger, spool_dir, vouchers_dir …) with
                      "signer": {"type": "spool", "spool_dir", "allowed_signers"} and no signing_key: the separate
@@ -35,6 +39,9 @@ from .constants import WORK_ROOT
 MAX_REPOS = 20
 MAX_FETCH_MIN = 120
 TEAM_FIELD = {"bridge_config": "桥的配置文件", "runnerd_config": "运行机的配置文件"}     # 设置's labels
+PERSONAL, TEAM_SERVER = "personal", "team_server"
+ROLES = (PERSONAL, TEAM_SERVER)
+ROLE_SWITCH = "这台机器是团队运行机（服务器）"     # 设置's switch for TEAM_SERVER, at the bottom of the page
 AGAIN = "：刷新页面再存一次"
 # the team view's limits: (default, smallest, largest, what 设置 calls it)
 LIMITS = {"wip_limit": (3, 1, 20, "每人同时在做的需求上限"),
@@ -45,7 +52,8 @@ LIMITS = {"wip_limit": (3, 1, 20, "每人同时在做的需求上限"),
 
 def defaults() -> dict[str, Any]:
     return {"brainkit": bk.default_path(), "repos": [], "work_root": str(WORK_ROOT), "fetch_every_min": 5,
-            "auto_push": {}, "team": {"enabled": False, "bridge_config": "", "runnerd_config": "", "dev_same_user": False},
+            "auto_push": {}, "role": PERSONAL,
+            "team": {"enabled": False, "bridge_config": "", "runnerd_config": "", "dev_same_user": False},
             **{k: v[0] for k, v in LIMITS.items()}}
 
 
@@ -150,4 +158,14 @@ def check(data: Any) -> tuple[dict[str, Any], list[str]]:
                 t[k] = p
             if t["enabled"] and not t["bridge_config"]:
                 probs.append("勾了「这台机器是团队运行机」，就要填「%s」" % TEAM_FIELD["bridge_config"])
+    team_on, role = out["team"]["enabled"], data.get("role")
+    if role is None:        # settings of 0.4.2 and before: a machine in team mode is the team server
+        role = TEAM_SERVER if team_on else PERSONAL
+    elif role not in ROLES:
+        probs.append("「%s」的格式不对%s" % (ROLE_SWITCH, AGAIN))
+        role = TEAM_SERVER if team_on else PERSONAL
+    if role == PERSONAL and team_on:
+        probs.append("要开团队模式，先在设置最下面勾上「%s」" % ROLE_SWITCH)
+        out["team"]["enabled"] = False
+    out["role"] = role
     return out, probs

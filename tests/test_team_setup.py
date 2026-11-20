@@ -712,7 +712,7 @@ def test_the_app_runs_it_in_the_background_and_team_mode_starts_with_the_signer(
     """Through the routes: the run goes on in a worker thread, the page reads its steps; team mode is on afterwards
     through the settings (its TeamRuntime started) with the real signer as a child process, which stops with the app."""
     signerproc = mod("team.signerproc")
-    svc = make_service(tmp_path / "app", [], transport=world["gl"])
+    svc = make_service(tmp_path / "app", [], transport=world["gl"], role="team_server")
     routes = mod("handlers").build_routes(svc, __import__("http_fakes").AppRoute, web=FakeWeb(), is_owner=lambda _r: True)
     body = {"gitlab_base": BASE, "project": P, "admin_token": world["admin"], "roles": {"builder": "bob"}}
 
@@ -764,7 +764,7 @@ def test_the_app_runs_it_in_the_background_and_team_mode_starts_with_the_signer(
 
 def the_app(world, tmp_path):
     """The app on the fake GitLab and its routes; setup(): one run through POST /team/setup, to its end."""
-    svc = make_service(tmp_path / "app", [], transport=world["gl"])
+    svc = make_service(tmp_path / "app", [], transport=world["gl"], role="team_server")
     routes = mod("handlers").build_routes(svc, __import__("http_fakes").AppRoute, web=FakeWeb(), is_owner=lambda _r: True)
     body = {"gitlab_base": BASE, "project": P, "admin_token": world["admin"], "roles": {"builder": "bob"}}
 

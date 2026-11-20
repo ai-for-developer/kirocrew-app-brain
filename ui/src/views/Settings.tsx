@@ -23,8 +23,9 @@ import { SIGNER_SAME_USER } from './Team'
 export const SAME_USER_WARNING = '签名器和 app 用同一个系统用户，签名私钥这个用户就能读到，签名挡不住 app 自己：只适合本机试用，不能用在正式的运行机上。'
 const BRIDGE_HINT = 'bridge.json：带 "signer": {"type": "spool", "spool_dir", "allowed_signers"}，不写 signing_key'
 
-/** The form: everything but the repos (导入仓库 adds them, 移出列表 removes them; the backend keeps a key left out). */
-type Form = Omit<Settings, 'repos'>
+/** The form: everything but the repos (导入仓库 adds them, 移出列表 removes them) and the role (its own switch); the
+ * backend keeps a key left out. */
+type Form = Omit<Settings, 'repos' | 'role'>
 const formOf = (s: Settings): Form => ({
   brainkit: s.brainkit, work_root: s.work_root, fetch_every_min: s.fetch_every_min, auto_push: { ...s.auto_push }, team: { ...s.team },
   wip_limit: s.wip_limit, wait_timeout_h: s.wait_timeout_h, stale_after_h: s.stale_after_h, verify_fail_limit: s.verify_fail_limit,

@@ -88,7 +88,8 @@ def request_requirements(wt: Path, intent: str, text: str = "# Requirements\n\nS
 
 
 def make_service(tmp: Path, repos: list[Path], *, gw: FakeGateway | None = None, team: dict | None = None,
-                 transport: Any = None, kick: Any = None) -> Any:
+                 transport: Any = None, kick: Any = None, role: str | None = None) -> Any:
+    """*role*: settings.role (None: none, as settings of 0.4.2 and before, so team mode on makes the team server)."""
     service = mod("service")
     sessions = mod("sessions")
     data = tmp / "data"
@@ -97,7 +98,7 @@ def make_service(tmp: Path, repos: list[Path], *, gw: FakeGateway | None = None,
     (data / "settings.json").write_text(json.dumps({
         "brainkit": str(BRAINKIT), "repos": [str(r) for r in repos],
         "work_root": str(home / "workplace" / "brain-app"),
-        "team": team or {"enabled": False}}), encoding="utf-8")
+        "team": team or {"enabled": False}, **({"role": role} if role else {})}), encoding="utf-8")
     gw = gw or FakeGateway()
     ctx = SimpleNamespace(name="brain", logger=logging.getLogger("brain-test"), data_dir=str(data))
     mgr = sessions.SessionManager(gw, app="brain", state_file=data / "sessions.json", log=ctx.logger)

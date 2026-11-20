@@ -471,8 +471,14 @@ export interface MeNameResult {
   raw?: string
 }
 
+/** What this install is (settings.role): personal (the default, a person's own machine: 运行机 shows the team runner
+ * as GitLab shows it), or team_server (the team's one runner: 设置 has 团队模式 and 一键建运行机, 运行机 is its own
+ * bridge). Settings of 0.4.2 and before name none: a machine in team mode then is the team server. */
+export type InstallRole = 'personal' | 'team_server'
+
 export interface Status {
-  app: { name: string; version: string; team: boolean }
+  /** team: team mode runs here (only ever on a team server) */
+  app: { name: string; version: string; team: boolean; role: InstallRole }
   brainkit: {
     path: string
     ok: boolean
@@ -782,6 +788,9 @@ export interface Settings extends TeamLimits {
   fetch_every_min: number
   /** {repo path: false} for a repo whose run branches are not pushed at Lean's checkpoints (on when left out) */
   auto_push: Record<string, boolean>
+  /** set by 设置's own switch only (the form never sends it); back to personal turns team mode off */
+  role: InstallRole
+  /** team mode, only on a team server (a personal install never has it on) */
   team: {
     enabled: boolean
     /** brain-kit's bridge.json, with "signer": {"type": "spool", "spool_dir", "allowed_signers"} and no signing_key */

@@ -13,7 +13,7 @@ const props = (over: Partial<ViewProps> = {}): ViewProps => ({
 })
 
 describe('设置', () => {
-  test('save posts the edited settings without the repos (the list is 导入仓库’s and 移出列表’s), puts the answered status in place', async () => {
+  test('save posts the edited settings without the repos (the list is 导入仓库’s and 移出列表’s) and the role (its own switch), puts the answered status in place', async () => {
     const user = userEvent.setup()
     const answered = fx.status()
     installFixtureRoutes({
@@ -28,7 +28,7 @@ describe('设置', () => {
     expect(await screen.findByText('已保存')).toBeInTheDocument()
     const post = apiCalls.find((c) => c.method === 'POST')
     expect(post?.path).toBe(`${API}/settings`)
-    const { repos: _repos, ...rest } = fx.settings()
+    const { repos: _repos, role: _role, ...rest } = fx.settings()
     expect(post?.body).toEqual({ ...rest, team: { ...fx.settings().team, enabled: true } })
     expect(p.setStatus).toHaveBeenCalledWith(answered)
   })
@@ -477,7 +477,7 @@ describe('设置', () => {
     await user.type(box, '5')
     await user.click(screen.getByRole('button', { name: '保存' }))
     expect(await screen.findByText('已保存')).toBeInTheDocument()
-    const { repos: _repos, ...rest } = fx.settings()
+    const { repos: _repos, role: _role, ...rest } = fx.settings()
     expect(apiCalls.find((c) => c.method === 'POST')?.body).toEqual({ ...rest, wip_limit: 5 })
     expect(box).toHaveValue(5)
   })

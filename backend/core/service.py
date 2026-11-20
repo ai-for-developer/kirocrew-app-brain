@@ -1814,7 +1814,8 @@ class Service:
         for x in repos:
             x["me"] = mes.get(x["id"])
             x["sync"] = syncs.get(x["id"])
-        return {"app": {"name": self.name, "version": VERSION, "team": self.team is not None},
+        return {"app": {"name": self.name, "version": VERSION, "team": self.team is not None,
+                        "role": self.settings["role"]},
                 "brainkit": {"path": info["path"], "ok": info["ok"], "version": info["version"], "error": info["error"],
                              "modules": info["modules"]},
                 "repos": repos, "crew": dict(self.crew, rows=list(self.crew["rows"]) + self.folders_stuck),
@@ -1826,10 +1827,14 @@ class Service:
         return {**self.settings, "team": dict(self.settings["team"]), "auto_push": dict(self.settings["auto_push"])}
 
     async def save_settings(self, body: Any) -> dict[str, Any]:
-        """Check, save atomically, reload. A key the body leaves out keeps its value (the 设置 form sends no repos: the
-        list is changed by 导入仓库 and 移出列表 only)."""
+        """Check, save atomically, reload. A key the body leaves out keeps its value (the 设置 form sends no repos and no
+        role: the list is changed by 导入仓库 and 移出列表 only, the role by its own switch). A team server made
+        personal again stops being the team runner: its team mode goes off."""
         if isinstance(body, dict):
             body = {**self.settings_view(), **body}
+            if body.get("role") == settings_mod.PERSONAL and self.settings["role"] != settings_mod.PERSONAL \
+                    and isinstance(body.get("team"), dict):
+                body["team"] = dict(body["team"], enabled=False)
         clean, probs = settings_mod.check(body)
         if probs:
             raise AppError("；".join(probs), "invalid_settings")
@@ -2246,7 +2251,11 @@ class Service:
 
     async def team_setup(self, body: Any) -> dict[str, Any]:
         """POST /team/setup: team/setup.py's steps on a worker thread (they wait on GitLab, git and brain-kit for longer
-        than a request may take); the page polls GET /team/setup. The person's token stays in this run's memory."""
+        than a request may take); the page polls GET /team/setup. The person's token stays in this run's memory. Only
+        on the team server: a personal install never becomes the team runner by itself."""
+        if self.settings["role"] != settings_mod.TEAM_SERVER:
+            raise AppError("这台机器是个人电脑，不建运行机：团队运行机装在团队的服务器上。这台就是那台服务器的话，先在设置最下面勾上"
+                           "「%s」" % settings_mod.ROLE_SWITCH, "not_team_server", 409)
         try:
             inp = setup_mod.SetupInput.parse(body)
         except setup_mod.SetupRefused as exc:
