@@ -89,6 +89,10 @@ def load(path: str) -> dict[str, Any]:
         if not os.path.isfile(os.path.join(pkg_dir, "__init__.py")):
             _state["error"] = "这里没有 brain-kit（找不到 %s/__init__.py）" % pkg_dir
             return info()
+        gone = [n for n in REQUIRED if not _has_source(pkg_dir, n)]
+        if gone:
+            _state["error"] = "brain-kit 太旧（没有 %s）：要 %s 或更新的版本" % ("、".join(gone), VERSION_NEEDED)
+            return info()
         try:
             spec = importlib.util.spec_from_file_location(PKG, os.path.join(pkg_dir, "__init__.py"),
                                                           submodule_search_locations=[pkg_dir])
@@ -102,9 +106,7 @@ def load(path: str) -> dict[str, Any]:
         except Exception as exc:  # noqa: BLE001 - a broken checkout must not take the app down
             unload()
             _state["path"] = path
-            gone = isinstance(exc, ModuleNotFoundError) and (exc.name or "").startswith(PKG + ".")
-            _state["error"] = ("brain-kit 太旧（没有 %s）：要 %s 或更新的版本" % (exc.name[len(PKG) + 1:], VERSION_NEEDED)
-                               if gone else "brain-kit 导入失败：%s: %s" % (type(exc).__name__, str(exc)[:300]))
+            _state["error"] = "brain-kit 导入失败：%s: %s" % (type(exc).__name__, str(exc)[:300])
             return info()
         lacking = ["%s.%s" % (mod, attr) for mod, attr in NEEDS if _attr(mods[mod], attr) is None]
         if lacking:
@@ -119,6 +121,12 @@ def load(path: str) -> dict[str, Any]:
                 _state["errors"][name] = "%s: %s" % (type(exc).__name__, str(exc)[:200])
         _state["mods"] = mods
         return info()
+
+
+def _has_source(pkg_dir: str, name: str) -> bool:
+    """The checkout has module *name* (``bridge.handoff``) as a file or a package."""
+    base = os.path.join(pkg_dir, *name.split("."))
+    return os.path.isfile(base + ".py") or os.path.isfile(os.path.join(base, "__init__.py"))
 
 
 def _attr(obj: Any, dotted: str) -> Any:

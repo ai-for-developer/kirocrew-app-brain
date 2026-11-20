@@ -92,7 +92,8 @@ OLDER = [
 @pytest.mark.parametrize("path,cut,lacks", OLDER, ids=["9935b11", "72b278e"])
 def test_an_older_brainkit_is_refused(tmp_path, path, cut, lacks):
     """The app (and its signer) need brain-kit 72b278e's interfaces: a checkout without one of them is refused with a
-    message naming what it lacks and the commit needed, not half used. (A copy of the checkout with one taken out.)"""
+    message naming what it lacks and the commit needed (the app's: bk.VERSION_NEEDED), not half used. (A copy of the
+    checkout with one taken out.)"""
     import shutil
     from appkit import BRAINKIT, mod
     if not (BRAINKIT / "brainkit" / "__init__.py").is_file():
@@ -104,7 +105,7 @@ def test_an_older_brainkit_is_refused(tmp_path, path, cut, lacks):
     bk = mod("bk")
     try:
         got = bk.load(str(old))
-        assert got["ok"] is False and lacks in got["error"] and "72b278e" in got["error"], got
+        assert got["ok"] is False and lacks in got["error"] and bk.VERSION_NEEDED in got["error"], got
         assert bk.load(str(BRAINKIT))["ok"] is True
     finally:
         bk.unload()
@@ -117,3 +118,20 @@ def test_an_older_brainkit_is_refused(tmp_path, path, cut, lacks):
     assert p.returncode != 0 and lacks in p.stderr and "72b278e" in p.stderr, p.stderr
     p = subprocess.run([sys.executable, "-I", "-c", probe, str(BRAINKIT)], capture_output=True, text=True)
     assert p.returncode == 0, p.stderr
+
+
+def test_a_brainkit_without_flows_is_refused_as_too_old(tmp_path):
+    """Fast mode's rules live in brain-kit's flows: a checkout from before it is too old, said so, never half used."""
+    import shutil
+    from appkit import BRAINKIT, mod
+    if not (BRAINKIT / "brainkit" / "flows.py").is_file():
+        pytest.skip("brain-kit checkout without flows")
+    old = tmp_path / "old-brain-kit"
+    shutil.copytree(BRAINKIT / "brainkit", old / "brainkit", ignore=shutil.ignore_patterns("__pycache__"))
+    (old / "brainkit" / "flows.py").unlink()
+    bk = mod("bk")
+    try:
+        got = bk.load(str(old))
+        assert got["ok"] is False and got["error"] == "brain-kit 太旧（没有 flows）：要 %s 或更新的版本" % bk.VERSION_NEEDED
+    finally:
+        bk.unload()
