@@ -2035,6 +2035,25 @@ export interface ReqBoard {
   /** a fast run's way, five steps in place of the stage graph (phases, nodes, runs, relays and lean_steps are empty);
    * null: the stage graph applies. The backend always sends it */
   steps?: FastStep[] | null
+  /** a fast run's 时间花在哪, which it has no stage lanes for: from its sessions' transcripts on this machine; null for a
+   * Lean run (its lanes say it) and for a fast run with no session read here. The backend always sends it */
+  time?: FastTime | null
+}
+
+/** Where a fast run's time went (backend fastboard.time_spent), read from its sessions on this machine. */
+export interface FastTime {
+  /** seconds the AI worked: each turn from the message that started it to its last reply or call (a turn still going:
+   * to now) */
+  agent: number
+  /** seconds it waited for a person: from a turn's end to the next message, between its sessions, and from the last
+   * turn's end to the merge (or now) */
+  person: number
+  /** how many waits that is (段) */
+  waits: number
+  /** the sessions it was read from */
+  sessions: number
+  /** false: a transcript was read only in part, or one of its sessions has not been read yet, so the numbers are 至少 */
+  whole: boolean
 }
 
 /** One step of a fast run (backend fastboard.py): 写代码 (its commits), 自动检查 (the newest `lean verify`), 开 MR, CI
@@ -2114,6 +2133,37 @@ export interface NodeOutput {
   /** files left out past the 200 */
   more: number
   /** nothing to list: why, in plain words */
+  why: string | null
+}
+
+/** One commit of the run branch as 产出 lists it for a fast run (GET /outputs/{repo}/{key}/commits). */
+export interface CommitOut {
+  /** 40 hex */
+  sha: string
+  at: number
+  subject: string
+  by: 'person' | 'bot'
+  /** it changed only Lean's and the run's records */
+  records_only: boolean
+  /** the files it changed (Lean's ledgers never), each read at this commit and compared with the commit before; at
+   * most 200 */
+  files: OutFile[]
+  more: number
+}
+
+/** 产出 by commit, a fast run's drawer (it has no stage rounds): the run branch's commits, oldest first, and every file
+ * they changed added up (全部改动: each read at the last commit that changed it, compared with the commit before the
+ * first; A while its first change adds it, D when its last deletes it). Files are OutFiles with output false, no vs,
+ * no pin. */
+export interface CommitsOutput {
+  branch: string | null
+  /** the branch's newest commit (40 hex); null: none yet */
+  head: string | null
+  commits: CommitOut[]
+  /** at most 200 */
+  files: OutFile[]
+  more: number
+  /** no commit yet: why, in plain words */
   why: string | null
 }
 
