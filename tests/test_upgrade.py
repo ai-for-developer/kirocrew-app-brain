@@ -143,7 +143,8 @@ def test_the_kit_fix_reinstalls_on_a_new_branch_and_never_touches_the_checkout(t
     if HAS_VERSION_CHECK:
         shipped = (BRAINKIT / "kit" / ".kiro" / "brain" / "lean-hook.py").read_text(encoding="utf-8")
         assert sh("git", "-C", repo, "show", "brain/upgrade-kit:" + ADAPTER).stdout == shipped
-        assert "\nADAPTER_VERSION = %s" % NEED in shipped        # the kit fix installs the adapter brain-kit needs
+        shipped_v = re.search(r"^ADAPTER_VERSION = ([0-9]+)", shipped, re.M)
+        assert shipped_v and int(shipped_v.group(1)) >= NEED       # brain-kit ships an adapter at least as new as it needs
     c = r["commit"]
     assert c["ok"] and not c["blocked"] and "Alice Example <alice@example.com>" in c["text"]
     log = sh("git", "-C", repo, "log", "-1", "--format=%an <%ae>|%cn <%ce>|%s|%P", "brain/upgrade-kit").stdout.strip()
