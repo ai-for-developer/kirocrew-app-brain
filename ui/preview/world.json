@@ -54095,7 +54095,7 @@
      {
       "id": "risk",
       "group": "risk",
-      "label": "风险目录",
+      "label": "风险",
       "name": "风险目录（gates/risk-paths）",
       "status": "pass",
       "at": null,
@@ -54473,7 +54473,7 @@
      {
       "id": "risk",
       "group": "risk",
-      "label": "风险目录",
+      "label": "风险",
       "name": "风险目录（gates/risk-paths）",
       "status": "pass",
       "at": null,
