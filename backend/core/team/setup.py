@@ -1288,10 +1288,21 @@ def old_salt(ps: Paths) -> str:
     return ""
 
 
+def kept_entries(path: Path, wanted: list[str]) -> list[Any]:
+    """bridge.json's project entries for these paths: an entry written as an object (a person's `staging` block) is
+    kept as it is, the others are the plain path."""
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8")).get("projects") or []
+    except (OSError, ValueError, AttributeError):
+        rows = []
+    old = {r["project"]: r for r in rows if isinstance(r, dict) and isinstance(r.get("project"), str)}
+    return [old.get(w, w) for w in wanted]
+
+
 def bridge_doc(ctx: Ctx, salt: str) -> dict[str, Any]:
     ps = ctx.paths
     return {
-        "projects": [p.path for p in ctx.found],
+        "projects": kept_entries(ps.bridge_json, [p.path for p in ctx.found]),
         "gitlab": {"base": ctx.inp.gitlab_base, "token_env": NO_TOKEN_ENV["bridge"], "token_file": str(ps.token("bridge"))},
         "identities": str(ps.identities),
         "ledger": str(ps.root / "bridge-ledger.sqlite"),

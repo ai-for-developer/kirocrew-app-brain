@@ -1327,3 +1327,13 @@ def test_the_command_line_sets_up_several_projects_as_gitlab_users_of_their_own(
     assert team["gl"].writes(since) == {"grp/a": [], "grp/b": [], "grp/c": []}
     assert "✓ 桥的令牌  桥的账号是 brain-bridge：用这台机器上存的个人令牌" in second.stdout
     assert team["bridge"] not in first.stdout + first.stderr + second.stdout + second.stderr
+
+
+def test_a_rerun_keeps_a_projects_hand_written_block(tmp_path):
+    path = tmp_path / "bridge.json"
+    path.write_text(json.dumps({"projects": [{"project": "grp/pay", "staging": {"log": {"kind": "file", "path": "/x"}}},
+                                             "grp/old"]}))
+    from backend.core.team import setup as s
+    got = s.kept_entries(path, ["grp/pay", "grp/new"])
+    assert got == [{"project": "grp/pay", "staging": {"log": {"kind": "file", "path": "/x"}}}, "grp/new"]
+    assert s.kept_entries(tmp_path / "missing.json", ["grp/a"]) == ["grp/a"]
