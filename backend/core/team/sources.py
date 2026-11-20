@@ -8,7 +8,8 @@ Before a kind dispatches anything it turns the GitLab object into a Claim. Its k
 has one (a Brain branch ai/<owner>/<KEY>-<slug>, a hand-over's run), else ``<kind>:<project>:<type>!<iid>``. A kind
 does not dispatch work whose key another kind holds, so work is claimed once. What a kind holds is read from its own
 ledger (Source.held) and merged only here. mr-handoff is brain-kit's bridge, which asks no one: it holds the
-requirement keys of its open runs, and every other kind yields to it.
+requirement keys of its open runs, and every other kind yields to it. issue-label (team/issues.py) holds an issue from
+its label until its run starts; from then on the run is the bridge's.
 """
 
 from __future__ import annotations
@@ -18,7 +19,10 @@ from typing import Any, Callable, Iterable, Literal, Mapping, TypedDict
 
 from .. import bk
 
-HANDOFF, PATROL = "mr-handoff", "mr-patrol"
+HANDOFF, PATROL, ISSUE = "mr-handoff", "mr-patrol", "issue-label"
+# GitLab's access levels (a member's role in a project) by number, as Claim.role names them
+LEVEL_NAME = {10: "Guest", 20: "Reporter", 30: "Developer", 40: "Maintainer", 50: "Owner"}
+MAINTAINER, DEVELOPER, OWNER = 40, 30, 50
 
 
 class Ref(TypedDict):
@@ -32,6 +36,7 @@ class Claim(TypedDict):
     project: str
     link: str | None
     asked_by: str
+    role: str               # asked_by's GitLab role in the project, when the kind reads it ("" when it does not)
     title: str
     ref: Ref
 
@@ -41,9 +46,9 @@ def claim_key(kind: str, project: str, ref: Ref, req: str | None = None) -> str:
 
 
 def make_claim(kind: str, project: str, ref: Ref, *, link: str | None, asked_by: str, title: str,
-               req: str | None = None) -> Claim:
+               req: str | None = None, role: str = "") -> Claim:
     return {"key": claim_key(kind, project, ref, req), "kind": kind, "project": project, "link": link,
-            "asked_by": asked_by, "title": title, "ref": ref}
+            "asked_by": asked_by, "role": role, "title": title, "ref": ref}
 
 
 def mr_claim(kind: str, project: str, mr: Mapping[str, Any], branch_prefix: str) -> Claim:
@@ -79,9 +84,15 @@ def _patrol_held(rt: Any) -> list[Claim]:
     return p.held() if p is not None else []
 
 
+def _issues_held(rt: Any) -> list[Claim]:
+    s = getattr(rt, "issues", None)
+    return s.held() if s is not None else []
+
+
 SOURCES: dict[str, Source] = {s.kind: s for s in (
     Source(HANDOFF, "交接过来的 MR", _handoff_held),
     Source(PATROL, "巡检开着的 MR", _patrol_held),
+    Source(ISSUE, "打了标签的 issue", _issues_held),
 )}
 DEFAULT: tuple[str, ...] = (HANDOFF,)
 

@@ -48,8 +48,7 @@ except ImportError:  # pragma: no cover - not macOS or Linux: nothing keeps two 
 ROLES = ("product", "builder", "security", "data")
 ROLE_NAME = {"product": "产品", "builder": "开发", "security": "安全", "data": "数据"}
 PUSH_MODES = ("auto", "ssh", "token")
-LEVEL_NAME = {10: "Guest", 20: "Reporter", 30: "Developer", 40: "Maintainer", 50: "Owner"}
-MAINTAINER, DEVELOPER, OWNER = 40, 30, 50
+LEVEL_NAME, MAINTAINER, DEVELOPER, OWNER = sources.LEVEL_NAME, sources.MAINTAINER, sources.DEVELOPER, sources.OWNER
 # a year less a day from today in UTC: GitLab refuses an expires_at more than 365 days past its own today, which is
 # UTC's (this machine's may be a day ahead), or a day behind it on a GitLab set to a zone west of UTC
 TOKEN_DAYS = 364
