@@ -1,7 +1,7 @@
 # Brain 交付（KiroCrew app）
 
-在 KiroCrew 里用 [brain-kit](https://github.com/ai-for-developer/brain-kit) 交付需求：认领需求，材料过五道关，在 brain-dev-crew
-会话里按 [AI-DLC Lean](https://github.com/ai-for-developer/aidlc-lean) 开发，交给团队运行机，跟进问题，维护仓库里的 Brain。
+在 KiroCrew 里用 [brain-kit](https://github.com/warren830/brain-kit) 交付需求：认领需求，材料过五道关，在 brain-dev-crew
+会话里按 [AI-DLC Lean](https://github.com/warren830/aidlc-lean) 开发，交给团队运行机，跟进问题，维护仓库里的 Brain。
 
 这个仓库本身就是 KiroCrew 的一个应用来源：`main` 是源码，`release` 分支是装好就能用的 app（界面已经构建好，brain-kit 和
 Lean 也在里面）。安装时不用 node，也不用另外装 brain-kit。各部分的版本见 `release` 分支的 `VERSIONS`。
@@ -19,7 +19,7 @@ app、怎么配团队运行机。
 
 1. KiroCrew 侧边栏 → **Apps** → **Discover（发现）**。
 2. 点 Discover 右上角的齿轮（Sources / 来源）→ **管理应用来源（Manage app sources）** → **添加注册表（Add Registry）**。
-3. 仓库填 `https://github.com/ai-for-developer/kirocrew-app-brain`，分支填 **`release`**（不是 main），保存。显示名称可以不填。
+3. 仓库填 `https://github.com/warren830/kirocrew-app-brain`，分支填 **`release`**（不是 main），保存。显示名称可以不填。
 4. 回到 Discover，找到 **Brain 交付** → **安装（Install）**。找不到就点 **同步应用（Sync apps）**；
    连 GitHub 慢的话第一次同步可能失败（KiroCrew 拉仓库只等 60 秒），再点一次。
    - 会先弹信任确认：**这个 app 和 KiroCrew 同等权限运行**（它的代码跑在 KiroCrew 里，能读写你的文件、运行命令）。

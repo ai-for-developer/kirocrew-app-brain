@@ -2349,7 +2349,7 @@ function Yt({ cells: e, label: t }) {
 		}, t))
 	});
 }
-var Xt = "git clone https://github.com/ai-for-developer/brain-kit.git ~/brain-kit", Zt = (e) => /^[\w@%+=:,./~-]+$/.test(e) ? e : `'${e.replace(/'/g, "'\\''")}'`;
+var Xt = "git clone https://github.com/warren830/brain-kit.git ~/brain-kit", Zt = (e) => /^[\w@%+=:,./~-]+$/.test(e) ? e : `'${e.replace(/'/g, "'\\''")}'`;
 function Qt(e, t = "", n = !1) {
 	let r = t ? `git -C ${Zt(t)} pull --ff-only` : "", i = n ? "再点下面的「保存」重新读它" : "再到设置里点「保存」重新读它";
 	return /太旧/.test(e) ? {
