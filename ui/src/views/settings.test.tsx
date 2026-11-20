@@ -343,7 +343,7 @@ describe('设置', () => {
     const card = screen.getByTestId('settings-no-brainkit')
     expect(card).toHaveTextContent('找不到 brain-kit')
     expect(card).toHaveTextContent('做什么在下面的「brain-kit 在哪」写上它的目录，点「保存」')
-    expect(within(card).getByTestId('cmd-line')).toHaveTextContent('git clone https://github.com/warren830/brain-kit.git ~/brain-kit复制')
+    expect(within(card).getByTestId('cmd-line')).toHaveTextContent('git clone https://github.com/ai-for-developer/brain-kit.git ~/brain-kit复制')
     const input = await within(card).findByLabelText('brain-kit 在哪')
     await waitFor(() => expect(input).toHaveFocus())
     expect(screen.getAllByLabelText('brain-kit 在哪')).toHaveLength(1)                  // not a second time in the form below

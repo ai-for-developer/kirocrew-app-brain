@@ -260,7 +260,7 @@ describe('the app: one bar over the views', () => {
     render(<BrainApp pollMs={60_000} />)
     const nokit = await screen.findByTestId('br-no-brainkit')
     expect(nokit).toHaveTextContent('找不到 brain-kit做什么在设置的「brain-kit 在哪」写上它的目录，点「保存」；这台机器上还没有的话，先在终端里克隆一份（点「复制」拿命令），再写它的位置')
-    expect(within(nokit).getByTestId('cmd-line')).toHaveTextContent('git clone https://github.com/warren830/brain-kit.git ~/brain-kit复制')
+    expect(within(nokit).getByTestId('cmd-line')).toHaveTextContent('git clone https://github.com/ai-for-developer/brain-kit.git ~/brain-kit复制')
     expect(within(nokit).getByText('细节').closest('details')).not.toHaveAttribute('open')
     expect(within(nokit).getByText(s.brainkit.error)).toBeInTheDocument()
     expect(screen.getAllByRole('alert').filter((e) => e.closest('[data-testid=br-banners]'))).toHaveLength(1)
@@ -438,7 +438,7 @@ describe('the app: one bar over the views', () => {
     const broken = brainkitProblem('brain-kit 导入失败：ModuleNotFoundError: No module named \'yaml\'', '/Users/alice/my kit')
     expect(broken).toMatchObject({ kind: 'broken', text: 'brain-kit 读不进来（位置是对的）', cmd: "git -C '/Users/alice/my kit' pull --ff-only" })
     expect(broken.todo).not.toMatch(/ModuleNotFoundError/)
-    expect(brainkitProblem('这里没有 brain-kit（找不到 /x/brainkit/__init__.py）')).toMatchObject({ kind: 'missing', text: '找不到 brain-kit', cmd: 'git clone https://github.com/warren830/brain-kit.git ~/brain-kit' })
+    expect(brainkitProblem('这里没有 brain-kit（找不到 /x/brainkit/__init__.py）')).toMatchObject({ kind: 'missing', text: '找不到 brain-kit', cmd: 'git clone https://github.com/ai-for-developer/brain-kit.git ~/brain-kit' })
     // too old: the banner leads to 设置 (not to its place, which is right) with the line to pull it
     const user = userEvent.setup()
     const s = fx.status()

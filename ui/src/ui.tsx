@@ -832,7 +832,7 @@ export function Segs({ cells, label }: { cells: { tone: 'pass' | 'fail' | 'run' 
 }
 
 /** Where brain-kit comes from, for a machine that has none (设置, the shell's banner). */
-export const BRAINKIT_CLONE = 'git clone https://github.com/warren830/brain-kit.git ~/brain-kit'
+export const BRAINKIT_CLONE = 'git clone https://github.com/ai-for-developer/brain-kit.git ~/brain-kit'
 
 /** A path as a shell word: as it is when it is plain, else in single quotes. */
 const shellWord = (p: string) => (/^[\w@%+=:,./~-]+$/.test(p) ? p : `'${p.replace(/'/g, `'\\''`)}'`)

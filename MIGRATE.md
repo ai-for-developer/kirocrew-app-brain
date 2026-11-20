@@ -91,7 +91,7 @@ git branch -a --list '*claim/*' "*$P/*" | head -50
 
 ### 2. 装 app（人做）
 
-1. KiroCrew 侧边栏 → **Apps** → **Discover（发现）** → 右上角齿轮 → **管理应用来源（Manage app sources）** → **添加注册表（Add Registry）**。仓库填 `https://github.com/warren830/kirocrew-app-brain`，分支填 **`release`**（不是 main），保存。
+1. KiroCrew 侧边栏 → **Apps** → **Discover（发现）** → 右上角齿轮 → **管理应用来源（Manage app sources）** → **添加注册表（Add Registry）**。仓库填 `https://github.com/ai-for-developer/kirocrew-app-brain`，分支填 **`release`**（不是 main），保存。
 2. 回到 Discover，找到 **Brain 交付** → **安装（Install）**。找不到就点 **同步应用（Sync apps）**。
 3. 弹出信任确认：这个 app 和 KiroCrew 同等权限运行。确认信任。
 4. 报 `git clone timed out` 时：KiroCrew 拉仓库只等 60 秒，网慢就会超时。点 **Trust and try again** 多试几次。
@@ -371,9 +371,9 @@ sudo -iu brainbot kirocrew config get agent.acp_backend    # 最后一行是 kas
 签名服务要一份 brain-kit 和一份 app 源码，放在 brainbot 改不了的地方（app 自带的 `signer/` 归 brainbot，签名服务不能用它）。版本要和 app 自带的一致：用第 3 步验证里 VERSIONS 的 `app` 和 `brain-kit` 两行的 commit。
 
 ```bash
-sudo git clone https://github.com/warren830/brain-kit /opt/brain-kit
+sudo git clone https://github.com/ai-for-developer/brain-kit /opt/brain-kit
 sudo git -C /opt/brain-kit checkout <VERSIONS 里 brain-kit 那行的 commit>
-sudo git clone https://github.com/warren830/kirocrew-app-brain /opt/kirocrew-app-brain
+sudo git clone https://github.com/ai-for-developer/kirocrew-app-brain /opt/kirocrew-app-brain
 sudo git -C /opt/kirocrew-app-brain checkout <VERSIONS 里 app 那行的 commit>
 ```
 

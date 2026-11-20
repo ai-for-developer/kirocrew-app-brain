@@ -94,8 +94,8 @@ cat > "$A/app-registry.json" <<'EOF'
 [
   {
     "name": "brain",
-    "gitUrl": "https://github.com/warren830/kirocrew-app-brain",
-    "repo": "https://github.com/warren830/kirocrew-app-brain",
+    "gitUrl": "https://github.com/ai-for-developer/kirocrew-app-brain",
+    "repo": "https://github.com/ai-for-developer/kirocrew-app-brain",
     "branch": "release"
   }
 ]
@@ -111,9 +111,9 @@ rm -rf "$A/vendor/brain-kit/vendor/aidlc-lean/tests"
 find "$REL" \( -name __pycache__ -o -name '*.pyc' -o -name .DS_Store \) -prune -exec rm -rf {} +
 cat > "$A/VERSIONS" <<EOF
 brain (Brain 交付) $("$PY3" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$A/app.json")
-app         $APP_COMMIT  https://github.com/warren830/kirocrew-app-brain  (main; backend/, ui/dist/ built from ui/)
-brain-kit   $BK  https://github.com/warren830/brain-kit  (vendor/brain-kit, git archive, tests/ left out)
-aidlc-lean  $LEAN  https://github.com/warren830/aidlc-lean  (vendor/brain-kit/vendor/aidlc-lean, git archive, tests/ left out)
+app         $APP_COMMIT  https://github.com/ai-for-developer/kirocrew-app-brain  (main; backend/, ui/dist/ built from ui/)
+brain-kit   $BK  https://github.com/ai-for-developer/brain-kit  (vendor/brain-kit, git archive, tests/ left out)
+aidlc-lean  $LEAN  https://github.com/ai-for-developer/aidlc-lean  (vendor/brain-kit/vendor/aidlc-lean, git archive, tests/ left out)
 EOF
 
 # --- the checks -------------------------------------------------------------------------------------------------- #
