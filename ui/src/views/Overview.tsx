@@ -22,6 +22,7 @@ import { POLL_MS, paths, useAction, usePoll } from '../api'
 import { RoleIcon } from '../board/RoleIcon'
 import { HOW, HOW_LABEL, HOW_VAR, MiniCredits, MiniPeople, MiniUnattended, MiniWho, WHO_VAR, WeeklyChart, fmt, slash } from '../cto/charts'
 import { COL_NAME, Flow, LANE_NAME, StepButton, blockText, blockersOf, colOf, familyProgress, homeOf, lateMarks, laneOf, stepOf, waitedText, type Col, type Lane } from '../cto/Flow'
+import { FlowProgress } from '../flows'
 import { ago, fmtCredits, spaced } from '../format'
 import type { OverviewEntry, View } from '../nav'
 import type { CtoNumbers, CtoRun, EvalFamily, EvalMetric, EvalView, Funnel, Overview, RefreshResult, ReqFamily, ReqState, RepoInfo, Requirement, Roster, Stuck, StuckKind } from '../types'
@@ -1007,7 +1008,7 @@ function Row({ r, at, run, ev, repoName, tree, fold, late, verifyLimit, onOpen, 
         <StateChip state={r.state} label={r.state_label} who={r.waits.who} />
         {r.updated_at !== null && <div className="cto-was">{ago(r.updated_at, at)}更新</div>}
       </td>
-      <td><LeanProgress r={r} /></td>
+      <td><FlowProgress r={r}><LeanProgress r={r} /></FlowProgress></td>
       <td className="br-col-wait" data-label="在等">
         <div className={r.waits.who === 'you' ? 'br-strong' : undefined}>{r.waits.text}</div>
         {waited && <div className={r.waits.who === 'you' ? 'br-waited' : 'cto-was'}>{waited}</div>}

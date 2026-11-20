@@ -10,6 +10,7 @@ import { useState } from 'react'
 import { useAppApi } from '@kirocrew/app-sdk'
 import { paths, useAction } from '../api'
 import { RoleIcon } from '../board/RoleIcon'
+import { can } from '../flows'
 import type { HandoffResult, HandoffState, RequirementDetail, WaitDo } from '../types'
 import { CheckRows, Icon } from '../ui'
 import { ACT } from '../vocab'
@@ -26,11 +27,12 @@ const LOOK: Record<HandoffState, { cls: string; glyph: string }> = {
   failed: { cls: 'is-bad', glyph: '✕' },
 }
 
-/** 需求现状 offers it: a run with its worktree on this machine, in a repo with a remote, not a small requirement (that
- * one's MR goes into its big one's branch), not handed over yet or to be handed over again. */
+/** 需求现状 offers it: a run whose flow is handed over (never a fast one) with its worktree on this machine, in a repo
+ * with a remote, not a small requirement (that one's MR goes into its big one's branch), not handed over yet or to be
+ * handed over again. */
 export function canHandOver(x: RequirementDetail, localOnly: boolean): boolean {
   const r = x.row
-  if (localOnly || !r.worktree || !x.run || r.family?.role === 'child') return false
+  if (!can(r, 'handoff') || localOnly || !r.worktree || !x.run || r.family?.role === 'child') return false
   return r.state === 'local' || AGAIN.includes(r.waits.do ?? 'none')
 }
 

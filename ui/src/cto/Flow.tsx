@@ -18,7 +18,8 @@ import { useState } from 'react'
 import { useNavigate } from '@kirocrew/app-sdk'
 import { RoleIcon } from '../board/RoleIcon'
 import type { View } from '../nav'
-import type { ChildState, FamilyDep, ReqFamily, Requirement, Roster, Stuck, StuckKind, WaitWho } from '../types'
+import type { ChildState, FamilyDep, ReqFamily, Requirement, Roster, Stuck, StuckKind, WaitDo, WaitWho } from '../types'
+import { can, flowOf } from '../flows'
 import { ago, fmtCredits, fmtWaited } from '../format'
 import { ACT, DO_NAME, PHRASE_BREAK, STUCK_NAME, waitName, waitsOn } from '../vocab'
 import { ReviewButton } from '../views/Question'
@@ -47,10 +48,12 @@ const RUNNER_STATES = new Set(['handed_over', 'running', 'rejected', 'parked'])
  * before ✓ 发布, then 发布验收 (the release and Operations' 4.x).
  * A small requirement is in 构建 (it is a unit of its big one's construction) until it is handed over; a split big one
  * is in 构建 while its small ones are built, in 发布验收 once they have all merged; one merged into its big one's branch
- * has no card (null), as a closed one. */
+ * has no card (null), as a closed one. A fast run (no Lean stages) is in 构建 until its MR is open, then in 发布验收:
+ * people review and merge it. */
 export function colOf(r: Requirement): Col | null {
   if (r.state === 'closed' || r.state === 'merged_into_parent') return null
   if (r.state === 'merged') return '已合并'
+  if (!flowOf(r).intent) return r.mr ? '发布验收' : '构建'
   if (r.state === 'acceptance') return '发布验收'
   if (r.state === 'unclaimed') return '构建'
   const n = r.lean.stage_n
@@ -78,20 +81,23 @@ export function laneOf(r: Requirement): Lane {
   return LANE_OF_WHO[r.waits.who] ?? (RUNNER_STATES.has(r.state) ? 'runner' : 'agent')
 }
 
+/** the steps taken on 需求现状 itself: 交接给运行机 again, 开 MR, 转完整流程 */
+const ON_DETAIL: ReadonlySet<WaitDo> = new Set<WaitDo>(['push_handoff', 'open_mr', 'full'])
+
 /** The one step a person takes on a requirement that waits on them: the button's words and where it goes (a view of
  * this app, the MR, its idle session, or 开审查会话 right here). null: it does not wait on you, or the backend did not say the step. */
 export type Step = { label: string; view?: View; href?: string; session?: string; review?: { repo: string; key: string; slot: string | null; worktree: string | null } }
 export function stepOf(r: Requirement): Step | null {
   const d = r.waits.do
   if (r.waits.who !== 'you' || !d || d === 'none' || d === 'watch') return null
-  if (r.waits.review) return { label: ACT.review, review: { repo: r.repo, key: r.key, slot: slotOf(r.session_url), worktree: r.worktree } }
+  if (r.waits.review && can(r, 'review')) return { label: ACT.review, review: { repo: r.repo, key: r.key, slot: slotOf(r.session_url), worktree: r.worktree } }
   if ((d === 'reply' || d === 'tool') && r.session_url) return { label: DO_NAME[d], session: r.session_url }
   // a small one of a big requirement starts on its board's family card (from the big one's branch), not in 开需求
   if (d === 'start' && r.family?.role === 'child') return { label: DO_NAME.start, view: { kind: 'board', repo: r.repo, key: r.key, from: 'overview' } }
   if (d === 'start') return { label: DO_NAME.start, view: { kind: 'new', repo: r.repo, key: r.key, title: r.title } }
   if (d === 'answer' && r.waits.where === 'mr' && r.mr?.url) return { label: ACT.answerOnMr, href: r.mr.url }
   if (d === 'write_back') return { label: DO_NAME.write_back, view: { kind: 'brain', repo: r.repo, reflect: r.key } }
-  if (d === 'push_handoff') return { label: DO_NAME.push_handoff, view: { kind: 'item', repo: r.repo, key: r.key, from: 'overview' } }   // 交接给运行机 is on 需求现状
+  if (ON_DETAIL.has(d)) return { label: DO_NAME[d], view: { kind: 'item', repo: r.repo, key: r.key, from: 'overview' } }
   return { label: DO_NAME[d], view: { kind: 'board', repo: r.repo, key: r.key, from: 'overview', ...(d === 'accept' ? { focus: 'accept' as const } : {}) } }
 }
 

@@ -2,11 +2,12 @@
  * How a requirement's run goes (Requirement.flow: brain-kit's flow, as the backend sends it), the one place the views
  * ask. A run a Lean intent carries shows the Lean widgets as they are; a fast run (快速: no intent, no stages, no
  * approvals; it ends with an MR a person merges) shows its own in their place. Buttons ask can(row, action), brain-kit's
- * table.
+ * table. Each wrapper below is given the Lean widget as its child and renders it for a Lean run, the fast one otherwise.
  */
-import type { FlowAction, FlowId, FlowView, Requirement } from './types'
+import type { CSSProperties, ReactNode } from 'react'
+import type { FastStep, FastStepId, FlowAction, FlowId, FlowView, Requirement, WaitDo, Waits } from './types'
 import type { FlowStep } from './ui'
-import { ACT, FAMILY_ACT, leanNow } from './vocab'
+import { ACT, FAMILY_ACT, leanNow, waitsOn } from './vocab'
 
 /** what a row goes by when it carries no flow (an older backend): the default one */
 const DEFAULT_FLOW: FlowView = { id: 'lean', label: '完整流程', intent: true, actions: ['handoff', 'review'] }
@@ -57,4 +58,84 @@ export const FLOW_FORM: Record<FlowId, { way: (o: { big: boolean; localOnly: boo
     ],
     startedNext: `打开会话：AI 直接按你说的写代码和测试，自动检查绿了才提交。做完了在${ACT.openDetail}里点「${ACT.openMr}」。`,
   },
+}
+
+// ---------------------------------------------------------------- a fast run's five steps
+
+/** the step a person's turn is at: 开 MR waits for the owner to say it is done, 合并 for people to merge it */
+const ASKED: Partial<Record<WaitDo, FastStepId>> = { open_mr: 'mr', merge: 'merge' }
+
+export interface StepLook {
+  /** the stage graph's box it is drawn as (kt-node is-…) */
+  node: string
+  /** 需求现状's cell (br-stagecell is-…) */
+  cell: string
+  /** a counter's cell (kt-segs is-…); '' not reached */
+  seg: string
+  tone: 'ok' | 'run' | 'idle' | 'bad' | 'approve' | 'info'
+  word: string
+}
+
+const LOOK: Record<FastStep['status'], StepLook> = {
+  done: { node: 'done', cell: 'is-done', seg: 'is-pass', tone: 'ok', word: '做完' },
+  running: { node: 'running', cell: 'is-started', seg: 'is-run', tone: 'run', word: '在做' },
+  waiting: { node: 'waiting', cell: 'is-todo', seg: '', tone: 'idle', word: '还没轮到' },
+  failed: { node: 'failed', cell: 'is-failed', seg: 'is-fail', tone: 'bad', word: '没过' },
+}
+
+/** How a step is drawn: by its status, as a stage's box is; one that waits for a person in a waiting box's colours
+ * (magenta for the person looking, calm blue for anyone else); 合并 done is the run merged. */
+export function stepLook(s: FastStep, w: Pick<Waits, 'who' | 'do'>): StepLook {
+  if (s.status === 'waiting' && ASKED[w.do ?? 'none'] === s.id) {
+    const you = w.who === 'you'
+    return { node: you ? 'awaiting_approval' : 'awaiting_approval is-other', cell: '', seg: you ? 'is-wait' : 'is-other', tone: you ? 'approve' : 'info', word: waitsOn(w.who) || '等人' }
+  }
+  if (s.status === 'done' && s.id === 'merge') return { ...LOOK.done, node: 'merged', word: '已合并' }
+  return LOOK[s.status]
+}
+
+// ---------------------------------------------------------------- the wrappers
+
+/** 交付总览's progress cell: LeanProgress, or the fast run's way in words. */
+export function FlowProgress({ r, children }: { r: Requirement; children: ReactNode }) {
+  if (flowOf(r).intent) return <>{children}</>
+  const label = flowOf(r).label
+  const now = flowNow(r)
+  return (
+    <span className="br-lean" data-testid="lean-cell" title={`${label} · ${now}`}>
+      <span><span className="br-nw">{label}</span> · <span className="br-nw">{now}</span></span>
+    </span>
+  )
+}
+
+/** 需求现状's Lean card: LeanCard, or the fast run's five steps (from its board, *steps*) in the same cells. */
+export function FlowCard({ r, steps, children }: { r: Requirement; steps: FastStep[] | null; children: ReactNode }) {
+  if (flowOf(r).intent) return <>{children}</>
+  const label = flowOf(r).label
+  return (
+    <section className="cto-card" aria-label={`${label}进度`} data-testid="fast-card">
+      <div className="cto-chart-head">
+        <h3>{label}</h3>
+        <span className="cto-dim">{flowNow(r)} · 不走 Lean 的阶段和审批：自动检查绿了才提交，做完开 MR，由人合并</span>
+      </div>
+      {!steps ? <p className="br-empty">运行过程的数据还没来。</p> : (
+        <div className="br-lean-phases">
+          <div className="br-lean-phase" style={{ '--cells': steps.length, '--cell': '104px' } as CSSProperties}>
+            <ol className="br-stagecells" aria-label={`${label}的步骤`}>
+              {steps.map((s, i) => {
+                const look = stepLook(s, r.waits)
+                return (
+                  <li key={s.id} className={['br-stagecell', look.cell, `tone-${look.tone}`].filter(Boolean).join(' ')} data-testid="fast-step" data-step={s.id} data-state={s.status} title={s.text || look.word}>
+                    <span className="br-stage-n">{i + 1} · {look.word}</span>
+                    <span className="br-stage-label">{s.label}<span className="br-sr">（{look.word}）</span></span>
+                    {s.text && <span className="br-stage-n">{s.text}</span>}
+                  </li>
+                )
+              })}
+            </ol>
+          </div>
+        </div>
+      )}
+    </section>
+  )
 }

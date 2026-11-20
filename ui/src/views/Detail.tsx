@@ -23,6 +23,7 @@ import { PERSON, boardWho, todoLeft, whoThen, whoWord } from '../board/format'
 import { isReview, REVIEW_SENDS } from '../board/next'
 import { RoleIcon } from '../board/RoleIcon'
 import { Hit, Mini } from '../cto/charts'
+import { FlowCard, can, flowNow, flowOf, stepLook } from '../flows'
 import { ago, fmtCredits, fmtIso, fmtSpan, fmtTime } from '../format'
 import { VIEW_NAME, type BoardEntry, type ItemEntry } from '../nav'
 import type {
@@ -221,7 +222,7 @@ function nowOf(x: RequirementDetail, board: ReqBoard | null, live: SessionRow | 
     choices: open?.options.length ? `选 ${open.options.map((o) => o.id).join(' / ')}` : 'approve / reject',
     comment: board?.accept.step.comment ?? null,
     how: step === 'redo_handoff' && board?.row.waits.do === 'redo_handoff' ? board.accept.step.text.split('\n').filter((l) => l && !l.startsWith('接手被拒')).join(' ') || null : null,
-    review: step === 'reply' ? reviewOf(x, board) : null,
+    review: step === 'reply' && can(x.row, 'review') ? reviewOf(x, board) : null,
   }
 }
 
@@ -368,7 +369,7 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
         <button type="button" className="kt-btn" onClick={() => toBoard()}>看运行过程 →</button>
         <span className="cto-dim">AI 一步步怎么做的、每一步的产出、回放</span>
       </div>
-      <LeanCard x={x} sessionUrl={now.sessionUrl} mrUrl={now.mrUrl} waiter={waiter} />
+      <FlowCard r={x.row} steps={board?.steps ?? null}><LeanCard x={x} sessionUrl={now.sessionUrl} mrUrl={now.mrUrl} waiter={waiter} /></FlowCard>
       <DecisionsCard decisions={x.decisions} stages={x.lean.stages} repo={entry.repo} owner={x.row.owner} me={board?.person.me ?? false} go={props.go} onAt={toAt}
         picked={entry.decision ?? null} />
       <div className="br-twocol">
@@ -423,7 +424,7 @@ function Facts({ x, start, localOnly }: { x: RequirementDetail; start: number | 
       {r.worktree && <div><dt>工作目录</dt><dd><PathText path={r.worktree} /></dd></div>}
       {r.intent && <div><dt>Lean 记录</dt><dd><PathText path={`aidlc-docs/${r.intent}/`} /></dd></div>}
       {r.where !== 'claim' && (
-        <div><dt>MR</dt><dd>{r.mr ? <MrLink mr={r.mr} /> : localOnly ? '这个仓库只在本机做，没有 MR' : '还没有：交接时开'}</dd></div>
+        <div><dt>MR</dt><dd>{r.mr ? <MrLink mr={r.mr} /> : localOnly ? '这个仓库只在本机做，没有 MR' : can(r, 'mr') ? `还没有：做完了点「${ACT.openMr}」` : '还没有：交接时开'}</dd></div>
       )}
       {x.claim && (
         <div>
@@ -609,6 +610,11 @@ function NowBar({ x, now, at, live, canOpen, repo, reqKey, onStart, onAnswer, on
     case 'write_back':
       acts = mine ? <button type="button" className="kt-btn is-primary" onClick={onBrain}>{ACT.writeBack} ↗</button> : null
       break
+    case 'merge':
+      acts = now.mrUrl && /^https?:\/\//i.test(now.mrUrl)
+        ? <a className={`kt-btn${mine ? ' is-primary' : ''}`} href={now.mrUrl} target="_blank" rel="noopener noreferrer">{mine ? DO_NAME.merge : ACT.viewMr} <Icon name="ExternalLink" size={12} /></a>
+        : null
+      break
     default:
   }
   return (
@@ -688,6 +694,7 @@ function Cards({ x, board, at, localOnly, replying, onBoard, onSessions }: {
   const start = startOf(x, board)
   const end = board?.ended_at ?? null
   const lean = x.row.lean
+  const flow = flowOf(x.row)
   const segs = board ? valueStream(board, at) : []
   const split = splitOf(segs)
   const busy = split.filter((s) => s.p !== 'person').reduce((a, s) => a + s.s, 0)
@@ -701,13 +708,16 @@ function Cards({ x, board, at, localOnly, replying, onBoard, onSessions }: {
         <div className="cto-eyebrow">周期</div>
         <div className="cto-value" data-testid="item-cycle">{start ? fmtSpan((end ?? at) - start) : '—'}</div>
         <div className="cto-desc">{start ? `${fmtTime(start)} 开工` : '开工时间没记下'}{end ? ` → ${fmtTime(end)} 合并` : ' → 进行中'}</div>
-        <div className="kt-segs cto-segs" role="img" aria-label={`Lean：${leanNow(x.row)}`}>
-          {onWay(x).map((s) => (
+        <div className="kt-segs cto-segs" role="img" aria-label={flow.intent ? `Lean：${leanNow(x.row)}` : `${flow.label}：${flowNow(x.row)}`}>
+          {flow.intent ? onWay(x).map((s) => (
             <i key={s.id} title={`${s.n} ${s.label} · ${lean.next?.id === s.id && s.state === 'todo' ? '下一步' : STAGE_META[s.state]?.label ?? s.state}`}
               className={s.state === 'done' ? 'is-pass' : s.state === 'skipped' ? 'is-skip' : s.state === 'started' ? 'is-run' : lean.next?.id === s.id ? 'is-next' : 'is-todo'} />
-          ))}
+          )) : (board?.steps ?? []).map((s) => {
+            const look = stepLook(s, x.row.waits)
+            return <i key={s.id} title={`${s.label} · ${s.text || look.word}`} className={look.seg || 'is-todo'} />
+          })}
         </div>
-        <div className="cto-legend"><span data-testid="lean-progress">Lean {leanNow(x.row)}</span></div>
+        <div className="cto-legend"><span data-testid="lean-progress">{flow.intent ? `Lean ${leanNow(x.row)}` : `${flow.label} · ${flowNow(x.row)}`}</span></div>
       </article>
       <article className="cto-card" aria-label="时间花在哪">
         <div className="cto-eyebrow">时间花在哪</div>
