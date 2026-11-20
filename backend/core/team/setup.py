@@ -69,7 +69,8 @@ BRANCH = "brain/runner-setup"
 MR_TITLE = "运行机：更新 .brain/kit.json"
 MR_TEXT = ("一键建运行机开的 MR：运行机要 kit.json 写上 bridge_user（桥的账号）、bot_users 和 bot_emails（运行机推送用的账号和邮箱）、"
            "gitlab 和 default_branch。合并以前，签名服务不签交接。")
-MR_PATROL = "work_sources 加上 mr-patrol：合并以后，运行机巡检这个项目所有开着的 MR，流水线没过、评审意见没回、有冲突的，它自己去修。"
+MR_PATROL = {True: "work_sources 加上 mr-patrol：合并以后，运行机巡检这个项目所有开着的 MR，流水线没过、评审意见没回、有冲突的，它自己去修。",
+             False: "work_sources 去掉 mr-patrol：合并以后，运行机不再巡检这个项目开着的 MR。"}
 PATROL_KINDS = (sources.HANDOFF, sources.PATROL)    # what 巡检所有开着的 MR puts in kit.json work_sources
 # (kit.json key, default name, colour): the labels the bridge moves, and brain reflect's
 LABELS = (("handoff_label", "ai-handoff", "#1f75cb"), ("running_label", "ai-running", "#108548"),
@@ -797,22 +798,36 @@ def step_kit_mr(ctx: Ctx) -> StepResult:
         gl.call("POST", "/projects/%d/repository/branches" % pid, body={"branch": BRANCH, "ref": default})
     raw = gl.file_raw(pid, KIT, BRANCH)
     there = raw.decode("utf-8-sig") if raw is not None else ""
+    changed = kit_changes(ctx, want)
     if parse_json(there) != want:
-        keys = "、".join(k for k in want if want[k] != ctx.kit.get(k))
         gl.call("POST", "/projects/%d/repository/commits" % pid, body={
-            "branch": BRANCH, "commit_message": "运行机：kit.json 写上 %s" % keys,
+            "branch": BRANCH, "commit_message": "运行机：kit.json 写上 %s" % "、".join(changed),
             "actions": [{"action": "update" if raw is not None else "create", "file_path": KIT,
                          "content": kit_text(want, there or ctx.kit_text)}]})
     mr = gl.mr_for_branch(pid, BRANCH)
     opened = mr is None
     if opened:
-        text = MR_TEXT + ("\n\n" + MR_PATROL if want.get("work_sources") != ctx.kit.get("work_sources") else "")
+        patrol = MR_PATROL[sources.PATROL in want.get("work_sources", ())]
+        text = ("一键建运行机开的 MR：" + patrol if patrol_only(ctx, want) else
+                MR_TEXT + ("\n\n" + patrol if "work_sources" in changed else ""))
         mr = gl.call("POST", "/projects/%d/merge_requests" % pid, body={
             "source_branch": BRANCH, "target_branch": default, "title": MR_TITLE, "description": text,
             "remove_source_branch": True}) or {}
     ctx.state["kit_mr"] = {"iid": mr.get("iid"), "web_url": mr.get("web_url")}
     return waiting("%s MR !%s：请在 GitLab 上合并这个 MR" % ("开了" if opened else "还没合并", mr.get("iid")),
                    link=mr.get("web_url") or None)
+
+
+def kit_changes(ctx: Ctx, want: dict[str, Any]) -> list[str]:
+    """The keys of kit.json the MR changes."""
+    return [k for k in want if want[k] != ctx.kit.get(k)]
+
+
+def patrol_only(ctx: Ctx, want: dict[str, Any]) -> bool:
+    """Whether the kit.json MR only switches mr-patrol on or off: everything the hand-over needs is on the default
+    branch already."""
+    kinds = set(sources.enabled(want)) ^ set(sources.enabled(ctx.kit))
+    return kit_changes(ctx, want) == ["work_sources"] and sources.HANDOFF not in kinds
 
 
 def wanted_kit(ctx: Ctx) -> dict[str, Any]:
@@ -1028,7 +1043,8 @@ def step_team_mode(ctx: Ctx) -> StepResult:
         return failed(str(st.get("error") or "团队模式没开起来"), detail=str(st.get("error_raw") or ""))
     said = str(st.get("said") or "团队模式开了")
     if any(r.id == "kit_mr" and r.status == "waiting" for r in ctx.results):
-        said += "；可是上面那个 MR 合并以前，交接都会被拒"
+        said += ("；上面那个 MR 合并以后，巡检才" + ("开始" if ctx.inp.patrol else "停") if patrol_only(ctx, wanted_kit(ctx))
+                 else "；可是上面那个 MR 合并以前，交接都会被拒")
     return done(said)
 
 

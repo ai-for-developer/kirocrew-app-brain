@@ -527,6 +527,24 @@ def test_patrol_off_writes_no_brain_patrol_and_its_kit_mr_switches_mr_patrol_off
     assert json.loads(branch_kit(world))["work_sources"] == ["issues-later", "mr-handoff", "mr-patrol"]
 
 
+def test_a_rerun_whose_kit_mr_only_switches_patrol_says_patrol_waits_for_it_and_hand_overs_do_not(world):
+    """A runner set up before 巡检 (kit.json has all the hand-over needs, no work_sources), run again with 巡检 ticked:
+    the kit.json MR only adds work_sources, and nothing says hand-overs are refused until it is merged; unticked later,
+    it only takes mr-patrol out again."""
+    gl = world["gl"]
+    build(world, patrol=False)
+    gl.merge(gl.mrs[-1]["iid"])
+    for patrol, then in ((True, "开始"), (False, "停")):
+        before = dict(json.loads(gl.files["main"][KIT]))
+        view, _ = build(world, patrol=patrol)
+        after = json.loads(branch_kit(world))
+        assert [k for k in after if after[k] != before.get(k)] == ["work_sources"]
+        by = {s["id"]: s for s in view["steps"]}
+        assert by["kit_mr"]["status"] == "waiting" and "交接" not in gl.mrs[-1]["description"]
+        assert by["team_mode"]["message"] == "团队模式开了；上面那个 MR 合并以后，巡检才" + then
+        gl.merge(gl.mrs[-1]["iid"])
+
+
 def branch_kit(world):
     """kit.json on the setup's branch: what the kit.json MR would merge."""
     return world["gl"].files["brain/runner-setup"][KIT]
