@@ -64,10 +64,11 @@ const isDoc = (p: string): boolean => /\.(md|markdown)$/i.test(p)
 /** Kept for the run by Lean (aidlc-docs/) or brain-kit (runs/: the MR's description, park.json), not code it wrote. */
 const isRecord = (p: string): boolean => /^(aidlc-docs|runs)\//.test(p)
 
-function fileGroups(n: StageNode, files: OutFile[]): [string, OutFile[]][] {
+/** *codeFirst*: the code it wrote leads (代码改动, biggest change first), the records last. */
+function fileGroups(codeFirst: boolean, files: OutFile[]): [string, OutFile[]][] {
   const declared = files.filter((f) => f.output)
   const others = files.filter((f) => !f.output)
-  if (n.stage !== 'code-generation') return [['约定它交的', declared], ['其他改动', others]]
+  if (!codeFirst) return [['约定它交的', declared], ['其他改动', others]]
   return [['代码改动', others.filter((f) => !isRecord(f.path)).sort(biggestFirst)], ['约定它交的', declared],
     ['其他改动', others.filter((f) => isRecord(f.path))]]
 }
@@ -150,9 +151,25 @@ function FileRow({ f, on, onPick }: { f: OutFile; on: boolean; onPick: () => voi
   )
 }
 
-/** One file of the round: its bar (path, lines, which version, 就是请批的那一版 once the round had asked with it, the
- * modes) and its body (keyed by the file and its version: another one starts in its own default mode). */
-function FilePane({ repo, reqKey, f, round, asked }: { repo: string; reqKey: string; f: OutFile; round: number; asked: boolean }) {
+/** The files by group, each under its heading (an empty group says nothing), *pick* the one open; how many were left
+ * out past the backend's 200, then the caller's own notes (*children*). */
+function FileList({ groups, pick, onPick, more, children }: {
+  groups: [string, OutFile[]][]; pick: OutFile | undefined; onPick: (f: OutFile) => void; more: number; children?: ReactNode
+}) {
+  return (
+    <div className="kt-flist">
+      {groups.map(([label, fs]) => fs.length > 0 && (
+        <Fragment key={label}><p className="kt-flist-h">{label}</p><ul>{fs.map((f) => <FileRow key={f.path} f={f} on={f === pick} onPick={() => onPick(f)} />)}</ul></Fragment>
+      ))}
+      {more > 0 && <p className="kt-dim kt-flist-foot">还有 {more} 个文件没列出来</p>}
+      {children}
+    </div>
+  )
+}
+
+/** One file: its bar (path, lines, which version it is, 就是请批的那一版 once the round had asked with it, the modes) and
+ * its body (keyed by the file and its version: another one starts in its own default mode). */
+function FilePane({ repo, reqKey, f, version, asked }: { repo: string; reqKey: string; f: OutFile; version: string; asked: boolean }) {
   const doc = isDoc(f.path)
   const [mode, setMode] = useState<Mode>(doc ? 'content' : 'diff')
   const [vs, setVs] = useState<string | null>(f.base)
@@ -166,11 +183,7 @@ function FilePane({ repo, reqKey, f, round, asked }: { repo: string; reqKey: str
         <span className="kt-fview-path">{f.path}</span>
         {f.added !== null && <span className="kt-add">+{f.added}</span>}
         {f.removed !== null && <span className="kt-del">−{f.removed}</span>}
-        {f.ref && (
-          <span className="kt-fview-at" data-testid="out-at">
-            {f.ref === 'worktree' ? `第 ${round} 轮的版本 · 还没提交，和 Lean 记下的指纹一样` : `第 ${round} 轮的版本 · 提交 ${f.ref.slice(0, 7)}`}
-          </span>
-        )}
+        {f.ref && <span className="kt-fview-at" data-testid="out-at">{version}</span>}
         {asked && v?.asked && <span className="kt-asked" data-testid="out-asked" title={`请批${gateWhat(v.asked.kind)}时 Lean 记下的指纹 ${v.asked.sha8}`}>✋ 就是请批的那一版 · {v.asked.sha8}</span>}
         {f.ref && (
           <span className="kt-seg" role="group" aria-label="怎么看">
@@ -245,7 +258,7 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt, moment }: {
   // a round still going then had asked with its version only if its gate was open then (replayAt's gates)
   const asked = !moment || !r || r.ended !== null || !!openAsk(n, r)
   const { files, later } = moment && r ? filesAt(listed, r, asked, moment) : { files: listed, later: 0 }
-  const groups = fileGroups(n, files)
+  const groups = fileGroups(n.stage === 'code-generation', files)
   const shown = groups.flatMap(([, fs]) => fs)
   const pick = shown.find((f) => f.path === at.file) ?? shown.find((f) => f.ref) ?? shown[0]
   const meta = actorMeta(n.status)
@@ -302,15 +315,14 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt, moment }: {
           : !files.length ? <p className="kt-pad kt-dim" data-testid="out-none">{later ? '这一轮那时还没提交文件' : out.data.why ?? '这一轮没有提交文件'}</p>
           : (
             <div className="kt-files-pane">
-              <div className="kt-flist">
-                {groups.map(([label, fs]) => fs.length > 0 && (
-                  <Fragment key={label}><p className="kt-flist-h">{label}</p><ul>{fs.map((f) => <FileRow key={f.path} f={f} on={f === pick} onPick={() => onAt({ ...at, file: f.path })} />)}</ul></Fragment>
-                ))}
-                {out.data.more > 0 && <p className="kt-dim kt-flist-foot">还有 {out.data.more} 个文件没列出来</p>}
+              <FileList groups={groups} pick={pick} onPick={(f) => onAt({ ...at, file: f.path })} more={out.data.more}>
                 {later > 0 && <p className="kt-dim kt-flist-foot" data-testid="out-later">这一轮那时{r?.ended !== null ? '已经结束' : '还在做'}：那以后才提交的 {later} 个文件这里没列</p>}
                 {run?.kind === 'runner' && <p className="kt-dim kt-flist-foot">都在运行机推上来的提交里：这台机器取回来以后能看全</p>}
-              </div>
-              {pick && <FilePane key={`${pick.path}@${pick.ref}`} repo={repo} reqKey={reqKey} f={pick} round={r?.n ?? 0} asked={asked} />}
+              </FileList>
+              {pick && (
+                <FilePane key={`${pick.path}@${pick.ref}`} repo={repo} reqKey={reqKey} f={pick} asked={asked}
+                  version={`第 ${r?.n ?? 0} 轮的版本 · ${pick.ref === 'worktree' ? '还没提交，和 Lean 记下的指纹一样' : `提交 ${pick.ref?.slice(0, 7)}`}`} />
+              )}
             </div>
           )}
       </div>
@@ -318,7 +330,54 @@ function NodePane({ board, repo, reqKey, n, r, at, onAt, moment }: {
   )
 }
 
-export function OutputsDrawer({ board, repo, reqKey, at, onAt, onClose, moment = null, bar }: {
+/** The drawer over the board, focused as it opens: its name, ‹ › through its steps, ✕ (Esc is the board's); in a
+ * replay the replay's controls and what that moment shows (*then*); the step bar keeps the step on (*picked*) in view. */
+function Frame({ title, board, reqKey, moment, bar, then, nav, picked, prev, next, onClose, children }: {
+  title: string
+  board: ReqBoard
+  reqKey: string
+  moment: Moment | null
+  bar: ReactNode
+  then: string
+  nav: { label: string; steps: ReactNode }
+  picked: string
+  /** none: there is no step that way */
+  prev?: () => void
+  next?: () => void
+  onClose: () => void
+  children: ReactNode
+}) {
+  const box = useRef<HTMLElement | null>(null)
+  const stepBar = useRef<HTMLElement | null>(null)
+  useEffect(() => box.current?.focus(), [])
+  useEffect(() => {
+    stepBar.current?.querySelector('[aria-current="step"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [picked])
+  return (
+    <div className="kt-drawer-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()} data-testid="out-drawer">
+      <aside ref={box} className="kt-drawer" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
+        <div className="kt-drawer-top">
+          <h2>{title}</h2>
+          <span className="kt-dim">{board.row.title && board.row.title !== reqKey ? `${board.row.title} · ${reqKey}` : reqKey}</span>
+          <span className="kt-grow" />
+          <button type="button" className="kt-btn is-small" onClick={prev} disabled={!prev}>‹ 上一步</button>
+          <button type="button" className="kt-btn is-small" onClick={next} disabled={!next}>下一步 ›</button>
+          <button type="button" className="kt-btn is-small" onClick={onClose} aria-label="关掉产出" title="关掉（Esc）">✕</button>
+        </div>
+        {moment && (
+          <div className="kt-drawer-replay" data-testid="out-replay">
+            {bar}
+            <p className="kt-dim">回放：这是 {fmtWhen(moment.t)} 那一刻的产出，{then}；退出回放看现在的</p>
+          </div>
+        )}
+        <nav ref={stepBar} className="kt-steps" aria-label={nav.label}>{nav.steps}</nav>
+        {children}
+      </aside>
+    </div>
+  )
+}
+
+type DrawerProps = {
   board: ReqBoard
   repo: string
   reqKey: string
@@ -329,52 +388,27 @@ export function OutputsDrawer({ board, repo, reqKey, at, onAt, onClose, moment =
   /** 回放: the moment *board* is replayed at, and the replay's controls */
   moment?: Moment | null
   bar?: ReactNode
-}) {
+}
+
+export function OutputsDrawer({ board, repo, reqKey, at, onAt, onClose, moment = null, bar }: DrawerProps) {
   const lanes = laneNodes(board)
   const steps = board.nodes.filter((x) => lanes.includes(x) || x.id === at.node)
   const i = steps.findIndex((x) => x.id === at.node)
   const n = steps[i]
   const r = n ? (n.rounds.find((x) => x.n === at.round) ?? n.rounds[n.rounds.length - 1] ?? null) : null
-  const box = useRef<HTMLElement | null>(null)
-  const stepBar = useRef<HTMLElement | null>(null)
-  useEffect(() => box.current?.focus(), [])
-  useEffect(() => {
-    stepBar.current?.querySelector('[aria-current="step"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
-  }, [at.node])
-  const step = (d: number) => {
-    const to = steps[i + d]
-    if (to) onAt({ node: to.id })
-  }
   return (
-    <div className="kt-drawer-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()} data-testid="out-drawer">
-      <aside ref={box} className="kt-drawer" role="dialog" aria-modal="true" aria-label="每一步的产出" tabIndex={-1}>
-        <div className="kt-drawer-top">
-          <h2>每一步的产出</h2>
-          <span className="kt-dim">{board.row.title && board.row.title !== reqKey ? `${board.row.title} · ${reqKey}` : reqKey}</span>
-          <span className="kt-grow" />
-          <button type="button" className="kt-btn is-small" onClick={() => step(-1)} disabled={i <= 0}>‹ 上一步</button>
-          <button type="button" className="kt-btn is-small" onClick={() => step(1)} disabled={i < 0 || i >= steps.length - 1}>下一步 ›</button>
-          <button type="button" className="kt-btn is-small" onClick={onClose} aria-label="关掉产出" title="关掉（Esc）">✕</button>
-        </div>
-        {moment && (
-          <div className="kt-drawer-replay" data-testid="out-replay">
-            {bar}
-            <p className="kt-dim">回放：这是 {fmtWhen(moment.t)} 那一刻的产出，只有那时已经开始的轮次；退出回放看现在的</p>
-          </div>
-        )}
-        <nav ref={stepBar} className="kt-steps" aria-label="每一步">
-          {steps.map((x, k) => (
-            <button key={x.id} type="button" className={`kt-step tone-${actorMeta(x.status).tone}${x.id === at.node ? ' is-on' : ''}`} aria-current={x.id === at.node ? 'step' : undefined}
-              onClick={() => onAt({ node: x.id, tab: at.tab })} data-testid="out-step">
-              <span className="kt-step-n">{k + 1}</span>
-              <RoleIcon role={x.icon} size={14} />
-              {x.unit ? `${x.title} · ${x.unit}` : x.title}
-            </button>
-          ))}
-        </nav>
-        {n ? <NodePane key={`${n.id}#${r?.n ?? 0}`} board={board} repo={repo} reqKey={reqKey} n={n} r={r} at={at} onAt={onAt} moment={moment} />
-          : <p className="kt-pad kt-dim">运行过程里没有这一步了：点上面的一步看它的产出</p>}
-      </aside>
-    </div>
+    <Frame title="每一步的产出" board={board} reqKey={reqKey} moment={moment} bar={bar} then="只有那时已经开始的轮次" picked={at.node} onClose={onClose}
+      prev={i > 0 ? () => onAt({ node: steps[i - 1].id }) : undefined} next={i >= 0 && i < steps.length - 1 ? () => onAt({ node: steps[i + 1].id }) : undefined}
+      nav={{ label: '每一步', steps: steps.map((x, k) => (
+        <button key={x.id} type="button" className={`kt-step tone-${actorMeta(x.status).tone}${x.id === at.node ? ' is-on' : ''}`} aria-current={x.id === at.node ? 'step' : undefined}
+          onClick={() => onAt({ node: x.id, tab: at.tab })} data-testid="out-step">
+          <span className="kt-step-n">{k + 1}</span>
+          <RoleIcon role={x.icon} size={14} />
+          {x.unit ? `${x.title} · ${x.unit}` : x.title}
+        </button>
+      )) }}>
+      {n ? <NodePane key={`${n.id}#${r?.n ?? 0}`} board={board} repo={repo} reqKey={reqKey} n={n} r={r} at={at} onAt={onAt} moment={moment} />
+        : <p className="kt-pad kt-dim">运行过程里没有这一步了：点上面的一步看它的产出</p>}
+    </Frame>
   )
 }
