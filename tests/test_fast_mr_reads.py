@@ -1,10 +1,11 @@
 """What a fast run reads of its MR on GitLab, in the background and on its row: only while the MR can still change
 (a teammate's open one, the person's own once it is opened, a first look at app start; never a merged or closed one),
-and a copy GitLab cannot refresh said to be old."""
+a copy GitLab cannot refresh said to be old, and without a GitLab token a 开 MR that pushed the branch says its MR is
+opened on GitLab by hand instead of asking for 开 MR again."""
 
-from appkit import BRAINKIT, mod
-from brainfix import needs_brainkit, run
-from test_fast_flow import START, idle, project, service as fast_service
+from appkit import BRAINKIT, mod, sh
+from brainfix import lean, needs_brainkit, run
+from test_fast_flow import START, idle, project, service as fast_service, verified_commit
 from test_kitswitch import TOKEN, GitLab
 
 pytestmark = needs_brainkit
@@ -79,6 +80,40 @@ def test_a_row_that_never_reads_the_git_half_skips_it():
 
     got = fastrow.fast_facts(Repo(), {"tip": "b" * 40, "events": []}, {}, git=False)
     assert (got.code_commits, got.risky) == (0, None)
+
+
+def test_without_a_token_open_mr_says_its_mr_is_opened_on_gitlab(tmp_path, home):
+    repo = project(tmp_path)
+    svc, gw = fast_service(tmp_path, home, repo)
+
+    async def go():
+        await svc.start()
+        try:
+            out = await svc.intake_start(dict(START))
+            await idle(svc, gw, out["slot"])
+            wt = home / "workplace" / "brain-app" / "pay" / "coupon"
+            verified_commit(wt, "shop/coupon.py", "RATE = 0.9\n")
+            opened = await svc.act("r1", out["key"], "mr")
+            row = {r["key"]: r for r in (await svc.overview("all"))["rows"]}[out["key"]]
+            todo = [(i["kind"], i["key"]) for i in (await svc.todo())["items"]]
+            board = await svc.board("r1", out["key"])
+            (wt / "shop" / "coupon.py").write_text("RATE = 0.85\n", encoding="utf-8")
+            lean(wt, "verify")
+            sh("git", "-C", wt, "commit", "-qam", "a better rate")
+            svc._repo("r1").invalidate()
+            later = {r["key"]: r for r in (await svc.overview("all"))["rows"]}[out["key"]]
+            return out, opened, row, todo, board, later
+        finally:
+            await svc.stop()
+
+    out, opened, row, todo, board, later = run(go())
+    assert opened["ok"] and opened["pushed"] and opened["mr"] is None
+    w = row["waits"]
+    assert (w["who"], w["do"], w["where"], w["text"]) == ("people", "merge", "mr", fastrow.BY_HAND)
+    assert ("open_mr", out["key"]) not in todo, "待办 no longer asks for 开 MR"
+    steps = {s["id"]: (s["status"], s["text"]) for s in board["steps"]}
+    assert steps["mr"][0] == "done" and steps["merge"] == ("waiting", "等人审、合并")
+    assert (later["waits"]["do"], later["waits"]["text"]) == ("open_mr", fastrow.READY), "a new commit: 开 MR again"
 
 
 def test_an_mr_copy_gitlab_cannot_refresh_is_said_to_be_old(monkeypatch):

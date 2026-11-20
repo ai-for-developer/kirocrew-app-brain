@@ -20,6 +20,7 @@ CI_RUNNING = ("created", "waiting_for_resource", "preparing", "pending", "runnin
 RISKY = "改到了风险目录（%s）：快速需求不能合并这个改动。点「转完整流程」"
 READY = "代码提交了，检查是绿的：做完了就点「开 MR」，没做完就回会话"
 READY_UNCHECKED = "代码提交了：做完了就点「开 MR」，没做完就回会话"
+BY_HAND = "推上去了：MR 在 GitLab 上开，等人审、合并（这台机器没有 GitLab 令牌，读不到 MR）"
 STALE = "（GitLab 这会儿读不到：这是 %s前读到的）"
 
 
@@ -41,6 +42,8 @@ class FastFacts:
     risky: Optional[tuple[str, ...]]
     patrol: bool                 # MR 巡检 works this repo's open MRs (kit.json work_sources has mr-patrol)
     stale_s: Optional[float] = None     # the MR shown was read this long ago: this machine's reads since failed
+    # no GitLab token here, and 开 MR here pushed the branch as it is now: its MR is opened on GitLab by hand
+    by_hand: bool = False
 
 
 def newest_verify(evs: list[dict[str, Any]]) -> Optional[Verify]:
@@ -77,7 +80,7 @@ def _git_facts(repo: Any, tip: str, main: str) -> tuple[int, Optional[tuple[str,
 
 
 def fast_facts(repo: Any, f: dict[str, Any], cache: dict[tuple, tuple[int, Optional[tuple[str, ...]]]], *,
-               git: bool = True, stale_s: Optional[float] = None) -> FastFacts:
+               git: bool = True, stale_s: Optional[float] = None, by_hand: bool = False) -> FastFacts:
     """A fast run's FastFacts. The git half only changes with its tip or the default branch: kept in *cache*, unless
     git failed (read again next time); without *git* (a row that never reads it: merged, closed, a teammate's) it is
     not read, and says 0 commits, risk paths not known."""
@@ -92,7 +95,7 @@ def fast_facts(repo: Any, f: dict[str, Any], cache: dict[tuple, tuple[int, Optio
             cache[k] = got
     commits, risky = got
     return FastFacts(code_commits=commits, verify=newest_verify(f.get("events") or []), risky=risky,
-                     patrol=sources.PATROL in sources.enabled(repo.cfg), stale_s=stale_s)
+                     patrol=sources.PATROL in sources.enabled(repo.cfg), stale_s=stale_s, by_hand=by_hand)
 
 
 def polls_mr(f: dict[str, Any], mr: Optional[dict[str, Any]], *, mine: bool, read: bool) -> bool:
@@ -172,6 +175,8 @@ def local(put: Callable[..., None], f: dict[str, Any], *, merged: Callable[[str]
         return put("local", "you", "full", RISKY % shown, where="app", since=since)
     if state == "opened":
         return _opened(put, mr, fast, fixer="you", fix="回会话让 AI 修", where="session" if slot else "app")
+    if fast.by_hand:
+        return put("local", "people", "merge", BY_HAND, where="mr", since=since)
     if not f.get("worktree"):
         return put("local", "you", "reply", "这台机器上没有它的工作区：先检出分支 %s，再打开会话接着做" % f.get("branch"),
                    since=since)

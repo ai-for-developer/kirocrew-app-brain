@@ -644,7 +644,10 @@ class Service:
         branch = str(f.get("branch") or "")
         mr = self.mr.get(project, branch) if base and project and branch else None
         read_at = self.mr.stale_since(project, branch) if mr else None
-        return fastrow.fast_facts(repo, f, self._fast_git, git=git,
+        pushed = bool(f.get("origin_sha")) and f.get("origin_sha") == f.get("local_sha")
+        by_hand = not mr and pushed and not self._token_present() and any(
+            e["label"] == acts.BY_HAND for e in self.store.events(scope_of(repo.id, f["key"])))
+        return fastrow.fast_facts(repo, f, self._fast_git, git=git, by_hand=by_hand,
                                   stale_s=max(0.0, time.time() - read_at) if read_at else None)
 
     # ---- 变更说明 (brain mr-desc) ------------------------------------------------------------------------- #
@@ -1747,8 +1750,9 @@ class Service:
                         live["id"], line, shown={"by": "app", "cause": "转完整流程", "text": line},
                         parent_session_key=self.sessions.get(live["id"]).parent_session_key)
                     told = not turn.error
-                await asyncio.to_thread(self.store.append, scope, "app", "%s：%s" % (
-                    acts.NAME[action], out["text"] or ("做好了" if out["ok"] else "没做成")), None)
+                by_hand = action == "mr" and out["ok"] and out["pushed"] and not out["mr"]
+                await asyncio.to_thread(self.store.append, scope, "app", acts.BY_HAND if by_hand else "%s：%s" % (
+                    acts.NAME[action], out["text"] or ("做好了" if out["ok"] else "没做成")), out["text"] if by_hand else None)
                 return scrub_tree(dict(out, told=told), self.scrub)
 
             running = self._acting[scope] = asyncio.ensure_future(go())

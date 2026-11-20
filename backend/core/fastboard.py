@@ -48,11 +48,15 @@ def steps(f: dict[str, Any], *, fast: FastFacts, mr: Optional[dict[str, Any]], b
         open_mr = ("done", "MR !%s" % mr.get("iid"), None, url)
     elif fast.risky:
         open_mr = ("failed", RISK_STEP, None, None)
+    elif fast.by_hand:
+        open_mr = ("done", "推上去了，在 GitLab 上开", None, None)
     else:
         open_mr = ("waiting", "做完了点「开 MR」", None, None)
 
     ci = ci_state(mr) if opened else "none"
-    if not opened:
+    if fast.by_hand and not opened:
+        cis = ("waiting", "这台机器读不到（没有 GitLab 令牌）", None, None)
+    elif not opened:
         cis = ("waiting", "开了 MR 才跑", None, None)
     elif fast.risky and state == "opened":
         cis = ("failed", RISK_STEP, p_at, p_url)
@@ -67,7 +71,7 @@ def steps(f: dict[str, Any], *, fast: FastFacts, mr: Optional[dict[str, Any]], b
 
     if state == "merged" or f.get("merged"):
         merge = ("done", "合并了", f.get("merged_at"), url)
-    elif state == "opened":
+    elif state == "opened" or fast.by_hand:
         merge = ("waiting", "等人审、合并", None, url)
     else:
         merge = ("waiting", "", None, None)
@@ -128,6 +132,8 @@ def _checks(f: dict[str, Any], fast: FastFacts, mr: Optional[dict[str, Any]], ki
     ci = ci_state(mr) if opened else "none"
     if local_only:
         cell("ci", "ci", "CI", "MR 的流水线", "not_needed", None, "只在本机做：没有 MR，也没有 CI")
+    elif not opened and fast.by_hand:
+        cell("ci", "ci", "CI", "MR 的流水线", "skip", None, "这台机器没有 GitLab 令牌，读不到 MR 的流水线：在 GitLab 上看")
     elif not opened:
         cell("ci", "ci", "CI", "MR 的流水线", "skip", None, "开了 MR 才跑")
         todo.append("CI")
