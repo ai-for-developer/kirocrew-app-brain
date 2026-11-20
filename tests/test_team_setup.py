@@ -1137,9 +1137,9 @@ def test_a_project_gitlab_does_not_have_fails_its_own_row_and_the_others_are_sti
 
 
 def test_the_two_accounts_are_developers_everywhere_and_users_of_their_own(team):
-    """brain-bridge a Reporter in grp/b; the person's own token typed as the bridge's; a second token of brain-bridge
-    typed as the bot's; a bridge token without api: each stops at its step with what to do, and a token refused is
-    never kept."""
+    """brain-bridge a Reporter in grp/b; the person's own token typed as the bridge's; a second token of brain-bridge,
+    or the person's own, typed as the bot's; a bridge token without api: each stops at its step with what to do, and a
+    token refused is never kept."""
     gl = team["gl"]
     b = gl.repos["grp/b"]
     b.members = [m for m in b.members if m[0] != "brain-bridge"] + [("brain-bridge", 20)]
@@ -1152,6 +1152,8 @@ def test_the_two_accounts_are_developers_everywhere_and_users_of_their_own(team)
     assert step(view, "bridge_token")["message"].startswith("桥的账号的个人令牌就是你自己（alice）：")
     view, _ = build_team(team, bot=gl.pat(BRIDGE_ID, "brain-bridge", ["write_repository", "read_user"]))
     assert step(view, "push")["message"] == "机器人账号和桥的账号是同一个 GitLab 用户 brain-bridge：要两个不同的用户，运行机不能替桥说话"
+    view, _ = build_team(team, bot=gl.pat(1, "alice", ["write_repository", "read_user"]))
+    assert step(view, "push")["message"].startswith("机器人账号的个人令牌就是你自己（alice）：")
     view, _ = build_team(team, bridge=gl.pat(BRIDGE_ID, "brain-bridge", ["read_api"]))
     assert step(view, "bridge_token")["message"].startswith("桥的账号的个人令牌（brain-bridge 的）没有 api 权限：")
     assert ps.token("bridge").read_text().strip() == team["bridge"]     # the one that passed, not the one without api

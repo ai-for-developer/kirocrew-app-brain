@@ -949,6 +949,9 @@ def step_push(ctx: Ctx) -> StepResult:
             return failed(exc.message + ("，或者让这台机器的 SSH 能用" if ctx.inp.push == "auto" else ""), detail=why)
         if me.get("id") == account(ctx, "bridge")[1].get("id"):
             return failed("机器人账号和桥的账号是同一个 GitLab 用户 %s：要两个不同的用户，运行机不能替桥说话" % me.get("username"))
+        if ctx.inp.admin_token and str(me.get("username") or "").lower() == ctx.owner:
+            return failed("%s就是你自己（%s）：运行机推的提交会算成机器人的，你自己的交接就都不算了。推代码要一个专门的 GitLab 用户"
+                          "（比如 brain-bot）" % (ACCOUNT_NAME["bot"], ctx.owner))
         rec, problem = check_account(ctx, "bot", tok, me)
         if problem:
             return failed(problem, detail=why)
