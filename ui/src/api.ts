@@ -54,6 +54,8 @@ export const paths = {
   teamLoop: () => `${BASE}/team/loop`,
   /** MR 巡检: every open MR the last round looked at */
   teamPatrol: () => `${BASE}/team/patrol`,
+  /** 测试环境报错: the errors the runner found in the test environment's log */
+  teamStaging: () => `${BASE}/team/staging`,
   /** 一键建运行机: GET the last run's steps, POST to run them (in the background: GET until it is not running) */
   teamSetup: () => `${BASE}/team/setup`,
   /** 运行机 on a personal install: each repo's team runner as GitLab shows it */
