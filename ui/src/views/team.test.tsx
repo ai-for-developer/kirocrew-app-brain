@@ -9,9 +9,11 @@ import type { CheckRow, TeamConfigRow, TeamNote } from '../types'
 import type { ViewProps } from './props'
 import { HANDOVER_RESULT, OUTBOX_STATE, PATROL_OFF, PATROL_STATE, RUN_STATE, TeamPage, handoverMeta, noteTone, outboxMeta, patrolMeta, runStateMeta } from './Team'
 
+/** The team server in team mode (运行机's own page is the team server's only: main.tsx opens RunnerStatus elsewhere). */
 function teamStatus() {
   const s = fx.status()
   s.app.team = true
+  s.app.role = 'team_server'
   s.team = fx.team().status
   return s
 }
@@ -467,9 +469,11 @@ describe('运行机', () => {
     expect(within(err).getByText(tv.status.loop_error).closest('details')).not.toHaveAttribute('open')
   })
 
-  test('not in team mode: it says so, how a runner works, the way to 设置, and asks for nothing', async () => {
+  test('a team server not in team mode: it says so, how a runner works, the way to 设置, and asks for nothing', async () => {
     installFixtureRoutes()
-    const p = props({ status: fx.status() })
+    const off = fx.status()
+    off.app.role = 'team_server'
+    const p = props({ status: off })
     render(<TeamPage {...p} />)
     const hero = screen.getByTestId('team-off')
     expect(within(hero).getByText(/这台机器没开团队模式/)).toBeInTheDocument()

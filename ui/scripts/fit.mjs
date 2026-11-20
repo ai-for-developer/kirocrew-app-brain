@@ -29,7 +29,9 @@ const VIEWS = [
   ['Brain', 'view=brain&repo=r1'],
   ['待办', 'view=todo'],
   ['设置', 'view=settings'],
+  ['设置 团队运行机', 'view=settings', 'light,team'],
   ['导入仓库', 'view=import'],
+  ['运行机 个人', 'view=team'],
   ['团队', 'view=team', 'light,team'],
 ]
 const LONG_VIEWS = [['运行过程 PAY-9 长标题', 'view=board&repo=r1&key=PAY-9'], ['需求现状 PAY-9 长标题', 'view=item&repo=r1&key=PAY-9']]

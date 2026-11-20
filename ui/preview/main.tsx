@@ -4,8 +4,9 @@
  * src/test/fixtures (writes answer something plausible and change nothing). Built by `npm run preview:build` into
  * preview-dist/index.html (one file, opens from file:// too).
  *
- * The bar above the app switches the world: 团队模式, 找不到 brain-kit, KiroCrew 有 FAIL, 没有 evaluate, 没有仓库, 认领晚一步 (a
- * claim of a small requirement loses the race to carol's), light/dark. 拆成小需求, 认领, 开工 and 同步 answer as brain-kit
+ * The bar above the app switches the world: 团队模式 (this machine the team server, in team mode; without it a personal
+ * install, whose 运行机 is the team runner as GitLab shows it), 找不到 brain-kit, KiroCrew 有 FAIL, 没有 evaluate, 没有仓库,
+ * 认领晚一步 (a claim of a small requirement loses the race to carol's), light/dark. 拆成小需求, 认领, 开工 and 同步 answer as brain-kit
  * would, and change nothing.
  * 导入仓库 is played through: a path ending in /ready is installed already; any other is not, and its install (or a clone)
  * runs as a job whose steps advance over a few seconds; 加入列表 and 移出列表 change the preview's list.
@@ -77,7 +78,7 @@ function outputsFor(path: string): unknown {
   return route.endsWith('/turns') ? shift(got) : clone(got)
 }
 
-let settings: Settings = fx.settings()
+let settings: Settings = { ...fx.settings(), role: flags.has('team') ? 'team_server' : 'personal' }
 let crewFixed = false
 /** The world the preview shows (scripts/preview_world.py made it with the backend's own code: the rows' states and
  * waits by deliveries.classify, the boards by board.py, 待办 by todo.build, 交付总览 for 全部 and each repo, with and
@@ -122,7 +123,8 @@ const listedRepos = (): RepoInfo[] => (flags.has('nokit') ? repos.map((r) => (r.
 function status(): Status {
   const s = clone(W.status)
   s.repos = clone(listedRepos())
-  if (flags.has('team')) {
+  s.app.role = settings.role
+  if (flags.has('team') && settings.role === 'team_server') {
     s.app.team = true
     s.team = fx.team().status
   }
@@ -351,7 +353,9 @@ setApiRoutes({
   [`GET ${API}/intake/next*`]: (_b, path) => intakeNext(path),
   [`GET ${API}/import/defaults`]: () => ({ ...fx.importDefaults(), brainkit_ok: !flags.has('nokit') }),
   [`POST ${API}/settings`]: (body) => {
-    settings = { ...settings, ...clone(body as Partial<Settings>) }
+    const b = clone(body as Partial<Settings>)
+    // as the backend: a team server made personal again has its team mode off
+    settings = { ...settings, ...b, ...(b.role === 'personal' ? { team: { ...settings.team, enabled: false } } : {}) }
     return { ok: true, settings: clone(settings), status: status() }
   },
   ...importRoutes(),

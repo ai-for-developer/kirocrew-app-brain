@@ -23,7 +23,7 @@ const ledgerRow = async (key: string) => {
 }
 
 describe('the bar says the app’s version, and how to update when KiroCrew knows a newer one (UI-1)', () => {
-  const bar = () => render(<AppBar view="overview" onView={() => {}} todo={0} team={false} />)
+  const bar = () => render(<AppBar view="overview" onView={() => {}} todo={0} runner="off" />)
 
   test('a newer version: said with the one step that updates it, and when KiroCrew looked', async () => {
     const user = userEvent.setup()
@@ -58,7 +58,8 @@ describe('the app: one bar over the views', () => {
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Brain')
     expect(bar().getByRole('tab', { name: '交付总览' })).toHaveAttribute('aria-selected', 'true')
-    expect(bar().getAllByRole('tab').map((t) => t.textContent)).toEqual(['交付总览', '需求现状', '运行过程', '开需求', 'Brain', `待办${TODO_N}`])
+    // a personal install (the fixture's): 运行机 is the team runner as GitLab shows it
+    expect(bar().getAllByRole('tab').map((t) => t.textContent)).toEqual(['交付总览', '需求现状', '运行过程', '开需求', 'Brain', `待办${TODO_N}`, '运行机'])
     expect(bar().getByRole('tab', { name: /^需求现状/ })).toBeEnabled() // nothing in hand yet: they still open one
     expect(bar().getByRole('tab', { name: /^运行过程/ })).toBeEnabled()
     expect(fx.status().counts.todo).toBe(TODO_N)
@@ -92,17 +93,38 @@ describe('the app: one bar over the views', () => {
     expect(pickRequirement([r('A-1', 'agent', 9), r('A-2', 'runner', 10)])?.key).toBe('A-2')
   })
 
-  test('运行机 is a tab only in team mode', async () => {
+  test('on the team server 运行机 is a tab only in team mode, and opens this machine’s own bridge', async () => {
+    const user = userEvent.setup()
     const s = fx.status()
-    s.app.team = true
+    s.app.role = 'team_server'
     installFixtureRoutes({ [`GET ${API}/status`]: () => s })
+    const { unmount } = render(<BrainApp pollMs={60_000} />)
+    await screen.findByTestId('req-table')
+    expect(bar().queryByRole('tab', { name: '运行机' })).toBeNull()
+    unmount()
+    s.app.team = true
     render(<BrainApp pollMs={60_000} />)
-    expect(await bar().findByRole('tab', { name: '运行机' })).toBeInTheDocument()
+    await user.click(await bar().findByRole('tab', { name: '运行机' }))
+    expect(await screen.findByRole('region', { name: '运行机状态' })).toBeInTheDocument()
+    expect(apiCalls.some((c) => c.path === `${API}/team/status`)).toBe(false)
   })
 
-  test('the AppBar alone: the selected tab, the count, and no 运行机 outside team mode', () => {
+  test('on a personal install 运行机 is always a tab: the team runner as GitLab shows it, read only', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes()
+    render(<BrainApp pollMs={60_000} />)
+    const tab = await bar().findByRole('tab', { name: '运行机' })
+    expect(tab).toHaveAttribute('title', '团队运行机在做什么：在做的 MR、等你回答的问题')
+    expect(tab).not.toHaveClass('is-off')
+    await user.click(tab)
+    expect(await screen.findByTestId('team-runner')).toHaveTextContent('团队运行机')
+    expect(apiCalls.some((c) => c.path === `${API}/team/status`)).toBe(true)
+    expect(apiCalls.some((c) => c.path === `${API}/team` || c.path === `${API}/team/setup`)).toBe(false)
+  })
+
+  test('the AppBar alone: the selected tab, the count, and no 运行机 on a team server outside team mode', () => {
     const views: string[] = []
-    render(<AppBar view="todo" onView={(v) => views.push(v)} item="PAY-3" todo={3} team={false} />)
+    render(<AppBar view="todo" onView={(v) => views.push(v)} item="PAY-3" todo={3} runner="off" />)
     expect(screen.getByRole('tab', { name: '待办 3' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.queryByRole('tab', { name: '运行机' })).toBeNull()
     // the requirement in hand is on both of its tabs, from any view: what they open is said before the click
@@ -131,8 +153,8 @@ describe('the app: one bar over the views', () => {
     expect(apiCalls.some((c) => c.path.startsWith(`${API}/board/`))).toBe(false)
   })
 
-  test('运行机 opened outside team mode is still the selected tab, greyed, so a person sees where they are', () => {
-    render(<AppBar view="team" onView={() => {}} todo={0} team={false} />)
+  test('运行机 opened on a team server outside team mode is still the selected tab, greyed, so a person sees where they are', () => {
+    render(<AppBar view="team" onView={() => {}} todo={0} runner="off" />)
     const tab = screen.getByRole('tab', { name: '运行机' })
     expect(tab).toHaveAttribute('aria-selected', 'true')
     expect(tab).toHaveClass('is-off')
@@ -287,6 +309,7 @@ describe('the app: one bar over the views', () => {
     const user = userEvent.setup()
     const s = fx.status()
     s.app.team = true
+    s.app.role = 'team_server'
     s.crew.rows = [{ level: 'FAIL', text: '找不到 brain-dev agent：~/.kiro/agents/brain-dev.json 不存在' }, { level: 'OK', text: 'KiroCrew 在跑' }]
     installFixtureRoutes({
       [`GET ${API}/status`]: () => s,

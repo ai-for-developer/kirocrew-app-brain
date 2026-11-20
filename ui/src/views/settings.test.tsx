@@ -1,16 +1,28 @@
+import { useState } from 'react'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, test, vi } from 'vitest'
 import { fx } from '../test/data'
 import { API, installFixtureRoutes } from '../test/routes'
 import { apiCalls, apiError } from '../test/stubs/app-sdk'
-import type { RepoInfo, RepoMe, Settings } from '../types'
+import type { RepoInfo, RepoMe, Settings, Status } from '../types'
 import type { ViewProps } from './props'
-import { FETCH_HINT, PUSH_HINT, SettingsView } from './Settings'
+import { FETCH_HINT, PERSONAL_RUNNER, PUSH_HINT, ROLE_HINT, ROLE_SWITCH, SettingsView, TO_PERSONAL_ON, TO_SERVER } from './Settings'
 
 const props = (over: Partial<ViewProps> = {}): ViewProps => ({
   status: fx.status(), go: vi.fn(), replace: vi.fn(), reloadStatus: vi.fn(), setStatus: vi.fn(), pollMs: 60_000, ...over,
 })
+/** The team server (the fixture's machine is a personal one): 设置 has 团队模式 and 一键建运行机 there. */
+const server = (): Status => {
+  const s = fx.status()
+  s.app.role = 'team_server'
+  return s
+}
+/** 设置 as main.tsx holds it: the status a save answers with is the page's from then on. */
+function Live({ start, go = vi.fn() }: { start: Status; go?: ViewProps['go'] }) {
+  const [status, setStatus] = useState(start)
+  return <SettingsView {...props({ status, setStatus, go })} />
+}
 
 describe('设置', () => {
   test('save posts the edited settings without the repos (the list is 导入仓库’s and 移出列表’s) and the role (its own switch), puts the answered status in place', async () => {
@@ -19,7 +31,7 @@ describe('设置', () => {
     installFixtureRoutes({
       [`POST ${API}/settings`]: (body) => ({ ok: true, settings: { ...fx.settings(), ...(body as Partial<Settings>) }, status: answered }),
     })
-    const p = props()
+    const p = props({ status: server() })
     render(<SettingsView {...p} />)
     await screen.findByLabelText('brain-kit 在哪')
     expect(screen.queryByLabelText('项目仓库（一行一个）')).toBeNull()
@@ -168,7 +180,7 @@ describe('设置', () => {
 
   test('team mode off is one checkbox, no red; on, it asks for bridge.json and runnerd.json only (the signer inside bridge.json, folded)', async () => {
     const user = userEvent.setup()
-    const s = fx.status()
+    const s = server()
     s.team = { ...s.team, enabled: false, error: '运行机模式没打开' }
     installFixtureRoutes({})
     render(<SettingsView {...props({ status: s })} />)
@@ -189,7 +201,7 @@ describe('设置', () => {
   test('the same-user trial shows its warning; a save that fails shows errorText', async () => {
     const user = userEvent.setup()
     installFixtureRoutes({ [`POST ${API}/settings`]: () => { throw apiError(400, 'bad_settings', 'work_root 必须在 ~/workplace 或 ~/workspace 下面') } })
-    render(<SettingsView {...props()} />)
+    render(<SettingsView {...props({ status: server() })} />)
     await screen.findByLabelText('brain-kit 在哪')
     expect(screen.queryByTestId('same-user-warning')).toBeNull()
     await user.click(screen.getByRole('checkbox', { name: '这台机器是团队运行机' }))
@@ -232,7 +244,7 @@ describe('设置', () => {
     expect(kit).toHaveTextContent('标准考题 没有')
     expect(kit).not.toHaveTextContent('evaluate')
     expect(within(kit).getByText('找到了')).toHaveClass('tone-ok')
-    expect(screen.getByRole('region', { name: '团队运行机' })).toHaveTextContent('没开')
+    expect(screen.getByRole('region', { name: '团队运行机' })).toHaveTextContent(`在服务器上${PERSONAL_RUNNER}`)
     const repos = screen.getByRole('region', { name: '仓库' })
     const r1 = repos.querySelector('[data-repo="r1"]') as HTMLElement
     expect(r1).toHaveClass('is-ok')
@@ -269,7 +281,7 @@ describe('设置', () => {
 
   test('team mode on: the runner card says when the last round ran, the signer’s counts and the way to 运行机', async () => {
     const user = userEvent.setup()
-    const s = fx.status()
+    const s = server()
     s.app.team = true
     s.team = { ...fx.team().status }
     installFixtureRoutes({})
@@ -285,7 +297,7 @@ describe('设置', () => {
   })
 
   test('a round that failed and a name never set: said in words; the step’s own words and the command apart', () => {
-    const s = fx.status()
+    const s = server()
     s.app.team = true
     s.team = { ...fx.team().status, loop_error: 'poll: HTTPError 502 Bad Gateway' }
     s.me = { ...s.me, user: null }
@@ -449,7 +461,7 @@ describe('设置', () => {
 
   test('全队视图: four lines, each a sentence around its number, whole numbers in the backend’s bounds, after the work directory and before team mode', async () => {
     installFixtureRoutes({})
-    render(<SettingsView {...props()} />)
+    render(<SettingsView {...props({ status: server() })} />)
     const limits = await limitsCard()
     const box = (name: string) => within(limits).getByRole('spinbutton', { name })
     expect(box(WIP)).toHaveValue(3)
@@ -493,5 +505,83 @@ describe('设置', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('「每人同时在做的需求上限」要写 1 到 20 的整数（400）')
     expect(apiCalls.find((c) => c.method === 'POST')?.body).toMatchObject({ wip_limit: 25 })
     expect(screen.queryByText('已保存')).toBeNull()
+  })
+
+  test('a personal install: no 团队模式 and no 一键建运行机; the team runner card leads to 运行机; 这台机器 last, below the form', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes({})
+    const p = props()
+    render(<SettingsView {...p} />)
+    const form = await screen.findByRole('region', { name: '设置' })
+    expect(within(form).queryByRole('group', { name: '团队模式' })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: '这台机器是团队运行机' })).toBeNull()
+    expect(screen.queryByRole('region', { name: '一键建运行机' })).toBeNull()
+    expect(apiCalls.some((c) => c.path === `${API}/team/setup`)).toBe(false)
+    const role = screen.getByRole('region', { name: '这台机器' })
+    expect(role).toHaveTextContent('个人电脑')
+    const box = within(role).getByRole('checkbox', { name: ROLE_SWITCH })
+    expect(box).not.toBeChecked()
+    expect(box).toHaveAccessibleDescription(ROLE_HINT)
+    expect(form.compareDocumentPosition(role) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(role.parentElement?.lastElementChild).toBe(role)
+    const runner = screen.getByRole('region', { name: '团队运行机' })
+    await user.click(within(runner).getByRole('button', { name: '看团队运行机' }))
+    expect(p.go).toHaveBeenCalledWith({ kind: 'team' })
+  })
+
+  test('这台机器: ticking it asks first, then makes this install the team server, with 团队模式 and 一键建运行机 on the page', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes({
+      [`POST ${API}/settings`]: (body) => ({ ok: true, settings: { ...fx.settings(), ...(body as Partial<Settings>) }, status: server() }),
+    })
+    render(<Live start={fx.status()} />)
+    const role = await screen.findByRole('region', { name: '这台机器' })
+    await user.click(within(role).getByRole('checkbox', { name: ROLE_SWITCH }))
+    const ask = within(role).getByRole('group', { name: '设成团队运行机' })
+    expect(ask).toHaveTextContent(TO_SERVER)
+    expect(ask).not.toHaveClass('is-danger')
+    expect(apiCalls.filter((c) => c.method === 'POST')).toEqual([])                     // nothing sent yet
+    await user.click(within(ask).getByRole('button', { name: '设成团队运行机' }))
+    expect(await screen.findByRole('region', { name: '一键建运行机' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: '团队模式' })).toBeInTheDocument()
+    expect(apiCalls.filter((c) => c.method === 'POST')).toEqual([{ method: 'POST', path: `${API}/settings`, body: { role: 'team_server' } }])
+    expect(role).toHaveTextContent('团队运行机（服务器）')
+    expect(within(role).getByRole('checkbox', { name: ROLE_SWITCH })).toBeChecked()
+    expect(within(role).queryByRole('group')).toBeNull()
+  })
+
+  test('back to personal on a team server in team mode: a red confirm says the bridge stops; after it the form saves team mode off', async () => {
+    const user = userEvent.setup()
+    const on = server()
+    on.app.team = true
+    on.team = { ...fx.team().status }
+    const running: Settings = { ...fx.settings(), role: 'team_server', team: { ...fx.settings().team, enabled: true } }
+    const personal: Settings = { ...running, role: 'personal', team: { ...running.team, enabled: false } }
+    installFixtureRoutes({
+      [`GET ${API}/settings`]: () => running,
+      [`POST ${API}/settings`]: (body) => (body as Partial<Settings>).role
+        ? { ok: true, settings: personal, status: fx.status() }
+        : { ok: true, settings: { ...personal, ...(body as Partial<Settings>) }, status: fx.status() },
+    })
+    render(<Live start={on} />)
+    expect(await screen.findByRole('checkbox', { name: '这台机器是团队运行机' })).toBeChecked()
+    const role = screen.getByRole('region', { name: '这台机器' })
+    await user.click(within(role).getByRole('checkbox', { name: ROLE_SWITCH }))
+    let ask = within(role).getByRole('group', { name: '改回个人电脑' })
+    expect(ask).toHaveClass('is-danger')
+    expect(ask).toHaveTextContent(TO_PERSONAL_ON)
+    await user.click(within(ask).getByRole('button', { name: '取消' }))         // 取消: as it was, nothing sent
+    expect(within(role).getByRole('checkbox', { name: ROLE_SWITCH })).toBeChecked()
+    expect(apiCalls.filter((c) => c.method === 'POST')).toEqual([])
+    await user.click(within(role).getByRole('checkbox', { name: ROLE_SWITCH }))
+    ask = within(role).getByRole('group', { name: '改回个人电脑' })
+    await user.click(within(ask).getByRole('button', { name: '改回个人电脑' }))
+    await waitFor(() => expect(screen.queryByRole('region', { name: '一键建运行机' })).toBeNull())
+    expect(screen.queryByRole('group', { name: '团队模式' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    const saved = apiCalls.filter((c) => c.method === 'POST').map((c) => c.body as Partial<Settings>)
+    expect(saved[0]).toEqual({ role: 'personal' })
+    expect(saved[1].team?.enabled).toBe(false)                                    // not the old team mode back
+    expect(saved[1]).not.toHaveProperty('role')
   })
 })

@@ -664,7 +664,7 @@ function Config({ rows }: { rows: TeamConfigRow[] }) {
   )
 }
 
-const TM_CSS = `
+export const TM_CSS = `
 /* a step's words break only between phrases (回答、| 验收; 每一轮看 MR，| 检查交接), never inside a word */
 .tm-root .br-flow > li { word-break: keep-all; overflow-wrap: anywhere; }
 .tm-top { display: flex; align-items: center; gap: .6em 1em; flex-wrap: wrap; }

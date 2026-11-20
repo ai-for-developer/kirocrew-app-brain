@@ -6,19 +6,24 @@
  * its own card: where brain-kit is, where worktrees go, 和队友同步 (how often every repo with a remote is fetched by
  * itself, with the last fetch that did not work; per repo done with the team, whether its run branches are pushed at
  * Lean's checkpoints, and why they cannot be when the backend says so), 全队视图's four limits (a sentence each around
- * its number), team mode (only a checkbox until it is on; POST /settings, which keeps the repo list as it is). Without
- * a usable brain-kit, its place is asked first, at the top, with why and where to get one.
+ * its number), team mode (only a checkbox until it is on; POST /settings, which keeps the repo list as it is). Team mode
+ * and 一键建运行机 are the team server's only: at the bottom, 这台机器 says what this install is, personal (the default)
+ * or the team server, and switches it after a confirm (POST /settings {role}; back to personal turns team mode off).
+ * Without a usable brain-kit, its place is asked first, at the top, with why and where to get one.
  */
 import { useEffect, useRef, useState } from 'react'
 import { useAppApi } from '@kirocrew/app-sdk'
 import { paths, useAction, usePoll } from '../api'
 import { ago } from '../format'
-import type { RemoveResult, RepoInfo, RepoSync, Settings, Status, TeamLimits } from '../types'
+import type { InstallRole, RemoveResult, RepoInfo, RepoSync, Settings, Status, TeamLimits } from '../types'
 import { CheckRows, CommandLine, Flow, IMPORT_FLOW, LEVEL_TONE, LoadState, MeLine, PendingRepo, RoleIcon, brainkitProblem } from '../ui'
 import { ACT, MODULE_NAME, TRACKER_NAME } from '../vocab'
 import type { ViewProps } from './props'
 import { RunnerSetupCard } from './RunnerSetup'
 import { SIGNER_SAME_USER } from './Team'
+
+/** POST /settings's answer */
+type Saved = { ok: boolean; settings: Settings; status: Status }
 
 export const SAME_USER_WARNING = '签名器和 app 用同一个系统用户，签名私钥这个用户就能读到，签名挡不住 app 自己：只适合本机试用，不能用在正式的运行机上。'
 const BRIDGE_HINT = 'bridge.json：带 "signer": {"type": "spool", "spool_dir", "allowed_signers"}，不写 signing_key'
@@ -35,6 +40,12 @@ const settingsOf = (f: Form): Form => ({ ...f, brainkit: f.brainkit.trim(), work
 
 export const FETCH_HINT = '队友推上去的进度，app 隔这么久自己取一次，交付总览里就能看到；填 0 就只在点「从远端取最新」时取。'
 export const SETUP_POINTER = '只想在这台机器上试用：用下面的「一键建运行机」，它替你建好这两个配置文件，再勾上这一项。'
+export const ROLE_SWITCH = '这台机器是团队运行机（服务器）'
+export const ROLE_HINT = '团队只有一台团队运行机，装在团队的服务器上：它接手交接过来的需求、巡检 MR。只有那台服务器勾上；组员自己的电脑不勾，在「运行机」里看它在做什么。'
+export const TO_SERVER = '设成团队运行机以后，这一页多出「团队模式」和「一键建运行机」，「运行机」显示这台机器自己的桥。'
+export const TO_PERSONAL = '改回个人电脑以后，这一页不再有「团队模式」和「一键建运行机」，「运行机」只读地显示团队服务器在做什么。'
+export const TO_PERSONAL_ON = '改回个人电脑会关掉这台机器的团队模式：桥和运行机都停下，交接过来的需求没有人接着做。'
+export const PERSONAL_RUNNER = '这台机器是个人电脑：团队运行机在团队的服务器上，在「运行机」里看它在做什么。'
 export const PUSH_HINT = 'Lean 每过一个关卡，就把你自己的 run 分支上已经提交的推到远端，队友就能看到你做到哪了；不交接，不开 MR。只在本机做的仓库不推，也不列在这里。'
 
 /** the team runner's two config files (brain-kit's bridge.json and runnerd.json): the field's label, what is typed */
@@ -74,7 +85,7 @@ export function SettingsView({ status, setStatus, reloadStatus, go }: ViewProps)
   useEffect(() => {
     if (got.data && !form) setForm(formOf(got.data))
   }, [got.data]) // eslint-disable-line react-hooks/exhaustive-deps
-  const save = useAction((s: Form) => api.post<{ ok: boolean; settings: Settings; status: Status }>(paths.settings(), s))
+  const save = useAction((s: Form) => api.post<Saved>(paths.settings(), s))
   const edit = (f: Partial<Form>) => {
     setSaved(false)
     setForm((x) => (x ? { ...x, ...f } : x))
@@ -89,6 +100,13 @@ export function SettingsView({ status, setStatus, reloadStatus, go }: ViewProps)
     setSaved(r.ok)
   }
   const onImport = (path?: string) => go({ kind: 'import', ...(path ? { path } : {}) })
+  const server = status?.app.role === 'team_server'
+  /** The role saved (back to personal: team mode off too): the page takes it, and the form the team settings, or a
+   * later 保存 would put the old ones back. */
+  const afterRole = (r: Saved) => {
+    setStatus(r.status)
+    setForm((f) => (f ? { ...f, team: { ...r.settings.team } } : f))
+  }
   /** 一键建运行机 saved the team settings itself: the form takes them, or a later 保存 would put the old ones back. */
   const afterSetup = async () => {
     reloadStatus()
@@ -171,7 +189,7 @@ export function SettingsView({ status, setStatus, reloadStatus, go }: ViewProps)
             ))}
             <p className="br-hint" id="set-limits-hint">工作小时只算周一到周五 9 点到 18 点（这台机器的时间）。到了上限只提醒，不拦开工。</p>
           </fieldset>
-          <fieldset className={`br-fieldset st-team${form.team.enabled ? ' is-on' : ''}`}>
+          {server && <fieldset className={`br-fieldset st-team${form.team.enabled ? ' is-on' : ''}`}>
             <legend>团队模式</legend>
             <div className="st-toggle">
               <label className="br-check">
@@ -203,7 +221,7 @@ export function SettingsView({ status, setStatus, reloadStatus, go }: ViewProps)
                 {form.team.dev_same_user && <p className="br-banner br-small" role="note" data-testid="same-user-warning">{SAME_USER_WARNING}</p>}
               </>
             )}
-          </fieldset>
+          </fieldset>}
           {saveRow}
         </form>
       )}
@@ -226,7 +244,8 @@ export function SettingsView({ status, setStatus, reloadStatus, go }: ViewProps)
         <div className="st-col">
           {status && <ReposCard repos={status.repos} idsProblem={status.repo_ids_problem} kitOk={status.brainkit.ok} onImport={onImport} onRemoved={setStatus} onChanged={reloadStatus} />}
           {formCard}
-          <RunnerSetupCard repos={status?.repos ?? []} onDone={() => void afterSetup()} />
+          {server && <RunnerSetupCard repos={status?.repos ?? []} onDone={() => void afterSetup()} />}
+          {status && <RoleCard role={status.app.role} teamOn={status.team.enabled} onSaved={afterRole} />}
         </div>
         <div className="st-col">
           {status && <CrewCard crew={status.crew} onFixed={reloadStatus} kitCard={kitProblem?.text} />}
@@ -291,7 +310,9 @@ function SyncFields({ form, repos, edit }: { form: Form; repos: RepoInfo[]; edit
 const yes = (b: boolean) => (b ? '有' : '没有')
 
 function StatCards({ status: s, onTeam }: { status: Status; onTeam: () => void }) {
-  const team = !s.team.enabled ? { label: '没开', tone: 'idle' } : s.team.ok ? { label: '正常', tone: 'ok' } : { label: '有问题', tone: 'bad' }
+  const personal = s.app.role === 'personal'
+  const team = personal ? { label: '在服务器上', tone: 'idle' } : !s.team.enabled ? { label: '没开', tone: 'idle' }
+    : s.team.ok ? { label: '正常', tone: 'ok' } : { label: '有问题', tone: 'bad' }
   // the names brain-kit goes by in the repos (each repo has its own: brain.user, the login name, GitLab's)
   const names = [...new Set(s.repos.map((r) => r.me?.name).filter((n): n is string => !!n))]
   const user = names.join('、') || s.me.user || (s.repos.some((r) => r.me?.source === 'token') ? 'GitLab 账号' : '')
@@ -361,6 +382,11 @@ function StatCards({ status: s, onTeam }: { status: Status; onTeam: () => void }
               </div>
             )}
           </>
+        ) : personal ? (
+          <>
+            <div className="br-kpi-note st-how">{PERSONAL_RUNNER}</div>
+            <div className="st-mods"><button type="button" className="br-btn is-small" onClick={onTeam}>看团队运行机</button></div>
+          </>
         ) : (
           <div className="br-kpi-note st-how">这台机器只在本机开发，不用开。</div>
         )}
@@ -368,6 +394,54 @@ function StatCards({ status: s, onTeam }: { status: Status; onTeam: () => void }
         {s.team.enabled && s.team.error && <p className="br-error br-small">{s.team.error}</p>}
       </section>
     </div>
+  )
+}
+
+/** 这台机器, at the bottom of 设置: personal (the default) or the team server, switched after a confirm that says what
+ * changes (back to personal with team mode on stops this machine's bridge and runner: a warning). */
+function RoleCard({ role, teamOn, onSaved }: { role: InstallRole; teamOn: boolean; onSaved: (r: Saved) => void }) {
+  const api = useAppApi()
+  const [want, setWant] = useState<InstallRole | null>(null)
+  const save = useAction((r: InstallRole) => api.post<Saved>(paths.settings(), { role: r }))
+  const apply = async () => {
+    if (!want) return
+    const r = await save.run(want)
+    if (!r) return
+    setWant(null)
+    onSaved(r)
+  }
+  const stops = want === 'personal' && teamOn
+  return (
+    <section className="br-card st-role" aria-label="这台机器" data-testid="settings-role">
+      <header>
+        <RoleIcon role={role === 'team_server' ? 'runner' : 'laptop'} size={18} />
+        <h3>这台机器</h3>
+        <span className="br-dim br-small">{role === 'team_server' ? '团队运行机（服务器）' : '个人电脑'}</span>
+      </header>
+      <div className="st-toggle">
+        <label className="br-check">
+          <input type="checkbox" aria-describedby="set-role-hint" checked={(want ?? role) === 'team_server'} disabled={save.busy}
+            onChange={(e) => {
+              const next: InstallRole = e.target.checked ? 'team_server' : 'personal'
+              setWant(next === role ? null : next)
+            }} />
+          <b>{ROLE_SWITCH}</b>
+        </label>
+        <p className="br-hint" id="set-role-hint">{ROLE_HINT}</p>
+      </div>
+      {want && (
+        <div className={`br-confirm${stops ? ' is-danger' : ''}`} role="group" aria-label={want === 'team_server' ? '设成团队运行机' : '改回个人电脑'}>
+          <span>{want === 'team_server' ? TO_SERVER : stops ? TO_PERSONAL_ON : TO_PERSONAL}</span>
+          <div className="br-row">
+            <button type="button" className={`br-btn is-small ${stops ? 'is-danger' : 'is-primary'}`} disabled={save.busy} onClick={() => void apply()}>
+              {save.busy ? '正在保存…' : want === 'team_server' ? '设成团队运行机' : '改回个人电脑'}
+            </button>
+            <button type="button" className="br-btn is-small" disabled={save.busy} onClick={() => setWant(null)}>取消</button>
+          </div>
+        </div>
+      )}
+      {save.error && <p className="br-error" role="alert">{save.error}</p>}
+    </section>
   )
 }
 
@@ -583,6 +657,7 @@ const ST_CSS = `
 .st-label { font-weight: 650; color: var(--text-strong); }
 .st-push { display: grid; gap: .3em; }
 .st-team.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.st-role { gap: .7em; }
 .st-toggle { display: grid; gap: .1em; }
 .st-toggle b { color: var(--text-strong); }
 .st-toggle .br-hint { padding-left: 1.6em; }

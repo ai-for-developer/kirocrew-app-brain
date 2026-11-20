@@ -20,14 +20,15 @@
  * (inside KiroCrew the dashboard's sidebar takes ~230 px of it).
  *
  * Views: 交付总览 (views/Overview.tsx, the default: the sample's CTO 视图), 需求现状 (Detail: its 交付详情), 运行过程
- * (board/BoardPage.tsx: its 团队看板, for one requirement), 开需求 (NewReq), Brain (Brain), 待办 (Todo), 运行机 (Team,
- * team mode only), 设置 (Settings), 导入仓库 (Import: the bar's button, and every place that has no repo).
+ * (board/BoardPage.tsx: its 团队看板, for one requirement), 开需求 (NewReq), Brain (Brain), 待办 (Todo), 运行机 (Team on
+ * the team server; RunnerStatus on a personal install: the team runner as GitLab shows it), 设置 (Settings), 导入仓库
+ * (Import: the bar's button, and every place that has no repo).
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavBadge, useNavigate } from '@kirocrew/app-sdk'
 import { httpProblem, paths, usePoll } from './api'
 import { useAppApi } from '@kirocrew/app-sdk'
-import { AppBar } from './AppBar'
+import { AppBar, type RunnerTab } from './AppBar'
 import { BoardPage } from './board/BoardPage'
 import { BOARD_CSS } from './board/styles'
 import { CTO_CSS } from './cto/styles'
@@ -42,6 +43,7 @@ import { ImportView } from './views/Import'
 import { NewView } from './views/NewReq'
 import { OverviewView } from './views/Overview'
 import type { ViewProps } from './views/props'
+import { RunnerStatusPage } from './views/RunnerStatus'
 import { SettingsView } from './views/Settings'
 import { TeamPage } from './views/Team'
 import { TodoView } from './views/Todo'
@@ -191,7 +193,7 @@ export default function BrainApp({ pollMs }: { pollMs?: number } = {}) {
   } else if (v.kind === 'todo') {
     body = <TodoView key={n} {...props} />
   } else if (v.kind === 'team') {
-    body = <TeamPage key={n} {...props} />
+    body = status.data?.app.role === 'personal' ? <RunnerStatusPage key={n} {...props} /> : <TeamPage key={n} {...props} />
   } else if (v.kind === 'settings') {
     body = <SettingsView key={n} {...props} />
   } else if (v.kind === 'import') {
@@ -210,6 +212,7 @@ export default function BrainApp({ pollMs }: { pollMs?: number } = {}) {
   const unnamed = s && v.kind !== 'settings' && v.kind !== 'import' && v.kind !== 'new'
     ? s.repos.filter((r): r is RepoInfo & { me: RepoMe } => !!r.me && !r.me.name && (r.me.ask || !!r.me.error)) : []
   const ids = s?.repo_ids_problem && v.kind !== 'settings' ? s.repo_ids_problem : ''
+  const runner: RunnerTab = s?.app.role === 'personal' ? 'personal' : s?.app.team ? 'on' : 'off'
   return (
     <div ref={rootRef} className="br-app" data-testid="br-app">
       <style>{BOARD_CSS}</style>
@@ -217,7 +220,7 @@ export default function BrainApp({ pollMs }: { pollMs?: number } = {}) {
       <style>{APP_CSS}</style>
       <style>{KIT_CSS}</style>
       <style>{SHELL_CSS}</style>
-      <AppBar view={v.kind} onView={onTab} item={held?.key} gone={!!held && gone === `${held.repo}/${held.key}`} picking={picking} todo={todoCount} team={!!s?.app.team} />
+      <AppBar view={v.kind} onView={onTab} item={held?.key} gone={!!held && gone === `${held.repo}/${held.key}`} picking={picking} todo={todoCount} runner={runner} />
       <div className="br-banners" data-testid="br-banners">
         {off && (
           <Banner text={`${s ? '状态刷新没成：' : ''}${off.text}`} todo={off.todo} raw={status.raw} bad={!s} testid="br-status-error">

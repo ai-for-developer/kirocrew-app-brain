@@ -160,7 +160,9 @@ describe('一键建运行机', () => {
       [`GET ${API}/settings`]: () => (apiCalls.some((c) => c.method === 'POST') ? on : fx.settings()),
       [`POST ${API}/team/setup`]: () => fx.teamSetup(),     // a run that ended before the answer
     })
-    const p: ViewProps = { status: fx.status(), go: vi.fn(), replace: vi.fn(), reloadStatus: vi.fn(), setStatus: vi.fn(), pollMs: 60_000 }
+    const status = fx.status()
+    status.app.role = 'team_server'
+    const p: ViewProps = { status, go: vi.fn(), replace: vi.fn(), reloadStatus: vi.fn(), setStatus: vi.fn(), pollMs: 60_000 }
     render(<SettingsView {...p} />)
     expect(await screen.findByTestId('setup-pointer')).toHaveTextContent(SETUP_POINTER)
     const card = screen.getByRole('region', { name: '一键建运行机' })
