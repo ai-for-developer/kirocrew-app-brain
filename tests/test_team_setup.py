@@ -1195,6 +1195,28 @@ def test_a_project_token_run_after_a_bot_account_one_no_longer_says_the_bridges_
     assert step(view, "bridge_token")["message"] == "填上桥的账号的个人令牌"
 
 
+def test_the_state_a_run_before_bot_account_mode_left_reads_as_a_project_token_run_of_its_project(tmp_path):
+    """setup-state.json as 0.4.2's 一键建运行机 left it (its one project in input.project, no rows, no personal tokens
+    kept): the page reads it as a project-token run of that project."""
+    setup = mod("team.setup")
+    paths = setup.Paths.default(BRAINKIT, root=tmp_path / "team-setup")
+    paths.root.mkdir(parents=True)
+    paths.state.write_text(json.dumps({
+        "schema": 1, "running": False, "started_at": 1794145980, "ended_at": 1794146004,
+        "input": {"gitlab_base": BASE, "project": P, "push": "auto", "patrol": True,
+                  "roles": {"product": ["carol"], "builder": [], "security": [], "data": []}},
+        "steps": [{"id": "project", "status": "done", "message": "%s，默认分支 main；你（alice）是 Maintainer" % P,
+                   "link": BASE + "/" + P, "detail": ""}],
+        "project": {"id": PID, "path": P, "default_branch": "main", "web_url": BASE + "/" + P},
+        "kit_mr": {"iid": 7, "web_url": BASE + "/" + P + "/-/merge_requests/7"}}))
+    view = setup.view(setup.load_state(paths), paths, running=False)
+    assert view["input"] == {"gitlab_base": BASE, "mode": "project-token", "projects": [P], "push": "auto", "patrol": True,
+                             "roles": {"product": ["carol"], "builder": [], "security": [], "data": []}}
+    assert view["accounts"] == {"bridge": "", "bot": ""}
+    assert (step(view, "project")["status"], step(view, "project")["projects"]) == ("done", [])
+    assert {s["status"] for s in view["steps"][1:]} == {"todo"}
+
+
 def test_the_projects_and_the_accounts_are_read_at_the_boundary():
     setup = mod("team.setup")
     got = setup.SetupInput.parse({
