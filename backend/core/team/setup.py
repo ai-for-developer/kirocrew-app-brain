@@ -807,7 +807,7 @@ def step_kit_mr(ctx: Ctx) -> StepResult:
     mr = gl.mr_for_branch(pid, BRANCH)
     opened = mr is None
     if opened:
-        patrol = MR_PATROL[sources.PATROL in want.get("work_sources", ())]
+        patrol = MR_PATROL[sources.PATROL in sources.enabled(want)]
         text = ("一键建运行机开的 MR：" + patrol if patrol_only(ctx, want) else
                 MR_TEXT + ("\n\n" + patrol if "work_sources" in changed else ""))
         mr = gl.call("POST", "/projects/%d/merge_requests" % pid, body={
@@ -1043,8 +1043,10 @@ def step_team_mode(ctx: Ctx) -> StepResult:
         return failed(str(st.get("error") or "团队模式没开起来"), detail=str(st.get("error_raw") or ""))
     said = str(st.get("said") or "团队模式开了")
     if any(r.id == "kit_mr" and r.status == "waiting" for r in ctx.results):
-        said += ("；上面那个 MR 合并以后，巡检才" + ("开始" if ctx.inp.patrol else "停") if patrol_only(ctx, wanted_kit(ctx))
-                 else "；可是上面那个 MR 合并以前，交接都会被拒")
+        if patrol_only(ctx, wanted_kit(ctx)):
+            said += "；上面那个 MR 合并以后，巡检才" + ("开始" if ctx.inp.patrol else "停")
+        else:
+            said += "；可是上面那个 MR 合并以前，交接都会被拒"
     return done(said)
 
 

@@ -8,7 +8,8 @@ log. A person left a review thread open: unresolved and resolvable, with no repl
 named in a turn that ended. A person wrote a plain comment on the MR (no thread, so nothing marks it resolved) since
 patrol started in the project, not named in a turn that ended: the session answers it with a note on the MR that
 quotes it. Or the MR conflicts with its target branch. The MR's problems make a PatrolItem. Its
-fingerprint moves with the head, a failed pipeline, the conflict and the open review notes, and nothing else.
+fingerprint moves with the head, a failed pipeline, the conflict and the open review notes and comments, and nothing
+else.
 
 The ledger, <root>/patrol.sqlite, has one row per open MR of the projects patrol is on (MrRow). It is a state machine
 (settle, Patrol._look and Patrol._send):
@@ -49,7 +50,7 @@ from . import sources
 
 KIND = sources.PATROL
 AGENT = "brain-patrol"
-CAP = 2                     # patrol sessions at work at once
+CAP = 2                     # patrol sessions at work at once, counting those handed work this round
 TIMEOUT_S = 30 * 60         # a turn with no end and no new head this long is a failed attempt
 MAX_ATTEMPTS = 2            # failed attempts on one fingerprint before the MR is blocked
 MAX_STREAK = 3              # dispatches in a row with no person pushing or commenting in between before it is paused
@@ -338,8 +339,8 @@ class MrRow:
     checked_head: str = ""              # the newest head since the last dispatch whose new commits are the runner's
     dispatched_at: float = 0.0
     send_id: str = ""
-    sent_notes: tuple[int, ...] = ()    # the review notes that dispatch named
-    outcome: str = ""                   # how the last attempt ended: ended | moved | failed | timeout | taken
+    sent_notes: tuple[int, ...] = ()    # the review notes and comments that dispatch named
+    outcome: str = ""                   # how the last attempt ended: ended | moved | failed | timeout | refused | taken
     done_fp: str = ""                   # the fingerprint a turn ended on (its notes answered)
     answered: tuple[int, ...] = ()
     told: bool = False                  # it is blocked or paused, and the MR was told so
@@ -915,7 +916,7 @@ class Patrol:
         if row.state == BLOCKED:
             e.standing = "blocked"
         else:
-            e.standing, e.note = "error", "会话没收下（%s）：算一次，下一轮再派" % _said(exc)
+            e.standing, e.note = "error", "没派出去（%s）：算一次，下一轮再派" % _said(exc)
         self.out("%s!%d: %s refused its message: %s" % (e.project, went.iid, went.slot, _said(exc)))
 
 
