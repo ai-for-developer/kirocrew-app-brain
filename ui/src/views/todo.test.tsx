@@ -149,6 +149,25 @@ describe('待办', () => {
     expect(go).toHaveBeenCalledWith({ kind: 'item', repo: 'r1', key: 'PAY-3', from: 'todo' })
   })
 
+  test('a fast run’s two steps, 等开 MR and 要转完整流程: its words, and 需求现状, where the button is; 待办 runs neither', async () => {
+    const reply = fx.todo().items.find((i) => i.kind === 'reply')!
+    const fast = (kind: TodoItem['kind'], key: string, text: string): TodoItem => ({ ...reply, kind, repo: 'r1', key, title: '订单优惠码', text, line: null })
+    installFixtureRoutes({ [`GET ${API}/todo`]: (): Todo => ({ team: false, items: [
+      fast('open_mr', 'PAY-17', '代码提交了，检查是绿的：做完了就点「开 MR」，没做完就回会话'),
+      fast('full', 'PAY-19', '改到了风险目录（src/pay/refund.py）：快速需求不能合并这个改动。点「转完整流程」'),
+    ] }) })
+    const { go } = renderTodo()
+    const ready = await screen.findByRole('region', { name: '等开 MR' })
+    const risk = group('要转完整流程')
+    expect(ready).toHaveTextContent('代码提交了，检查是绿的：做完了就点「开 MR」')
+    expect(risk).toHaveTextContent('改到了风险目录（src/pay/refund.py）')
+    fireEvent.click(within(ready).getByRole('button', { name: '需求现状' }))
+    expect(go).toHaveBeenLastCalledWith({ kind: 'item', repo: 'r1', key: 'PAY-17', from: 'todo' })
+    fireEvent.click(within(risk).getByRole('button', { name: '需求现状' }))
+    expect(go).toHaveBeenLastCalledWith({ kind: 'item', repo: 'r1', key: 'PAY-19', from: 'todo' })
+    expect(apiCalls.filter((c) => c.method === 'POST')).toEqual([])
+  })
+
   test('the tab’s count is read again when it disagrees with the list', async () => {
     const status = fx.status()
     status.counts.todo = 2
