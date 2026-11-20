@@ -38,6 +38,7 @@ from .store import Store
 from .team import patrol as patrol_mod
 from .team import setup as setup_mod
 from .team import signerproc
+from .team import staging as staging_mod
 
 _REGISTRY: dict[str, "Service"] = {}
 _SECRETS = re.compile(r"(?i)((?:password|passwd|secret|token|api[_-]?key|authorization)\s*[=:]\s*|bearer\s+)\S+"
@@ -2244,6 +2245,12 @@ class Service:
         if self.team is None:
             return patrol_mod.view_of([], [], None)
         return scrub_tree(self.team.patrol_view(), self.scrub)
+
+    async def team_staging(self) -> dict[str, Any]:
+        """GET /team/staging: 测试环境报错's last round, every error signature it holds (team/staging.py)."""
+        if self.team is None:
+            return staging_mod.view_of([], [], {}, None)
+        return scrub_tree(self.team.staging_view(), self.scrub)
 
     async def team_loop(self) -> dict[str, Any]:
         rt = self.team

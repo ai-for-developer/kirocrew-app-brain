@@ -19,7 +19,8 @@ patched or subclassed. What the app changes:
   `brain handoff` re-adding it right now) and waiting (this very hand-over is being signed elsewhere: looked at again
   next round). brain-kit's poll returns nothing (BRAINKIT_REQUESTS 27). A project whose kit.json work_sources leaves
   mr-handoff out (sources.py) is not polled;
-- patrol: a round ends with MR 巡检 (team/patrol.py, work source mr-patrol), on the same worker thread.
+- patrol: a round ends with MR 巡检 (team/patrol.py, work source mr-patrol), on the same worker thread, then
+  测试环境报错 (team/staging.py, work source staging-errors).
 
 The ledger is brain-kit's ``Ledger``: one sqlite connection any thread may use, ``ledger.lock`` around several
 statements. Rounds run one at a time on the runtime's own worker thread (a round may wait on GitLab, KiroCrew and the
@@ -47,6 +48,7 @@ from .. import bk, problems
 from ..constants import APP_ROOT, PYTHON_BIN
 from . import patrol as patrol_mod
 from . import signerproc, sources
+from . import staging as staging_mod
 from .crewadapter import KiroCrewAdapter
 
 REQ_RE = re.compile(r"^[a-z]+-[A-Za-z0-9-]{1,80}-[0-9a-f]{12}\.json$")
@@ -117,6 +119,7 @@ class TeamRuntime:
         self.transport, self.kick, self.sign_timeout = transport, kick, sign_timeout
         self.host: Any = None
         self.patrol: patrol_mod.Patrol | None = None
+        self.staging: staging_mod.StagingWatch | None = None
         self.cfg: dict[str, Any] = {}
         self.runnerd_cfg: dict[str, Any] | None = None
         self.spool = ""
@@ -199,12 +202,17 @@ class TeamRuntime:
                 helper=patrol_mod.Helper(PYTHON_BIN, str(APP_ROOT / "backend" / "core" / "team" / "patrol_reply.py"),
                                          config, str(bk.root())),
                 claims=lambda: sources.held(self))
+            self.staging = staging_mod.StagingWatch(
+                gl=gl, sessions=kc, kit=self.host.kit, out=self._out, projects=cfg["projects"],
+                ledger_path=os.path.join(os.path.dirname(config), "staging.sqlite"),
+                workspaces=staging_mod.beside(self.patrol.workspaces), helper=self.patrol.helper,
+                claims=lambda: sources.held(self), shared=lambda: self.patrol_view()["working"])
             self.cfg, self.runnerd_cfg, self.spool, self.allowed_signers = cfg, rcfg, spool, allowed
             self.error = ""
             return True
         except Exception as exc:  # noqa: BLE001
             self.error = str(exc).split("\n", 1)[0][:400]
-            self.host = self.patrol = None
+            self.host = self.patrol = self.staging = None
             return False
 
     def stop(self) -> None:
@@ -218,7 +226,8 @@ class TeamRuntime:
     def _close(self) -> None:
         host, self.host = self.host, None
         patrol, self.patrol = self.patrol, None
-        for held in (host.ledger if host is not None else None, patrol):
+        staging, self.staging = self.staging, None
+        for held in (host.ledger if host is not None else None, patrol, staging):
             try:
                 if held is not None:
                     held.close()
@@ -234,7 +243,7 @@ class TeamRuntime:
     # ---- one round ------------------------------------------------------------------------------------ #
 
     def loop_once(self) -> dict[str, int]:
-        """poll, runnerd, dispatch, watch, collect, reconcile, patrol; one bad step does not stop the others."""
+        """poll, runnerd, dispatch, watch, collect, reconcile, patrol, staging; one bad step does not stop the others."""
         host = self.host
         if host is None:
             raise RuntimeError(self.error or "运行机模式没有启动")
@@ -242,7 +251,7 @@ class TeamRuntime:
         summary: dict[str, int] = {}
         errors = []
         with self._lock:
-            for step in ("poll", "runnerd", "dispatch", "watch", "collect", "reconcile", "patrol"):
+            for step in ("poll", "runnerd", "dispatch", "watch", "collect", "reconcile", "patrol", "staging"):
                 try:
                     if step == "runnerd":
                         if self.runnerd_cfg:
@@ -254,6 +263,10 @@ class TeamRuntime:
                     if step == "patrol":
                         if self.patrol is not None:
                             summary["patrol"] = self.patrol.round()
+                        continue
+                    if step == "staging":
+                        if self.staging is not None:
+                            summary["staging"] = self.staging.round()
                         continue
                     n = getattr(host, step)()
                     if isinstance(n, int):
@@ -294,6 +307,11 @@ class TeamRuntime:
         """GET /team/patrol: what MR 巡检's last round saw (patrol.view_of)."""
         p = self.patrol
         return p.view() if p is not None else patrol_mod.view_of([], [], None)
+
+    def staging_view(self) -> dict[str, Any]:
+        """GET /team/staging: what 测试环境报错's last round saw (staging.view_of)."""
+        s = self.staging
+        return s.view() if s is not None else staging_mod.view_of([], [], {}, None)
 
     def handovers(self) -> list[dict[str, Any]]:
         """The labelled MRs of the last round and what brain-kit's bridge said about each (see _poll)."""
