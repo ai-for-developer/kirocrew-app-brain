@@ -356,8 +356,9 @@ class Service:
         return ""
 
     async def refresh_mrs(self) -> None:
-        """The MRs of handed-over runs (person mode), each at most every mrinfo.TTL_S. Only the notes of the account
-        the repo's kit.json names as bridge_user are the bridge's (when it names one)."""
+        """The MRs of handed-over runs and of fast runs whose MR can still change (fastrow.polls_mr; person mode), each
+        at most every mrinfo.TTL_S. Only the notes of the account the repo's kit.json names as bridge_user are the
+        bridge's (when it names one)."""
         for (base, project, branch), (_, bridge_user) in list(self._mr_wanted.items()):
             if self.mr.due(project, branch):
                 await asyncio.to_thread(self.mr.refresh, base, project, branch, transport=self.transport,
@@ -590,21 +591,28 @@ class Service:
         run = f.get("run") or {}
         flow = f["flow"]
         own_mr = bool(run) and not f.get("flow_error") and flowview.reads_own_mr(flow)
+        mine = deliveries.owns(self.me_in(repo), f.get("owner") or (f.get("claim") or {}).get("owner"))
         mr = None
         if (run.get("handoff") or own_mr) and f.get("branch") and base and project:
-            self._mr_wanted[(base, project, f["branch"])] = (scope, str(repo.cfg.get("bridge_user") or ""))
+            wanted = (base, project, f["branch"])
             mr = self.mr.get(project, f["branch"])
+            if run.get("handoff") or fastrow.polls_mr(f, mr, mine=mine, read=self.mr.read(project, f["branch"])):
+                self._mr_wanted[wanted] = (scope, str(repo.cfg.get("bridge_user") or ""))
+            else:
+                self._mr_wanted.pop(wanted, None)
             seen = (project, f["branch"], f.get("tip"))
             if (mr or {}).get("sha") != f.get("tip") and seen not in self._mr_seen and repo.is_handover_tip(f):
                 # a hand-over just made: read its MR now, so a label that did not go on is said at once
                 self._mr_seen.add(seen)
                 mr = self.mr.refresh(base, project, f["branch"], transport=self.transport,
                                      bridge_user=str(repo.cfg.get("bridge_user") or "") or None)
+        elif f.get("branch") and base and project:     # a fast run switched to the full flow reads no MR of its own
+            self._mr_wanted.pop((base, project, f["branch"]), None)
         bot = 0
         if run.get("handoff") and not mr:
             bot = repo.bot_commits_since((run.get("handoff") or {}).get("local_head"), f.get("origin_sha"))
         merged = bool(f.get("merged") or (mr or {}).get("state") == "merged")
-        fast = self._fast_of(repo, f)
+        fast = self._fast_of(repo, f, git=mine and not merged and (mr or {}).get("state") != "closed")
         deliveries.classify(row, f, mr=mr, slot=live, cfg=repo.cfg, bot_commits=bot,
                             at_handover=bool(mr) and repo.is_handover_tip(f), me=self.me_in(repo),
                             reflected=merged and f["key"] in repo.reflected(), now=self.now(),
@@ -626,12 +634,18 @@ class Service:
             row["run_ids"] = sorted({q["run_id"] for q in mr.get("questions") or [] if q.get("run_id")})
         return row
 
-    def _fast_of(self, repo: Repo, f: dict[str, Any]) -> fastrow.FastFacts | None:
-        """The FastFacts of a run without a Lean intent (a fast run): its row and its board read them. Blocking."""
+    def _fast_of(self, repo: Repo, f: dict[str, Any], *, git: bool = True) -> fastrow.FastFacts | None:
+        """The FastFacts of a run without a Lean intent (a fast run): its row and its board read them; *git*: its
+        commits and risk paths too (a row that never reads them skips that git work). Blocking."""
         flow = f.get("flow")
         if not f.get("run") or f.get("flow_error") or flow is None or flow.intent:
             return None
-        return fastrow.fast_facts(repo, f, self._fast_git)
+        base, project = self._gitlab_of(repo)
+        branch = str(f.get("branch") or "")
+        mr = self.mr.get(project, branch) if base and project and branch else None
+        read_at = self.mr.stale_since(project, branch) if mr else None
+        return fastrow.fast_facts(repo, f, self._fast_git, git=git,
+                                  stale_s=max(0.0, time.time() - read_at) if read_at else None)
 
     # ---- 变更说明 (brain mr-desc) ------------------------------------------------------------------------- #
 

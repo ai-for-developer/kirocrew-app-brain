@@ -20,6 +20,7 @@ CI_RUNNING = ("created", "waiting_for_resource", "preparing", "pending", "runnin
 RISKY = "改到了风险目录（%s）：快速需求不能合并这个改动。点「转完整流程」"
 READY = "代码提交了，检查是绿的：做完了就点「开 MR」，没做完就回会话"
 READY_UNCHECKED = "代码提交了：做完了就点「开 MR」，没做完就回会话"
+STALE = "（GitLab 这会儿读不到：这是 %s前读到的）"
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ class FastFacts:
     # tell what the branch changed (`brain mr` and CI still check)
     risky: Optional[tuple[str, ...]]
     patrol: bool                 # MR 巡检 works this repo's open MRs (kit.json work_sources has mr-patrol)
+    stale_s: Optional[float] = None     # the MR shown was read this long ago: this machine's reads since failed
 
 
 def newest_verify(evs: list[dict[str, Any]]) -> Optional[Verify]:
@@ -74,12 +76,14 @@ def _git_facts(repo: Any, tip: str, main: str) -> tuple[int, Optional[tuple[str,
     return count, tuple(risky)
 
 
-def fast_facts(repo: Any, f: dict[str, Any], cache: dict[tuple, tuple[int, Optional[tuple[str, ...]]]]) -> FastFacts:
+def fast_facts(repo: Any, f: dict[str, Any], cache: dict[tuple, tuple[int, Optional[tuple[str, ...]]]], *,
+               git: bool = True, stale_s: Optional[float] = None) -> FastFacts:
     """A fast run's FastFacts. The git half only changes with its tip or the default branch: kept in *cache*, unless
-    git failed (read again next time)."""
+    git failed (read again next time); without *git* (a row that never reads it: merged, closed, a teammate's) it is
+    not read, and says 0 commits, risk paths not known."""
     tip, main = f.get("tip"), repo.main_sha()
     k = (repo.path, tip, main)
-    got = cache.get(k)
+    got = cache.get(k) if git else (0, None)
     if got is None:
         if len(cache) > 512:
             cache.clear()
@@ -88,7 +92,21 @@ def fast_facts(repo: Any, f: dict[str, Any], cache: dict[tuple, tuple[int, Optio
             cache[k] = got
     commits, risky = got
     return FastFacts(code_commits=commits, verify=newest_verify(f.get("events") or []), risky=risky,
-                     patrol=sources.PATROL in sources.enabled(repo.cfg))
+                     patrol=sources.PATROL in sources.enabled(repo.cfg), stale_s=stale_s)
+
+
+def polls_mr(f: dict[str, Any], mr: Optional[dict[str, Any]], *, mine: bool, read: bool) -> bool:
+    """Whether this machine keeps reading a fast run's MR from GitLab: never once it is merged or closed; a teammate's
+    while it is open (they open its MR on their machine); the person's own while its MR is open, or until it was read
+    once (开 MR reads it again when it opens one)."""
+    state = (mr or {}).get("state")
+    if f.get("merged") or state in ("merged", "closed"):
+        return False
+    return not mine or state == "opened" or not read
+
+
+def _ago(s: float) -> str:
+    return "%d 小时" % (s // 3600) if s >= 5400 else "%d 分钟" % max(1, s // 60)
 
 
 def head_pipeline(mr: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
@@ -110,15 +128,16 @@ def _opened(put: Callable[..., None], mr: dict[str, Any], fast: FastFacts, *, fi
     """The waits of a fast run whose MR is open: its CI on the MR's head, then the people who review and merge it.
     *fixer* fixes a red CI that MR 巡检 does not (*fix*: how it is said, *where*: where it is done)."""
     n, ci, at = mr.get("iid"), ci_state(mr), (head_pipeline(mr) or {}).get("at")
+    old = STALE % _ago(fast.stale_s) if fast.stale_s is not None else ""
     if ci == "running":
-        return put("local", "nobody", "none", "MR !%s：CI 在跑" % n, since=at)
+        return put("local", "nobody", "none", "MR !%s：CI 在跑%s" % (n, old), since=at)
     if ci == "failed" and fast.patrol:
-        return put("local", "runner", "none", "MR !%s：CI 没过，运行机的 MR 巡检会去修" % n, since=at)
+        return put("local", "runner", "none", "MR !%s：CI 没过，运行机的 MR 巡检会去修%s" % (n, old), since=at)
     if ci == "failed":
-        return put("local", fixer, "reply" if fixer == "you" else "none", "MR !%s：CI 没过：%s" % (n, fix),
+        return put("local", fixer, "reply" if fixer == "you" else "none", "MR !%s：CI 没过：%s%s" % (n, fix, old),
                    where=where, since=at)
-    return put("local", "people", "merge", "MR !%s：%s" % (n, "CI 过了，等人审、合并" if ci == "success" else "等人审、合并"),
-               where="mr", since=at)
+    return put("local", "people", "merge", "MR !%s：%s%s" % (
+        n, "CI 过了，等人审、合并" if ci == "success" else "等人审、合并", old), where="mr", since=at)
 
 
 def theirs(put: Callable[..., None], f: dict[str, Any], *, merged: Callable[[str], None],
