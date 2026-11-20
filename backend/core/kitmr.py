@@ -109,7 +109,9 @@ def branch_fast(git: Any, ref: str) -> bool | None:
 
 def fast_pending(on: bool, branch_on: bool | None, mr: Mapping[str, Any] | None) -> dict[str, Any] | None:
     """The switch's change not merged yet: its MR when this machine reads it (GitLab's word wins: merged or closed is
-    over), else the branch brain/fast-mode on origin saying something other than the default branch."""
+    over), else the branch brain/fast-mode on origin saying something other than the default branch. *branch_on*: the
+    branch's fast_mode at the MR's head (None when that commit is not fetched yet: an MR of the switch turns the
+    default branch's value over)."""
     state = (mr or {}).get("state")
     if state == "opened":
         return {"on": branch_on if branch_on is not None else not on, "iid": mr.get("iid"), "url": mr.get("url")}

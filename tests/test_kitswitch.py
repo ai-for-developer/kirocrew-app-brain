@@ -122,6 +122,25 @@ def test_the_switch_opens_one_kit_json_mr_and_says_it_waits_until_merged(world):
     assert back["text"] == "默认分支上已经是「允许」了：MR !31 不用合并了，在 GitLab 上关掉它"
 
 
+def test_right_after_a_flip_the_pending_line_says_what_its_mr_does(world):
+    """An earlier switch MR merged without its branch deleted: brain/fast-mode stays at main, on GitLab and as this
+    clone last fetched it. The new MR's content is on GitLab, not in that stale copy."""
+    repo, gl, svc = world
+    gl.files[kitmr.FAST_BRANCH] = dict(gl.files["main"])
+    sh("git", "-C", repo, "push", "-q", "origin", "main:refs/heads/" + kitmr.FAST_BRANCH)
+    sh("git", "-C", repo, "fetch", "-q", "origin")
+
+    async def go():
+        before = fast_of(await svc.status())
+        off = await svc.fast_mode({"repo": "r1", "on": False})
+        return before, off, fast_of(await svc.status())
+
+    before, off, after = started(svc, go)
+    assert before == {"on": True, "why": "", "pending": None}
+    assert json.loads(gl.files[kitmr.FAST_BRANCH][kitmr.KIT])["fast_mode"] is False
+    assert off["fast"]["pending"]["on"] is False and after["pending"]["on"] is False, "its MR turns 快速 off"
+
+
 def test_once_merged_and_fetched_the_switch_shows_the_default_branch_again(world):
     repo, gl, svc = world
 

@@ -1882,24 +1882,30 @@ class Service:
     def _fast_view(self, repo: Repo) -> dict[str, Any] | None:
         """设置's 「允许快速模式」 of a repo with a remote (RepoInfo.fast; None without one): the default branch's
         fast_mode as this machine last fetched it, why brain-kit offers no fast run there whatever it says, and the
-        switch's change not merged yet. The git half is kept while the default branch and brain/fast-mode stay put.
-        Blocking."""
+        switch's change not merged yet, read at its open MR's head (else at brain/fast-mode as last fetched). The git
+        half is kept while the default branch and that head stay put. Blocking."""
         if not repo.has_origin():
             return None
-        side = "refs/remotes/origin/" + kitmr.FAST_BRANCH
-        bsha = repo.git.out("rev-parse", "-q", "--verify", side) or None
-        k = (repo.path, repo.main_sha(), bsha)
-        if k not in self._fast_views:
-            if len(self._fast_views) > 256:
-                self._fast_views.clear()
-            on, why = kitmr.fast_policy(repo.path, repo.main_ref())
-            self._fast_views[k] = (on, why, kitmr.branch_fast(repo.git, side) if bsha else None)
-        on, why, branch_on = self._fast_views[k]
+        bsha = repo.git.out("rev-parse", "-q", "--verify", "refs/remotes/origin/" + kitmr.FAST_BRANCH) or None
         base, project = self._gitlab_of(repo)
         mr = None
         if base and project and (bsha or (base, project, kitmr.FAST_BRANCH) in self._mr_wanted):
             self._mr_wanted[(base, project, kitmr.FAST_BRANCH)] = ("", "")
             mr = self.mr.get(project, kitmr.FAST_BRANCH)
+        # an open MR's head as GitLab says it, newer than the last fetch right after a flip; not here yet: unknown
+        head = bsha
+        if (mr or {}).get("state") == "opened":
+            head = mr["sha"] if mrinfo.SHA40_RE.match(str(mr.get("sha") or "")) else None
+        k = (repo.path, repo.main_sha(), head)
+        got = self._fast_views.get(k)
+        if got is None:
+            if len(self._fast_views) > 256:
+                self._fast_views.clear()
+            on, why = kitmr.fast_policy(repo.path, repo.main_ref())
+            got = (on, why, kitmr.branch_fast(repo.git, head) if head else None)
+            if got[2] is not None or not head:
+                self._fast_views[k] = got
+        on, why, branch_on = got
         return {"on": on, "why": why, "pending": kitmr.fast_pending(on, branch_on, mr)}
 
     async def fast_mode(self, body: Any) -> dict[str, Any]:
