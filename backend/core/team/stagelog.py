@@ -9,7 +9,8 @@ first read of a log starts at its end: errors logged before the runner watched a
 errors_in finds the errors in plain text or JSON lines: a line at level ERROR or above, a Python traceback (with the
 ERROR line that logged it), and a request answered 5xx (one right after a traceback is the request that raised it, and
 joins it). Each error has a signature: a traceback's is its exception type and innermost project frame, any other's its
-message with the numbers and ids taken out. grouped() counts them by signature.
+message with what changes from one error to the next taken out (VARYING: quoted values, e-mails, paths, ids, long
+tokens, numbers). grouped() counts them by signature.
 """
 
 from __future__ import annotations
@@ -43,6 +44,16 @@ REQUEST_RE = re.compile(r'"(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS) (\S+)(?: HTT
 ID_RE = re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
                    r"|\b(?=[0-9a-fA-F]*\d)[0-9a-fA-F]{8,}\b")
 NUM_RE = re.compile(r"\d+(?:\.\d+)?")
+# a quote that opens after a letter or digit is an apostrophe (can't), not a quoted value
+QUOTED_RE = re.compile(r"(?<![A-Za-z0-9'\"`])(?:'[^'\n]*'|\"[^\"\n]*\"|`[^`\n]*`|“[^”\n]*”|‘[^’\n]*’)(?![A-Za-z0-9])")
+EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
+_PATH = r"[A-Za-z0-9_.~/\\+@%=:#-]*[A-Za-z0-9_~/\\+@%=#-]"         # its last character is no full stop or colon
+PATH_RE = re.compile(r"(?<![A-Za-z0-9_.~/\\])(?:(?:~|\.\.?)/|/[A-Za-z0-9_.~+@%=:#-]+/)" + _PATH +
+                     r"|(?<![A-Za-z0-9])[A-Za-z]:\\" + _PATH)
+TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_+/=-])(?=[A-Za-z0-9_+/=-]*\d)(?=[A-Za-z0-9_+/=-]*[A-Za-z])[A-Za-z0-9_+/=-]{20,}"
+                      r"(?![A-Za-z0-9_+/=-])")
+VARYING = ((QUOTED_RE, "<str>"), (EMAIL_RE, "<email>"), (PATH_RE, "<path>"), (ID_RE, "<id>"), (TOKEN_RE, "<token>"),
+           (NUM_RE, "<n>"))         # in this order: a quoted value may hold a path, a token may hold numbers
 SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 JSON_LEVEL = ("level", "levelname", "severity", "lvl")
 JSON_MESSAGE = ("message", "msg", "event")
@@ -187,8 +198,10 @@ def short(text: str, n: int = 80) -> str:
 
 
 def normalized(text: str) -> str:
-    """A message without what changes from one error to the next: ids, hashes and numbers."""
-    return " ".join(NUM_RE.sub("<n>", ID_RE.sub("<id>", text)).split())[:SIGNATURE_CHARS]
+    """A message without what changes from one error to the next (VARYING)."""
+    for rx, mark in VARYING:
+        text = rx.sub(mark, text)
+    return " ".join(text.split())[:SIGNATURE_CHARS]
 
 
 def _excerpt(lines: Sequence[str]) -> tuple[str, ...]:

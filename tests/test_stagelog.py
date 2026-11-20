@@ -99,6 +99,32 @@ def test_errors_group_by_signature_whatever_their_numbers_ids_release_folder_or_
     assert (later.first_seen, later.last_seen, later.count, later.deployed_sha) == (1000.0, 2000.0, 3, "def5678")
 
 
+def test_a_message_keeps_its_words_without_the_quoted_values_e_mails_paths_and_long_tokens_each_error_has_its_own():
+    sl = mod("team.stagelog")
+    logged = ["ERROR app.auth: no account for alice@example.com",
+              "ERROR app.auth: no account for bob.smith+qa@mail.example.org",
+              "ERROR app.cfg: missing key 'payment_url' in \"/etc/shop/app.yaml\"",
+              "ERROR app.cfg: missing key `refund_url` in “/etc/shop/other.yaml”",
+              "ERROR app.files: cannot open /srv/uploads/2026/alice/receipt.pdf: permission denied",
+              "ERROR app.files: cannot open C:\\data\\bob\\r.pdf: permission denied",
+              "ERROR app.files: cannot open ~/inbox/carol.csv: permission denied",
+              "ERROR app.api: token eyJhbGciOiJIUzI1NiJ9xYz9Q2kL7mN0pR3sT6uV expired",
+              "ERROR app.api: token QWxhZGRpbjpvcGVuIHNlc2FtZQ2026_ab-cd expired",
+              "ERROR app.web: can't render the page for user 'carol' and/or 'dave'"]
+    events, _ = sl.errors_in(logged)
+    assert [e.signature for e in events] == [
+        "app.auth: no account for <email>", "app.auth: no account for <email>",
+        "app.cfg: missing key <str> in <str>", "app.cfg: missing key <str> in <str>",
+        "app.files: cannot open <path>: permission denied", "app.files: cannot open <path>: permission denied",
+        "app.files: cannot open <path>: permission denied",
+        "app.api: token <token> expired", "app.api: token <token> expired",
+        "app.web: can't render the page for user <str> and/or <str>"]
+    kept, _ = sl.errors_in(["ERROR app.pay: retry_payment_request_handler_for_refunds gave up after 3 tries at /health",
+                            "ERROR 订单处理失败：找不到用户'erin'的地址"])
+    assert [e.signature for e in kept] == ["app.pay: retry_payment_request_handler_for_refunds gave up after <n> tries at /health",
+                                           "订单处理失败：找不到用户<str>的地址"]
+
+
 def test_a_traceback_still_being_written_is_left_for_the_next_read_unless_the_read_began_with_it():
     sl = mod("team.stagelog")
     head = ["INFO up", "2026-11-21 10:00:01 ERROR app: boom", "Traceback (most recent call last):",
