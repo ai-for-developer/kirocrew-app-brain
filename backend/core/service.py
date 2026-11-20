@@ -35,6 +35,7 @@ from .repoids import RepoIds, from_records
 from .sessions import SessionManager, requirement_credits
 from . import store as store_mod
 from .store import Store
+from .team import issues as issues_mod
 from .team import patrol as patrol_mod
 from .team import setup as setup_mod
 from .team import signerproc
@@ -2228,6 +2229,12 @@ class Service:
         if self.team is None:
             return patrol_mod.view_of([], [], None)
         return scrub_tree(self.team.patrol_view(), self.scrub)
+
+    async def team_issues(self) -> dict[str, Any]:
+        """GET /team/issues: the issues labelled for Brain that the last round looked at (team/issues.py)."""
+        if self.team is None:
+            return issues_mod.view_of([], [], None)
+        return scrub_tree(self.team.issues_view(), self.scrub)
 
     async def team_loop(self) -> dict[str, Any]:
         rt = self.team
