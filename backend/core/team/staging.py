@@ -17,8 +17,9 @@ A row is a state machine (Row.state):
            again, or stopped on the MAX_ATTEMPTS-th.
   fix_mr   the MR merged: closed. Closed without merging (a person said no): stopped.
   stopped  left to people; the Issue was told why, once.
-  closed   its Issue closed (by the MR's Closes #, or a person). Seen again on another deployed commit, it is new again,
-           and its next fix branch is fix/staging-<id>-<n>.
+  closed   its Issue closed (by the MR's Closes #, or a person). Seen on another deployed commit once a round first read
+           that commit REOPEN_S ago (lines read sooner may be the old build's last ones), it is new again, and its next
+           fix branch is fix/staging-<id>-<n>.
 Every open state whose Issue was closed is closed (its turn stopped). An open Issue gets a comment when its count jumps:
 doubled, and up by JUMP or more, since the Issue last said it.
 A project the source is no longer on, or bridge.json no longer names, is forgotten: its turns stopped, its clones
@@ -48,6 +49,7 @@ TIMEOUT_S = patrol.TIMEOUT_S
 MAX_ATTEMPTS = patrol.MAX_ATTEMPTS
 JUMP = 10
 FORGET_S = 30 * 86400               # a closed row not seen this long is dropped
+REOPEN_S = 5 * 60                   # an error is a deploy's own once a round first read that deploy this long ago
 MARK = "staging-error-id: %s"       # in an Issue's description: the signature it is about
 NEW, ISSUED, FIXING, FIX_MR, STOPPED, CLOSED = "new", "issued", "fixing", "fix_mr", "stopped", "closed"
 OPEN = (ISSUED, FIXING, FIX_MR, STOPPED)
@@ -106,12 +108,13 @@ class Row:
 
 # ---- the state machine ---------------------------------------------------------------------------------------- #
 
-def seen(row: Row | None, project: str, g: ErrorGroup) -> Row:
-    """*row* after a round read *g* more of its error: counted; a closed one seen on another deployed commit is new."""
+def seen(row: Row | None, project: str, g: ErrorGroup, settled: bool = True) -> Row:
+    """*row* after a round read *g* more of its error: counted. A closed one seen on another deployed commit, *settled*
+    (a round first read that commit REOPEN_S ago or more), is new again."""
     if row is None:
         return Row(project, g)
     row = replace(row, group=row.group.merged(g))
-    if row.state == CLOSED and g.deployed_sha != row.closed_sha:
+    if row.state == CLOSED and settled and g.deployed_sha != row.closed_sha:
         return replace(row, state=NEW, cycle=row.cycle + 1, attempts=0, outcome="", fix_mr=None, said=False)
     return row
 
@@ -135,12 +138,13 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS errors (project TEXT NOT NULL, signature TEXT NOT NULL, state TEXT NOT NULL,
   doc TEXT NOT NULL, updated REAL NOT NULL, PRIMARY KEY (project, signature));
 CREATE TABLE IF NOT EXISTS cursors (project TEXT PRIMARY KEY, doc TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS deploys (project TEXT PRIMARY KEY, sha TEXT NOT NULL, since REAL NOT NULL);
 """
 
 
 class Ledger:
-    """<root>/staging.sqlite: a row per error signature (Row as JSON) and each project's log cursor. Only the bridge's
-    worker thread uses it."""
+    """<root>/staging.sqlite: a row per error signature (Row as JSON), each project's log cursor and its deployed
+    commit with when a round first read it. Only the bridge's worker thread uses it."""
 
     def __init__(self, path: str) -> None:
         self.db = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
@@ -165,12 +169,21 @@ class Ledger:
         r = self.db.execute("SELECT doc FROM cursors WHERE project=?", (project,)).fetchone()
         return json.loads(r[0]) if r else None
 
-    def take(self, project: str, cursor: Mapping[str, Any], groups: list[ErrorGroup]) -> None:
-        """This round's errors of *project* counted and its log's cursor moved past them, together or not at all."""
+    def deployed(self, project: str, sha: str, now: float) -> float:
+        """When a round first read *sha* as *project*'s deployed commit (*now*, the first time)."""
+        r = self.db.execute("SELECT sha, since FROM deploys WHERE project=?", (project,)).fetchone()
+        if r is not None and r[0] == sha:
+            return float(r[1])
+        self.db.execute("INSERT OR REPLACE INTO deploys (project, sha, since) VALUES (?, ?, ?)", (project, sha, now))
+        return now
+
+    def take(self, project: str, cursor: Mapping[str, Any], groups: list[ErrorGroup], settled: bool) -> None:
+        """This round's errors of *project* counted (seen) and its log's cursor moved past them, together or not at
+        all."""
         self.db.execute("BEGIN IMMEDIATE")
         try:
             for g in groups:
-                self.put(seen(self.get(project, g.signature), project, g))
+                self.put(seen(self.get(project, g.signature), project, g, settled))
             self.db.execute("INSERT OR REPLACE INTO cursors (project, doc) VALUES (?, ?)", (project, json.dumps(cursor)))
             self.db.execute("COMMIT")
         except BaseException:
@@ -181,8 +194,8 @@ class Ledger:
         return {r[0] for r in self.db.execute("SELECT project FROM errors UNION SELECT project FROM cursors")}
 
     def forget(self, project: str) -> None:
-        self.db.execute("DELETE FROM errors WHERE project=?", (project,))
-        self.db.execute("DELETE FROM cursors WHERE project=?", (project,))
+        for table in ("errors", "cursors", "deploys"):
+            self.db.execute("DELETE FROM %s WHERE project=?" % table, (project,))
 
     def close(self) -> None:
         self.db.close()
@@ -412,9 +425,10 @@ class StagingWatch:
             raise ValueError("bridge.json 里 %s 的 staging 用不了：%s" % (project, cfg))
         self._each([r for r in self.led.rows(project) if r.state in OPEN], lambda r: self._watch(r, now))
         sha = cfg.version.read()
+        settled = now - self.led.deployed(project, sha, now) >= REOPEN_S
         chunk = cfg.log.read(self.led.cursor(project))
         events, used = stagelog.errors_in(chunk.lines)
-        self.led.take(project, chunk.cursors[used], stagelog.grouped(events, now, sha))
+        self.led.take(project, chunk.cursors[used], stagelog.grouped(events, now, sha), settled)
         self._each(self.led.rows(project), lambda r: self._tell(r, kit))
         for r in self.led.rows(project):
             if r.state == CLOSED and now - r.group.last_seen >= FORGET_S:
@@ -644,6 +658,8 @@ def _note(row: Row) -> str:
         return "上一次没修好（%s）：再派一次" % OUTCOME.get(row.outcome, row.outcome)
     if row.state == NEW and row.issue is not None:
         return "在新的部署里又出现了：重新打开 Issue"
+    if row.state == CLOSED and row.group.deployed_sha != row.closed_sha:
+        return "新的部署里又看到了：部署 %d 分钟以内的先不算（可能是旧版本最后写的），再看到就重新打开" % (REOPEN_S // 60)
     if row.state == CLOSED:
         return "Issue 关了：在新的部署里又出现的话，重新打开"
     return ""

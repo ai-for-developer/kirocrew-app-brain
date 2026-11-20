@@ -249,8 +249,10 @@ def test_the_fix_mr_is_followed_to_its_merge_and_a_recurrence_on_a_newer_deploy_
     w.write(zero(), ["INFO ok"], zero())        # the fix is not deployed yet: the same commit errs as before
     w.round()
     assert (w.item(ZERO)["state"], w.item(ZERO)["count"]) == ("closed", 3) and not w.gl.asked_staging("PUT", "/issues/1$")
-    w.version.write_text(SHA[2] + "\n")         # deployed; the error is still there
+    w.version.write_text(SHA[2] + "\n")         # deployed; the error is still there once the deploy has settled
     w.gl.merged(P, SHA[2], 52, "修复：" + ZERO)
+    w.round()
+    w.clock.t += mod("team.staging").REOPEN_S - 60
     w.write(zero("20261122", 13))
     w.round()
     assert [c[3] for c in w.gl.asked_staging("PUT", "/issues/1$")] == [{"state_event": "reopen"}]
@@ -344,3 +346,39 @@ def test_a_project_without_a_staging_block_says_so_and_one_switched_off_is_forgo
     w.write(gateway())
     w.round()
     assert w.watch.view()["items"] == []
+
+
+def fix_branch(signature):
+    return "fix/staging-" + mod("team.stagelog").short_id(signature)
+
+
+def test_lines_the_old_build_logged_just_before_a_deploy_do_not_open_the_fixed_issue_again(bk, tmp_path):
+    """The fix MR merged and closed its Issue. The old build logs the error once more and the fix's deploy rewrites
+    VERSION before the next round reads those lines: counted, not opened again. Lines read within REOPEN_S of the round
+    that first read that VERSION are the same; one read after it opens the Issue again."""
+    staging = mod("team.staging")
+    w = started(tmp_path)
+    w.write(gateway())
+    w.round()
+    w.gl.mr(P, 52, sha=SHA[3], source=fix_branch(GATEWAY))
+    w.round()
+    w.gl.close(P, 52)
+    w.gl.close_issue(P, 1)
+    w.round()
+    assert w.item(GATEWAY)["state"] == "closed"
+    w.write(gateway(78))
+    w.version.write_text(SHA[2] + "\n")
+    w.round()
+    deployed = w.clock.t
+    w.write(gateway(79))
+    w.round()
+    item = w.item(GATEWAY)
+    assert (item["state"], item["count"], item["deployed_sha"]) == ("closed", 3, SHA[2])
+    assert item["note"] == "新的部署里又看到了：部署 5 分钟以内的先不算（可能是旧版本最后写的），再看到就重新打开"
+    assert w.issue(1)["state"] == "closed" and not w.gl.asked_staging("PUT", "/issues/1$")
+    assert [o[0] for o in w.sessions.opened] == ["staging-42-1"]
+    w.clock.t = deployed + staging.REOPEN_S - 60
+    w.write(gateway(80))
+    w.round()
+    assert w.issue(1)["state"] == "opened" and w.item(GATEWAY)["state"] == "fixing"
+    assert [o[0] for o in w.sessions.opened] == ["staging-42-1", "staging-42-1-2"]
