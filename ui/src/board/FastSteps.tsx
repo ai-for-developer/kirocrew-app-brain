@@ -2,11 +2,11 @@
  * A fast run's way on 运行过程, where the stage graph goes (a board with steps): 写代码 → 自动检查 → 开 MR → CI → 合并, a box
  * each in the stage graph's own look (StageGraph.tsx's box: its icon, title, line and state; at work glows, waiting for
  * the person looking blinks magenta, for anyone else calm blue, failed solid red with ✕, done a green outline, merged
- * solid green with ✓, not reached dashed), with the arrows between them. 写代码 leads to the commit conveyor (its
- * commits and their diffs), 自动检查 to the check wall, 开 MR, CI and 合并 to their page on GitLab.
+ * solid green with ✓, not reached dashed), with the arrows between them. 写代码 opens 产出 on all its changes (*onCode*),
+ * 自动检查 leads to the check wall, 开 MR, CI and 合并 to their page on GitLab.
  */
 import type { KeyboardEvent } from 'react'
-import { STEP_ICON, STEP_PART, stepHref, stepLook, toPart, type StepLook } from '../flows'
+import { STEP_ICON, stepGo, stepHref, stepLook, type StepLook } from '../flows'
 import type { FastStep, Waits } from '../types'
 import { brief, clip, fmtWhen, textWidth } from './format'
 import { GraphDefs, Halo, Scroller } from './GraphFrame'
@@ -16,7 +16,7 @@ import { RoleGlyph } from './RoleIcon'
 const GAP = 44
 const PAD = 28
 
-export function FastSteps({ steps, waits, reducedMotion }: { steps: FastStep[]; waits: Pick<Waits, 'who' | 'do'>; reducedMotion: boolean }) {
+export function FastSteps({ steps, waits, reducedMotion, onCode }: { steps: FastStep[]; waits: Pick<Waits, 'who' | 'do'>; reducedMotion: boolean; onCode?: () => void }) {
   const width = PAD * 2 + steps.length * NODE_W + (steps.length - 1) * GAP
   const height = PAD * 2 + NODE_H
   const xOf = (i: number) => PAD + NODE_W / 2 + i * (NODE_W + GAP)
@@ -40,7 +40,7 @@ export function FastSteps({ steps, waits, reducedMotion }: { steps: FastStep[]; 
             })}
           </g>
           <g className="kt-nodes">
-            {steps.map((s, i) => <StepBox key={s.id} s={s} look={looks[i]} x={xOf(i)} y={y} reducedMotion={reducedMotion} />)}
+            {steps.map((s, i) => <StepBox key={s.id} s={s} look={looks[i]} x={xOf(i)} y={y} reducedMotion={reducedMotion} go={stepGo(s.id, onCode)} />)}
           </g>
         </svg>
       </Scroller>
@@ -48,7 +48,9 @@ export function FastSteps({ steps, waits, reducedMotion }: { steps: FastStep[]; 
   )
 }
 
-function StepBox({ s, look, x, y, reducedMotion }: { s: FastStep; look: StepLook; x: number; y: number; reducedMotion: boolean }) {
+function StepBox({ s, look, x, y, reducedMotion, go }: {
+  s: FastStep; look: StepLook; x: number; y: number; reducedMotion: boolean; go: ((from: Element) => void) | null
+}) {
   const w = NODE_W
   const h = NODE_H
   const merged = look.node === 'merged'
@@ -59,9 +61,9 @@ function StepBox({ s, look, x, y, reducedMotion }: { s: FastStep; look: StepLook
   const onKey = (e: KeyboardEvent<SVGGElement>) => {
     if (e.key !== 'Enter' && e.key !== ' ') return
     e.preventDefault()
-    toPart(e.currentTarget, s.id)
+    go?.(e.currentTarget)
   }
-  const acts = href ? {} : STEP_PART[s.id] ? { role: 'button', tabIndex: 0, 'aria-label': name, onClick: (e: { currentTarget: Element }) => toPart(e.currentTarget, s.id), onKeyDown: onKey }
+  const acts = href ? {} : go ? { role: 'button', tabIndex: 0, 'aria-label': name, onClick: (e: { currentTarget: Element }) => go(e.currentTarget), onKeyDown: onKey }
     : { role: 'img', 'aria-label': name }
   const box = (
     <g className={`kt-node is-${look.node}${look.other ? ' is-other' : ''}${merged ? ' is-final' : ''}`} transform={`translate(${x},${y})`} data-node={s.id} data-status={s.status} {...acts}>

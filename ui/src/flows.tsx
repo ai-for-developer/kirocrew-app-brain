@@ -65,14 +65,15 @@ export const FLOW_FORM: Record<FlowId, { way: (o: { big: boolean; localOnly: boo
 
 export const STEP_ICON: Record<FastStepId, string> = { code: 'code', verify: 'lint', mr: 'pr', ci: 'ci', merge: 'merge' }
 
-/** the part of 运行过程 a step leads to (写代码: its commits and their diffs; 自动检查: the check wall); 开 MR, CI and 合并
- * lead to their page on GitLab instead (stepHref) */
-export const STEP_PART: Partial<Record<FastStepId, string>> = { code: 'kt-conveyor', verify: 'kt-wall' }
+/** the part of 运行过程 a step leads to (自动检查: the check wall) */
+const STEP_PART: Partial<Record<FastStepId, string>> = { verify: 'kt-wall' }
 
-/** Scrolls the board *from* is on to the part step *id* leads to. */
-export function toPart(from: Element, id: FastStepId): void {
+/** Where a step leads on 运行过程, given the element clicked: 写代码 opens 产出 on all its changes (*onCode*), 自动检查
+ * scrolls to the check wall; null for 开 MR, CI and 合并, which lead to their page on GitLab instead (stepHref). */
+export function stepGo(id: FastStepId, onCode?: () => void): ((from: Element) => void) | null {
+  if (id === 'code') return onCode ?? null
   const part = STEP_PART[id]
-  if (part) from.closest('[data-testid="br-board"]')?.querySelector(`[data-testid="${part}"]`)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+  return part ? (from) => from.closest('[data-testid="br-board"]')?.querySelector(`[data-testid="${part}"]`)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }) : null
 }
 
 export const stepHref = (s: FastStep): string | null => (s.url && /^https?:\/\//i.test(s.url) ? s.url : null)
@@ -124,8 +125,9 @@ export function FlowProgress({ r, children }: { r: Requirement; children: ReactN
   )
 }
 
-/** 需求现状's Lean card: LeanCard, or the fast run's five steps (from its board, *steps*) in the same cells. */
-export function FlowCard({ r, steps, children }: { r: Requirement; steps: FastStep[] | null; children: ReactNode }) {
+/** 需求现状's Lean card: LeanCard, or the fast run's five steps (from its board, *steps*) in the same cells; 写代码's has
+ * 看代码 ↗ (*onCode*: the board with 产出 on all its changes). */
+export function FlowCard({ r, steps, onCode, children }: { r: Requirement; steps: FastStep[] | null; onCode?: () => void; children: ReactNode }) {
   const { intent, label } = flowOf(r)
   if (intent) return <>{children}</>
   return (
@@ -145,6 +147,7 @@ export function FlowCard({ r, steps, children }: { r: Requirement; steps: FastSt
                     <span className="br-stage-n">{i + 1} · {look.word}</span>
                     <span className="br-stage-label">{s.label}<span className="br-sr">（{look.word}）</span></span>
                     {s.text && <span className="br-stage-n">{s.text}</span>}
+                    {s.id === 'code' && onCode && <button type="button" className="br-stage-go" onClick={onCode} title="运行过程的产出：每个提交改了什么">看代码 ↗</button>}
                   </li>
                 )
               })}
@@ -177,8 +180,9 @@ export function FlowKpi({ board, children }: { board: ReqBoard; children: ReactN
   )
 }
 
-/** 运行过程's 这条路走到哪了: StepsKpi (the stages on the way), or for a board with steps the five steps, one icon each. */
-export function FlowWayKpi({ board, children }: { board: ReqBoard; children: ReactNode }) {
+/** 运行过程's 这条路走到哪了: StepsKpi (the stages on the way), or for a board with steps the five steps, one icon each
+ * (where each leads: stepGo, stepHref). */
+export function FlowWayKpi({ board, onCode, children }: { board: ReqBoard; onCode?: () => void; children: ReactNode }) {
   const steps = board.steps
   if (!steps) return <>{children}</>
   const looks = steps.map((s) => ({ s, look: stepLook(s, board.row.waits) }))
@@ -198,8 +202,9 @@ export function FlowWayKpi({ board, children }: { board: ReqBoard; children: Rea
           const icon = <RoleIcon role={STEP_ICON[s.id]} size={15} />
           const href = stepHref(s)
           if (href) return <a key={s.id} className={cls} href={href} target="_blank" rel="noopener noreferrer" title={`${name}（在 GitLab 上看）`} aria-label={`${name} ↗`}>{icon}</a>
+          const go = stepGo(s.id, onCode)
           return (
-            <button key={s.id} type="button" className={cls} title={name} aria-label={name} disabled={!STEP_PART[s.id]} onClick={(e) => toPart(e.currentTarget, s.id)}>
+            <button key={s.id} type="button" className={cls} title={name} aria-label={name} disabled={!go} onClick={(e) => go?.(e.currentTarget)}>
               {icon}
             </button>
           )

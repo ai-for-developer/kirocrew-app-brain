@@ -1,18 +1,31 @@
-import { render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, test, vi } from 'vitest'
+import type { BoardEntry } from '../nav'
 import { fx } from '../test/data'
-import { MERGE_STEPS, MR, MR_URL, PIPELINE_URL, READY_STEPS, WAITS, fastBoard } from '../test/fast'
+import { C1, C2, C3, C4, COMMITS, FORK, MERGE_STEPS, MR, MR_URL, PIPELINE_URL, READY_STEPS, WAITS, beltOf, fastBoard, fastCommits } from '../test/fast'
 import { API, installFixtureRoutes } from '../test/routes'
-import { navigations } from '../test/stubs/app-sdk'
-import type { ReqBoard } from '../types'
+import { apiCalls, apiError, navigations, type RouteHandler } from '../test/stubs/app-sdk'
+import type { CommitOut, CommitsOutput, FileView, ReqBoard } from '../types'
 import type { ViewProps } from '../views/props'
 import { BoardPage } from './BoardPage'
 
-function renderBoard(b: ReqBoard = fastBoard()) {
-  installFixtureRoutes({ [`GET ${API}/board/*`]: () => b })
-  const p: ViewProps = { status: fx.status(), go: vi.fn(), replace: vi.fn(), reloadStatus: vi.fn(), setStatus: vi.fn(), pollMs: 60_000 }
-  render(<BoardPage entry={{ repo: 'r1', key: 'PAY-17' }} {...p} />)
+/** 产出's reads: the run's commits, and a file as asked (its diff says which commit it was read at). */
+const outputs = (list: () => CommitsOutput = fastCommits): RouteHandler => (_b, path) => {
+  if (path.endsWith('/commits')) return list()
+  const q = new URLSearchParams(path.split('?')[1])
+  const v: FileView = { path: q.get('path') ?? '', view: q.get('view') as FileView['view'], at: q.get('ref') ?? '', base: q.get('base'), pinned: false,
+    lang: 'python', asked: null, binary: false, truncated: false, size: 10,
+    text: q.get('view') === 'diff' ? `diff --git a/x b/x\n@@ -1 +1 @@\n-old\n+new ${q.get('ref')?.slice(0, 2)}\n` : 'def apply(code):\n    return code\n' }
+  return v
+}
+
+function renderBoard(b: ReqBoard | (() => ReqBoard) = fastBoard(), { entry = {}, routes = {}, pollMs = 60_000 }: {
+  entry?: Partial<BoardEntry>; routes?: Record<string, RouteHandler>; pollMs?: number
+} = {}) {
+  installFixtureRoutes({ [`GET ${API}/board/*`]: typeof b === 'function' ? b : () => b, [`GET ${API}/outputs/*`]: outputs(), ...routes })
+  const p: ViewProps = { status: fx.status(), go: vi.fn(), replace: vi.fn(), reloadStatus: vi.fn(), setStatus: vi.fn(), pollMs }
+  render(<BoardPage entry={{ repo: 'r1', key: 'PAY-17', ...entry }} {...p} />)
   return p
 }
 const steps = () => screen.findByTestId('br-fast-steps')
@@ -37,20 +50,22 @@ describe('运行过程 of a fast run (快速)', () => {
     expect(screen.getByTestId('kt-conveyor')).toBeInTheDocument()
   })
 
-  test('写代码 goes to its commits on the conveyor, 自动检查 to the check wall', async () => {
+  test('写代码 opens its 产出 (a click or Enter), 自动检查 goes to the check wall', async () => {
     const user = userEvent.setup()
-    renderBoard()
+    const p = renderBoard()
     const graph = await steps()
     const conveyor = screen.getByTestId('kt-conveyor')
     const wall = screen.getByTestId('kt-wall')
     conveyor.scrollIntoView = vi.fn()
     wall.scrollIntoView = vi.fn()
-    await user.click(box(graph, 'code'))
-    expect(conveyor.scrollIntoView).toHaveBeenCalledTimes(1)
+    box(graph, 'code').focus()
+    await user.keyboard('{Enter}')
+    expect(p.replace).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-17', out: { node: 'code' } })
+    await user.click(await screen.findByRole('button', { name: '关掉产出' }))
     box(graph, 'verify').focus()
     await user.keyboard('{Enter}')
     expect(wall.scrollIntoView).toHaveBeenCalledTimes(1)
-    expect(conveyor.scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(conveyor.scrollIntoView).not.toHaveBeenCalled()
   })
 
   test('its MR open and CI green, people to merge: 开 MR, CI and 合并 open their page on GitLab; 合并 waits on someone else', async () => {
@@ -104,5 +119,129 @@ describe('运行过程 of a fast run (快速)', () => {
     await steps()
     await user.click(screen.getByRole('button', { name: '打开会话' }))
     expect(navigations).toEqual([b.sessions[0].url])
+  })
+})
+
+describe('产出 of a fast run: the code it wrote, by commit', () => {
+  const HERE = { kind: 'board', repo: 'r1', key: 'PAY-17' } as const
+  const drawer = () => screen.findByRole('dialog', { name: '写代码的产出' })
+  const pills = (d: HTMLElement) => within(d).getAllByTestId('out-step').map((s) => s.textContent)
+  const heads = (pane: HTMLElement) => Array.from(pane.querySelectorAll('.kt-flist-h')).map((h) => h.textContent)
+  const listed = (pane: HTMLElement) => within(pane).getAllByTestId('out-file').map((f) => f.getAttribute('title'))
+  const reads = () => apiCalls.filter((c) => c.path.includes('/outputs/r1/PAY-17/file?')).map((c) => Object.fromEntries(new URLSearchParams(c.path.split('?')[1])))
+  const listReads = () => apiCalls.filter((c) => c.path === `${API}/outputs/r1/PAY-17/commits`).length
+  const ALL = ['全部改动', '1c1c1c1c优惠码：校验和折扣', '2c2c2c2c优惠码：下单时用上', '3c3c3c3c优惠码：补下单的测试', '4c4c4c4cMR 说明（只改记录）']
+
+  test('写代码 opens it on 全部改动 in place of the current entry: the commits oldest first, the code before the records, the biggest change open', async () => {
+    const user = userEvent.setup()
+    const p = renderBoard()
+    await user.click(box(await steps(), 'code'))
+    expect(p.replace).toHaveBeenLastCalledWith({ ...HERE, out: { node: 'code' } })
+    const d = await drawer()
+    await waitFor(() => expect(pills(d)).toEqual(ALL))
+    expect(within(d).getAllByTestId('out-step')[0]).toHaveAttribute('aria-current', 'step')
+    const pane = within(d).getByTestId('out-pane')
+    expect(within(pane).getByRole('heading', { level: 3 })).toHaveTextContent('全部改动')
+    expect(heads(pane)).toEqual(['代码改动', '其他改动'])
+    expect(listed(pane)).toEqual(['tests/test_coupon.py', 'src/pay/coupon.py', 'tests/test_order.py', 'src/pay/order.py', 'runs/PAY-17/MR.md'])
+    expect(within(pane).getAllByTestId('out-file')[0]).toHaveAttribute('aria-pressed', 'true')
+    expect(within(pane).getByTestId('out-at')).toHaveTextContent(/^全部改动 · 到最后一个提交 c4c4c4c$/)
+    await waitFor(() => expect(reads().at(-1)).toEqual({ ref: C1, base: FORK, path: 'tests/test_coupon.py', view: 'diff' }))
+    expect(await within(pane).findByTestId('out-code')).toHaveTextContent('+new c1')
+    expect(p.go).not.toHaveBeenCalled()
+  })
+
+  test('a commit on the conveyor opens it on that commit; a step, ‹ › and a file move it in place; Esc closes it; the list is read once', async () => {
+    const p = renderBoard()
+    await steps()
+    const chips = within(screen.getByTestId('kt-conveyor')).getAllByRole('button', { name: /本机/ })
+    expect(chips).toHaveLength(4)
+    fireEvent.click(chips[1])
+    expect(p.replace).toHaveBeenLastCalledWith({ ...HERE, out: { node: 'code', commit: C2.slice(0, 12) } })
+    const d = await drawer()
+    const pane = await within(d).findByTestId('out-pane')
+    await waitFor(() => expect(within(pane).getByRole('heading', { level: 3 })).toHaveTextContent('提交 c2c2c2c'))
+    expect(within(d).getAllByTestId('out-step')[2]).toHaveAttribute('aria-current', 'step')
+    expect(within(pane).getByTestId('out-scope')).toHaveTextContent('优惠码：下单时用上')
+    expect(heads(pane)).toEqual(['代码改动'])
+    expect(listed(pane)).toEqual(['src/pay/order.py', 'src/pay/coupon.py'])
+    expect(within(pane).getByTestId('out-at')).toHaveTextContent(/^提交 c2c2c2c$/)
+    await waitFor(() => expect(reads().at(-1)).toEqual({ ref: C2, base: C1, path: 'src/pay/order.py', view: 'diff' }))
+
+    fireEvent.click(within(d).getAllByTestId('out-step')[3])
+    expect(p.replace).toHaveBeenLastCalledWith({ ...HERE, out: { node: 'code', commit: C3.slice(0, 12) } })
+    fireEvent.click(within(d).getByRole('button', { name: '下一步 ›' }))
+    expect(p.replace).toHaveBeenLastCalledWith({ ...HERE, out: { node: 'code', commit: C4.slice(0, 12) } })
+    expect(await within(d).findByText('只改记录')).toBeInTheDocument()
+    expect(heads(within(d).getByTestId('out-pane'))).toEqual(['其他改动'])
+    expect(within(d).getByRole('button', { name: '下一步 ›' })).toBeDisabled()
+    fireEvent.click(within(d).getAllByTestId('out-step')[0])
+    expect(p.replace).toHaveBeenLastCalledWith({ ...HERE, out: { node: 'code' } })
+    expect(within(d).getByRole('button', { name: '‹ 上一步' })).toBeDisabled()
+    fireEvent.click((await within(d).findAllByTestId('out-file'))[3])
+    expect(p.replace).toHaveBeenLastCalledWith({ ...HERE, out: { node: 'code', file: 'src/pay/order.py' } })
+    await waitFor(() => expect(reads().at(-1)).toEqual({ ref: C2, base: FORK, path: 'src/pay/order.py', view: 'diff' }))
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(p.replace).toHaveBeenLastCalledWith(HERE)
+    expect(screen.queryByTestId('out-drawer')).toBeNull()
+    expect(listReads()).toBe(1)
+    expect(p.go).not.toHaveBeenCalled()
+  })
+
+  test('the top bar’s 产出 and 这条路走到哪了’s 写代码 open it on 全部改动 too', async () => {
+    const user = userEvent.setup()
+    const p = renderBoard()
+    await steps()
+    await user.click(screen.getByRole('button', { name: '产出' }))
+    expect(p.replace).toHaveBeenLastCalledWith({ ...HERE, out: { node: 'code' } })
+    await user.click(within(await drawer()).getByRole('button', { name: '关掉产出' }))
+    expect(screen.queryByTestId('out-drawer')).toBeNull()
+    const way = screen.getByTestId('br-steps-counter').closest('.kt-kpi') as HTMLElement
+    await user.click(within(way).getByRole('button', { name: '写代码：做完' }))
+    expect(p.replace).toHaveBeenLastCalledWith({ ...HERE, out: { node: 'code' } })
+    expect(await drawer()).toBeInTheDocument()
+  })
+
+  test('the list is read again when the board has another commit, not on every poll', async () => {
+    const fifth: CommitOut = { sha: 'c5'.repeat(20), at: COMMITS[3].at + 300, subject: '优惠码：过期的提示', by: 'person', records_only: false, more: 0,
+      files: [{ ...COMMITS[1].files[0], ref: 'c5'.repeat(20), base: C4, added: 3, removed: 1 }] }
+    let polls = 0
+    const later = () => polls > 2
+    renderBoard(() => {
+      polls++
+      return { ...fastBoard(), belt: beltOf(later() ? [...COMMITS, fifth] : COMMITS) }
+    }, { pollMs: 30, entry: { out: { node: 'code' } }, routes: { [`GET ${API}/outputs/*`]: outputs(() => (later() ? { ...fastCommits(), head: fifth.sha, commits: [...COMMITS, fifth] } : fastCommits())) } })
+    const d = await drawer()
+    await waitFor(() => expect(pills(d)).toEqual([...ALL, '5c5c5c5c优惠码：过期的提示']), { timeout: 3000 })
+    const seen = polls
+    await waitFor(() => expect(polls).toBeGreaterThan(seen + 3), { timeout: 3000 })
+    expect(listReads()).toBe(2)
+  })
+
+  test('a list that cannot be read says why; a branch without a commit, and a commit it does not have, say so', async () => {
+    renderBoard(fastBoard(), { entry: { out: { node: 'code' } }, routes: { [`GET ${API}/outputs/*`]: () => { throw apiError(502, 'git', '读不到运行分支的提交') } } })
+    expect(await within(await drawer()).findByRole('alert')).toHaveTextContent('读不到运行分支的提交')
+    cleanup()
+    const none: CommitsOutput = { branch: 'ai/alice/PAY-17-coupon', head: null, commits: [], files: [], more: 0, why: '运行分支上还没有提交：AI 还在写' }
+    renderBoard(fastBoard({ waits: WAITS.writing }), { entry: { out: { node: 'code' } }, routes: { [`GET ${API}/outputs/*`]: outputs(() => none) } })
+    let d = await drawer()
+    expect(await within(d).findByTestId('out-none')).toHaveTextContent(/^运行分支上还没有提交：AI 还在写$/)
+    expect(pills(d)).toEqual(['全部改动'])
+    cleanup()
+    renderBoard(fastBoard(), { entry: { out: { node: 'code', commit: 'deadbee' } } })
+    d = await drawer()
+    expect(await within(d).findByTestId('out-none')).toHaveTextContent('运行分支上没有提交 deadbee')
+    expect(within(d).queryAllByTestId('out-step').filter((s) => s.getAttribute('aria-current'))).toEqual([])
+  })
+
+  test('in a replay: only the commits made by then, and 全部改动 of the files whose last change was made by then', async () => {
+    renderBoard(fastBoard(), { entry: { at: COMMITS[1].at + 60, out: { node: 'code' } } })
+    const d = await screen.findByRole('dialog', { name: '写代码的产出' }, { timeout: 5000 })
+    expect(within(d).getByTestId('out-replay')).toHaveTextContent('只有那时已经做了的提交')
+    await waitFor(() => expect(pills(d)).toEqual(ALL.slice(0, 3)))
+    const pane = within(d).getByTestId('out-pane')
+    expect(listed(pane)).toEqual(['tests/test_coupon.py', 'src/pay/coupon.py', 'src/pay/order.py'])
+    expect(within(pane).getByTestId('out-later')).toHaveTextContent('那以后才改（或又改了）的 2 个文件这里没列')
+    expect(within(pane).getByTestId('out-at')).toHaveTextContent(/^全部改动 · 到最后一个提交 c2c2c2c$/)
   })
 })

@@ -111,6 +111,10 @@ export const DETAIL_CSS = `
 .br-detail .br-stagecell.is-started { box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-run) 25%, transparent), 0 0 18px -6px var(--kt-run); }
 .br-detail .br-stage-n { font-size: .74em; font-weight: 800; color: var(--muted); }
 .br-detail .br-stage-label { font-size: .86em; font-weight: 750; color: var(--text-strong); line-height: 1.25; }
+.br-detail .br-stage-go { justify-self: start; appearance: none; border: 0; background: none; padding: 0; margin-top: 2px; font: inherit; font-size: .78em; font-weight: 800;
+  color: var(--accent); cursor: pointer; }
+.br-detail .br-stage-go:hover { text-decoration: underline; }
+.br-detail .br-stagecell.is-done .br-stage-go { color: #fff; text-decoration: underline; }
 /* a unit's chip stays inside its tile (its state as a glyph, the words in its title) */
 .br-detail .br-stagecell { grid-template-columns: minmax(0, 1fr); min-width: 0; }
 .br-detail .br-stage-units { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; min-width: 0; }
@@ -371,7 +375,9 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
         <button type="button" className="kt-btn" onClick={() => toBoard()}>看运行过程 →</button>
         <span className="cto-dim">AI 一步步怎么做的、每一步的产出、回放</span>
       </div>
-      <FlowCard r={x.row} steps={board?.steps ?? null}><LeanCard x={x} sessionUrl={now.sessionUrl} mrUrl={now.mrUrl} waiter={waiter} /></FlowCard>
+      <FlowCard r={x.row} steps={board?.steps ?? null} onCode={() => toBoard({ out: { node: 'code' } })}>
+        <LeanCard x={x} sessionUrl={now.sessionUrl} mrUrl={now.mrUrl} waiter={waiter} />
+      </FlowCard>
       <DecisionsCard decisions={x.decisions} stages={x.lean.stages} repo={entry.repo} owner={x.row.owner} me={board?.person.me ?? false} go={props.go} onAt={toAt}
         picked={entry.decision ?? null} />
       <div className="br-twocol">

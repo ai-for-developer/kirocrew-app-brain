@@ -97,7 +97,7 @@ export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail,
         {!replaying && onStart && r.state === 'claimed' && (
           <button type="button" className="kt-btn is-primary" onClick={onStart}>{DO_NAME.start} {r.key}</button>
         )}
-        {onOutputs && <button type="button" className="kt-btn" onClick={onOutputs} title="每一步每一轮交了什么：文档、代码和改动">产出</button>}
+        {onOutputs && <button type="button" className="kt-btn" onClick={onOutputs} title={board.steps ? 'AI 写的代码：每个提交改了什么' : '每一步每一轮交了什么：文档、代码和改动'}>产出</button>}
         <button type="button" className="kt-btn" aria-pressed={follow} onClick={onFollow} title="自动滚到正在动的那一环">跟随</button>
         {onDetail && <button type="button" className="kt-btn" onClick={onDetail}>需求现状 ↗</button>}
       </div>
@@ -164,9 +164,10 @@ function FamilyPills({ f, onParent, onFamily }: { f: ReqFamily; onParent?: (key:
   ) : <span className="kt-pill tone-handoff">{text}</span>
 }
 
-/** *board*: as the picked run saw it (picker.ts inRun), *run* the one picked: every card counts that run only. */
-export function Kpis({ board, reducedMotion, onNode, replaying = false, run = 'all' }: {
-  board: ReqBoard; reducedMotion: boolean; onNode?: (id: string) => void; replaying?: boolean; run?: RunFilter
+/** *board*: as the picked run saw it (picker.ts inRun), *run* the one picked: every card counts that run only. *onCode*:
+ * a fast run's 写代码 opens 产出. */
+export function Kpis({ board, reducedMotion, onNode, onCode, replaying = false, run = 'all' }: {
+  board: ReqBoard; reducedMotion: boolean; onNode?: (id: string) => void; onCode?: () => void; replaying?: boolean; run?: RunFilter
 }) {
   const picked = pickedRun(board, run)
   return (
@@ -174,7 +175,7 @@ export function Kpis({ board, reducedMotion, onNode, replaying = false, run = 'a
       <ChecksKpi board={board} reducedMotion={reducedMotion} />
       {picked ? <RunLeanKpi board={board} run={picked} /> : <FlowKpi board={board}><LeanKpi board={board} /></FlowKpi>}
       <PeopleKpi board={board} />
-      <FlowWayKpi board={board}><StepsKpi board={board} onNode={onNode} replaying={replaying} picked={!!picked} /></FlowWayKpi>
+      <FlowWayKpi board={board} onCode={onCode}><StepsKpi board={board} onNode={onNode} replaying={replaying} picked={!!picked} /></FlowWayKpi>
       <CreditsKpi board={board} reducedMotion={reducedMotion} replaying={replaying} run={picked} />
     </div>
   )

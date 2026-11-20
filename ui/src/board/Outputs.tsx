@@ -15,15 +15,21 @@
  * In a replay it reads the replayed board at its moment (timeline.ts): only the rounds started by then; nothing is
  * read for a step not started then. The replay's controls come along, so it can be played and scrubbed with the
  * drawer open.
+ *
+ * A fast run (快速) has no stage rounds: its drawer is 写代码's (?out=code), by commit. GET /outputs/{repo}/{key}/commits
+ * lists them, read once and again when the board has another: 全部改动 first (each file at the last commit that changed
+ * it, compared with where the branch left), then each commit oldest first (its files compared with the commit before);
+ * the code it wrote leads (代码改动, biggest change first), the run's records after (其他改动), and the biggest code
+ * change is open. In a replay only the commits made by then, and 全部改动 of the files whose last change was made then.
  */
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { paths, usePoll } from '../api'
 import type { OutAt } from '../nav'
-import type { FileView, Gate, NodeOutput, NodeTurns, OutFile, ReqBoard, Round, Run, StageNode } from '../types'
+import type { CommitOut, CommitsOutput, FileView, Gate, NodeOutput, NodeTurns, OutFile, ReqBoard, Round, Run, StageNode } from '../types'
 import { ExtLink, TYPE_IT_YOURSELF } from '../ui'
 import { Markdown } from '../views/Markdown'
 import { biggestFirst, laneNodes } from './Lanes'
-import { ROUND_TONE, actorMeta, ciCause, ciWords, clockAt, decider, fmtWhen, gateVerb, gateWhat, nodeLabel, roundWords, whoOf } from './format'
+import { ROUND_TONE, actorMeta, ciCause, ciWords, clip, clockAt, decider, fmtWhen, gateVerb, gateWhat, nodeLabel, roundWords, whoOf } from './format'
 import { RoleIcon } from './RoleIcon'
 import { filesAt, turnsAt, type Moment } from './timeline'
 import { SessionPane } from './Turns'
@@ -390,7 +396,12 @@ type DrawerProps = {
   bar?: ReactNode
 }
 
-export function OutputsDrawer({ board, repo, reqKey, at, onAt, onClose, moment = null, bar }: DrawerProps) {
+/** A fast run's 写代码 (out=code): by commit; else the stages, by round. */
+export function OutputsDrawer(p: DrawerProps) {
+  return p.board.steps && p.at.node === 'code' ? <CommitsDrawer {...p} /> : <StagesDrawer {...p} />
+}
+
+function StagesDrawer({ board, repo, reqKey, at, onAt, onClose, moment = null, bar }: DrawerProps) {
   const lanes = laneNodes(board)
   const steps = board.nodes.filter((x) => lanes.includes(x) || x.id === at.node)
   const i = steps.findIndex((x) => x.id === at.node)
@@ -410,5 +421,82 @@ export function OutputsDrawer({ board, repo, reqKey, at, onAt, onClose, moment =
       {n ? <NodePane key={`${n.id}#${r?.n ?? 0}`} board={board} repo={repo} reqKey={reqKey} n={n} r={r} at={at} onAt={onAt} moment={moment} />
         : <p className="kt-pad kt-dim">运行过程里没有这一步了：点上面的一步看它的产出</p>}
     </Frame>
+  )
+}
+
+function CommitsDrawer({ board, repo, reqKey, at, onAt, onClose, moment = null, bar }: DrawerProps) {
+  const list = usePoll<CommitsOutput>(paths.outputsCommits(repo, reqKey), 0)
+  // another commit on the live board: the list again (a replay cuts the one read already)
+  const sig = moment ? '' : board.belt.filter((x) => x.kind === 'commit').map((x) => x.sha).join(',')
+  const seen = useRef(sig)
+  useEffect(() => {
+    if (sig && seen.current !== sig) list.reload()
+    seen.current = sig
+  }, [sig]) // eslint-disable-line react-hooks/exhaustive-deps
+  const data = list.data
+  const commits = (data?.commits ?? []).filter((x) => !moment || moment.made(x.sha))
+  const want = at.commit
+  const c = want ? commits.find((x) => x.sha.startsWith(want)) : undefined
+  // the step bar's place: 0 is 全部改动, then the commits; -1 a commit it does not have
+  const i = !want ? 0 : c ? commits.indexOf(c) + 1 : -1
+  const to = (k: number): OutAt => (k === 0 ? { node: at.node } : { node: at.node, commit: commits[k - 1].sha.slice(0, 12) })
+  return (
+    <Frame title="写代码的产出" board={board} reqKey={reqKey} moment={moment} bar={bar} then="只有那时已经做了的提交" picked={want ?? ''} onClose={onClose}
+      prev={i > 0 ? () => onAt(to(i - 1)) : undefined} next={i >= 0 && i < commits.length ? () => onAt(to(i + 1)) : undefined}
+      nav={{ label: '每个提交', steps: [null, ...commits].map((x, k) => (
+        <button key={x?.sha ?? 'all'} type="button" className={`kt-step tone-${!x ? 'info' : x.records_only ? 'idle' : 'ok'}${i === k ? ' is-on' : ''}`}
+          aria-current={i === k ? 'step' : undefined} onClick={() => onAt(to(k))} title={x?.subject} data-testid="out-step">
+          {x ? <><span className="kt-step-n">{k}</span><code>{x.sha.slice(0, 7)}</code>{clip(x.subject, 14)}{x.records_only ? '（只改记录）' : ''}</>
+            : <><RoleIcon role="code" size={14} />全部改动</>}
+        </button>
+      )) }}>
+      {list.error ? <p className="kt-pad" role="alert">{list.error}</p>
+        : !data ? <p className="kt-pad kt-dim">读取中…</p>
+        : !commits.length ? <p className="kt-pad kt-dim" data-testid="out-none">{moment && data.commits.length ? '那时运行分支上还没有提交' : data.why ?? '运行分支上还没有提交'}</p>
+        : i < 0 ? <p className="kt-pad kt-dim" data-testid="out-none">{moment ? `那时还没有提交 ${want}` : `运行分支上没有提交 ${want}：点上面的一个提交看它改了什么`}</p>
+        : <CommitPane key={c?.sha ?? 'all'} board={board} repo={repo} reqKey={reqKey} data={data} commits={commits} c={c ?? null} file={at.file}
+            onFile={(path) => onAt({ ...to(i), file: path })} moment={moment} />}
+    </Frame>
+  )
+}
+
+/** One commit's files, each compared with the commit before it; or 全部改动 (*c* null): each file at the last commit
+ * that changed it, compared with where the branch left; in a replay only the files whose last change was made by then. */
+function CommitPane({ board, repo, reqKey, data, commits, c, file, onFile, moment }: {
+  board: ReqBoard; repo: string; reqKey: string; data: CommitsOutput; commits: CommitOut[]; c: CommitOut | null; file?: string
+  onFile: (path: string) => void; moment: Moment | null
+}) {
+  const last = commits[commits.length - 1]
+  const all = c ? c.files : data.files
+  const files = c || !moment ? all : all.filter((f) => f.ref !== null && moment.made(f.ref))
+  const groups = fileGroups(true, files)
+  const shown = groups.flatMap(([, fs]) => fs)
+  const pick = shown.find((f) => f.path === file) ?? shown.find((f) => f.ref) ?? shown[0]
+  const sha7 = (c ?? last).sha.slice(0, 7)
+  const branch = data.branch ?? board.branch
+  return (
+    <section className="kt-pane" aria-label={c ? `提交 ${sha7}的改动` : '全部改动'} data-testid="out-pane">
+      <div className="kt-pane-head">
+        <div className="kt-pane-who">
+          <RoleIcon role="code" size={22} />
+          <h3>{c ? `提交 ${sha7}` : '全部改动'}</h3>
+          {c?.records_only && <span className="kt-pill tone-idle">只改记录</span>}
+          {branch && <span className="kt-run-meta kt-mono">{branch} @ {last.sha.slice(0, 7)}</span>}
+        </div>
+        <p className="kt-pane-scope" data-testid="out-scope">
+          {c ? `${c.subject} · ${c.by === 'bot' ? '运行机' : '本机'} · ${clockAt(c.at, board.at)}` : `${commits.length} 次提交加起来，和运行分支出发的地方比`}
+        </p>
+      </div>
+      <div className="kt-pane-body">
+        {!files.length ? <p className="kt-pad kt-dim" data-testid="out-none">{c ? '这个提交没有改文件' : '这些提交没有改文件'}</p> : (
+          <div className="kt-files-pane">
+            <FileList groups={groups} pick={pick} onPick={(f) => onFile(f.path)} more={c ? c.more : data.more}>
+              {files.length < all.length && <p className="kt-dim kt-flist-foot" data-testid="out-later">那以后才改（或又改了）的 {all.length - files.length} 个文件这里没列</p>}
+            </FileList>
+            {pick && <FilePane key={`${pick.path}@${pick.ref}`} repo={repo} reqKey={reqKey} f={pick} asked={false} version={c ? `提交 ${sha7}` : `全部改动 · 到最后一个提交 ${sha7}`} />}
+          </div>
+        )}
+      </div>
+    </section>
   )
 }

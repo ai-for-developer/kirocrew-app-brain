@@ -95,6 +95,17 @@ describe('nav: the URL of every view', () => {
     expect(parseView('?view=board&repo=r1&key=PAY-9&tab=reply')).toEqual({ kind: 'board', repo: 'r1', key: 'PAY-9' })
   })
 
+  test('a fast run’s 产出 by commit: 7 to 40 lowercase hex with out, its file kept; else left out', () => {
+    const v: View = { kind: 'board', repo: 'r1', key: 'PAY-17', out: { node: 'code', commit: 'c2c2c2c2c2c2', file: 'src/pay/order.py' } }
+    expect(searchOf(v)).toBe('?view=board&repo=r1&key=PAY-17&out=code&file=src%2Fpay%2Forder.py&commit=c2c2c2c2c2c2')
+    expect(parseView(searchOf(v))).toEqual(v)
+    expect(parseView(`?view=board&repo=r1&key=PAY-17&out=code&commit=${'f'.repeat(40)}`)).toEqual({ kind: 'board', repo: 'r1', key: 'PAY-17', out: { node: 'code', commit: 'f'.repeat(40) } })
+    const all = { kind: 'board', repo: 'r1', key: 'PAY-17', out: { node: 'code' } }
+    for (const commit of ['c2c2c2', 'C2C2C2C2', 'c2c2c2g', 'a'.repeat(41), 'c2c2c2c%0A']) expect(parseView(`?view=board&repo=r1&key=PAY-17&out=code&commit=${commit}`)).toEqual(all)
+    expect(parseView('?view=board&repo=r1&key=PAY-17&commit=c2c2c2c2')).toEqual({ kind: 'board', repo: 'r1', key: 'PAY-17' })
+    expect(searchOf({ kind: 'board', repo: 'r1', key: 'PAY-17', out: { node: 'code', commit: 'HEAD~1' } })).toBe('?view=board&repo=r1&key=PAY-17&out=code')
+  })
+
   test('an entry id says its Brain file by its side letter', () => {
     expect(fileOfEntry('P-PAY-2-1')).toBe('PRODUCT')
     expect(fileOfEntry('T-12')).toBe('TECH')

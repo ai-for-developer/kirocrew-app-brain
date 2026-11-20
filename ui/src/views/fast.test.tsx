@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, test, vi } from 'vitest'
 import { colOf } from '../cto/Flow'
@@ -29,7 +29,7 @@ describe('需求现状 of a fast run (快速)', () => {
     renderDetail()
     const card = await screen.findByTestId('fast-card')
     expect((await within(card).findAllByTestId('fast-step')).map((li) => li.textContent)).toEqual([
-      '1 · 做完写代码（做完）提交了 3 次', '2 · 做完自动检查（做完）3 项都过', '3 · 等你开 MR（等你）', '4 · 还没轮到CI（还没轮到）', '5 · 还没轮到合并（还没轮到）',
+      '1 · 做完写代码（做完）提交了 3 次看代码 ↗', '2 · 做完自动检查（做完）3 项都过', '3 · 等你开 MR（等你）', '4 · 还没轮到CI（还没轮到）', '5 · 还没轮到合并（还没轮到）',
     ])
     expect(card).toHaveTextContent('代码写好了，等开 MR')
     expect(screen.queryByTestId('handover')).toBeNull()
@@ -46,6 +46,14 @@ describe('需求现状 of a fast run (快速)', () => {
     expect(within(cycle).getByRole('img')).toHaveAccessibleName('快速：代码写好了，等开 MR')
     expect(within(cycle).getByRole('img').querySelectorAll('i.is-pass')).toHaveLength(2)
     expect(document.querySelector('dl.br-detail-facts')).toHaveTextContent('MR还没有：做完了点「开 MR」')
+  })
+
+  test('写代码’s 看代码 ↗ opens the board with 产出 on all its changes', async () => {
+    const p = renderDetail()
+    const card = await screen.findByTestId('fast-card')
+    await within(card).findAllByTestId('fast-step')
+    fireEvent.click(within(card).getByRole('button', { name: '看代码 ↗' }))
+    expect(p.go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-17', from: 'item', out: { node: 'code' } })
   })
 
   test('开审查会话 never shows on a fast run, even when its waits say a review', async () => {

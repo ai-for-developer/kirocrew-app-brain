@@ -1,10 +1,10 @@
 /**
  * A fast run (快速) as the backend sends one, built from the Lean fixtures (a copy, then the fast fields): brain-kit's
  * fast flow on the row, no intent, Lean's empty summary; its board has the five steps in place of the stage graph (no
- * phases, nodes, runs, relays or Lean steps) and a wall of 自动检查, CI, 风险目录 and the Brain's cells. PAY-17 is
- * ready for 开 MR; PAY-18 has MR !12 open with CI green.
+ * phases, nodes, runs, relays or Lean steps), its own commits on the conveyor (on no node and no run) and a wall of
+ * 自动检查, CI, 风险目录 and the Brain's cells. PAY-17 is ready for 开 MR; PAY-18 has MR !12 open with CI green.
  */
-import type { CheckCell, FastStep, FlowView, LeanSummary, ReqBoard, Requirement, RequirementDetail, Waits } from '../types'
+import type { BeltItem, CheckCell, CommitOut, CommitsOutput, FastStep, FlowView, LeanSummary, OutFile, ReqBoard, Requirement, RequirementDetail, Waits } from '../types'
 import { fx } from './data'
 
 export const FAST: FlowView = { id: 'fast', label: '快速', intent: false, actions: ['full', 'mr'] }
@@ -63,6 +63,36 @@ export function fastDetail(row: Partial<Requirement> = {}): RequirementDetail {
   }
 }
 
+/** PAY-17's commits (40 hex each), oldest first, and the commit its branch left main at. */
+export const [C1, C2, C3, C4, FORK] = ['c1', 'c2', 'c3', 'c4', 'b0'].map((x) => x.repeat(20))
+const changed = (path: string, status: OutFile['status'], added: number, removed: number, ref: string, base: string | null): OutFile =>
+  ({ path, output: false, status, added, removed, ref, pin: null, base, base_round: null, vs: [], why: null })
+const commit = (sha: string, at: number, subject: string, files: OutFile[], records = false): CommitOut =>
+  ({ sha, at, subject, by: 'person', records_only: records, files, more: 0 })
+
+/** PAY-17's three code commits, then MR 说明 (only the run's records), as GET /outputs/{repo}/{key}/commits lists them. */
+export const COMMITS: CommitOut[] = [
+  commit(C1, AT - 3000, '优惠码：校验和折扣', [changed('src/pay/coupon.py', 'A', 48, 0, C1, null), changed('tests/test_coupon.py', 'A', 60, 0, C1, null)]),
+  commit(C2, AT - 2000, '优惠码：下单时用上', [changed('src/pay/coupon.py', 'M', 6, 2, C2, C1), changed('src/pay/order.py', 'M', 12, 3, C2, C1)]),
+  commit(C3, AT - 1000, '优惠码：补下单的测试', [changed('tests/test_order.py', 'M', 25, 1, C3, C2)]),
+  commit(C4, AT - 500, 'MR 说明', [changed('runs/PAY-17/MR.md', 'A', 18, 0, C4, null)], true),
+]
+
+/** All of them added up: each file at the last commit that changed it, compared with where the branch left main. */
+export function fastCommits(): CommitsOutput {
+  return {
+    branch: 'ai/alice/PAY-17-coupon', head: C4, commits: structuredClone(COMMITS), more: 0, why: null,
+    files: [changed('src/pay/coupon.py', 'A', 52, 0, C2, FORK), changed('tests/test_coupon.py', 'A', 60, 0, C1, FORK),
+      changed('src/pay/order.py', 'M', 12, 3, C2, FORK), changed('tests/test_order.py', 'M', 25, 1, C3, FORK), changed('runs/PAY-17/MR.md', 'A', 18, 0, C4, FORK)],
+  }
+}
+
+/** The conveyor of those commits, as the board has them (12 hex, on no node and no run). */
+export const beltOf = (commits: CommitOut[]): BeltItem[] => commits.map((c) => ({
+  kind: 'commit', at: c.at, sha: c.sha.slice(0, 12), by: c.by, text: c.subject, files: c.files.length, records_only: c.records_only, run: null, node: null,
+  changes: c.files.map((f) => ({ path: f.path, added: f.added ?? 0, removed: f.removed ?? 0, status: f.status })),
+}))
+
 const cell = (id: string, group: CheckCell['group'], label: string, name: string, status: CheckCell['status'], detail: string): CheckCell =>
   ({ id, group, label, name, status, at: AT, detail, node: null, run: null })
 
@@ -74,7 +104,7 @@ export function fastBoard(row: Partial<Requirement> = {}, steps: FastStep[] = RE
     cell('risk', 'risk', '风险目录', '风险目录（gates/risk-paths）', 'pass', '没改到'), ...b.checks.cells.filter((c) => c.group === 'brain'),
   ]
   return {
-    ...b, row: fastRow(row, b.row), steps, phases: [], nodes: [], runs: [], relays: [], other_runs: [], lean_steps: [],
+    ...b, row: fastRow(row, b.row), steps, phases: [], nodes: [], runs: [], relays: [], other_runs: [], lean_steps: [], belt: beltOf(COMMITS),
     checks: { ...b.checks, cells, todo: [], passed: cells.filter((c) => c.status === 'pass').length, failed: cells.filter((c) => c.status === 'fail').length,
       total: cells.filter((c) => c.status === 'pass' || c.status === 'fail').length },
     accept: { ...b.accept, state: 'not_yet' },
