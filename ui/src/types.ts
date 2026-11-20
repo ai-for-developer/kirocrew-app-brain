@@ -1193,6 +1193,9 @@ export interface IntakeBody {
   title: string
   /** paths on this machine: files or folders (a Feishu / Lark export folder works) */
   docs: string[]
+  /** 「用一段话说需求」, trimmed ('' when none): brain-kit takes it in as one more document (需求描述.md), so the gates
+   * are the same as for documents */
+  text: string
   /** gate 1: I am the author or have the author's consent */
   consent: boolean
   /** gate 2 */

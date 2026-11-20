@@ -5,9 +5,9 @@ import { apiCalls, apiError, navigations } from '../test/stubs/app-sdk'
 import { fx } from '../test/data'
 import { API, installFixtureRoutes } from '../test/routes'
 import { parseView, searchOf } from '../nav'
-import type { CheckRow, CrewChecks, IntakeCheck, Overview, Person, RepoMe, Status } from '../types'
+import type { CheckRow, CrewChecks, IntakeBody, IntakeCheck, Overview, Person, RepoMe, Status } from '../types'
 import { NAME_RULE } from '../ui'
-import { CHECK_HINT, CREW_OK, GATE4, GATE5, HERO_LOCAL, HERO_TEXT, NO_CONFIDENTIAL, NO_SECRET, NewView, REVIEW_HINT, STARTED_NEXT, slugFrom } from './NewReq'
+import { CHECK_HINT, CREW_OK, GATE4, GATE5, HERO_LOCAL, HERO_TEXT, NO_CONFIDENTIAL, NO_SECRET, NewView, REVIEW_HINT, STARTED_NEXT, TEXT_HINT, slugFrom } from './NewReq'
 import { BIG_HINT } from './Family'
 
 /** KiroCrew with nothing that stops a session (the fixtures' status has a ✗ row: the tests of it bring their own). */
@@ -41,7 +41,7 @@ const gateStates = () => [1, 2, 3, 4, 5].map((n) => screen.getByTestId(`gate-${n
 const flowStates = () => within(screen.getByRole('list', { name: '开需求的步骤' })).getAllByRole('listitem').map((li) => li.dataset.state)
 const checkBtn = () => screen.getByRole('button', { name: '先检查' })
 const DOCS = '文档（一行一个路径）'
-const docsCard = () => screen.getByRole('region', { name: '文档' })
+const docsCard = () => screen.getByRole('region', { name: '需求内容' })
 const fileBtn = () => within(docsCard()).getByRole('button', { name: '选文件…' })
 const folderBtn = () => within(docsCard()).getByRole('button', { name: '选文件夹…' })
 const pickCalls = () => apiCalls.filter((c) => c.method === 'POST' && c.path === `${API}/pick`)
@@ -68,7 +68,7 @@ describe('开需求', () => {
     await fillGates(user)
     await user.type(screen.getByLabelText(PATHS), 'src/statement/{Enter}src/report/weekly.py')
     expect(startBtn()).toBeDisabled()
-    expect(screen.getByTestId('start-why')).toHaveTextContent('有文档：先检查一遍')
+    expect(screen.getByTestId('start-why')).toHaveTextContent('有一段话或文档：先检查一遍')
 
     await user.click(checkBtn())
     const files = await screen.findByTestId('check-files')
@@ -87,7 +87,7 @@ describe('开需求', () => {
     for (const line of fx.intakeCheck().findings) expect(raw).toHaveTextContent(line)
     const checkCall = apiCalls.find((c) => c.method === 'POST' && c.path === `${API}/intake/check`)
     expect(checkCall?.body).toEqual({
-      repo: 'r1', key: 'PAY-8', slug: 'merchant-weekly', title: '商户结算周报', docs: ['/Users/alice/Downloads/结算周报需求'],
+      repo: 'r1', key: 'PAY-8', slug: 'merchant-weekly', title: '商户结算周报', docs: ['/Users/alice/Downloads/结算周报需求'], text: '',
       consent: true, classification: 'internal', business: 'keep', exclude: ['*合作方*'],
     })
     expect(startBtn()).toBeEnabled()
@@ -118,7 +118,7 @@ describe('开需求', () => {
     const startCall = apiCalls.find((c) => c.method === 'POST' && c.path === `${API}/intake/start`)
     expect(startCall?.body).toEqual({
       repo: 'r1', key: 'PAY-8', slug: 'merchant-weekly', title: '商户结算周报',
-      docs: ['/Users/alice/Downloads/结算周报需求', '/Users/alice/Downloads/样例.xlsx'],
+      docs: ['/Users/alice/Downloads/结算周报需求', '/Users/alice/Downloads/样例.xlsx'], text: '',
       consent: true, classification: 'internal', business: 'keep', exclude: ['*合作方*'],
       paths: ['src/statement/', 'src/report/weekly.py'], open_session: true, trust: true,
     })
@@ -246,10 +246,10 @@ describe('开需求', () => {
     expect(screen.getByTestId('gate-1')).toHaveAttribute('data-state', 'bad')
   })
 
-  test('without documents the five gates are one line and nothing needs checking: 开工 is on once title and 英文短名 are valid', async () => {
+  test('with neither a paragraph nor documents the five gates are one line and nothing needs checking: 开工 is on once title and 英文短名 are valid', async () => {
     const { user } = setup()
     await waitFor(() => expect(screen.getByLabelText('需求号')).toHaveValue('PAY-8'))
-    expect(screen.getByTestId('no-docs')).toHaveTextContent('没有文档：五关')
+    expect(screen.getByTestId('no-docs')).toHaveTextContent('一段话或文档都没有：五关')
     expect(screen.queryByTestId('gate-1')).toBeNull()
     expect(screen.queryByRole('button', { name: '先检查' })).toBeNull()
     expect(startBtn()).toBeDisabled()
@@ -265,7 +265,7 @@ describe('开需求', () => {
     await user.click(startBtn())
     await screen.findByTestId('start-result')
     const startCall = apiCalls.find((c) => c.method === 'POST' && c.path === `${API}/intake/start`)
-    expect(startCall?.body).toMatchObject({ docs: [], paths: [], open_session: true, trust: true })
+    expect(startCall?.body).toMatchObject({ docs: [], text: '', paths: [], open_session: true, trust: true })
     expect(apiCalls.some((c) => c.path === `${API}/intake/check`)).toBe(false)
   })
 
@@ -495,14 +495,14 @@ describe('开需求', () => {
     expect(flowStates()[4]).toBe('off')
   })
 
-  test('the hero says what happens; its steps follow the form: 认领 → 导入需求文档 (optional) → 开工 → Lean 推进', async () => {
+  test('the hero says what happens; its steps follow the form: 认领 → 需求内容 (optional) → 开工 → Lean 推进', async () => {
     const { user } = setup()
     const hero = screen.getByRole('region', { name: '开需求' })
     expect(hero).toHaveTextContent(HERO_TEXT)
     expect(HERO_TEXT).not.toMatch(/brain start|slug/)
     const steps = within(screen.getByRole('list', { name: '开需求的步骤' })).getAllByRole('listitem')
     expect(steps.map((li) => li.textContent)).toEqual([
-      '1认领仓库、标题、需求号', '2导入需求文档选填：没有就跳过', '3开工在它自己的工作目录里开 AI 开发会话', '4Lean 推进需求和设计由你批准', '5交给运行机团队仓库：交接以后它接着做',
+      '1认领仓库、标题、需求号', '2需求内容选填：一段话或文档，没有就跳过', '3开工在它自己的工作目录里开 AI 开发会话', '4Lean 推进需求和设计由你批准', '5交给运行机团队仓库：交接以后它接着做',
     ])
     expect(flowStates()).toEqual(['now', 'off', undefined, undefined, undefined])
     await fillBasics(user)
@@ -627,11 +627,11 @@ describe('开需求', () => {
     expect(box).toBeEnabled()
     expect(box).not.toBeChecked()
     const titles = () => within(screen.getByRole('list', { name: '开需求的步骤' })).getAllByRole('listitem').map((li) => li.querySelector('b')?.textContent?.replace(/^[0-9✓]+/, ''))
-    expect(titles()).toEqual(['认领', '导入需求文档', '开工', 'Lean 推进', '交给运行机'])
+    expect(titles()).toEqual(['认领', '需求内容', '开工', 'Lean 推进', '交给运行机'])
     await user.click(box)
     expect(box).toBeChecked()
     expect(box.closest('label')).toHaveClass('is-on')
-    expect(titles()).toEqual(['认领', '导入需求文档', '开工', 'Lean 推进', '拆成小需求', '交给运行机'])
+    expect(titles()).toEqual(['认领', '需求内容', '开工', 'Lean 推进', '拆成小需求', '交给运行机'])
     expect(screen.getByRole('list', { name: '开需求的步骤' })).toHaveTextContent('需求和设计由你批准，设计里拆单元')
     expect(startBtn()).toBeEnabled()   // the choice is not part of the gates: no check needed
     await user.click(startBtn())
@@ -742,11 +742,11 @@ describe('开需求', () => {
   })
 })
 
-describe('导入需求文档', () => {
-  test('without documents the step is titled 导入需求文档（选填）, drawn as usable, and offers this machine’s own picker and pasting', async () => {
+describe('需求内容', () => {
+  test('with neither a paragraph nor documents the step is titled 需求内容（选填）, drawn as usable, and offers this machine’s own picker and pasting', async () => {
     setup()
     const card = docsCard()
-    expect(within(card).getByRole('heading', { level: 3 })).toHaveTextContent('导入需求文档（选填）')
+    expect(within(card).getByRole('heading', { level: 3 })).toHaveTextContent('需求内容（选填）')
     expect(card.querySelector('[data-step="2"]')).not.toHaveAttribute('data-state', 'off')
     expect(fileBtn()).toBeEnabled()
     expect(folderBtn()).toBeEnabled()
@@ -798,5 +798,59 @@ describe('导入需求文档', () => {
     expect(await within(docsCard()).findByRole('alert')).toHaveTextContent('这台机器上打不开选文件的窗口：把路径粘贴到下面的框里，一行一个（501）')
     await user.type(screen.getByLabelText(DOCS), '/Users/alice/Downloads/需求.docx')
     expect(screen.getByLabelText(DOCS)).toHaveValue('/Users/alice/Downloads/需求.docx')
+  })
+
+  const TEXT = '用一段话说需求（选填）'
+  const posted = (path: string) => apiCalls.filter((c) => c.method === 'POST' && c.path === `${API}${path}`).map((c) => c.body as IntakeBody)
+
+  test('a paragraph typed instead of documents, first in the card, opens the five gates (none ticked for you) and needs 先检查; the check and the start send it as text, trimmed', async () => {
+    const { user } = setup()
+    await fillBasics(user)
+    const box = screen.getByLabelText(TEXT)
+    expect(within(docsCard()).getAllByRole('textbox')[0]).toBe(box)
+    expect(box).toHaveAccessibleDescription(TEXT_HINT)
+    await user.type(box, '  每周一给商户发结算周报。')
+    expect(screen.queryByTestId('no-docs')).toBeNull()
+    expect(gateStates()).toEqual(['wait', 'wait', 'wait', 'auto', 'auto'])
+    expect(flowStates()).toEqual(['done', 'now', undefined, undefined, undefined])
+    expect(startBtn()).toBeDisabled()
+    expect(screen.getByTestId('start-why')).toHaveTextContent('有一段话或文档：先检查一遍（不写入）')
+    await user.click(screen.getByLabelText('我是作者，或已取得作者同意'))
+    await user.click(screen.getByLabelText('内部'))
+    await user.click(screen.getByLabelText('原样保留'))
+    await user.click(checkBtn())
+    await screen.findByTestId('check-result')
+    expect(posted('/intake/check')).toEqual([{
+      repo: 'r1', key: 'PAY-8', slug: 'merchant-weekly', title: '商户结算周报', docs: [], text: '每周一给商户发结算周报。',
+      consent: true, classification: 'internal', business: 'keep', exclude: [],
+    }])
+    expect(startBtn()).toBeEnabled()
+    await user.click(startBtn())
+    await screen.findByTestId('start-result')
+    expect(posted('/intake/start')).toMatchObject([{ docs: [], text: '每周一给商户发结算周报。', consent: true, classification: 'internal', open_session: true }])
+  })
+
+  test('a paragraph changed after its check makes the check stale; spaces at its ends are no change, and spaces alone are no paragraph', async () => {
+    const { user } = setup()
+    await fillBasics(user)
+    const box = screen.getByLabelText(TEXT)
+    await user.type(box, '   ')
+    expect(screen.getByTestId('no-docs')).toBeInTheDocument()
+    expect(startBtn()).toBeEnabled()
+    await user.type(box, '每周一给商户发结算周报。')
+    await user.click(screen.getByLabelText('我是作者，或已取得作者同意'))
+    await user.click(screen.getByLabelText('公开'))
+    await user.click(screen.getByLabelText('换成占位符'))
+    await user.click(checkBtn())
+    await waitFor(() => expect(startBtn()).toBeEnabled())
+    await user.type(box, '  ')
+    expect(startBtn()).toBeEnabled()
+    await user.type(box, '退款也列出来。')
+    expect(startBtn()).toBeDisabled()
+    expect(screen.getByTestId('start-why')).toHaveTextContent('表单改过了：再检查一遍')
+    expect(screen.getByTestId('check-result')).toHaveClass('is-stale')
+    await user.click(checkBtn())
+    await waitFor(() => expect(startBtn()).toBeEnabled())
+    expect(posted('/intake/check').map((b) => b.text)).toEqual(['每周一给商户发结算周报。', '每周一给商户发结算周报。  退款也列出来。'])
   })
 })
