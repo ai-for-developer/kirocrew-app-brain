@@ -14,7 +14,8 @@
       "data": []
     },
     "push": "auto",
-    "patrol": true
+    "patrol": true,
+    "jenkins": { "base": "", "user": "" }
   },
   "accounts": {
     "bridge": "",

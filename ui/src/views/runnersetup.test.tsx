@@ -6,15 +6,16 @@ import { API, installFixtureRoutes } from '../test/routes'
 import { apiCalls } from '../test/stubs/app-sdk'
 import type { Settings, TeamSetup } from '../types'
 import type { ViewProps } from './props'
-import { BOT_FIRST, BOT_HINT, BRIDGE_FIRST, BRIDGE_HINT, keptSaid, MODE_HINT, OPTIONAL_TOKEN_HINT, PATROL_HINT, ROLES_HINT_NO_TOKEN,
-  RunnerSetupCard, TOKEN_FIRST, TOKEN_HINT } from './RunnerSetup'
+import { BOT_FIRST, BOT_HINT, BRIDGE_FIRST, BRIDGE_HINT, JENKINS_HINT, keptSaid, MODE_HINT, OPTIONAL_TOKEN_HINT, PATROL_HINT,
+  ROLES_HINT_NO_TOKEN, RunnerSetupCard, TOKEN_FIRST, TOKEN_HINT } from './RunnerSetup'
 import { SETUP_POINTER, SettingsView } from './Settings'
 
 /** The setup before any run: every step todo, nothing typed yet. */
 function never(): TeamSetup {
   const s = fx.teamSetup()
   s.started_at = s.ended_at = null
-  s.input = { gitlab_base: '', mode: 'project-token', projects: [], roles: { product: [], builder: [], security: [], data: [] }, push: 'auto', patrol: true }
+  s.input = { gitlab_base: '', mode: 'project-token', projects: [], roles: { product: [], builder: [], security: [], data: [] }, push: 'auto', patrol: true,
+    jenkins: { base: '', user: '' } }
   s.steps = s.steps.map((x) => ({ ...x, status: 'todo', message: '', link: null, detail: '' }))
   return s
 }
@@ -29,6 +30,7 @@ function going(): TeamSetup {
 }
 
 const TOKEN = 'fake-' + Math.random().toString(16).slice(2)   // made at run time: no token-looking text in the source
+const JENKINS_TOKEN = 'fake-' + Math.random().toString(16).slice(2)
 
 describe('一键建运行机', () => {
   test('GitLab, the project (from a repo on GitLab), a one-time token and the roles; 开始建 posts them once, then the steps are read until the run ends', async () => {
@@ -91,6 +93,30 @@ describe('一键建运行机', () => {
     await user.click(within(again).getByRole('button', { name: '开始建' }))
     await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
     expect(apiCalls.find((c) => c.method === 'POST')?.body).toMatchObject({ patrol: false })
+  })
+
+  test('Jenkins: the last run’s address and read-only user are in the form again, its token is not; typed, all three go in the post', async () => {
+    const user = userEvent.setup()
+    const last = never()
+    last.input.jenkins = { base: 'http://127.0.0.1:8080', user: 'brain-reader' }
+    installFixtureRoutes({ [`GET ${API}/team/setup`]: () => last, [`POST ${API}/team/setup`]: () => going() })
+    render(<RunnerSetupCard repos={fx.status().repos} pollMs={60_000} />)
+    const card = await screen.findByRole('region', { name: '一键建运行机' })
+    const base = await within(card).findByLabelText('Jenkins 地址')
+    expect(base).toHaveValue('http://127.0.0.1:8080')
+    expect(base).toHaveAccessibleDescription(JENKINS_HINT)
+    expect(within(card).getByLabelText('Jenkins 只读用户')).toHaveValue('brain-reader')
+    const secret = within(card).getByLabelText('Jenkins token')
+    expect(secret).toHaveAttribute('type', 'password')
+    expect(secret).toHaveValue('')
+    await user.clear(base)
+    await user.type(base, 'https://jenkins.example.com')
+    await user.type(secret, JENKINS_TOKEN)
+    await user.type(within(card).getByLabelText('一次性 token'), TOKEN)
+    await user.click(within(card).getByRole('button', { name: '开始建' }))
+    await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).toMatchObject({
+      jenkins: { base: 'https://jenkins.example.com', user: 'brain-reader', token: JENKINS_TOKEN } })
   })
 
   test('while a run goes on, its step in progress is said and the form waits', async () => {

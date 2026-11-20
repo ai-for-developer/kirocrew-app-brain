@@ -18,7 +18,7 @@ import pytest
 from appkit import BRAINKIT, ROOT, FakeGateway, GatewayError, commit_file, git_repo, mod, sh
 from brainfix import make_service, needs_brainkit, run
 from http_fakes import AppRoute, FakeWeb, call
-from patrolfix import BASE, Clock, PatrolGitLab
+from patrolfix import BASE, JENKINS_BASE, Clock, FakeJenkins, PatrolGitLab
 from test_contract import diff_keys, fixture
 
 pytestmark = needs_brainkit
@@ -119,6 +119,41 @@ def test_a_round_gives_an_mr_s_open_thread_to_a_brain_patrol_session_of_its_own(
     assert answered.body["items"][0]["state"] == "ok"
     assert [k for k in gw.slot_rows if k.startswith("patrol-")] == [slot]
     assert len(told) == 2 and "这里也要改" in told[1] and "百分比要限制在 0-100" not in told[1]
+
+
+def test_bridge_json_s_jenkins_is_read_where_team_mode_starts_and_a_new_jenkins_token_starts_it_again(
+        tmp_path, home, monkeypatch):
+    """bridge.json names Jenkins and its read-only user: a round gives the session the failed build's log, read at
+    jenkins.base. The token's file is one team mode read when it started: a new token there starts it again."""
+    w = light_world(tmp_path, home, monkeypatch, {"work_sources": ["mr-handoff", "mr-patrol"]})
+    jk = w.gl.jenkins = FakeJenkins()
+    token = w.root / "jenkins-token"
+    token.write_text(jk.token + "\n")
+    token.chmod(0o600)
+    bridge = w.root / "bridge.json"
+    block = {"base": JENKINS_BASE, "user": jk.user, "token_file": str(token)}
+    bridge.write_text(json.dumps(dict(json.loads(bridge.read_text()), jenkins=block)))
+    gw = FakeGateway()
+    svc, routes = app(w, tmp_path, gw)
+    w.gl.mr(P, 7, sha=w.head)
+    w.gl.check(P, 7, "unit-tests", "failed", jk.build("/job/orders/2", b"FAILED test_discount\n"))
+
+    async def go():
+        await svc.start()
+        try:
+            loop = await call(routes, "POST", "/team/loop")
+            same = svc.team.changed()
+            token.write_text("fake-rotated\n")
+            return loop, same, svc.team.changed()
+        finally:
+            await svc.stop()
+
+    loop, same, rotated = run(go())
+    assert loop.body["ok"] and loop.body["summary"]["patrol"] == 1, loop.body
+    told = [m["content"] for m in gw.msgs["patrol-42-7"] if m["role"] == "user"]
+    assert "   - unit-tests（Jenkins 构建 %s/job/orders/2/）：\n     > FAILED test_discount\n" % JENKINS_BASE in told[0]
+    assert jk.calls == [("GET", JENKINS_BASE + "/job/orders/2/consoleText", "brain-reader")]
+    assert (same, rotated) == (False, True)
 
 
 def test_a_turn_kiro_crew_cut_short_with_an_error_is_a_failed_attempt_and_its_thread_goes_out_again(

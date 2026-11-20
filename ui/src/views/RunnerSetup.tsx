@@ -9,8 +9,10 @@
  * words, and what GitLab or a command said under 细节; a step about two projects or more lists each project under it
  * with its own mark, words and link. A run cut off part-way (the app stopped) says where. The tokens go in that one
  * request: this page keeps them in their fields while it is open (for 再跑一次); the backend keeps the two accounts'
- * personal tokens only. 巡检所有开着的 MR (on unless unticked) adds brain-patrol and switches work source mr-patrol on
- * in the kit.json MRs.
+ * personal tokens and Jenkins' only. 巡检所有开着的 MR (on unless unticked) adds brain-patrol and switches work source
+ * mr-patrol on in the kit.json MRs. Jenkins (address, read-only user, its token; one for the runner, whatever the
+ * projects) is for MR 巡检 to read failed builds' logs: sent only with an address; the backend keeps the token, so the
+ * last run's address and user come back, not it.
  */
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
 import { useAppApi } from '@kirocrew/app-sdk'
@@ -26,6 +28,7 @@ export const TOKEN_HINT = '只用这一次：建令牌、标签和 MR，用完�
 export const ROLES_HINT = '填 GitLab 用户名，几个人用逗号隔开；空着就是 token 的主人。安全和数据两个角色也是 token 的主人。'
 export const SAME_USER_NOTE = '签名服务、app 和 AI 的会话都用这台机器的同一个系统用户：签名挡不住 app 自己，只适合试用。'
 export const PATROL_HINT = '运行机每一轮看这个项目所有开着的 MR，以前开的也算：流水线没过、评审意见没回、和目标分支有冲突的，派 brain-patrol 去修，同时最多 2 个。交接过来的 MR 还是交接那边管。'
+export const JENKINS_HINT = 'MR 的流水线在 Jenkins 上跑的话填：巡检用这个只读用户（要有 Overall/Read 和 Job/Read）读没过的构建的日志。地址写这台机器连得上的。token 存在这台机器上，再跑一次时空着就用上次存的。不用 Jenkins 就空着。'
 export const TOKEN_FIRST = '先填一次性 token：它只用这一次，不存'
 export const cutOffSaid = (title: string) => `上次跑到「${title}」就停了，没跑完（app 关了或者重启了）：再跑一次，接着把没做的建完`
 export const MODE_HINT: Record<SetupMode, string> = {
@@ -56,7 +59,7 @@ export const STEP_LOOK: Record<SetupStepStatus, { glyph: string; word: string; t
 }
 
 type Push = 'ssh' | 'token'
-interface Form { mode: SetupMode; base: string; project: string; projects: string; product: string; builder: string; patrol: boolean; push: Push }
+interface Form { mode: SetupMode; base: string; project: string; projects: string; product: string; builder: string; patrol: boolean; push: Push; jenkinsBase: string; jenkinsUser: string }
 
 const names = (s: string) => s.split(/[,，、\s]+/).map((x) => x.trim()).filter(Boolean)
 
@@ -74,6 +77,8 @@ function formOf(s: TeamSetup, repos: RepoInfo[]): Form {
     builder: s.input.roles.builder.join(', '),
     patrol: s.input.patrol !== false,
     push: s.input.push === 'token' ? 'token' : 'ssh',
+    jenkinsBase: s.input.jenkins.base,
+    jenkinsUser: s.input.jenkins.user,
   }
 }
 
@@ -95,6 +100,7 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
   const [token, setToken] = useState('')
   const [bridge, setBridge] = useState('')
   const [bot, setBot] = useState('')
+  const [jenkinsToken, setJenkinsToken] = useState('')
   const [ask, setAsk] = useState('')
   const tokenRef = useRef<HTMLInputElement | null>(null)
   const bridgeRef = useRef<HTMLInputElement | null>(null)
@@ -125,7 +131,10 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
     return null
   }
   const bodyOf = (f: Form): TeamSetupBody => {
-    const common = { gitlab_base: f.base.trim(), roles: { product: names(f.product), builder: names(f.builder) }, patrol: f.patrol }
+    const jenkins = f.jenkinsBase.trim()
+      ? { jenkins: { base: f.jenkinsBase.trim(), user: f.jenkinsUser.trim(), token: jenkinsToken.trim() } }
+      : {}
+    const common = { gitlab_base: f.base.trim(), roles: { product: names(f.product), builder: names(f.builder) }, patrol: f.patrol, ...jenkins }
     if (f.mode === 'project-token') return { ...common, project: f.project.trim(), admin_token: token.trim() }
     return {
       ...common, mode: 'bot-account', projects: names(f.projects), push: f.push,
@@ -232,6 +241,22 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
                 <b>巡检所有开着的 MR</b>
               </label>
               <p className="br-hint" id="rs-patrol-hint">{PATROL_HINT}</p>
+            </div>
+            <div className="rs-grid">
+              <div className="br-field">
+                <label htmlFor="rs-jenkins">Jenkins 地址</label>
+                <input id="rs-jenkins" type="text" className="br-mono" value={form.jenkinsBase} placeholder="不用 Jenkins 就空着" aria-describedby="rs-jenkins-hint" onChange={(e) => edit({ jenkinsBase: e.target.value })} />
+              </div>
+              <div className="br-field">
+                <label htmlFor="rs-jenkins-user">Jenkins 只读用户</label>
+                <input id="rs-jenkins-user" type="text" className="br-mono" value={form.jenkinsUser} placeholder="brain-reader" aria-describedby="rs-jenkins-hint" onChange={(e) => edit({ jenkinsUser: e.target.value })} />
+              </div>
+            </div>
+            <div className="br-field">
+              <label htmlFor="rs-jenkins-token">Jenkins token</label>
+              <input id="rs-jenkins-token" type="password" className="br-mono" autoComplete="off" spellCheck={false} value={jenkinsToken}
+                aria-describedby="rs-jenkins-hint" onChange={(e) => setJenkinsToken(e.target.value)} />
+              <p className="br-hint" id="rs-jenkins-hint">{JENKINS_HINT}</p>
             </div>
           </fieldset>
           {!ran && (

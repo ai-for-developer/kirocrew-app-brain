@@ -29,6 +29,7 @@ Under one root (default ~/.brain/team-setup; files 0600, folders 0700):
                          (Developer), or brain-bridge's personal token
   bot-gitlab-token       runnerd's clone and the runs' pushes, when the runner pushes with a token: project access token
                          brain-bot, or the bot user's personal token
+  jenkins-token          the token of the Jenkins read-only user typed (SetupInput.jenkins): MR 巡检 reads logs with it
   identities.json, keys/, bridge.json, runnerd.json, signer.json, the spools, vouchers and ledgers, signer.pid / .log
 Under ~/workplace/brain-team (KiroCrew lets agents work only under ~/workplace): runs/ and cache/, and MR 巡检's clones
 in patrol/. The agents: ~/.kiro/agents/brain-run.json, and brain-patrol.json beside it when 巡检所有开着的 MR is on (the
@@ -170,6 +171,7 @@ class SetupInput:
     mode: str = PROJECT_TOKEN
     bridge_token: str = field(default="", repr=False)   # bot-account: brain-bridge's personal token ('': the one kept)
     bot_token: str = field(default="", repr=False)      # bot-account: the bot user's personal token ('': the one kept)
+    jenkins: JenkinsInput | None = None
 
     @classmethod
     def parse(cls, raw: Any) -> "SetupInput":
@@ -234,12 +236,14 @@ class SetupInput:
         patrol = raw.get("patrol", True)
         if not isinstance(patrol, bool):
             raise SetupRefused("「巡检所有开着的 MR」的值不对：刷新页面再试")
-        return cls(base, tuple(got.values()), token, roles, push, patrol, mode, bridge or "", bot or "")
+        return cls(base, tuple(got.values()), token, roles, push, patrol, mode, bridge or "", bot or "",
+                   JenkinsInput.parse(raw.get("jenkins")))
 
     def public(self) -> dict[str, Any]:
         """What setup-state.json keeps of the input: all of it but the tokens."""
         return {"gitlab_base": self.gitlab_base, "mode": self.mode, "projects": list(self.projects), "push": self.push,
-                "roles": {r: list(self.roles.get(r) or ()) for r in ROLES}, "patrol": self.patrol}
+                "roles": {r: list(self.roles.get(r) or ()) for r in ROLES}, "patrol": self.patrol,
+                "jenkins": {"base": self.jenkins.base, "user": self.jenkins.user} if self.jenkins else None}
 
 
 @dataclass(frozen=True)
@@ -343,6 +347,7 @@ class Paths:
     bridge_json = _under("root", "bridge.json")
     runnerd_json = _under("root", "runnerd.json")
     signer_json = _under("root", "signer.json")
+    jenkins_token = _under("root", "jenkins-token")
     runs = _under("work", "runs")
     cache = _under("work", "cache")
     patrol_spec = property(lambda self: self.agent_spec.with_name(patrol_mod.AGENT + ".json"))
@@ -369,6 +374,8 @@ class Ctx:
     def __post_init__(self) -> None:
         for s in (self.inp.admin_token, self.inp.bridge_token, self.inp.bot_token):
             self.remember(s)
+        if self.inp.jenkins is not None:
+            self.remember(self.inp.jenkins.token)
 
     @property
     def gl(self) -> Any:
@@ -605,6 +612,7 @@ def view(state: Mapping[str, Any], paths: Paths, running: bool | None = None) ->
     if not isinstance(projects, list):          # a run before bot-account mode kept its one project as "project"
         projects = [inp["project"]] if inp.get("project") else []
     kept = state.get("accounts") if isinstance(state.get("accounts"), dict) else {}
+    jenkins = inp.get("jenkins") if isinstance(inp.get("jenkins"), dict) else {}
     return {"running": on, "started_at": _time(state.get("started_at")),
             "ended_at": None if on else _time(state.get("ended_at")),
             "cut_off": next((s["id"] for s in steps if s["status"] == "todo"), None) if cut else None,
@@ -612,7 +620,8 @@ def view(state: Mapping[str, Any], paths: Paths, running: bool | None = None) ->
                       "mode": inp.get("mode") if inp.get("mode") in MODES else PROJECT_TOKEN,
                       "projects": [str(p) for p in projects],
                       "roles": {r: [str(n) for n in roles.get(r) or []] for r in ROLES},
-                      "push": str(inp.get("push") or "auto"), "patrol": inp.get("patrol") is not False},
+                      "push": str(inp.get("push") or "auto"), "patrol": inp.get("patrol") is not False,
+                      "jenkins": {"base": str(jenkins.get("base") or ""), "user": str(jenkins.get("user") or "")}},
             "accounts": {k: str((kept.get(k) if isinstance(kept.get(k), dict) else {}).get("username") or "")
                          for k in ("bridge", "bot")},
             "steps": steps, "root": str(paths.root)}
@@ -1295,7 +1304,52 @@ def bridge_doc(ctx: Ctx, salt: str) -> dict[str, Any]:
         "pseudonym_salt": salt,
         "kirocrew": {"agent": "brain-run", "memory_mode": "incognito"},
         "signer": {"type": "spool", "spool_dir": str(ps.signer_spool), "allowed_signers": str(ps.allowed)},
+        **jenkins_doc(ctx),
     }
+
+
+@dataclass(frozen=True)
+class JenkinsInput:
+    """Jenkins, for MR 巡检 to read a failed build's log there (team/jenkins.py) as a read-only user."""
+    base: str
+    user: str
+    token: str = field(repr=False)          # "": the one this machine saved before (Paths.jenkins_token)
+
+    @classmethod
+    def parse(cls, raw: Any) -> "JenkinsInput | None":
+        """None when no address is typed."""
+        if raw is None:
+            return None
+        if not isinstance(raw, Mapping):
+            raise SetupRefused("Jenkins 那几项的格式不对：刷新页面再试")
+        base = str(raw.get("base") or "").strip().rstrip("/")
+        if not base:
+            return None
+        u = urllib.parse.urlsplit(base)
+        if u.scheme not in ("https", "http") or not u.hostname or "@" in u.netloc or u.query or u.fragment \
+                or CTRL_RE.search(base):
+            raise SetupRefused("Jenkins 地址要写成 https://jenkins.example.com 这样")
+        user = str(raw.get("user") or "").strip()
+        if not user or CTRL_RE.search(user) or ":" in user or len(user) > 255:
+            raise SetupRefused("填上 Jenkins 只读用户的用户名")
+        token = raw.get("token")
+        token = token.strip() if isinstance(token, str) else ""
+        if CTRL_RE.search(token) or len(token) > 1000:
+            raise SetupRefused("Jenkins 的 token 不对：它是一串没有空格的字符")
+        return cls(base, user, token)
+
+
+def jenkins_doc(ctx: Ctx) -> dict[str, Any]:
+    """bridge.json's "jenkins" when Jenkins is typed (team/jenkins.py): its address, its read-only user and the file of
+    its token, written with the token typed this run, else the one saved there before."""
+    j, path = ctx.inp.jenkins, ctx.paths.jenkins_token
+    if j is None:
+        return {}
+    if j.token:
+        write_file(path, j.token + "\n")
+    elif not read_secret(path):
+        raise StepFailed("Jenkins 的 token 没填，这台机器上也没存过：填上它再跑一次")
+    return {"jenkins": {"base": j.base, "user": j.user, "token_file": str(path)}}
 
 
 def runnerd_doc(ctx: Ctx) -> dict[str, Any]:

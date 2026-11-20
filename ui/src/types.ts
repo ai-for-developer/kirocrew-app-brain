@@ -1628,8 +1628,9 @@ export interface TeamSetup {
   ended_at: number | null
   /** the step a run cut off part-way had not finished (the app or the command stopped while it ran); null otherwise */
   cut_off: string | null
-  /** that run's input; never a token. projects: one in project-token mode. patrol: 巡检所有开着的 MR */
-  input: { gitlab_base: string; mode: SetupMode; projects: string[]; roles: Record<SetupRole, string[]>; push: SetupPush; patrol: boolean }
+  /** that run's input; never a token. projects: one in project-token mode. patrol: 巡检所有开着的 MR; jenkins: where
+   * MR 巡检 reads failed builds' logs and as whom ('' and '': no Jenkins) */
+  input: { gitlab_base: string; mode: SetupMode; projects: string[]; roles: Record<SetupRole, string[]>; push: SetupPush; patrol: boolean; jenkins: { base: string; user: string } }
   /** bot-account: the GitLab users whose personal tokens an earlier run kept on this machine ('' none); a run may
    * leave such a token out */
   accounts: { bridge: string; bot: string }
@@ -1639,13 +1640,15 @@ export interface TeamSetup {
   root: string
 }
 /** POST /team/setup (answers TeamSetup, running). roles: GitLab usernames, a role left out is the one-time token's
- * owner; patrol: 巡检所有开着的 MR (left out: on). */
+ * owner; patrol: 巡检所有开着的 MR (left out: on); jenkins: a read-only user's, its token kept on the team server ('':
+ * the one kept before; left out: no Jenkins). */
 export type TeamSetupBody = ProjectTokenSetupBody | BotAccountSetupBody
 interface SetupBodyBase {
   gitlab_base: string
   roles: Partial<Record<SetupRole, string[]>>
   push?: SetupPush
   patrol?: boolean
+  jenkins?: { base: string; user: string; token: string }
 }
 /** One project; admin_token: a one-time personal token with api (Maintainer), used for this run only. */
 export interface ProjectTokenSetupBody extends SetupBodyBase {

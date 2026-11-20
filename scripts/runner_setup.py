@@ -5,6 +5,7 @@ when there are two or more.
 
   python3 scripts/runner_setup.py --root DIR --gitlab https://gitlab.example.com --project grp/pay --token-file FILE
       [--role product=alice,bob] [--role builder=carol] [--push auto|ssh|token] [--no-patrol] [--no-team-mode]
+      [--jenkins https://jenkins.example.com --jenkins-user NAME [--jenkins-token-file FILE]]
       [--brainkit DIR] [--work DIR] [--agent-spec FILE]
   python3 scripts/runner_setup.py --root DIR --gitlab https://gitlab.example.com --mode bot-account
       --project grp/pay --project grp/order --bridge-token-file FILE [--bot-token-file FILE] [--token-file FILE] ...
@@ -17,7 +18,9 @@ this machine's SSH. A token file left out takes the token an earlier run kept. T
 it the labels and the kit.json MRs are made as the bridge user, and --role must name 产品 (product) and 开发 (builder).
 
 --token-file holds a one-time personal token with api: it is read here and copied nowhere. --push is auto unless
-bot-account mode is given --bot-token-file (then token). --work is where the runs and the clone cache go (default
+bot-account mode is given --bot-token-file (then token). --jenkins is Jenkins as this machine reaches it, where MR 巡检
+reads a failed build's log as --jenkins-user, a read-only user; that user's token (--jenkins-token-file, left out on a
+run after one that had it) is kept in --root, 0600. --work is where the runs and the clone cache go (default
 ~/workplace/brain-team); --agent-spec where brain-run goes (default ~/.kiro/agents/brain-run.json, brain-patrol
 beside it); --brainkit the brain-kit (default: the one the app would load). --no-patrol leaves 巡检所有开着的 MR off: no
 brain-patrol, and the kit.json MRs leave work source mr-patrol out. The last step starts team mode the way the app
@@ -41,7 +44,8 @@ ROOT = Path(__file__).resolve().parents[1]
 MARK = {"done": "✓", "waiting": "…", "failed": "✗", "skipped": "-"}
 CHECKED = "团队模式的配置能用（在这里开了一下又关了）：到 app 的设置 → 团队模式里打开它"
 SIGNER_LEFT = "签名服务还在跑（进程 %d），这个命令退出以后也不停：要停就 kill %d"
-TOKEN_FILES = (("admin_token", "token_file"), ("bridge_token", "bridge_token_file"), ("bot_token", "bot_token_file"))
+TOKEN_FILES = (("admin_token", "token_file"), ("bridge_token", "bridge_token_file"), ("bot_token", "bot_token_file"),
+               ("jenkins_token", "jenkins_token_file"))
 
 
 def app_modules() -> tuple[Any, Any, Any, Any]:
@@ -91,6 +95,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--push", choices=("auto", "ssh", "token"), help="default: token with bot-account and --bot-token-file, else auto")
     ap.add_argument("--no-patrol", action="store_true", help="do not patrol every open MR (no brain-patrol)")
     ap.add_argument("--no-team-mode", action="store_true", help="skip the last step (starting team mode to check it)")
+    ap.add_argument("--jenkins", help="Jenkins' address as this machine reaches it, for MR 巡检's logs")
+    ap.add_argument("--jenkins-user", help="a read-only Jenkins user (Overall/Read and Job/Read)")
+    ap.add_argument("--jenkins-token-file", help="a file holding that user's API token or password")
     ap.add_argument("--brainkit")
     ap.add_argument("--work")
     ap.add_argument("--agent-spec")
@@ -110,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
                 print("--%s cannot be read: %s" % (opt.replace("_", "-"), getattr(exc, "strerror", None) or exc),
                       file=sys.stderr)
                 return 2
+    jenkins_token = tokens.pop("jenkins_token", "")
     roles = {}
     for r in a.role:
         role, eq, names = r.partition("=")
@@ -117,10 +125,11 @@ def main(argv: list[str] | None = None) -> int:
             print("--role is ROLE=NAME,NAME, not %r" % r, file=sys.stderr)
             return 2
         roles[role.strip()] = names
+    jenkins = {"base": a.jenkins, "user": a.jenkins_user or "", "token": jenkins_token} if a.jenkins else None
     try:
         inp = setup.SetupInput.parse(dict(tokens, gitlab_base=a.gitlab, mode=a.mode, projects=a.project, roles=roles,
                                           push=a.push or ("token" if a.mode == "bot-account" and a.bot_token_file else "auto"),
-                                          patrol=not a.no_patrol))
+                                          patrol=not a.no_patrol, jenkins=jenkins))
     except setup.SetupRefused as exc:
         print(exc, file=sys.stderr)
         return 2
