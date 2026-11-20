@@ -10,6 +10,9 @@ does not dispatch work whose key another kind holds, so work is claimed once. Wh
 ledger (Source.held) and merged only here. mr-handoff is brain-kit's bridge, which asks no one: it holds the
 requirement keys of its open runs, and every other kind yields to it. staging-errors (team/staging.py) holds the Issues
 it opened for errors in the test environment: ``staging-errors:<project>:issue!<iid>``.
+
+mr-patrol and staging-errors share CAP brain-patrol sessions in a turn at once. Each kind counts its own from its ledger
+(Source.busy), whatever its last round could read; at_work sums them, as held merges the claims.
 """
 
 from __future__ import annotations
@@ -61,6 +64,7 @@ class Source:
     kind: str
     words: str                              # what the page calls it
     held: Callable[[Any], list[Claim]]      # what it holds now, read from its own ledger (arg: the TeamRuntime)
+    busy: Callable[[Any], int] = lambda rt: 0     # its brain-patrol sessions in a turn now, read from its own ledger
 
 
 def _handoff_held(rt: Any) -> list[Claim]:
@@ -85,10 +89,20 @@ def _staging_held(rt: Any) -> list[Claim]:
     return s.held() if s is not None else []
 
 
+def _patrol_busy(rt: Any) -> int:
+    p = getattr(rt, "patrol", None)
+    return p.busy() if p is not None else 0
+
+
+def _staging_busy(rt: Any) -> int:
+    s = getattr(rt, "staging", None)
+    return s.busy() if s is not None else 0
+
+
 SOURCES: dict[str, Source] = {s.kind: s for s in (
-    Source(HANDOFF, "交接过来的 MR", _handoff_held),
-    Source(PATROL, "巡检开着的 MR", _patrol_held),
-    Source(STAGING, "测试环境报错", _staging_held),
+    Source(HANDOFF, "交接过来的 MR", _handoff_held),         # its runs are brain-run sessions, under brain-kit's limits
+    Source(PATROL, "巡检开着的 MR", _patrol_held, _patrol_busy),
+    Source(STAGING, "测试环境报错", _staging_held, _staging_busy),
 )}
 DEFAULT: tuple[str, ...] = (HANDOFF,)
 
@@ -105,6 +119,11 @@ def enabled(kit: Mapping[str, Any]) -> tuple[str, ...]:
 def held(rt: Any) -> list[Claim]:
     """Every kind's claims, as each kind's own ledger has them now."""
     return [c for s in SOURCES.values() for c in s.held(rt)]
+
+
+def at_work(rt: Any, but: str = "") -> int:
+    """The brain-patrol sessions in a turn now of every kind but *but*, as each kind's own ledger says."""
+    return sum(s.busy(rt) for s in SOURCES.values() if s.kind != but)
 
 
 def holder(c: Claim, claims: Iterable[Claim]) -> Claim | None:

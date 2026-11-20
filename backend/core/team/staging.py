@@ -307,8 +307,8 @@ def _said(exc: BaseException) -> str:
 
 class StagingWatch:
     """The work source staging-errors, hosted by TeamRuntime: round() each bridge round on its worker thread (after
-    MR 巡检's: *shared* says how many of its sessions are at work), view() for the page from any thread, held() for
-    sources.holder."""
+    MR 巡检's: *shared* says how many brain-patrol sessions the other work sources have in a turn, sources.at_work),
+    view() for the page from any thread, held() for sources.holder, busy() for sources.at_work."""
 
     def __init__(self, *, gl: Any, sessions: Any, kit: Callable[[str], Mapping[str, Any]], projects: list[Any],
                  ledger_path: str, workspaces: patrol.Workspaces | None, helper: patrol.Helper,
@@ -352,6 +352,13 @@ class StagingWatch:
         if not self._ledger_there():
             return []
         return [claim_of(r) for r in self.led.rows() if r.issue is not None and r.state != CLOSED]
+
+    def busy(self) -> int:
+        """Its sessions in a turn now, as its ledger says, every project's (also one this round could not read): a fix
+        it waits on, and one whose MR is open while its turn has not ended (its reply on the Issue)."""
+        if not self._ledger_there():
+            return 0
+        return sum(1 for r in self.led.rows() if r.state == FIXING or (r.state == FIX_MR and self._turn(r) == "running"))
 
     def view(self) -> dict[str, Any]:
         return self.last
@@ -535,11 +542,11 @@ class StagingWatch:
     # ---- the fixes ------------------------------------------------------------------------------------------ #
 
     def _dispatch(self, now: float) -> None:
-        """The issued rows, the earliest seen first, while fewer than CAP sessions are at work: its own fixing ones and
-        MR 巡检's."""
+        """The issued rows, the earliest seen first, while fewer than CAP sessions are in a turn: its own and MR
+        巡检's."""
         common = bk.m("common")
         rows = self.led.rows()
-        busy = self.shared() + sum(1 for r in rows if r.state == FIXING)
+        busy = self.shared() + self.busy()
         others = [c for c in self.claims() if c["kind"] != KIND]
         for row in sorted((r for r in rows if r.state == ISSUED and r.project in self._kits),
                           key=lambda r: (r.group.first_seen, r.project, r.signature)):

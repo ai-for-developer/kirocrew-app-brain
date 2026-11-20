@@ -208,12 +208,12 @@ class TeamRuntime:
                 helper=patrol_mod.Helper(PYTHON_BIN, str(APP_ROOT / "backend" / "core" / "team" / "patrol_reply.py"),
                                          config, str(bk.root())),
                 claims=lambda: sources.held(self), jenkins=Jenkins.of(cfg.get("jenkins"), self.transport),
-                shared=lambda: self.staging_view()["working"])
+                shared=lambda: sources.at_work(self, but=sources.PATROL))
             self.staging = staging_mod.StagingWatch(
                 gl=gl, sessions=kc, kit=self.host.kit, out=self._out, projects=cfg["projects"],
                 ledger_path=os.path.join(os.path.dirname(config), "staging.sqlite"),
                 workspaces=staging_mod.beside(self.patrol.workspaces), helper=self.patrol.helper,
-                claims=lambda: sources.held(self), shared=lambda: self.patrol_view()["working"])
+                claims=lambda: sources.held(self), shared=lambda: sources.at_work(self, but=sources.STAGING))
             self.cfg, self.runnerd_cfg, self.spool, self.allowed_signers = cfg, rcfg, spool, allowed
             self.error = ""
             return True

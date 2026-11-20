@@ -716,8 +716,8 @@ def _said(exc: BaseException) -> str:
 
 class Patrol:
     """The work source mr-patrol, hosted by TeamRuntime: round() each bridge round on its worker thread (*shared* says
-    how many of 测试环境报错's fix sessions are at work), view() for the page from any thread (what the last round saw),
-    held() for sources.holder."""
+    how many brain-patrol sessions the other work sources have in a turn: sources.at_work), view() for the page from
+    any thread (what the last round saw), held() for sources.holder, busy() for sources.at_work."""
 
     def __init__(self, *, gl: Any, sessions: Any, kit: Callable[[str], Mapping[str, Any]], projects: list[str],
                  ledger_path: str, workspaces: Workspaces | None, helper: Helper,
@@ -748,6 +748,13 @@ class Patrol:
         if self._led is None and not os.path.exists(self.ledger_path):
             return []
         return [r.claim for r in self.led.rows() if r.state in (WORKING, BLOCKED, PAUSED) and r.claim]
+
+    def busy(self) -> int:
+        """Its sessions in a turn now, as its ledger says (_busy), every project's: also one this round could not
+        read."""
+        if self._led is None and not os.path.exists(self.ledger_path):
+            return 0
+        return sum(1 for r in self.led.rows() if self._busy(r))
 
     def view(self) -> dict[str, Any]:
         return self.last
@@ -928,7 +935,7 @@ class Patrol:
         fewer than CAP sessions are at work (every project's, also one this round could not read, and 测试环境报错's) or
         were handed work this round, whatever KiroCrew made of it."""
         common = bk.m("common")
-        busy = self.shared() + sum(1 for r in self.led.rows() if self._busy(r))
+        busy = self.shared() + self.busy()
         todo = [e for e in entries if e.standing == "todo"]
         for e in sorted(todo, key=lambda e: (_ts(e.mr.get("created_at")) >= e.since, _ts(e.mr.get("updated_at")),
                                              e.project, int(e.mr["iid"]))):
