@@ -1191,3 +1191,35 @@ def test_the_projects_and_the_accounts_are_read_at_the_boundary():
         with pytest.raises(setup.SetupRefused, match=said):
             setup.SetupInput.parse(dict({"gitlab_base": BASE}, **bad))
 
+
+def test_the_command_line_sets_up_several_projects_as_gitlab_users_of_their_own(team):
+    """scripts/runner_setup.py --mode bot-account with two --project and the bridge's personal token in a file, no
+    one-time token: a line per step, and under a step about the projects a line per project; exit 0 with the MRs
+    waiting. Run again without the token file: the token kept is used, nothing new."""
+    from teamfix import Served
+    served = Served(team["gl"])
+    token_file = team["tmp"] / "bridge-token"
+    token_file.write_text(team["bridge"] + "\n")
+    root = team["tmp"] / "cli-setup"
+    cmd = [sys.executable, "-I", str(ROOT / "scripts" / "runner_setup.py"), "--root", str(root), "--gitlab", served.base,
+           "--mode", "bot-account", "--project", "grp/a", "--project", "grp/b", "--role", "product=bob",
+           "--role", "builder=carol", "--brainkit", str(BRAINKIT), "--no-team-mode"]
+    signerproc = mod("team.signerproc")
+    try:
+        first = subprocess.run(cmd + ["--bridge-token-file", str(token_file)], capture_output=True, text=True, timeout=300)
+        since = team["gl"].seen()
+        second = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    finally:
+        signerproc.stop(root / "signer.json")
+        served.stop()
+    lines = first.stdout.splitlines()
+    assert first.returncode == 0 and second.returncode == 0, first.stdout + first.stderr + second.stdout + second.stderr
+    assert lines[:3] == ["✓ 找到项目  2 个项目都找到了",
+                         "    ✓ grp/a  默认分支 main；桥的账号（brain-bridge）是 Developer  %s/grp/a" % BASE,
+                         "    ✓ grp/b  默认分支 main；桥的账号（brain-bridge）是 Developer  %s/grp/b" % BASE]
+    at = lines.index("… kit.json 的 MR  2 个项目的 kit.json MR 等你在 GitLab 上合并")
+    assert lines[at + 1: at + 3] == ["    … grp/%s  开了 MR !7：请在 GitLab 上合并这个 MR  %s/grp/%s/-/merge_requests/7" % (x, BASE, x)
+                                     for x in "ab"]
+    assert team["gl"].writes(since) == {"grp/a": [], "grp/b": [], "grp/c": []}
+    assert "✓ 桥的令牌  桥的账号是 brain-bridge：用这台机器上存的个人令牌" in second.stdout
+    assert team["bridge"] not in first.stdout + first.stderr + second.stdout + second.stderr
