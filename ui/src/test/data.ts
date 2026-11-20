@@ -6,7 +6,7 @@
  */
 import type {
   BrainView, ReqBoard, CloneResult, CrewChecks, ImportDefaults, ImportInspect, ImportJob, InstallResult, IntakeCheck, IntakeNext, Overview,
-  PublishResult, ReflectPreview, RequirementDetail, RunnerStatus, Settings, StartResult, Status, TeamPatrol, TeamSetup, TeamView, Todo, UpgradeResult,
+  PublishResult, ReflectPreview, RequirementDetail, RunnerStatus, Settings, StartResult, Status, TeamPatrol, TeamSetup, TeamStaging, TeamView, Todo, UpgradeResult,
   InstallChoices, MergeResult, PullResult, PushResult,
 } from '../types'
 import boardJson from './fixtures/board.json'
@@ -37,6 +37,7 @@ import teamJson from './fixtures/team.json'
 import teamPatrolJson from './fixtures/team-patrol.json'
 import teamSetupJson from './fixtures/team-setup.json'
 import teamSetupBotJson from './fixtures/team-setup-bot.json'
+import teamStagingJson from './fixtures/team-staging.json'
 import teamStatusJson from './fixtures/team-status.json'
 import todoJson from './fixtures/todo.json'
 
@@ -76,6 +77,7 @@ const files = {
   teamPatrol: exact<TeamPatrol>()(teamPatrolJson),
   teamSetup: exact<TeamSetup>()(teamSetupJson),
   teamSetupBot: exact<TeamSetup>()(teamSetupBotJson),
+  teamStaging: exact<TeamStaging>()(teamStagingJson),
   teamStatus: exact<RunnerStatus>()(teamStatusJson),
   settings: exact<Settings>()(settingsJson),
   importDefaults: exact<ImportDefaults>()(importDefaultsJson),

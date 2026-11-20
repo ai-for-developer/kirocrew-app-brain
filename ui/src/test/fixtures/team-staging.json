@@ -1,0 +1,58 @@
+{
+  "on": true,
+  "cap": 2,
+  "working": 1,
+  "last_at": 1794146400,
+  "projects": [
+    { "project": "shop/shop-pay", "on": true, "error": "", "deployed_sha": "3f2a9c1d0e4b5a6978c8d7e6f5a4b3c2d1e0f9a8" },
+    { "project": "shop/shop-web", "on": false, "error": "", "deployed_sha": "" }
+  ],
+  "items": [
+    {
+      "project": "shop/shop-pay", "signature": "ZeroDivisionError at orders/discount.py in apply", "count": 26, "state": "fix_mr",
+      "issue": { "iid": 12, "url": "https://gitlab.example.com/shop/shop-pay/-/issues/12", "title": "测试环境报错：ZeroDivisionError at orders/discount.py in apply" },
+      "origin": { "iid": 41, "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/41", "title": "折扣按百分比算" },
+      "fix_mr": { "iid": 53, "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/53", "title": "修复：ZeroDivisionError at orders/discount.py in apply" },
+      "first_seen": 1794140400, "last_seen": 1794146340, "deployed_sha": "3f2a9c1d0e4b5a6978c8d7e6f5a4b3c2d1e0f9a8",
+      "attempts": 0, "slot": "staging-12-12", "note": ""
+    },
+    {
+      "project": "shop/shop-pay", "signature": "app.pay: gateway timeout after <n>s (order <n>)", "count": 3, "state": "fixing",
+      "issue": { "iid": 13, "url": "https://gitlab.example.com/shop/shop-pay/-/issues/13", "title": "测试环境报错：app.pay: gateway timeout after <n>s (order <n>)" },
+      "origin": { "iid": 41, "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/41", "title": "折扣按百分比算" },
+      "fix_mr": null,
+      "first_seen": 1794143800, "last_seen": 1794145800, "deployed_sha": "3f2a9c1d0e4b5a6978c8d7e6f5a4b3c2d1e0f9a8",
+      "attempts": 0, "slot": "staging-12-13", "note": ""
+    },
+    {
+      "project": "shop/shop-pay", "signature": "HTTP 502 GET /api/orders/<n>/receipt", "count": 5, "state": "issued",
+      "issue": { "iid": 14, "url": "https://gitlab.example.com/shop/shop-pay/-/issues/14", "title": "测试环境报错：HTTP 502 GET /api/orders/<n>/receipt" },
+      "origin": { "iid": 41, "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/41", "title": "折扣按百分比算" },
+      "fix_mr": null,
+      "first_seen": 1794144000, "last_seen": 1794146100, "deployed_sha": "3f2a9c1d0e4b5a6978c8d7e6f5a4b3c2d1e0f9a8",
+      "attempts": 0, "slot": null, "note": "排队：同时最多 2 个会话在修（MR 巡检的也算）"
+    },
+    {
+      "project": "shop/shop-pay", "signature": "KeyError at cart/views.py in add", "count": 9, "state": "stopped",
+      "issue": { "iid": 9, "url": "https://gitlab.example.com/shop/shop-pay/-/issues/9", "title": "测试环境报错：KeyError at cart/views.py in add" },
+      "origin": { "iid": 37, "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/37", "title": "购物车合并" },
+      "fix_mr": null,
+      "first_seen": 1794126000, "last_seen": 1794142800, "deployed_sha": "3f2a9c1d0e4b5a6978c8d7e6f5a4b3c2d1e0f9a8",
+      "attempts": 2, "slot": "staging-12-9", "note": "试了 2 次没修好（最后一次：30 分钟没做完，停掉了），在 Issue 上说了：交给人"
+    },
+    {
+      "project": "shop/shop-pay", "signature": "shop.errors.RefundError at shop/refunds.py in refund", "count": 4, "state": "closed",
+      "issue": { "iid": 7, "url": "https://gitlab.example.com/shop/shop-pay/-/issues/7", "title": "测试环境报错：shop.errors.RefundError at shop/refunds.py in refund" },
+      "origin": { "iid": 35, "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/35", "title": "退款审核" },
+      "fix_mr": { "iid": 38, "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/38", "title": "修复：shop.errors.RefundError at shop/refunds.py in refund" },
+      "first_seen": 1794056000, "last_seen": 1794060000, "deployed_sha": "9c8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0b",
+      "attempts": 0, "slot": null, "note": "Issue 关了：在新的部署里又出现的话，重新打开"
+    },
+    {
+      "project": "shop/shop-pay", "signature": "app.stock: warehouse <n> is gone", "count": 1, "state": "new",
+      "issue": null, "origin": null, "fix_mr": null,
+      "first_seen": 1794146340, "last_seen": 1794146340, "deployed_sha": "3f2a9c1d0e4b5a6978c8d7e6f5a4b3c2d1e0f9a8",
+      "attempts": 0, "slot": null, "note": "这一轮没做成：POST /projects/shop%2Fshop-pay/issues -> HTTP 502: Bad Gateway"
+    }
+  ]
+}

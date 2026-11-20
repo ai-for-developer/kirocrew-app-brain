@@ -241,6 +241,9 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
     async def team_patrol(request: Any) -> Any:
         return kit.json(await svc.team_patrol())
 
+    async def team_staging(request: Any) -> Any:
+        return kit.json(await svc.team_staging())
+
     async def team_status(request: Any) -> Any:
         return kit.json(await svc.runner_status())
 
@@ -287,6 +290,7 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
         AppRoute("GET", "/team", kit.guarded(team)),
         AppRoute("POST", "/team/loop", kit.guarded(team_loop)),
         AppRoute("GET", "/team/patrol", kit.guarded(team_patrol)),
+        AppRoute("GET", "/team/staging", kit.guarded(team_staging)),
         AppRoute("GET", "/team/status", kit.guarded(team_status)),
         AppRoute("GET", "/team/setup", kit.guarded(team_setup_view)),
         AppRoute("POST", "/team/setup", kit.guarded(team_setup)),

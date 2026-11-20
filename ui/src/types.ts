@@ -1527,6 +1527,53 @@ export interface TeamPatrol {
   items: PatrolMr[]
 }
 
+// ---------------------------------------------------------------- 测试环境报错: GET /team/staging
+
+/** Where an error of the test environment is (backend/core/team/staging.py): new (seen, its Issue not open yet, or
+ * seen again on a newer deploy and to be opened again), issued (its Issue open, waiting for a fix session: note says
+ * why), fixing (a brain-patrol session is on it), fix_mr (its fix's MR is open, waiting for people), stopped (two fix
+ * attempts failed, or a person closed the fix's MR: the Issue says so), closed (its Issue closed). Another value is
+ * shown as it is. */
+export type StagingState = 'new' | 'issued' | 'fixing' | 'fix_mr' | 'stopped' | 'closed'
+export interface StagingLink {
+  iid: number
+  url: string | null
+  title: string
+}
+export interface StagingError {
+  project: string
+  /** what keys the error: a traceback's exception type and innermost project frame, else its message without its
+   * numbers and ids, or the request a 5xx answered */
+  signature: string
+  /** times the runner saw it in the log */
+  count: number
+  state: StagingState
+  issue: StagingLink | null
+  /** the MR that merged the commit deployed when its Issue was opened; null: GitLab knows none */
+  origin: StagingLink | null
+  fix_mr: StagingLink | null
+  /** epoch seconds */
+  first_seen: number
+  last_seen: number
+  /** the commit deployed when it was last seen */
+  deployed_sha: string
+  /** failed fix attempts since its Issue was opened */
+  attempts: number
+  slot: string | null
+  /** why it waits, how its last attempt went, or what went wrong this round, in words ('' when nothing) */
+  note: string
+}
+export interface TeamStaging {
+  /** some project's kit.json switches work source staging-errors on */
+  on: boolean
+  cap: number
+  working: number
+  /** epoch seconds of the last round; null before the first */
+  last_at: number | null
+  projects: { project: string; on: boolean; error: string; deployed_sha: string }[]
+  items: StagingError[]
+}
+
 // ---------------------------------------------------------------- 团队运行机 as GitLab shows it: GET /team/status
 
 /** An open MR the team runner works on: running, its hand-over label says so (kit.json running_label); patrol, MR 巡检
