@@ -19,12 +19,11 @@ TRANSCRIPT = rows(("user", "10:00"), ("assistant", "10:05"), ("tool", "10:07"), 
 
 
 def test_a_transcripts_time_goes_to_the_ai_and_to_the_waits_between_its_turns():
-    got = sessions.spend(TRANSCRIPT, busy=False)
+    got = sessions.Spent().add(TRANSCRIPT).times()
     assert (got["work_s"], got["wait_s"], got["waits"]) == (600 + 900, 1200, 1)
     assert got["last_at"] - got["first_at"] == 45 * 60
-    parts = sessions.Spent().add(TRANSCRIPT[:3]).add(TRANSCRIPT[3:]).result(False)
-    assert {k: parts[k] for k in got} == got, "read in parts it adds up to the whole"
-    quick = sessions.spend(rows(("user", "10:00"), ("assistant", "10:01"), ("user", "10:01")), busy=False)
+    assert sessions.Spent().add(TRANSCRIPT[:3]).add(TRANSCRIPT[3:]).times() == got, "read in parts it adds up to the whole"
+    quick = sessions.Spent().add(rows(("user", "10:00"), ("assistant", "10:01"), ("user", "10:01"))).times()
     assert quick["waits"] == 0, "an answer within a minute is no wait"
 
 

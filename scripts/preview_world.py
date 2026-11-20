@@ -1530,8 +1530,8 @@ def world(scratch: Path) -> None:
     said17 = [("user", 30), ("assistant", 5 * M), ("tool", 8 * M), ("assistant", 12 * M), ("user", 20 * M),
               ("tool", 24 * M), ("tool", 31 * M), ("assistant", 33 * M), ("user", 38 * M), ("tool", 41 * M),
               ("assistant", 44 * M)]
-    p17_stats = dict(sessions_mod.spend([{"role": role, "content": "", "meta": {}, "ts": iso(t + dt)} for role, dt in said17],
-                                        busy=False), busy=False, whole=True)
+    p17_stats = dict(sessions_mod.Spent().add([{"role": role, "content": "", "meta": {}, "ts": iso(t + dt)}
+                                               for role, dt in said17]).times(), busy=False, whole=True)
     p17_sess = dict(det["sessions"][0], slot="brain-PAY-17-5e1a", url="/chat?sid=brain-PAY-17-5e1a", title="PAY-17 订单优惠码",
                     credits=2.4, turns=3, busy=False, awaiting=False, last_activity=t + 44 * M, opened_at=t + 20)
     row = copy.deepcopy(rows["PAY-3"])

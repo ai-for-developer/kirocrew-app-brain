@@ -335,13 +335,15 @@ class Spent:
         return out
 
     def result(self, busy: bool) -> dict[str, Any]:
-        """spend's numbers, and the transcript's time: *work_s*, each turn from its message to its last row (the turn
-        still going: so far); *wait_s* and *waits*, from a turn's end to the next message (each WAIT_S or longer counted
-        once); *first_at* and *last_at*, its first message and its newest row."""
-        open_turn = self.last_at - self.turn_at if self.turn_at is not None and self.last_at is not None else 0.0
         return {"credits": round(self.credits, 3) if self.reported else None, "turns": self.turns,
-                "subagents": self.subagents, "unreported": self.unpaid + (self.work and not self.paid and not busy),
-                "work_s": round(self.work_s + max(0.0, open_turn), 1), "wait_s": round(self.wait_s, 1),
+                "subagents": self.subagents, "unreported": self.unpaid + (self.work and not self.paid and not busy)}
+
+    def times(self) -> dict[str, Any]:
+        """The transcript's time: *work_s*, each turn from its message to its last row (the turn still going: so far);
+        *wait_s* and *waits*, from a turn's end to the next message (each WAIT_S or longer counted once); *first_at*
+        and *last_at*, its first message and its newest row."""
+        open_turn = self.last_at - self.turn_at if self.turn_at is not None and self.last_at is not None else 0.0
+        return {"work_s": round(self.work_s + max(0.0, open_turn), 1), "wait_s": round(self.wait_s, 1),
                 "waits": self.waits, "first_at": self.first_at, "last_at": self.last_at}
 
 
@@ -981,8 +983,9 @@ class SessionManager:
             self._dirty = True
             return
         kept = kept if mark is not None else Tally.empty(first)
-        got = kept.spent.copy().add(msgs).result(st["busy"])
-        st.update(got, credits=got["credits"] if got["credits"] is not None else st.get("credits"),
+        spent = kept.spent.copy().add(msgs)
+        got = spent.result(st["busy"])
+        st.update(got, **spent.times(), credits=got["credits"] if got["credits"] is not None else st.get("credits"),
                   whole=kept.mark.start == 0, last_activity=_newest(kept.last_at, msgs) or st.get("last_activity"),
                   error=None)
         self._tails[slot] = tail(kept.seen + msgs, self.scrub, (self.by_slot(slot) or SessionInfo()).cwd)
