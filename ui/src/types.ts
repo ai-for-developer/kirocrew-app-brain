@@ -1518,6 +1518,43 @@ export interface TeamPatrol {
   items: PatrolMr[]
 }
 
+// ---------------------------------------------------------------- 从 issue 接活: GET /team/issues
+
+/** Where an issue labelled for Brain is on its way to a run (backend/core/team/issues.py), as its last round left it:
+ * new (just labelled), claimed (claim/<KEY> filed for the labeler), pushed (the start commit on its branch), opened (its
+ * MR, waiting for the start contract), started (signed: the run is the bridge's), refused (reason says why, and the
+ * issue was told), dropped (the label went before the contract: its MR closed). Another value is shown as it is. */
+export type IssueState = 'new' | 'claimed' | 'pushed' | 'opened' | 'started' | 'refused' | 'dropped'
+export interface IssueItem {
+  project: string
+  iid: number
+  title: string
+  url: string | null
+  /** who put the label on: the run's owner */
+  labeler: string
+  /** their GitLab role in the project ('' until it is read) */
+  role: string
+  state: IssueState
+  key: string | null
+  mr_iid: number | null
+  mr_url: string | null
+  run_id: string | null
+  /** refused or dropped: why, as the issue heard it (lines starting "- ") */
+  reason: string
+  /** this round's word on it: an error, or why it waits ('' when nothing) */
+  note: string
+}
+export interface TeamIssues {
+  /** some project's kit.json switches work source issue-label on */
+  on: boolean
+  /** epoch seconds of the last round; null before the first */
+  last_at: number | null
+  /** label: what a person puts on an issue ('' where it is off) */
+  projects: { project: string; on: boolean; label: string; error: string }[]
+  /** every issue with the label the last round looked at, and the ones whose label went that round */
+  items: IssueItem[]
+}
+
 // ---------------------------------------------------------------- 一键建运行机: GET/POST /team/setup
 
 /** A step's state: done, waiting (for a person: the kit.json MR to merge), failed (the run stopped there), skipped;

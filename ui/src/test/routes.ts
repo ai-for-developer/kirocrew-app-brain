@@ -21,6 +21,7 @@ export function fixtureRoutes(): Record<string, RouteHandler> {
     [`GET ${API}/todo`]: () => fx.todo(),
     [`GET ${API}/team`]: () => fx.team(),
     [`GET ${API}/team/patrol`]: () => fx.teamPatrol(),
+    [`GET ${API}/team/issues`]: () => fx.teamIssues(),
     [`GET ${API}/team/setup`]: () => fx.teamSetup(),
     [`GET ${API}/import/defaults`]: () => fx.importDefaults(),
   }
