@@ -257,10 +257,11 @@ def fake_reach(world):
     return reach
 
 
-def setup_ctx(world, push="auto", roles=None, patrol=True):
+def setup_ctx(world, push="auto", roles=None, patrol=True, issues=False):
     setup, rest = mod("team.setup"), mod("bk").m("rest")
     inp = setup.SetupInput.parse({"gitlab_base": BASE, "project": P, "admin_token": world["admin"],
-                                  "roles": roles or {"builder": "bob"}, "push": push, "patrol": patrol})
+                                  "roles": roles or {"builder": "bob"}, "push": push, "patrol": patrol,
+                                  "issues": issues})
     paths = setup.Paths.default(BRAINKIT, root=world["tmp"] / "team-setup")
     return setup.Ctx(inp, paths, gitlab=lambda tok: rest.GitLab(BASE, tok, world["gl"]), team_mode=team_mode(world),
                      signer=fake_signer(world), reach=fake_reach(world))
@@ -545,6 +546,32 @@ def test_a_rerun_whose_kit_mr_only_switches_patrol_says_patrol_waits_for_it_and_
         gl.merge(gl.mrs[-1]["iid"])
 
 
+def test_issues_on_switches_issue_label_on_in_the_kit_mr_and_makes_its_label(world):
+    """从打了标签的 issue 接活 ticked with 巡检 off, on a runner set up before (kit.json has all the hand-over needs, no
+    work_sources): the MR only adds work_sources [mr-handoff, issue-label] and says what that does, the label brain is
+    made, and team mode says taking work from issues starts once the MR is merged; unticked again, the MR takes only
+    issue-label out."""
+    gl = world["gl"]
+    build(world, patrol=False)
+    gl.merge(gl.mrs[-1]["iid"])
+    before = dict(json.loads(gl.files["main"][KIT]))
+    view, _ = build(world, patrol=False, issues=True)
+    after = json.loads(branch_kit(world))
+    assert [k for k in after if after[k] != before.get(k)] == ["work_sources"]
+    assert after["work_sources"] == ["mr-handoff", "issue-label"]
+    mr = gl.mrs[-1]
+    assert mr["description"] == "一键建运行机开的 MR：" + mod("team.setup").MR_ISSUES[True]
+    assert "issue-label" in mr["description"] and "Developer 以上" in mr["description"] and "brain" in gl.labels
+    by = {s["id"]: s for s in view["steps"]}
+    assert by["team_mode"]["message"] == "团队模式开了；上面那个 MR 合并以后，从 issue 接活才开始"
+    assert view["input"]["issues"] is True and view["input"]["patrol"] is False
+    gl.merge(mr["iid"])
+    view, _ = build(world, patrol=False, issues=False)
+    assert json.loads(branch_kit(world))["work_sources"] == ["mr-handoff"]
+    assert gl.mrs[-1]["description"] == "一键建运行机开的 MR：" + mod("team.setup").MR_ISSUES[False]
+    assert step(view, "team_mode")["message"] == "团队模式开了；上面那个 MR 合并以后，从 issue 接活才停"
+
+
 def branch_kit(world):
     """kit.json on the setup's branch: what the kit.json MR would merge."""
     return world["gl"].files["brain/runner-setup"][KIT]
@@ -677,11 +704,14 @@ def test_the_input_is_read_at_the_boundary():
     assert got.patrol is True and got.public()["patrol"] is True     # 巡检所有开着的 MR: on unless the page says no
     assert setup.SetupInput.parse({"gitlab_base": BASE, "project": P, "admin_token": "tok-123456",
                                    "patrol": False}).public()["patrol"] is False
+    assert got.issues is False and got.public()["issues"] is False   # 从打了标签的 issue 接活: off unless ticked
+    assert setup.SetupInput.parse({"gitlab_base": BASE, "project": P, "admin_token": "tok-123456",
+                                   "issues": True}).public()["issues"] is True
     assert got.roles == {"product": ("carol", "dave"), "builder": ()} and "tok-123456" not in repr(got)
     assert "tok-123456" not in json.dumps(got.public())
     for bad in ({"gitlab_base": "gitlab.example.com"}, {"gitlab_base": "https://u:p@gitlab.example.com"},
                 {"project": "pay"}, {"admin_token": ""}, {"admin_token": "a b"}, {"roles": {"boss": "x"}},
-                {"roles": {"product": "a/b"}}, {"push": "ftp"}, {"patrol": "yes"}):
+                {"roles": {"product": "a/b"}}, {"push": "ftp"}, {"patrol": "yes"}, {"issues": 1}):
         body = dict({"gitlab_base": BASE, "project": P, "admin_token": "tok-123456"}, **bad)
         with pytest.raises(setup.SetupRefused):
             setup.SetupInput.parse(body)

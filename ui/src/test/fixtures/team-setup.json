@@ -13,7 +13,8 @@
       "data": []
     },
     "push": "auto",
-    "patrol": true
+    "patrol": true,
+    "issues": false
   },
   "steps": [
     {

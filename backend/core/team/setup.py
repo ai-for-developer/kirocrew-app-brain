@@ -14,7 +14,8 @@ Under one root (default ~/.brain/team-setup; files 0600, folders 0700):
   identities.json, keys/, bridge.json, runnerd.json, signer.json, the spools, vouchers and ledgers, signer.pid / .log
 Under ~/workplace/brain-team (KiroCrew lets agents work only under ~/workplace): runs/ and cache/, and MR 巡检's clones
 in patrol/. The agents: ~/.kiro/agents/brain-run.json, and brain-patrol.json beside it when 巡检所有开着的 MR is on (the
-kit.json MR then also switches work source mr-patrol on). The person's token (SetupInput.admin_token) lives in memory
+kit.json MR then also switches work source mr-patrol on). 从打了标签的 issue 接活 switches work source issue-label on in
+the same MR and makes its label (team/issues.py: issues.LABEL). The person's token (SetupInput.admin_token) lives in memory
 for one run: it is never written, logged or answered, and text from GitLab or a command goes through Ctx.redact before
 it is kept.
 """
@@ -37,6 +38,7 @@ from typing import Any, Callable, Mapping
 
 from .. import bk
 from ..constants import APP_ROOT, PYTHON_BIN
+from . import issues as issues_mod
 from . import patrol as patrol_mod
 from . import signerproc, sources
 
@@ -70,10 +72,16 @@ MR_TEXT = ("一键建运行机开的 MR：运行机要 kit.json 写上 bridge_us
            "gitlab 和 default_branch。合并以前，签名服务不签交接。")
 MR_PATROL = {True: "work_sources 加上 mr-patrol：合并以后，运行机巡检这个项目所有开着的 MR，流水线没过、评审意见没回、有冲突的，它自己去修。",
              False: "work_sources 去掉 mr-patrol：合并以后，运行机不再巡检这个项目开着的 MR。"}
-PATROL_KINDS = (sources.HANDOFF, sources.PATROL)    # what 巡检所有开着的 MR puts in kit.json work_sources
+MR_ISSUES = {True: "work_sources 加上 issue-label：合并以后，项目里 Developer 以上的人给 issue 打上标签 %s，运行机就认领需求、开分支和 "
+                   "MR，在 MR 上问问题；MR 合并时 issue 跟着关。" % issues_mod.LABEL,
+             False: "work_sources 去掉 issue-label：合并以后，运行机不再接打了标签的 issue。"}
+# the work sources 一键建运行机 switches on or off: (kind, its SetupInput field, what the kit.json MR says of it on and off,
+# what starts or stops once that MR is merged). On, a kind goes into kit.json work_sources with the hand-over before it.
+SWITCHES = ((sources.PATROL, "patrol", MR_PATROL, "巡检"), (sources.ISSUE, "issues", MR_ISSUES, "从 issue 接活"))
 # (kit.json key, default name, colour): the labels the bridge moves, and brain reflect's
 LABELS = (("handoff_label", "ai-handoff", "#1f75cb"), ("running_label", "ai-running", "#108548"),
           ("rejected_label", "ai-handoff-rejected", "#dd2b0e"), ("", "brain-reflect", "#6699cc"))
+ISSUE_LABEL = ("issue_label", issues_mod.LABEL, "#9e5fd0")      # the issue label, made when 从 issue 接活 is on
 # an environment variable nobody sets: the bridge and the signer read their token from token_file only (the default
 # names, BRIDGE_GITLAB_TOKEN and SIGNER_GITLAB_TOKEN, may hold something else)
 NO_TOKEN_ENV = {"bridge": "BRAIN_TEAM_NO_TOKEN_ENV", "signer": "BRAIN_SIGNER_NO_TOKEN_ENV"}
@@ -113,6 +121,7 @@ class SetupInput:
     roles: Mapping[str, tuple[str, ...]] = field(default_factory=dict)   # role -> usernames; none: the token's owner
     push: str = "auto"                            # auto | ssh | token
     patrol: bool = True                           # 巡检所有开着的 MR
+    issues: bool = False                          # 从打了标签的 issue 接活
 
     @classmethod
     def parse(cls, raw: Any) -> "SetupInput":
@@ -159,12 +168,16 @@ class SetupInput:
         patrol = raw.get("patrol", True)
         if not isinstance(patrol, bool):
             raise SetupRefused("「巡检所有开着的 MR」的值不对：刷新页面再试")
-        return cls(base, project, token, roles, push, patrol)
+        issues = raw.get("issues", False)
+        if not isinstance(issues, bool):
+            raise SetupRefused("「从打了标签的 issue 接活」的值不对：刷新页面再试")
+        return cls(base, project, token, roles, push, patrol, issues)
 
     def public(self) -> dict[str, Any]:
         """What setup-state.json keeps of the input: all of it but the token."""
         return {"gitlab_base": self.gitlab_base, "project": self.project, "push": self.push,
-                "roles": {r: list(self.roles.get(r) or ()) for r in ROLES}, "patrol": self.patrol}
+                "roles": {r: list(self.roles.get(r) or ()) for r in ROLES}, "patrol": self.patrol,
+                "issues": self.issues}
 
 
 @dataclass(frozen=True)
@@ -474,7 +487,8 @@ def view(state: Mapping[str, Any], paths: Paths, running: bool | None = None) ->
             "cut_off": next((s["id"] for s in steps if s["status"] == "todo"), None) if cut else None,
             "input": {"gitlab_base": str(inp.get("gitlab_base") or ""), "project": str(inp.get("project") or ""),
                       "roles": {r: [str(n) for n in roles.get(r) or []] for r in ROLES},
-                      "push": str(inp.get("push") or "auto"), "patrol": inp.get("patrol") is not False},
+                      "push": str(inp.get("push") or "auto"), "patrol": inp.get("patrol") is not False,
+                      "issues": inp.get("issues") is True},
             "steps": steps, "root": str(paths.root)}
 
 
@@ -735,9 +749,10 @@ def git_reaches(ctx: Ctx, url: str) -> tuple[bool, str]:
 # ---- 4 labels ----------------------------------------------------------------------------------------------------- #
 
 def step_labels(ctx: Ctx) -> StepResult:
-    """The labels the bridge moves (kit.json's names) and brain reflect's, made where the project has none."""
+    """The labels the bridge moves (kit.json's names), brain reflect's, and the issue label when 从 issue 接活 is on,
+    made where the project has none."""
     want: list[tuple[str, str]] = []
-    for key, default, color in LABELS:
+    for key, default, color in LABELS + ((ISSUE_LABEL,) if ctx.inp.issues else ()):
         name = str(ctx.kit.get(key) or default) if key else default
         if name.lower() not in {w.lower() for w, _ in want}:
             want.append((name, color))
@@ -806,9 +821,9 @@ def step_kit_mr(ctx: Ctx) -> StepResult:
     mr = gl.mr_for_branch(pid, BRANCH)
     opened = mr is None
     if opened:
-        patrol = MR_PATROL[sources.PATROL in sources.enabled(want)]
-        text = ("一键建运行机开的 MR：" + patrol if patrol_only(ctx, want) else
-                MR_TEXT + ("\n\n" + patrol if "work_sources" in changed else ""))
+        lines = [said[on] for (_, _, said, _), on in switched(ctx, want)]
+        text = ("一键建运行机开的 MR：" + "\n\n".join(lines) if sources_only(ctx, want) else
+                MR_TEXT + "".join("\n\n" + x for x in lines))
         mr = gl.call("POST", "/projects/%d/merge_requests" % pid, body={
             "source_branch": BRANCH, "target_branch": default, "title": MR_TITLE, "description": text,
             "remove_source_branch": True}) or {}
@@ -822,11 +837,17 @@ def kit_changes(ctx: Ctx, want: dict[str, Any]) -> list[str]:
     return [k for k in want if want[k] != ctx.kit.get(k)]
 
 
-def patrol_only(ctx: Ctx, want: dict[str, Any]) -> bool:
-    """Whether the kit.json MR only switches mr-patrol on or off: everything the hand-over needs is on the default
-    branch already."""
+def sources_only(ctx: Ctx, want: dict[str, Any]) -> bool:
+    """Whether the kit.json MR only switches work sources on or off (SWITCHES): everything the hand-over needs is on the
+    default branch already."""
     kinds = set(sources.enabled(want)) ^ set(sources.enabled(ctx.kit))
     return kit_changes(ctx, want) == ["work_sources"] and sources.HANDOFF not in kinds
+
+
+def switched(ctx: Ctx, want: dict[str, Any]) -> list[tuple[tuple, bool]]:
+    """The SWITCHES rows whose kind the kit.json MR turns on or off, each with whether it turns it on."""
+    before, after = set(sources.enabled(ctx.kit)), set(sources.enabled(want))
+    return [(sw, sw[0] in after) for sw in SWITCHES if (sw[0] in before) != (sw[0] in after)]
 
 
 def wanted_kit(ctx: Ctx) -> dict[str, Any]:
@@ -841,10 +862,15 @@ def wanted_kit(ctx: Ctx) -> dict[str, Any]:
     want["default_branch"] = project["default_branch"]
     raw = want.get("work_sources")
     kinds = [k for k in raw if isinstance(k, str)] if isinstance(raw, list) else []
-    if ctx.inp.patrol:
-        want["work_sources"] = kinds + [k for k in PATROL_KINDS if k not in kinds]
-    elif sources.PATROL in kinds:
-        want["work_sources"] = [k for k in kinds if k != sources.PATROL]
+    named = isinstance(raw, list)
+    for kind, flag, _, _ in SWITCHES:
+        if getattr(ctx.inp, flag):
+            kinds += [k for k in (sources.HANDOFF, kind) if k not in kinds]
+            named = True
+        elif kind in kinds:
+            kinds = [k for k in kinds if k != kind]
+    if named:
+        want["work_sources"] = kinds
     return want
 
 
@@ -1042,8 +1068,10 @@ def step_team_mode(ctx: Ctx) -> StepResult:
         return failed(str(st.get("error") or "团队模式没开起来"), detail=str(st.get("error_raw") or ""))
     said = str(st.get("said") or "团队模式开了")
     if any(r.id == "kit_mr" and r.status == "waiting" for r in ctx.results):
-        if patrol_only(ctx, wanted_kit(ctx)):
-            said += "；上面那个 MR 合并以后，巡检才" + ("开始" if ctx.inp.patrol else "停")
+        want = wanted_kit(ctx)
+        if sources_only(ctx, want):
+            said += "；上面那个 MR 合并以后，" + "，".join("%s才%s" % (what, "开始" if on else "停")
+                                                     for (_, _, _, what), on in switched(ctx, want))
         else:
             said += "；可是上面那个 MR 合并以前，交接都会被拒"
     return done(said)

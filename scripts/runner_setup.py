@@ -3,13 +3,15 @@
 (backend/core/team/setup.py), one line per step as it ends.
 
   python3 scripts/runner_setup.py --root DIR --gitlab https://gitlab.example.com --project grp/pay --token-file FILE
-      [--role product=alice,bob] [--role builder=carol] [--push auto|ssh|token] [--no-patrol] [--no-team-mode]
+      [--role product=alice,bob] [--role builder=carol] [--push auto|ssh|token] [--no-patrol] [--issues]
+      [--no-team-mode]
       [--brainkit DIR] [--work DIR] [--agent-spec FILE]
 
 --token-file holds a one-time personal token with api: it is read here and copied nowhere. --work is where the runs and
 the clone cache go (default ~/workplace/brain-team); --agent-spec where brain-run goes (default
 ~/.kiro/agents/brain-run.json, brain-patrol beside it); --brainkit the brain-kit (default: the one the app would load).
---no-patrol leaves 巡检所有开着的 MR off: no brain-patrol, and the kit.json MR leaves work source mr-patrol out. The last
+--no-patrol leaves 巡检所有开着的 MR off: no brain-patrol, and the kit.json MR leaves work source mr-patrol out. --issues
+turns 从打了标签的 issue 接活 on: the kit.json MR adds work source issue-label, and its label is made. The last
 step starts team mode the way the app does, here and only to check it (a TeamRuntime starts and stops again): from
 outside KiroCrew it cannot switch the app's own team mode on. --no-team-mode skips that check. The signer it starts
 keeps running after it exits: its last line says the signer's pid and how to stop it.
@@ -69,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="product, builder, security or data (left out: the token's owner)")
     ap.add_argument("--push", choices=("auto", "ssh", "token"), default="auto")
     ap.add_argument("--no-patrol", action="store_true", help="do not patrol every open MR (no brain-patrol)")
+    ap.add_argument("--issues", action="store_true", help="take issues a Developer labels for Brain (issue-label)")
     ap.add_argument("--no-team-mode", action="store_true", help="skip the last step (starting team mode to check it)")
     ap.add_argument("--brainkit")
     ap.add_argument("--work")
@@ -94,7 +97,8 @@ def main(argv: list[str] | None = None) -> int:
         roles[role.strip()] = names
     try:
         inp = setup.SetupInput.parse({"gitlab_base": a.gitlab, "project": a.project, "admin_token": token,
-                                      "roles": roles, "push": a.push, "patrol": not a.no_patrol})
+                                      "roles": roles, "push": a.push, "patrol": not a.no_patrol,
+                                      "issues": a.issues})
     except setup.SetupRefused as exc:
         print(exc, file=sys.stderr)
         return 2
