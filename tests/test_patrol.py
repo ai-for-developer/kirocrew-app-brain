@@ -273,6 +273,40 @@ def test_two_failed_attempts_on_one_fingerprint_block_the_mr_with_one_comment(bk
     assert len(w.sessions.sent) == 3 and w.item(9)["state"] == "working" and w.item(9)["attempts"] == 1
 
 
+def test_three_dispatches_with_no_person_pushing_or_commenting_in_between_pause_the_mr_with_one_comment(bk, tmp_path):
+    w = World(tmp_path)
+    gl, heads = w.gl, iter(SHA[n] for n in range(2, 16))
+
+    def the_runner_pushed_and_it_failed_again():
+        w.sessions.end()
+        gl.push(P, 7, next(heads))
+        gl.fail(P, 7)
+        w.later()
+        w.round()
+    gl.mr(P, 7)
+    gl.fail(P, 7)
+    w.round()
+    for _ in range(5):
+        the_runner_pushed_and_it_failed_again()
+    assert len(w.sessions.sent) == 3 and w.item(7)["state"] == "blocked"
+    assert w.item(7)["note"] == "连着派了 3 次，中间没有人推送或评论，在 MR 上说了：等人推送或评论"
+    told = gl.posted("notes")
+    assert len(told) == 1 and told[0]["body"].startswith("MR 巡检：运行机连着修了 3 次，中间没有人推送或评论，这些还没修好：")
+    gl.thread(P, 7, "carol", "CI 的配置我改了，再试试")      # a person's comment: patrol looks again
+    w.later()
+    w.round()
+    assert len(w.sessions.sent) == 4 and w.item(7)["state"] == "working"
+    for _ in range(3):
+        the_runner_pushed_and_it_failed_again()
+    assert len(w.sessions.sent) == 6 and len(gl.posted("notes")) == 2
+    gl.push(P, 7, next(heads), by="alice@example.com")    # a person's push: patrol looks again
+    gl.fail(P, 7)
+    w.later()
+    w.round()
+    assert len(w.sessions.sent) == 7 and (w.item(7)["state"], w.item(7)["attempts"]) == ("working", 1)
+    assert gl.asked(r"/repository/commits$") == 9         # GitLab is asked about each of the 9 pushes once
+
+
 def test_a_turn_the_head_moved_past_holds_the_session_until_it_ends(bk, tmp_path):
     w = World(tmp_path)
     gl = w.gl

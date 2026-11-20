@@ -2,7 +2,7 @@
 
 PatrolGitLab answers what patrol and the bridge's hand-over poll ask: projects and their kit.json on the default branch,
 open MRs (paged, the label filter the bridge uses), an MR with its head pipeline, a pipeline's failed jobs and their
-logs, discussions (paged), and the notes posted. Its times are the clock's, so "before patrol started" is the same
+logs, discussions (paged), the notes posted, and the commits a push brought (ref_name old..new, with who committed them). Its times are the clock's, so "before patrol started" is the same
 moment for both. FakeSessions is crewadapter's patrol surface (open_patrol … patrol_stop): a turn runs until a test
 ends it.
 """
@@ -19,7 +19,8 @@ from appkit import mod
 
 BASE = "https://gitlab.example.com"
 API = "/api/v4"
-SHA = {n: ("%x" % n) * 40 for n in range(1, 10)}      # a head sha per number: SHA[1] = "111…"
+SHA = {n: ("%x" % n) * 40 for n in range(1, 16)}      # a head sha per number: SHA[1] = "111…", SHA[10] = "aaa…"
+RUNNER = "brain-bot@noreply.invalid"                   # the runner's git email (brain-kit's default kit.json bot_emails)
 
 
 class Clock:
@@ -40,6 +41,7 @@ class PatrolGitLab:
         self.mrs: dict[tuple[str, int], dict] = {}
         self.discussions: dict[tuple[str, int], list[dict]] = {}
         self.jobs: dict[int, list[dict]] = {}
+        self.commits: dict[tuple[str, str], tuple[str, str]] = {}    # (project, sha) -> (its parent, its committer)
         self.traces: dict[int, bytes] = {}
         self.calls: list[tuple] = []
         self.who = {"bridge-tok": "brain-bridge"}
@@ -108,11 +110,20 @@ class PatrolGitLab:
         n = dict(self._note("alice", body, False, False), system=True)
         self.discussions[(path, iid)].append({"id": "%040x" % next(self.ids), "individual_note": True, "notes": [n]})
 
-    def push(self, path: str, iid: int, sha: str, **over) -> None:
-        """A new head: GitLab moves updated_at; the head has no pipeline until one is made."""
+    def push(self, path: str, iid: int, sha: str, by: str = RUNNER, **over) -> None:
+        """A new head, a commit *by* committed on the old one: GitLab moves updated_at; the head has no pipeline until
+        one is made."""
         m = self.mrs[(path, iid)]
+        self.commits[(path, sha)] = (m["sha"], by)
         m.update(sha=sha, _pipeline=None, **over)
         self.touch(path, iid)
+
+    def _line(self, path: str, sha: str) -> list[str]:
+        out = []
+        while (path, sha) in self.commits and sha not in out:
+            out.append(sha)
+            sha = self.commits[(path, sha)][0]
+        return out
 
     def close(self, path: str, iid: int) -> None:
         self.mrs[(path, iid)]["state"] = "merged"
@@ -167,6 +178,11 @@ class PatrolGitLab:
             return ok({"id": p["id"], "path_with_namespace": name, "default_branch": p["default_branch"]})
         if rest == "/repository/files/.brain/kit.json/raw" and q.get("ref") == p["default_branch"]:
             return 200, json.dumps(p["kit"]).encode()
+        if rest == "/repository/commits" and method == "GET" and ".." in q.get("ref_name", ""):
+            old, new = q["ref_name"].split("..", 1)
+            seen = set(self._line(name, old))
+            return ok([{"id": c, "committer_email": self.commits[(name, c)][1]} for c in self._line(name, new)
+                       if c not in seen])
         if rest == "/merge_requests" and method == "GET":
             rows = [self.shown(x) for (pp, _), x in sorted(self.mrs.items()) if pp == name
                     and x["state"] == q.get("state", x["state"])
@@ -262,6 +278,8 @@ class FakeSessions:
 class FakeWorkspaces:
     """Workspaces without git: a path per MR; *moved*: the MRs whose origin head is not the one read; *dropped*: the
     clones deleted, (project id, iid)."""
+
+    ident = (("user.name", "brain-bot"), ("user.email", RUNNER))
 
     def __init__(self, root: str = "/Users/alice/workplace/brain-team/patrol") -> None:
         self.root, self.prepared, self.moved, self.dropped = root, [], set(), []

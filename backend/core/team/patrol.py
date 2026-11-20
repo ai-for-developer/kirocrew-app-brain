@@ -8,15 +8,20 @@ log. A person left a review thread open: unresolved and resolvable, with no repl
 named in a turn that ended. Or the MR conflicts with its target branch. The MR's problems make a PatrolItem. Its
 fingerprint moves with the head, a failed pipeline, the conflict and the open review notes, and nothing else.
 
-The ledger, <root>/patrol.sqlite, has one row per open MR (MrRow). It is a state machine (settle):
+The ledger, <root>/patrol.sqlite, has one row per open MR of the projects patrol is on (MrRow). It is a state machine
+(settle, Patrol._look and Patrol._send):
   idle -> working     the fingerprint was not worked to the end of a turn yet, and a session is free: at most CAP at
-                      work, the others wait (first the MRs open before patrol started in their project, then by when
-                      each MR last changed)
+                      work or handed work this round, the others wait (first the MRs open before patrol started in
+                      their project, then by when each MR last changed). The row is working before its message goes,
+                      so a message KiroCrew did not answer, which may have landed, is never sent again.
   working -> idle     the turn ended (the review notes it named count as answered then), or the MR head moved
-  working -> idle     TIMEOUT_S without either, or a turn that ended without a reply: a failed attempt (a timed-out
-                      turn is stopped)
-  working -> blocked  the MAX_ATTEMPTS-th failed attempt on one fingerprint. One comment on the MR says what could not
-                      be fixed, and the MR is left alone until its fingerprint changes.
+  working -> idle     a failed attempt: TIMEOUT_S without either (the turn is stopped), or a turn that ended without a
+                      reply or with KiroCrew's error. A message KiroCrew refused is a failed attempt as well.
+  working -> blocked  the MAX_ATTEMPTS-th failed attempt on one fingerprint: left alone until its fingerprint changes
+  idle -> paused      dispatched MAX_STREAK times in a row with no person pushing or commenting in between (each push
+                      of the runner's makes a new fingerprint): left alone until a person does
+One comment on the MR says why it is blocked or paused, and what is not fixed. A row is forgotten, its turn stopped and
+its clone deleted, once its MR is merged or closed, or patrol is no longer on in its project.
 A round lists each project's open MRs once. It reads an MR's pipeline and threads only when the MR changed since, is
 being worked, its pipeline had not finished, or RECHECK_S went by: GitLab does not move an MR's updated_at when a
 pipeline ends, or when one runs again on the same head.
@@ -45,6 +50,7 @@ AGENT = "brain-patrol"
 CAP = 2                     # patrol sessions at work at once
 TIMEOUT_S = 30 * 60         # a turn with no end and no new head this long is a failed attempt
 MAX_ATTEMPTS = 2            # failed attempts on one fingerprint before the MR is blocked
+MAX_STREAK = 3              # dispatches in a row with no person pushing or commenting in between before it is paused
 LOG_LINES = 80              # of each failed job's log
 LOG_LINE_CHARS = 300
 MAX_JOBS = 5
@@ -57,7 +63,7 @@ UNSURE_MERGE = ("checking", "unchecked", "preparing")      # detailed_merge_stat
 BOT_RE = re.compile(r"^(?:project|group)_\d+_bot(?:_[0-9a-f]+)?\d*$")
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 SECTION_RE = re.compile(r"^section_(?:start|end):\d+:")
-IDLE, WORKING, BLOCKED = "idle", "working", "blocked"
+IDLE, WORKING, BLOCKED, PAUSED = "idle", "working", "blocked", "paused"
 
 
 # ---- what an MR has ------------------------------------------------------------------------------------------- #
@@ -136,12 +142,14 @@ class Read:
     jobs: tuple[FailedJob, ...] = ()            # the failed ones, of a failed pipeline
     reviews: tuple[Review, ...] = ()            # people's open review notes (the row knows which were answered)
     bot_notes: int = 0                          # open threads only bots wrote in
+    people_note: int = 0                        # the newest note a person wrote on the MR, anywhere (its id)
 
     @classmethod
     def of(cls, d: Mapping[str, Any]) -> "Read":
         return cls(d.get("pipeline_id"), str(d.get("pipeline_status") or ""),
                    tuple(FailedJob(**j) for j in d.get("jobs") or ()),
-                   tuple(Review(**r) for r in d.get("reviews") or ()), int(d.get("bot_notes") or 0))
+                   tuple(Review(**r) for r in d.get("reviews") or ()), int(d.get("bot_notes") or 0),
+                   int(d.get("people_note") or 0))
 
 
 @dataclass(frozen=True)
@@ -175,23 +183,37 @@ def username(user: Any) -> str:
     return str((user or {}).get("username") or "").lower() if isinstance(user, dict) else ""
 
 
+def written_by(n: Mapping[str, Any], own: set[str], bots: set[str]) -> str:
+    """own (patrol's account, *own*) | bot | person: who wrote the note *n*."""
+    who = n.get("author")
+    name = username(who)
+    if name in own:
+        return "own"
+    if name in bots or BOT_RE.match(name) or (isinstance(who, dict) and who.get("bot") is True):
+        return "bot"
+    return "person"
+
+
+def notes_of(discussions: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    """Each discussion's notes, without GitLab's system notes."""
+    return [[n for n in d.get("notes") or [] if isinstance(n, dict) and not n.get("system")] for d in discussions]
+
+
 def open_reviews(discussions: list[dict[str, Any]], own: set[str], bots: set[str]) -> tuple[list[Review], int]:
     """(people's open review notes, open threads only bots wrote in). A thread counts while it is resolvable and not
     resolved. In it, a note of patrol's own account (*own*) answers every note before it; a bot's note is never a
     problem."""
     out, bot_threads = [], 0
-    for d in discussions:
-        notes = [n for n in d.get("notes") or [] if isinstance(n, dict) and not n.get("system")]
+    for d, notes in zip(discussions, notes_of(discussions)):
         mine = [n for n in notes if n.get("resolvable")]
         if not mine or all(n.get("resolved") for n in mine):
             continue
         tail, bot_said = [], False
         for n in notes:
-            who = n.get("author")
-            name = username(who)
-            if name in own:
+            by = written_by(n, own, bots)
+            if by == "own":
                 tail, bot_said = [], False
-            elif name in bots or BOT_RE.match(name) or (who or {}).get("bot") is True:
+            elif by == "bot":
                 bot_said = True
             else:
                 tail.append(n)
@@ -222,8 +244,26 @@ def read_mr(gl: Any, project: str, mr: Mapping[str, Any], own: set[str], bots: s
             jobs.append(FailedJob(str(j.get("name") or j.get("id")), log_tail(gl.job_trace(project, int(j["id"])))))
     threads = gl.pages("/projects/%s/merge_requests/%d/discussions" % (rest.q(project), iid), {}, 100, 20,
                        "discussions on !%d" % iid)
-    reviews, bot_threads = open_reviews([d for d in threads if isinstance(d, dict)], own, bots)
-    return Read(pid, status, tuple(jobs), tuple(reviews), bot_threads)
+    threads = [d for d in threads if isinstance(d, dict)]
+    reviews, bot_threads = open_reviews(threads, own, bots)
+    people = [int(n["id"]) for notes in notes_of(threads) for n in notes if written_by(n, own, bots) == "person"]
+    return Read(pid, status, tuple(jobs), tuple(reviews), bot_threads, max(people, default=0))
+
+
+def pushed_by_people(gl: Any, project: str, old: str, new: str, bots: set[str]) -> bool:
+    """Whether a person pushed to the MR's source branch from its head *old* to *new*: a commit in old..new that none
+    of *bots* (the runner's git emails) committed, or a head that moved back or elsewhere (the runner only adds
+    commits). *old* gone from GitLab counts as a push of a person's too."""
+    rest = bk.m("rest")
+    try:
+        rows = gl.call("GET", "/projects/%s/repository/commits" % rest.q(project),
+                       {"ref_name": "%s..%s" % (old, new), "per_page": 100})
+    except rest.HttpError as exc:
+        if exc.status in (400, 404):
+            return True
+        raise
+    commits = [c for c in rows or [] if isinstance(c, dict)]
+    return not commits or any(str(c.get("committer_email") or "").lower() not in bots for c in commits)
 
 
 def item_of(project: str, mr: Mapping[str, Any], read: Read, answered: tuple[int, ...]) -> PatrolItem:
@@ -261,20 +301,23 @@ class MrRow:
     iid: int
     project_id: int = 0                 # GitLab's id of the project: its workspace is <root>/<project_id>-<iid>
     state: str = IDLE
-    slot: str = ""                      # its session; "": none yet, or a new one is to be opened
+    slot: str = ""                      # its session, kept while the MR is open ("": none yet)
     gen: int = 0                        # sessions opened for it (a slot name is used once)
     head_sha: str = ""                  # the last dispatch's head, pipeline and conflict
     pipeline_id: int | None = None
     conflict: bool = False
     fingerprint: str = ""               # the last dispatch's
     attempts: int = 0                   # dispatches of that fingerprint
+    streak: int = 0                     # dispatches since a person last pushed or commented (MAX_STREAK)
+    people_note: int = 0                # Read.people_note at the last dispatch
+    checked_head: str = ""              # the newest head since the last dispatch whose new commits are the runner's
     dispatched_at: float = 0.0
     send_id: str = ""
     sent_notes: tuple[int, ...] = ()    # the review notes that dispatch named
     outcome: str = ""                   # how the last attempt ended: ended | moved | failed | timeout | taken
     done_fp: str = ""                   # the fingerprint a turn ended on (its notes answered)
     answered: tuple[int, ...] = ()
-    told_fp: str = ""                   # the fingerprint the blocked comment was posted for
+    told: bool = False                  # it is blocked or paused, and the MR was told so
     claim: dict = field(default_factory=dict)
     seen: str = ""                      # the MR's updated_at and head when it was last read in detail
     read: Read | None = None
@@ -333,7 +376,7 @@ class Ledger:
 # ---- the state machine ---------------------------------------------------------------------------------------- #
 
 def _failed(row: MrRow, outcome: str) -> MrRow:
-    return replace(row, state=BLOCKED if row.attempts >= MAX_ATTEMPTS else IDLE, outcome=outcome)
+    return replace(row, state=BLOCKED if row.attempts >= MAX_ATTEMPTS else IDLE, outcome=outcome, told=False)
 
 
 def settle(row: MrRow, head: str, turn: str, now: float) -> tuple[MrRow, bool]:
@@ -367,7 +410,7 @@ def standing(row: MrRow, item: PatrolItem) -> str:
         return "working"
     if not item.problems:
         return "ok"
-    if row.state == BLOCKED and row.fingerprint == item.fingerprint:
+    if row.state == PAUSED or (row.state == BLOCKED and row.fingerprint == item.fingerprint):
         return "blocked"
     if row.done_fp == item.fingerprint:
         return "done"
@@ -524,6 +567,9 @@ def slot_name(project_id: int, iid: int, gen: int) -> str:
 
 def blocked_text(row: MrRow, item: PatrolItem) -> str:
     what = "\n".join("- " + problem_text(p) for p in item.problems)
+    if row.state == PAUSED:
+        return ("MR 巡检：运行机连着修了 %d 次，中间没有人推送或评论，这些还没修好：\n%s\n\n运行机先停下，不管这个 MR；有人推送"
+                "或评论以后再看。" % (MAX_STREAK, what))
     if row.outcome == "refused":
         return ("MR 巡检：运行机派了 %d 次，它的会话都没收下，这些还没修：\n%s\n\n请管运行机的人看一下它的 KiroCrew。运行机先不管"
                 "这个 MR；它有新的提交、新的流水线或新的评审意见以后再看。" % (MAX_ATTEMPTS, what))
@@ -587,7 +633,7 @@ class Patrol:
         """The MRs patrol is working on or gave up on: their claims."""
         if self._led is None and not os.path.exists(self.ledger_path):
             return []
-        return [r.claim for r in self.led.rows() if r.state in (WORKING, BLOCKED) and r.claim]
+        return [r.claim for r in self.led.rows() if r.state in (WORKING, BLOCKED, PAUSED) and r.claim]
 
     def view(self) -> dict[str, Any]:
         return self.last
@@ -672,19 +718,37 @@ class Patrol:
             row = replace(row, read=read_mr(self.gl, e.project, mr, *self._who(kit), before=row.read), seen=_seen(mr),
                           read_at=now)
         item = item_of(e.project, mr, row.read, row.answered)
-        row = replace(row, project_id=item.project_id)
+        row = self._watched(e, replace(row, project_id=item.project_id), item)
         if row.state == BLOCKED and row.fingerprint != item.fingerprint:
             row = replace(row, state=IDLE)
-        if row.state == BLOCKED and row.told_fp != row.fingerprint:
+        if standing(row, item) == "todo" and row.streak >= MAX_STREAK:
+            row = replace(row, state=PAUSED, told=False)
+        if row.state in (BLOCKED, PAUSED) and not row.told:
             try:
                 self.gl.comment(e.project, item.iid, blocked_text(row, item))
-                row = replace(row, told_fp=row.fingerprint)
+                row = replace(row, told=True)
             except bk.m("common").BrainError as exc:    # told next round
                 self.out("%s!%d: the blocked comment is not posted yet: %s" % (e.project, item.iid, _said(exc)))
         led.put(row)
         e.row, e.item, e.standing = row, item, standing(row, item)
         if e.standing == "ok" and row.read.bot_notes:
             e.skip, e.standing = Skip("bots_only", "只有机器人写的评论，没有要修的"), "skipped"
+
+    def _watched(self, e: Entry, row: MrRow, item: PatrolItem) -> MrRow:
+        """*row*, its streak over when a person commented or pushed since its last dispatch (a pause lifts with it). A
+        push is asked GitLab about once per head (checked_head)."""
+        if not row.streak:
+            return row
+        acted = row.read.people_note > row.people_note
+        if not acted and item.head_sha != row.checked_head:
+            acted = pushed_by_people(self.gl, e.project, row.checked_head, item.head_sha, self._bot_emails(e.kit))
+            row = row if acted else replace(row, checked_head=item.head_sha)
+        return replace(row, streak=0, state=IDLE if row.state == PAUSED else row.state) if acted else row
+
+    def _bot_emails(self, kit: Mapping[str, Any]) -> set[str]:
+        """The git emails the runner commits as: kit.json's bot_emails and the workspaces' user.email."""
+        named = [str(x) for x in kit.get("bot_emails") or []] + [v for k, v in self.workspaces.ident if k == "user.email"]
+        return {x.strip().lower() for x in named if x.strip()}
 
     def _stale(self, row: MrRow, mr: Mapping[str, Any], now: float) -> bool:
         """Whether the MR is read in detail again: never read, changed since, being worked, its pipeline not over (or
@@ -791,7 +855,8 @@ class Patrol:
         sid = "P-" + hashlib.sha256(("%s\n%s\n%d\n%r" % (row.slot, item.fingerprint, attempts, now)).encode()
                                     ).hexdigest()[:20]
         went = replace(row, state=WORKING, head_sha=item.head_sha, pipeline_id=item.pipeline_id, conflict=item.conflict,
-                       fingerprint=item.fingerprint, attempts=attempts, dispatched_at=now, send_id=sid,
+                       fingerprint=item.fingerprint, attempts=attempts, streak=row.streak + 1,
+                       people_note=row.read.people_note, checked_head=item.head_sha, dispatched_at=now, send_id=sid,
                        sent_notes=item.note_ids, outcome="")
         try:
             self.sessions.patrol_project(row.slot, path)
@@ -828,6 +893,8 @@ def _seen(mr: Mapping[str, Any]) -> str:
 
 
 def _note(standing: str, row: MrRow | None) -> str:
+    if standing == "blocked" and row is not None and row.state == PAUSED:
+        return "连着派了 %d 次，中间没有人推送或评论，在 MR 上说了：等人推送或评论" % MAX_STREAK
     if standing == "blocked" and row is not None:
         tried = "派了 %d 次，会话都没收下" if row.outcome == "refused" else "试了 %d 次没修好"
         return (tried % row.attempts) + "，在 MR 上说了：等它有新变化"
