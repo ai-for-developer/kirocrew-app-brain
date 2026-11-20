@@ -758,7 +758,15 @@ def account(ctx: Ctx, key: str) -> tuple[str, dict]:
         kept = kept if isinstance(kept, dict) else None
         tok = given or (read_secret(ctx.paths.token(key)) if kept else "")
         ctx.remember(tok)
-        me = whoami(ctx, tok) if tok else None
+        me, status = None, None
+        try:
+            me = (ctx.gitlab(tok).current_user() or {}) if tok else None
+        except Exception as exc:  # noqa: BLE001 - one GitLab does not take, said below; anything else as every step says it
+            status = _gitlab_status(exc)
+            if status not in (401, 403):
+                raise
+        if given and status == 403:     # GET /user takes api, read_api or read_user
+            raise StepFailed("%s读不出它是哪个 GitLab 用户：给它加上 read_user 权限" % ACCOUNT_NAME[key])
         if given and me is None:
             raise StepFailed("GitLab 不认%s：过期了、撤掉了，或者填错了" % ACCOUNT_NAME[key])
         if not given and (me is None or kept is None or me.get("id") != kept.get("user_id")):
@@ -863,6 +871,7 @@ def keep(ctx: Ctx, p: Proj, key: str, name: str, got: Any) -> dict:
         raise StepFailed("GitLab 回的项目令牌 %s 里没有令牌的值：在 GitLab 上撤掉它，再跑一次" % name)
     ctx.remember(tok)
     write_file(ctx.paths.token(key), tok + "\n")
+    (ctx.state.get("accounts") or {}).pop(key, None)       # the file no longer holds that personal token
     rec = {"id": got["id"], "user_id": got["user_id"], "name": name, "scopes": list(got.get("scopes") or ()),
            "expires_at": got.get("expires_at"), "username": "", "email": "", "display": ""}
     tokens_of(ctx, p)[key] = rec

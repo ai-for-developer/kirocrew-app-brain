@@ -1138,8 +1138,8 @@ def test_a_project_gitlab_does_not_have_fails_its_own_row_and_the_others_are_sti
 
 def test_the_two_accounts_are_developers_everywhere_and_users_of_their_own(team):
     """brain-bridge a Reporter in grp/b; the person's own token typed as the bridge's; a second token of brain-bridge,
-    or the person's own, typed as the bot's; a bridge token without api: each stops at its step with what to do, and a
-    token refused is never kept."""
+    the person's own, or one without read_user typed as the bot's; a bridge token without api: each stops at its step
+    with what to do, and a token refused is never kept."""
     gl = team["gl"]
     b = gl.repos["grp/b"]
     b.members = [m for m in b.members if m[0] != "brain-bridge"] + [("brain-bridge", 20)]
@@ -1154,6 +1154,8 @@ def test_the_two_accounts_are_developers_everywhere_and_users_of_their_own(team)
     assert step(view, "push")["message"] == "机器人账号和桥的账号是同一个 GitLab 用户 brain-bridge：要两个不同的用户，运行机不能替桥说话"
     view, _ = build_team(team, bot=gl.pat(1, "alice", ["write_repository", "read_user"]))
     assert step(view, "push")["message"].startswith("机器人账号的个人令牌就是你自己（alice）：")
+    view, _ = build_team(team, bot=gl.pat(BOT_ID, "brain-bot", ["write_repository"]))
+    assert step(view, "push")["message"] == "机器人账号的个人令牌读不出它是哪个 GitLab 用户：给它加上 read_user 权限"
     view, _ = build_team(team, bridge=gl.pat(BRIDGE_ID, "brain-bridge", ["read_api"]))
     assert step(view, "bridge_token")["message"].startswith("桥的账号的个人令牌（brain-bridge 的）没有 api 权限：")
     assert ps.token("bridge").read_text().strip() == team["bridge"]     # the one that passed, not the one without api
@@ -1172,6 +1174,25 @@ def test_a_personal_token_left_out_takes_the_one_kept_while_it_still_signs_in(te
     new = gl.pat(BRIDGE_ID, "brain-bridge", ["api"])
     view, ps = build_team(team, bridge=new, bot=False)
     assert everything_done(view) and ps.token("bridge").read_text().strip() == new
+
+
+def test_a_project_token_run_after_a_bot_account_one_no_longer_says_the_bridges_token_is_kept(team):
+    """项目令牌 on grp/a after 机器人账号: the bridge's token file now holds a project token, so the card no longer
+    offers brain-bridge's as kept (the bot's file is untouched over SSH, and still is), and 机器人账号 again asks for it."""
+    setup, rest = mod("team.setup"), mod("bk").m("rest")
+    build_team(team)
+    inp = setup.SetupInput.parse({"gitlab_base": BASE, "project": "grp/a", "admin_token": team["admin"],
+                                  "roles": {"builder": "bob"}})
+    ctx = setup.Ctx(inp, setup.Paths.default(BRAINKIT, root=team["tmp"] / "team-setup"),
+                    gitlab=lambda tok: rest.GitLab(BASE, tok, team["gl"]), team_mode=team_mode(team),
+                    signer=fake_signer(team), reach=team_reach(team))
+    with setup.Lock(ctx.paths.root):
+        view = setup.run(ctx)
+    assert everything_done(view), [(s["id"], s["status"], s["message"], s["detail"][:200]) for s in view["steps"]]
+    assert view["accounts"] == {"bridge": "", "bot": "brain-bot"} and len(team["gl"].repos["grp/a"].made("brain-bridge")) == 1
+    assert json.loads(ctx.paths.bridge_json.read_text())["projects"] == ["grp/a"]
+    view, _ = build_team(team, bridge=False)
+    assert step(view, "bridge_token")["message"] == "填上桥的账号的个人令牌"
 
 
 def test_the_projects_and_the_accounts_are_read_at_the_boundary():
