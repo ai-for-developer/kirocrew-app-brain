@@ -66,6 +66,9 @@ detail = importlib.import_module("_brainapp_backend.core.detail")
 lean_view = importlib.import_module("_brainapp_backend.core.lean_view")
 stage_table = importlib.import_module("_brainapp_backend.core.stages")
 deliveries = importlib.import_module("_brainapp_backend.core.deliveries")
+flowview = importlib.import_module("_brainapp_backend.core.flowview")
+fastrow = importlib.import_module("_brainapp_backend.core.fastrow")
+fastboard = importlib.import_module("_brainapp_backend.core.fastboard")
 identity = importlib.import_module("_brainapp_backend.core.identity")
 family_mod = importlib.import_module("_brainapp_backend.core.family")
 service = importlib.import_module("_brainapp_backend.core.service")
@@ -179,8 +182,10 @@ def gen_text(path: str, n: int, key: str) -> str:
 class Req:
     """One requirement's record, written in the order it happened."""
 
-    def __init__(self, repo: str, key: str, title: str, owner: str, slug: str, intent: str, *, project: str = "") -> None:
+    def __init__(self, repo: str, key: str, title: str, owner: str, slug: str, intent: str | None, *, project: str = "",
+                 mode: str = "lean") -> None:
         self.repo, self.key, self.title, self.owner, self.slug, self.intent, self.project = repo, key, title, owner, slug, intent, project
+        self.mode = mode    # run.json's: "fast" (快速) has no Lean intent
         self.branch = "ai/%s/%s-%s" % (owner, key, slug)
         self.events: list[dict] = []
         self.commits: list[dict] = []
@@ -326,10 +331,15 @@ class Req:
         self._lean(at, "BLOCKED", gate=gate, path=path, tool="fs_write")
 
     def verify(self, at: float, results: list[tuple[str, int]]) -> None:
-        """`lean verify`: each check's exit, time and output hash, the commit it ran on, the summary it wrote."""
-        self.draft(at, "build-and-test")
+        """`lean verify`: each check's exit, time and output hash, the commit it ran on, the summary it wrote (a fast
+        run has no intent, so no summary)."""
         res = [{"cmd": c, "exit": e, "secs": round(3 + int(sha(self.key, c, at)[:2], 16) / 8, 1),
                 "output_sha256": h64(self.key, c, at)} for c, e in results]
+        if not self.intent:
+            self._lean(at, "VERIFY", ok=all(e == 0 for _, e in results), fingerprint=h64(self.key, "fp", at), results=res,
+                       base_commit=self.head(at), branch=self.branch)
+            return
+        self.draft(at, "build-and-test")
         self._lean(at, "VERIFY", ok=all(e == 0 for _, e in results), fingerprint=h64(self.key, "fp", at), results=res,
                    base_commit=self.head(at), branch=self.branch, summary=self.doc("build-and-test"),
                    summary_sha256=self.hash_at(self.doc("build-and-test"), at) or h64(self.key, "summary", at))
@@ -421,6 +431,8 @@ class Req:
                    "expected_paths": []}
             if self.hand_at is not None:
                 run["handoff"] = {"requested_at": iso(self.hand_at), "by": self.owner, "local_head": sha(self.key, "lh")}
+            if self.mode != "lean":
+                run["mode"] = self.mode
         return {"key": self.key, "claim": {"owner": self.owner, "title": self.title, "created_at": iso(self.claim_at or self.start_at or T0),
                                            "source": "product"},
                 # repo._key_facts: merged, else read in its checkout here when this machine has one, else on its branch
@@ -430,7 +442,7 @@ class Req:
                 "merged_at": self.merged_at, "tip_at": self.merged_at or (_epoch(self.commits[-1]["at"]) if self.commits else None),
                 "park_at": _epoch(self.park[-1]["at"]) if self.park else None, "review": None,
                 "decisions_text": "```brain-proposal\n```\n" * self.proposals, "events": evs, "approvals": approvals,
-                "stages": lean_view.stages(evs)}
+                "stages": lean_view.stages(evs), **flowview.read(run)}
 
     def trace(self, brain: dict, family: dict | None = None) -> dict:
         stages = []
@@ -608,9 +620,11 @@ def brain_views(reqs: dict[str, list[Req]], rows: list[dict], said: dict[str, li
                 (top / "runs" / r.key).mkdir(parents=True, exist_ok=True)
                 (top / "runs" / r.key / "run.json").write_text(json.dumps(
                     {"key": r.key, "owner": r.owner, "branch": r.branch, "intent": r.intent, "brain_commit": brain_commit,
-                     "created_at": iso(r.start_at or T0)}), encoding="utf-8")
-                d = top / "aidlc-docs" / r.intent
-                (d / "inception" / "requirements").mkdir(parents=True, exist_ok=True)
+                     "created_at": iso(r.start_at or T0), **({"mode": r.mode} if r.mode != "lean" else {})}),
+                    encoding="utf-8")
+                d = top / "aidlc-docs" / r.intent if r.intent else top / "runs" / r.key      # a fast run keeps its own
+                if r.intent:
+                    (d / "inception" / "requirements").mkdir(parents=True, exist_ok=True)
                 rows_ = said.get("%s/%s" % (rid, r.key)) or []
                 # each citation once (brainkit.usage counts where an id is cited): Who as brain-kit writes it
                 table = "".join("| %s | %s | %s | %s | %s | %s |\n" % (
@@ -623,9 +637,10 @@ def brain_views(reqs: dict[str, list[Req]], rows: list[dict], said: dict[str, li
                 (d / "decisions.md").write_text("# Decisions\n\n| ID | Date | Stage | Decision | Why | Who |\n|---|---|---|---|---|---|\n"
                                                 + table + props, encoding="utf-8")
                 cited = {c for x in rows_ for c in x["cites"]}
-                (d / "inception" / "requirements" / "requirements.md").write_text(
-                    "# %s\n\n" % r.title + "".join("- 照 Brain 的 %s\n" % c for c in CITES.get(r.key, []) if c not in cited),
-                    encoding="utf-8")
+                if r.intent:
+                    (d / "inception" / "requirements" / "requirements.md").write_text(
+                        "# %s\n\n" % r.title + "".join("- 照 Brain 的 %s\n" % c for c in CITES.get(r.key, []) if c not in cited),
+                        encoding="utf-8")
 
             write_brain()
             git("add", "-A")
@@ -776,7 +791,7 @@ def merged(r: Req, t: float, h: str, did: str, how: str = "merge commit") -> Non
 AGAIN = "ORD-8"
 # the 待办 fixture's items, in this order (ui/src/views/todo.test.tsx reads them by place)
 TODO_KINDS = ("lean_approval", "clarify", "question", "acceptance", "handoff_rejected", "handoff_unlabelled", "crew", "start",
-              "reply", "push_failed")
+              "reply", "push_failed", "open_mr")
 
 
 def pushed_over(row: dict) -> dict:
@@ -816,15 +831,26 @@ def classified(r: Req, row: dict, *, park: dict | None = None, mr: dict | None =
     r.worktree = row.get("worktree")     # the row's checkout on this machine is the requirement's
     f = facts or r.facts(park)
     got = deliveries.base_row(r.repo, f, local_only=local_only)
-    deliveries.classify(got, f, mr=mr, slot=slot, cfg=CFG, me=ME, reflected=reflected, now=T0, at_handover=at_handover)
+    deliveries.classify(got, f, mr=mr, slot=slot, cfg=CFG, me=ME, reflected=reflected, now=T0, at_handover=at_handover,
+                        fast=fast_of(r, f))
     row.update({k: got[k] for k in ("state", "state_label", "lean", "stage", "verify_fails", "waits", "local_only", "where",
-                                    "worktree")})
+                                    "worktree", "flow")})
     # the head says where it is, the facts list its checkout: never 「这台机器没检出」 above a 工作目录 on this machine
     assert not (row["where"] == "branch" and row["worktree"]), r.key
     row.setdefault("family", None)     # service._row: family.families' (none for a requirement outside a family)
     row["session_url"] = slot["url"] if slot else None
     row["summary"] = mrdesc_view.plain_line(row.get("summary"))     # what service._row shows of the 变更说明
     return row
+
+
+def fast_of(r: Req, f: dict) -> "fastrow.FastFacts | None":
+    """A fast run's FastFacts as fastrow.fast_facts makes them from its branch: its code commits, its newest verify;
+    the world's fast runs change no risk path and their repo has no MR 巡检."""
+    flow = f.get("flow")
+    if not f.get("run") or flow is None or flow.intent:
+        return None
+    return fastrow.FastFacts(code_commits=sum(1 for c in r.commits if not c["records_only"]),
+                             verify=fastrow.newest_verify(f["events"]), risky=(), patrol=False)
 
 
 LATER: dict[str, tuple] = {}   # each board's makings by "<repo>/<key>", made once every run's Brain block is known
@@ -879,11 +905,16 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
     subjects = {c["sha"]: c["subject"] for c in r.commits}
     sessions = sessions or []
     live = live_of(sessions)
-    g = board.build(f, row, t, mr=mr, sessions=sessions, app_events=r.app, team_decisions=team_decisions or [], subjects=subjects,
-                    changes=changes(r),
-                    reflect_refs=reflect or [], default_branch="main", local_only=local_only,
-                    kit_rows=board.kit_cells(kit_rows or [], "/Users/alice/workplace/%s" % {"r1": "shop-pay", "r3": "shop-order", "r4": "shop-tools"}.get(r.repo, "")),
-                    decisions=decisions or [], brain=brain, me=me, now=T0, fold=keep, live_slot=(live or {}).get("slot"))
+    kits = board.kit_cells(kit_rows or [], "/Users/alice/workplace/%s" % {"r1": "shop-pay", "r3": "shop-order", "r4": "shop-tools"}.get(r.repo, ""))
+    fast = fast_of(r, f)
+    if fast is not None:
+        g = fastboard.board(f, row, t, mr=mr, app_events=r.app, subjects=subjects, changes=changes(r), default_branch="main",
+                            local_only=local_only, kit_rows=kits, decisions=decisions or [], me=me, fast=fast, fold=keep)
+    else:
+        g = board.build(f, row, t, mr=mr, sessions=sessions, app_events=r.app, team_decisions=team_decisions or [], subjects=subjects,
+                        changes=changes(r),
+                        reflect_refs=reflect or [], default_branch="main", local_only=local_only, kit_rows=kits,
+                        decisions=decisions or [], brain=brain, me=me, now=T0, fold=keep, live_slot=(live or {}).get("slot"))
     return {"at": T0, "row": row, "branch": row.get("branch"), "base": "main", "started_at": g["started_at"], "ended_at": g["ended_at"],
             "live": g["live"], "person": g["person"], "phases": g["phases"], "nodes": g["nodes"], "runs": g["runs"], "relays": g["relays"], "other_runs": g["other_runs"],
             "events": g["events"], "lean_steps": g["lean_steps"], "belt": g["belt"], "checks": g["checks"],
@@ -893,7 +924,8 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
                                    "error": "还没开工：开工以后才有变更说明"},
             "sessions": sessions if counted is None else [{k: x.get(k) for k in SESSION_KEYS} for x in counted],
             "live_slot": (live or {}).get("slot"), "credits": credits or cost_of([], None),
-            "source": "trace" if t else "app", "error": "", "missing": g["missing"], "rollup": board.rollup(t)}
+            "source": "trace" if t else "app", "error": "", "missing": g["missing"], "rollup": board.rollup(t),
+            "steps": g.get("steps")}
 
 
 U = {"api": "services/api/**", "web": "web/order/**", "jobs": "jobs/**"}
@@ -1129,6 +1161,7 @@ def drawer_payloads(r: Req, rid: str, keep: dict) -> dict[str, dict]:
 
 
 def main() -> None:
+    assert bk.load(str(BRAINKIT))["ok"], "brain-kit decides each run's flow (flowview.read): %s" % bk.info()["error"]
     scratch = Path(tempfile.mkdtemp(prefix="brain-preview-drawer-"))
     try:
         world(scratch)
@@ -1198,7 +1231,8 @@ def world(scratch: Path) -> None:
             x["cmd"] for x in verify[-1]["data"]["results"]))) if verify else "还没跑 verify。"
         text = "\n".join([
             "## %s · %s" % (r.key, r.title), "", "**一句话**：%s" % first,
-            "（分支 `%s`；负责人 %s；intent `%s`）" % (r.branch, r.owner, r.intent), "", "### 做了什么 / 没做什么"]
+            "（分支 `%s`；负责人 %s；%s）" % (r.branch, r.owner, "intent `%s`" % r.intent if r.intent else "快速，没有 Lean intent"),
+            "", "### 做了什么 / 没做什么"]
             + ["- %s" % x for x in done[-4:] or ["还没有代码提交"]] + ["", "### 验收标准和证据", checks, "", "### 还没有"]
             + (["- 还没合并"] if not r.merged_at else ["- 合并后 14 天还在观察"] if not (r.after14 or {}).get("window_closed") else [])
             + ["", "---", "由 `brain mr-desc` 从记录生成（run.json、Lean 记录、git），别手改。重新生成：`brain mr-desc %s --write`。" % r.key, ""])
@@ -1458,6 +1492,52 @@ def world(scratch: Path) -> None:
     board_later(p16, row, sessions=[p16_sess], credits=3.1,
                 mr_desc={"available": True, "text": "", "first": None, "source": None, "path": None, "ref": None,
                          "error": "还没有提交：做完第一步以后才有变更说明"})
+
+    # PAY-17 (快速): a fast run on this machine; the first verify went red, the fix and its tests are committed with a green
+    # one: it waits for alice to say it is done (开 MR)
+    p17 = Req("r1", "PAY-17", "订单优惠码", "alice", "coupon", None, project="shop/shop-pay", mode="fast")
+    p17.claim_at = T0 - 50 * M
+    t = p17.start_at = T0 - 48 * M
+    p17.app += [app_event(t, "在 app 里开工", "工作区 /Users/alice/workplace/brain-app/shop-pay/coupon，分支 %s" % p17.branch),
+                app_event(t + 20, "开了本机会话", store.TRUSTED)]
+    p17.turn(t + 30)
+    p17.turn(t + 3 * M)
+    p17.verify(t + 24 * M, [("pytest -q", 1)])
+    p17.verify(t + 31 * M, [("pytest -q", 0)])
+    p17.commit(t + 32 * M, "person", "PAY-17：订单优惠码 SAVE10 和 FULL100，带测试", files=3)
+    reqs["r1"].append(p17)
+    p17_sess = dict(det["sessions"][0], slot="brain-PAY-17-5e1a", url="/chat?sid=brain-PAY-17-5e1a", title="PAY-17 订单优惠码",
+                    credits=2.4, turns=3, busy=False, awaiting=False, last_activity=t + 33 * M, opened_at=t + 20)
+    row = copy.deepcopy(rows["PAY-3"])
+    row.update(key="PAY-17", title=p17.title, owner="alice", branch=p17.branch, intent=None, credits=2.4, updated_at=t + 33 * M,
+               summary="订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。", sessions=1,
+               expected_paths=["shop/coupon.py"], overlap=[], open_questions=[], mr=None,
+               worktree="/Users/alice/workplace/brain-app/shop-pay/coupon")
+    extra_rows.append(classified(p17, row, slot=p17_sess))
+    board_later(p17, row, sessions=[p17_sess], credits=2.4, mr_desc=mrdesc(p17, row["summary"]))
+
+    # PAY-18 (快速): done on this machine this morning, its MR !12 opened from 需求现状; CI passed on its head: it waits for
+    # people to review and merge it
+    p18 = Req("r1", "PAY-18", "退款单导出 CSV", "alice", "refund-csv", None, project="shop/shop-pay", mode="fast")
+    p18.claim_at = T0 - 5 * H
+    t = p18.start_at = T0 - 5 * H + 2 * M
+    p18.app += [app_event(t, "在 app 里开工", "工作区 /Users/alice/workplace/brain-app/shop-pay/refund-csv，分支 %s" % p18.branch),
+                app_event(t + 20, "开了本机会话", store.TRUSTED)]
+    p18.turn(t + 30)
+    p18.verify(t + 50 * M, [("pytest -q", 0), ("ruff check .", 0)])
+    head18 = p18.commit(t + 52 * M, "person", "PAY-18：退款单导出 CSV，带测试", files=3)
+    p18.app.append(app_event(t + 70 * M, "开 MR：推上去了，开了 MR !12"))
+    reqs["r1"].append(p18)
+    mr18 = {"iid": 12, "url": "%s/shop/shop-pay/-/merge_requests/12" % GL, "state": "opened", "sha": head18, "labels": [],
+            "questions": [], "pipelines": [{"id": 1307, "status": "success", "sha": head18, "at": t + 81 * M,
+                                            "url": "%s/shop/shop-pay/-/pipelines/1307" % GL}]}
+    row = copy.deepcopy(rows["PAY-3"])
+    row.update(key="PAY-18", title=p18.title, owner="alice", branch=p18.branch, intent=None, credits=5.6, updated_at=t + 81 * M,
+               summary="退款单列表可以导出 CSV：按时间范围，金额两位小数。", sessions=0, expected_paths=["src/reports/refund_csv.py"],
+               overlap=[], open_questions=[], mr={"iid": 12, "url": mr18["url"], "state": "opened"}, session_url=None,
+               worktree="/Users/alice/workplace/brain-app/shop-pay/refund-csv")
+    extra_rows.append(classified(p18, row, mr=mr18))
+    board_later(p18, row, credits=5.6, mr=mr18, mr_desc=mrdesc(p18, row["summary"]))
 
     # PAY-9 (Scenario B, the mockup's story; 16:15 is now): alice's requirements and design approved on this machine
     # (INCEPTION), split into api and web, handed over at 11:05. Its run on the team runner (RUN-PAY-9-1) checks on
@@ -1815,8 +1895,8 @@ def world(scratch: Path) -> None:
     world_ov = overview_of("all", True)
     overviews = {e: {x: overview_of(x, e == "eval") for x in ("all", "r1", "r2", "r3", "r4")} for e in ("eval", "noeval")}
     # 待办 on alice's machine (todo.build over the same rows): what waits for her, with the session to open
-    sessions = {"PAY-3": det["sessions"][0], "PAY-1": p1_sess, "PAY-7": p7_sess, "TOOL-1": tool_sess}
-    facts = {"PAY-3": p3.facts(p3_park), "PAY-1": p1.facts(), "PAY-7": p7.facts()}
+    sessions = {"PAY-3": det["sessions"][0], "PAY-1": p1_sess, "PAY-7": p7_sess, "TOOL-1": tool_sess, "PAY-17": p17_sess}
+    facts = {"PAY-3": p3.facts(p3_park), "PAY-1": p1.facts(), "PAY-7": p7.facts(), "PAY-17": p17.facts()}
     entries = [{"row": r_, "facts": facts.get(r_["key"], {}), "own": r_["owner"] == ME, "has_session": r_["key"] in sessions,
                 "can_post": False, "mr": None,
                 "session": {k: sessions[r_["key"]][k] for k in ("slot", "title", "url")} if r_["key"] in sessions else None,
@@ -1862,7 +1942,8 @@ def world(scratch: Path) -> None:
         path = "/home/runner/brain/runs/%s" % run_id if q is not None else None     # runnerd's workspace, once made
         q = q or Req("r1", key, "", "", "", "")
         f = {"key": key, "claim": None, "where": "runner", "branch": None, "owner": None, "worktree": None, "stages": [],
-             "events": [], "approvals": [], "run": None, "park": None, "decisions_text": None, "state_text": None}
+             "events": [], "approvals": [], "run": None, "park": None, "decisions_text": None, "state_text": None,
+             **flowview.read(None)}
         if path:
             f.update(q.facts(park), where="runner", worktree=path, merged=False)
         row_t = deliveries.base_row("runner", f)
@@ -1930,12 +2011,15 @@ def world(scratch: Path) -> None:
          "kit": {"tracker": "none", "req_prefix": "ORD", "default_branch": "main", "gitlab_base": GL, "gitlab_project": "shop/shop-order"},
          # 你是谁 without a GitLab token (no brain.user there): the page would ask; the world has one (identity.of below)
          "me": {"name": None, "source": "none", "gitlab": GL, "text": "", "ask": True, "label": identity.LABEL_GITLAB,
-                "why": identity.WHY_GITLAB, "suggest": "alice", "error": ""}},
+                "why": identity.WHY_GITLAB, "suggest": "alice", "error": ""},
+         # the team switched fast mode off; alice's MR !31 to switch it on again waits to be merged
+         "fast": {"on": False, "why": "", "pending": {"on": True, "iid": 31,
+                                                     "url": "%s/shop/shop-order/-/merge_requests/31" % GL}}},
         {"id": "r4", "path": "/Users/alice/workplace/shop-tools", "name": "shop-tools", "ok": True, "error": "", "pending": None,
          "kit": {"tracker": "none", "req_prefix": "TOOL", "default_branch": "main", "gitlab_base": "", "gitlab_project": ""},
          # no GitLab: the login name (brain-kit 91e2fee)
          "me": {"name": "alice", "source": "login", "gitlab": "", "text": "alice（这台机器的登录名：这个仓库不用 GitLab）",
-                "ask": False, "label": "", "why": "", "suggest": "", "error": ""}}]
+                "ask": False, "label": "", "why": "", "suggest": "", "error": ""}, "fast": None}]
     # KiroCrew is fine in the world (the 「KiroCrew 有 FAIL」 switch shows a failing row); shop-tools keeps its ! reminder
     world_status["crew"]["rows"] = [problems.agent_ok(0) if r_["level"] == "FAIL" else r_ for r_ in status["crew"]["rows"]
                                     if r_.get("fix") != "kit"] + tool_kit
@@ -1951,12 +2035,25 @@ def world(scratch: Path) -> None:
     for r_ in world_status["repos"]:
         r_["remote"] = r_["id"] not in local and r_["id"] != "r2"
         r_["sync"] = repo_sync(r_, local) if r_["ok"] else None
+    # 开需求's 「快速」 per repo (IntakeNext.fast), in brain-kit's words for each repo's default branch
+    fl = bk.m("flows")
+    lean_now = bk.m("lean").version_in((BRAINKIT / "vendor" / "aidlc-lean" / "kit" / ".kiro" / "aidlc-lean" /
+                                        "aidlc_lean.py").read_text(encoding="utf-8"))
+
+    def offer(fast_mode: bool, local_only: bool) -> dict:
+        if local_only:
+            return {"ok": False, "why": flowview.LOCAL_ONLY}
+        why = fl.refusals(fl.Flow.FAST, lambda: fl.Policy(fast_mode=fast_mode, regulated=False, lean_version=lean_now,
+                                                          lean=True))
+        return {"ok": not why, "why": why[0].zh if why else ""}
+    intake_fast = {r_["id"]: offer((r_.get("fast") or {}).get("on", True), not r_.get("remote") or r_["id"] in local)
+                   for r_ in world_status["repos"] if r_["ok"]}
     world = {"note": "made by scripts/preview_world.py: do not edit by hand", "at": T0, "status": world_status, "overview": world_ov,
              "overviews": overviews, "overviews_team": overviews_team, "todo": world_todo, "reflects": reflects,
              "crew_missing": crew_fail, "crew_not_ready": crewcheck.not_ready([crew_fail]),
              "me_token": identity.of("", GL, identity.Said(ME)), "boards": boards, "details": details, "stages": STAGES,
              "phases": {k: lean_view.phases(v) for k, v in STAGES.items()},
-             "brains": brains, "intake_gates": intake_gates(), "outputs": drawer}
+             "brains": brains, "intake_gates": intake_gates(), "outputs": drawer, "intake_fast": intake_fast}
     (ROOT / "ui" / "preview" / "world.json").write_text(json.dumps(world, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     # the contract fixtures the UI tests read: the overview's numbers for its own rows, one live board and one merged
     ov["cto"] = deliveries.cto_numbers([("r1", parts[0][1])], list(rows.values()), available=True, now=T0, names=names, repos=1)
