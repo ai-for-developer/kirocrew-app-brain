@@ -23,7 +23,7 @@ export function FastSteps({ steps, waits, reducedMotion }: { steps: FastStep[]; 
   const y = PAD + NODE_H / 2
   const looks = steps.map((s) => stepLook(s, waits))
   const count = (status: FastStep['status']) => steps.filter((s) => s.status === status).length
-  const asked = looks.find((l) => l.node.startsWith('awaiting'))
+  const asked = looks.find((l) => l.node === 'awaiting_approval')
   const label = [`快速需求的路：${steps.length} 步，${count('done')} 步做完`, count('running') ? `${count('running')} 步在做` : '',
     count('failed') ? `${count('failed')} 步没过` : '', asked ? `1 步${asked.word}` : ''].filter(Boolean).join('，')
   return (
@@ -64,9 +64,9 @@ function StepBox({ s, look, x, y, reducedMotion }: { s: FastStep; look: StepLook
   const acts = href ? {} : STEP_PART[s.id] ? { role: 'button', tabIndex: 0, 'aria-label': name, onClick: (e: { currentTarget: Element }) => toPart(e.currentTarget, s.id), onKeyDown: onKey }
     : { role: 'img', 'aria-label': name }
   const box = (
-    <g className={`kt-node is-${look.node}${merged ? ' is-final' : ''}`} transform={`translate(${x},${y})`} data-node={s.id} data-status={s.status} {...acts}>
+    <g className={`kt-node is-${look.node}${look.other ? ' is-other' : ''}${merged ? ' is-final' : ''}`} transform={`translate(${x},${y})`} data-node={s.id} data-status={s.status} {...acts}>
       <title>{name}</title>
-      {(s.status === 'running' || look.node === 'awaiting_approval') && <Halo w={w} h={h} reducedMotion={reducedMotion} />}
+      {(s.status === 'running' || (look.node === 'awaiting_approval' && !look.other)) && <Halo w={w} h={h} reducedMotion={reducedMotion} />}
       <rect className="kt-node-body" x={-w / 2} y={-h / 2} width={w} height={h} rx={16} />
       <circle className="kt-node-avatar" cx={-w / 2 + 33} cy={0} r={22.5} />
       {s.status === 'running' && <circle className="kt-node-spin" cx={-w / 2 + 33} cy={0} r={27} />}

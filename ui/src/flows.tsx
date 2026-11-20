@@ -81,8 +81,9 @@ export const stepHref = (s: FastStep): string | null => (s.url && /^https?:\/\//
 const ASKED: Partial<Record<WaitDo, FastStepId>> = { open_mr: 'mr', merge: 'merge' }
 
 export interface StepLook {
-  /** the stage graph's box it is drawn as (kt-node is-…) */
-  node: string
+  /** the stage graph's box it is drawn as (kt-node is-…); *other*: a box that waits, waits on someone else (is-other) */
+  node: 'done' | 'running' | 'waiting' | 'failed' | 'merged' | 'awaiting_approval'
+  other: boolean
   /** 需求现状's cell (br-stagecell is-…) */
   cell: string
   /** a counter's cell (kt-segs is-…); '' not reached */
@@ -92,10 +93,10 @@ export interface StepLook {
 }
 
 const LOOK: Record<FastStep['status'], StepLook> = {
-  done: { node: 'done', cell: 'is-done', seg: 'is-pass', tone: 'ok', word: '做完' },
-  running: { node: 'running', cell: 'is-started', seg: 'is-run', tone: 'run', word: '在做' },
-  waiting: { node: 'waiting', cell: 'is-todo', seg: '', tone: 'idle', word: '还没轮到' },
-  failed: { node: 'failed', cell: 'is-failed', seg: 'is-fail', tone: 'bad', word: '没过' },
+  done: { node: 'done', other: false, cell: 'is-done', seg: 'is-pass', tone: 'ok', word: '做完' },
+  running: { node: 'running', other: false, cell: 'is-started', seg: 'is-run', tone: 'run', word: '在做' },
+  waiting: { node: 'waiting', other: false, cell: 'is-todo', seg: '', tone: 'idle', word: '还没轮到' },
+  failed: { node: 'failed', other: false, cell: 'is-failed', seg: 'is-fail', tone: 'bad', word: '没过' },
 }
 
 /** How a step is drawn: by its status, as a stage's box is; one that waits for a person in a waiting box's colours
@@ -103,7 +104,7 @@ const LOOK: Record<FastStep['status'], StepLook> = {
 export function stepLook(s: FastStep, w: Pick<Waits, 'who' | 'do'>): StepLook {
   if (s.status === 'waiting' && ASKED[w.do ?? 'none'] === s.id) {
     const you = w.who === 'you'
-    return { node: you ? 'awaiting_approval' : 'awaiting_approval is-other', cell: '', seg: you ? 'is-wait' : 'is-other', tone: you ? 'approve' : 'info', word: waitsOn(w.who) || '等人' }
+    return { node: 'awaiting_approval', other: !you, cell: '', seg: you ? 'is-wait' : 'is-other', tone: you ? 'approve' : 'info', word: waitsOn(w.who) || '等人' }
   }
   if (s.status === 'done' && s.id === 'merge') return { ...LOOK.done, node: 'merged', word: '已合并' }
   return LOOK[s.status]
@@ -113,8 +114,8 @@ export function stepLook(s: FastStep, w: Pick<Waits, 'who' | 'do'>): StepLook {
 
 /** 交付总览's progress cell: LeanProgress, or the fast run's way in words. */
 export function FlowProgress({ r, children }: { r: Requirement; children: ReactNode }) {
-  if (flowOf(r).intent) return <>{children}</>
-  const label = flowOf(r).label
+  const { intent, label } = flowOf(r)
+  if (intent) return <>{children}</>
   const now = flowNow(r)
   return (
     <span className="br-lean" data-testid="lean-cell" title={`${label} · ${now}`}>
@@ -125,8 +126,8 @@ export function FlowProgress({ r, children }: { r: Requirement; children: ReactN
 
 /** 需求现状's Lean card: LeanCard, or the fast run's five steps (from its board, *steps*) in the same cells. */
 export function FlowCard({ r, steps, children }: { r: Requirement; steps: FastStep[] | null; children: ReactNode }) {
-  if (flowOf(r).intent) return <>{children}</>
-  const label = flowOf(r).label
+  const { intent, label } = flowOf(r)
+  if (intent) return <>{children}</>
   return (
     <section className="cto-card" aria-label={`${label}进度`} data-testid="fast-card">
       <div className="cto-chart-head">
@@ -182,7 +183,7 @@ export function FlowWayKpi({ board, children }: { board: ReqBoard; children: Rea
   if (!steps) return <>{children}</>
   const looks = steps.map((s) => ({ s, look: stepLook(s, board.row.waits) }))
   const working = steps.filter((s) => s.status === 'running').length
-  const asked = looks.find(({ look }) => look.node.startsWith('awaiting'))?.look
+  const asked = looks.find(({ look }) => look.node === 'awaiting_approval')?.look
   return (
     <div className="kt-kpi kt-kpi-roles">
       <div className="kt-kpi-label">这条路走到哪了</div>

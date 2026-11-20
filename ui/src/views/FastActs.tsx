@@ -55,7 +55,7 @@ export function FastActs({ x, repo, reqKey, localOnly, onDone }: {
   const mr = x.row.mr
   const says = lead === 'full' ? FULL_SAYS
     : mr ? `MR !${mr.iid} 开着：又提交了的话，再点「${ACT.openMr}」推上去。`
-      : `会把分支 ${x.row.branch ?? x.run?.branch ?? ''} 推到远端，在 GitLab 上开 MR：CI 照跑，人来审、合并，不交给运行机。`
+      : <>会把分支 <code>{x.row.branch ?? x.run?.branch}</code> 推到远端，在 GitLab 上开 MR：CI 照跑，人来审、合并，不交给运行机。</>
   const go = async (a: Act) => {
     setAsking(false)
     setSent(a)
