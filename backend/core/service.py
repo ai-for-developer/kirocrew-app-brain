@@ -1919,7 +1919,7 @@ class Service:
         try:
             out = await asyncio.to_thread(kitmr.fast_mr, repo.path, str(repo.cfg["default_branch"]), on, base, project,
                                           transport=self.transport)
-        except Exception as exc:  # noqa: BLE001 - GitLab down, no rights, a sign-in page: said, the token never
+        except Exception as exc:  # noqa: BLE001 - GitLab down, no rights, a sign-in page: said in words
             raise AppError("GitLab 没开成这个 MR（%s）：看看网络和你的 GitLab 令牌，再点一次" % str(exc).split("\n", 1)[0][:200],
                            "gitlab_failed", 502)
         if out["mr"]:
