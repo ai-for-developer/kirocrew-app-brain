@@ -14,7 +14,7 @@ import re
 import time
 from typing import Any
 
-from . import bk, lean_view
+from . import bk, fastrow, lean_view
 
 STATE_LABEL = {"claimed": "已认领", "local": "本地开发中", "handed_over": "已交接", "rejected": "接手被拒",
                "running": "运行机在跑", "parked": "停下等回答", "acceptance": "等验收", "merged": "已合并",
@@ -150,13 +150,15 @@ def owns(me: str | None, owner: str | None) -> bool:
 
 def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | None, slot: dict[str, Any] | None,
              cfg: dict[str, Any], bot_commits: int = 0, at_handover: bool = False, me: str | None = None,
-             reflected: bool = False, now: float | None = None, pushed: bool = True) -> None:
+             reflected: bool = False, now: float | None = None, pushed: bool = True,
+             fast: fastrow.FastFacts | None = None) -> None:
     """Fill in state, state_label and waits (person mode). *at_handover*: the branch tip is the hand-over commit
     `brain handoff` made (its parent is run.json's handoff.local_head). *me*: who this machine's person is (None: not
     known); someone else's requirement waits for them, not for "you".
     *reflected*: its Brain proposals were written back already (a brain/<KEY>-reflect-<n> branch). *pushed*: the
     branch tip is on the remote (False: a hand-over committed here whose push failed, so nothing was handed over; a
-    repo done only on this machine has nothing to push to)."""
+    repo done only on this machine has nothing to push to). *fast*: the run has no Lean intent (a fast run): its
+    own facts, and fastrow says its step."""
     run, park, claim = f.get("run"), f.get("park"), f.get("claim") or {}
     pending = [a for a in f.get("approvals") or [] if a["state"] == "pending" and a.get("line")]
     owner = f.get("owner") or claim.get("owner")
@@ -197,6 +199,9 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
         if slot and slot.get("awaiting"):      # KiroCrew counts a session asking for a tool as busy too
             return put("local", "you", "tool", "会话里有一个工具调用等你批准", where="session",
                        since=updated_at(f, slot))
+        if fast is not None:
+            return fastrow.local(put, f, merged=lambda text: _merged(put, f, now=now, reflected=reflected, text=text),
+                                 slot=slot, mr=mr, fast=fast, since=updated_at(f, slot))
         if slot and slot.get("busy"):
             nxt = (row.get("lean") or {}).get("next")
             return put("local", "agent", "none", "AI 在做" + ("「%s」" % nxt["label"] if nxt else ""))
