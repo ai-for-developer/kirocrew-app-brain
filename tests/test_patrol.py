@@ -309,9 +309,12 @@ def test_two_failed_attempts_on_one_fingerprint_block_the_mr_with_one_comment(bk
     assert len(w.sessions.sent) == 3 and w.item(9)["state"] == "working" and w.item(9)["attempts"] == 1
 
 
-def test_three_dispatches_with_no_person_pushing_or_commenting_in_between_pause_the_mr_with_one_comment(bk, tmp_path):
+@pytest.mark.parametrize("ranges", [True, False])     # False: a GitLab that lists no old..new range (its head's committer)
+def test_three_dispatches_with_no_person_pushing_or_commenting_in_between_pause_the_mr_with_one_comment(
+        bk, tmp_path, ranges):
     w = World(tmp_path)
     gl, heads = w.gl, iter(SHA[n] for n in range(2, 16))
+    gl.ranges = ranges
 
     def the_runner_pushed_and_it_failed_again():
         w.sessions.end()
@@ -341,6 +344,7 @@ def test_three_dispatches_with_no_person_pushing_or_commenting_in_between_pause_
     w.round()
     assert len(w.sessions.sent) == 7 and (w.item(7)["state"], w.item(7)["attempts"]) == ("working", 1)
     assert gl.asked(r"/repository/commits$") == 9         # GitLab is asked about each of the 9 pushes once
+    assert gl.asked(r"/repository/commits/[0-9a-f]+$") == (0 if ranges else 9)
 
 
 def test_a_turn_the_head_moved_past_holds_the_session_until_it_ends(bk, tmp_path):

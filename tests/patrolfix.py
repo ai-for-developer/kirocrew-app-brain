@@ -42,6 +42,7 @@ class PatrolGitLab:
         self.discussions: dict[tuple[str, int], list[dict]] = {}
         self.jobs: dict[int, list[dict]] = {}
         self.commits: dict[tuple[str, str], tuple[str, str]] = {}    # (project, sha) -> (its parent, its committer)
+        self.ranges = True          # False: GitLab will not list a range of commits (ref_name old..new is a 400)
         self.traces: dict[int, bytes] = {}
         self.calls: list[tuple] = []
         self.who = {"bridge-tok": "brain-bridge"}
@@ -178,7 +179,12 @@ class PatrolGitLab:
             return ok({"id": p["id"], "path_with_namespace": name, "default_branch": p["default_branch"]})
         if rest == "/repository/files/.brain/kit.json/raw" and q.get("ref") == p["default_branch"]:
             return 200, json.dumps(p["kit"]).encode()
+        c = re.fullmatch(r"/repository/commits/([0-9a-f]{40})", rest)
+        if c and method == "GET" and (name, c.group(1)) in self.commits:
+            return ok({"id": c.group(1), "committer_email": self.commits[(name, c.group(1))][1]})
         if rest == "/repository/commits" and method == "GET" and ".." in q.get("ref_name", ""):
+            if not self.ranges:
+                return ok({"message": "400 Bad request - ref_name is invalid"}, 400)
             old, new = q["ref_name"].split("..", 1)
             seen = set(self._line(name, old))
             return ok([{"id": c, "committer_email": self.commits[(name, c)][1]} for c in self._line(name, new)

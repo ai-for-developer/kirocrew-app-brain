@@ -278,16 +278,16 @@ def read_mr(gl: Any, project: str, mr: Mapping[str, Any], own: set[str], bots: s
 
 def pushed_by_people(gl: Any, project: str, old: str, new: str, bots: set[str]) -> bool:
     """Whether a person pushed to the MR's source branch from its head *old* to *new*: a commit in old..new that none
-    of *bots* (the runner's git emails) committed, or a head that moved back or elsewhere (the runner only adds
-    commits). *old* gone from GitLab counts as a push of a person's too."""
+    of *bots* (the runner's git emails) committed, or a head that moved back (the runner only adds commits). A range
+    GitLab will not list (*old* rewritten away, or a GitLab without ranges) is judged by who committed *new*."""
     rest = bk.m("rest")
+    path = "/projects/%s/repository/commits" % rest.q(project)
     try:
-        rows = gl.call("GET", "/projects/%s/repository/commits" % rest.q(project),
-                       {"ref_name": "%s..%s" % (old, new), "per_page": 100})
+        rows = gl.call("GET", path, {"ref_name": "%s..%s" % (old, new), "per_page": 100})
     except rest.HttpError as exc:
-        if exc.status in (400, 404):
-            return True
-        raise
+        if not 400 <= exc.status < 500:
+            raise
+        rows = [gl.call("GET", "%s/%s" % (path, new))]
     commits = [c for c in rows or [] if isinstance(c, dict)]
     return not commits or any(str(c.get("committer_email") or "").lower() not in bots for c in commits)
 
