@@ -17,7 +17,9 @@ patched or subclassed. What the app changes:
   ``Bridge.process``) to keep what process() said for each MR for the page: accepted, rejected, seen (that head and
   label event were checked before), and brain-kit 72b278e's unlabelled (the newest event on the label takes it off:
   `brain handoff` re-adding it right now) and waiting (this very hand-over is being signed elsewhere: looked at again
-  next round). brain-kit's poll returns nothing (BRAINKIT_REQUESTS 27).
+  next round). brain-kit's poll returns nothing (BRAINKIT_REQUESTS 27). A project whose kit.json work_sources leaves
+  mr-handoff out (sources.py) is not polled;
+- patrol: a round ends with MR 巡检 (team/patrol.py, work source mr-patrol), on the same worker thread.
 
 The ledger is brain-kit's ``Ledger``: one sqlite connection any thread may use, ``ledger.lock`` around several
 statements. Rounds run one at a time on the runtime's own worker thread (a round may wait on GitLab, KiroCrew and the
@@ -42,7 +44,9 @@ from datetime import timedelta
 from typing import Any
 
 from .. import bk, problems
-from . import signerproc
+from ..constants import APP_ROOT, PYTHON_BIN
+from . import patrol as patrol_mod
+from . import signerproc, sources
 from .crewadapter import KiroCrewAdapter
 
 REQ_RE = re.compile(r"^[a-z]+-[A-Za-z0-9-]{1,80}-[0-9a-f]{12}\.json$")
@@ -112,6 +116,7 @@ class TeamRuntime:
         # kick (tests): run the signer while the SpoolSigner waits; sign_timeout: instead of bridge.json's
         self.transport, self.kick, self.sign_timeout = transport, kick, sign_timeout
         self.host: Any = None
+        self.patrol: patrol_mod.Patrol | None = None
         self.cfg: dict[str, Any] = {}
         self.runnerd_cfg: dict[str, Any] | None = None
         self.spool = ""
@@ -184,12 +189,22 @@ class TeamRuntime:
                 signer.sleep = lambda s: (kick(), time.sleep(s))
             kc = KiroCrewAdapter(self.loop, self.mgr, common.BrainError)
             self.host = bk.m("bridge.handoff").Bridge(cfg, gl, jira, kc, out=self._out, signer=signer)
+            config = os.path.abspath(os.path.expanduser(self.team["bridge_config"]))
+            self.patrol = patrol_mod.Patrol(
+                gl=gl, sessions=kc, kit=self.host.kit, out=self._out,
+                projects=[p["project"] if isinstance(p, dict) else p for p in cfg["projects"]],
+                ledger_path=os.path.join(os.path.dirname(config), "patrol.sqlite"),
+                workspaces=patrol_mod.Workspaces.of(rcfg) if rcfg and rcfg.get("runs_root") and rcfg.get("clone_url")
+                else None,
+                helper=patrol_mod.Helper(PYTHON_BIN, str(APP_ROOT / "backend" / "core" / "team" / "patrol_reply.py"),
+                                         config, str(bk.root())),
+                claims=lambda: sources.held(self))
             self.cfg, self.runnerd_cfg, self.spool, self.allowed_signers = cfg, rcfg, spool, allowed
             self.error = ""
             return True
         except Exception as exc:  # noqa: BLE001
             self.error = str(exc).split("\n", 1)[0][:400]
-            self.host = None
+            self.host = self.patrol = None
             return False
 
     def stop(self) -> None:
@@ -202,9 +217,11 @@ class TeamRuntime:
 
     def _close(self) -> None:
         host, self.host = self.host, None
-        if host is not None:
+        patrol, self.patrol = self.patrol, None
+        for held in (host.ledger if host is not None else None, patrol):
             try:
-                host.ledger.close()
+                if held is not None:
+                    held.close()
             except Exception:  # noqa: BLE001
                 pass
 
@@ -217,7 +234,7 @@ class TeamRuntime:
     # ---- one round ------------------------------------------------------------------------------------ #
 
     def loop_once(self) -> dict[str, int]:
-        """poll, runnerd, dispatch, watch, collect, reconcile; one bad step does not stop the others."""
+        """poll, runnerd, dispatch, watch, collect, reconcile, patrol; one bad step does not stop the others."""
         host = self.host
         if host is None:
             raise RuntimeError(self.error or "运行机模式没有启动")
@@ -225,7 +242,7 @@ class TeamRuntime:
         summary: dict[str, int] = {}
         errors = []
         with self._lock:
-            for step in ("poll", "runnerd", "dispatch", "watch", "collect", "reconcile"):
+            for step in ("poll", "runnerd", "dispatch", "watch", "collect", "reconcile", "patrol"):
                 try:
                     if step == "runnerd":
                         if self.runnerd_cfg:
@@ -233,6 +250,10 @@ class TeamRuntime:
                         continue
                     if step == "poll":
                         summary["poll"] = self._poll(host)
+                        continue
+                    if step == "patrol":
+                        if self.patrol is not None:
+                            summary["patrol"] = self.patrol.round()
                         continue
                     n = getattr(host, step)()
                     if isinstance(n, int):
@@ -254,6 +275,8 @@ class TeamRuntime:
             for proj in host.cfg["projects"]:
                 project = proj["project"] if isinstance(proj, dict) else proj
                 kit = host.kit(project)
+                if sources.HANDOFF not in sources.enabled(kit):
+                    continue
                 for mr in host.gl.mrs_with_label(project, kit["handoff_label"]):
                     row = {"project": str(project), "iid": int(mr.get("iid") or 0), "sha": str(mr.get("sha") or "")[:40],
                            "result": "error", "error": "", "at": time.time()}
@@ -266,6 +289,11 @@ class TeamRuntime:
         finally:
             self.last_handovers = seen
         return len(seen)
+
+    def patrol_view(self) -> dict[str, Any]:
+        """GET /team/patrol: what MR 巡检's last round saw (patrol.view_of)."""
+        p = self.patrol
+        return p.view() if p is not None else patrol_mod.view_of([], [], None)
 
     def handovers(self) -> list[dict[str, Any]]:
         """The labelled MRs of the last round and what brain-kit's bridge said about each (see _poll)."""

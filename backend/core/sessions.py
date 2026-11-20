@@ -1041,14 +1041,16 @@ class SessionManager:
         info.idle += 1
         if info.idle < IDLE_POLLS or not (replies or errors or (info.seen_busy and info.idle >= IDLE_POLLS + 1)):
             return
+        # a runner's turn whose last row is KiroCrew's error was cut short, whatever it wrote before (adapter_turn)
+        cut = info.kind == "runner" and last is not None and last.get("role") == "error"
         if replies:
             info.result = str(replies[-1].get("content") or "")
             info.streaming_text = "\n\n".join(str(m.get("content") or "") for m in replies)[-20000:]
-        elif errors:   # KiroCrew's own words stay in the session (and the log)
+        if errors and (cut or not replies):   # KiroCrew's own words stay in the session (and the log)
             info.error = "这一轮 KiroCrew 报错了：打开会话看它的原话"
             self.log.info(self.app + ": session %s ended its turn with an error: %s", info.slot,
                           str(errors[-1].get("content") or "")[:300])
-        else:
+        elif not replies:
             info.error = "这一轮结束了，但没有回复"
         info.done = True
 
@@ -1092,7 +1094,9 @@ class SessionManager:
 
     async def adapter_send(self, name: str, message: str, send_id: str) -> dict[str, Any]:
         """One message, delivered once (no automatic resend): a new turn of the slot, its sendId the bridge's. Only a
-        runner slot opened through adapter_create."""
+        runner slot opened through adapter_create. A message KiroCrew refused is a turn that failed at once. One it did
+        not answer (cut off, timed out, a 5xx) may have landed: its turn is followed like any other, running until the
+        transcript shows how it went, or until it is stopped."""
         root = self._runner_slot(name)
         info = SessionInfo(id=PREFIX + secrets.token_hex(5), task=message, parent_session_key=root.parent_session_key,
                            requested=self.now(), conv_root=root.id, first_send_id=send_id)
@@ -1100,8 +1104,15 @@ class SessionManager:
         info.resend_ok, info.nudge_ok, info.shown = False, False, bridge_shown(message)
         self._infos[info.id] = info
         self._dirty = True
-        await self._send(info)
-        info.queued, info.queued_reason, info.started = False, None, self.now()
+        try:
+            await self._send(info)
+        except GatewayError as exc:
+            if exc.refused:
+                info.done, info.error = True, "KiroCrew 没收下这条消息：" + said(exc)
+            raise
+        finally:
+            if not info.done:
+                info.queued, info.queued_reason, info.started = False, None, self.now()
         return {"ok": True}
 
     async def adapter_stop(self, name: str) -> dict[str, Any]:
@@ -1116,6 +1127,18 @@ class SessionManager:
     async def adapter_slot(self, name: str) -> dict[str, Any]:
         self._runner_slot(name)
         return {"key": name, "messages": await self.gw.messages(name, limit=PAGE)}
+
+    async def adapter_turn(self, name: str, send_id: str) -> str:
+        """The turn the message *send_id* started in runner slot *name*: running; ended (the reply is in and the slot
+        went idle); failed (it never went in, ended without a reply or with KiroCrew's error, was stopped, or the
+        session is gone); unknown (no message of that sendId here)."""
+        info = next((i for i in self._infos.values() if i.slot == name and i.kind == "runner"
+                     and send_id in i.send_ids), None)
+        if info is None:
+            return "unknown"
+        if info.done:
+            return "failed" if info.error or info.user_stopped else "ended"
+        return "failed" if info.queued else "running"
 
     # ---- cleaning up ----------------------------------------------------------------------------------- #
 

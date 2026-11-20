@@ -12,9 +12,11 @@ Under one root (default ~/.brain/team-setup; files 0600, folders 0700):
   bridge-gitlab-token    project access token brain-bridge (api, Developer): the bridge's and the signer's GitLab
   bot-gitlab-token       project access token brain-bot (token push mode only): runnerd's clone and the runs' pushes
   identities.json, keys/, bridge.json, runnerd.json, signer.json, the spools, vouchers and ledgers, signer.pid / .log
-Under ~/workplace/brain-team (KiroCrew lets agents work only under ~/workplace): runs/ and cache/. The brain-run agent:
-~/.kiro/agents/brain-run.json. The person's token (SetupInput.admin_token) lives in memory for one run: it is never
-written, logged or answered, and text from GitLab or a command goes through Ctx.redact before it is kept.
+Under ~/workplace/brain-team (KiroCrew lets agents work only under ~/workplace): runs/ and cache/, and MR 巡检's clones
+in patrol/. The agents: ~/.kiro/agents/brain-run.json, and brain-patrol.json beside it when 巡检所有开着的 MR is on (the
+kit.json MR then also switches work source mr-patrol on). The person's token (SetupInput.admin_token) lives in memory
+for one run: it is never written, logged or answered, and text from GitLab or a command goes through Ctx.redact before
+it is kept.
 """
 
 from __future__ import annotations
@@ -35,7 +37,8 @@ from typing import Any, Callable, Mapping
 
 from .. import bk
 from ..constants import APP_ROOT, PYTHON_BIN
-from . import signerproc
+from . import patrol as patrol_mod
+from . import signerproc, sources
 
 try:
     import fcntl
@@ -66,6 +69,9 @@ BRANCH = "brain/runner-setup"
 MR_TITLE = "运行机：更新 .brain/kit.json"
 MR_TEXT = ("一键建运行机开的 MR：运行机要 kit.json 写上 bridge_user（桥的账号）、bot_users 和 bot_emails（运行机推送用的账号和邮箱）、"
            "gitlab 和 default_branch。合并以前，签名服务不签交接。")
+MR_PATROL = {True: "work_sources 加上 mr-patrol：合并以后，运行机巡检这个项目所有开着的 MR，流水线没过、评审意见没回、有冲突的，它自己去修。",
+             False: "work_sources 去掉 mr-patrol：合并以后，运行机不再巡检这个项目开着的 MR。"}
+PATROL_KINDS = (sources.HANDOFF, sources.PATROL)    # what 巡检所有开着的 MR puts in kit.json work_sources
 # (kit.json key, default name, colour): the labels the bridge moves, and brain reflect's
 LABELS = (("handoff_label", "ai-handoff", "#1f75cb"), ("running_label", "ai-running", "#108548"),
           ("rejected_label", "ai-handoff-rejected", "#dd2b0e"), ("", "brain-reflect", "#6699cc"))
@@ -107,6 +113,7 @@ class SetupInput:
     admin_token: str = field(repr=False)          # the person's one-time token (api): this run's memory only
     roles: Mapping[str, tuple[str, ...]] = field(default_factory=dict)   # role -> usernames; none: the token's owner
     push: str = "auto"                            # auto | ssh | token
+    patrol: bool = True                           # 巡检所有开着的 MR
 
     @classmethod
     def parse(cls, raw: Any) -> "SetupInput":
@@ -150,12 +157,15 @@ class SetupInput:
         push = raw.get("push") or "auto"
         if push not in PUSH_MODES:
             raise SetupRefused("推送方式只能是 auto、ssh 或 token")
-        return cls(base, project, token, roles, push)
+        patrol = raw.get("patrol", True)
+        if not isinstance(patrol, bool):
+            raise SetupRefused("「巡检所有开着的 MR」的值不对：刷新页面再试")
+        return cls(base, project, token, roles, push, patrol)
 
     def public(self) -> dict[str, Any]:
         """What setup-state.json keeps of the input: all of it but the token."""
         return {"gitlab_base": self.gitlab_base, "project": self.project, "push": self.push,
-                "roles": {r: list(self.roles.get(r) or ()) for r in ROLES}}
+                "roles": {r: list(self.roles.get(r) or ()) for r in ROLES}, "patrol": self.patrol}
 
 
 @dataclass(frozen=True)
@@ -232,6 +242,7 @@ class Paths:
     signer_json = _under("root", "signer.json")
     runs = _under("work", "runs")
     cache = _under("work", "cache")
+    patrol_spec = property(lambda self: self.agent_spec.with_name(patrol_mod.AGENT + ".json"))
 
 
 @dataclass
@@ -464,7 +475,7 @@ def view(state: Mapping[str, Any], paths: Paths, running: bool | None = None) ->
             "cut_off": next((s["id"] for s in steps if s["status"] == "todo"), None) if cut else None,
             "input": {"gitlab_base": str(inp.get("gitlab_base") or ""), "project": str(inp.get("project") or ""),
                       "roles": {r: [str(n) for n in roles.get(r) or []] for r in ROLES},
-                      "push": str(inp.get("push") or "auto")},
+                      "push": str(inp.get("push") or "auto"), "patrol": inp.get("patrol") is not False},
             "steps": steps, "root": str(paths.root)}
 
 
@@ -787,20 +798,36 @@ def step_kit_mr(ctx: Ctx) -> StepResult:
         gl.call("POST", "/projects/%d/repository/branches" % pid, body={"branch": BRANCH, "ref": default})
     raw = gl.file_raw(pid, KIT, BRANCH)
     there = raw.decode("utf-8-sig") if raw is not None else ""
+    changed = kit_changes(ctx, want)
     if parse_json(there) != want:
         gl.call("POST", "/projects/%d/repository/commits" % pid, body={
-            "branch": BRANCH, "commit_message": "运行机：kit.json 写上 bridge_user、bot_users、bot_emails、gitlab、default_branch",
+            "branch": BRANCH, "commit_message": "运行机：kit.json 写上 %s" % "、".join(changed),
             "actions": [{"action": "update" if raw is not None else "create", "file_path": KIT,
                          "content": kit_text(want, there or ctx.kit_text)}]})
     mr = gl.mr_for_branch(pid, BRANCH)
     opened = mr is None
     if opened:
+        patrol = MR_PATROL[sources.PATROL in sources.enabled(want)]
+        text = ("一键建运行机开的 MR：" + patrol if patrol_only(ctx, want) else
+                MR_TEXT + ("\n\n" + patrol if "work_sources" in changed else ""))
         mr = gl.call("POST", "/projects/%d/merge_requests" % pid, body={
-            "source_branch": BRANCH, "target_branch": default, "title": MR_TITLE, "description": MR_TEXT,
+            "source_branch": BRANCH, "target_branch": default, "title": MR_TITLE, "description": text,
             "remove_source_branch": True}) or {}
     ctx.state["kit_mr"] = {"iid": mr.get("iid"), "web_url": mr.get("web_url")}
     return waiting("%s MR !%s：请在 GitLab 上合并这个 MR" % ("开了" if opened else "还没合并", mr.get("iid")),
                    link=mr.get("web_url") or None)
+
+
+def kit_changes(ctx: Ctx, want: dict[str, Any]) -> list[str]:
+    """The keys of kit.json the MR changes."""
+    return [k for k in want if want[k] != ctx.kit.get(k)]
+
+
+def patrol_only(ctx: Ctx, want: dict[str, Any]) -> bool:
+    """Whether the kit.json MR only switches mr-patrol on or off: everything the hand-over needs is on the default
+    branch already."""
+    kinds = set(sources.enabled(want)) ^ set(sources.enabled(ctx.kit))
+    return kit_changes(ctx, want) == ["work_sources"] and sources.HANDOFF not in kinds
 
 
 def wanted_kit(ctx: Ctx) -> dict[str, Any]:
@@ -813,6 +840,12 @@ def wanted_kit(ctx: Ctx) -> dict[str, Any]:
     gitlab = want.get("gitlab") if isinstance(want.get("gitlab"), dict) else {}
     want["gitlab"] = dict(gitlab, base=ctx.inp.gitlab_base, project=project["path"])
     want["default_branch"] = project["default_branch"]
+    raw = want.get("work_sources")
+    kinds = [k for k in raw if isinstance(k, str)] if isinstance(raw, list) else []
+    if ctx.inp.patrol:
+        want["work_sources"] = kinds + [k for k in PATROL_KINDS if k not in kinds]
+    elif sources.PATROL in kinds:
+        want["work_sources"] = [k for k in kinds if k != sources.PATROL]
     return want
 
 
@@ -968,7 +1001,19 @@ def step_agent(ctx: Ctx) -> StepResult:
                 detail=out)
 
 
-# ---- 11 the signer ------------------------------------------------------------------------------------------------ #
+# ---- 11 the brain-patrol agent ---------------------------------------------------------------------------------- #
+
+def step_patrol_agent(ctx: Ctx) -> StepResult:
+    """brain-patrol, the agent of MR 巡检's sessions (team/patrol.py agent_spec): brain-run's spec, its own short prompt,
+    no Lean hooks. Beside brain-run.json; written only when its content changes."""
+    ps = ctx.paths
+    if not ctx.inp.patrol:
+        return skipped("没勾「巡检所有开着的 MR」：不写 brain-patrol")
+    wrote = write_file(ps.patrol_spec, dumps(patrol_mod.agent_spec(str(ps.kit_dir))), mode=0o644)
+    return done("%s brain-patrol 的设置：%s" % ("写好了" if wrote else "已经是新的", tilde(ps.patrol_spec)))
+
+
+# ---- 12 the signer ------------------------------------------------------------------------------------------------ #
 
 def step_signer(ctx: Ctx) -> StepResult:
     """The signer, run by the app itself in same-user mode (signerproc): started when it is not running, or when it
@@ -981,7 +1026,7 @@ def step_signer(ctx: Ctx) -> StepResult:
     return done("签名服务%s（进程 %d）" % ("开起来了" if started else "在跑", pid))
 
 
-# ---- 12 team mode ------------------------------------------------------------------------------------------------- #
+# ---- 13 team mode ------------------------------------------------------------------------------------------------- #
 
 def step_team_mode(ctx: Ctx) -> StepResult:
     """Team mode on with the two configs and the same-user trial, through the app's settings (its TeamRuntime starts,
@@ -998,7 +1043,10 @@ def step_team_mode(ctx: Ctx) -> StepResult:
         return failed(str(st.get("error") or "团队模式没开起来"), detail=str(st.get("error_raw") or ""))
     said = str(st.get("said") or "团队模式开了")
     if any(r.id == "kit_mr" and r.status == "waiting" for r in ctx.results):
-        said += "；可是上面那个 MR 合并以前，交接都会被拒"
+        if patrol_only(ctx, wanted_kit(ctx)):
+            said += "；上面那个 MR 合并以后，巡检才" + ("开始" if ctx.inp.patrol else "停")
+        else:
+            said += "；可是上面那个 MR 合并以前，交接都会被拒"
     return done(said)
 
 
@@ -1013,6 +1061,7 @@ STEPS: tuple[Step, ...] = (
     Step("signing_key", "签名密钥", step_signing_key),
     Step("configs", "三份配置", step_configs),
     Step("agent", "brain-run agent", step_agent),
+    Step("patrol_agent", "brain-patrol agent", step_patrol_agent),
     Step("signer", "签名服务", step_signer),
     Step("team_mode", "打开团队模式", step_team_mode),
 )

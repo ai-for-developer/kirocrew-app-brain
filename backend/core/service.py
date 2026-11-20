@@ -35,6 +35,7 @@ from .repoids import RepoIds, from_records
 from .sessions import SessionManager, requirement_credits
 from . import store as store_mod
 from .store import Store
+from .team import patrol as patrol_mod
 from .team import setup as setup_mod
 from .team import signerproc
 
@@ -2191,6 +2192,12 @@ class Service:
                           "updated": r.get("updated"), "notes": notes.get(r["run_id"], [])} for r in led["runs"]],
                 "handovers": handovers, "signer": signer, "config": self.team.config_view(),
                 "hooks": await asyncio.to_thread(self.team.hook_rows)}
+
+    async def team_patrol(self) -> dict[str, Any]:
+        """GET /team/patrol: MR 巡检's last round, every open MR it looked at (team/patrol.py)."""
+        if self.team is None:
+            return patrol_mod.view_of([], [], None)
+        return scrub_tree(self.team.patrol_view(), self.scrub)
 
     async def team_loop(self) -> dict[str, Any]:
         rt = self.team
