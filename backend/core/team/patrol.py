@@ -3,9 +3,11 @@ whose kit.json switches it on. An MR with a problem the runner can fix goes to a
 patrol-<project id>-<iid>), working in a clone of its own (<work>/patrol/<project id>-<iid>: KiroCrew lets agents work
 only under ~/workplace). Later problems of that MR go to the same session.
 
-A problem is one of three. The MR head's pipeline failed: its failed jobs, each with the last LOG_LINES lines of its
+A problem is one of four. The MR head's pipeline failed: its failed jobs, each with the last LOG_LINES lines of its
 log. A person left a review thread open: unresolved and resolvable, with no reply of patrol's own after it, and not
-named in a turn that ended. Or the MR conflicts with its target branch. The MR's problems make a PatrolItem. Its
+named in a turn that ended. A person wrote a plain comment on the MR (no thread, so nothing marks it resolved) since
+patrol started in the project, not named in a turn that ended: the session answers it with a note on the MR that
+quotes it. Or the MR conflicts with its target branch. The MR's problems make a PatrolItem. Its
 fingerprint moves with the head, a failed pipeline, the conflict and the open review notes, and nothing else.
 
 The ledger, <root>/patrol.sqlite, has one row per open MR of the projects patrol is on (MrRow). It is a state machine
@@ -92,12 +94,20 @@ class Review:
 
 
 @dataclass(frozen=True)
+class Comment:
+    note_id: int
+    author: str
+    body: str
+    kind: ClassVar[str] = "comment"
+
+
+@dataclass(frozen=True)
 class Conflict:
     target_branch: str
     kind: ClassVar[str] = "conflict"
 
 
-Problem = Union[CiFailed, Review, Conflict]
+Problem = Union[CiFailed, Review, Comment, Conflict]
 
 
 def fingerprint(head_sha: str, pipeline_id: int | None, conflict: bool, note_ids: Any) -> str:
@@ -127,7 +137,7 @@ class PatrolItem:
 
     @property
     def note_ids(self) -> tuple[int, ...]:
-        return tuple(p.note_id for p in self.problems if isinstance(p, Review))
+        return tuple(p.note_id for p in self.problems if isinstance(p, (Review, Comment)))
 
     @property
     def fingerprint(self) -> str:
@@ -143,13 +153,14 @@ class Read:
     reviews: tuple[Review, ...] = ()            # people's open review notes (the row knows which were answered)
     bot_notes: int = 0                          # open threads only bots wrote in
     people_note: int = 0                        # the newest note a person wrote on the MR, anywhere (its id)
+    comments: tuple[Comment, ...] = ()          # people's plain comments since patrol started in the project
 
     @classmethod
     def of(cls, d: Mapping[str, Any]) -> "Read":
         return cls(d.get("pipeline_id"), str(d.get("pipeline_status") or ""),
                    tuple(FailedJob(**j) for j in d.get("jobs") or ()),
                    tuple(Review(**r) for r in d.get("reviews") or ()), int(d.get("bot_notes") or 0),
-                   int(d.get("people_note") or 0))
+                   int(d.get("people_note") or 0), tuple(Comment(**c) for c in d.get("comments") or ()))
 
 
 @dataclass(frozen=True)
@@ -163,6 +174,8 @@ def problem_text(p: Problem) -> str:
         return "流水线 #%d 没过：%s" % (p.pipeline_id, "、".join(j.name for j in p.jobs) or "看流水线")
     if isinstance(p, Review):
         return "@%s 的评审意见%s" % (p.author, "（%s）" % p.position if p.position else "")
+    if isinstance(p, Comment):
+        return "@%s 的评论" % p.author
     return "和 %s 有冲突" % p.target_branch
 
 
@@ -227,10 +240,21 @@ def open_reviews(discussions: list[dict[str, Any]], own: set[str], bots: set[str
     return out, bot_threads
 
 
-def read_mr(gl: Any, project: str, mr: Mapping[str, Any], own: set[str], bots: set[str],
+def plain_comments(discussions: list[dict[str, Any]], own: set[str], bots: set[str], since: float) -> list[Comment]:
+    """People's plain comments on the MR (GitLab's individual notes: not in a thread) written *since*."""
+    out = []
+    for d, notes in zip(discussions, notes_of(discussions)):
+        if d.get("individual_note") is True:
+            out += [Comment(int(n["id"]), username(n.get("author")), str(n.get("body") or "")[:BODY_CHARS])
+                    for n in notes if written_by(n, own, bots) == "person" and _ts(n.get("created_at")) >= since]
+    return out
+
+
+def read_mr(gl: Any, project: str, mr: Mapping[str, Any], own: set[str], bots: set[str], since: float,
             before: Read | None = None) -> Read:
     """GitLab's MR (its head pipeline), the failed jobs and their logs when that pipeline failed (*before*'s while it
-    is the same failed pipeline), and its threads."""
+    is the same failed pipeline), its threads, and its plain comments written *since* (patrol started in the
+    project)."""
     rest = bk.m("rest")
     iid = int(mr["iid"])
     hp = (gl.mr(project, iid) or {}).get("head_pipeline")
@@ -247,7 +271,8 @@ def read_mr(gl: Any, project: str, mr: Mapping[str, Any], own: set[str], bots: s
     threads = [d for d in threads if isinstance(d, dict)]
     reviews, bot_threads = open_reviews(threads, own, bots)
     people = [int(n["id"]) for notes in notes_of(threads) for n in notes if written_by(n, own, bots) == "person"]
-    return Read(pid, status, tuple(jobs), tuple(reviews), bot_threads, max(people, default=0))
+    return Read(pid, status, tuple(jobs), tuple(reviews), bot_threads, max(people, default=0),
+                tuple(plain_comments(threads, own, bots, since)))
 
 
 def pushed_by_people(gl: Any, project: str, old: str, new: str, bots: set[str]) -> bool:
@@ -274,7 +299,7 @@ def item_of(project: str, mr: Mapping[str, Any], read: Read, answered: tuple[int
         problems.append(Conflict(target))
     if read.pipeline_status == "failed" and read.pipeline_id:
         problems.append(CiFailed(read.pipeline_id, read.jobs))
-    problems += [r for r in read.reviews if r.note_id not in answered]
+    problems += [r for r in read.reviews + read.comments if r.note_id not in answered]
     return PatrolItem(project, int(mr.get("project_id") or mr.get("target_project_id") or 0), int(mr["iid"]),
                       str(mr.get("title") or ""), mr.get("web_url") or None, str(mr.get("source_branch") or ""), target,
                       str(mr.get("sha") or ""), tuple(problems))
@@ -430,7 +455,7 @@ AGENT_PROMPT = """你是团队运行机上的 MR 巡检（brain-patrol）。消�
 2. 项目有测试就跑；没过就接着修。
 3. 提交写清楚改了什么，推到 origin 上这个 MR 的源分支。
 4. 和目标分支冲突的，把目标分支合并（git merge）进来解决。不要 rebase，不要强推（不加 --force）。
-5. 你处理过的每条评审意见都回复：改了什么，或者为什么不同意。用消息里给的命令回复。
+5. 你处理过的每条评审意见和评论都回复：改了什么，或者为什么不同意。用消息里给的命令回复。
 6. 最后在 MR 上发一条简短的总结。
 7. 修不了的，在 MR 上说清楚修不了什么，然后停下。
 """
@@ -482,6 +507,9 @@ def message(item: PatrolItem, path: str, helper: Helper) -> str:
             for j in p.jobs:
                 out.append("   - %s：" % j.name)
                 out += _quoted(j.log or "（没读到日志）", "     ")
+        elif isinstance(p, Comment):
+            out.append("%d. MR 上的评论（不在讨论里）：评论 #%d，@%s：" % (n, p.note_id, p.author))
+            out += _quoted(p.body, "   ")
         else:
             out.append("%d. 评审意见：讨论 %s，评论 #%d，@%s%s：" % (n, p.discussion_id, p.note_id, p.author,
                                                           "，在 %s" % p.position if p.position else ""))
@@ -490,9 +518,12 @@ def message(item: PatrolItem, path: str, helper: Helper) -> str:
             "- 项目有测试就跑一遍，没过就接着修。",
             "- 提交写清楚改了什么，推到 origin 的 %s：git push origin HEAD:%s（不加 --force）。" % (item.source_branch,
                                                                                   item.source_branch)]
-    if item.note_ids:
+    if any(isinstance(p, Review) for p in item.problems):
         out += ["- 上面每条评审意见都回复（改了什么，或者为什么不同意），讨论号换成那条意见的：",
                 "  %s --discussion <讨论号> '回复的话'" % cmd]
+    if any(isinstance(p, Comment) for p in item.problems):
+        out += ["- 上面每条 MR 上的评论都回复一条：它没有讨论可回，就在 MR 上发，先引用它的原话（每行前面加 > ），再说改了什么，"
+                "或者为什么不同意：", "  %s --note '回复的话'" % cmd]
     out += ["- 最后在 MR 上发一条简短的总结：", "  %s --note '总结的话'" % cmd,
             "- 有修不了的，用 --note 在 MR 上说清楚修不了什么，然后停下。"]
     return "\n".join(out)
@@ -715,8 +746,8 @@ class Patrol:
             if stop:
                 self._stop(row)
         if self._stale(row, mr, now):
-            row = replace(row, read=read_mr(self.gl, e.project, mr, *self._who(kit), before=row.read), seen=_seen(mr),
-                          read_at=now)
+            row = replace(row, read=read_mr(self.gl, e.project, mr, *self._who(kit), e.since, before=row.read),
+                          seen=_seen(mr), read_at=now)
         item = item_of(e.project, mr, row.read, row.answered)
         row = self._watched(e, replace(row, project_id=item.project_id), item)
         if row.state == BLOCKED and row.fingerprint != item.fingerprint:

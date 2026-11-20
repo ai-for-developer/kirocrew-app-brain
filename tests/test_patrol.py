@@ -92,7 +92,7 @@ def test_each_problem_kind_is_found_and_the_session_is_told_each_with_its_ids(bk
     gl.mr(P, 3)
     review = gl.thread(P, 3, "carol", "百分比要限制在 0-100\n超出就报错", "src/discount.py", 12)
     gl.thread(P, 3, "carol", "这个早改好了", resolved=True)
-    gl.thread(P, 3, "dave", "整体可以", resolvable=False)                  # a plain comment: not a thread to work
+    gl.thread(P, 3, "dave", "整体可以", resolvable=False)                  # a plain comment from before patrol started
     gl.system(P, 3, "added 1 commit")
     answered = gl.thread(P, 3, "erin", "变量名改一下")
     gl.reply(P, 3, answered, "brain-bridge", "改了：x 改成 rate")             # patrol's own reply answers it
@@ -172,6 +172,42 @@ def test_a_fingerprint_is_dispatched_once_and_a_new_comment_pipeline_or_head_dis
     # one session for the MR all along, every message its own sendId
     assert [o[0] for o in w.sessions.opened] == ["patrol-42-7"] and set(w.slots()) == {"patrol-42-7"}
     assert len({sid for _, _, sid in w.sessions.sent}) == 4
+
+
+def test_a_person_s_plain_comment_since_patrol_started_is_worked_and_answered_on_the_mr_quoting_it(bk, tmp_path):
+    w = World(tmp_path)
+    gl = w.gl
+    gl.mr(P, 5)
+    gl.thread(P, 5, "dave", "顺便把 README 也改一下", resolvable=False)       # written before patrol started
+    w.later()
+    w.round()
+    assert w.item(5)["state"] == "ok" and w.slots() == []
+    w.later()
+    note = gl.thread(P, 5, "erin", "折扣上限改成 50\n别忘了测试", resolvable=False)["notes"][0]
+    gl.thread(P, 5, "project_42_bot_1a2b3c", "Code Quality: 2 new issues", resolvable=False)
+    gl.thread(P, 5, "brain-bridge", "MR 巡检：上一轮的总结", resolvable=False)           # the runner's own
+    gl.system(P, 5, "added 1 commit")
+    w.later()
+    w.round()
+    assert w.item(5)["problems"] == [{"kind": "comment", "text": "@erin 的评论"}]
+    msg = w.sessions.messages("patrol-42-5")[0]
+    assert "MR 上的评论（不在讨论里）：评论 #%d，@erin：\n   > 折扣上限改成 50\n   > 别忘了测试" % note["id"] in msg
+    assert "README" not in msg and "Code Quality" not in msg and "上一轮的总结" not in msg
+    helper = ("/usr/bin/python3 -I /app/backend/core/team/patrol_reply.py --config /setup/bridge.json --brainkit /kit "
+              "--project grp/repo --mr 5")
+    assert "先引用它的原话（每行前面加 > ）" in msg and helper + " --note '回复的话'" in msg and "--discussion" not in msg
+    w.sessions.end()
+    w.later()
+    w.round()
+    assert w.item(5)["state"] == "ok" and len(w.sessions.sent) == 1          # answered by the turn that ended
+    w.kits[P] = kit(work_sources=["mr-handoff"])                             # patrol off for a while ...
+    w.later()
+    w.round()
+    gl.thread(P, 5, "erin", "巡检关着的时候写的", resolvable=False)
+    w.kits[P] = kit()                                                        # ... and on again: it starts from now
+    w.later()
+    w.round()
+    assert w.item(5)["state"] == "ok" and len(w.sessions.sent) == 1
 
 
 def test_mrs_the_hand_over_owns_opted_out_from_a_fork_or_with_only_bots_comments_are_skipped(bk, tmp_path):
