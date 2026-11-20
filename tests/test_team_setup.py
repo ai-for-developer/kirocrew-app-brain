@@ -1253,7 +1253,8 @@ def test_the_state_a_run_before_bot_account_mode_left_reads_as_a_project_token_r
         "kit_mr": {"iid": 7, "web_url": BASE + "/" + P + "/-/merge_requests/7"}}))
     view = setup.view(setup.load_state(paths), paths, running=False)
     assert view["input"] == {"gitlab_base": BASE, "mode": "project-token", "projects": [P], "push": "auto", "patrol": True,
-                             "roles": {"product": ["carol"], "builder": [], "security": [], "data": []}}
+                             "roles": {"product": ["carol"], "builder": [], "security": [], "data": []},
+                             "jenkins": {"base": "", "user": ""}}
     assert view["accounts"] == {"bridge": "", "bot": ""}
     assert (step(view, "project")["status"], step(view, "project")["projects"]) == ("done", [])
     assert {s["status"] for s in view["steps"][1:]} == {"todo"}

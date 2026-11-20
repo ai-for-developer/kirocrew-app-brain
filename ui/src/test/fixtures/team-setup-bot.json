@@ -22,7 +22,11 @@
       "data": []
     },
     "push": "token",
-    "patrol": true
+    "patrol": true,
+    "jenkins": {
+      "base": "",
+      "user": ""
+    }
   },
   "accounts": {
     "bridge": "brain-bridge",
