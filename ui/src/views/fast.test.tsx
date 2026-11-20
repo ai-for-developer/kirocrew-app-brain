@@ -6,7 +6,7 @@ import { fx } from '../test/data'
 import { MERGE_STEPS, MR, MR_URL, WAITS, fastBoard, fastDetail, fastRow } from '../test/fast'
 import { API, installFixtureRoutes } from '../test/routes'
 import { apiCalls, apiError } from '../test/stubs/app-sdk'
-import type { ActResult, Requirement, RequirementDetail } from '../types'
+import type { ActResult, FastTime, Requirement, RequirementDetail } from '../types'
 import { DetailView } from './Detail'
 import { FULL_ASK } from './FastActs'
 import { OverviewView } from './Overview'
@@ -69,6 +69,43 @@ describe('需求现状 of a fast run (快速)', () => {
     expect(now()).toHaveTextContent('MR !12：CI 过了，等人审、合并')
     expect(within(now()).getByRole('link', { name: '看 MR' })).toHaveAttribute('href', MR_URL)
     expect(screen.getByTestId('fast-card')).toHaveTextContent('MR !12 等合并')
+  })
+})
+
+describe('需求现状 of a fast run: 时间花在哪, from its sessions on this machine', () => {
+  const card = () => screen.getByRole('article', { name: '时间花在哪' })
+  const timed = (time: FastTime | null) => ({ ...fastBoard(), time })
+  const TIME: FastTime = { agent: 1500, person: 3720, waits: 3, sessions: 2, whole: true }
+
+  test('the AI’s time is the number, 等人 and its waits the line, the bar those two; the legend opens the board', async () => {
+    const p = renderDetail(fastDetail(), timed(TIME))
+    await screen.findAllByTestId('fast-step')
+    expect(card().querySelector('.cto-value')).toHaveTextContent(/^25 分钟$/)
+    expect(card().querySelector('.cto-desc')).toHaveTextContent(/^AI 在本机做 · 等人 1 小时 2 分（3 段）$/)
+    expect(within(card()).getByRole('img')).toHaveAccessibleName('时间花在哪：AI 在本机做 25 分钟，等人 1 小时 2 分')
+    const legend = within(card()).getAllByRole('button')
+    expect(legend.map((b) => b.textContent)).toEqual(['AI 在本机做25 分钟', '等人1 小时 2 分'])
+    legend.forEach((b, k) => {
+      fireEvent.click(b)
+      expect(p.go).toHaveBeenCalledTimes(k + 1)
+      expect(p.go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-17', from: 'item' })
+    })
+  })
+
+  test('a transcript read only in part, or a session not read yet: 至少 before the numbers', async () => {
+    renderDetail(fastDetail(), timed({ ...TIME, whole: false }))
+    await screen.findAllByTestId('fast-step')
+    expect(card().querySelector('.cto-value')).toHaveTextContent(/^至少25 分钟$/)
+    expect(card().querySelector('.cto-desc')).toHaveTextContent(/^AI 在本机做 · 等人至少 1 小时 2 分（3 段）$/)
+    expect(within(card()).getAllByRole('button').map((b) => b.textContent)).toEqual(['AI 在本机做至少 25 分钟', '等人至少 1 小时 2 分'])
+  })
+
+  test('no session of it read here: one sentence, never a 0', async () => {
+    renderDetail(fastDetail(), timed(null))
+    await screen.findAllByTestId('fast-step')
+    expect(card()).toHaveTextContent('时间从它在这台机器上的会话里算：这里还没读到它的会话')
+    expect(card()).not.toHaveTextContent(/\d/)
+    expect(within(card()).queryByRole('button')).toBeNull()
   })
 })
 

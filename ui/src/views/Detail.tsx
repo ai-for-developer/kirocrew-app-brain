@@ -27,7 +27,7 @@ import { FlowCard, can, flowNow, flowOf, stepLook } from '../flows'
 import { ago, fmtCredits, fmtIso, fmtSpan, fmtTime } from '../format'
 import { VIEW_NAME, type BoardEntry, type ItemEntry } from '../nav'
 import type {
-  CheckCell, Credits, Decision, LeanPhase, OpenSessionBody, OpenSessionResult, ReqBoard, RequirementDetail, SessionRow, Stage,
+  CheckCell, Credits, Decision, FastTime, LeanPhase, OpenSessionBody, OpenSessionResult, ReqBoard, RequirementDetail, SessionRow, Stage,
   WaitDo, WaitWho, Waits,
 } from '../types'
 import { APPROVAL_META, Icon, LoadState, MrLink, STAGE_META, StateChip, TYPE_IT_YOURSELF, isOpenQuestion } from '../ui'
@@ -727,7 +727,7 @@ function Cards({ x, board, at, localOnly, replying, onBoard, onSessions }: {
         </div>
         <div className="cto-legend"><span data-testid="lean-progress">{flow.intent ? `Lean ${leanNow(x.row)}` : `${flow.label} · ${flowNow(x.row)}`}</span></div>
       </article>
-      <article className="cto-card" aria-label="时间花在哪">
+      {board?.steps ? <FastTimeCard time={board.time ?? null} onBoard={() => onBoard()} /> : <article className="cto-card" aria-label="时间花在哪">
         <div className="cto-eyebrow">时间花在哪</div>
         <div className="cto-value">{board ? fmtSpan(busy) : '—'}</div>
         <div className="cto-desc">{board ? `AI 在做 · 等人 ${fmtSpan(split.find((s) => s.p === 'person')!.s)}${waits.length ? `（${waits.length} 段）` : ''}` : '运行过程的数据还没来'}</div>
@@ -741,10 +741,41 @@ function Cards({ x, board, at, localOnly, replying, onBoard, onSessions }: {
             ))}
           </div>
         )}
-      </article>
+      </article>}
       <CostCard x={x} replying={replying} me={board?.person.me ?? false} onSessions={onSessions} />
       <ChecksCard board={board} localOnly={localOnly} sent={sent} blocked={blocked} onBoard={onBoard} />
     </section>
+  )
+}
+
+/** 时间花在哪 of a fast run, which has no stage lanes: from its sessions' turns on this machine (board.time), the AI at
+ * work and the waits for a person; 至少 before the numbers when not all of it could be read. */
+function FastTimeCard({ time, onBoard }: { time: FastTime | null; onBoard: () => void }) {
+  const least = time && !time.whole ? '至少 ' : ''
+  const split: { p: Part; s: number }[] = time ? [{ p: 'agent', s: time.agent }, { p: 'person', s: time.person }] : []
+  return (
+    <article className="cto-card" aria-label="时间花在哪">
+      <div className="cto-eyebrow">时间花在哪</div>
+      {!time ? (
+        <>
+          <div className="cto-value"><span className="cto-of" style={{ marginLeft: 0 }}>还没有</span></div>
+          <div className="cto-desc">时间从它在这台机器上的会话里算：这里还没读到它的会话</div>
+        </>
+      ) : (
+        <>
+          <div className="cto-value">{least && <span className="cto-of" style={{ marginLeft: 0, marginRight: 4 }}>至少</span>}{fmtSpan(time.agent)}</div>
+          <div className="cto-desc">AI 在本机做 · 等人{least ? '至少' : ''} {fmtSpan(time.person)}{time.waits ? `（${time.waits} 段）` : ''}</div>
+          <SplitBar split={split} />
+          <div className="cto-legend">
+            {split.filter((x) => x.s > 0).map(({ p, s }) => (
+              <button type="button" key={p} onClick={onBoard} title="在运行过程里看">
+                <i className="cto-sw" style={{ background: PART_VAR[p] }} />{PART_LABEL[p]}<b>{least}{fmtSpan(s)}</b>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </article>
   )
 }
 
