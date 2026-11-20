@@ -1,6 +1,8 @@
 """A fast run's row and board (快速): whose turn it is and the step, from its commits, its newest verify, its risk paths
 and its own MR, through deliveries.classify as every row goes; and the board's five steps."""
 
+from datetime import datetime
+
 from appkit import mod
 
 deliveries, fastrow, fastboard, lean_view = mod("deliveries"), mod("fastrow"), mod("fastboard"), mod("lean_view")
@@ -84,6 +86,38 @@ def test_the_checks_every_row_shares_come_first():
     assert row_of(slot=asked)[1:3] == ("you", "tool")
     merged = facts(merged=True, merged_at=None)
     assert row_of(f=merged)[0] == "merged"
+
+
+def test_a_teammates_fast_run_says_its_mr_as_every_machine_reads_it():
+    def see(**kw):
+        return row_of(me="bob", slot=None, **kw)
+    assert see(m=mr(pipelines=[pipe("success")])) == ("local", "people", "merge", "mr", "MR !12：CI 过了，等人审、合并")
+    assert see(m=mr(pipelines=[pipe("running")])) == ("local", "nobody", "none", None, "MR !12：CI 在跑")
+    assert see(m=mr(pipelines=[pipe("failed")])) == ("local", "people", "none", "mr", "MR !12：CI 没过：等 alice 修")
+    assert see(m=mr(pipelines=[pipe("failed")]), ff=fast(patrol=True))[1:3] == ("runner", "none")
+    assert see(m=mr("closed"))[:2] == ("closed", "nobody")
+    assert see(m=mr("merged"))[0] == "merged"
+    assert see() == ("local", "people", "none", None, "alice 在自己的机器上做")
+
+
+def test_a_teammates_fast_mr_waiting_for_review_is_not_stuck():
+    """全队卡点's 很久没动 is for a teammate's run on their own machine with nothing pushed for long, not for one whose
+    MR waits for its review on GitLab (as a small requirement's MR waiting to be merged)."""
+    roster = mod("roster")
+    monday, wednesday = (datetime(2026, 11, d, 9, 0).timestamp() for d in (16, 18))
+    limits = {"wip_limit": 3, "wait_timeout_h": 8, "stale_after_h": 8, "verify_fail_limit": 3}
+
+    def stuck(m):
+        f = facts(tip_at=monday)
+        row = deliveries.base_row("r1", f)
+        got = dict(pipe("success"), at=monday + 600) if m else None
+        deliveries.classify(row, f, mr=mr(pipelines=[got]) if m else None, slot=None, cfg=CFG, me="bob", now=wednesday,
+                            fast=fast())
+        row.update(repo="r1", verify_fails=0)
+        return [s["kind"] for s in roster.roster([row], me="bob", now=wednesday, settings=limits)["stuck"]]
+
+    assert stuck(m=False) == ["stale"], "nothing pushed for two working days: 很久没动"
+    assert stuck(m=True) == [], "its MR waits for people to review it"
 
 
 def steps_of(f=None, ff=None, m=None, busy=False):

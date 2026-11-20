@@ -2,10 +2,10 @@
 
 A fast run has no Lean intent, so a Lean row's stages, approvals and hand-over do not apply: the AI writes the code,
 Lean's commit gate still wants a green `lean verify`, and the run ends with an MR (开 MR) a person merges.
-deliveries.classify hands a run without an intent to local() after the checks every row shares (closed, merged, no
-run, a question waiting, someone else's, a tool call waiting). Its state stays "local" until the MR is merged or
-closed; waits.do says the step (open_mr, merge, full). Nothing here imports deliveries or board: classify passes its
-own put and merged.
+deliveries.classify hands a run without an intent to local(), or a teammate's to theirs(), after the checks every row
+shares (closed, merged, no run, a question waiting, a tool call waiting). Its state stays "local" until the MR is
+merged or closed; waits.do says the step (open_mr, merge, full). Nothing here imports deliveries or board: classify
+passes its own put and merged.
 """
 
 from __future__ import annotations
@@ -105,12 +105,43 @@ def ci_state(mr: Optional[dict[str, Any]]) -> str:
     return "running" if st in CI_RUNNING else st if st in ("failed", "success") else "none"
 
 
+def _opened(put: Callable[..., None], mr: dict[str, Any], fast: FastFacts, *, fixer: str, fix: str,
+            where: Optional[str]) -> None:
+    """The waits of a fast run whose MR is open: its CI on the MR's head, then the people who review and merge it.
+    *fixer* fixes a red CI that MR 巡检 does not (*fix*: how it is said, *where*: where it is done)."""
+    n, ci, at = mr.get("iid"), ci_state(mr), (head_pipeline(mr) or {}).get("at")
+    if ci == "running":
+        return put("local", "nobody", "none", "MR !%s：CI 在跑" % n, since=at)
+    if ci == "failed" and fast.patrol:
+        return put("local", "runner", "none", "MR !%s：CI 没过，运行机的 MR 巡检会去修" % n, since=at)
+    if ci == "failed":
+        return put("local", fixer, "reply" if fixer == "you" else "none", "MR !%s：CI 没过：%s" % (n, fix),
+                   where=where, since=at)
+    return put("local", "people", "merge", "MR !%s：%s" % (n, "CI 过了，等人审、合并" if ci == "success" else "等人审、合并"),
+               where="mr", since=at)
+
+
+def theirs(put: Callable[..., None], f: dict[str, Any], *, merged: Callable[[str], None],
+           mr: Optional[dict[str, Any]], fast: FastFacts, owner: str) -> None:
+    """Fill the row of a teammate's fast run (*owner*'s): their session is on their machine, its MR on GitLab, which
+    every machine reads alike (its CI, its review, its merge, waiting on people there, not on them alone); before they
+    open it, they work on their own machine."""
+    mr = mr or {}
+    if mr.get("state") == "merged":
+        return merged("MR 已合并")
+    if mr.get("state") == "closed":
+        return put("closed", "nobody", "none", "MR 已关闭")
+    if mr.get("state") == "opened":
+        return _opened(put, mr, fast, fixer="people", fix="等 %s 修" % owner, where="mr")
+    return put("local", "people", "none", "%s 在自己的机器上做" % owner, since=f.get("tip_at"))
+
+
 def local(put: Callable[..., None], f: dict[str, Any], *, merged: Callable[[str], None],
           slot: Optional[dict[str, Any]], mr: Optional[dict[str, Any]], fast: FastFacts,
           since: Optional[float]) -> None:
     """Fill the row of the person's own fast run. *since*: when its session went quiet (or the branch's last commit)."""
     mr = mr or {}
-    n, state = mr.get("iid"), mr.get("state")
+    state = mr.get("state")
     if slot and slot.get("busy"):
         return put("local", "agent", "none", "AI 在写代码")
     if state == "merged":
@@ -121,17 +152,7 @@ def local(put: Callable[..., None], f: dict[str, Any], *, merged: Callable[[str]
         shown = "、".join(fast.risky[:3]) + ("等 %d 个文件" % len(fast.risky) if len(fast.risky) > 3 else "")
         return put("local", "you", "full", RISKY % shown, where="app", since=since)
     if state == "opened":
-        ci = ci_state(mr)
-        at = (head_pipeline(mr) or {}).get("at")
-        if ci == "running":
-            return put("local", "nobody", "none", "MR !%s：CI 在跑" % n, since=at)
-        if ci == "failed" and fast.patrol:
-            return put("local", "runner", "none", "MR !%s：CI 没过，运行机的 MR 巡检会去修" % n, since=at)
-        if ci == "failed":
-            return put("local", "you", "reply", "MR !%s：CI 没过：回会话让 AI 修" % n,
-                       where="session" if slot else "app", since=at)
-        return put("local", "people", "merge", "MR !%s：%s" % (n, "CI 过了，等人审、合并" if ci == "success" else "等人审、合并"),
-                   where="mr", since=at)
+        return _opened(put, mr, fast, fixer="you", fix="回会话让 AI 修", where="session" if slot else "app")
     if not f.get("worktree"):
         return put("local", "you", "reply", "这台机器上没有它的工作区：先检出分支 %s，再打开会话接着做" % f.get("branch"),
                    since=since)

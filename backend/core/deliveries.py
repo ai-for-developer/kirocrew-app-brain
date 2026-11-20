@@ -197,6 +197,9 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
             what = question_label(kind, park.get("lean_request"))
             return put("parked", you, "answer", spaced("AI 停下等", them, "回答（%s）" % what),
                        where="app" if here else "session", since=f.get("park_at"))
+        if not mine and fast is not None:
+            return fastrow.theirs(put, f, merged=lambda text: _merged(put, f, now=now, reflected=reflected, text=text,
+                                                                     owner=owner), mr=mr, fast=fast, owner=str(owner))
         if not mine:
             return put("local", "people", "none", "%s 在自己的机器上做" % owner, since=f.get("tip_at"))
         if slot and slot.get("awaiting"):      # KiroCrew counts a session asking for a tool as busy too
