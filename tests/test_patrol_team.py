@@ -180,6 +180,29 @@ def test_a_message_kiro_crew_refuses_is_a_failed_attempt_and_two_block_the_mr_wi
     assert len(told) == 1 and told[0]["body"].startswith("MR 巡检：运行机派了 2 次，它的会话都没收下")
 
 
+def test_a_merged_mr_s_turn_is_stopped_and_its_clone_deleted(tmp_path, home, monkeypatch):
+    w = light_world(tmp_path, home, monkeypatch, {"work_sources": ["mr-handoff", "mr-patrol"]})
+    gw = FakeGateway()
+    svc, routes = app(w, tmp_path, gw)
+    for iid in (4, 5):
+        w.gl.mr(P, iid, sha=w.head, has_conflicts=True, detailed_merge_status="conflict")
+
+    async def go():
+        await svc.start()
+        try:
+            await call(routes, "POST", "/team/loop")
+            made = sorted(os.listdir(w.work / "patrol"))
+            w.gl.close(P, 4)
+            await call(routes, "POST", "/team/loop")
+            return made, sorted(os.listdir(w.work / "patrol"))
+        finally:
+            await svc.stop()
+
+    made, left = run(go())
+    assert made == ["42-4", "42-5"] and left == ["42-5"]
+    assert [c[1] for c in gw.calls if c[0] == "stop"] == ["patrol-42-4"]
+
+
 @pytest.mark.parametrize("kit, polled, patrolled",[({}, True, False), ({"work_sources": ["mr-patrol"]}, False, True)])
 def test_work_sources_decide_which_rounds_look_at_a_project(tmp_path, home, monkeypatch, kit, polled, patrolled):
     w = light_world(tmp_path, home, monkeypatch, kit)

@@ -260,13 +260,17 @@ class FakeSessions:
 
 
 class FakeWorkspaces:
-    """Workspaces.prepare without git: a path per MR; *moved*: the MRs whose origin head is not the one read."""
+    """Workspaces without git: a path per MR; *moved*: the MRs whose origin head is not the one read; *dropped*: the
+    clones deleted, (project id, iid)."""
 
     def __init__(self, root: str = "/Users/alice/workplace/brain-team/patrol") -> None:
-        self.root, self.prepared, self.moved = root, [], set()
+        self.root, self.prepared, self.moved, self.dropped = root, [], set(), []
 
     def prepare(self, item):
         if (item.project, item.iid) in self.moved:
             raise mod("team.patrol").Moved("origin moved")
         self.prepared.append((item.project, item.iid, item.head_sha))
         return "%s/%d-%d" % (self.root, item.project_id, item.iid)
+
+    def drop(self, project_id, iid):
+        self.dropped.append((project_id, iid))

@@ -259,6 +259,7 @@ def skip_of(kit: Mapping[str, Any], mr: Mapping[str, Any]) -> Skip | None:
 class MrRow:
     project: str
     iid: int
+    project_id: int = 0                 # GitLab's id of the project: its workspace is <root>/<project_id>-<iid>
     state: str = IDLE
     slot: str = ""                      # its session; "": none yet, or a new one is to be opened
     gen: int = 0                        # sessions opened for it (a slot name is used once)
@@ -320,6 +321,10 @@ class Ledger:
         """When patrol first looked at *project* (now, the first time it is asked)."""
         self.db.execute("INSERT OR IGNORE INTO projects (project, since) VALUES (?, ?)", (project, now))
         return float(self.db.execute("SELECT since FROM projects WHERE project=?", (project,)).fetchone()[0])
+
+    def keep_projects(self, keep: list[str]) -> None:
+        """Forget when patrol started in every project but *keep*: it starts again there when it is on again."""
+        self.db.execute("DELETE FROM projects WHERE project NOT IN (%s)" % ",".join("?" * len(keep)), tuple(keep))
 
     def close(self) -> None:
         self.db.close()
@@ -477,9 +482,17 @@ class Workspaces:
                    tuple(bk.m("bridge.runnerd").bot_identity(runnerd_cfg)),
                    sec(runnerd_cfg.get("git_timeout"), 300.0), sec(runnerd_cfg.get("clone_timeout"), 3600.0))
 
+    def path(self, project_id: int, iid: int) -> str:
+        return os.path.join(self.root, "%d-%d" % (project_id, iid))
+
+    def drop(self, project_id: int, iid: int) -> None:
+        """The MR's clone gone: patrol is done with it."""
+        if project_id:
+            shutil.rmtree(self.path(project_id, iid), ignore_errors=True)
+
     def prepare(self, item: PatrolItem) -> str:
         common = bk.m("common")
-        path = os.path.join(self.root, "%d-%d" % (item.project_id, item.iid))
+        path = self.path(item.project_id, item.iid)
         if not os.path.isdir(os.path.join(path, ".git")):
             os.makedirs(self.root, exist_ok=True)
             tmp = "%s.tmp-%d" % (path, os.getpid())       # a clone cut off half-way never passes for the workspace
@@ -588,7 +601,7 @@ class Patrol:
         common = bk.m("common")
         now, self._turns = self.now(), {}
         others = [c for c in self.claims() if c["kind"] != KIND]
-        errors, projects, entries, open_mrs, listed = [], [], [], set(), []
+        errors, projects, entries, open_mrs, listed, off = [], [], [], set(), [], set()
         for project in self.projects:
             try:
                 kit = self.kit(project)
@@ -597,6 +610,7 @@ class Patrol:
                 projects.append({"project": project, "on": False, "error": _said(exc)})
                 continue
             if KIND not in sources.enabled(kit):
+                off.add(project)
                 projects.append({"project": project, "on": False, "error": ""})
                 continue
             if self.workspaces is None:
@@ -623,8 +637,11 @@ class Patrol:
                     e.standing, e.note = "error", "这一轮没看成：%s" % _said(exc)
                     errors.append("%s!%s: %s" % (project, mr.get("iid"), _said(exc)))
                 entries.append(e)
+        if listed or self._led is not None or os.path.exists(self.ledger_path):
+            keep = [p for p in self.projects if p not in off]
+            self._forget(lambda r: r.project not in keep or (r.project in listed and (r.project, r.iid) not in open_mrs))
+            self.led.keep_projects(keep)
         if listed:
-            self._forget(listed, open_mrs)
             self._dispatch(entries, now)
         self.last = view_of(projects, entries, now)
         if errors:
@@ -655,6 +672,7 @@ class Patrol:
             row = replace(row, read=read_mr(self.gl, e.project, mr, *self._who(kit), before=row.read), seen=_seen(mr),
                           read_at=now)
         item = item_of(e.project, mr, row.read, row.answered)
+        row = replace(row, project_id=item.project_id)
         if row.state == BLOCKED and row.fingerprint != item.fingerprint:
             row = replace(row, state=IDLE)
         if row.state == BLOCKED and row.told_fp != row.fingerprint:
@@ -708,12 +726,15 @@ class Patrol:
             except bk.m("common").BrainError as exc:
                 self.out("%s: not stopped: %s" % (row.slot, _said(exc)))
 
-    def _forget(self, projects: list[str], open_mrs: set[tuple[str, int]]) -> None:
-        """The rows of MRs merged or closed since (in the projects read this round): their turns stopped, then gone."""
+    def _forget(self, done: Callable[[MrRow], bool]) -> None:
+        """The rows patrol is *done* with (MRs merged or closed since, every MR of a project it is no longer on): their
+        turns stopped, their clones deleted, then the rows gone, so they hold no session any more."""
         for row in self.led.rows():
-            if row.project in projects and (row.project, row.iid) not in open_mrs:
+            if done(row):
                 if self._busy(row):
                     self._stop(row)
+                if self.workspaces is not None:
+                    self.workspaces.drop(row.project_id, row.iid)
                 self.led.drop(row.project, row.iid)
 
     def _busy(self, row: MrRow) -> bool:

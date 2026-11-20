@@ -349,14 +349,36 @@ def test_work_sources_switch_kinds_on_per_project_and_default_to_the_hand_over(b
     assert w.gl.asked(r"^/api/v4/projects/grp/repo/merge_requests") == 0 and w.slots() == ["patrol-43-1"]
 
 
-def test_a_merged_mr_is_forgotten_and_its_turn_stopped(bk, tmp_path):
+def test_a_merged_mr_is_forgotten_its_turn_stopped_and_its_clone_deleted(bk, tmp_path):
     w = World(tmp_path)
     w.gl.mr(P, 4, **conflicted())
     w.round()
     w.gl.close(P, 4)
     w.later()
     w.round()
-    assert w.sessions.stopped == ["patrol-42-4"] and w.patrol.view()["items"] == [] and w.patrol.held() == []
+    assert w.sessions.stopped == ["patrol-42-4"] and w.ws.dropped == [(42, 4)]
+    assert w.patrol.view()["items"] == [] and w.patrol.held() == [] and w.patrol.led.rows() == []
+
+
+def test_a_project_patrol_is_no_longer_on_has_its_turns_stopped_its_clones_deleted_and_holds_no_session(bk, tmp_path):
+    w = World(tmp_path, kits={P: kit(), "grp/other": kit(), "grp/third": kit()})
+    w.gl.mr(P, 1, **conflicted())
+    w.gl.mr(P, 2, **conflicted())
+    w.round()
+    assert w.slots() == ["patrol-42-1", "patrol-42-2"]
+    w.kits[P] = kit(work_sources=["mr-handoff"])            # a person switches patrol off in grp/repo
+    w.gl.mr("grp/other", 1, **conflicted())
+    w.later()
+    w.round()
+    assert w.sessions.stopped == ["patrol-42-1", "patrol-42-2"] and w.ws.dropped == [(42, 1), (42, 2)]
+    assert w.item(1, "grp/other")["state"] == "working" and w.sessions.running() == ["patrol-43-1"]
+    w.gl.mr("grp/third", 1, **conflicted())
+    w.patrol.close()
+    w.patrol = w.start([P, "grp/third"])                      # bridge.json leaves grp/other out: team mode starts again
+    w.later()
+    w.round()
+    assert w.sessions.stopped[2:] == ["patrol-43-1"] and w.ws.dropped[2:] == [(43, 1)]
+    assert [(r.project, r.iid, r.state) for r in w.patrol.led.rows()] == [("grp/third", 1, "working")]
 
 
 def test_a_message_kiro_crew_refuses_is_an_attempt_on_the_mr_s_one_session_and_two_block_it_with_one_comment(
