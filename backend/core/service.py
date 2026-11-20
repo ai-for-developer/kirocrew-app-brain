@@ -1344,8 +1344,8 @@ class Service:
                           kickoff: bool, review: bool = False, task: str | None = None, fresh: bool = False
                           ) -> dict[str, Any]:
         got = flowview.read(run)
-        flow = got["flow"]
-        why = got["flow_error"] or (flowview.action_problem(flow, "review") if review else "")
+        flow, broken = got["flow"], got["flow_error"]
+        why = (broken or flowview.action_problem(flow, "review")) if review else ""
         if why:
             raise AppError(why, "not_this_flow", 409)
         self.crew = await asyncio.to_thread(self.crew_sync)
@@ -1360,8 +1360,10 @@ class Service:
             title, said, cause = key + REVIEW_TITLE, "开了审查会话", "审查会话的开工消息，只有编号"
         else:
             live = self._live_of(scope)
-            if live and not fresh:
+            if live and not fresh:     # also with a mode brain-kit does not know: its row says to fix it there
                 return {"ok": True, "slot": live["slot"], "url": live["url"], "said": live_said(live)}
+            if broken:                 # a new session's first message and its clone's Lean setup follow the flow
+                raise AppError(broken, "not_this_flow", 409)
             if task is None:     # a small requirement's start brings its own first message (family.kickoff)
                 task = intake.kickoff(key, branch, run.get("intent"),
                                       [str(m.get("package")) for m in run.get("materials") or [] if isinstance(m, dict)],

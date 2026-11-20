@@ -140,3 +140,35 @@ def test_open_mrs_commands_are_scrubbed_like_the_description_card(tmp_path, home
     opened = run(go())
     assert opened["ok"] and any(c.startswith("glab mr create") for c in opened["commands"]), opened
     assert not [c for c in opened["commands"] if secret in c], "the commands are scrubbed"
+
+
+@needs_brainkit
+def test_a_mode_brain_kit_does_not_know_still_opens_its_live_session(tmp_path, home):
+    """The row says to have the AI put run.json's mode back in the session: 打开会话 returns that session; a new one
+    would start on a guessed flow, so it is refused in the row's words."""
+    from test_fast_flow import START, idle, project, service as fast_service
+    repo = project(tmp_path)
+    svc, gw = fast_service(tmp_path, home, repo)
+
+    async def go():
+        await svc.start()
+        try:
+            out = await svc.intake_start(dict(START))
+            await idle(svc, gw, out["slot"])
+            rec = home / "workplace" / "brain-app" / "pay" / "coupon" / "runs" / out["key"] / "run.json"
+            rec.write_text(json.dumps(dict(json.loads(rec.read_text()), mode="turbo")), encoding="utf-8")
+            svc._repo("r1").invalidate()
+            again = await svc.open_session("r1", out["key"])
+            gw.slot_rows.pop(out["slot"])          # the person deletes it in KiroCrew
+            sm = mod("sessions")
+            for _ in range(sm.STATS_EVERY * sm.MISSING_POLLS + 1):
+                await svc.sessions.poll()
+            with pytest.raises(AppError) as fresh:
+                await svc.open_session("r1", out["key"])
+            return out, again, fresh.value
+        finally:
+            await svc.stop()
+
+    out, again, fresh = run(go())
+    assert (again["ok"], again["slot"]) == (True, out["slot"])
+    assert (fresh.code, fresh.status) == ("not_this_flow", 409) and "mode" in str(fresh)
