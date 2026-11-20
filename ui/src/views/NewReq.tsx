@@ -1,12 +1,15 @@
 /**
  * 开需求: claim a requirement and start it, in the sample's empty state + start form look. A hero says what happens
- * (认领 → 需求内容 → 开工 → Lean 推进 → 交给运行机) as a Flow whose steps follow the form. Then three numbered cards:
+ * (认领 → 需求内容 → 开工 → Lean 推进 → 交给运行机, or with 快速 → 写代码 → 开 MR → 合并) as a Flow whose steps follow the
+ * form. Then three numbered cards:
  *
  *   1 认领      repo, title, 英文短名 (suggested from the title), key (prefilled from GET /intake/next), the paths it is
  *              expected to change: a grid. Opened for a requirement claimed already (?key=&title=): its key is fixed and
  *              its title filled; 开工 starts that claim (`brain start --key`). And 「大需求：先拆成小需求」 (StartBody.big;
  *              off with IntakeNext.big.why when this repo cannot): Lean's requirements and design as usual, the design
- *              with the unit split, then 拆成小需求 on its 运行过程.
+ *              with the unit split, then 拆成小需求 on its 运行过程. Or 「快速：直接写代码」 (StartBody.fast; off with
+ *              IntakeNext.fast.why, brain-kit's words): no Lean intent, stages or approvals, it ends with 开 MR. Choosing
+ *              one of the two clears the other.
  *   2 需求内容（选填）  a paragraph typed or pasted (「用一段话说需求」, IntakeBody.text: brain-kit takes it in as one more
  *              document, 需求描述.md), the documents (选文件… / 选文件夹…: this machine's own dialog, POST /pick, adds the
  *              paths chosen to the box; or pasted) and the files left out, then the five gates as five cards whose
@@ -30,7 +33,7 @@
 import { useState, type ReactNode } from 'react'
 import { useAppApi, useNavigate } from '@kirocrew/app-sdk'
 import { paths, useAction, usePoll } from '../api'
-import { FLOW_FORM } from '../flows'
+import { FAST_HINT, FAST_TOGGLE, FLOW_FORM } from '../flows'
 import { addPaths, ago, lines, splitPaths } from '../format'
 import { KEY_RE, type NewEntry } from '../nav'
 import type { Tone } from '../styles'
@@ -45,10 +48,12 @@ export const REVIEW_HINT = '这些没打码，也不拦开工：可能是人名�
 /** 第 4 关 and 第 5 关: what brain-kit masks by itself */
 export const GATE4 = '证件号、电话、卡号、邮箱：整份打码。标签后面、姓名列里的人名：在找到的地方打码。看不准是人名（或密码）还是普通词的不打码，列在「请你确认」里。'
 export const GATE5 = '密钥打码。私钥和云访问密钥：整份不收。'
-const HERO_HEAD = '认领一个需求，写一段话或带上文档开工。它们先过五关，原件不进任何仓库。开工时在它自己的工作目录里开一个 AI 开发会话（brain-dev），按 AI-DLC Lean 的步骤（需求 → 设计 → 代码 → 测试 → 发布）一步步做，需求和设计由你批准'
+const HERO_START = '认领一个需求，写一段话或带上文档开工。它们先过五关，原件不进任何仓库。开工时在它自己的工作目录里开一个 AI 开发会话（brain-dev），'
+const HERO_HEAD = `${HERO_START}按 AI-DLC Lean 的步骤（需求 → 设计 → 代码 → 测试 → 发布）一步步做，需求和设计由你批准`
 export const HERO_TEXT = `${HERO_HEAD}；团队仓库做完可以交给运行机（团队的服务器）接着跑。`
 /** a repo without a remote is done only on this machine: no word of the runner */
 export const HERO_LOCAL = `${HERO_HEAD}，做完在这台机器上发布、合并。`
+export const HERO_FAST = `${HERO_START}不开 Lean intent、不走阶段和审批，直接按你说的写代码和测试；提交前自动检查要绿，做完开 MR，由人合并。`
 export const NO_CONFIDENTIAL = '这个仓库不收机密材料：机密、绝密和「不确定」的文档，要先请产品写一份脱敏摘要，交摘要。'
 export const NO_SECRET = '绝密材料不收：先请产品写一份脱敏摘要，交摘要。'
 export const CHECK_HINT = '只检查：不认领，一段话和文档都不收进任何地方。'
@@ -133,8 +138,9 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
   const [exclude, setExclude] = useState('')
   const [openSession, setOpenSession] = useState(true)
   const [trust, setTrust] = useState(true)
-  const [big, setBig] = useState(false)
-  const [sentBig, setSentBig] = useState(false)   // the start that was sent asked for a big one
+  // 「大需求」 or 「快速」: one at most
+  const [choice, setChoice] = useState<'big' | 'fast' | null>(null)
+  const [sent, setSent] = useState<'big' | 'fast' | null>(null)   // what the start that was sent asked for
 
   const info = next.data && next.data.repo === repo ? next.data : null
   const nextKey = info?.key ?? ''
@@ -146,7 +152,11 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
   const refusedClasses = CLASSES.filter((k) => classRefusal(k, allowConfidential))
   // 「大需求：先拆成小需求」: this repo's say (tracker none, a brain-kit with brain split)
   const bigInfo = info?.big ?? null
-  const bigOn = big && !!bigInfo?.ok
+  const bigOn = choice === 'big' && !!bigInfo?.ok
+  // 「快速：直接写代码」: brain-kit's say for this repo (an older backend says nothing: no toggle)
+  const fastInfo = info?.fast ?? null
+  const fastOn = choice === 'fast' && !!fastInfo?.ok
+  const form = FLOW_FORM[fastOn ? 'fast' : 'lean']
 
   const body: IntakeBody = {
     repo, key: keyValue.trim(), slug: slugValue.trim(), title: title.trim(), docs: lines(docs), text: text.trim(), consent, classification, business, exclude: lines(exclude),
@@ -175,8 +185,8 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
     else setFailedAt(at)
   }
   const runStart = async () => {
-    setSentBig(bigOn)
-    const r = await start.run({ ...body, paths: splitPaths(expected), open_session: openSession, trust, ...(bigOn ? { big: true } : {}) })
+    setSent(bigOn ? 'big' : fastOn ? 'fast' : null)
+    const r = await start.run({ ...body, paths: splitPaths(expected), open_session: openSession, trust, ...(bigOn ? { big: true } : {}), ...(fastOn ? { fast: true } : {}) })
     if (r) props.reloadStatus()
   }
 
@@ -247,7 +257,7 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
       state: noMaterial ? 'off' : ok || passed ? 'done' : materialBad ? 'bad' : basicsOk ? 'now' : undefined,
     },
     { icon: 'laptop', title: '开工', text: '在它自己的工作目录里开 AI 开发会话', state: ok ? 'done' : started ? 'bad' : canStart ? 'now' : undefined },
-    ...FLOW_FORM.lean.way({ big: bigOn, localOnly }).map((s, i): FlowStep => (i === 0 && ok ? { ...s, state: 'now' } : s)),
+    ...form.way({ big: bigOn, localOnly }).map((s, i): FlowStep => (i === 0 && ok ? { ...s, state: 'now' } : s)),
   ]
   const stepOf = (i: number) => flow[i].state
 
@@ -320,7 +330,7 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
       <section className="br-hero nr-hero" aria-label="开需求">
         <div>
           <h2>{claimed ? `开工：${claimed}` : '开需求'}</h2>
-          <p>{claimed ? `${claimed} 已经认领了，还没开工。看一眼英文短名，有一段话或文档的话填上，点「开工」。` : localOnly ? HERO_LOCAL : HERO_TEXT}</p>
+          <p>{claimed ? `${claimed} 已经认领了，还没开工。看一眼英文短名，有一段话或文档的话填上，点「开工」。` : fastOn ? HERO_FAST : localOnly ? HERO_LOCAL : HERO_TEXT}</p>
         </div>
         <Flow steps={flow} label="开需求的步骤" />
       </section>
@@ -394,13 +404,26 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
             {bigInfo && (
               <div className="br-field is-full nr-big" data-testid="new-big">
                 <label className={`nr-toggle${bigOn ? ' is-on' : ''}${bigInfo.ok ? '' : ' is-disabled'}`}>
-                  <input type="checkbox" checked={bigOn} disabled={!bigInfo.ok} aria-describedby="new-big-hint" onChange={(e) => setBig(e.target.checked)} />
+                  <input type="checkbox" checked={bigOn} disabled={!bigInfo.ok} aria-describedby="new-big-hint" onChange={(e) => setChoice(e.target.checked ? 'big' : null)} />
                   <RoleIcon role="scope" size={18} />
                   <span>大需求：先拆成小需求</span>
                 </label>
                 <p className="br-hint" id="new-big-hint">
                   {BIG_HINT}
                   {!bigInfo.ok && bigInfo.why && <span className="nr-big-why" data-testid="new-big-why"><i aria-hidden="true">✋</i>{bigInfo.why}</span>}
+                </p>
+              </div>
+            )}
+            {fastInfo && (
+              <div className="br-field is-full nr-big" data-testid="new-fast">
+                <label className={`nr-toggle${fastOn ? ' is-on' : ''}${fastInfo.ok ? '' : ' is-disabled'}`}>
+                  <input type="checkbox" checked={fastOn} disabled={!fastInfo.ok} aria-describedby="new-fast-hint" onChange={(e) => setChoice(e.target.checked ? 'fast' : null)} />
+                  <RoleIcon role="code" size={18} />
+                  <span>{FAST_TOGGLE}</span>
+                </label>
+                <p className="br-hint" id="new-fast-hint">
+                  {FAST_HINT}
+                  {!fastInfo.ok && fastInfo.why && <span className="nr-big-why" data-testid="new-fast-why"><i aria-hidden="true">✋</i>{fastInfo.why}</span>}
                 </p>
               </div>
             )}
@@ -525,7 +548,7 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
           </div>
           {start.error && <p className="br-error" role="alert">{start.error}</p>}
           {started && (
-            <StartOut r={started} big={sentBig} onOpen={navigate} path={picked?.path ?? ''} onMe={(x) => props.setStatus(x.status)}
+            <StartOut r={started} big={sent === 'big'} fast={sent === 'fast'} onOpen={navigate} path={picked?.path ?? ''} onMe={(x) => props.setStatus(x.status)}
               onBoard={(k) => props.go({ kind: 'board', repo, key: k })}
               onItem={(k) => props.go({ kind: 'item', repo, key: k })} />
           )}
@@ -638,10 +661,12 @@ function Cell({ n, label, tone }: { n: number; label: string; tone?: 'ok' | 'bad
   )
 }
 
-function StartOut({ r, big = false, path, onOpen, onBoard, onItem, onMe }: {
+function StartOut({ r, big = false, fast = false, path, onOpen, onBoard, onItem, onMe }: {
   r: StartResult
   /** opened as a big one: what comes next */
   big?: boolean
+  /** opened as a fast one: what happens in its session */
+  fast?: boolean
   path: string
   onOpen: (url: string) => void
   onBoard: (key: string) => void
@@ -654,7 +679,7 @@ function StartOut({ r, big = false, path, onOpen, onBoard, onItem, onMe }: {
         <span className="nr-started-mark" aria-hidden="true">{r.ok ? '✓' : '✕'}</span>
         <div>
           <b role="status">{r.ok ? `开工了${r.key ? `：${r.key}` : ''}` : r.problem ? `没开成：${r.problem.text}` : '没开成'}</b>
-          <small>{r.ok ? (r.url ? STARTED_NEXT : `分支和工作目录都好了。要开会话时，在${ACT.openDetail}里点「${ACT.openSession}」。`)
+          <small>{r.ok ? (r.url ? FLOW_FORM[fast ? 'fast' : 'lean'].startedNext : `分支和工作目录都好了。要开会话时，在${ACT.openDetail}里点「${ACT.openSession}」。`)
             : r.problem?.todo || '原因在下面「细节」里（开工时 brain-kit 的原话）：照它改好，再点「开工」。'}</small>
         </div>
       </div>

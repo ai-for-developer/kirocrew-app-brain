@@ -103,6 +103,9 @@ const W = world as unknown as {
   /** the 产出 drawer's answers (backend/core/outputs.py over PAY-9's and PAY-2's real commits), by the route's path and
    * its query sorted (preview_world.outputs_key); a refusal as __error */
   outputs?: Record<string, unknown>
+  /** 「快速：直接写代码」 as GET /intake/next says it for each repo (brain-kit's refusal, or the app's for a repo without a
+   * remote) */
+  intake_fast?: Record<string, NonNullable<IntakeNext['fast']>>
 }
 let repos: RepoInfo[] = flags.has('norepos') ? [] : clone(W.status.repos)
 
@@ -310,7 +313,8 @@ function intakeNext(path: string): IntakeNext {
   const tracker = r.kit?.tracker ?? 'none'
   const big = tracker !== 'none' ? { ok: false, why: '这个仓库用 Jira：大需求只在不用 Jira 的仓库里拆' }
     : flags.has('nokit') ? { ok: false, why: '这个 brain-kit 还不会拆小需求：在设置里换新一点的 brain-kit' } : { ok: true, why: '' }
-  return { repo, key: `${prefix}-${n + 1}`, tracker, prefix, error: '', allow_confidential: false, push: unpushed.get(r.path) ?? null, big }
+  const fast = W.intake_fast?.[world ?? ''] ?? (r.remote === false ? { ok: false, why: '这个仓库只在本机做（没有远端）：快速需求做完要开 MR，这里开不了' } : { ok: true, why: '' })
+  return { repo, key: `${prefix}-${n + 1}`, tracker, prefix, error: '', allow_confidential: false, push: unpushed.get(r.path) ?? null, big, fast }
 }
 
 /** What 导入仓库 did to a path in the preview, read by the routes that answer about it afterwards. */

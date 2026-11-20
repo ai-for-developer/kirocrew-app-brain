@@ -7,8 +7,9 @@ import { API, installFixtureRoutes } from '../test/routes'
 import { parseView, searchOf } from '../nav'
 import type { CheckRow, CrewChecks, IntakeBody, IntakeCheck, Overview, Person, RepoMe, Status } from '../types'
 import { NAME_RULE } from '../ui'
-import { CHECK_HINT, CREW_OK, GATE4, GATE5, HERO_LOCAL, HERO_TEXT, NO_CONFIDENTIAL, NO_SECRET, NewView, REVIEW_HINT, STARTED_NEXT, TEXT_HINT, slugFrom } from './NewReq'
+import { CHECK_HINT, CREW_OK, GATE4, GATE5, HERO_FAST, HERO_LOCAL, HERO_TEXT, NO_CONFIDENTIAL, NO_SECRET, NewView, REVIEW_HINT, STARTED_NEXT, TEXT_HINT, slugFrom } from './NewReq'
 import { BIG_HINT } from './Family'
+import { FAST_HINT } from '../flows'
 
 /** KiroCrew with nothing that stops a session (the fixtures' status has a ✗ row: the tests of it bring their own). */
 function calmCrew(): CrewChecks {
@@ -661,6 +662,73 @@ describe('开需求', () => {
     await user.click(startBtn())
     await screen.findByTestId('start-result')
     expect(startBody()).not.toHaveProperty('big')
+  })
+
+  // ---------------------------------------------------------------- 快速：直接写代码
+
+  const FAST = '快速：直接写代码'
+  const heroTitles = () => within(screen.getByRole('list', { name: '开需求的步骤' })).getAllByRole('listitem').map((li) => li.querySelector('b')?.textContent?.replace(/^[0-9✓]+/, ''))
+
+  test('「快速：直接写代码」 says what stays and how it ends; chosen, the hero is the fast way, the start sends fast: true, the answer says to 开 MR when done', async () => {
+    const { user } = setup()
+    await fillBasics(user)
+    expect(within(screen.getByTestId('new-fast')).getByText(FAST_HINT)).toBeInTheDocument()
+    const box = screen.getByLabelText(FAST)
+    expect(box).toBeEnabled()
+    expect(box).not.toBeChecked()
+    await user.click(box)
+    expect(box.closest('label')).toHaveClass('is-on')
+    expect(screen.getByRole('region', { name: '开需求' })).toHaveTextContent(HERO_FAST)
+    expect(heroTitles()).toEqual(['认领', '需求内容', '开工', '写代码', '开 MR', '合并'])
+    expect(startBtn()).toBeEnabled()
+    await user.click(startBtn())
+    const out = await screen.findByTestId('start-result')
+    expect(startBody()).toMatchObject({ fast: true, open_session: true })
+    expect(startBody()).not.toHaveProperty('big')
+    expect(out).toHaveTextContent('做完了在需求现状里点「开 MR」')
+    expect(out).not.toHaveTextContent(STARTED_NEXT)
+    expect(flowStates()).toEqual(['done', 'off', 'done', 'now', undefined, undefined])
+  })
+
+  test('大需求 and 快速 exclude each other: choosing one clears the other, and the start sends only that one', async () => {
+    const { user } = setup()
+    await fillBasics(user)
+    const big = screen.getByLabelText(BIG)
+    const fast = screen.getByLabelText(FAST)
+    await user.click(big)
+    await user.click(fast)
+    expect(fast).toBeChecked()
+    expect(big).not.toBeChecked()
+    await user.click(big)
+    expect(big).toBeChecked()
+    expect(fast).not.toBeChecked()
+    expect(heroTitles()).toEqual(['认领', '需求内容', '开工', 'Lean 推进', '拆成小需求', '交给运行机'])
+    await user.click(startBtn())
+    await screen.findByTestId('start-result')
+    expect(startBody()).toMatchObject({ big: true })
+    expect(startBody()).not.toHaveProperty('fast')
+  })
+
+  test('off with brain-kit’s why where the team or the repo does not allow it, and never sent', async () => {
+    const why = '团队关了快速模式（目标分支上 .brain/kit.json 的 fast_mode 是 false）'
+    const { user } = setup({ [`GET ${API}/intake/next*`]: () => ({ ...fx.intakeNext(), fast: { ok: false, why } }) })
+    await fillBasics(user)
+    const box = screen.getByLabelText(FAST)
+    expect(box).toBeDisabled()
+    expect(box.closest('label')).toHaveClass('is-disabled')
+    expect(screen.getByTestId('new-fast-why')).toHaveTextContent(why)
+    expect(box).toHaveAccessibleDescription(`${FAST_HINT} ${why}`)
+    await user.click(startBtn())
+    await screen.findByTestId('start-result')
+    expect(startBody()).not.toHaveProperty('fast')
+  })
+
+  test('an older backend says nothing of 快速: no toggle, the Lean way', async () => {
+    const { fast: _, ...old } = fx.intakeNext()
+    setup({ [`GET ${API}/intake/next*`]: () => old })
+    await waitFor(() => expect(screen.getByLabelText('需求号')).toHaveValue('PAY-8'))
+    expect(screen.queryByTestId('new-fast')).toBeNull()
+    expect(heroTitles()).toEqual(['认领', '需求内容', '开工', 'Lean 推进', '交给运行机'])
   })
 
   const OVERVIEW = `${API}/overview?repo=all`
