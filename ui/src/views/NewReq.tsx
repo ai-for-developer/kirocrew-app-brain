@@ -1,20 +1,22 @@
 /**
  * 开需求: claim a requirement and start it, in the sample's empty state + start form look. A hero says what happens
- * (认领 → 导入需求文档 → 开工 → Lean 推进 → 交给运行机) as a Flow whose steps follow the form. Then three numbered cards:
+ * (认领 → 需求内容 → 开工 → Lean 推进 → 交给运行机) as a Flow whose steps follow the form. Then three numbered cards:
  *
  *   1 认领      repo, title, 英文短名 (suggested from the title), key (prefilled from GET /intake/next), the paths it is
  *              expected to change: a grid. Opened for a requirement claimed already (?key=&title=): its key is fixed and
  *              its title filled; 开工 starts that claim (`brain start --key`). And 「大需求：先拆成小需求」 (StartBody.big;
  *              off with IntakeNext.big.why when this repo cannot): Lean's requirements and design as usual, the design
  *              with the unit split, then 拆成小需求 on its 运行过程.
- *   2 导入需求文档（选填）  the documents (选文件… / 选文件夹…: this machine's own dialog, POST /pick, adds the paths
- *              chosen to the box; or pasted) and the files left out, then the five gates as five cards whose state
- *              shows (green: done, magenta: waits for you, red: stopped, the check's or this repo's rule). Without
- *              documents they are one line. Gate 2 says up front when the repo takes no confidential material (kit.json
- *              intake.allow_confidential), and a refused pick says what this repo refuses. 「先检查」 runs the gates as a
- *              dry run (POST /intake/check: nothing claimed, no document taken in); its answer: what stops it said as
- *              what to do on this page (the field it names marked), the counts, a card per file (what was found and
- *              what happened to it), 请你确认 by file name, brain-kit's own words folded under 细节.
+ *   2 需求内容（选填）  a paragraph typed or pasted (「用一段话说需求」, IntakeBody.text: brain-kit takes it in as one more
+ *              document, 需求描述.md), the documents (选文件… / 选文件夹…: this machine's own dialog, POST /pick, adds the
+ *              paths chosen to the box; or pasted) and the files left out, then the five gates as five cards whose
+ *              state shows (green: done, magenta: waits for you, red: stopped, the check's or this repo's rule). With
+ *              neither a paragraph nor documents they are one line. Gate 2 says up front when the repo takes no
+ *              confidential material (kit.json intake.allow_confidential), and a refused pick says what this repo
+ *              refuses. 「先检查」 runs the gates as a dry run (POST /intake/check: nothing claimed, no document taken
+ *              in); its answer: what stops it said as what to do on this page (the field it names marked), the counts,
+ *              a card per file (what was found and what happened to it), 请你确认 by file name, brain-kit's own words
+ *              folded under 细节.
  *   3 开工      the session options, 「开工」 (POST /intake/start), big, with why it is off next to it: KiroCrew cannot
  *              open the session (a ✗ above), the default branch not on origin yet (推送 right there), the form, a check
  *              of exactly what the form says now. Above it, one line when you already have as many open as the limit
@@ -42,19 +44,20 @@ export const REVIEW_HINT = '这些没打码，也不拦开工：可能是人名�
 /** 第 4 关 and 第 5 关: what brain-kit masks by itself */
 export const GATE4 = '证件号、电话、卡号、邮箱：整份打码。标签后面、姓名列里的人名：在找到的地方打码。看不准是人名（或密码）还是普通词的不打码，列在「请你确认」里。'
 export const GATE5 = '密钥打码。私钥和云访问密钥：整份不收。'
-const HERO_HEAD = '认领一个需求，带上它的文档开工。文档先过五关，原件不进任何仓库。开工时在它自己的工作目录里开一个 AI 开发会话（brain-dev），按 AI-DLC Lean 的步骤（需求 → 设计 → 代码 → 测试 → 发布）一步步做，需求和设计由你批准'
+const HERO_HEAD = '认领一个需求，写一段话或带上文档开工。它们先过五关，原件不进任何仓库。开工时在它自己的工作目录里开一个 AI 开发会话（brain-dev），按 AI-DLC Lean 的步骤（需求 → 设计 → 代码 → 测试 → 发布）一步步做，需求和设计由你批准'
 export const HERO_TEXT = `${HERO_HEAD}；团队仓库做完可以交给运行机（团队的服务器）接着跑。`
 /** a repo without a remote is done only on this machine: no word of the runner */
 export const HERO_LOCAL = `${HERO_HEAD}，做完在这台机器上发布、合并。`
 export const NO_CONFIDENTIAL = '这个仓库不收机密材料：机密、绝密和「不确定」的文档，要先请产品写一份脱敏摘要，交摘要。'
 export const NO_SECRET = '绝密材料不收：先请产品写一份脱敏摘要，交摘要。'
-export const CHECK_HINT = '只检查：不认领，文档也不收进任何地方。'
+export const CHECK_HINT = '只检查：不认领，一段话和文档都不收进任何地方。'
+export const TEXT_HINT = '写清楚要做什么、给谁用、怎样算做完。它和文档一样过下面的五关。'
 export const CREW_OK = 'KiroCrew 的检查都过了：开工以后能开会话。'
 export const STARTED_NEXT = '打开会话：AI 先写需求文档；写好会请你批准（待办和运行过程会提醒，批准那一行要你在会话里自己打）。'
 const CLASSES = Object.keys(CLASS_LABEL) as Classification[]
 
 /** A gate's state: ok (done), wait (waits for you), bad (stopped: the check, or this repo's rule), warn (请你确认),
- * auto (brain-kit does it), off (no documents: not needed). */
+ * auto (brain-kit does it), off (neither a paragraph nor documents: not needed). */
 export type GateState = 'ok' | 'wait' | 'bad' | 'warn' | 'auto' | 'off'
 const GATE_META: Record<GateState, { tone: Tone; glyph: string }> = {
   ok: { tone: 'ok', glyph: '✓' },
@@ -121,6 +124,7 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
   const [key, setKey] = useState('')
   const [keyEdited, setKeyEdited] = useState(false)
   const [expected, setExpected] = useState('')
+  const [text, setText] = useState('')
   const [docs, setDocs] = useState('')
   const [consent, setConsent] = useState(false)
   const [classification, setClassification] = useState<Classification | ''>('')
@@ -144,7 +148,7 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
   const bigOn = big && !!bigInfo?.ok
 
   const body: IntakeBody = {
-    repo, key: keyValue.trim(), slug: slugValue.trim(), title: title.trim(), docs: lines(docs), consent, classification, business, exclude: lines(exclude),
+    repo, key: keyValue.trim(), slug: slugValue.trim(), title: title.trim(), docs: lines(docs), text: text.trim(), consent, classification, business, exclude: lines(exclude),
   }
   // what a check is valid for: the IntakeBody only. Expected paths, open_session and trust are not part of the gates,
   // so changing them does not need a new check.
@@ -193,8 +197,8 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
   const keyBad = keyValue.trim() !== '' && !KEY_RE.test(keyValue.trim())
   const keyMissing = tracker === 'jira' && keyValue.trim() === ''
   const clean = (c: IntakeCheck) => c.ok && c.blocking.length === 0 && !c.error
-  const noDocs = body.docs.length === 0
-  const classRefused = !noDocs && !!classification && refusedClasses.includes(classification)
+  const noMaterial = body.docs.length === 0 && body.text === ''
+  const classRefused = !noMaterial && !!classification && refusedClasses.includes(classification)
   const current = checked && checked.print === print ? checked.result : null
   const why = !repo ? '先选一个仓库'
     : !body.title ? '先写标题'
@@ -206,14 +210,14 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
                 : info?.push ? `先推送 ${info.push.branch}：开工从远端的 ${info.push.branch} 建分支，那里还没有 brain-kit`
                   : openSession && crewBad ? `KiroCrew 这边有问题，开不了会话：${crewFix ? `先点上面的「${crewFix}」` : '先照上面说的处理好'}，或者不勾「开工后开会话」`
                     : classRefused ? classRefusal(classification, allowConfidential)
-                      : noDocs ? ''
-                        : !checked ? '有文档：先检查一遍（不写入）'
+                      : noMaterial ? ''
+                        : !checked ? '有一段话或文档：先检查一遍（不写入）'
                           : checked.print !== print ? '表单改过了：再检查一遍'
                             : !clean(checked.result) ? '检查没过：照红色那几行改'
                               : ''
   const canStart = why === '' && !start.busy
-  const canCheck = !!repo && !noDocs && !check.busy
-  const needCheck = !noDocs && !current && !started?.ok
+  const canCheck = !!repo && !noMaterial && !check.busy
+  const needCheck = !noMaterial && !current && !started?.ok
 
   // ---- the five gates
   const stopLines = current ? [...current.blocking, current.error] : failedAt === print ? [check.error] : []
@@ -225,8 +229,8 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
   if (classRefused) stopped.add(2)
   const markExclude = stopLines.some((l) => l.includes('不收这些文件'))
   const passed = !!current && clean(current)
-  const own = (n: number, done: boolean): GateState => (noDocs ? 'off' : stopped.has(n) ? 'bad' : done ? 'ok' : 'wait')
-  const auto = (n: number, warn = false): GateState => (noDocs ? 'off' : stopped.has(n) ? 'bad' : warn ? 'warn' : passed ? 'ok' : 'auto')
+  const own = (n: number, done: boolean): GateState => (noMaterial ? 'off' : stopped.has(n) ? 'bad' : done ? 'ok' : 'wait')
+  const auto = (n: number, warn = false): GateState => (noMaterial ? 'off' : stopped.has(n) ? 'bad' : warn ? 'warn' : passed ? 'ok' : 'auto')
   const gates: GateState[] = [own(1, consent), own(2, !!classification), own(3, !!business), auto(4, !!current?.review.length), auto(5)]
   const word = (s: GateState, waiting: string) =>
     s === 'ok' ? (passed ? '过了' : '好了') : s === 'wait' ? waiting : s === 'bad' ? '拦下了' : s === 'warn' ? '请你确认' : s === 'auto' ? '自动' : '不用'
@@ -234,12 +238,12 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
   // ---- the flow
   const basicsOk = !!repo && !!body.title && SLUG_RE.test(body.slug) && !keyMissing && !keyBad && !me?.ask
   const ok = !!started?.ok
-  const docsBad = (!!current && !clean(current)) || failedAt === print || classRefused
+  const materialBad = (!!current && !clean(current)) || failedAt === print || classRefused
   const flow: FlowStep[] = [
     { icon: 'new', title: '认领', text: claimed ? `${claimed} 已经认领了` : '仓库、标题、需求号', state: ok || basicsOk ? 'done' : 'now' },
     {
-      icon: 'security', title: '导入需求文档', text: noDocs ? '选填：没有就跳过' : '过五关，原件不进任何仓库',
-      state: noDocs ? 'off' : ok || passed ? 'done' : docsBad ? 'bad' : basicsOk ? 'now' : undefined,
+      icon: 'security', title: '需求内容', text: noMaterial ? '选填：一段话或文档，没有就跳过' : '过五关，原件不进任何仓库',
+      state: noMaterial ? 'off' : ok || passed ? 'done' : materialBad ? 'bad' : basicsOk ? 'now' : undefined,
     },
     { icon: 'laptop', title: '开工', text: '在它自己的工作目录里开 AI 开发会话', state: ok ? 'done' : started ? 'bad' : canStart ? 'now' : undefined },
     { icon: 'req', title: 'Lean 推进', text: bigOn ? '需求和设计由你批准，设计里拆单元' : '需求和设计由你批准', state: ok ? 'now' : undefined },
@@ -318,7 +322,7 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
       <section className="br-hero nr-hero" aria-label="开需求">
         <div>
           <h2>{claimed ? `开工：${claimed}` : '开需求'}</h2>
-          <p>{claimed ? `${claimed} 已经认领了，还没开工。看一眼英文短名，有文档的话填上，点「开工」。` : localOnly ? HERO_LOCAL : HERO_TEXT}</p>
+          <p>{claimed ? `${claimed} 已经认领了，还没开工。看一眼英文短名，有一段话或文档的话填上，点「开工」。` : localOnly ? HERO_LOCAL : HERO_TEXT}</p>
         </div>
         <Flow steps={flow} label="开需求的步骤" />
       </section>
@@ -411,9 +415,15 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
           </div>
         </section>
 
-        <section className="br-card nr-sec" aria-label="文档">
-          <StepHead n={2} title="导入需求文档（选填）" state={noDocs ? undefined : stepOf(1)} sub={noDocs ? '没有文档：五关都不用过，也不用检查' : '前三关你来定，后两关自动'} />
+        <section className="br-card nr-sec" aria-label="需求内容">
+          <StepHead n={2} title="需求内容（选填）" state={noMaterial ? undefined : stepOf(1)} sub={noMaterial ? '一段话或文档都没有：五关都不用过，也不用检查' : '前三关你来定，后两关自动'} />
           <div className="nr-grid">
+            <div className="br-field is-full">
+              <label htmlFor="new-text">用一段话说需求（选填）</label>
+              <textarea id="new-text" rows={4} value={text} placeholder="每周一早上给每个商户发上周的结算周报：每天的交易笔数、金额和退款。商户在后台也能下载。"
+                aria-describedby="new-text-hint" onChange={(e) => setText(e.target.value)} />
+              <p className="br-hint" id="new-text-hint">{TEXT_HINT}</p>
+            </div>
             <div className="br-field is-4">
               <label htmlFor="new-docs">文档（一行一个路径）</label>
               <div className="nr-pick">
@@ -424,7 +434,7 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
               {pick.error && <p className="br-error" role="alert">{pick.error}</p>}
               <textarea id="new-docs" rows={Math.min(8, Math.max(2, docs.split('\n').length))} value={docs} placeholder="/Users/alice/Downloads/结算周报需求"
                 aria-describedby="new-docs-hint" onChange={(e) => setDocs(e.target.value)} />
-              <p className="br-hint" id="new-docs-hint">选好的文件会一行一个加进框里。也可以粘贴路径：Mac 上在访达里选中它，按 ⌥⌘C，粘贴到这里。飞书 / Lark 导出的文件夹也行。{noDocs ? '填了文档，下面就展开五关。' : ''}</p>
+              <p className="br-hint" id="new-docs-hint">选好的文件会一行一个加进框里。也可以粘贴路径：Mac 上在访达里选中它，按 ⌥⌘C，粘贴到这里。飞书 / Lark 导出的文件夹也行。{noMaterial ? '写了一段话或填了文档，下面就展开五关。' : ''}</p>
             </div>
             <div className={`br-field is-2${markExclude ? ' nr-hl' : ''}`} data-marked={markExclude || undefined}>
               <label htmlFor="new-exclude">不收这些文件（按文件名，可以用 *，一行一个）</label>
@@ -432,8 +442,8 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
             </div>
           </div>
 
-          {noDocs ? (
-            <p className="nr-nodocs" data-testid="no-docs"><RoleIcon role="security" size={16} />没有文档：五关（同意、密级、金额公司名、个人信息、密钥）都不用过，可以直接开工。</p>
+          {noMaterial ? (
+            <p className="nr-nodocs" data-testid="no-docs"><RoleIcon role="security" size={16} />一段话或文档都没有：五关（同意、密级、金额公司名、个人信息、密钥）都不用过，可以直接开工。</p>
           ) : (
             <>
               <ol className="nr-gates" aria-label="五关">

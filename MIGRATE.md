@@ -253,7 +253,7 @@ app 导不进来的：以前手开会话的聊天记录；用 Jira 认领、还�
 ### 3. 两个小仓库（人做）
 
 - **brain-authz**：只放 `identities.json`，写谁是谁、谁能回答哪类问题。格式见 brain-kit 的 `examples/identities.json`：`users` 里列出每个要交接的人的 GitLab 用户名，`roles` 里列出 `product`、`builder` 等角色各是谁。机器人账号不能读这个仓库。
-- **brain-intake**：放材料包和签好的凭证。用了「导入需求文档」的项目要它；开了 CI 的项目也要它（CI 从这里读凭证）。
+- **brain-intake**：放材料包和签好的凭证。开需求时交了文档、或写了「用一段话说需求」的项目要它（那段话也收进材料包）；开了 CI 的项目也要它（CI 从这里读凭证）。
 
 ### 4. 改 `.brain/kit.json`（走 MR）
 

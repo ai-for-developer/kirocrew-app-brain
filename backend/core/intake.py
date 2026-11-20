@@ -13,9 +13,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
+import shutil
 import subprocess
+import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +47,8 @@ GATE_ZH: list[tuple["re.Pattern[str]", Any]] = []
 REVIEW_RE = re.compile(r"请你确认 [0-9]+ 处（[^）]*）：「.*?」(?:、「.*?」)*(?=；|$)")
 FILE_RE = re.compile(r"^- \*\*(.+?)\*\*：")
 MAX_DOCS = 50
+MAX_TEXT = 20000
+TEXT_DOC = "需求描述.md"
 START_TIMEOUT_S = 900
 MAX_OUT = 20000
 
@@ -117,6 +123,17 @@ def expected_paths(v: Any) -> list[str]:
     return out
 
 
+def typed_text(v: Any) -> str:
+    if v is None:
+        return ""
+    if not isinstance(v, str):
+        raise IntakeError("「用一段话说需求」要是一段文字")
+    text = v.strip()
+    if len(text) > MAX_TEXT:
+        raise IntakeError("「用一段话说需求」最多 %d 个字（现在 %d 个）：长的请存成文档再交" % (MAX_TEXT, len(text)))
+    return text
+
+
 def clean_body(repo: Repo, body: dict[str, Any], *, start: bool) -> dict[str, Any]:
     """The form, checked; IntakeError says what is wrong (in Chinese)."""
     cfg = repo.cfg
@@ -140,22 +157,42 @@ def clean_body(repo: Repo, body: dict[str, Any], *, start: bool) -> dict[str, An
             raise IntakeError("文档要写这台电脑上的绝对路径：%s" % d)
         if not os.path.exists(p):
             raise IntakeError("找不到：%s" % d)
+    text = typed_text(body.get("text"))
+    material = bool(docs or text)
     cls = str(body.get("classification") or "")
-    if docs and cls not in CLASSES:
+    if material and cls not in CLASSES:
         raise IntakeError("第 2 关：选一个密级（公开、内部、机密、绝密、不确定）")
     business = str(body.get("business") or "")
     if business not in ("", "keep", "mask"):
         raise IntakeError("第 3 关：金额、公司名、合同号选「原样保留」或「换成占位符」")
-    if docs and body.get("consent") is not True:
+    if material and body.get("consent") is not True:
         raise IntakeError("第 1 关：勾上「我是作者，或已取得作者同意」")
     exclude = _lines(body.get("exclude"), 30)
     paths = expected_paths(body.get("paths"))
     for p in paths:
         if not re.match(r"^[A-Za-z0-9_./*-][A-Za-z0-9_./* -]{0,199}$", p) or ".." in p or p.startswith("/"):
             raise IntakeError("预计改动的路径要是仓库里的相对路径（列表，或用逗号、空格分开的一串）：%s" % p)
-    return {"slug": slug, "title": title, "key": key, "docs": [os.path.expanduser(d) for d in docs],
+    return {"slug": slug, "title": title, "key": key, "docs": [os.path.expanduser(d) for d in docs], "text": text,
             "classification": cls, "business": business, "consent": body.get("consent") is True,
             "exclude": exclude, "paths": paths}
+
+
+@contextlib.contextmanager
+def documents(b: dict[str, Any]) -> Iterator[list[str]]:
+    """TEXT_DOC's folder is readable only by this user (tempfile.mkdtemp) and goes when the block ends: brain-kit reads
+    --doc files only while it builds the package, whose manifest names its sources without their paths."""
+    if not b["text"]:
+        yield b["docs"]
+        return
+    folder = tempfile.mkdtemp(prefix="brain-intake-")
+    try:
+        path = os.path.join(folder, TEXT_DOC)
+        with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", encoding="utf-8",
+                  newline="\n") as f:
+            f.write(b["text"] + "\n")
+        yield [path] + b["docs"]
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 def store_path(repo: Repo) -> str:
@@ -176,22 +213,23 @@ def check(repo: Repo, body: dict[str, Any], me: str | None) -> dict[str, Any]:
         return out
     key = b["key"] or next_key(repo)["key"]
     out["key"] = key
-    if not b["docs"]:
-        out["error"] = "没有文档：不用检查，可以直接开工"
-        return out
-    pkg = bk.m("intake.package")
-    try:
-        store = store_path(repo)
-        rep = pkg.build(b["docs"], key, store, submitter=me or "unknown", consent=b["consent"],
-                        classification=b["classification"], business=b["business"] or None,
-                        kit_intake=repo.cfg["intake"], dry_run=True, exclude=b["exclude"])
-    except bk.brain_error() as exc:
-        out["error"] = gate_text(str(exc), b)
-        out["blocking_raw"] = [str(exc)]
-        return out
-    except (OSError, ValueError) as exc:
-        out["error"] = "读不了文档：%s" % str(exc)[:300]
-        return out
+    with documents(b) as docs:
+        if not docs:
+            out["error"] = "没有文档，也没写一段话：不用检查，可以直接开工"
+            return out
+        pkg = bk.m("intake.package")
+        try:
+            store = store_path(repo)
+            rep = pkg.build(docs, key, store, submitter=me or "unknown", consent=b["consent"],
+                            classification=b["classification"], business=b["business"] or None,
+                            kit_intake=repo.cfg["intake"], dry_run=True, exclude=b["exclude"])
+        except bk.brain_error() as exc:
+            out["error"] = gate_text(str(exc), b)
+            out["blocking_raw"] = [str(exc)]
+            return out
+        except (OSError, ValueError) as exc:
+            out["error"] = "读不了文档：%s" % str(exc)[:300]
+            return out
     raw = [str(x) for x in rep.get("blocking") or []]
     out.update(ok=not raw, package=rep.get("package"), classification=rep.get("classification"),
                segments=int(rep.get("segments") or 0), sources=int(rep.get("sources") or 0),
@@ -376,8 +414,6 @@ def start(repo: Repo, body: dict[str, Any], work_root: str) -> dict[str, Any]:
     out = {"ok": False, "key": None, "branch": None, "intent": None, "worktree": None, "output": "", "slot": None,
            "url": None, "session_error": "", "problem": None, "me": None}
     b = clean_body(repo, body, start=True)
-    if b["docs"] and not b["consent"]:
-        raise IntakeError("第 1 关：勾上「我是作者，或已取得作者同意」")
     wt = _worktree_for(repo, work_root, b["slug"])
     wt.parent.mkdir(parents=True, exist_ok=True)
     d = repo.cfg["default_branch"]
@@ -392,24 +428,25 @@ def start(repo: Repo, body: dict[str, Any], work_root: str) -> dict[str, Any]:
         args += ["--key", b["key"]]  # the next free key is taken by brain-kit itself (it asks GitLab, this did not)
     if b["paths"]:
         args += ["--paths", ",".join(b["paths"])]
-    if b["docs"]:
-        args += ["--classification", b["classification"], "--consent"]
-        if b["business"]:
-            args += ["--business", b["business"]]
-        for g in b["exclude"]:
-            args += ["--exclude", g]
-        args += ["--doc", *b["docs"]]
     env = dict(os.environ)
     env.update({"GIT_TERMINAL_PROMPT": "0", "PYTHONIOENCODING": "utf-8"})
-    try:
-        r = subprocess.run(brain_cmd() + args, cwd=str(wt), capture_output=True, text=True, timeout=START_TIMEOUT_S,
-                           env=env)
-        text = ((r.stdout or "") + (("\n" + r.stderr) if r.stderr else "")).strip()
-        code = r.returncode
-    except subprocess.TimeoutExpired:
-        text, code = "brain start 超过 %d 秒没结束" % START_TIMEOUT_S, 124
-    except OSError as exc:
-        text, code = "跑不了 brain：%s" % exc, 127
+    with documents(b) as docs:
+        if docs:
+            args += ["--classification", b["classification"], "--consent"]
+            if b["business"]:
+                args += ["--business", b["business"]]
+            for g in b["exclude"]:
+                args += ["--exclude", g]
+            args += ["--doc", *docs]
+        try:
+            r = subprocess.run(brain_cmd() + args, cwd=str(wt), capture_output=True, text=True,
+                               timeout=START_TIMEOUT_S, env=env)
+            text = ((r.stdout or "") + (("\n" + r.stderr) if r.stderr else "")).strip()
+            code = r.returncode
+        except subprocess.TimeoutExpired:
+            text, code = "brain start 超过 %d 秒没结束" % START_TIMEOUT_S, 124
+        except OSError as exc:
+            text, code = "跑不了 brain：%s" % exc, 127
     out["output"] = text[-MAX_OUT:]
     branch = repo.git.run("rev-parse", "--abbrev-ref", "HEAD", cwd=str(wt)).stdout.strip()
     parsed = parse_branch(branch, repo.cfg["branch_prefix"])

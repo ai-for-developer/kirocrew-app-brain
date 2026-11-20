@@ -415,12 +415,12 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
         <Unreadable repo={picked} error={data.errors.find((e) => e.repo === repo)} onImport={(path) => go({ kind: 'import', ...(path ? { path } : {}) })} onAll={() => pickRepo('all')} />
       )}
       {empty && !noKit && !unreadable && (
-        <EmptyHero title="还没有需求" text={[`${where}还没有需求。认领一个需求，导入需求文档（选填），开工：它会在这里一路走到合并——在哪一步、等谁、花了多少。`]}
+        <EmptyHero title="还没有需求" text={[`${where}还没有需求。认领一个需求，写一段话或导入文档（选填），开工：它会在这里一路走到合并——在哪一步、等谁、花了多少。`]}
           punch="人只在判断点上出手：批准、回答、验收。"
           flow={localOnly
-            ? [{ icon: 'new', title: '开需求', text: '认领，导入需求文档（选填）' }, { icon: 'laptop', title: '本机开发', text: 'brain-dev 带着 Lean' },
+            ? [{ icon: 'new', title: '开需求', text: '认领，一段话或文档（选填）' }, { icon: 'laptop', title: '本机开发', text: 'brain-dev 带着 Lean' },
               { icon: 'release', title: '发布', text: '你批准发布，合并' }, { icon: 'brain', title: '回写 Brain', text: '学到的留下来' }]
-            : [{ icon: 'new', title: '开需求', text: '认领，导入需求文档（选填）' }, { icon: 'laptop', title: '本机开发', text: 'brain-dev 带着 Lean' },
+            : [{ icon: 'new', title: '开需求', text: '认领，一段话或文档（选填）' }, { icon: 'laptop', title: '本机开发', text: 'brain-dev 带着 Lean' },
               { icon: 'handover', title: '交给运行机', text: '无人值守地做' }, { icon: 'release', title: '验收', text: '产品在 MR 上验收' }, { icon: 'brain', title: '回写 Brain', text: '学到的留下来' }]}>
           <button type="button" className="br-btn is-primary is-big" onClick={newReq}><RoleIcon role="new" size={17} />开需求</button>
         </EmptyHero>
