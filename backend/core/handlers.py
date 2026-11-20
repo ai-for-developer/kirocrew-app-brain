@@ -251,8 +251,15 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
     async def handoff(request: Any) -> Any:
         return kit.json(await svc.handoff(_rid(request), _key(request)))
 
+    async def act(request: Any) -> Any:
+        return kit.json(await svc.act(_rid(request), _key(request), str(request.match_info.get("action", ""))))
+
+    async def fast_mode(request: Any) -> Any:
+        return kit.json(await svc.fast_mode(await kit.body(request)))
+
     return [
         AppRoute("POST", "/requirements/{repo}/{key}/handoff", kit.guarded(handoff)),
+        AppRoute("POST", "/requirements/{repo}/{key}/act/{action}", kit.guarded(act)),
         AppRoute("GET", "/health", health),
         AppRoute("GET", "/status", kit.guarded(status)),
         AppRoute("GET", "/settings", kit.guarded(get_settings)),
@@ -301,5 +308,6 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
         AppRoute("POST", "/import/add", kit.guarded(import_add)),
         AppRoute("POST", "/repos/remove", kit.guarded(repo_remove)),
         AppRoute("POST", "/repos/ids/rebuild", kit.guarded(repo_ids_rebuild)),
+        AppRoute("POST", "/repos/fast-mode", kit.guarded(fast_mode)),
         AppRoute("POST", "/me/name", kit.guarded(me_name)),
     ]

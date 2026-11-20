@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import (bk, brainview, crewcheck, deliveries, detail, family, fastboard, fastrow, flowview, identity, importer,
-               inplace, installer, intake, landing, lean_view, mrdesc_view, mrinfo, picker, progress, roster)
+               inplace, installer, intake, kitmr, landing, lean_view, mrdesc_view, mrinfo, picker, progress, roster)
 from . import outputs as outputs_mod
 from . import problems, stages
 from . import board as board_mod
@@ -162,6 +162,7 @@ class Service:
         self._mr_wanted: dict[tuple, tuple[str, str]] = {}   # (base, project, branch) -> (scope, kit bridge_user)
         self._mr_seen: set[tuple] = set()      # (project, branch, hand-over commit) whose MR was read at first sight
         self._fast_git: dict[tuple, tuple[int, tuple[str, ...]]] = {}   # fastrow.fast_facts' git half
+        self._fast_views: dict[tuple, tuple[bool, str, bool | None]] = {}   # _fast_view's git half
         self._eval: dict[str, tuple] = {}
         self._eval_running: set[str] = set()
         self._trace: dict[str, tuple] = {}      # scope -> (what it was made from, detail.timeline, when)
@@ -1809,11 +1810,13 @@ class Service:
         token = await asyncio.to_thread(self._token_present)
         loaded = {x["id"]: self.repos[x["id"]] for x in repos if x["ok"] and x["id"] in self.repos}
         mes = await asyncio.to_thread(lambda: {rid: self._me_view(r) for rid, r in loaded.items()})
+        fasts = await asyncio.to_thread(lambda: {rid: self._fast_view(r) for rid, r in loaded.items()})
         syncs = await asyncio.to_thread(lambda: {rid: scrub_tree(self.sync.repo_view(r, self._push_ctx(r)), self.scrub)
                                                  for rid, r in loaded.items()})
         for x in repos:
             x["me"] = mes.get(x["id"])
             x["sync"] = syncs.get(x["id"])
+            x["fast"] = fasts.get(x["id"])
         return {"app": {"name": self.name, "version": VERSION, "team": self.team is not None},
                 "brainkit": {"path": info["path"], "ok": info["ok"], "version": info["version"], "error": info["error"],
                              "modules": info["modules"]},
@@ -1821,6 +1824,55 @@ class Service:
                 "me": me_line(repos, token, os.environ.get("BRAIN_USER", "").strip().lower()),
                 "team": self._team_status(), "counts": {"todo": len(todo["items"])},
                 "repo_ids_problem": self.repo_ids.problem}
+
+    def _fast_view(self, repo: Repo) -> dict[str, Any] | None:
+        """设置's 「允许快速模式」 of a repo with a remote (RepoInfo.fast; None without one): the default branch's
+        fast_mode as this machine last fetched it, why brain-kit offers no fast run there whatever it says, and the
+        switch's change not merged yet. The git half is kept while the default branch and brain/fast-mode stay put.
+        Blocking."""
+        if not repo.has_origin():
+            return None
+        side = "refs/remotes/origin/" + kitmr.FAST_BRANCH
+        bsha = repo.git.out("rev-parse", "-q", "--verify", side) or None
+        k = (repo.path, repo.main_sha(), bsha)
+        if k not in self._fast_views:
+            if len(self._fast_views) > 256:
+                self._fast_views.clear()
+            on, why = kitmr.fast_policy(repo.path, repo.main_ref())
+            self._fast_views[k] = (on, why, kitmr.branch_fast(repo.git, side) if bsha else None)
+        on, why, branch_on = self._fast_views[k]
+        base, project = self._gitlab_of(repo)
+        mr = None
+        if base and project and (bsha or (base, project, kitmr.FAST_BRANCH) in self._mr_wanted):
+            self._mr_wanted[(base, project, kitmr.FAST_BRANCH)] = ("", "")
+            mr = self.mr.get(project, kitmr.FAST_BRANCH)
+        return {"on": on, "why": why, "pending": kitmr.fast_pending(on, branch_on, mr)}
+
+    async def fast_mode(self, body: Any) -> dict[str, Any]:
+        """「允许快速模式」 flipped, once the person confirmed: the default branch's kit.json fast_mode through an MR
+        (kitmr.fast_mr), and the switch as it is now."""
+        body = body if isinstance(body, dict) else {}
+        on = body.get("on")
+        if not isinstance(on, bool):
+            raise AppError("「允许快速模式」只能开或关", "invalid_fast_mode")
+        repo = self._repo(str(body.get("repo") or ""))
+        view = await asyncio.to_thread(self._fast_view, repo)
+        if view is None:
+            raise AppError("这个仓库没有远端：团队规则在默认分支上，这里改不了", "no_remote", 409)
+        if view["why"]:
+            raise AppError(view["why"], "fast_refused", 409)
+        base, project = self._gitlab_of(repo)
+        try:
+            out = await asyncio.to_thread(kitmr.fast_mr, repo.path, str(repo.cfg["default_branch"]), on, base, project,
+                                          transport=self.transport)
+        except Exception as exc:  # noqa: BLE001 - GitLab down, no rights, a sign-in page: said, the token never
+            raise AppError("GitLab 没开成这个 MR（%s）：看看网络和你的 GitLab 令牌，再点一次" % str(exc).split("\n", 1)[0][:200],
+                           "gitlab_failed", 502)
+        if out["mr"]:
+            self._mr_wanted[(base, project, kitmr.FAST_BRANCH)] = ("", "")
+            await asyncio.to_thread(self.mr.refresh, base, project, kitmr.FAST_BRANCH, transport=self.transport)
+        out["fast"] = await asyncio.to_thread(self._fast_view, repo)
+        return scrub_tree(out, self.scrub)
 
     def settings_view(self) -> dict[str, Any]:
         return {**self.settings, "team": dict(self.settings["team"]), "auto_push": dict(self.settings["auto_push"])}
