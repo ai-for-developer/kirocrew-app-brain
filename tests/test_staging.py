@@ -382,3 +382,37 @@ def test_lines_the_old_build_logged_just_before_a_deploy_do_not_open_the_fixed_i
     w.round()
     assert w.issue(1)["state"] == "opened" and w.item(GATEWAY)["state"] == "fixing"
     assert [o[0] for o in w.sessions.opened] == ["staging-42-1", "staging-42-1-2"]
+
+
+def flood(n):
+    """*n* user names without a number or an id in them."""
+    return ["user%s" % chr(97 + i % 26) * (1 + i // 26) for i in range(n)]
+
+
+def test_one_error_logged_with_a_new_e_mail_each_time_is_one_issue(bk, tmp_path):
+    w = started(tmp_path)
+    w.write(["2026-11-21 10:00:%02d,000 ERROR app.auth: no account for %s@example.com" % (i, n)
+             for i, n in enumerate(flood(60))])
+    lists = len(w.gl.asked_staging("GET", r"/issues$"))
+    w.round()
+    issue, = w.gl.opened(P)
+    assert issue["title"] == "测试环境报错：app.auth: no account for <email>"
+    assert w.item("app.auth: no account for <email>")["count"] == 60
+    assert len(w.gl.asked_staging("GET", r"/issues$")) - lists == 1
+
+
+def test_new_issues_open_three_a_round_and_twenty_at_most_per_project_and_the_rest_say_why_they_wait(bk, tmp_path):
+    w = started(tmp_path)
+    w.write(["2026-11-21 10:00:%02d,000 ERROR app.auth: no account for %s" % (i, n) for i, n in enumerate(flood(60))])
+    lists = len(w.gl.asked_staging("GET", r"/issues$"))
+    w.round()
+    assert len(w.gl.opened(P)) == 3
+    assert len(w.gl.asked_staging("GET", r"/issues$")) - lists == 1       # one look for open Issues, not one per error
+    waiting = [i for i in w.watch.view()["items"] if i["state"] == "new"]
+    assert len(waiting) == 57 and {i["note"] for i in waiting} == {"排队：这一轮已经开了 3 个 Issue，下一轮再开"}
+    for _ in range(7):
+        w.round()
+    assert len(w.gl.opened(P)) == 20
+    waiting = [i for i in w.watch.view()["items"] if i["state"] == "new"]
+    assert len(waiting) == 40 and {i["note"] for i in waiting} == {
+        "排队：这个项目开着的测试环境报错 Issue 已经有 20 个：人关掉一些，剩下的再开"}

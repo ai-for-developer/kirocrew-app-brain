@@ -7,6 +7,8 @@ A row is a state machine (Row.state):
   new      seen, its Issue not open: one is opened (label staging-error, with the error's lines, the deployed commit and
            the MR that merged it, as GitLab's commits/:sha/merge_requests says), or found (an open Issue that names the
            signature: a request whose answer was lost), or opened again (a closed one seen on another deployed commit).
+           The open Issues are listed once a round; at most NEW_PER_ROUND are opened in a project a round, and none
+           once it has OPEN_CAP open: the rest wait, saying why.
   issued   its Issue open, no fix at work. A brain-patrol session of its own (slot staging-<project id>-<issue>) is given
            the fix, at most CAP at work at once counting MR 巡检's, in a clone of its own (<work>/staging/<project
            id>-<issue>) at the default branch's head: a branch fix/staging-<id> from it, a test that shows the error if
@@ -50,6 +52,8 @@ MAX_ATTEMPTS = patrol.MAX_ATTEMPTS
 JUMP = 10
 FORGET_S = 30 * 86400               # a closed row not seen this long is dropped
 REOPEN_S = 5 * 60                   # an error is a deploy's own once a round first read that deploy this long ago
+NEW_PER_ROUND = 3                   # Issues opened (or opened again) in a project in one round
+OPEN_CAP = 20                       # open staging-error Issues of a project: no more are opened then
 MARK = "staging-error-id: %s"       # in an Issue's description: the signature it is about
 NEW, ISSUED, FIXING, FIX_MR, STOPPED, CLOSED = "new", "issued", "fixing", "fix_mr", "stopped", "closed"
 OPEN = (ISSUED, FIXING, FIX_MR, STOPPED)
@@ -429,7 +433,8 @@ class StagingWatch:
         chunk = cfg.log.read(self.led.cursor(project))
         events, used = stagelog.errors_in(chunk.lines)
         self.led.take(project, chunk.cursors[used], stagelog.grouped(events, now, sha), settled)
-        self._each(self.led.rows(project), lambda r: self._tell(r, kit))
+        self._each([r for r in self.led.rows(project) if r.state in OPEN], self._tell)
+        self._file(project, kit, [r for r in self.led.rows(project) if r.state == NEW])
         for r in self.led.rows(project):
             if r.state == CLOSED and now - r.group.last_seen >= FORGET_S:
                 self.led.drop(r)
@@ -481,25 +486,61 @@ class StagingWatch:
                          body={"body": stopped_text(row)})
             self.led.put(replace(row, said=True))
 
-    def _tell(self, row: Row, kit: Mapping[str, Any]) -> None:
-        """A new row's Issue opened (or found, or opened again); an open one's comment when its count jumped."""
-        rest = bk.m("rest")
-        path = "/projects/%s/issues" % rest.q(row.project)
-        if row.state == NEW:
+    def _tell(self, row: Row) -> None:
+        """An open row's Issue told when its count jumped."""
+        if jumped(row):
+            self.gl.call("POST", "/projects/%s/issues/%d/notes" % (bk.m("rest").q(row.project), row.issue.iid),
+                         body={"body": jump_text(row, self.web)})
+            self.led.put(replace(row, told=row.group.count))
+
+    def _file(self, project: str, kit: Mapping[str, Any], rows: list[Row]) -> None:
+        """The new rows' Issues, the earliest seen first: an open one that names the signature found (a request whose
+        answer was lost, or one from before the ledger); else, at most NEW_PER_ROUND this round and while fewer than
+        OPEN_CAP are open, its closed one opened again or a new one. The open ones are listed once."""
+        if not rows:
+            return
+        path = "/projects/%s/issues" % bk.m("rest").q(project)
+        try:
+            issues = [i for i in self.gl.pages(path, {"labels": LABEL, "state": "opened"}, 100, 10, "staging-error issues")
+                      if isinstance(i, dict)]
+        except bk.m("common").BrainError as exc:
+            for r in rows:
+                self._notes[(r.project, r.signature)] = "这一轮没做成：%s" % _said(exc)
+            self._errors.append("%s: %s" % (project, _said(exc)))
+            return
+        room = {"made": 0, "open": len(issues)}
+
+        def issued(row: Row, origin: Link | None) -> None:
+            self.led.put(replace(row, state=ISSUED, origin=origin, told=row.group.count))
+            self.out("staging: %s#%d %s" % (row.project, row.issue.iid, issue_title(row)))
+
+        def file(row: Row) -> None:
+            key, mark = (row.project, row.signature), MARK % stagelog.short_id(row.signature)
+            found = None if row.issue is not None else next(
+                (i for i in issues if mark in str(i.get("description") or "")), None)
+            if found is not None:
+                issued(replace(row, issue=Link.of(found), project_id=int(found.get("project_id") or 0)), self._origin(row))
+                return
+            if room["made"] >= NEW_PER_ROUND:
+                self._notes[key] = "排队：这一轮已经开了 %d 个 Issue，下一轮再开" % NEW_PER_ROUND
+                return
+            if room["open"] >= OPEN_CAP:
+                self._notes[key] = "排队：这个项目开着的测试环境报错 Issue 已经有 %d 个：人关掉一些，剩下的再开" % OPEN_CAP
+                return
             origin = self._origin(row)
-            if row.issue is None:
-                made = self._find(row) or self.gl.call("POST", path, body={
+            if row.issue is not None:
+                self.gl.call("PUT", "%s/%d" % (path, row.issue.iid), body={"state_event": "reopen"})
+                self.gl.call("POST", "%s/%d/notes" % (path, row.issue.iid), body={"body": reopen_text(row, origin, self.web)})
+            else:
+                made = self.gl.call("POST", path, body={
                     "title": issue_title(row), "labels": LABEL,
                     "description": issue_text(row, origin, self.web, str(kit.get("default_branch") or "main"))})
                 row = replace(row, issue=Link.of(made), project_id=int(made.get("project_id") or 0))
-            else:
-                self.gl.call("PUT", "%s/%d" % (path, row.issue.iid), body={"state_event": "reopen"})
-                self.gl.call("POST", "%s/%d/notes" % (path, row.issue.iid), body={"body": reopen_text(row, origin, self.web)})
-            self.led.put(replace(row, state=ISSUED, origin=origin, told=row.group.count))
-            self.out("staging: %s#%d %s" % (row.project, row.issue.iid, issue_title(row)))
-        elif jumped(row):
-            self.gl.call("POST", "%s/%d/notes" % (path, row.issue.iid), body={"body": jump_text(row, self.web)})
-            self.led.put(replace(row, told=row.group.count))
+            room["made"] += 1
+            room["open"] += 1
+            issued(row, origin)
+
+        self._each(sorted(rows, key=lambda r: (r.group.first_seen, r.signature)), file)
 
     def _origin(self, row: Row) -> Link | None:
         """The MR that merged the deployed commit (a merged one first), or None when GitLab knows none."""
@@ -513,13 +554,6 @@ class StagingWatch:
             raise
         mrs = [m for m in mrs if isinstance(m, dict) and m.get("iid")]
         return Link.of(next((m for m in mrs if m.get("state") == "merged"), mrs[0] if mrs else None))
-
-    def _find(self, row: Row) -> dict[str, Any] | None:
-        """An open Issue of this signature: one opened by a request whose answer was lost, or before the ledger was."""
-        mark = MARK % stagelog.short_id(row.signature)
-        issues = self.gl.pages("/projects/%s/issues" % bk.m("rest").q(row.project), {"labels": LABEL, "state": "opened"},
-                               100, 10, "staging-error issues")
-        return next((i for i in issues if isinstance(i, dict) and mark in str(i.get("description") or "")), None)
 
     def _fix_mr(self, row: Row) -> Link | None:
         mrs = self.gl.call("GET", "/projects/%s/merge_requests" % bk.m("rest").q(row.project),
