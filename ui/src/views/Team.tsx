@@ -114,7 +114,7 @@ export const PATROL_STATE: Record<PatrolState, { label: string; tone: Tone }> = 
 }
 export const patrolMeta = (state: string) => PATROL_STATE[state as PatrolState] ?? { label: state, tone: 'idle' as Tone }
 const patrolRank = (state: string) => { const i = Object.keys(PATROL_STATE).indexOf(state); return i < 0 ? 99 : i }
-export const PATROL_OFF = '还没有项目打开巡检：项目的 .brain/kit.json 里 work_sources 写上 mr-patrol 就开始。一键建运行机勾上「巡检所有开着的 MR」，它开的 kit.json MR 会写好。'
+export const PATROL_OFF = '还没有项目打开巡检：项目的 .brain/kit.json 里 work_sources 写全，比如 ["mr-handoff", "mr-patrol"]（只写 mr-patrol 会把交接关掉）就开始。一键建运行机勾上「巡检所有开着的 MR」，它开的 kit.json MR 会写好。'
 
 /** The config files brain-kit reads on a team runner, in this order, and what each is for. */
 const CONFIG_FILES: { file: string; what: string }[] = [
@@ -234,6 +234,7 @@ export function TeamPage({ status, go, reloadStatus, pollMs }: ViewProps) {
               <details className="br-raw"><summary>细节</summary><pre>{st.loop_error}</pre></details>
             </div>
           )}
+          <CheckRows rows={st.checks ?? []} />
           {loop.result && <LoopResult r={loop.result} />}
           {loop.error && <p className="br-error" role="alert">{loop.error}</p>}
         </section>

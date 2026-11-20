@@ -1784,7 +1784,8 @@ class Service:
             on = bool(self.settings["team"].get("enabled"))
             why = problems.team_start("brain-kit 没装载" if on else "")
             return {"enabled": on, "ok": False, "error": why["text"], "error_todo": why["todo"], "error_raw": why["raw"],
-                    "last_loop_at": None, "loop_error": "", "same_user": False, "signer": {"pending": 0, "refused": 0}}
+                    "last_loop_at": None, "loop_error": "", "checks": [], "same_user": False,
+                    "signer": {"pending": 0, "refused": 0}}
         return self.team.status()
 
     async def status(self) -> dict[str, Any]:

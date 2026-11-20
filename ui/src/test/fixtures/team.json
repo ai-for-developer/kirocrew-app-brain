@@ -7,6 +7,16 @@
     "error_raw": "",
     "last_loop_at": 1794146350,
     "loop_error": "",
+    "checks": [
+      {
+        "level": "WARN",
+        "text": "shop/shop-web 的 kit.json 里 work_sources 没写 mr-handoff：运行机不接这个项目的交接",
+        "todo": "要接交接，在 work_sources 里写回 mr-handoff（写全，比如 [\"mr-handoff\", \"mr-patrol\", \"staging-errors\"]），合并到默认分支",
+        "fix": null,
+        "repo": null,
+        "raw": ""
+      }
+    ],
     "same_user": true,
     "signer": {
       "pending": 1,

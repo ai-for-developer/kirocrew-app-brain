@@ -18,7 +18,8 @@ patched or subclassed. What the app changes:
   label event were checked before), and brain-kit 72b278e's unlabelled (the newest event on the label takes it off:
   `brain handoff` re-adding it right now) and waiting (this very hand-over is being signed elsewhere: looked at again
   next round). brain-kit's poll returns nothing (BRAINKIT_REQUESTS 27). A project whose kit.json work_sources leaves
-  mr-handoff out (sources.py) is not polled;
+  mr-handoff out (sources.py) is not polled, and one that cannot be read holds up none after it: the status' checks
+  say which;
 - patrol: a round ends with MR 巡检 (team/patrol.py, work source mr-patrol), on the same worker thread, then
   测试环境报错 (team/staging.py, work source staging-errors). MR 巡检 reads the logs of Jenkins builds with
   bridge.json's optional "jenkins" (team/jenkins.py), a block brain-kit leaves alone.
@@ -133,6 +134,7 @@ class TeamRuntime:
         self.last_loop_at: float | None = None
         self.last_summary: dict[str, int] = {}
         self.last_handovers: list[dict[str, Any]] = []   # what Bridge.process said for each labelled MR, last round
+        self.poll_checks: list[dict[str, Any]] = []      # CheckRows: the projects the last poll did not read or poll
         self.lines: deque = deque(maxlen=200)
         self.same_user = False
         self.inputs = ""            # signerproc.digest of start_inputs, taken as start() read them
@@ -285,17 +287,35 @@ class TeamRuntime:
         return summary
 
     def _poll(self, host: Any) -> int:
-        """brain-kit's Bridge.poll, MR by MR, keeping each MR's result (Bridge.process) for the page. One MR that fails
-        does not stop the others, as in brain-kit (its error is logged the same way). -> how many MRs were looked at."""
+        """brain-kit's Bridge.poll, MR by MR, keeping each MR's result (Bridge.process) for the page. A project whose
+        kit.json or labelled MRs cannot be read, or one MR that fails, does not stop the others, as in brain-kit: a
+        project's error is raised at the end, an MR's is logged the same way. The projects not read and those whose
+        kit.json leaves mr-handoff out are the status' checks. -> how many MRs were looked at."""
         common = bk.m("common")
         seen: list[dict[str, Any]] = []
+        checks: list[dict[str, Any]] = []
+        errors: list[str] = []
         try:
             for proj in host.cfg["projects"]:
                 project = proj["project"] if isinstance(proj, dict) else proj
-                kit = host.kit(project)
-                if sources.HANDOFF not in sources.enabled(kit):
+                try:
+                    kit = host.kit(project)
+                    if sources.HANDOFF not in sources.enabled(kit):
+                        checks.append(problems.mk(
+                            "WARN", "%s 的 kit.json 里 work_sources 没写 %s：运行机不接这个项目的交接" % (project, sources.HANDOFF),
+                            "要接交接，在 work_sources 里写回 %s（写全，比如 %s），合并到默认分支" % (
+                                sources.HANDOFF, json.dumps(list(sources.SOURCES)))))
+                        continue
+                    mrs = host.gl.mrs_with_label(project, kit["handoff_label"])
+                except (common.BrainError, OSError, ValueError) as exc:     # read again next round
+                    said = self.scrub(" ".join(str(exc).split())[:300])
+                    errors.append("%s: %s" % (project, said))
+                    checks.append(problems.mk(
+                        "FAIL", "%s 上一轮没读成：它的交接没看，别的项目照常" % project,
+                        "下一轮会自动再试；一直这样就看细节：多半是这个项目默认分支上的 .brain/kit.json 读不了，或者桥的账号看不到这个项目",
+                        raw=said))
                     continue
-                for mr in host.gl.mrs_with_label(project, kit["handoff_label"]):
+                for mr in mrs:
                     row = {"project": str(project), "iid": int(mr.get("iid") or 0), "sha": str(mr.get("sha") or "")[:40],
                            "result": "error", "error": "", "at": time.time()}
                     try:
@@ -305,7 +325,9 @@ class TeamRuntime:
                         row["error"] = self.scrub(str(e).split("\n", 1)[0][:300])
                     seen.append(row)
         finally:
-            self.last_handovers = seen
+            self.last_handovers, self.poll_checks = seen, checks
+        if errors:
+            raise common.BrainError("not done this round: " + "; ".join(errors))
         return len(seen)
 
     def patrol_view(self) -> dict[str, Any]:
@@ -449,7 +471,7 @@ class TeamRuntime:
         why = problems.team_start(self.error)   # the start error in words; as it was (file names, keys) for 细节
         return {"enabled": bool(self.team.get("enabled")), "ok": self.host is not None and not self.error,
                 "error": why["text"], "error_todo": why["todo"], "error_raw": why["raw"],
-                "last_loop_at": self.last_loop_at, "loop_error": self.loop_error,
+                "last_loop_at": self.last_loop_at, "loop_error": self.loop_error, "checks": list(self.poll_checks),
                 "same_user": self.same_user,
                 "signer": {"pending": len(sig["pending"]), "refused": len(sig["refused"])}}
 

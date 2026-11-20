@@ -509,6 +509,10 @@ export interface TeamStatus {
   error_raw?: string
   last_loop_at: number | null
   loop_error: string
+  /** the projects the last round's hand-over poll did not read (FAIL: their hand-overs not looked at, the other
+   * projects' were) or does not poll (WARN: kit.json work_sources leaves mr-handoff out); [] when none. The backend
+   * always sends it */
+  checks?: CheckRow[]
   /** the signer runs as this app's OS user (the local trial, or its signed/ and refused/ are writable here): it would
    * sign whatever the app asks, so it is no boundary (never on a real team runner) */
   same_user: boolean
