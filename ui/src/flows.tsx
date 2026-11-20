@@ -126,7 +126,7 @@ export function FlowProgress({ r, children }: { r: Requirement; children: ReactN
 }
 
 /** 需求现状's Lean card: LeanCard, or the fast run's five steps (from its board, *steps*) in the same cells; 写代码's has
- * 看代码 ↗ (*onCode*: the board with 产出 on all its changes). */
+ * 看代码 ↗ once it committed (*onCode*: the board with 产出 on all its changes). */
 export function FlowCard({ r, steps, onCode, children }: { r: Requirement; steps: FastStep[] | null; onCode?: () => void; children: ReactNode }) {
   const { intent, label } = flowOf(r)
   if (intent) return <>{children}</>
@@ -147,7 +147,9 @@ export function FlowCard({ r, steps, onCode, children }: { r: Requirement; steps
                     <span className="br-stage-n">{i + 1} · {look.word}</span>
                     <span className="br-stage-label">{s.label}<span className="br-sr">（{look.word}）</span></span>
                     {s.text && <span className="br-stage-n">{s.text}</span>}
-                    {s.id === 'code' && onCode && <button type="button" className="br-stage-go" onClick={onCode} title="运行过程的产出：每个提交改了什么">看代码 ↗</button>}
+                    {s.id === 'code' && s.status !== 'waiting' && onCode && (
+                      <button type="button" className="br-stage-go" onClick={onCode} title="运行过程的产出：每个提交改了什么">看代码 ↗</button>
+                    )}
                   </li>
                 )
               })}

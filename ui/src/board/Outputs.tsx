@@ -437,7 +437,6 @@ function CommitsDrawer({ board, repo, reqKey, at, onAt, onClose, moment = null, 
   const commits = (data?.commits ?? []).filter((x) => !moment || moment.made(x.sha))
   const want = at.commit
   const c = want ? commits.find((x) => x.sha.startsWith(want)) : undefined
-  // the step bar's place: 0 is 全部改动, then the commits; -1 a commit it does not have
   const i = !want ? 0 : c ? commits.indexOf(c) + 1 : -1
   const to = (k: number): OutAt => (k === 0 ? { node: at.node } : { node: at.node, commit: commits[k - 1].sha.slice(0, 12) })
   return (

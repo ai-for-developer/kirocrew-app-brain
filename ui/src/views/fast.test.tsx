@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, test, vi } from 'vitest'
 import { colOf } from '../cto/Flow'
 import { fx } from '../test/data'
-import { MERGE_STEPS, MR, MR_URL, WAITS, actAnswer as answer, fastBoard, fastDetail, fastRow } from '../test/fast'
+import { MERGE_STEPS, MR, MR_URL, READY_STEPS, WAITS, actAnswer as answer, fastBoard, fastDetail, fastRow } from '../test/fast'
 import { API, installFixtureRoutes } from '../test/routes'
 import { apiCalls, apiError } from '../test/stubs/app-sdk'
 import type { FastTime, Requirement, RequirementDetail } from '../types'
@@ -54,6 +54,13 @@ describe('需求现状 of a fast run (快速)', () => {
     await within(card).findAllByTestId('fast-step')
     fireEvent.click(within(card).getByRole('button', { name: '看代码 ↗' }))
     expect(p.go).toHaveBeenLastCalledWith({ kind: 'board', repo: 'r1', key: 'PAY-17', from: 'item', out: { node: 'code' } })
+  })
+
+  test('no 看代码 ↗ before its first commit', async () => {
+    renderDetail(fastDetail({ waits: WAITS.writing }), fastBoard({ waits: WAITS.writing }, READY_STEPS.map((x) => (x.id === 'code' ? { ...x, status: 'waiting', text: '还没提交代码', at: null } : x))))
+    const card = await screen.findByTestId('fast-card')
+    await within(card).findAllByTestId('fast-step')
+    expect(within(card).queryByRole('button', { name: '看代码 ↗' })).toBeNull()
   })
 
   test('开审查会话 never shows on a fast run, even when its waits say a review', async () => {
