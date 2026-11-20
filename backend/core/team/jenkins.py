@@ -12,6 +12,7 @@ in one line.
 from __future__ import annotations
 
 import base64
+import os
 import re
 import urllib.parse
 from dataclasses import dataclass, field
@@ -21,7 +22,6 @@ from .. import bk
 
 # one /job/<name> or more (folders, multibranch), then the build's number: what a Jenkins build's address holds
 BUILD_RE = re.compile(r"((?:/job/[^/]+)+)/(\d+)(?:/|$)")
-NO_ENV = "BRAIN_JENKINS_NO_TOKEN_ENV"       # nobody sets it: the token comes from token_file only
 NOT_SET = "运行机没配 Jenkins（bridge.json 里没有 jenkins）"
 NOT_A_BUILD = "这个链接不是 Jenkins 构建的地址"
 
@@ -35,12 +35,14 @@ def build_path(target_url: str) -> str | None:
 
 
 def refused(status: int, user: str) -> str:
+    if status in (401, 403) and not user:
+        return "Jenkins 不让没登录的人读这个构建（HTTP %d）：bridge.json 的 jenkins 写上只读用户和它的 token" % status
     if status == 401:
         return "Jenkins 不认 %s 和它的 token（HTTP 401）：看 bridge.json 的 jenkins" % user
     if status == 403:
-        return "Jenkins 不让 %s 读这个构建（HTTP 403）：只读用户要有 Overall/Read 和 Job/Read" % (user or "没登录的人")
+        return "Jenkins 不让 %s 读这个构建（HTTP 403）：只读用户要有 Overall/Read 和 Job/Read" % user
     if status == 404:
-        return "Jenkins 上找不到这个构建的日志（HTTP 404）：构建删掉了，或者 bridge.json 的 jenkins.base 不对"
+        return "Jenkins 上找不到这个构建（HTTP 404）：只读用户没有它的 Job/Read，或者构建删掉了，或者 bridge.json 的 jenkins.base 不对"
     return "Jenkins 出错了（HTTP %d）" % status
 
 
@@ -49,7 +51,7 @@ class Jenkins:
     """The Jenkins bridge.json names (Jenkins.of). *why*: why no log is read at all ("": one may be)."""
     base: str = ""
     user: str = ""
-    auth: str = field(default="", repr=False)       # the Authorization header ("": none, anonymous)
+    auth: str = field(default="", repr=False)
     why: str = NOT_SET
     transport: Any = None
 
@@ -70,11 +72,14 @@ class Jenkins:
             return cls(base, user, why="bridge.json 的 jenkins 要 user 和 token_file 一起写：只读用户和它的 token")
         if not user:
             return cls(base, why="", transport=transport)
-        common = bk.m("common")
+        path = os.path.expanduser(path)
         try:
-            token = bk.m("rest").read_token(NO_ENV, NO_ENV, path)
-        except common.BrainError as exc:        # readable by others
-            return cls(base, user, why=" ".join(str(exc).split())[:200])
+            if os.stat(path).st_mode & 0o077:
+                return cls(base, user, why="Jenkins 的 token 别人也能读：先 chmod 600 %s" % path)
+            with open(path, encoding="utf-8") as fh:
+                token = fh.read().strip()
+        except (OSError, ValueError):
+            token = ""
         if not token:
             return cls(base, user, why="读不到 Jenkins 的 token：%s 不在，或者是空的" % path)
         auth = "Basic " + base64.b64encode(("%s:%s" % (user, token)).encode()).decode()
@@ -95,5 +100,5 @@ class Jenkins:
             return page, client.call("GET", build + "/consoleText", raw=True) or b"", ""
         except rest.HttpError as exc:
             return page, None, refused(exc.status, self.user)
-        except common.BrainError as exc:        # Jenkins not reached
+        except common.BrainError as exc:
             return page, None, "连不上 Jenkins：%s" % " ".join(str(exc).split())[:200]

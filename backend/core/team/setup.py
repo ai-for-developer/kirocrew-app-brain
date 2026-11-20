@@ -115,7 +115,7 @@ class SetupInput:
     roles: Mapping[str, tuple[str, ...]] = field(default_factory=dict)   # role -> usernames; none: the token's owner
     push: str = "auto"                            # auto | ssh | token
     patrol: bool = True                           # 巡检所有开着的 MR
-    jenkins: "JenkinsInput | None" = None
+    jenkins: JenkinsInput | None = None
 
     @classmethod
     def parse(cls, raw: Any) -> "SetupInput":
@@ -169,37 +169,6 @@ class SetupInput:
         return {"gitlab_base": self.gitlab_base, "project": self.project, "push": self.push,
                 "roles": {r: list(self.roles.get(r) or ()) for r in ROLES}, "patrol": self.patrol,
                 "jenkins": {"base": self.jenkins.base, "user": self.jenkins.user} if self.jenkins else None}
-
-
-@dataclass(frozen=True)
-class JenkinsInput:
-    """Jenkins, for MR 巡检 to read a failed build's log there (team/jenkins.py) as a read-only user."""
-    base: str
-    user: str
-    token: str = field(repr=False)          # "": the one this machine saved before (Paths.jenkins_token)
-
-    @classmethod
-    def parse(cls, raw: Any) -> "JenkinsInput | None":
-        """None when no address is typed."""
-        if raw is None:
-            return None
-        if not isinstance(raw, Mapping):
-            raise SetupRefused("Jenkins 那几项的格式不对：刷新页面再试")
-        base = str(raw.get("base") or "").strip().rstrip("/")
-        if not base:
-            return None
-        u = urllib.parse.urlsplit(base)
-        if u.scheme not in ("https", "http") or not u.hostname or "@" in u.netloc or u.query or u.fragment \
-                or CTRL_RE.search(base):
-            raise SetupRefused("Jenkins 地址要写成 https://jenkins.example.com 这样")
-        user = str(raw.get("user") or "").strip()
-        if not user or CTRL_RE.search(user) or ":" in user or len(user) > 255:
-            raise SetupRefused("填上 Jenkins 只读用户的用户名")
-        token = raw.get("token")
-        token = token.strip() if isinstance(token, str) else ""
-        if CTRL_RE.search(token) or len(token) > 1000:
-            raise SetupRefused("Jenkins 的 token 不对：它是一串没有空格的字符")
-        return cls(base, user, token)
 
 
 @dataclass(frozen=True)
@@ -989,6 +958,37 @@ def bridge_doc(ctx: Ctx, salt: str) -> dict[str, Any]:
         "signer": {"type": "spool", "spool_dir": str(ps.signer_spool), "allowed_signers": str(ps.allowed)},
         **jenkins_doc(ctx),
     }
+
+
+@dataclass(frozen=True)
+class JenkinsInput:
+    """Jenkins, for MR 巡检 to read a failed build's log there (team/jenkins.py) as a read-only user."""
+    base: str
+    user: str
+    token: str = field(repr=False)          # "": the one this machine saved before (Paths.jenkins_token)
+
+    @classmethod
+    def parse(cls, raw: Any) -> "JenkinsInput | None":
+        """None when no address is typed."""
+        if raw is None:
+            return None
+        if not isinstance(raw, Mapping):
+            raise SetupRefused("Jenkins 那几项的格式不对：刷新页面再试")
+        base = str(raw.get("base") or "").strip().rstrip("/")
+        if not base:
+            return None
+        u = urllib.parse.urlsplit(base)
+        if u.scheme not in ("https", "http") or not u.hostname or "@" in u.netloc or u.query or u.fragment \
+                or CTRL_RE.search(base):
+            raise SetupRefused("Jenkins 地址要写成 https://jenkins.example.com 这样")
+        user = str(raw.get("user") or "").strip()
+        if not user or CTRL_RE.search(user) or ":" in user or len(user) > 255:
+            raise SetupRefused("填上 Jenkins 只读用户的用户名")
+        token = raw.get("token")
+        token = token.strip() if isinstance(token, str) else ""
+        if CTRL_RE.search(token) or len(token) > 1000:
+            raise SetupRefused("Jenkins 的 token 不对：它是一串没有空格的字符")
+        return cls(base, user, token)
 
 
 def jenkins_doc(ctx: Ctx) -> dict[str, Any]:

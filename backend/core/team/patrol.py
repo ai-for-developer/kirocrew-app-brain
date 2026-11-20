@@ -88,8 +88,8 @@ class FailedCheck:
     status_id: int              # a new build of the check is a new status
     name: str
     url: str                    # its target_url (a Jenkins build's: at the address the runner reaches Jenkins at)
-    log: str                    # the last LOG_LINES lines of its log ("": not read)
-    why: str = ""               # why its log was not read
+    log: str | None             # the last LOG_LINES lines of its log; None: not read, *why* says why
+    why: str = ""
 
 
 @dataclass(frozen=True)
@@ -128,8 +128,7 @@ Problem = Union[CiFailed, Review, Comment, Conflict]
 
 
 def fingerprint(head_sha: str, pipeline_id: int | None, conflict: bool, note_ids: Any, status_ids: Any = ()) -> str:
-    """*status_ids*: the failed checks' commit status ids (FailedCheck). They count only when there are some: a
-    fingerprint without them is the one it always was, so a ledger from before them dispatches nothing again."""
+    """*status_ids*: the failed checks' commit status ids (FailedCheck), counted only when there are some."""
     parts = [head_sha, pipeline_id, bool(conflict), sorted(int(n) for n in note_ids)]
     if status_ids:
         parts.append(sorted(int(s) for s in status_ids))
@@ -282,23 +281,24 @@ def read_mr(gl: Any, jenkins: Jenkins, project: str, mr: Mapping[str, Any], own:
             since: float, before: Read | None = None) -> Read:
     """GitLab's MR (its head pipeline); when that pipeline failed, its failed jobs with their logs and the failed
     checks external CI reported into it (failed_checks); its threads, and its plain comments written *since* (patrol
-    started in the project). *before*'s jobs and checks while it is the same failed pipeline, unless its source is
-    external: a Jenkins build run again lands in the same one."""
+    started in the project). *before*'s jobs while it is the same failed pipeline; its checks are read again unless it
+    is GitLab's own and had none: a Jenkins build run again lands in the same pipeline."""
     rest = bk.m("rest")
     iid = int(mr["iid"])
     hp = (gl.mr(project, iid) or {}).get("head_pipeline")
     hp = hp if isinstance(hp, dict) and hp.get("id") and hp.get("sha") in (None, mr.get("sha")) else None
     pid, status = (int(hp["id"]), str(hp.get("status") or "")) if hp else (None, "")
     external = bool(hp) and hp.get("source") == "external"
+    same = before is not None and (before.pipeline_id, before.pipeline_status) == (pid, status)
     jobs: tuple[FailedJob, ...] = ()
     checks: tuple[FailedCheck, ...] = ()
-    if status == "failed" and pid and not external and before is not None \
-            and (before.pipeline_id, before.pipeline_status) == (pid, status):
-        jobs, checks = before.jobs, before.checks
+    if status == "failed" and pid and same and not external and not before.checks:
+        jobs = before.jobs
     elif status == "failed" and pid:
         listed = [] if external else [j for j in gl.pipeline_jobs(project, pid) if isinstance(j, dict) and j.get("id")]
-        jobs = tuple(FailedJob(str(j.get("name") or j["id"]), log_tail(gl.job_trace(project, int(j["id"]))))
-                     for j in [j for j in listed if not j.get("allow_failure")][:MAX_JOBS])
+        jobs = before.jobs if same else tuple(
+            FailedJob(str(j.get("name") or j["id"]), log_tail(gl.job_trace(project, int(j["id"]))))
+            for j in [j for j in listed if not j.get("allow_failure")][:MAX_JOBS])
         checks = failed_checks(gl, jenkins, project, str(mr.get("sha") or ""), pid, {int(j["id"]) for j in listed},
                                before.checks if before is not None else ())
     threads = gl.pages("/projects/%s/merge_requests/%d/discussions" % (rest.q(project), iid), {}, 100, 20,
@@ -333,7 +333,7 @@ def failed_checks(gl: Any, jenkins: Jenkins, project: str, sha: str, pipeline_id
                 newest[name] = s
     failed = sorted((s for s in newest.values() if s.get("status") == "failed" and not s.get("allow_failure")),
                     key=lambda s: int(s["id"]))[:MAX_JOBS]
-    kept = {c.status_id: c for c in known if not c.why}
+    kept = {c.status_id: c for c in known if c.log is not None}
     out = []
     for s in failed:
         sid, name = int(s["id"]), str(s.get("name") or s["id"])
@@ -341,7 +341,7 @@ def failed_checks(gl: Any, jenkins: Jenkins, project: str, sha: str, pipeline_id
             out.append(kept[sid])
             continue
         url, raw, why = jenkins.console(str(s.get("target_url") or ""))
-        out.append(FailedCheck(sid, name, url, log_tail(raw) if raw is not None else "", why))
+        out.append(FailedCheck(sid, name, url, log_tail(raw) if raw is not None else None, why))
     return tuple(out)
 
 
@@ -582,7 +582,7 @@ def message(item: PatrolItem, path: str, helper: Helper) -> str:
             for c in p.checks:
                 where = "Jenkins 构建 %s" % c.url if build_path(c.url) else "外部 CI 报给 GitLab 的，%s" % (c.url or "没有链接")
                 out.append("   - %s（%s）：" % (c.name, where))
-                out += _quoted(c.log, "     ") if c.log else ["     没读到日志：%s" % (c.why or "日志是空的")]
+                out += ["     没读到日志：%s" % c.why] if c.log is None else _quoted(c.log or "（日志是空的）", "     ")
         elif isinstance(p, Comment):
             out.append("%d. MR 上的评论（不在讨论里）：评论 #%d，@%s：" % (n, p.note_id, p.author))
             out += _quoted(p.body, "   ")
@@ -830,7 +830,7 @@ class Patrol:
             row = replace(row, read=read_mr(self.gl, self.jenkins, e.project, mr, *self._who(kit), e.since,
                                             before=row.read), seen=_seen(mr), read_at=now)
             for c in row.read.checks:
-                if c.why and c not in old:
+                if c.log is None and c not in old:
                     self.out("%s!%s: %s: no log: %s" % (e.project, mr["iid"], c.name, c.why))
         item = item_of(e.project, mr, row.read, row.answered)
         row = self._watched(e, replace(row, project_id=item.project_id), item)

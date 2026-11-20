@@ -651,7 +651,8 @@ def test_jenkins_s_address_and_read_only_user_go_into_bridge_json_and_its_token_
     assert everything_done(view) and json.loads(ps.bridge_json.read_text())["jenkins"] == block
     assert mode(token) == "0o600" and mode(ps.bridge_json) == "0o600"
     files = files_under(ps.root, ps.work, ps.agent_spec.parent)
-    assert [os.path.relpath(p, ps.root) for p, b in files.items() if jenkins["token"].encode() in b] == ["jenkins-token"]
+    holding = [os.path.relpath(p, ps.root) for p, b in files.items() if jenkins["token"].encode() in b]
+    assert holding == ["jenkins-token"]
     assert view["input"]["jenkins"] == {"base": "https://jenkins.example.com", "user": "brain-reader"}
     again, _ = build(world, jenkins=dict(jenkins, token=""))
     assert everything_done(again) and json.loads(ps.bridge_json.read_text())["jenkins"] == block
@@ -704,7 +705,7 @@ def test_the_input_is_read_at_the_boundary():
                                    "patrol": False}).public()["patrol"] is False
     assert got.roles == {"product": ("carol", "dave"), "builder": ()} and "tok-123456" not in repr(got)
     assert "tok-123456" not in json.dumps(got.public())
-    assert got.jenkins is None and got.public()["jenkins"] is None       # no Jenkins unless an address is typed
+    assert got.jenkins is None and got.public()["jenkins"] is None
     jk = setup.SetupInput.parse({"gitlab_base": BASE, "project": P, "admin_token": "tok-123456", "jenkins": {
         "base": " http://127.0.0.1:8080/ ", "user": " brain-reader ", "token": " jen-123456 "}}).jenkins
     assert (jk.base, jk.user, jk.token) == ("http://127.0.0.1:8080", "brain-reader", "jen-123456")
@@ -712,7 +713,8 @@ def test_the_input_is_read_at_the_boundary():
     for bad in ({"gitlab_base": "gitlab.example.com"}, {"gitlab_base": "https://u:p@gitlab.example.com"},
                 {"project": "pay"}, {"admin_token": ""}, {"admin_token": "a b"}, {"roles": {"boss": "x"}},
                 {"roles": {"product": "a/b"}}, {"push": "ftp"}, {"patrol": "yes"}, {"jenkins": "jenkins.example.com"},
-                {"jenkins": {"base": "jenkins.example.com", "user": "r"}}, {"jenkins": {"base": "https://j.example.com"}},
+                {"jenkins": {"base": "jenkins.example.com", "user": "r"}},
+                {"jenkins": {"base": "https://j.example.com"}},
                 {"jenkins": {"base": "https://j.example.com", "user": "a:b"}},
                 {"jenkins": {"base": "https://j.example.com", "user": "r", "token": "a b"}}):
         body = dict({"gitlab_base": BASE, "project": P, "admin_token": "tok-123456"}, **bad)

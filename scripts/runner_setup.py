@@ -101,8 +101,8 @@ def main(argv: list[str] | None = None) -> int:
             print("--role is ROLE=NAME,NAME, not %r" % r, file=sys.stderr)
             return 2
         roles[role.strip()] = names
+    jenkins = {"base": a.jenkins, "user": a.jenkins_user or "", "token": jenkins_token} if a.jenkins else None
     try:
-        jenkins = {"base": a.jenkins, "user": a.jenkins_user or "", "token": jenkins_token} if a.jenkins else None
         inp = setup.SetupInput.parse({"gitlab_base": a.gitlab, "project": a.project, "admin_token": token,
                                       "roles": roles, "push": a.push, "patrol": not a.no_patrol, "jenkins": jenkins})
     except setup.SetupRefused as exc:

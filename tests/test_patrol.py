@@ -8,6 +8,7 @@ helper's requests, and the session runner's word on a patrol turn.
 """
 
 import asyncio
+import hashlib
 import importlib.util
 import json
 import logging
@@ -22,7 +23,8 @@ import pytest
 
 from appkit import BRAINKIT, ROOT, FakeGateway, GatewayError, commit_file, git_repo, mod, sh
 from brainfix import needs_brainkit
-from patrolfix import BASE, JENKINS, JENKINS_URL, SHA, Clock, FakeJenkins, FakeSessions, FakeWorkspaces, PatrolGitLab
+from patrolfix import (BASE, JENKINS_BASE, JENKINS_ROOT_URL, SHA, Clock, FakeJenkins, FakeSessions, FakeWorkspaces,
+                       PatrolGitLab)
 
 pytestmark = needs_brainkit
 P, PID = "grp/repo", 42
@@ -48,13 +50,13 @@ class World:
         self.tmp, self.clock = tmp_path, Clock()
         self.gl = PatrolGitLab(self.clock)
         self.gl.jenkins = self.jk = FakeJenkins()
-        self.jenkins = mod("team.jenkins").Jenkins()        # bridge.json names no Jenkins
+        self.jenkins = mod("team.jenkins").Jenkins.of(None)
         self.kits = kits or {P: kit()}
         for n, path in enumerate(self.kits):
             self.gl.project(path, PID + n)
         self.sessions, self.ws = FakeSessions(), FakeWorkspaces()
         self.ledger, self.claims = str(tmp_path / "patrol.sqlite"), claims or (lambda: [])
-        self.said: list[str] = []                           # what patrol wrote to the app's log
+        self.said: list[str] = []
         self.patrol = self.start(list(self.kits))
 
     def start(self, projects):
@@ -67,13 +69,13 @@ class World:
             helper=patrol.Helper("/usr/bin/python3", "/app/backend/core/team/patrol_reply.py", "/setup/bridge.json",
                                  "/kit"))
 
-    def with_jenkins(self, **over):
-        """Patrol started again as on a bridge.json whose "jenkins" names JENKINS and its read-only user, the token in a
-        file only its owner reads; *over* changes the block."""
+    def with_jenkins(self):
+        """Patrol started again as on a bridge.json whose "jenkins" names JENKINS_BASE and its read-only user, the token
+        in a file only its owner reads."""
         token = self.tmp / "jenkins-token"
         token.write_text(self.jk.token + "\n")
         token.chmod(0o600)
-        block = dict({"base": JENKINS, "user": self.jk.user, "token_file": str(token)}, **over)
+        block = {"base": JENKINS_BASE, "user": self.jk.user, "token_file": str(token)}
         self.jenkins = mod("team.jenkins").Jenkins.of(block, self.gl)
         self.patrol.close()
         self.patrol = self.start(list(self.kits))
@@ -211,61 +213,74 @@ def test_a_check_jenkins_reported_goes_out_with_the_tail_of_its_console_read_whe
         [{"kind": "ci_failed", "text": "流水线 #%d 没过：unit-tests" % external["id"]}],
         [{"kind": "ci_failed", "text": "流水线 #%d 没过：test、it" % native}]]
     msg = w.sessions.messages("patrol-42-7")[0]
-    assert "流水线 #%d 没过" % external["id"] in msg and "   - unit-tests（Jenkins 构建 %s/job/orders/2/）：\n" % JENKINS in msg
+    assert "流水线 #%d 没过" % external["id"] in msg
+    assert "   - unit-tests（Jenkins 构建 %s/job/orders/2/）：\n" % JENKINS_BASE in msg
     assert "     > [INFO] step 21\n" in msg and "     > [INFO] step 100\n" in msg and "[INFO] step 20\n" not in msg
-    assert "\x1b" not in msg and "\r" not in msg and "lint" not in msg and JENKINS_URL not in msg
+    assert "\x1b" not in msg and "\r" not in msg and "lint" not in msg and JENKINS_ROOT_URL not in msg
     both = w.sessions.messages("patrol-42-8")[0]
     assert "   - test：\n     > FAILED test_discount\n" in both
-    assert "   - it（Jenkins 构建 %s/job/shop/job/orders-it/12/）：\n     > BUILD FAILURE\n" % JENKINS in both
-    assert jk.calls == [("GET", JENKINS + "/job/orders/2/consoleText", "brain-reader"),
-                        ("GET", JENKINS + "/job/shop/job/orders-it/12/consoleText", "brain-reader")]
+    assert "   - it（Jenkins 构建 %s/job/shop/job/orders-it/12/）：\n     > BUILD FAILURE\n" % JENKINS_BASE in both
+    assert jk.calls == [("GET", JENKINS_BASE + "/job/orders/2/consoleText", "brain-reader"),
+                        ("GET", JENKINS_BASE + "/job/shop/job/orders-it/12/consoleText", "brain-reader")]
 
 
-@pytest.mark.parametrize("case", ["no jenkins in bridge.json", "jenkins refuses", "a link to no jenkins build"])
+NO_LOG = {
+    "no jenkins in bridge.json": ("Jenkins 构建 %s/job/orders/2/display/redirect" % JENKINS_ROOT_URL,
+                                  "运行机没配 Jenkins（bridge.json 里没有 jenkins）", 0),
+    "jenkins refuses (no Overall/Read)": ("Jenkins 构建 %s/job/orders/2/" % JENKINS_BASE,
+                                          "Jenkins 不让 brain-reader 读这个构建（HTTP 403）：只读用户要有 Overall/Read 和 Job/Read", 2),
+    "jenkins hides the job (no Job/Read)": ("Jenkins 构建 %s/job/orders/2/" % JENKINS_BASE,
+                                            "Jenkins 上找不到这个构建（HTTP 404）：只读用户没有它的 Job/Read，或者构建删掉了，"
+                                            "或者 bridge.json 的 jenkins.base 不对", 2),
+    "a link to no jenkins build": ("外部 CI 报给 GitLab 的，https://ci.example.com/builds/77",
+                                   "这个链接不是 Jenkins 构建的地址", 0),
+}
+
+
+@pytest.mark.parametrize("case", list(NO_LOG))
 def test_a_check_whose_log_is_not_read_goes_out_with_its_link_and_one_line_why(bk, tmp_path, case):
     """It goes out all the same, the app's log says why once, and a refusal is asked about again on the next read."""
     w = World(tmp_path)
     gl, jk = w.gl, w.jk
     if case != "no jenkins in bridge.json":
         w.with_jenkins()
-    jk.can_read = case != "jenkins refuses"
+    jk.overall_read = "Overall/Read" not in case
+    jk.job_read = "Job/Read" not in case
     build = jk.build("/job/orders/2", b"FAILED test_discount\n")
-    link = "https://ci.example.com/builds/77" if case == "a link to no jenkins build" else build
     gl.mr(P, 7)
-    gl.check(P, 7, "unit-tests", "failed", link)
+    gl.check(P, 7, "unit-tests", "failed", "https://ci.example.com/builds/77" if "no jenkins build" in case else build)
     w.round()
     w.later()
     w.round()
-    where, why, asked = {
-        "no jenkins in bridge.json": ("Jenkins 构建 " + link, "运行机没配 Jenkins（bridge.json 里没有 jenkins）", 0),
-        "jenkins refuses": ("Jenkins 构建 %s/job/orders/2/" % JENKINS,
-                            "Jenkins 不让 brain-reader 读这个构建（HTTP 403）：只读用户要有 Overall/Read 和 Job/Read", 2),
-        "a link to no jenkins build": ("外部 CI 报给 GitLab 的，" + link, "这个链接不是 Jenkins 构建的地址", 0),
-    }[case]
+    where, why, asked = NO_LOG[case]
     msg, = w.sessions.messages("patrol-42-7")
     pid = gl.mrs[(P, 7)]["_pipeline"]["id"]
     assert w.item(7)["problems"] == [{"kind": "ci_failed", "text": "流水线 #%d 没过：unit-tests" % pid}]
     assert "   - unit-tests（%s）：\n     没读到日志：%s\n" % (where, why) in msg and "FAILED test_discount" not in msg
     assert [s for s in w.said if "no log" in s] == ["grp/repo!7: unit-tests: no log: " + why]
-    assert [c[1] for c in jk.calls] == [JENKINS + "/job/orders/2/consoleText"] * asked
+    assert [c[1] for c in jk.calls] == [JENKINS_BASE + "/job/orders/2/consoleText"] * asked
 
 
-def test_a_new_jenkins_build_on_the_same_head_is_dispatched_again_and_each_build_s_log_is_read_once(bk, tmp_path):
+@pytest.mark.parametrize("own", [False, True])
+def test_a_new_jenkins_build_on_the_same_head_is_dispatched_again_and_each_build_s_log_is_read_once(bk, tmp_path, own):
     """Jenkins builds again on the same head: GitLab posts its status into the same pipeline, failed before and after;
-    the new build's status is what moves the fingerprint, also when it ran and failed between two reads."""
+    the new build's status is what moves the fingerprint, also when it ran and failed between two reads. *own*: the
+    pipeline is GitLab's own, a job of it failed as well, and Jenkins posts into it."""
     patrol = mod("team.patrol")
     w = World(tmp_path)
     w.with_jenkins()
     gl, jk = w.gl, w.jk
     gl.mr(P, 7)
+    if own:
+        gl.fail(P, 7, {"test": b"FAILED test_gitlab\n"})
     gl.check(P, 7, "unit-tests", "failed", jk.build("/job/orders/2", b"FAILED test_one\n"))
     w.round()
-    w.sessions.end()                    # the session could not fix it: nothing pushed, nothing said
+    w.sessions.end()
     for _ in range(3):
         w.later()
         w.round()
     w.later(patrol.RECHECK_S)
-    w.round()                           # read again: the same build
+    w.round()
     assert len(w.sessions.sent) == 1 and w.item(7)["state"] == "done"
     pid = gl.mrs[(P, 7)]["_pipeline"]["id"]
     third = jk.build("/job/orders/3", b"FAILED test_two\n")
@@ -275,8 +290,31 @@ def test_a_new_jenkins_build_on_the_same_head_is_dispatched_again_and_each_build
     w.round()
     assert gl.mrs[(P, 7)]["_pipeline"]["id"] == pid and len(w.sessions.sent) == 2
     again = w.sessions.messages()[-1]
-    assert "Jenkins 构建 %s/job/orders/3/）：\n     > FAILED test_two\n" % JENKINS in again and "test_one" not in again
-    assert [c[1] for c in jk.calls] == [JENKINS + "/job/orders/2/consoleText", JENKINS + "/job/orders/3/consoleText"]
+    assert "Jenkins 构建 %s/job/orders/3/）：\n     > FAILED test_two\n" % JENKINS_BASE in again and "test_one" not in again
+    assert ("> FAILED test_gitlab" in again) is own and gl.asked(r"/jobs/\d+/trace$") == (1 if own else 0)
+    assert [c[1] for c in jk.calls] == [JENKINS_BASE + "/job/orders/%d/consoleText" % n for n in (2, 3)]
+
+
+def test_a_ledger_from_before_failed_checks_counted_keeps_the_mrs_it_worked_worked(bk, tmp_path):
+    """A row as a runner without them wrote it (no status_ids, its fingerprints of the head, the pipeline, the conflict
+    and the notes alone) reads as before: the failed pipeline its turn ended on is not sent again."""
+    w = World(tmp_path)
+    w.gl.mr(P, 7)
+    pid = w.gl.fail(P, 7)
+    w.round()
+    w.sessions.end()
+    w.later()
+    w.round()
+    then = hashlib.sha256(json.dumps([SHA[1], pid, False, []]).encode()).hexdigest()[:20]
+    db = w.patrol.led.db
+    doc = json.loads(db.execute("SELECT doc FROM mrs WHERE project=? AND iid=7", (P,)).fetchone()[0])
+    doc.pop("status_ids")
+    doc["read"].pop("checks")
+    doc.update(fingerprint=then, done_fp=then)
+    db.execute("UPDATE mrs SET doc=? WHERE project=? AND iid=7", (json.dumps(doc), P))
+    w.later(mod("team.patrol").RECHECK_S)
+    w.round()
+    assert len(w.sessions.sent) == 1 and w.item(7)["state"] == "done"
 
 
 def test_a_person_s_plain_comment_since_patrol_started_is_worked_and_answered_on_the_mr_quoting_it(bk, tmp_path):

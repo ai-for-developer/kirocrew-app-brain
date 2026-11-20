@@ -18,7 +18,7 @@ import pytest
 from appkit import BRAINKIT, ROOT, FakeGateway, GatewayError, commit_file, git_repo, mod, sh
 from brainfix import make_service, needs_brainkit, run
 from http_fakes import AppRoute, FakeWeb, call
-from patrolfix import BASE, JENKINS, Clock, FakeJenkins, PatrolGitLab
+from patrolfix import BASE, JENKINS_BASE, Clock, FakeJenkins, PatrolGitLab
 from test_contract import diff_keys, fixture
 
 pytestmark = needs_brainkit
@@ -131,7 +131,7 @@ def test_bridge_json_s_jenkins_is_read_where_team_mode_starts_and_a_new_jenkins_
     token.write_text(jk.token + "\n")
     token.chmod(0o600)
     bridge = w.root / "bridge.json"
-    block = {"base": JENKINS, "user": jk.user, "token_file": str(token)}
+    block = {"base": JENKINS_BASE, "user": jk.user, "token_file": str(token)}
     bridge.write_text(json.dumps(dict(json.loads(bridge.read_text()), jenkins=block)))
     gw = FakeGateway()
     svc, routes = app(w, tmp_path, gw)
@@ -151,8 +151,8 @@ def test_bridge_json_s_jenkins_is_read_where_team_mode_starts_and_a_new_jenkins_
     loop, same, rotated = run(go())
     assert loop.body["ok"] and loop.body["summary"]["patrol"] == 1, loop.body
     told = [m["content"] for m in gw.msgs["patrol-42-7"] if m["role"] == "user"]
-    assert "   - unit-tests（Jenkins 构建 %s/job/orders/2/）：\n     > FAILED test_discount\n" % JENKINS in told[0]
-    assert jk.calls == [("GET", JENKINS + "/job/orders/2/consoleText", "brain-reader")]
+    assert "   - unit-tests（Jenkins 构建 %s/job/orders/2/）：\n     > FAILED test_discount\n" % JENKINS_BASE in told[0]
+    assert jk.calls == [("GET", JENKINS_BASE + "/job/orders/2/consoleText", "brain-reader")]
     assert (same, rotated) == (False, True)
 
 
