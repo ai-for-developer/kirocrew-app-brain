@@ -51,6 +51,13 @@ def service(tmp_path, home, repo):
     return make_service(tmp_path / "alice", [repo], gw=gw), gw
 
 
+async def idle(svc, gw, slot):
+    """The kickoff's turn ends, and the app has seen it."""
+    gw.finish(slot)
+    for _ in range(3):
+        await svc.sessions.poll()
+
+
 async def rows(svc):
     for r in svc.repos.values():
         r.invalidate()
@@ -65,11 +72,13 @@ def test_a_fast_run_goes_from_its_start_to_open_mr(tmp_path, home):
         await svc.start()
         try:
             out = await svc.intake_start(dict(START))
+            await idle(svc, gw, out["slot"])
             wt = tmp_path / "home" / "workplace" / "brain-app" / "pay" / "coupon"
             first = (await rows(svc))[out["key"]]
             tip = verified_commit(wt, "shop/coupon.py", "def apply(total, code):\n    return total\n")
             ready = (await rows(svc))[out["key"]]
             board = await svc.board("r1", out["key"])
+            todo = [(i["kind"], i["key"], i["text"]) for i in (await svc.todo())["items"]]
             svc.sync_tick()
             origin = sh("git", "-C", tmp_path / "pay-origin.git", "rev-parse", out["branch"]).stdout.strip()
             with pytest.raises(AppError) as review:
@@ -77,11 +86,11 @@ def test_a_fast_run_goes_from_its_start_to_open_mr(tmp_path, home):
             facts = svc._facts(svc._repo("r1"), out["key"])
             flows = mod("bk").m("flows")
             said = flows.action_problem(flows.Flow.FAST, flows.Action.REVIEW)
-            return out, wt, first, ready, tip, origin, (str(review.value), said), facts, board
+            return out, wt, first, ready, tip, origin, (str(review.value), said), facts, board, todo
         finally:
             await svc.stop()
 
-    out, wt, first, ready, tip, origin, review, facts, board = run(go())
+    out, wt, first, ready, tip, origin, review, facts, board, todo = run(go())
     assert out["ok"] and out["intent"] is None and out["branch"] == "ai/alice/PAY-1-coupon"
     rec = json.loads((wt / "runs" / "PAY-1" / "run.json").read_text())
     assert rec["mode"] == "fast" and rec["intent"] is None
@@ -92,6 +101,7 @@ def test_a_fast_run_goes_from_its_start_to_open_mr(tmp_path, home):
     assert (ready["waits"]["who"], ready["waits"]["do"], ready["waits"]["text"]) == (
         "you", "open_mr", mod("fastrow").READY)
     assert origin == tip, "the verified commit is a checkpoint: pushed as a Lean one is"
+    assert ("open_mr", "PAY-1", mod("fastrow").READY) in todo, "待办 lists the person's 开 MR"
     assert review[0] == review[1] and review[1]
     verifies = [e for e in facts["events"] if e.get("event") == "VERIFY"]
     assert verifies and all(e["intent"] is None and e["data"]["branch"] == out["branch"] for e in verifies)
@@ -108,12 +118,13 @@ def test_a_fast_run_goes_from_its_start_to_open_mr(tmp_path, home):
 
 def test_a_fast_run_that_changes_a_risk_path_waits_for_the_full_flow(tmp_path, home):
     repo = project(tmp_path, risk="src/pay/\n")
-    svc, _ = service(tmp_path, home, repo)
+    svc, gw = service(tmp_path, home, repo)
 
     async def go():
         await svc.start()
         try:
             out = await svc.intake_start(dict(START))
+            await idle(svc, gw, out["slot"])
             wt = tmp_path / "home" / "workplace" / "brain-app" / "pay" / "coupon"
             verified_commit(wt, "src/pay/refund.py", "def refund():\n    pass\n")
             return (await rows(svc))[out["key"]]
