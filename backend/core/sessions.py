@@ -1041,14 +1041,16 @@ class SessionManager:
         info.idle += 1
         if info.idle < IDLE_POLLS or not (replies or errors or (info.seen_busy and info.idle >= IDLE_POLLS + 1)):
             return
+        # a runner's turn whose last row is KiroCrew's error was cut short, whatever it wrote before (adapter_turn)
+        cut = info.kind == "runner" and last is not None and last.get("role") == "error"
         if replies:
             info.result = str(replies[-1].get("content") or "")
             info.streaming_text = "\n\n".join(str(m.get("content") or "") for m in replies)[-20000:]
-        elif errors:   # KiroCrew's own words stay in the session (and the log)
+        if errors and (cut or not replies):   # KiroCrew's own words stay in the session (and the log)
             info.error = "这一轮 KiroCrew 报错了：打开会话看它的原话"
             self.log.info(self.app + ": session %s ended its turn with an error: %s", info.slot,
                           str(errors[-1].get("content") or "")[:300])
-        else:
+        elif not replies:
             info.error = "这一轮结束了，但没有回复"
         info.done = True
 

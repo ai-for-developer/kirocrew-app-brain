@@ -473,6 +473,31 @@ def test_the_session_runner_says_where_a_patrol_turn_is(tmp_path):
     assert asyncio.run(go()) == ("running", "ended", "unknown", "failed")
 
 
+def test_a_patrol_turn_kiro_crew_cut_short_with_an_error_failed_whatever_it_wrote_first(tmp_path):
+    sessions = mod("sessions")
+    gw = FakeGateway()
+    mgr = sessions.SessionManager(gw, app="brain", state_file=tmp_path / "sessions.json", log=logging.getLogger("t"))
+    slot = "patrol-42-7"
+    error = {"role": "error", "content": "model runtime failed", "meta": {"code": "runtime_failed"}}
+    gw.script = [[{"role": "assistant", "content": "我先看一下 CI 日志。", "meta": {}}, error],
+                 [error, {"role": "assistant", "content": "改好了，推上去了。", "meta": {}}]]
+
+    async def go():
+        await mgr.adapter_create(slot, agent="brain-patrol", model="m", memory_mode="incognito", title="t", folder="巡检",
+                                 parent="brain-patrol:grp/repo!7", key="patrol:grp/repo!7", root_folder="Brain 运行机")
+        await mgr.adapter_set_project(slot, str(tmp_path))
+        out = []
+        for sid in ("P-1", "P-2"):
+            await mgr.adapter_send(slot, "修一下", sid)
+            gw.finish(slot)
+            for _ in range(4):
+                await mgr.poll()
+            out.append(await mgr.adapter_turn(slot, sid))
+        return out
+
+    assert asyncio.run(go()) == ["failed", "ended"]
+
+
 def test_the_adapter_keeps_patrol_slots_and_run_slots_apart(bk):
     crew = mod("team.crewadapter")
     err = bk.brain_error()

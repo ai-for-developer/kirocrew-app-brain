@@ -121,7 +121,37 @@ def test_a_round_gives_an_mr_s_open_thread_to_a_brain_patrol_session_of_its_own(
     assert len(told) == 2 and "这里也要改" in told[1] and "百分比要限制在 0-100" not in told[1]
 
 
-@pytest.mark.parametrize("kit, polled, patrolled", [({}, True, False), ({"work_sources": ["mr-patrol"]}, False, True)])
+def test_a_turn_kiro_crew_cut_short_with_an_error_is_a_failed_attempt_and_its_thread_goes_out_again(
+        tmp_path, home, monkeypatch):
+    w = light_world(tmp_path, home, monkeypatch, {"work_sources": ["mr-handoff", "mr-patrol"]})
+    gw = FakeGateway()
+    gw.script = [[{"role": "assistant", "content": "我先看一下 CI 日志。", "meta": {}},
+                  {"role": "error", "content": "model runtime failed", "meta": {"code": "runtime_failed"}}]]
+    svc, routes = app(w, tmp_path, gw)
+    gl, slot = w.gl, "patrol-42-7"
+    gl.mr(P, 7, sha=w.head)
+    d = gl.thread(P, 7, "carol", "百分比要限制在 0-100", "src/discount.py", 1)
+
+    async def go():
+        await svc.start()
+        try:
+            await call(routes, "POST", "/team/loop")
+            gw.finish(slot)
+            for _ in range(4):
+                await svc.sessions.poll()
+            await call(routes, "POST", "/team/loop")
+            return await call(routes, "GET", "/team/patrol")
+        finally:
+            await svc.stop()
+
+    seen = run(go())
+    item, = seen.body["items"]
+    told = [m["content"] for m in gw.msgs[slot] if m["role"] == "user"]
+    assert (item["state"], item["attempts"]) == ("working", 2), item
+    assert len(told) == 2 and "评论 #%d" % d["notes"][0]["id"] in told[1]
+
+
+@pytest.mark.parametrize("kit, polled, patrolled",[({}, True, False), ({"work_sources": ["mr-patrol"]}, False, True)])
 def test_work_sources_decide_which_rounds_look_at_a_project(tmp_path, home, monkeypatch, kit, polled, patrolled):
     w = light_world(tmp_path, home, monkeypatch, kit)
     gw = FakeGateway()
