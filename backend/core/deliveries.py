@@ -14,7 +14,7 @@ import re
 import time
 from typing import Any
 
-from . import bk, fastrow, lean_view
+from . import bk, fastrow, flowview, lean_view
 
 STATE_LABEL = {"claimed": "已认领", "local": "本地开发中", "handed_over": "已交接", "rejected": "接手被拒",
                "running": "运行机在跑", "parked": "停下等回答", "acceptance": "等验收", "merged": "已合并",
@@ -117,6 +117,7 @@ def base_row(repo_id: str, f: dict[str, Any], *, local_only: bool = False) -> di
         "session_url": None,     # its brain-dev session on this machine (KiroCrew's chat URL), filled in by the service
         "family": None,      # a 大需求 or one of its 小需求 (family.families), filled in by the service
         "progress_pushed_at": None,     # when this machine last pushed its run branch at a checkpoint (progress.py)
+        "flow": flowview.wire(f.get("flow")),
     }
 
 
@@ -183,6 +184,8 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
             return put("claimed", "people", "start", "待认领：谁开工就归谁", where="app", since=since)
         return put("claimed", you, "start", "已认领，还没开工" if mine else "等 %s 开工" % owner, where="app",
                    since=since)
+    if f.get("flow_error"):
+        return put("local", you, "none", f["flow_error"], since=f.get("tip_at"))
     if not run.get("handoff"):
         if pending:
             a = pending[0]

@@ -5,7 +5,8 @@ modules are: nothing goes on ``sys.path``, and nothing else in the gateway proce
 imports its siblings relatively, so the package works under any name.
 
 Required modules (the app does nothing without them): common, config, claims, runrec, lean, entries, brainlint, usage,
-reflect, sign, cli, intake.package, bridge.handoff, bridge.decisions, bridge.runnerd, rest.
+reflect, sign, cli, intake.package, bridge.handoff, bridge.decisions, bridge.runnerd, rest, flows (a run's flow, lean or
+fast, and every rule that differs by flow: the app keeps no copy of one).
 Optional ones, added while this app was written, are guarded: trace, evaluate, golden, intents, mrdesc, split
 (0d52e97: brain split, claim, start --key, sync; without it the 大需求 features are off). A missing or
 broken optional module turns its feature off (``has()``), with the import error kept for the page.
@@ -32,7 +33,7 @@ from typing import Any
 
 PKG = "_brainapp_brainkit"
 REQUIRED = ("common", "config", "claims", "runrec", "lean", "entries", "brainlint", "usage", "reflect", "sign", "cli",
-            "rest", "intake.package", "bridge.handoff", "bridge.decisions", "bridge.runnerd", "bridge.ledger")
+            "rest", "intake.package", "bridge.handoff", "bridge.decisions", "bridge.runnerd", "bridge.ledger", "flows")
 OPTIONAL = ("trace", "evaluate", "golden", "intents", "mrdesc", "split")   # split: brain-kit 0d52e97
 CANDIDATES = ("~/brain-kit", "~/warren_ws/brain-kit", "~/workplace/brain-kit", "/opt/brain-kit")
 # The brain-kit a release ships inside the app (scripts/release.sh puts it there; a dev checkout has none).
@@ -44,8 +45,10 @@ NEEDS = (("sign", "SpoolSigner"), ("sign", "SignerRefused"), ("sign", "signer_fr
          ("bridge.handoff", "Bridge.handoff_commit_problems"), ("cli", "missing_lean_hooks"), ("cli", "add_lean_hooks"),
          ("cli", "runner_kit_problems"), ("rest", "head_pushed_at"), ("rest", "GitLab.commit"),
          ("bridge.decisions", "edit_state"), ("bridge.decisions", "DecisionLoop.reply_states"),
-         ("rest", "GitLab.note_edits"))
-VERSION_NEEDED = "72b278e"
+         ("rest", "GitLab.note_edits"), ("flows", "of"), ("flows", "refusals"), ("flows", "policy_at"),
+         ("flows", "belongs"), ("flows", "decisions_path"), ("flows", "prepare_clone"), ("flows", "action_problem"),
+         ("flows", "Refusal.zh"))
+VERSION_NEEDED = "533d670"
 
 _lock = threading.RLock()
 _state: dict[str, Any] = {"path": None, "mods": {}, "errors": {}, "error": "", "version": None}
@@ -97,7 +100,9 @@ def load(path: str) -> dict[str, Any]:
         except Exception as exc:  # noqa: BLE001 - a broken checkout must not take the app down
             unload()
             _state["path"] = path
-            _state["error"] = "brain-kit 导入失败：%s: %s" % (type(exc).__name__, str(exc)[:300])
+            gone = isinstance(exc, ModuleNotFoundError) and (exc.name or "").startswith(PKG + ".")
+            _state["error"] = ("brain-kit 太旧（没有 %s）：要 %s 或更新的版本" % (exc.name[len(PKG) + 1:], VERSION_NEEDED)
+                               if gone else "brain-kit 导入失败：%s: %s" % (type(exc).__name__, str(exc)[:300]))
             return info()
         lacking = ["%s.%s" % (mod, attr) for mod, attr in NEEDS if _attr(mods[mod], attr) is None]
         if lacking:

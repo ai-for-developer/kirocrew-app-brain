@@ -18,8 +18,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import (bk, brainview, crewcheck, deliveries, detail, family, identity, importer, inplace, installer, intake,
-               landing, lean_view, mrdesc_view, mrinfo, picker, progress, roster)
+from . import (bk, brainview, crewcheck, deliveries, detail, family, flowview, identity, importer, inplace, installer,
+               intake, landing, lean_view, mrdesc_view, mrinfo, picker, progress, roster)
 from . import outputs as outputs_mod
 from . import problems, stages
 from . import board as board_mod
@@ -666,7 +666,7 @@ class Service:
         for key, r in sorted(latest.items()):
             facts = {"key": key, "claim": None, "where": "runner", "branch": None, "owner": r.get("owner"),
                      "worktree": None, "stages": [], "events": [], "approvals": [], "run": None, "park": None,
-                     "project": r.get("project")}
+                     "project": r.get("project"), **flowview.read(None)}
             path = r.get("path")
             if path and os.path.isdir(path):
                 g = Git(path)
