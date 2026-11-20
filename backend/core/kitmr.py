@@ -65,12 +65,16 @@ def branch_exists(gl: Any, project: Any, name: str) -> bool:
 
 def kit_mr(gl: Any, project: Any, default: str, branch: str, want: Mapping[str, Any], like: str, *, title: str,
            text: str, message: str) -> tuple[dict[str, Any], bool]:
-    """kit.json on *branch* made to equal *want*, and an MR of it into *default*: the branch from *default* when it is
-    missing, one commit when the branch's kit.json differs (written the way the branch's file is, else *like*, the
-    default branch's text), the MR (*title*, *text*; its branch removed once merged) when none is open. *gl* is
-    brain-kit's rest.GitLab with the person's token; *project* its id or path. -> (the MR, whether it was opened now)."""
+    """kit.json on *branch* made to equal *want*, and an MR of it into *default*: with an MR open, its branch; with none,
+    the branch made again from *default* (what an earlier change left on it never rides along); one commit when the
+    branch's kit.json differs (written the way the branch's file is, else *like*, the default branch's text), the MR
+    (*title*, *text*; its branch removed once merged) when none is open. *gl* is brain-kit's rest.GitLab with the
+    person's token; *project* its id or path. -> (the MR, whether it was opened now)."""
     p = _project(project)
-    if not branch_exists(gl, project, branch):
+    mr = gl.mr_for_branch(project, branch)
+    if mr is None:
+        if branch_exists(gl, project, branch):
+            gl.call("DELETE", "/projects/%s/repository/branches/%s" % (p, urllib.parse.quote(branch, safe="")))
         gl.call("POST", "/projects/%s/repository/branches" % p, body={"branch": branch, "ref": default})
     raw = gl.file_raw(project, KIT, branch)
     there = raw.decode("utf-8-sig") if raw is not None else ""
@@ -79,7 +83,6 @@ def kit_mr(gl: Any, project: Any, default: str, branch: str, want: Mapping[str, 
             "branch": branch, "commit_message": message,
             "actions": [{"action": "update" if raw is not None else "create", "file_path": KIT,
                          "content": kit_text(want, there or like)}]})
-    mr = gl.mr_for_branch(project, branch)
     if mr is not None:
         return mr, False
     return gl.call("POST", "/projects/%s/merge_requests" % p, body={

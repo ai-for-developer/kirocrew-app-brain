@@ -44,6 +44,9 @@ class GitLab:
         if rest.startswith("/repository/branches/") and method == "GET":
             name = rest[len("/repository/branches/"):]
             return ok({"name": name}) if name in self.files else ok({"message": "404 Branch Not Found"}, 404)
+        if rest.startswith("/repository/branches/") and method == "DELETE":
+            return (204, b"") if self.files.pop(rest[len("/repository/branches/"):], None) is not None else \
+                ok({"message": "404 Branch Not Found"}, 404)
         if rest == "/repository/branches" and method == "POST":
             self.files[data["branch"]] = dict(self.files[data["ref"]])
             return ok({"name": data["branch"]}, 201)
@@ -139,6 +142,20 @@ def test_right_after_a_flip_the_pending_line_says_what_its_mr_does(world):
     assert before == {"on": True, "why": "", "pending": None}
     assert json.loads(gl.files[kitmr.FAST_BRANCH][kitmr.KIT])["fast_mode"] is False
     assert off["fast"]["pending"]["on"] is False and after["pending"]["on"] is False, "its MR turns 快速 off"
+
+
+def test_with_no_mr_open_the_branch_is_made_again_from_the_default_branch(world):
+    """A closed switch MR left brain/fast-mode behind with someone's other change on it: a new flip carries only
+    fast_mode."""
+    repo, gl, svc = world
+    main = gl.files["main"][kitmr.KIT]
+    gl.files[kitmr.FAST_BRANCH] = dict(gl.files["main"], **{"stray.py": "print('not the switch')\n",
+                                                             kitmr.KIT: main.replace('"fast_mode": true', '"fast_mode": false')})
+    gl.mrs.append({"iid": 30, "source_branch": kitmr.FAST_BRANCH, "target_branch": "main", "state": "closed"})
+    off = started(svc, lambda: svc.fast_mode({"repo": "r1", "on": False}))
+    assert off["ok"] and not off["mr"]["existing"]
+    assert gl.files[kitmr.FAST_BRANCH] == dict(gl.files["main"], **{kitmr.KIT: kitmr.kit_text(
+        dict(json.loads(main), fast_mode=False), main)}), "only fast_mode differs from main"
 
 
 def test_once_merged_and_fetched_the_switch_shows_the_default_branch_again(world):

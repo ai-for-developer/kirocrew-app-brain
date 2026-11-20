@@ -189,6 +189,8 @@ class FakeGitLab:
         m = re.fullmatch(r"/repository/branches/(.+)", rest)
         if m and method == "GET":
             return ok({"name": m.group(1)}) if m.group(1) in self.files else ok({"message": "404 Branch Not Found"}, 404)
+        if m and method == "DELETE":
+            return (204, b"") if self.files.pop(m.group(1), None) is not None else ok({"message": "404 Branch Not Found"}, 404)
         if rest == "/repository/branches" and method == "POST":
             self.files[data["branch"]] = dict(self.files[data["ref"]])
             return ok({"name": data["branch"]}, 201)
