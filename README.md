@@ -374,7 +374,11 @@ The app runs as the same OS user as the agent sessions, and agents have a shell.
   config from the default branch: a hand-over must pass `Bridge.verify` (the owner's label newer than GitLab's MR
   version of the head, and the head the hand-over commit itself: one parent, run.json changed, as `brain handoff`
   commits it, and neither authored nor committed by a bot (kit `bot_emails` / `bot_users`); a commit pushed on top of
-  it is not handed over, whatever the label times); an answer must pass `decisions.check_answer` bound to the question
+  it is not handed over, whatever the label times); a start from an issue (route `issue`, the app's issue source)
+  keeps `Bridge.verify`'s branch, brain-authz, Lean-note, Brain-commit and open-run checks and checks instead that the
+  issue's newest label event is the owner's add, a Developer or more, with no edit after it, that claim/<KEY> holds the
+  issue's text now, and that the head is one commit on the default branch adding only the start (run.json with origin
+  `remote`, intent.md as the claim renders it, the Lean intent and Lean's new ledger lines); an answer must pass `decisions.check_answer` bound to the question
   note the voucher names (`question_note`, the note id brain-kit's ledger recorded; a voucher without one is refused; a
   deleted question voids the decision): the question the bridge posts for park.json at that commit (ticking its review
   checklist is fine), by kit.json `bridge_user`, posted after the push, the D-n bound to nothing else; the first valid
