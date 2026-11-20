@@ -688,13 +688,13 @@ def test_the_input_is_read_at_the_boundary():
 
 
 def test_kit_json_is_written_back_the_way_brain_kit_writes_it(tmp_path, home):
-    bk, setup = mod("bk"), mod("team.setup")
+    bk, kitmr = mod("bk"), mod("kitmr")
     assert bk.load(str(BRAINKIT))["ok"]
     try:
         text = kit_file(tmp_path)
-        assert setup.kit_text(json.loads(text), text) == text
+        assert kitmr.kit_text(json.loads(text), text) == text
         two = '{\n    "b": 1,\n    "a": "é"\n}'
-        assert setup.kit_text(json.loads(two), two) == two                   # its order, indent, no final newline
+        assert kitmr.kit_text(json.loads(two), two) == two                   # its order, indent, no final newline
     finally:
         bk.unload()
 
