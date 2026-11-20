@@ -18,8 +18,9 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import (bk, brainview, crewcheck, deliveries, detail, family, fastboard, fastrow, flowview, identity, importer,
-               inplace, installer, intake, kitmr, landing, lean_view, mrdesc_view, mrinfo, picker, progress, roster)
+from . import (acts, bk, brainview, crewcheck, deliveries, detail, family, fastboard, fastrow, flowview, identity,
+               importer, inplace, installer, intake, kitmr, landing, lean_view, mrdesc_view, mrinfo, picker, progress,
+               roster)
 from . import outputs as outputs_mod
 from . import problems, stages
 from . import board as board_mod
@@ -176,6 +177,7 @@ class Service:
         self.sync = progress.Sync(self.data_dir, self.log)     # pushes at Lean's checkpoints, fetches every few minutes
         self._opening: dict[str, asyncio.Lock] = {}     # 开会话 and 重开, one at a time per requirement
         self._handing: dict[str, asyncio.Future] = {}   # 交接给运行机, one at a time per requirement
+        self._acting: dict[str, asyncio.Future] = {}    # 开 MR / 转完整流程, the same
         self._big_file = self.data_dir / "big.json"
         self._big = self._load_big()           # scopes opened here as 「大需求：先拆成小需求」
         self.folders_stuck: list[dict[str, Any]] = []   # 设置 rows: the folders KiroCrew would not move (sessions.regroup)
@@ -1655,6 +1657,9 @@ class Service:
 
                 if (f.get("run") or {}).get("handoff") and branch and base and project and self.mr.due(project, branch):
                     await asyncio.to_thread(mr_now)
+                why = f.get("flow_error") or flowview.action_problem(f["flow"], "handoff")
+                if why:
+                    raise AppError(why, "not_this_flow", 409)
                 snap = self._sessions_snapshot()
                 row = await asyncio.to_thread(self._row, repo, f, snap)
                 pushed = await asyncio.to_thread(repo.on_remote, f)
@@ -1683,6 +1688,50 @@ class Service:
 
             running = self._handing[scope] = asyncio.ensure_future(go())
             running.add_done_callback(lambda _t: self._handing.pop(scope, None))
+        return await asyncio.shield(running)
+
+    async def act(self, rid: str, key: str, action: str) -> dict[str, Any]:
+        """开 MR (mr) and 转完整流程 (full) of a fast run: `brain mr|full --json` in its worktree on this machine
+        (acts.run), refused in words first when the app can tell (acts.why_not). One at a time per requirement: a
+        second click while it runs gets the same answer. After 转完整流程 an idle live session is told, in one line
+        with the intent's name only, to go on under Lean (told); a busy one is left alone."""
+        if action not in acts.COMMAND:
+            raise AppError("没有这个动作", "unknown_action", 404)
+        repo = self._repo(rid)
+        scope = scope_of(rid, key)
+        running = self._acting.get(scope)
+        if running is None:
+            async def go() -> dict[str, Any]:
+                f = await asyncio.to_thread(self._facts, repo, key)
+                snap = self._sessions_snapshot()
+                row = await asyncio.to_thread(self._row, repo, f, snap)
+                busy = any(s["busy"] for s in snap["by"].get(scope, []) if s["kind"] == "local" and not s["missing"])
+                why = acts.why_not(f, row, action, me=await asyncio.to_thread(self.me_in, repo), busy=busy)
+                if why:
+                    raise AppError(*why)
+                out = await asyncio.to_thread(acts.run, f["worktree"], action)
+                await asyncio.to_thread(repo.invalidate)
+                base, project = self._gitlab_of(repo)
+                if out["ok"] and base and project and f.get("branch"):
+                    self._mr_wanted[(base, project, f["branch"])] = (scope, str(repo.cfg.get("bridge_user") or ""))
+                    try:
+                        await asyncio.to_thread(self.mr.refresh, base, project, f["branch"], transport=self.transport)
+                    except Exception as exc:  # noqa: BLE001 - a token file others can read: brain-kit says so itself
+                        self.log.info("brain: reading the MR of %s: %s", f["branch"], exc)
+                told = False
+                live = self._live_of(scope)
+                line = intake.switched_line(out["intent"]) if action == "full" and out["ok"] else ""
+                if line and live and not live.get("busy"):
+                    turn = await self.sessions.continue_conversation_async(
+                        live["id"], line, shown={"by": "app", "cause": "转完整流程", "text": line},
+                        parent_session_key=self.sessions.get(live["id"]).parent_session_key)
+                    told = not turn.error
+                await asyncio.to_thread(self.store.append, scope, "app", "%s：%s" % (
+                    {"mr": "开 MR", "full": "转完整流程"}[action], out["text"] or ("做好了" if out["ok"] else "没做成")), None)
+                return scrub_tree(dict(out, told=told), self.scrub)
+
+            running = self._acting[scope] = asyncio.ensure_future(go())
+            running.add_done_callback(lambda _t: self._acting.pop(scope, None))
         return await asyncio.shield(running)
 
     # ---- KiroCrew checks ------------------------------------------------------------------------------ #
