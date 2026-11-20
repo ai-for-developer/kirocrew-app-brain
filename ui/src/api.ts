@@ -75,6 +75,8 @@ export const paths = {
   repoRemove: () => `${BASE}/repos/remove`,
   /** 按记录重建编号: a damaged repo_ids.json without a good copy, from the ids the records carry */
   repoIdsRebuild: () => `${BASE}/repos/ids/rebuild`,
+  /** 允许快速模式: kit.json fast_mode on branch brain/fast-mode, and its MR into the default branch */
+  fastMode: () => `${BASE}/repos/fast-mode`,
   meName: () => `${BASE}/me/name`,
 }
 

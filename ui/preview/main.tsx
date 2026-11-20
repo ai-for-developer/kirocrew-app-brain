@@ -31,7 +31,7 @@ import { API, fixtureRoutes } from '../src/test/routes'
 import { StubApiError, setApiRoutes, setNavigateHook } from '../src/test/stubs/app-sdk'
 import { simulated } from './simulate'
 import type {
-  ActResult, BrainView, CheckRow, CrewFixBody, ImportInspect, ImportJob, InstallResult, IntakeBody, IntakeCheck, IntakeNext, KitForm, OpenSessionBody, Overview, PickKind, PickResult, ReflectApplyBody, ReflectApplyResult, ReflectPreview, RepoInfo, ReqBoard, RequirementDetail, Settings, SplitResult, StartBody, Status, TeamView, Todo,
+  ActResult, BrainView, CheckRow, CrewFixBody, FastModeBody, FastModeResult, ImportInspect, ImportJob, InstallResult, IntakeBody, IntakeCheck, IntakeNext, KitForm, OpenSessionBody, Overview, PickKind, PickResult, ReflectApplyBody, ReflectApplyResult, ReflectPreview, RepoInfo, ReqBoard, RequirementDetail, Settings, SplitResult, StartBody, Status, TeamView, Todo,
 } from '../src/types'
 
 const FLAGS = ['team', 'nokit', 'crewfail', 'noeval', 'norepos', 'race', 'light'] as const
@@ -357,6 +357,15 @@ setApiRoutes({
   [`POST ${API}/settings`]: (body) => {
     settings = { ...settings, ...clone(body as Partial<Settings>) }
     return { ok: true, settings: clone(settings), status: status() }
+  },
+  // 允许快速模式: the kit.json MR, shown, not opened; the repo's switch waits for it from then on
+  [`POST ${API}/repos/fast-mode`]: (body): FastModeResult => {
+    const b = body as FastModeBody
+    const r = repos.find((x) => x.id === b.repo)
+    const url = `${r?.kit?.gitlab_base || 'https://gitlab.example.com'}/${r?.kit?.gitlab_project || `shop/${r?.name ?? b.repo}`}/-/merge_requests/31`
+    const fast = { on: r?.fast?.on ?? true, why: '', pending: { on: b.on, iid: 31, url } }
+    repos = repos.map((x) => (x.id === b.repo ? { ...x, fast } : x))
+    return { ok: true, text: `预览：没有真的开。开了 MR !31：合并以后${b.on ? '允许' : '不允许'}快速模式`, mr: { iid: 31, url, existing: false }, commands: [], new_mr_url: null, fast }
   },
   ...importRoutes(),
   [`POST ${API}/refresh`]: (body) => ({ ok: true, text: `预览：没有真的跑 git fetch（${(body as { repo: string }).repo}）` }),

@@ -4,9 +4,9 @@ import { describe, expect, test, vi } from 'vitest'
 import { fx } from '../test/data'
 import { API, installFixtureRoutes } from '../test/routes'
 import { apiCalls, apiError } from '../test/stubs/app-sdk'
-import type { RepoInfo, RepoMe, Settings } from '../types'
+import type { FastModeResult, FastModeView, RepoInfo, RepoMe, Settings, Status } from '../types'
 import type { ViewProps } from './props'
-import { FETCH_HINT, PUSH_HINT, SettingsView } from './Settings'
+import { FAST_RULE, FAST_SWITCH_HINT, FETCH_HINT, PUSH_HINT, SettingsView } from './Settings'
 
 const props = (over: Partial<ViewProps> = {}): ViewProps => ({
   status: fx.status(), go: vi.fn(), replace: vi.fn(), reloadStatus: vi.fn(), setStatus: vi.fn(), pollMs: 60_000, ...over,
@@ -493,5 +493,105 @@ describe('设置', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('「每人同时在做的需求上限」要写 1 到 20 的整数（400）')
     expect(apiCalls.find((c) => c.method === 'POST')?.body).toMatchObject({ wip_limit: 25 })
     expect(screen.queryByText('已保存')).toBeNull()
+  })
+})
+
+describe('设置: 允许快速模式, a team rule', () => {
+  const MR31 = 'https://gitlab.example.com/shop/shop-pay/-/merge_requests/31'
+  const withFast = (fast: FastModeView): Status => {
+    const s = fx.status()
+    s.repos[0] = { ...s.repos[0], fast }
+    return s
+  }
+  const switchOf = async () => within(await screen.findByRole('group', { name: '允许快速模式' })).getByRole('checkbox', { name: 'shop-pay' })
+  const flips = () => apiCalls.filter((c) => c.method === 'POST' && c.path === `${API}/repos/fast-mode`)
+  const opened = (on: boolean): FastModeResult => ({
+    ok: true, text: '开了 MR !31：合并以后生效', mr: { iid: 31, url: MR31, existing: false }, commands: [], new_mr_url: null,
+    fast: { on: !on, why: '', pending: { on, iid: 31, url: MR31 } },
+  })
+
+  test('in 和队友同步 beside the push setting, checked as the default branch says; a flip asks first and only 确定 opens the MR', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes({ [`POST ${API}/repos/fast-mode`]: () => opened(false) })
+    const p = props({ status: withFast({ on: true, why: '', pending: null }) })
+    render(<SettingsView {...p} />)
+    const box = await switchOf()
+    const sync = screen.getByRole('group', { name: '和队友同步' })
+    expect(within(sync).getByRole('group', { name: '允许快速模式' })).toHaveTextContent(FAST_SWITCH_HINT)
+    expect(box).toBeChecked()
+    await user.click(box)
+    const ask = screen.getByRole('group', { name: '确认不允许快速模式' })
+    expect(ask).toHaveTextContent(FAST_RULE)
+    expect(ask).toHaveTextContent('关掉以后，开着的快速需求的 MR 再跑 CI 就过不了。')
+    expect(box).toBeChecked()
+    await user.click(within(ask).getByRole('button', { name: '取消' }))
+    expect(flips()).toEqual([])
+    await user.click(box)
+    await user.click(within(screen.getByRole('group', { name: '确认不允许快速模式' })).getByRole('button', { name: '确定，开 MR' }))
+    const out = await screen.findByTestId('fast-result')
+    expect(within(out).getByRole('status')).toHaveTextContent('开了 MR !31：合并以后生效')
+    expect(within(out).getByRole('link', { name: 'MR !31' })).toHaveAttribute('href', MR31)
+    expect(flips().map((c) => c.body)).toEqual([{ repo: 'r1', on: false }])
+    expect(p.reloadStatus).toHaveBeenCalled()
+    expect(await switchOf()).toBeDisabled()
+    expect(screen.getByTestId('fast-pending')).toHaveTextContent('MR !31 等合并：合并以后不允许快速模式')
+  })
+
+  test('turning it on says nothing of failing MRs', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes()
+    render(<SettingsView {...props({ status: withFast({ on: false, why: '', pending: null }) })} />)
+    await user.click(await switchOf())
+    const ask = screen.getByRole('group', { name: '确认允许快速模式' })
+    expect(ask).toHaveTextContent(FAST_RULE)
+    expect(ask).not.toHaveTextContent('CI')
+  })
+
+  test('its MR waiting to be merged: the link, no second flip; without its number, the branch', async () => {
+    installFixtureRoutes()
+    const { unmount } = render(<SettingsView {...props({ status: withFast({ on: false, why: '', pending: { on: true, iid: 31, url: MR31 } }) })} />)
+    expect(await switchOf()).toBeDisabled()
+    expect(await switchOf()).not.toBeChecked()
+    expect(within(screen.getByTestId('fast-pending')).getByRole('link', { name: 'MR !31' })).toHaveAttribute('href', MR31)
+    expect(screen.getByTestId('fast-pending')).toHaveTextContent('MR !31 等合并：合并以后允许快速模式')
+    unmount()
+    render(<SettingsView {...props({ status: withFast({ on: false, why: '', pending: { on: true, iid: null, url: null } }) })} />)
+    expect(await screen.findByTestId('fast-pending')).toHaveTextContent('分支 brain/fast-mode 等合并')
+  })
+
+  test('off with brain-kit’s why where nothing else lets a fast run here', async () => {
+    const why = '合规模式的仓库（lean.json 里 regulated 是 true）每个改动都走 Lean：不能用快速模式'
+    installFixtureRoutes()
+    render(<SettingsView {...props({ status: withFast({ on: true, why, pending: null }) })} />)
+    expect(await switchOf()).toBeDisabled()
+    expect(screen.getByRole('group', { name: '允许快速模式' })).toHaveTextContent(why)
+  })
+
+  test('without a GitLab token: the commands and GitLab’s new-MR link', async () => {
+    const user = userEvent.setup()
+    const cmd = 'git -C /Users/alice/workplace/shop-pay push -u origin brain/fast-mode'
+    const link = 'https://gitlab.example.com/shop/shop-pay/-/merge_requests/new?merge_request%5Bsource_branch%5D=brain%2Ffast-mode'
+    installFixtureRoutes({ [`POST ${API}/repos/fast-mode`]: () => ({ ...opened(false), text: '提交在分支 brain/fast-mode 上了：这台机器上没有 GitLab 令牌，推送和 MR 要你自己来', mr: null, commands: [cmd], new_mr_url: link,
+      fast: { on: true, why: '', pending: { on: false, iid: null, url: null } } }) })
+    render(<SettingsView {...props({ status: withFast({ on: true, why: '', pending: null }) })} />)
+    await user.click(await switchOf())
+    await user.click(screen.getByRole('button', { name: '确定，开 MR' }))
+    const out = await screen.findByTestId('fast-result')
+    expect(within(out).getByTestId('commands')).toHaveTextContent(cmd)
+    expect(within(out).getByRole('link', { name: '在 GitLab 上开 MR' })).toHaveAttribute('href', link)
+  })
+
+  test('保存 never carries it, and a repo done only on this machine has no switch', async () => {
+    const user = userEvent.setup()
+    const s = withFast({ on: true, why: '', pending: null })
+    s.repos = [...s.repos, { ...s.repos[0], id: 'r9', name: 'shop-local', path: '/Users/alice/workplace/shop-local', sync: { auto_push: null, push_why: '', push_cmd: '', fetch: null } }]
+    installFixtureRoutes({ [`POST ${API}/settings`]: (body) => ({ ok: true, settings: { ...fx.settings(), ...(body as Partial<Settings>) }, status: s }) })
+    render(<SettingsView {...props({ status: s })} />)
+    const group = await screen.findByRole('group', { name: '允许快速模式' })
+    expect(within(group).getAllByRole('checkbox').map((c) => c.closest('label')?.textContent)).toEqual(['shop-pay'])
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await screen.findByText('已保存')
+    expect(JSON.stringify(apiCalls.find((c) => c.path === `${API}/settings` && c.method === 'POST')?.body)).not.toMatch(/fast/)
+    expect(flips()).toEqual([])
   })
 })

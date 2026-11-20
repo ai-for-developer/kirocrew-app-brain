@@ -5,7 +5,8 @@
  * a confirm) and 「导入仓库」 (how a repo gets in); KiroCrew's checks with their fix buttons — and the settings form in
  * its own card: where brain-kit is, where worktrees go, 和队友同步 (how often every repo with a remote is fetched by
  * itself, with the last fetch that did not work; per repo done with the team, whether its run branches are pushed at
- * Lean's checkpoints, and why they cannot be when the backend says so), 全队视图's four limits (a sentence each around
+ * Lean's checkpoints, and why they cannot be when the backend says so, and whether the team allows fast runs there:
+ * 允许快速模式, the default branch's kit.json, changed by an MR and not by 保存), 全队视图's four limits (a sentence each around
  * its number), team mode (only a checkbox until it is on; POST /settings, which keeps the repo list as it is). Without
  * a usable brain-kit, its place is asked first, at the top, with why and where to get one.
  */
@@ -13,9 +14,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useAppApi } from '@kirocrew/app-sdk'
 import { paths, useAction, usePoll } from '../api'
 import { ago } from '../format'
-import type { RemoveResult, RepoInfo, RepoSync, Settings, Status, TeamLimits } from '../types'
-import { CheckRows, CommandLine, Flow, IMPORT_FLOW, LEVEL_TONE, LoadState, MeLine, PendingRepo, RoleIcon, brainkitProblem } from '../ui'
+import type { FastModeBody, FastModeResult, FastModeView, RemoveResult, RepoInfo, RepoSync, Settings, Status, TeamLimits } from '../types'
+import { CheckRows, CommandLine, ExtLink, Flow, IMPORT_FLOW, LEVEL_TONE, LoadState, MeLine, PendingRepo, RoleIcon, brainkitProblem } from '../ui'
 import { ACT, MODULE_NAME, TRACKER_NAME } from '../vocab'
+import { MrWay } from './FastActs'
 import type { ViewProps } from './props'
 import { RunnerSetupCard } from './RunnerSetup'
 import { SIGNER_SAME_USER } from './Team'
@@ -35,6 +37,9 @@ const settingsOf = (f: Form): Form => ({ ...f, brainkit: f.brainkit.trim(), work
 export const FETCH_HINT = '队友推上去的进度，app 隔这么久自己取一次，交付总览里就能看到；填 0 就只在点「从远端取最新」时取。'
 export const SETUP_POINTER = '只想在这台机器上试用：用下面的「一键建运行机」，它替你建好这两个配置文件，再勾上这一项。'
 export const PUSH_HINT = 'Lean 每过一个关卡，就把你自己的 run 分支上已经提交的推到远端，队友就能看到你做到哪了；不交接，不开 MR。只在本机做的仓库不推，也不列在这里。'
+export const FAST_SWITCH_HINT = '团队规则，记在默认分支的 .brain/kit.json 里（fast_mode）：改它要开一个 MR，合并以后全队生效，不跟着「保存」走。'
+export const FAST_RULE = '这是团队规则：会在 .brain/kit.json 改 fast_mode 并开一个 MR，合并以后才生效。'
+const FAST_OFF = '关掉以后，开着的快速需求的 MR 再跑 CI 就过不了。'
 
 /** the team runner's two config files (brain-kit's bridge.json and runnerd.json): the field's label, what is typed */
 const TEAM_FIELDS: [Exclude<keyof Settings['team'], 'enabled' | 'dev_same_user'>, string, string][] = [
@@ -157,7 +162,7 @@ export function SettingsView({ status, setStatus, reloadStatus, go }: ViewProps)
               <p className="br-hint">要在 ~/workplace 或 ~/workspace 下面：KiroCrew 的会话只能在这两个目录里干活。</p>
             </div>
           </div>
-          <SyncFields form={form} repos={status?.repos ?? []} edit={edit} />
+          <SyncFields form={form} repos={status?.repos ?? []} edit={edit} onChanged={reloadStatus} />
           <fieldset className="br-fieldset">
             <legend>全队视图</legend>
             {LIMIT_LINES.map(({ key, before, after, max }) => (
@@ -235,10 +240,12 @@ export function SettingsView({ status, setStatus, reloadStatus, go }: ViewProps)
   )
 }
 
-/** 和队友同步: the fetch interval (every repo with a remote), and per repo done with the team its push at checkpoints. */
-function SyncFields({ form, repos, edit }: { form: Form; repos: RepoInfo[]; edit: (f: Partial<Form>) => void }) {
+/** 和队友同步: the fetch interval (every repo with a remote), and per repo done with the team its push at checkpoints
+ * and whether the team allows fast runs (允许快速模式, a team rule: not saved with the form). */
+function SyncFields({ form, repos, edit, onChanged }: { form: Form; repos: RepoInfo[]; edit: (f: Partial<Form>) => void; onChanged: () => void }) {
   const synced = repos.filter((r): r is RepoInfo & { sync: RepoSync } => !!r.sync)
   const pushable = synced.filter((r) => r.sync.auto_push !== null)
+  const fast = pushable.filter((r): r is typeof r & { fast: FastModeView } => !!r.fast)
   const failed = synced.filter((r) => r.sync.fetch && !r.sync.fetch.ok)
   const fetched = synced.filter((r) => r.sync.fetch?.ok)
   const minutes = (v: string) => (v.trim() === '' ? 0 : Number.isFinite(Number(v)) ? Number(v) : form.fetch_every_min)
@@ -283,7 +290,60 @@ function SyncFields({ form, repos, edit }: { form: Form; repos: RepoInfo[]; edit
         {pushable.length === 0 && <p className="br-dim br-small">现在的仓库都只在本机做（没有远端），不用推。</p>}
         <p className="br-hint">{PUSH_HINT}</p>
       </div>
+      {fast.length > 0 && (
+        <div className="br-field" role="group" aria-labelledby="set-fast">
+          <span className="st-label" id="set-fast">允许快速模式</span>
+          {fast.map((r) => <FastSwitch key={r.path} r={r} onChanged={onChanged} />)}
+          <p className="br-hint">{FAST_SWITCH_HINT}</p>
+        </div>
+      )}
     </fieldset>
+  )
+}
+
+/** 允许快速模式 of one repo: the default branch's .brain/kit.json fast_mode. A flip asks first, then opens the kit.json MR
+ * (POST /repos/fast-mode) and says what came of it; until a person merges that MR the switch stays as the default branch
+ * has it, says the MR waits, and takes no second flip. */
+function FastSwitch({ r, onChanged }: { r: RepoInfo & { fast: FastModeView }; onChanged: () => void }) {
+  const api = useAppApi()
+  const flip = useAction((body: FastModeBody) => api.post<FastModeResult>(paths.fastMode(), body))
+  const [asking, setAsking] = useState<boolean | null>(null)
+  const v = flip.result?.fast ?? r.fast
+  const p = v.pending
+  const send = async (on: boolean) => {
+    if (await flip.run({ repo: r.id, on })) onChanged()
+    setAsking(null)
+  }
+  return (
+    <div className="st-push" data-testid="fast-switch" data-repo={r.id}>
+      <label className="br-check">
+        <input type="checkbox" checked={v.on} disabled={!!v.why || !!p || flip.busy} onChange={(e) => { flip.reset(); setAsking(e.target.checked) }} />
+        <b>{r.name}</b>
+      </label>
+      {v.why && <div className="st-ask"><p className="br-warn-text br-small">{v.why}</p></div>}
+      {p && (
+        <p className="br-small" data-testid="fast-pending">
+          {p.iid ? <ExtLink href={p.url}>MR !{p.iid}</ExtLink> : '分支 brain/fast-mode'} 等合并<span className="br-dim">：合并以后{p.on ? '允许' : '不允许'}快速模式</span>
+        </p>
+      )}
+      {asking !== null && (
+        <div className="br-confirm st-ask" role="group" aria-label={`确认${asking ? '允许' : '不允许'}快速模式`}>
+          <p>{FAST_RULE}</p>
+          {!asking && <p className="br-warn-text">{FAST_OFF}</p>}
+          <div className="br-row">
+            <button type="button" className="br-btn is-small is-primary" disabled={flip.busy} onClick={() => void send(asking)}>{flip.busy ? '正在开 MR…' : '确定，开 MR'}</button>
+            <button type="button" className="br-btn is-small" disabled={flip.busy} onClick={() => setAsking(null)}>取消</button>
+          </div>
+        </div>
+      )}
+      {flip.result && (
+        <div className="st-ask" data-testid="fast-result">
+          <p className={`br-pre br-small ${flip.result.ok ? 'br-ok-text' : 'br-bad-text'}`} role="status">{flip.result.text}</p>
+          <MrWay r={flip.result} />
+        </div>
+      )}
+      {flip.error && <p className="br-error" role="alert">{flip.error}</p>}
+    </div>
   )
 }
 
