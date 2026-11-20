@@ -126,6 +126,19 @@ def test_an_install_is_personal_unless_marked_the_team_server_and_one_in_team_mo
     assert clean["role"] == "team_server" and len(probs) == 1 and "这台机器是团队运行机（服务器）" in probs[0]
 
 
+def test_a_0_4_2_team_server_upgraded_with_team_mode_off_is_still_the_team_server(tmp_path):
+    """Its owner had switched 团队模式 off (maintenance) before the upgrade: the bridge's config file it names says
+    what the machine is, so 团队模式 and 一键建运行机 stay in 设置."""
+    settings = mod("settings")
+    team = {"enabled": False, "bridge_config": "/Users/x/.brain/team-setup/bridge.json",
+            "runnerd_config": "/Users/x/.brain/team-setup/runnerd.json", "dev_same_user": True}
+    (tmp_path / "settings.json").write_text(json.dumps({"repos": [], "team": team}))
+    got = settings.load(tmp_path / "settings.json")
+    assert (got["role"], got["team"]) == ("team_server", team)
+    (tmp_path / "settings.json").write_text(json.dumps({"repos": [], "team": dict(team, bridge_config="")}))
+    assert settings.load(tmp_path / "settings.json")["role"] == "personal"
+
+
 def test_only_the_team_server_builds_a_runner_and_one_made_personal_again_stops_team_mode(tmp_path, home):
     """The role is the app's to read on every page (/status app.role) and changes only when it is sent: the 设置 form
     sends none. A personal install refuses 一键建运行机 and team mode; a team server made personal again has its team

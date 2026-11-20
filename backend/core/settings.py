@@ -9,7 +9,7 @@
   role        what this install is: personal (the default, a person's own machine: it never runs the team runner,
               运行机 shows the team runner as GitLab shows it) or team_server (the team's one runner: 设置 has 团队模式
               and 一键建运行机, 运行机 is its own bridge). Settings of 0.4.2 and before name none: a machine in team mode
-              then is the team server, any other a personal one
+              or with team.bridge_config filled in then is the team server, any other a personal one
   team        team mode (the team server only): the bridge loop and runnerd run inside the app
     enabled          on / off
     bridge_config    brain-kit's bridge.json (projects, gitlab, identities, ledger, spool_dir, vouchers_dir …) with
@@ -159,11 +159,14 @@ def check(data: Any) -> tuple[dict[str, Any], list[str]]:
             if t["enabled"] and not t["bridge_config"]:
                 probs.append("勾了「这台机器是团队运行机」，就要填「%s」" % TEAM_FIELD["bridge_config"])
     team_on, role = out["team"]["enabled"], data.get("role")
-    if role is None:        # settings of 0.4.2 and before: a machine in team mode is the team server
-        role = TEAM_SERVER if team_on else PERSONAL
+    # settings of 0.4.2 and before name no role: a machine in team mode, or with its bridge's config file filled in
+    # (team mode switched off for a while), is the team server
+    was = TEAM_SERVER if team_on or out["team"]["bridge_config"] else PERSONAL
+    if role is None:
+        role = was
     elif role not in ROLES:
         probs.append("「%s」的格式不对%s" % (ROLE_SWITCH, AGAIN))
-        role = TEAM_SERVER if team_on else PERSONAL
+        role = was
     if role == PERSONAL and team_on:
         probs.append("要开团队模式，先在设置最下面勾上「%s」" % ROLE_SWITCH)
         out["team"]["enabled"] = False
