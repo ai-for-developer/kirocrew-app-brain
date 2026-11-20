@@ -499,13 +499,16 @@ def test_levels_are_normalized_and_whitespace_folded():
 # ---- why the team runner's bridge did not start ---------------------------------------------------------------------- #
 
 def _start_errors() -> list[str]:
-    """Every error bridgehost.TeamRuntime.start raises itself, read from its source (the first string literal, %s
-    filled), and brain-kit's load_bridge_config ones (bridge/handoff.py, sign.signer_problems)."""
+    """Every error bridgehost.TeamRuntime.start raises itself (in it and in load_config, which it reads bridge.json
+    with), read from their source (the first string literal, %s filled), and brain-kit's load_bridge_config ones
+    (bridge/handoff.py, sign.signer_problems). A round's errors are not start errors."""
     import ast
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / "backend" / "core" / "team" / "bridgehost.py").read_text(encoding="utf-8")
+    starting = "\n".join(ast.get_source_segment(src, f) or "" for f in ast.walk(ast.parse(src))
+                         if isinstance(f, ast.FunctionDef) and f.name in ("load_config", "start"))
     own = [ast.literal_eval(m.group(1)).replace("%s", "/etc/brain/x.json")
-           for m in re.finditer(r'BrainError\(("(?:[^"\\]|\\.)*")', src)]
+           for m in re.finditer(r'BrainError\(("(?:[^"\\]|\\.)*")', starting)]
     assert len(own) >= 8, own
     return own + ["bridge config: spool_dir is required", "bridge config: signing_key is required (or a signer of type spool)",
                   "bridge config: signer.allowed_signers is required for a spool signer", "bridge config: projects is empty",
