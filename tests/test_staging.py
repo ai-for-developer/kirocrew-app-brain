@@ -2,8 +2,9 @@
 real log file and VERSION file, the session surface in memory, one clock for all. One Issue per error signature, a
 comment when its count jumps, the MR that merged the deployed commit, a fix given to a brain-patrol session two at a
 time counting MR 巡检's, its prompt, two failed attempts that stop it with one comment, its MR followed to the merge, a
-recurrence on a newer deploy that opens the Issue again, the log's cursor across restarts, and a project that does not
-switch it on left alone.
+recurrence on a newer deploy that opens the Issue again (not the old build's last lines read as the deploy lands), an
+Issue people closed or labelled wontfix left closed, a deleted Issue or fix MR, at most three new Issues a round and
+twenty open, the log's cursor across restarts, and a project that does not switch it on left alone.
 """
 
 import os
@@ -218,7 +219,7 @@ def test_two_failed_fix_attempts_stop_it_with_one_issue_comment(bk, tmp_path):
         w.write(zero())
         w.round()
     assert w.gl.notes(P, 1) == ["运行机试了 2 次，没修好这个报错（最后一次：30 分钟没做完，停掉了）：它不再自己修，交给人。"
-                                "这个 Issue 关掉以后，要是在新的部署里又出现，运行机会重新打开它再修。"]
+                                "人修好了或者不修了，就关掉这个 Issue：运行机不会再打开它，以后新的部署里又出现，只在这里说一次。"]
     assert len(w.sessions.sent) == 2 and w.item(ZERO)["note"] == "试了 2 次没修好（最后一次：30 分钟没做完，停掉了），在 Issue 上说了：交给人"
 
 
@@ -275,20 +276,25 @@ def test_a_fix_mr_closed_without_merging_leaves_the_error_to_people(bk, tmp_path
     w.round()
     w.round()
     assert w.item(ZERO)["state"] == "stopped" and w.item(ZERO)["note"] == "修复 MR 被关了，没有合并，在 Issue 上说了：交给人"
-    assert w.gl.notes(P, 1) == ["修复 MR !52 被关了，没有合并：运行机不再自己修这个报错，交给人。这个 Issue 关掉以后，要是在新的部署里又出现，"
-                                "运行机会重新打开它再修。"]
+    assert w.gl.notes(P, 1) == ["修复 MR !52 被关了，没有合并：运行机不再自己修这个报错，交给人。人修好了或者不修了，就关掉这个 Issue：运行机不会"
+                                "再打开它，以后新的部署里又出现，只在这里说一次。"]
 
 
-def test_an_issue_a_person_closes_while_it_is_being_fixed_stops_its_turn_and_is_forgotten_a_month_on(bk, tmp_path):
+def test_an_issue_a_person_closes_while_it_is_being_fixed_stops_its_turn_and_stays_closed_and_a_fixed_one_goes_a_month_on(
+        bk, tmp_path):
     w = started(tmp_path)
-    w.write(zero())
+    w.write(zero(), gateway())
     w.round()
-    w.gl.close_issue(P, 1)
+    w.gl.close_issue(P, 1)                      # a person closes #1
+    w.gl.mr(P, 52, sha=SHA[3], source="fix/staging-" + mod("team.stagelog").short_id(GATEWAY))
+    w.gl.close(P, 52)                           # #2's fix MR merged at once; its Closes #2 closes it
+    w.gl.close_issue(P, 2)
     w.round()
-    assert w.sessions.stopped == ["staging-42-1"] and w.item(ZERO)["state"] == "closed" and w.item(ZERO)["slot"] is None
+    assert w.sessions.stopped == ["staging-42-1", "staging-42-2"] and w.item(ZERO)["slot"] is None
+    assert (w.item(ZERO)["state"], w.item(GATEWAY)["state"]) == ("dismissed", "closed") and w.watch.held() == []
     w.clock.t += mod("team.staging").FORGET_S
     w.round()
-    assert w.watch.view()["items"] == [] and w.watch.held() == []
+    assert [i["signature"] for i in w.watch.view()["items"]] == [ZERO]
 
 
 def test_a_log_that_cannot_be_read_this_round_still_has_its_issues_and_fixes_followed(bk, tmp_path):
@@ -299,7 +305,7 @@ def test_a_log_that_cannot_be_read_this_round_still_has_its_issues_and_fixes_fol
     w.gl.close_issue(P, 1)
     with pytest.raises(bk.brain_error(), match="app.log"):
         w.round()
-    assert w.sessions.stopped == ["staging-42-1"] and w.item(ZERO)["state"] == "closed"
+    assert w.sessions.stopped == ["staging-42-1"] and w.item(ZERO)["state"] == "dismissed"
     assert w.watch.view()["projects"][0]["error"].startswith("[Errno 2] No such file or directory")
 
 
@@ -382,6 +388,68 @@ def test_lines_the_old_build_logged_just_before_a_deploy_do_not_open_the_fixed_i
     w.round()
     assert w.issue(1)["state"] == "opened" and w.item(GATEWAY)["state"] == "fixing"
     assert [o[0] for o in w.sessions.opened] == ["staging-42-1", "staging-42-1-2"]
+
+
+def test_an_issue_people_close_stays_closed_and_its_error_coming_back_is_told_once_per_deploy(bk, tmp_path):
+    staging = mod("team.staging")
+    w = started(tmp_path)
+    w.write(gateway())
+    w.round()
+    w.sessions.end()
+    w.round()                                   # attempt 1 ended without an MR: attempt 2
+    w.sessions.end()
+    w.round()                                   # attempt 2 too: left to people, told once
+    assert w.item(GATEWAY)["state"] == "stopped"
+    w.gl.close_issue(P, 1)                      # people decide: won't fix
+    w.round()
+    assert (w.item(GATEWAY)["state"], w.item(GATEWAY)["note"]) == (
+        "dismissed", "人关了这个 Issue，或者打了 wontfix 标签：不会再打开，也不修；新的部署里又出现，在 Issue 上说一次")
+    for sha in (SHA[2], SHA[3]):                # two later deploys, the error still logged on each
+        w.version.write_text(sha + "\n")
+        w.round()
+        w.clock.t += staging.REOPEN_S
+        for n in (1, 2):
+            w.write(gateway(100 + n))
+            w.round()
+    assert w.issue(1)["state"] == "closed" and not w.gl.asked_staging("PUT", "/issues/1$")
+    assert [o[0] for o in w.sessions.opened] == ["staging-42-1"] and len(w.sessions.sent) == 2
+    told = w.gl.notes(P, 1)[1:]
+    assert [t.startswith("这个报错在新的部署里又出现了：部署的提交 [%s]" % sha[:12]) for t, sha in zip(told, (SHA[2], SHA[3]))] == [
+        True, True] and len(told) == 2
+    assert "这个 Issue 是人关的（或者打了 wontfix 标签）：运行机不会再打开它，也不修" in told[0]
+    assert w.item(GATEWAY)["state"] == "dismissed" and w.watch.held() == []
+
+
+def test_an_issue_labelled_wontfix_has_its_fix_stopped_and_is_left_to_people(bk, tmp_path):
+    w = started(tmp_path)
+    w.write(gateway())
+    w.round()
+    assert w.item(GATEWAY)["state"] == "fixing"
+    w.issue(1)["labels"].append("Won't Fix")
+    w.round()
+    assert w.sessions.stopped == ["staging-42-1"] and w.item(GATEWAY)["state"] == "dismissed"
+    assert w.issue(1)["state"] == "opened" and w.gl.notes(P, 1) == []
+    w.write(gateway(78))
+    w.round()
+    assert len(w.sessions.opened) == 1 and w.gl.notes(P, 1) == []
+
+
+def test_people_opening_a_dismissed_issue_again_have_it_fixed_when_its_error_comes_back_on_a_deploy(bk, tmp_path):
+    staging = mod("team.staging")
+    w = started(tmp_path)
+    w.write(gateway())
+    w.round()
+    w.gl.close_issue(P, 1)
+    w.round()
+    assert w.item(GATEWAY)["state"] == "dismissed"
+    w.issue(1)["state"] = "opened"              # people change their mind
+    w.version.write_text(SHA[2] + "\n")
+    w.round()
+    w.clock.t += staging.REOPEN_S
+    w.write(gateway(78))
+    w.round()
+    assert w.item(GATEWAY)["state"] == "fixing" and [o[0] for o in w.sessions.opened] == ["staging-42-1", "staging-42-1-2"]
+    assert w.gl.notes(P, 1) == [] and "git checkout -B %s-2（" % fix_branch(GATEWAY) in w.sessions.messages("staging-42-1-2")[0]
 
 
 def test_a_deleted_issue_whose_error_comes_back_gets_a_new_one_and_a_deleted_fix_mr_leaves_it_to_people(bk, tmp_path):

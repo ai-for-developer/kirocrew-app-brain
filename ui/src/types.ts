@@ -1534,11 +1534,13 @@ export interface TeamPatrol {
 // ---------------------------------------------------------------- 测试环境报错: GET /team/staging
 
 /** Where an error of the test environment is (backend/core/team/staging.py): new (seen, its Issue not open yet, or
- * seen again on a newer deploy and to be opened again), issued (its Issue open, waiting for a fix session: note says
- * why), fixing (a brain-patrol session is on it), fix_mr (its fix's MR is open, waiting for people), stopped (two fix
- * attempts failed, or a person closed the fix's MR: the Issue says so), closed (its Issue closed). Another value is
- * shown as it is. */
-export type StagingState = 'new' | 'issued' | 'fixing' | 'fix_mr' | 'stopped' | 'closed'
+ * seen again on a newer deploy and to be opened again; note says why one waits: three a round, twenty open at most),
+ * issued (its Issue open, waiting for a fix session: note says why), fixing (a brain-patrol session is on it), fix_mr
+ * (its fix's MR is open, waiting for people), stopped (two fix attempts failed, or a person closed the fix's MR: the
+ * Issue says so), dismissed (people closed its Issue, not its fix, or labelled it wontfix: never opened again or
+ * fixed, a recurrence on a newer deploy told on the Issue once), closed (its Issue closed by its fix, or deleted).
+ * Another value is shown as it is. */
+export type StagingState = 'new' | 'issued' | 'fixing' | 'fix_mr' | 'stopped' | 'dismissed' | 'closed'
 export interface StagingLink {
   iid: number
   url: string | null

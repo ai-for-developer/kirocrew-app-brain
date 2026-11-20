@@ -4,27 +4,29 @@ stagelog.py), and keeps one row per error signature in <root>/staging.sqlite, wi
 transaction as the counts, so a restart reads on where the last round stopped.
 
 A row is a state machine (Row.state):
-  new      seen, its Issue not open: one is opened (label staging-error, with the error's lines, the deployed commit and
-           the MR that merged it, as GitLab's commits/:sha/merge_requests says), or found (an open Issue that names the
-           signature: a request whose answer was lost), or opened again (a closed one seen on another deployed commit;
-           a deleted one is opened anew).
-           The open Issues are listed once a round; at most NEW_PER_ROUND are opened in a project a round, and none
-           once it has OPEN_CAP open: the rest wait, saying why.
-  issued   its Issue open, no fix at work. A brain-patrol session of its own (slot staging-<project id>-<issue>) is given
-           the fix, at most CAP at work at once counting MR 巡检's, in a clone of its own (<work>/staging/<project
-           id>-<issue>) at the default branch's head: a branch fix/staging-<id> from it, a test that shows the error if
-           it can, the fix, the tests, a push, an MR 「修复：…」 that says Closes #<issue>, a reply on the Issue. The row
-           is fixing before its message goes, so a message KiroCrew did not answer is never sent again.
-  fixing   an MR from the fix branch is there: fix_mr. A failed attempt: the turn ended without one, ended with
-           KiroCrew's error, or neither within TIMEOUT_S (the turn is stopped), or KiroCrew refused the message; issued
-           again, or stopped on the MAX_ATTEMPTS-th.
-  fix_mr   the MR merged: closed. Closed without merging, or deleted (people said no): stopped.
-  stopped  left to people; the Issue was told why, once.
-  closed   its Issue closed (by the MR's Closes #, or a person), or deleted. Seen on another deployed commit once a round
-           first read that commit REOPEN_S ago (lines read sooner may be the old build's last ones), it is new again,
-           and its next fix branch is fix/staging-<id>-<n>.
-Every open state whose Issue was closed or deleted is closed (its turn stopped). An open Issue gets a comment when its
-count jumps: doubled, and up by JUMP or more, since the Issue last said it.
+  new        seen, its Issue not open: one is opened (label staging-error, with the error's lines, the deployed commit
+             and the MR that merged it, as GitLab's commits/:sha/merge_requests says), or found (an open Issue that
+             names the signature: a request whose answer was lost), or opened again (a closed one seen on another
+             deployed commit; a deleted one is opened anew). The open Issues are listed once a round; at most
+             NEW_PER_ROUND are opened in a project a round, and none once it has OPEN_CAP open: the rest wait, saying why.
+  issued     its Issue open, no fix at work. A brain-patrol session of its own (slot staging-<project id>-<issue>) is
+             given the fix, at most CAP in a turn at once counting MR 巡检's, in a clone of its own (<work>/staging/
+             <project id>-<issue>) at the default branch's head: a branch fix/staging-<id> from it, a test that shows the
+             error if it can, the fix, the tests, a push, an MR 「修复：…」 that says Closes #<issue>, a reply on the
+             Issue. The row is fixing before its message goes, so a message KiroCrew did not answer is never sent again.
+  fixing     an MR from the fix branch is there: fix_mr. A failed attempt: the turn ended without one, ended with
+             KiroCrew's error, or neither within TIMEOUT_S (the turn is stopped), or KiroCrew refused the message;
+             issued again, or stopped on the MAX_ATTEMPTS-th.
+  fix_mr     the MR merged: closed. Closed without merging, or deleted (people said no): stopped.
+  stopped    left to people; the Issue was told why, once.
+  closed     its Issue closed by its fix branch's merged MR (Closes #), or deleted. Seen on another deployed commit once
+             a round first read that commit REOPEN_S ago (lines read sooner may be the old build's last ones), it is
+             new again, and its next fix branch is fix/staging-<id>-<n>.
+  dismissed  its Issue closed by people, not by its fix, or labelled to be left alone (SKIP_LABELS): never opened
+             again and never fixed. Seen on another deployed commit (REOPEN_S on), its Issue is told so once for that
+             commit; if people opened it again (without the label) by then, it is issued again.
+Every open state whose Issue was closed, deleted or labelled so is closed or dismissed (its turn stopped). An open Issue
+gets a comment when its count jumps: doubled, and up by JUMP or more, since the Issue last said it.
 A project the source is no longer on, or bridge.json no longer names, is forgotten: its turns stopped, its clones
 deleted, its rows and cursor gone. Its Issues stay; an open one is found again when its error comes back.
 """
@@ -34,6 +36,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shlex
 import sqlite3
 import time
@@ -51,12 +54,14 @@ CAP = patrol.CAP                    # fix sessions at work at once, MR 巡检's 
 TIMEOUT_S = patrol.TIMEOUT_S
 MAX_ATTEMPTS = patrol.MAX_ATTEMPTS
 JUMP = 10
-FORGET_S = 30 * 86400               # a closed row not seen this long is dropped
+FORGET_S = 30 * 86400               # a closed row not seen this long is dropped (a dismissed one is kept)
 REOPEN_S = 5 * 60                   # an error is a deploy's own once a round first read that deploy this long ago
 NEW_PER_ROUND = 3                   # Issues opened (or opened again) in a project in one round
 OPEN_CAP = 20                       # open staging-error Issues of a project: no more are opened then
+SKIP_LABELS = ("wontfix", "aiskip")  # an Issue labelled so (any case, spaces and marks aside: Won't Fix, ai-skip)
 MARK = "staging-error-id: %s"       # in an Issue's description: the signature it is about
-NEW, ISSUED, FIXING, FIX_MR, STOPPED, CLOSED = "new", "issued", "fixing", "fix_mr", "stopped", "closed"
+NEW, ISSUED, FIXING, FIX_MR, STOPPED, CLOSED, DISMISSED = (
+    "new", "issued", "fixing", "fix_mr", "stopped", "closed", "dismissed")
 OPEN = (ISSUED, FIXING, FIX_MR, STOPPED)
 OUTCOME = {"ended": "会话结束了，没开 MR", "failed": "会话报错停了", "timeout": "30 分钟没做完，停掉了",
            "refused": "KiroCrew 没收下消息"}
@@ -114,14 +119,23 @@ class Row:
 # ---- the state machine ---------------------------------------------------------------------------------------- #
 
 def seen(row: Row | None, project: str, g: ErrorGroup, settled: bool = True) -> Row:
-    """*row* after a round read *g* more of its error: counted. A closed one seen on another deployed commit, *settled*
-    (a round first read that commit REOPEN_S ago or more), is new again."""
+    """*row* after a round read *g* more of its error: counted. Seen on another deployed commit, *settled* (a round
+    first read that commit REOPEN_S ago or more): a closed one is new again, a dismissed one has its Issue told once."""
     if row is None:
         return Row(project, g)
     row = replace(row, group=row.group.merged(g))
-    if row.state == CLOSED and settled and g.deployed_sha != row.closed_sha:
-        return replace(row, state=NEW, cycle=row.cycle + 1, attempts=0, outcome="", fix_mr=None, said=False)
+    if not settled or g.deployed_sha == row.closed_sha:
+        return row
+    if row.state == CLOSED:
+        return again(row, NEW)
+    if row.state == DISMISSED:
+        return replace(row, closed_sha=g.deployed_sha, said=False)
     return row
+
+
+def again(row: Row, state: str) -> Row:
+    """*row* in *state* for another go at its fix: a new fix branch, no attempt yet."""
+    return replace(row, state=state, cycle=row.cycle + 1, attempts=0, outcome="", fix_mr=None, said=False)
 
 
 def failed(row: Row, outcome: str) -> Row:
@@ -131,6 +145,16 @@ def failed(row: Row, outcome: str) -> Row:
 
 def closed(row: Row) -> Row:
     return replace(row, state=CLOSED, closed_sha=row.group.deployed_sha, slot="", send_id="")
+
+
+def dismissed(row: Row) -> Row:
+    """Left to people for good: its Issue is not told until its error comes back on another deploy."""
+    return replace(closed(row), state=DISMISSED, said=True)
+
+
+def skipped(issue: Mapping[str, Any]) -> bool:
+    """The Issue is labelled to be left to people (SKIP_LABELS)."""
+    return any(re.sub(r"[^a-z]", "", str(x).lower()) in SKIP_LABELS for x in issue.get("labels") or ())
 
 
 def jumped(row: Row) -> bool:
@@ -242,7 +266,8 @@ def issue_text(row: Row, origin: Link | None, web: str, base: str) -> str:
         "- 带进这个提交的 MR：%s" % _origin_words(origin),
         "- 第一次看到：%s；到现在 %d 次" % (_when(g.first_seen), g.count), "",
         "日志（最近的一次，最多 %d 行）：" % stagelog.SAMPLE_LINES, "", *_fenced(g.sample), "",
-        "运行机会从 %s 开分支 %s 去修，修好以后开 MR（写着 Closes 这个 Issue），等人审、人合并。" % (base, row.branch), "",
+        "运行机会从 %s 开分支 %s 去修，修好以后开 MR（写着 Closes 这个 Issue），等人审、人合并。" % (base, row.branch),
+        "不要它修：关掉这个 Issue，或者打上 wontfix 标签。", "",
         "<!-- %s -->" % (MARK % stagelog.short_id(g.signature))])
 
 
@@ -253,6 +278,14 @@ def reopen_text(row: Row, origin: Link | None, web: str) -> str:
         % (_commit(web, row), _origin_words(origin), g.count, row.branch), "", "日志（最近的一次）：", "", *_fenced(g.sample)])
 
 
+def recur_text(row: Row, web: str) -> str:
+    g = row.group
+    return "\n".join([
+        "这个报错在新的部署里又出现了：部署的提交 %s，一共 %d 次。这个 Issue 是人关的（或者打了 wontfix 标签）：运行机不会再打开它，也不修，"
+        "以后每个新的部署最多在这里说一次。要它接着修：重新打开这个 Issue（去掉 wontfix 标签）。" % (_commit(web, row), g.count),
+        "", "日志（最近的一次）：", "", *_fenced(g.sample)])
+
+
 def jump_text(row: Row, web: str) -> str:
     g = row.group
     return "这个报错又出现了 %d 次，一共 %d 次；最近一次在 %s，部署的提交 %s。" % (g.count - row.told, g.count, _when(g.last_seen),
@@ -260,7 +293,7 @@ def jump_text(row: Row, web: str) -> str:
 
 
 def stopped_text(row: Row) -> str:
-    after = "这个 Issue 关掉以后，要是在新的部署里又出现，运行机会重新打开它再修。"
+    after = "人修好了或者不修了，就关掉这个 Issue：运行机不会再打开它，以后新的部署里又出现，只在这里说一次。"
     if row.outcome == "mr_closed" and row.fix_mr is not None:
         return "修复 MR !%d 被关了，没有合并：运行机不再自己修这个报错，交给人。%s" % (row.fix_mr.iid, after)
     return "运行机试了 %d 次，没修好这个报错（最后一次：%s）：它不再自己修，交给人。%s" % (
@@ -369,7 +402,7 @@ class StagingWatch:
         """The Issues it has open: their claims."""
         if not self._ledger_there():
             return []
-        return [claim_of(r) for r in self.led.rows() if r.issue is not None and r.state != CLOSED]
+        return [claim_of(r) for r in self.led.rows() if r.issue is not None and r.state not in (CLOSED, DISMISSED)]
 
     def busy(self) -> int:
         """Its sessions in a turn now, as its ledger says, every project's (also one this round could not read): a fix
@@ -434,7 +467,7 @@ class StagingWatch:
         chunk = cfg.log.read(self.led.cursor(project))
         events, used = stagelog.errors_in(chunk.lines)
         self.led.take(project, chunk.cursors[used], stagelog.grouped(events, now, sha), settled)
-        self._each([r for r in self.led.rows(project) if r.state in OPEN], self._tell)
+        self._each([r for r in self.led.rows(project) if r.state in OPEN + (DISMISSED,)], self._tell)
         self._file(project, kit, [r for r in self.led.rows(project) if r.state == NEW])
         for r in self.led.rows(project):
             if r.state == CLOSED and now - r.group.last_seen >= FORGET_S:
@@ -450,15 +483,19 @@ class StagingWatch:
                 self._errors.append("%s「%s」: %s" % (row.project, stagelog.short(row.signature, 40), _said(exc)))
 
     def _watch(self, row: Row, now: float) -> None:
-        """An open row as its Issue, its fix MR and its session's turn say; its Issue told once when it stopped."""
+        """An open row as its Issue, its fix MR and its session's turn say; its Issue told once when it stopped. Its
+        Issue closed by its fix branch's merged MR, or deleted: closed; closed by people, or labelled to be left
+        alone: dismissed."""
         rest = bk.m("rest")
         issue = self._issue(row)
-        if issue is None or issue.get("state") == "closed":
+        if issue is None or issue.get("state") == "closed" or skipped(issue):
             if row.state == FIXING:
                 self._stop(row)
             self._drop_clone(row)
             if issue is None:                           # deleted: a new one is opened when the error comes back
                 self.led.put(closed(replace(row, issue=None, fix_mr=None)))
+            elif skipped(issue) or not self._fixed(row):
+                self.led.put(dismissed(row))
             else:
                 self.led.put(closed(row))
             return
@@ -491,17 +528,27 @@ class StagingWatch:
             self.led.put(replace(row, said=True))
 
     def _tell(self, row: Row) -> None:
-        """An open row's Issue told when its count jumped."""
+        """An open row's Issue told when its count jumped; a dismissed one's when its error came back on another deploy,
+        once for that deploy, unless people opened the Issue again (issued again) or deleted it (new again)."""
+        notes = "/projects/%s/issues/%d/notes" % (bk.m("rest").q(row.project), row.issue.iid)
         if jumped(row):
-            self.gl.call("POST", "/projects/%s/issues/%d/notes" % (bk.m("rest").q(row.project), row.issue.iid),
-                         body={"body": jump_text(row, self.web)})
+            self.gl.call("POST", notes, body={"body": jump_text(row, self.web)})
             self.led.put(replace(row, told=row.group.count))
+        elif row.state == DISMISSED and not row.said:
+            issue = self._issue(row)
+            if issue is None:
+                self.led.put(again(replace(row, issue=None), NEW))
+            elif issue.get("state") == "opened" and not skipped(issue):
+                self.led.put(replace(again(row, ISSUED), told=row.group.count))
+            else:
+                self.gl.call("POST", notes, body={"body": recur_text(row, self.web)})
+                self.led.put(replace(row, said=True))
 
     def _file(self, project: str, kit: Mapping[str, Any], rows: list[Row]) -> None:
         """The new rows' Issues, the earliest seen first: an open one that names the signature found (a request whose
         answer was lost, or one from before the ledger); else, at most NEW_PER_ROUND this round and while fewer than
-        OPEN_CAP are open, its closed one opened again (a deleted one is opened anew) or a new one. The open ones are
-        listed once."""
+        OPEN_CAP are open, its closed one opened again (one labelled to be left alone dismisses it, a deleted one is
+        opened anew) or a new one. The open ones are listed once."""
         if not rows:
             return
         path = "/projects/%s/issues" % bk.m("rest").q(project)
@@ -524,7 +571,11 @@ class StagingWatch:
             found = None if row.issue is not None else next(
                 (i for i in issues if mark in str(i.get("description") or "")), None)
             if found is not None:
-                issued(replace(row, issue=Link.of(found), project_id=int(found.get("project_id") or 0)), self._origin(row))
+                row = replace(row, issue=Link.of(found), project_id=int(found.get("project_id") or 0))
+                if skipped(found):
+                    self.led.put(dismissed(row))
+                else:
+                    issued(row, self._origin(row))
                 return
             if room["made"] >= NEW_PER_ROUND:
                 self._notes[key] = "排队：这一轮已经开了 %d 个 Issue，下一轮再开" % NEW_PER_ROUND
@@ -533,6 +584,9 @@ class StagingWatch:
                 self._notes[key] = "排队：这个项目开着的测试环境报错 Issue 已经有 %d 个：人关掉一些，剩下的再开" % OPEN_CAP
                 return
             issue = self._issue(row) if row.issue is not None else None
+            if issue is not None and skipped(issue):
+                self.led.put(dismissed(row))
+                return
             origin = self._origin(row)
             if issue is not None:
                 self.gl.call("PUT", "%s/%d" % (path, row.issue.iid), body={"state_event": "reopen"})
@@ -557,6 +611,12 @@ class StagingWatch:
             if exc.status == 404:
                 return None
             raise
+
+    def _fixed(self, row: Row) -> bool:
+        """An MR from its fix branch merged: that MR's Closes # closed its Issue."""
+        mrs = self.gl.call("GET", "/projects/%s/merge_requests" % bk.m("rest").q(row.project),
+                           {"source_branch": row.branch, "state": "merged"}) or []
+        return any(isinstance(m, dict) for m in mrs)
 
     def _origin(self, row: Row) -> Link | None:
         """The MR that merged the deployed commit (a merged one first), or None when GitLab knows none."""
@@ -708,6 +768,8 @@ def _note(row: Row) -> str:
         return "上一次没修好（%s）：再派一次" % OUTCOME.get(row.outcome, row.outcome)
     if row.state == NEW and row.issue is not None:
         return "在新的部署里又出现了：重新打开 Issue"
+    if row.state == DISMISSED:
+        return "人关了这个 Issue，或者打了 wontfix 标签：不会再打开，也不修；新的部署里又出现，在 Issue 上说一次"
     if row.state == CLOSED and row.group.deployed_sha != row.closed_sha:
         return "新的部署里又看到了：部署 %d 分钟以内的先不算（可能是旧版本最后写的），再看到就重新打开" % (REOPEN_S // 60)
     if row.state == CLOSED:

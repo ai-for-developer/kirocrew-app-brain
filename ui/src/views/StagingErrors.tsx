@@ -16,6 +16,7 @@ export const STAGING_STATE: Record<StagingState, { label: string; tone: Tone }> 
   issued: { label: '开了 Issue，等修', tone: 'hand' },
   new: { label: '刚看到', tone: 'warn' },
   stopped: { label: '交给人了', tone: 'bad' },
+  dismissed: { label: '人关了，不修', tone: 'idle' },
   closed: { label: '已关', tone: 'ok' },
 }
 export const stagingMeta = (state: string) => STAGING_STATE[state as StagingState] ?? { label: state, tone: 'idle' as Tone }

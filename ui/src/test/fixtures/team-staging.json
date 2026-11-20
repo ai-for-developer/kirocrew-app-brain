@@ -41,6 +41,14 @@
       "attempts": 2, "slot": "staging-12-9", "note": "试了 2 次没修好（最后一次：30 分钟没做完，停掉了），在 Issue 上说了：交给人"
     },
     {
+      "project": "shop/shop-pay", "signature": "app.mail: SMTP relay refused <email>", "count": 31, "state": "dismissed",
+      "issue": { "iid": 5, "url": "https://gitlab.example.com/shop/shop-pay/-/issues/5", "title": "测试环境报错：app.mail: SMTP relay refused <email>" },
+      "origin": null,
+      "fix_mr": null,
+      "first_seen": 1794100000, "last_seen": 1794139000, "deployed_sha": "3f2a9c1d0e4b5a6978c8d7e6f5a4b3c2d1e0f9a8",
+      "attempts": 0, "slot": null, "note": "人关了这个 Issue，或者打了 wontfix 标签：不会再打开，也不修；新的部署里又出现，在 Issue 上说一次"
+    },
+    {
       "project": "shop/shop-pay", "signature": "shop.errors.RefundError at shop/refunds.py in refund", "count": 4, "state": "closed",
       "issue": { "iid": 7, "url": "https://gitlab.example.com/shop/shop-pay/-/issues/7", "title": "测试环境报错：shop.errors.RefundError at shop/refunds.py in refund" },
       "origin": { "iid": 35, "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/35", "title": "退款审核" },
