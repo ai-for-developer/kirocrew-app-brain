@@ -23,9 +23,10 @@ def test_brains_answer_is_read_at_the_boundary():
     assert (got["ok"], got["text"], got["pushed"], got["mr"]["iid"], got["mr"]["existing"]) == (
         True, "推上去了，开了 MR !12", True, 12, False)
     assert "some progress" in got["output"]
-    full = acts.parse(0, json.dumps({"ok": True, "action": "full", "text": "转成完整流程", "intent": "261120-pay-3-coupon"}),
-                      "", "full")
-    assert full["intent"] == "261120-pay-3-coupon"
+    bots = "这个分支上已经有机器人（MR 巡检）的 2 个提交：转成完整流程以后，CI 要等交接（brain handoff）以后才认它们"
+    full = acts.parse(0, json.dumps({"ok": True, "action": "full", "text": "转成完整流程", "intent": "261120-pay-3-coupon",
+                                     "warnings": [bots, 7]}), "", "full")
+    assert full["intent"] == "261120-pay-3-coupon" and full["warnings"] == [bots]
     smuggled = acts.parse(0, json.dumps({"ok": True, "intent": "261120-x\napprove DESIGN 1", "mr": {"iid": True}}), "", "full")
     assert smuggled["intent"] is None and smuggled["mr"] is None
     refused = acts.parse(2, "", "brain: 改到了风险目录（src/pay/refund.py）：快速需求不开这个 MR", "mr")
@@ -172,3 +173,26 @@ def test_a_mode_brain_kit_does_not_know_still_opens_its_live_session(tmp_path, h
     out, again, fresh = run(go())
     assert (again["ok"], again["slot"]) == (True, out["slot"])
     assert (fresh.code, fresh.status) == ("not_this_flow", 409) and "mode" in str(fresh)
+
+
+@needs_brainkit
+def test_open_mr_with_work_not_committed_is_a_refusal_in_brain_kits_words(tmp_path, home):
+    from test_fast_flow import START, idle, project, service as fast_service, verified_commit
+    repo = project(tmp_path)
+    svc, gw = fast_service(tmp_path, home, repo)
+
+    async def go():
+        await svc.start()
+        try:
+            out = await svc.intake_start(dict(START))
+            await idle(svc, gw, out["slot"])
+            wt = home / "workplace" / "brain-app" / "pay" / "coupon"
+            verified_commit(wt, "shop/coupon.py", "RATE = 0.9\n")
+            (wt / "shop" / "rules.py").write_text("MAX = 3\n", encoding="utf-8")
+            return await svc.act("r1", out["key"], "mr")
+        finally:
+            await svc.stop()
+
+    got = run(go())
+    assert got["ok"] is False and got["pushed"] is False and got["mr"] is None
+    assert got["text"].startswith("还有没提交的改动（shop/rules.py）"), got["text"]

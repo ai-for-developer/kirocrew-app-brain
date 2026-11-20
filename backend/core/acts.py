@@ -53,7 +53,7 @@ def parse(code: int, stdout: str, stderr: str, action: str) -> dict[str, Any]:
     `brain: <why>` line, or what happened."""
     output = ((stdout or "") + ("\n" + stderr if stderr else "")).strip()[-OUT_MAX:]
     out: dict[str, Any] = {"ok": False, "action": action, "text": "", "pushed": False, "mr": None, "commands": [],
-                           "new_mr_url": None, "intent": None, "output": output}
+                           "new_mr_url": None, "intent": None, "warnings": [], "output": output}
     doc: Any = None
     if code == 0:
         text = (stdout or "").strip()
@@ -76,7 +76,8 @@ def parse(code: int, stdout: str, stderr: str, action: str) -> dict[str, Any]:
                mr={"iid": iid, "url": _str(mr.get("url")) or "", "existing": mr.get("existing") is True}
                if isinstance(iid, int) and not isinstance(iid, bool) else None,
                commands=[c for c in doc.get("commands") or [] if isinstance(c, str)][:20],
-               new_mr_url=_str(doc.get("new_mr_url")), intent=intent if intent and INTENT_RE.match(intent) else None)
+               new_mr_url=_str(doc.get("new_mr_url")), intent=intent if intent and INTENT_RE.match(intent) else None,
+               warnings=[w[:500] for w in doc.get("warnings") or [] if isinstance(w, str) and w][:10])
     return out
 
 
