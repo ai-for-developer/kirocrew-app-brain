@@ -30,6 +30,7 @@
 import { useState, type ReactNode } from 'react'
 import { useAppApi, useNavigate } from '@kirocrew/app-sdk'
 import { paths, useAction, usePoll } from '../api'
+import { FLOW_FORM } from '../flows'
 import { addPaths, ago, lines, splitPaths } from '../format'
 import { KEY_RE, type NewEntry } from '../nav'
 import type { Tone } from '../styles'
@@ -53,7 +54,7 @@ export const NO_SECRET = '绝密材料不收：先请产品写一份脱敏摘要
 export const CHECK_HINT = '只检查：不认领，一段话和文档都不收进任何地方。'
 export const TEXT_HINT = '写清楚要做什么、给谁用、怎样算做完。它和文档一样过下面的五关。'
 export const CREW_OK = 'KiroCrew 的检查都过了：开工以后能开会话。'
-export const STARTED_NEXT = '打开会话：AI 先写需求文档；写好会请你批准（待办和运行过程会提醒，批准那一行要你在会话里自己打）。'
+export const STARTED_NEXT = FLOW_FORM.lean.startedNext
 const CLASSES = Object.keys(CLASS_LABEL) as Classification[]
 
 /** A gate's state: ok (done), wait (waits for you), bad (stopped: the check, or this repo's rule), warn (请你确认),
@@ -246,10 +247,7 @@ export function NewView({ entry, ...props }: { entry: NewEntry } & ViewProps) {
       state: noMaterial ? 'off' : ok || passed ? 'done' : materialBad ? 'bad' : basicsOk ? 'now' : undefined,
     },
     { icon: 'laptop', title: '开工', text: '在它自己的工作目录里开 AI 开发会话', state: ok ? 'done' : started ? 'bad' : canStart ? 'now' : undefined },
-    { icon: 'req', title: 'Lean 推进', text: bigOn ? '需求和设计由你批准，设计里拆单元' : '需求和设计由你批准', state: ok ? 'now' : undefined },
-    ...(bigOn ? [{ icon: 'scope', title: FAMILY_ACT.split, text: '批了设计再拆，大家认领、并行做' }] : []),
-    localOnly ? { icon: 'runner', title: '交给运行机', text: '这次不需要：这个仓库只在本机做', state: 'off' }
-      : { icon: 'runner', title: '交给运行机', text: bigOn ? '小需求都合并以后' : '团队仓库：交接以后它接着做' },
+    ...FLOW_FORM.lean.way({ big: bigOn, localOnly }).map((s, i): FlowStep => (i === 0 && ok ? { ...s, state: 'now' } : s)),
   ]
   const stepOf = (i: number) => flow[i].state
 
