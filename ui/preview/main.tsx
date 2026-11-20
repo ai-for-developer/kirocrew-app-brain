@@ -31,7 +31,7 @@ import { API, fixtureRoutes } from '../src/test/routes'
 import { StubApiError, setApiRoutes, setNavigateHook } from '../src/test/stubs/app-sdk'
 import { simulated } from './simulate'
 import type {
-  BrainView, CheckRow, CrewFixBody, ImportInspect, ImportJob, InstallResult, IntakeBody, IntakeCheck, IntakeNext, KitForm, OpenSessionBody, Overview, PickKind, PickResult, ReflectApplyBody, ReflectApplyResult, ReflectPreview, RepoInfo, ReqBoard, RequirementDetail, Settings, SplitResult, StartBody, Status, TeamView, Todo,
+  ActResult, BrainView, CheckRow, CrewFixBody, ImportInspect, ImportJob, InstallResult, IntakeBody, IntakeCheck, IntakeNext, KitForm, OpenSessionBody, Overview, PickKind, PickResult, ReflectApplyBody, ReflectApplyResult, ReflectPreview, RepoInfo, ReqBoard, RequirementDetail, Settings, SplitResult, StartBody, Status, TeamView, Todo,
 } from '../src/types'
 
 const FLAGS = ['team', 'nokit', 'crewfail', 'noeval', 'norepos', 'race', 'light'] as const
@@ -368,6 +368,9 @@ setApiRoutes({
       const slot = (body as OpenSessionBody | undefined)?.review ? `brain-${key}-review-${Math.random().toString(16).slice(2, 6)}` : `brain-${key}-7f3a`
       return { ok: true, slot, url: `/chat?sid=${slot}` }
     }
+    // 开 MR / 转完整流程 of a fast run: shown, not done
+    const fast = /\/act\/(mr|full)$/.exec(path)
+    if (fast) return actAnswer(reqOf(path.slice(0, fast.index)), fast[1] as ActResult['action'])
     // 大需求拆成小需求: shown, not done (a small one's unit from its family, the world's)
     const fam = /\/(split|claim|start|sync)$/.exec(path)
     if (fam) {
@@ -462,6 +465,21 @@ setApiRoutes({
   [`GET ${API}/team/setup`]: () => shift(fx.teamSetup()),
   [`POST ${API}/team/setup`]: () => shift(fx.teamSetup()),
 })
+
+/** 开 MR and 转完整流程 as `brain mr|full --json` answers them (backend acts.py), in the preview's words: nothing is pushed
+ * or written. */
+function actAnswer({ repo, key, id }: ReturnType<typeof reqOf>, action: ActResult['action']): ActResult {
+  const r = repos.find((x) => x.id === repo)
+  const project = `${r?.kit?.gitlab_base || 'https://gitlab.example.com'}/${r?.kit?.gitlab_project || `shop/${r?.name ?? repo}`}`
+  const none = { pushed: false, mr: null, commands: [], new_mr_url: null, intent: null, told: false, output: '' }
+  if (action === 'mr') {
+    return { ...none, ok: true, action, pushed: true, text: '预览：没有真的推。推上去了，开了 MR !12（没有交接标签：人来审、合并）',
+      mr: { iid: 12, url: `${project}/-/merge_requests/12`, existing: false } }
+  }
+  const slug = W.boards[id]?.row.branch?.split(`${key}-`)[1] ?? 'work'
+  const intent = `261120-${key.toLowerCase()}-${slug}`
+  return { ...none, ok: true, action, intent, told: true, text: `预览：没有真的转。转成完整流程：Lean intent ${intent}` }
+}
 
 /** 运行机 in the preview: the fixture with what brain-kit 0d52e97's bridge also keeps (the outbox, the notices on a run,
  * bridge.json and runnerd.json, the runner's hooks). */

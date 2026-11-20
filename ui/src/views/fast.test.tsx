@@ -5,8 +5,10 @@ import { colOf } from '../cto/Flow'
 import { fx } from '../test/data'
 import { MERGE_STEPS, MR, MR_URL, WAITS, fastBoard, fastDetail, fastRow } from '../test/fast'
 import { API, installFixtureRoutes } from '../test/routes'
-import type { Requirement, RequirementDetail } from '../types'
+import { apiCalls, apiError } from '../test/stubs/app-sdk'
+import type { ActResult, Requirement, RequirementDetail } from '../types'
 import { DetailView } from './Detail'
+import { FULL_ASK } from './FastActs'
 import { OverviewView } from './Overview'
 import type { ViewProps } from './props'
 
@@ -14,8 +16,8 @@ function props(over: Partial<ViewProps> = {}): ViewProps {
   return { status: fx.status(), go: vi.fn(), replace: vi.fn(), reloadStatus: vi.fn(), setStatus: vi.fn(), pollMs: 60_000, ...over }
 }
 
-function renderDetail(d: RequirementDetail = fastDetail(), board = fastBoard()) {
-  installFixtureRoutes({ [`GET ${API}/requirements/*`]: () => d, [`GET ${API}/board/*`]: () => board })
+function renderDetail(d: RequirementDetail = fastDetail(), board = fastBoard(), more: Parameters<typeof installFixtureRoutes>[0] = {}) {
+  installFixtureRoutes({ [`GET ${API}/requirements/*`]: () => d, [`GET ${API}/board/*`]: () => board, ...more })
   const p = props()
   render(<DetailView entry={{ repo: 'r1', key: 'PAY-17', from: 'overview' }} {...p} />)
   return p
@@ -58,6 +60,110 @@ describe('需求现状 of a fast run (快速)', () => {
     expect(now()).toHaveTextContent('MR !12：CI 过了，等人审、合并')
     expect(within(now()).getByRole('link', { name: '看 MR' })).toHaveAttribute('href', MR_URL)
     expect(screen.getByTestId('fast-card')).toHaveTextContent('MR !12 等合并')
+  })
+})
+
+const ACT_MR = `${API}/requirements/r1/PAY-17/act/mr`
+const ACT_FULL = `${API}/requirements/r1/PAY-17/act/full`
+const answer = (over: Partial<ActResult>): ActResult => ({
+  ok: true, action: 'mr', text: '', pushed: false, mr: null, commands: [], new_mr_url: null, intent: null, told: false, output: '', ...over,
+})
+const posts = () => apiCalls.filter((c) => c.method === 'POST')
+
+describe('开 MR and 转完整流程 on 需求现状', () => {
+  test('开 MR says first what it will do and runs on one click; the answer has the MR, brain-kit’s words under 细节; the page reads it again', async () => {
+    const user = userEvent.setup()
+    const opened = answer({ text: '推上去了，开了 MR !12（没有交接标签：人来审、合并）', pushed: true, mr: { iid: 12, url: MR_URL, existing: false }, output: 'pushed ai/alice/PAY-17-coupon\nopened !12' })
+    const p = renderDetail(fastDetail(), fastBoard(), { [`POST ${ACT_MR}`]: () => opened })
+    const card = await screen.findByTestId('fast-acts')
+    expect(card).toHaveTextContent('会把分支 ai/alice/PAY-17-coupon 推到远端，在 GitLab 上开 MR：CI 照跑，人来审、合并，不交给运行机。')
+    expect(within(card).getByRole('button', { name: '开 MR' })).toHaveClass('is-primary')
+    await user.click(within(card).getByRole('button', { name: '开 MR' }))
+    const out = await within(card).findByTestId('act-result')
+    expect(within(out).getByRole('status')).toHaveTextContent('推上去了，开了 MR !12（没有交接标签：人来审、合并）')
+    expect(within(out).getByRole('link', { name: 'MR !12' })).toHaveAttribute('href', MR_URL)
+    expect(out.querySelector('details')).not.toHaveAttribute('open')
+    expect(out.querySelector('details')).toHaveTextContent('opened !12')
+    expect(posts()).toEqual([{ method: 'POST', path: ACT_MR, body: {} }])
+    expect(p.reloadStatus).toHaveBeenCalled()
+  })
+
+  test('without a GitLab token: what was pushed, GitLab’s new-MR link and the commands to run, 复制 takes them', async () => {
+    const user = userEvent.setup()
+    const cmd = 'glab mr create --source-branch ai/alice/PAY-17-coupon --target-branch main --fill --yes'
+    const link = 'https://gitlab.example.com/shop/shop-pay/-/merge_requests/new?merge_request%5Bsource_branch%5D=ai%2Falice%2FPAY-17-coupon'
+    renderDetail(fastDetail(), fastBoard(), { [`POST ${ACT_MR}`]: () => answer({ text: '推上去了：这台机器上没有 GitLab 令牌，MR 要你自己开', pushed: true, commands: [cmd], new_mr_url: link }) })
+    await user.click(within(await screen.findByTestId('fast-acts')).getByRole('button', { name: '开 MR' }))
+    const out = await screen.findByTestId('act-result')
+    expect(within(out).getByRole('link', { name: '在 GitLab 上开 MR' })).toHaveAttribute('href', link)
+    expect(within(out).getByTestId('commands')).toHaveTextContent(cmd)
+    expect(out).toHaveTextContent('或者在终端里开 MR：')
+    await user.click(within(out).getByRole('button', { name: '复制' }))
+    expect(await navigator.clipboard.readText()).toBe(cmd)
+  })
+
+  test('a refusal before anything ran says why in the backend’s words', async () => {
+    const user = userEvent.setup()
+    const why = '这个需求的会话正在写代码：等它停下再开 MR'
+    renderDetail(fastDetail(), fastBoard(), { [`POST ${ACT_MR}`]: () => { throw apiError(409, 'busy', why) } })
+    await user.click(within(await screen.findByTestId('fast-acts')).getByRole('button', { name: '开 MR' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(why)
+    expect(screen.queryByTestId('act-result')).toBeNull()
+  })
+
+  test('转完整流程 asks once, says what changes, and runs only after 确定转; the answer says whether the session was told', async () => {
+    const user = userEvent.setup()
+    renderDetail(fastDetail(), fastBoard(), {
+      [`POST ${ACT_FULL}`]: () => answer({ action: 'full', text: '转成完整流程：Lean intent 261120-pay-17-coupon', intent: '261120-pay-17-coupon', told: true }),
+    })
+    const card = await screen.findByTestId('fast-acts')
+    await user.click(within(card).getByRole('button', { name: '转完整流程' }))
+    const ask = within(card).getByRole('group', { name: '确定转完整流程' })
+    expect(ask).toHaveTextContent(FULL_ASK)
+    await user.click(within(ask).getByRole('button', { name: '取消' }))
+    expect(within(card).queryByRole('group', { name: '确定转完整流程' })).toBeNull()
+    expect(posts()).toEqual([])
+    await user.click(within(card).getByRole('button', { name: '转完整流程' }))
+    await user.click(within(card).getByRole('button', { name: '确定转' }))
+    const out = await within(card).findByTestId('act-result')
+    expect(within(out).getByRole('status')).toHaveTextContent('转成完整流程：Lean intent 261120-pay-17-coupon')
+    expect(out).toHaveTextContent('已经跟它说了以后按 Lean 走')
+    expect(posts()).toEqual([{ method: 'POST', path: ACT_FULL, body: {} }])
+  })
+
+  test('a risk path changed: 转完整流程 leads', async () => {
+    renderDetail(fastDetail({ waits: WAITS.risk }))
+    const card = await screen.findByTestId('fast-acts')
+    expect(within(card).getByRole('heading')).toHaveTextContent('转完整流程')
+    expect(within(card).getByRole('button', { name: '转完整流程' })).toHaveClass('is-primary')
+    expect(within(card).getByRole('button', { name: '开 MR' })).not.toHaveClass('is-primary')
+  })
+
+  test('while the AI works in the session, both wait for it to stop', async () => {
+    const d = fastDetail({ waits: WAITS.writing })
+    d.sessions = d.sessions.map((s) => ({ ...s, busy: true }))
+    renderDetail(d)
+    const card = await screen.findByTestId('fast-acts')
+    for (const name of ['开 MR', '转完整流程']) expect(within(card).getByRole('button', { name })).toBeDisabled()
+    expect(card).toHaveTextContent('AI 正在会话里做事：等它停下再开 MR。')
+  })
+
+  test.each([
+    ['a repo done only on this machine has no 开 MR', fastDetail({ local_only: true }), ['转完整流程']],
+    ['merged: nothing', fastDetail({ state: 'merged', mr: { ...MR, state: 'merged' } }), []],
+    ['its MR closed: nothing', fastDetail({ state: 'closed' }), []],
+    ['its worktree not on this machine: nothing', fastDetail({ worktree: null }), []],
+  ] as [string, RequirementDetail, string[]][])('offered only where it can run: %s', async (_, d, names) => {
+    renderDetail(d)
+    await screen.findByRole('region', { name: '此刻' })
+    const card = screen.queryByTestId('fast-acts')
+    expect(card ? within(card).getAllByRole('button').map((b) => b.textContent) : []).toEqual(names)
+  })
+
+  test('a Lean run has 交接给运行机 and no 开 MR or 转完整流程', async () => {
+    renderDetail(fx.detail(), fx.board())
+    expect(await screen.findByTestId('handover')).toBeInTheDocument()
+    expect(screen.queryByTestId('fast-acts')).toBeNull()
   })
 })
 

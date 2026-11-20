@@ -122,7 +122,8 @@ function Outcome({ r, onClose }: { r: HandoffResult; onClose: () => void }) {
   )
 }
 
-const HANDOVER_CSS = `
+/** the card's look, FastActs' too */
+export const HANDOVER_CSS = `
 .br-hand { display: grid; gap: 10px; }
 .br-hand .kt-btn { display: inline-flex; align-items: center; gap: 6px; }
 .br-hand .kt-btn:disabled { cursor: not-allowed; opacity: .55; }

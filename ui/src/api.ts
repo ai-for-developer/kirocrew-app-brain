@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppApi, type AppApi } from '@kirocrew/app-sdk'
-import { BASE } from './types'
+import { BASE, type ActResult } from './types'
 import { useLatest } from './hooks'
 
 export const POLL_MS = 5000
@@ -39,6 +39,8 @@ export const paths = {
   /** 同步: `brain sync` in a small requirement's worktree (the big one's branch merged in) */
   sync: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/sync`,
   handoff: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/handoff`,
+  /** 开 MR / 转完整流程 of a fast run: `brain mr|full --json` in its worktree */
+  act: (repo: string, key: string, action: ActResult['action']) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/act/${enc(action)}`,
   intakeNext: (repo: string) => `${BASE}/intake/next?repo=${enc(repo)}`,
   intakeCheck: () => `${BASE}/intake/check`,
   intakeStart: () => `${BASE}/intake/start`,
