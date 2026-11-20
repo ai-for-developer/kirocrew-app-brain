@@ -6,7 +6,8 @@
  *
  * The bar above the app switches the world: 团队模式 (this machine the team server, in team mode; without it a personal
  * install, whose 运行机 is the team runner as GitLab shows it), 找不到 brain-kit, KiroCrew 有 FAIL, 没有 evaluate, 没有仓库,
- * 认领晚一步 (a claim of a small requirement loses the race to carol's), light/dark. 拆成小需求, 认领, 开工 and 同步 answer as brain-kit
+ * 认领晚一步 (a claim of a small requirement loses the race to carol's), 机器人账号 (一键建运行机's last run served three projects
+ * as GitLab users of the runner's own), light/dark. 拆成小需求, 认领, 开工 and 同步 answer as brain-kit
  * would, and change nothing.
  * 导入仓库 is played through: a path ending in /ready is installed already; any other is not, and its install (or a clone)
  * runs as a job whose steps advance over a few seconds; 加入列表 and 移出列表 change the preview's list.
@@ -35,9 +36,9 @@ import type {
   BrainView, CheckRow, CrewFixBody, ImportInspect, ImportJob, InstallResult, IntakeBody, IntakeCheck, IntakeNext, KitForm, OpenSessionBody, Overview, PickKind, PickResult, ReflectApplyBody, ReflectApplyResult, ReflectPreview, RepoInfo, ReqBoard, RequirementDetail, Settings, SplitResult, StartBody, Status, TeamView, Todo,
 } from '../src/types'
 
-const FLAGS = ['team', 'nokit', 'crewfail', 'noeval', 'norepos', 'race', 'light'] as const
+const FLAGS = ['team', 'nokit', 'crewfail', 'noeval', 'norepos', 'race', 'bots', 'light'] as const
 type Flag = (typeof FLAGS)[number]
-const FLAG_NAME: Record<Flag, string> = { team: '团队模式', nokit: '找不到 brain-kit', crewfail: 'KiroCrew 有 FAIL', noeval: '没有 evaluate', norepos: '没有仓库', race: '认领晚一步', light: '亮色' }
+const FLAG_NAME: Record<Flag, string> = { team: '团队模式', nokit: '找不到 brain-kit', crewfail: 'KiroCrew 有 FAIL', noeval: '没有 evaluate', norepos: '没有仓库', race: '认领晚一步', bots: '机器人账号', light: '亮色' }
 const KEY = 'brain-preview-flags'
 
 function readFlags(): Set<Flag> {
@@ -458,10 +459,13 @@ setApiRoutes({
     }
   },
   [`POST ${API}/team/loop`]: () => ({ ok: true, summary: { poll: 3, prepared: 0, dispatch: 1, watch: 2, collect: 1, reconcile: 0 }, error: '' }),
-  // 一键建运行机: the last run (the kit.json MR waits to be merged); 再跑一次 answers that run again, nothing is made
-  [`GET ${API}/team/setup`]: () => shift(fx.teamSetup()),
-  [`POST ${API}/team/setup`]: () => shift(fx.teamSetup()),
+  // 一键建运行机: the last run (its kit.json MRs wait to be merged); 再跑一次 answers that run again, nothing is made
+  [`GET ${API}/team/setup`]: () => shift(lastSetup()),
+  [`POST ${API}/team/setup`]: () => shift(lastSetup()),
 })
+
+/** 一键建运行机's last run: one project with project tokens, or (机器人账号) three as the runner's own GitLab users. */
+const lastSetup = () => (flags.has('bots') ? fx.teamSetupBot() : fx.teamSetup())
 
 /** 运行机 in the preview: the fixture with what brain-kit 0d52e97's bridge also keeps (the outbox, the notices on a run,
  * bridge.json and runnerd.json, the runner's hooks). */

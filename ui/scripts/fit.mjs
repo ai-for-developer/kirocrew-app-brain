@@ -30,6 +30,7 @@ const VIEWS = [
   ['待办', 'view=todo'],
   ['设置', 'view=settings'],
   ['设置 团队运行机', 'view=settings', 'light,team'],
+  ['设置 团队运行机 机器人账号', 'view=settings', 'team,bots'],
   ['导入仓库', 'view=import'],
   ['运行机 个人', 'view=team'],
   ['团队', 'view=team', 'light,team'],

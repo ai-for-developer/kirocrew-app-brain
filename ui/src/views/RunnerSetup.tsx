@@ -1,19 +1,24 @@
 /**
- * 一键建运行机 (设置, with 团队模式): the team runner in same-user mode, built by the app from one GitLab token typed once
- * (backend/core/team/setup.py). POST /team/setup starts its steps in the background; GET /team/setup is read every
- * second while they run. Each step says ✓ when done, 等人 when it waits for a person (the kit.json MR, with its link),
- * ✕ when it stopped the run, then its words, and what GitLab or a command said under 细节; a run cut off part-way (the
- * app stopped) says where. The token goes in that one request: this page keeps it in its field while it is open (for
- * 再跑一次), the backend nowhere. 巡检所有开着的 MR (on unless unticked) adds brain-patrol and switches work source
- * mr-patrol on in the kit.json MR.
+ * 一键建运行机 (设置, with 团队模式): the team runner in same-user mode, built by the app from GitLab tokens typed once
+ * (backend/core/team/setup.py). 账号 picks where the runner's GitLab accounts come from: 项目令牌 (one project; the
+ * one-time token makes project access tokens) or 机器人账号 (the projects one per line, served as two GitLab users of the
+ * runner's own: the bridge's personal token, and the bot's when the runner pushes as it rather than over this machine's
+ * SSH; a personal token left empty is the one this machine kept, and the one-time token is optional).
+ * POST /team/setup starts its steps in the background; GET /team/setup is read every second while they run. Each step
+ * says ✓ when done, 等人 when it waits for a person (a kit.json MR, with its link), ✕ when it stopped the run, then its
+ * words, and what GitLab or a command said under 细节; a step about two projects or more lists each project under it
+ * with its own mark, words and link. A run cut off part-way (the app stopped) says where. The tokens go in that one
+ * request: this page keeps them in their fields while it is open (for 再跑一次); the backend keeps the two accounts'
+ * personal tokens only. 巡检所有开着的 MR (on unless unticked) adds brain-patrol and switches work source mr-patrol on
+ * in the kit.json MRs.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
 import { useAppApi } from '@kirocrew/app-sdk'
 import { paths, useAction, usePoll } from '../api'
 import { ago } from '../format'
 import { useLatest } from '../hooks'
 import type { Tone } from '../styles'
-import type { RepoInfo, SetupStep, SetupStepStatus, TeamSetup, TeamSetupBody } from '../types'
+import type { RepoInfo, SetupMode, SetupProjectRow, SetupStep, SetupStepStatus, TeamSetup, TeamSetupBody } from '../types'
 import { ExtLink, LoadState, RoleIcon } from '../ui'
 
 export const SETUP_POLL_MS = 1000
@@ -23,6 +28,22 @@ export const SAME_USER_NOTE = '签名服务、app 和 AI 的会话都用这台�
 export const PATROL_HINT = '运行机每一轮看这个项目所有开着的 MR，以前开的也算：流水线没过、评审意见没回、和目标分支有冲突的，派 brain-patrol 去修，同时最多 2 个。交接过来的 MR 还是交接那边管。'
 export const TOKEN_FIRST = '先填一次性 token：它只用这一次，不存'
 export const cutOffSaid = (title: string) => `上次跑到「${title}」就停了，没跑完（app 关了或者重启了）：再跑一次，接着把没做的建完`
+export const MODE_HINT: Record<SetupMode, string> = {
+  'project-token': 'app 用你的一次性 token 给这个项目建两个项目令牌，桥和推送各用一个。项目令牌只看得到自己的项目，这台运行机就只管这一个。',
+  'bot-account': '先在 GitLab 上建一个专门给桥用的用户（比如 brain-bridge），把它加进每个项目，角色 Developer。运行机用它的个人令牌管下面所有项目，不建项目令牌。',
+}
+export const BRIDGE_HINT = '桥的账号的个人令牌，要有 api 权限。它存在这台机器上（只有你能读），桥和签名服务都用它。'
+export const BOT_HINT = '推代码的另一个专门用户（比如 brain-bot），每个项目里是 Developer；它的个人令牌要有 write_repository 和 read_user 权限，也存在这台机器上。'
+export const SSH_HINT = '这台机器的 SSH key 要能拉取、推送每个项目：在这台机器上对每个项目的 SSH 地址跑 git ls-remote 能通。'
+export const OPTIONAL_TOKEN_HINT = '可以不填。只用这一次：建 MR 标签、开 kit.json 的 MR，用完就丢，不存。不填就用桥的账号来建（它是 Developer 就够），下面的产品和开发就都要填。'
+export const ROLES_HINT_NO_TOKEN = '填 GitLab 用户名，几个人用逗号隔开。没填一次性 token：产品和开发都要填，安全和数据两个角色跟开发一样。'
+export const BRIDGE_FIRST = '先填桥的账号的个人令牌：这台机器上还没有存'
+export const BOT_FIRST = '先填机器人账号的个人令牌，或者推送选「这台机器的 SSH」'
+export const keptSaid = (name: string) => `空着就用这台机器上存的 ${name} 的令牌。`
+const LEAD: Record<SetupMode, string> = {
+  'project-token': '填一次 GitLab 地址、项目和一个一次性 token，app 自己建好运行机要的一切：两个项目令牌、MR 标签、身份表、签名密钥、三份配置、brain-run 和 brain-patrol、签名服务，最后打开团队模式。你只要在 GitLab 上合并它开的 kit.json MR。',
+  'bot-account': '填 GitLab 地址、几个项目和桥的账号的个人令牌，app 给每个项目建好 MR 标签、开 kit.json 的 MR，再建好身份表、签名密钥、三份配置、brain-run 和 brain-patrol、签名服务，最后打开团队模式。你只要在 GitLab 上合并每个项目的 kit.json MR。',
+}
 
 /** A step's state as the list shows it: its glyph, its word, its colour, and the check row's look it borrows. */
 export const STEP_LOOK: Record<SetupStepStatus, { glyph: string; word: string; tone: Tone; look: string }> = {
@@ -34,19 +55,25 @@ export const STEP_LOOK: Record<SetupStepStatus, { glyph: string; word: string; t
   todo: { glyph: '○', word: '还没做', tone: 'idle', look: 'is-quiet' },
 }
 
-interface Form { base: string; project: string; product: string; builder: string; patrol: boolean }
+type Push = 'ssh' | 'token'
+interface Form { mode: SetupMode; base: string; project: string; projects: string; product: string; builder: string; patrol: boolean; push: Push }
 
 const names = (s: string) => s.split(/[,，、\s]+/).map((x) => x.trim()).filter(Boolean)
 
-/** The last run's input, else the first listed repo on GitLab (its kit.json's). */
+/** The last run's input, else the repos on GitLab (their kit.json's): the first one for 项目令牌, all of them for 机器人账号. */
 function formOf(s: TeamSetup, repos: RepoInfo[]): Form {
-  const kit = repos.find((r) => r.kit?.gitlab_project)?.kit
+  const kits = repos.flatMap((r) => (r.kit?.gitlab_project ? [r.kit] : []))
+  const listed = [...new Set(kits.map((k) => k.gitlab_project))]
+  const ran = s.input.projects
   return {
-    base: s.input.gitlab_base || kit?.gitlab_base || '',
-    project: s.input.projects[0] || kit?.gitlab_project || '',
+    mode: s.input.mode,
+    base: s.input.gitlab_base || kits[0]?.gitlab_base || '',
+    project: ran[0] || listed[0] || '',
+    projects: (s.input.mode === 'bot-account' || !listed.length ? ran : listed).join('\n'),
     product: s.input.roles.product.join(', '),
     builder: s.input.roles.builder.join(', '),
     patrol: s.input.patrol !== false,
+    push: s.input.push === 'token' ? 'token' : 'ssh',
   }
 }
 
@@ -66,8 +93,12 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
   const got = usePoll<TeamSetup>(paths.teamSetup(), running ? pollMs : 0)
   const [form, setForm] = useState<Form | null>(null)
   const [token, setToken] = useState('')
+  const [bridge, setBridge] = useState('')
+  const [bot, setBot] = useState('')
   const [ask, setAsk] = useState('')
   const tokenRef = useRef<HTMLInputElement | null>(null)
+  const bridgeRef = useRef<HTMLInputElement | null>(null)
+  const botRef = useRef<HTMLInputElement | null>(null)
   const following = useRef(false)
   const start = useAction((body: TeamSetupBody) => api.post<TeamSetup>(paths.teamSetup(), body))
   const doneRef = useLatest(onDone)
@@ -85,18 +116,34 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
     }
   }, [data, doneRef])
   const edit = (f: Partial<Form>) => setForm((x) => (x ? { ...x, ...f } : x))
+  const kept = data?.accounts ?? { bridge: '', bot: '' }
+  /** What must be typed before a run can start, and where to type it. */
+  const missing = (f: Form): [string, HTMLInputElement | null] | null => {
+    if (f.mode === 'project-token') return token.trim() ? null : [TOKEN_FIRST, tokenRef.current]
+    if (!bridge.trim() && !kept.bridge) return [BRIDGE_FIRST, bridgeRef.current]
+    if (f.push === 'token' && !bot.trim() && !kept.bot) return [BOT_FIRST, botRef.current]
+    return null
+  }
+  const bodyOf = (f: Form): TeamSetupBody => {
+    const common = { gitlab_base: f.base.trim(), roles: { product: names(f.product), builder: names(f.builder) }, patrol: f.patrol }
+    if (f.mode === 'project-token') return { ...common, project: f.project.trim(), admin_token: token.trim() }
+    return {
+      ...common, mode: 'bot-account', projects: names(f.projects), push: f.push,
+      ...(token.trim() ? { admin_token: token.trim() } : {}),
+      ...(bridge.trim() ? { bridge_token: bridge.trim() } : {}),
+      ...(f.push === 'token' && bot.trim() ? { bot_token: bot.trim() } : {}),
+    }
+  }
   const go = async () => {
     if (!form) return
-    if (!token.trim()) {
-      setAsk(TOKEN_FIRST)
-      tokenRef.current?.focus()
+    const need = missing(form)
+    if (need) {
+      setAsk(need[0])
+      need[1]?.focus()
       return
     }
     setAsk('')
-    const r = await start.run({
-      gitlab_base: form.base.trim(), project: form.project.trim(), admin_token: token.trim(),
-      roles: { product: names(form.product), builder: names(form.builder) }, patrol: form.patrol,
-    })
+    const r = await start.run(bodyOf(form))
     if (r) {
       following.current = true
       got.set(r)
@@ -106,11 +153,20 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
   const ran = !!data && (!!data.cut_off || data.steps.some((s) => s.status !== 'todo'))
   const cutAt = data?.cut_off ? data.steps.find((s) => s.id === data.cut_off)?.title ?? data.cut_off : null
   const busy = running || start.busy
+  const bots = form?.mode === 'bot-account'
   const said = (
     <>
       {ask && <span className="br-error" role="alert">{ask}</span>}
       {start.error && <span className="br-error" role="alert">{start.error}</span>}
     </>
+  )
+  const secret = (id: string, label: string, value: string, set: (v: string) => void, hint: ReactNode, ref: MutableRefObject<HTMLInputElement | null>) => (
+    <div className="br-field">
+      <label htmlFor={id}>{label}</label>
+      <input id={id} ref={ref} type="password" className="br-mono" autoComplete="off" spellCheck={false} value={value}
+        aria-describedby={`${id}-hint`} onChange={(e) => { set(e.target.value); setAsk('') }} />
+      <p className="br-hint" id={`${id}-hint`}>{hint}</p>
+    </div>
   )
   return (
     <section className="br-card rs-card" aria-label="一键建运行机" data-testid="runner-setup">
@@ -122,41 +178,54 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
         <span className="br-grow" />
         {look && <span className={`br-chip kt-pill tone-${look.tone}${running ? ' is-live' : ''}`} data-testid="setup-state">{look.label}</span>}
       </header>
-      <p className="rs-lead">
-        填一次 GitLab 地址、项目和一个一次性 token，app 自己建好运行机要的一切：两个项目令牌、MR 标签、身份表、签名密钥、三份配置、brain-run 和 brain-patrol、签名服务，最后打开团队模式。你只要在 GitLab 上合并它开的 kit.json MR。
-      </p>
+      <p className="rs-lead">{LEAD[form?.mode ?? 'project-token']}</p>
       <p className="br-banner br-small rs-note" role="note">{SAME_USER_NOTE}</p>
       <LoadState loading={got.loading} error={got.error} has={!!data} />
       {form && (
         <form className="br-form" noValidate onSubmit={(e) => { e.preventDefault(); void go() }}>
           <fieldset className="rs-fieldset" disabled={busy}>
+            <Choice name="mode" label="账号" value={form.mode} onPick={(mode) => { edit({ mode }); setAsk('') }} hint={MODE_HINT[form.mode]}
+              options={[['project-token', '项目令牌：一个项目'], ['bot-account', '机器人账号：几个项目']]} />
             <div className="rs-grid">
               <div className="br-field">
                 <label htmlFor="rs-base">GitLab 地址</label>
                 <input id="rs-base" type="text" className="br-mono" value={form.base} placeholder="https://gitlab.example.com" onChange={(e) => edit({ base: e.target.value })} />
               </div>
-              <div className="br-field">
-                <label htmlFor="rs-project">项目</label>
-                <input id="rs-project" type="text" className="br-mono" value={form.project} placeholder="组/仓库" onChange={(e) => edit({ project: e.target.value })} />
-              </div>
+              {bots ? (
+                <div className="br-field">
+                  <label htmlFor="rs-projects">项目（一行一个）</label>
+                  <textarea id="rs-projects" rows={Math.min(8, Math.max(3, form.projects.split('\n').length + 1))} value={form.projects}
+                    placeholder={'组/仓库\n组/另一个仓库'} spellCheck={false} onChange={(e) => edit({ projects: e.target.value })} />
+                </div>
+              ) : (
+                <div className="br-field">
+                  <label htmlFor="rs-project">项目</label>
+                  <input id="rs-project" type="text" className="br-mono" value={form.project} placeholder="组/仓库" onChange={(e) => edit({ project: e.target.value })} />
+                </div>
+              )}
             </div>
-            <div className="br-field">
-              <label htmlFor="rs-token">一次性 token</label>
-              <input id="rs-token" ref={tokenRef} type="password" className="br-mono" autoComplete="off" spellCheck={false} value={token}
-                aria-describedby="rs-token-hint" onChange={(e) => { setToken(e.target.value); setAsk('') }} />
-              <p className="br-hint" id="rs-token-hint">{TOKEN_HINT}</p>
-            </div>
+            {bots && secret('rs-bridge', '桥的账号的个人令牌', bridge, setBridge,
+              <>{BRIDGE_HINT}{kept.bridge && <b className="rs-kept">{keptSaid(kept.bridge)}</b>}</>, bridgeRef)}
+            {bots && (
+              <>
+                <Choice name="push" label="运行机怎么推送" value={form.push} onPick={(push) => { edit({ push }); setAsk('') }}
+                  hint={form.push === 'ssh' ? SSH_HINT : undefined} options={[['ssh', '这台机器的 SSH'], ['token', '机器人账号']]} />
+                {form.push === 'token' && secret('rs-bot', '机器人账号的个人令牌', bot, setBot,
+                  <>{BOT_HINT}{kept.bot && <b className="rs-kept">{keptSaid(kept.bot)}</b>}</>, botRef)}
+              </>
+            )}
+            {secret('rs-token', bots ? '一次性 token（可以不填）' : '一次性 token', token, setToken, bots ? OPTIONAL_TOKEN_HINT : TOKEN_HINT, tokenRef)}
             <div className="rs-grid">
               <div className="br-field">
                 <label htmlFor="rs-product">产品（回答需求的问题、验收）</label>
-                <input id="rs-product" type="text" value={form.product} placeholder="token 的主人" aria-describedby="rs-roles-hint" onChange={(e) => edit({ product: e.target.value })} />
+                <input id="rs-product" type="text" value={form.product} placeholder={bots && !token.trim() ? 'GitLab 用户名' : 'token 的主人'} aria-describedby="rs-roles-hint" onChange={(e) => edit({ product: e.target.value })} />
               </div>
               <div className="br-field">
                 <label htmlFor="rs-builder">开发（回答设计和计划的问题）</label>
-                <input id="rs-builder" type="text" value={form.builder} placeholder="token 的主人" aria-describedby="rs-roles-hint" onChange={(e) => edit({ builder: e.target.value })} />
+                <input id="rs-builder" type="text" value={form.builder} placeholder={bots && !token.trim() ? 'GitLab 用户名' : 'token 的主人'} aria-describedby="rs-roles-hint" onChange={(e) => edit({ builder: e.target.value })} />
               </div>
             </div>
-            <p className="br-hint" id="rs-roles-hint">{ROLES_HINT}</p>
+            <p className="br-hint" id="rs-roles-hint">{bots && !token.trim() ? ROLES_HINT_NO_TOKEN : ROLES_HINT}</p>
             <div className="br-field">
               <label className="br-check">
                 <input type="checkbox" checked={form.patrol} aria-describedby="rs-patrol-hint" onChange={(e) => edit({ patrol: e.target.checked })} />
@@ -190,6 +259,24 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
   )
 }
 
+/** Two or three ways of one thing, as pills (导入仓库's 跟踪方式), and a line about the one picked. */
+function Choice<T extends string>({ name, label, value, options, onPick, hint }: { name: string; label: string; value: T; options: [T, string][]; onPick: (v: T) => void; hint?: string }) {
+  return (
+    <div className="br-field">
+      <span className="br-label" id={`rs-${name}-l`}>{label}</span>
+      <div className="rs-seg" role="radiogroup" aria-labelledby={`rs-${name}-l`} aria-describedby={hint ? `rs-${name}-hint` : undefined}>
+        {options.map(([v, text]) => (
+          <label key={v} className={`rs-opt${value === v ? ' is-on' : ''}`}>
+            <input type="radio" name={`rs-${name}`} value={v} checked={value === v} onChange={() => onPick(v)} />
+            <span>{text}</span>
+          </label>
+        ))}
+      </div>
+      {hint && <p className="br-hint" id={`rs-${name}-hint`}>{hint}</p>}
+    </div>
+  )
+}
+
 function StepRow({ s }: { s: SetupStep }) {
   const m = STEP_LOOK[s.status] ?? STEP_LOOK.todo
   return (
@@ -200,13 +287,36 @@ function StepRow({ s }: { s: SetupStep }) {
         {s.status !== 'done' && s.status !== 'todo' && <span className={`br-chip tone-${m.tone} rs-word`}>{m.word}</span>}
       </span>
       {s.message && <span className="br-prob-todo">{s.message}</span>}
-      {(s.link || s.detail) && (
-        <span className="br-prob-acts">
-          {s.link && <ExtLink href={s.link}>{s.status === 'waiting' ? '去 GitLab 合并' : '在 GitLab 上看'}</ExtLink>}
-          {s.detail && <details className="br-raw"><summary>细节</summary><pre>{s.detail}</pre></details>}
-        </span>
+      <Acts status={s.status} link={s.link} detail={s.detail} />
+      {s.projects.length > 0 && (
+        <ul className="rs-projects" aria-label={`${s.title}：每个项目`}>
+          {s.projects.map((p) => <ProjectRow key={p.project} p={p} />)}
+        </ul>
       )}
     </li>
+  )
+}
+
+/** One project's part of a step: its mark, its name, its words, its page or MR on GitLab, 细节. */
+function ProjectRow({ p }: { p: SetupProjectRow }) {
+  const m = STEP_LOOK[p.status] ?? STEP_LOOK.todo
+  return (
+    <li className="rs-project" data-project={p.project} data-status={p.status}>
+      <span className={`rs-project-glyph tone-${m.tone}`} role="img" aria-label={m.word}>{m.glyph}</span>
+      <span className="br-mono rs-project-name">{p.project}</span>
+      <span className="rs-project-text">{p.message}</span>
+      <Acts status={p.status} link={p.link} detail={p.detail} />
+    </li>
+  )
+}
+
+function Acts({ status, link, detail }: { status: SetupStepStatus; link: string | null; detail: string }) {
+  if (!link && !detail) return null
+  return (
+    <span className="br-prob-acts">
+      {link && <ExtLink href={link}>{status === 'waiting' ? '去 GitLab 合并' : '在 GitLab 上看'}</ExtLink>}
+      {detail && <details className="br-raw"><summary>细节</summary><pre>{detail}</pre></details>}
+    </span>
   )
 }
 
@@ -216,6 +326,15 @@ const RS_CSS = `
 .rs-note { margin: 0; }
 .rs-fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: .8em; min-width: 0; }
 .rs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16em, 1fr)); gap: .8em 1.2em; align-items: start; }
+.rs-kept { margin-left: .4em; font-weight: 650; color: var(--text); }
+.rs-seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.rs-opt { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 9px; border-radius: 999px; cursor: pointer; font-size: .92em; font-weight: 650;
+  border: 1px solid var(--border-strong, var(--border)); background: var(--card); color: var(--text); }
+.rs-opt input { margin: 0; accent-color: var(--accent); }
+.rs-opt:hover { border-color: var(--accent); }
+.rs-opt.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 17%, var(--card)); color: var(--text-strong); }
+.rs-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rs-fieldset:disabled .rs-opt { cursor: default; opacity: .7; }
 .rs-word { margin-left: .6em; font-size: .78em; vertical-align: 1px; }
 .rs-step.is-quiet { border-color: transparent; background: transparent; padding-top: 3px; padding-bottom: 3px; }
 .rs-step.is-quiet .br-prob-glyph { width: 20px; height: 20px; border-radius: 6px; font-size: 11px; border-width: 1.5px;
@@ -223,4 +342,11 @@ const RS_CSS = `
 .rs-step.is-quiet .br-prob-text { font-weight: 550; color: var(--muted); }
 .rs-step.is-running { border-color: var(--kit-run); background: color-mix(in srgb, var(--kt-run) 7%, transparent); }
 .rs-step.is-running .br-prob-glyph { animation: kt-blink 1.4s ease-in-out infinite; }
+.rs-projects { grid-column: 2; list-style: none; margin: 4px 0 0; padding: 6px 0 0; display: grid; gap: 5px; border-top: 1px dashed var(--border); }
+.rs-project { display: grid; grid-template-columns: 18px minmax(9em, max-content) minmax(0, 1fr); gap: 2px 10px; align-items: baseline; font-size: .93em; }
+.rs-project-glyph { align-self: center; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 5px; font-size: 10px; font-weight: 900;
+  color: var(--kt-tone); border: 1.5px solid var(--kt-tone); background: color-mix(in srgb, var(--kt-tone) 14%, transparent); }
+.rs-project-name { color: var(--text-strong); font-weight: 650; word-break: break-all; }
+.rs-project-text { color: var(--text); min-width: 0; }
+.rs-project .br-prob-acts { grid-column: 3; margin-top: 0; }
 `
