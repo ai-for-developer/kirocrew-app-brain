@@ -14,6 +14,7 @@ from . import board as board_mod
 from . import stages
 from .deliveries import CAT_LABEL, CAT_ORDER, category
 from .fastrow import FastFacts, ci_state, head_pipeline
+from .sessions import WAIT_S
 
 STEPS: tuple[tuple[str, str], ...] = (("code", "写代码"), ("verify", "自动检查"), ("mr", "开 MR"), ("ci", "CI"),
                                       ("merge", "合并"))
@@ -197,3 +198,29 @@ def board(f: dict[str, Any], row: dict[str, Any], t: Optional[dict[str, Any]], *
             "missing": board_mod.missing_sources(raw, local_only=local_only, handed=False,
                                                  ci_read=board_mod.pipelines_read(mr)),
             "steps": steps(f, fast=fast, mr=mr, busy=busy)}
+
+
+def time_spent(stats: list[Optional[dict[str, Any]]], *, now: float, until: Optional[float]) -> Optional[dict[str, Any]]:
+    """需求现状's 时间花在哪 of a fast run (ui/src/types.ts FastTime), from its sessions on this machine (*stats*: each
+    one's slot_stats, None when this app has none): the AI's turns, the waits between them and between its sessions,
+    and since its newest row, up to *until* (the merge) or *now*: the AI's while a session is busy, else a wait. None
+    when no session of it has been read here."""
+    read = sorted((s for s in stats if s and s.get("first_at") is not None and s.get("work_s") is not None),
+                  key=lambda s: s["first_at"])
+    if not read:
+        return None
+    stop = min(until, now) if until else now
+    agent = sum(float(s["work_s"]) for s in read)
+    person = sum(float(s.get("wait_s") or 0) for s in read)
+    waits = sum(int(s.get("waits") or 0) for s in read)
+    for a, b in zip(read, read[1:]):
+        gap = float(b["first_at"]) - float(a.get("last_at") or a["first_at"])
+        person, waits = person + max(0.0, gap), waits + (gap >= WAIT_S)
+    last = max(float(s.get("last_at") or s["first_at"]) for s in read)
+    tail = max(0.0, stop - last)
+    if any(s.get("busy") for s in read):
+        agent += tail
+    else:
+        person, waits = person + tail, waits + (tail >= WAIT_S)
+    return {"agent": round(agent), "person": round(person), "waits": waits, "sessions": len(read),
+            "whole": len(read) == len(stats) and all(s.get("whole") is not False for s in read)}

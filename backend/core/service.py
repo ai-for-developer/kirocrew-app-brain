@@ -1262,7 +1262,10 @@ class Service:
                 "mr_desc": d["mr_desc"],
                 "sessions": d["sessions"], "live_slot": live_slot, "credits": d["credits"], "source": d["timeline"]["source"],
                 "missing": g["missing"], "error": d["timeline"]["error"], "rollup": board_mod.rollup(t),
-                "steps": g.get("steps")}
+                "steps": g.get("steps"),
+                "time": fastboard.time_spent([self.sessions.slot_stats(s["slot"]) for s in d["sessions"]
+                                              if s["kind"] == "local"], now=self.now(), until=g["ended_at"])
+                if fast is not None else None}
 
     async def board(self, rid: str, key: str) -> dict[str, Any]:
         """运行过程: polled every 2 s; the trace, the facts and the 变更说明 come from their caches."""
