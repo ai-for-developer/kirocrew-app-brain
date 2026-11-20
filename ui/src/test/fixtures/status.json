@@ -15,7 +15,8 @@
       "golden": false,
       "intents": true,
       "mrdesc": true,
-      "split": true
+      "split": true,
+      "deploys": true
     }
   },
   "repos": [

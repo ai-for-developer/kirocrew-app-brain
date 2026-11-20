@@ -478,8 +478,9 @@ export interface Status {
     ok: boolean
     version: string | null
     error: string
-    /** optional brain-kit modules: true when importable (split: brain split, claim, start --key, sync; 0d52e97) */
-    modules: { trace: boolean; evaluate: boolean; golden: boolean; intents: boolean; mrdesc: boolean; split: boolean }
+    /** optional brain-kit modules: true when importable (split: brain split, claim, start --key, sync; 0d52e97; deploys:
+     * what a merged change's deploys did) */
+    modules: { trace: boolean; evaluate: boolean; golden: boolean; intents: boolean; mrdesc: boolean; split: boolean; deploys: boolean }
   }
   repos: RepoInfo[]
   crew: { rows: CheckRow[]; fix: { agent: boolean; engine: boolean }; checked_at: number | null }
@@ -1134,6 +1135,52 @@ export interface RequirementDetail {
   credits: Credits
   brain: { loaded: number | null; cited: string[]; stale: string[]; unknown: string[]; proposals: number | null }
   mr_desc: MrDesc
+  /** 上线: what its deploys did once it was merged (brain-kit's outcome.deploy); null when there is nothing to show:
+   * not merged, no "deploys" in kit.json on the default branch, or a brain-kit without deploys */
+  deploy: DeployView | null
+}
+
+/** A merged requirement's deploys (backend/core/deploys_view.py): promoted and aborted only as the deploy evidence
+ * says; anything brain-kit could not read is unknown, never a success */
+export type DeployValue = 'promoted' | 'aborted' | 'running' | 'not_deployed' | 'unknown'
+
+export interface DeployView {
+  /** promoted: a deploy that shipped it went live; aborted: tried, none live yet; not_deployed: none shipped it yet */
+  value: DeployValue
+  /** the GitLab environment kit.json names (staging) */
+  environment: string
+  /** promoted: the digest that went live, when (epoch seconds), and how long after the merge (seconds) */
+  digest: string | null
+  at: number | null
+  lead_s: number | null
+  /** unknown: why, in words ('' otherwise) */
+  why: string
+  /** what brain-kit could not read, in its own words (细节) */
+  raw: string[]
+  /** the deploys that shipped it, oldest first, through the first one that went live */
+  attempts: DeployAttempt[]
+}
+
+export interface DeployAttempt {
+  result: Exclude<DeployValue, 'not_deployed'>
+  /** GitLab's deployment id */
+  deployment: number | null
+  /** when it finished, else when it began (epoch seconds) */
+  at: number | null
+  pipeline: number | null
+  /** its pipeline's page on the repo's GitLab */
+  url: string | null
+  /** the commit it deployed, 12 characters */
+  sha: string
+  digest: string | null
+  /** aborted: the digest the environment kept running */
+  kept: string | null
+  /** the smoke checks that failed, with their own words */
+  failed: { check: string; error: string | null }[]
+  /** unknown: why, in words ('' otherwise) */
+  why: string
+  /** brain-kit's words: why it is unknown, the rollout's own reason (细节) */
+  raw: string[]
 }
 
 // ---------------------------------------------------------------- POST /requirements/{repo}/{key}/session, /stop, /answer
