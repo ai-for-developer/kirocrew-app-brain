@@ -19,7 +19,8 @@ patched or subclassed. What the app changes:
   `brain handoff` re-adding it right now) and waiting (this very hand-over is being signed elsewhere: looked at again
   next round). brain-kit's poll returns nothing (BRAINKIT_REQUESTS 27). A project whose kit.json work_sources leaves
   mr-handoff out (sources.py) is not polled;
-- patrol: a round ends with MR 巡检 (team/patrol.py, work source mr-patrol), on the same worker thread.
+- patrol: a round ends with MR 巡检 (team/patrol.py, work source mr-patrol), on the same worker thread. It reads the
+  logs of Jenkins builds with bridge.json's optional "jenkins" (team/jenkins.py), a block brain-kit leaves alone.
 
 The ledger is brain-kit's ``Ledger``: one sqlite connection any thread may use, ``ledger.lock`` around several
 statements. Rounds run one at a time on the runtime's own worker thread (a round may wait on GitLab, KiroCrew and the
@@ -48,6 +49,7 @@ from ..constants import APP_ROOT, PYTHON_BIN
 from . import patrol as patrol_mod
 from . import signerproc, sources
 from .crewadapter import KiroCrewAdapter
+from .jenkins import Jenkins
 
 REQ_RE = re.compile(r"^[a-z]+-[A-Za-z0-9-]{1,80}-[0-9a-f]{12}\.json$")
 MAX_SPOOL_FILE = 64 * 1024
@@ -91,7 +93,8 @@ def load_config(path: str) -> dict[str, Any]:
 
 def start_inputs(team: dict[str, Any]) -> list[str]:
     """What a TeamRuntime reads when it starts: bridge.json, runnerd.json, and the files bridge.json names (its GitLab
-    token, the identities, the allowed signers); with it the signer.json 一键建运行机 wrote beside bridge.json."""
+    token, the identities, the allowed signers, Jenkins' token); with it the signer.json 一键建运行机 wrote beside
+    bridge.json."""
     try:
         with open(team["bridge_config"], encoding="utf-8") as fh:
             cfg = json.load(fh)
@@ -100,8 +103,9 @@ def start_inputs(team: dict[str, Any]) -> list[str]:
     cfg = cfg if isinstance(cfg, dict) else {}
     gitlab = cfg.get("gitlab") if isinstance(cfg.get("gitlab"), dict) else {}
     signer = cfg.get("signer") if isinstance(cfg.get("signer"), dict) else {}
+    jenkins = cfg.get("jenkins") if isinstance(cfg.get("jenkins"), dict) else {}
     named = [team.get("bridge_config"), team.get("runnerd_config"), gitlab.get("token_file"), cfg.get("identities"),
-             signer.get("allowed_signers"), signerproc.config_for(team)]
+             signer.get("allowed_signers"), signerproc.config_for(team), jenkins.get("token_file")]
     return [os.path.expanduser(str(p)) for p in named if p]
 
 
@@ -198,7 +202,7 @@ class TeamRuntime:
                 else None,
                 helper=patrol_mod.Helper(PYTHON_BIN, str(APP_ROOT / "backend" / "core" / "team" / "patrol_reply.py"),
                                          config, str(bk.root())),
-                claims=lambda: sources.held(self))
+                claims=lambda: sources.held(self), jenkins=Jenkins.of(cfg.get("jenkins"), self.transport))
             self.cfg, self.runnerd_cfg, self.spool, self.allowed_signers = cfg, rcfg, spool, allowed
             self.error = ""
             return True
