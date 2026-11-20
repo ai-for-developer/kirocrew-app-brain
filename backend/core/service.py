@@ -18,8 +18,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import (bk, brainview, crewcheck, deliveries, detail, family, flowview, identity, importer, inplace, installer,
-               intake, landing, lean_view, mrdesc_view, mrinfo, picker, progress, roster)
+from . import (bk, brainview, crewcheck, deliveries, detail, family, fastrow, flowview, identity, importer, inplace,
+               installer, intake, landing, lean_view, mrdesc_view, mrinfo, picker, progress, roster)
 from . import outputs as outputs_mod
 from . import problems, stages
 from . import board as board_mod
@@ -161,6 +161,7 @@ class Service:
         self._tasks: list[asyncio.Task] = []
         self._mr_wanted: dict[tuple, tuple[str, str]] = {}   # (base, project, branch) -> (scope, kit bridge_user)
         self._mr_seen: set[tuple] = set()      # (project, branch, hand-over commit) whose MR was read at first sight
+        self._fast_git: dict[tuple, tuple[int, tuple[str, ...]]] = {}   # fastrow.fast_facts' git half
         self._eval: dict[str, tuple] = {}
         self._eval_running: set[str] = set()
         self._trace: dict[str, tuple] = {}      # scope -> (what it was made from, detail.timeline, when)
@@ -584,8 +585,10 @@ class Service:
         live = self._live(sess)
         base, project = self._gitlab_of(repo)
         run = f.get("run") or {}
+        flow = f["flow"]
+        own_mr = bool(run) and not f.get("flow_error") and flowview.reads_own_mr(flow)
         mr = None
-        if run.get("handoff") and f.get("branch") and base and project:
+        if (run.get("handoff") or own_mr) and f.get("branch") and base and project:
             self._mr_wanted[(base, project, f["branch"])] = (scope, str(repo.cfg.get("bridge_user") or ""))
             mr = self.mr.get(project, f["branch"])
             seen = (project, f["branch"], f.get("tip"))
@@ -598,10 +601,11 @@ class Service:
         if run.get("handoff") and not mr:
             bot = repo.bot_commits_since((run.get("handoff") or {}).get("local_head"), f.get("origin_sha"))
         merged = bool(f.get("merged") or (mr or {}).get("state") == "merged")
+        fast = fastrow.fast_facts(repo, f, self._fast_git) if own_mr and not flow.intent else None
         deliveries.classify(row, f, mr=mr, slot=live, cfg=repo.cfg, bot_commits=bot,
                             at_handover=bool(mr) and repo.is_handover_tip(f), me=self.me_in(repo),
                             reflected=merged and f["key"] in repo.reflected(), now=self.now(),
-                            pushed=not run.get("handoff") or row["local_only"] or repo.on_remote(f))
+                            pushed=not run.get("handoff") or row["local_only"] or repo.on_remote(f), fast=fast)
         fams = self._families_of(repo) if fams is None else fams
         row["family"] = fams.get(f["key"])
         family.classify(row, row["family"], f, self.me_in(repo) if row["family"] else None)
