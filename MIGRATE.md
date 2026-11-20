@@ -299,7 +299,7 @@ AI 可以在一个新分支上帮我写好这个改动并提交。推送先问�
 
 打开它要改两处（人做）：
 
-1. 项目的 `.brain/kit.json` 里，`work_sources` 加上 `staging-errors`，合并到默认分支。
+1. 项目的 `.brain/kit.json` 里，`work_sources` 写全要开的几样，比如 `"work_sources": ["mr-handoff", "mr-patrol", "staging-errors"]`，合并到默认分支。不要只写 `["staging-errors"]`：没写 `work_sources` 的项目只开交接（`mr-handoff`），写了就只开写上的那几样，交接就关了。运行机页面上，桥的状态下面会对这样的项目提醒一句。
 2. 运行机的 bridge.json 里，把这个项目写成对象，加上 `staging`：测试环境的服务把日志写在哪个文件，把部署的提交号写在哪个 VERSION 文件。运行机要能读到这两个文件。
 
    ```json

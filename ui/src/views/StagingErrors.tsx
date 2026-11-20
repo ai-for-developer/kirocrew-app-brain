@@ -20,7 +20,7 @@ export const STAGING_STATE: Record<StagingState, { label: string; tone: Tone }> 
 }
 export const stagingMeta = (state: string) => STAGING_STATE[state as StagingState] ?? { label: state, tone: 'idle' as Tone }
 const rank = (state: string) => { const i = Object.keys(STAGING_STATE).indexOf(state); return i < 0 ? 99 : i }
-export const STAGING_OFF = '还没有项目打开测试环境报错：项目的 .brain/kit.json 里 work_sources 写上 staging-errors，桥的 bridge.json 里这个项目写上 staging（测试环境的日志和 VERSION 文件在哪）就开始。'
+export const STAGING_OFF = '还没有项目打开测试环境报错：项目的 .brain/kit.json 里 work_sources 写全，比如 ["mr-handoff", "mr-patrol", "staging-errors"]（只写 staging-errors 会把交接关掉），桥的 bridge.json 里这个项目写上 staging（测试环境的日志和 VERSION 文件在哪）就开始。'
 /** the most rows the list shows */
 export const STAGING_ROWS = 8
 
