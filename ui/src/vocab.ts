@@ -24,7 +24,7 @@ export const waitsOn = (who: WaitWho): string => (who === 'nobody' ? '' : `等${
 export const DO_NAME: Record<WaitDo, string> = {
   approve: '去批准', reply: '去回话', tool: '去批准工具调用', start: '去开工', answer: '去回答', accept: '去验收',
   redo_handoff: '改好后重新交接', label_handoff: '补上交接标签', push_handoff: '再交接一次', write_back: '回写 Brain',
-  watch: '观察中', none: '',
+  watch: '观察中', open_mr: '开 MR', merge: '去 MR 上合并', full: '转完整流程', none: '',
 }
 
 /** the actions' names (buttons and the text that points at them use exactly these) */
@@ -44,6 +44,9 @@ export const ACT = {
   onBoard: '在运行过程里看 ↗',
   acceptOnMr: '去 MR 上验收',
   viewMr: '看 MR',
+  /** a fast run's two actions (FlowAction mr, full): `brain mr`, `brain full` */
+  openMr: '开 MR',
+  toFull: '转完整流程',
 } as const
 
 /** 大需求拆成小需求 (brain-kit's split): the family's actions, the same on 运行过程, 需求现状, 待办 and 开需求 */
@@ -113,7 +116,7 @@ export function leanNow(r: { state: ReqState; lean: LeanSummary }, skipped_phase
 export const WAIT_NAME: Record<WaitDo, string> = {
   approve: '等批准', reply: '等回话', tool: '等批准工具调用', start: '等开工', answer: '等回答', accept: '等验收',
   redo_handoff: '要重做交接', label_handoff: '要补交接标签', push_handoff: '要再交接', write_back: '要回写 Brain',
-  watch: '观察中', none: '',
+  watch: '观察中', open_mr: '等开 MR', merge: '等合并', full: '要转完整流程', none: '',
 }
 
 /** Lean's review in a new session (Waits.review) is its own step: the session that wrote the code may not review it,

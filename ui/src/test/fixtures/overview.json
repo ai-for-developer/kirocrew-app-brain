@@ -63,7 +63,16 @@
       "home": null,
       "verify_fails": 0,
       "progress_pushed_at": null,
-      "credits_whole": true
+      "credits_whole": true,
+      "flow": {
+        "id": "lean",
+        "label": "完整流程",
+        "intent": true,
+        "actions": [
+          "handoff",
+          "review"
+        ]
+      }
     },
     {
       "repo": "r1",
@@ -135,7 +144,16 @@
       "home": null,
       "verify_fails": 0,
       "progress_pushed_at": null,
-      "credits_whole": true
+      "credits_whole": true,
+      "flow": {
+        "id": "lean",
+        "label": "完整流程",
+        "intent": true,
+        "actions": [
+          "handoff",
+          "review"
+        ]
+      }
     },
     {
       "repo": "r1",
@@ -205,7 +223,16 @@
       "home": null,
       "verify_fails": 0,
       "progress_pushed_at": null,
-      "credits_whole": true
+      "credits_whole": true,
+      "flow": {
+        "id": "lean",
+        "label": "完整流程",
+        "intent": true,
+        "actions": [
+          "handoff",
+          "review"
+        ]
+      }
     },
     {
       "repo": "r1",
@@ -270,7 +297,16 @@
       "home": null,
       "verify_fails": 0,
       "progress_pushed_at": null,
-      "credits_whole": true
+      "credits_whole": true,
+      "flow": {
+        "id": "lean",
+        "label": "完整流程",
+        "intent": true,
+        "actions": [
+          "handoff",
+          "review"
+        ]
+      }
     },
     {
       "repo": "r1",
@@ -327,7 +363,16 @@
       "home": null,
       "verify_fails": 0,
       "progress_pushed_at": null,
-      "credits_whole": true
+      "credits_whole": true,
+      "flow": {
+        "id": "lean",
+        "label": "完整流程",
+        "intent": true,
+        "actions": [
+          "handoff",
+          "review"
+        ]
+      }
     },
     {
       "repo": "r1",
@@ -391,7 +436,16 @@
       "home": null,
       "verify_fails": 0,
       "progress_pushed_at": null,
-      "credits_whole": false
+      "credits_whole": false,
+      "flow": {
+        "id": "lean",
+        "label": "完整流程",
+        "intent": true,
+        "actions": [
+          "handoff",
+          "review"
+        ]
+      }
     }
   ],
   "overlaps": [

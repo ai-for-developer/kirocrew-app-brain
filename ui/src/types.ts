@@ -78,9 +78,33 @@ export type WaitWho = 'you' | 'agent' | 'runner' | 'bridge' | 'product' | 'build
  * was refused), label_handoff (pushed without its label), push_handoff (the hand-over commit is on this machine
  * only: its push failed, nothing went out; 交接给运行机 again), write_back (merged with new knowledge to write back into
  * the Brain), watch (merged, in its 14 days: nobody's turn), none (nothing to do: AI or the runner at work, or done).
+ * A fast run (快速) has three more: open_mr (its code is committed and its check green: the person says it is done with
+ * 开 MR), merge (its MR's CI passed, or it has none: people review and merge it on GitLab), full (it changes a risk
+ * path: 转完整流程, CI fails a fast MR that does).
  */
 export type WaitDo = 'approve' | 'reply' | 'tool' | 'start' | 'answer' | 'accept' | 'redo_handoff' | 'label_handoff'
-  | 'push_handoff' | 'write_back' | 'watch' | 'none'
+  | 'push_handoff' | 'write_back' | 'watch' | 'open_mr' | 'merge' | 'full' | 'none'
+
+/** brain-kit's flows.Flow values (tests/test_flows_app.py checks this line against brain-kit's): lean, a Lean intent
+ * carries the run through its stages and approvals; fast (快速), no intent, no stages, no approvals, the run ends with
+ * an MR a person merges. */
+export type FlowId = 'lean' | 'fast'
+/** brain-kit's flows.Action values, checked the same way: handoff 交接给运行机, review 开审查会话, mr 开 MR,
+ * full 转完整流程 */
+export type FlowAction = 'handoff' | 'review' | 'mr' | 'full'
+
+/** How a requirement's run goes (backend flowview.wire of brain-kit's flow). A row without a run has the default one
+ * (lean): the choice is made when it is started. */
+export interface FlowView {
+  id: FlowId
+  /** how a person names it: 完整流程, 快速 */
+  label: string
+  /** a Lean intent carries the run: the Lean views (stages, approvals, the stage graph, 验收) apply */
+  intent: boolean
+  /** what a person may do with it besides talking to its session, as brain-kit's table says: the buttons follow it
+   * (flows.tsx can) */
+  actions: FlowAction[]
+}
 
 export interface Waits {
   who: WaitWho
@@ -188,6 +212,8 @@ export interface Requirement {
   /** when this machine last pushed its run branch at a Lean checkpoint (epoch seconds); null: not from here. The
    * backend always sends it */
   progress_pushed_at?: number | null
+  /** how its run goes: lean or fast. The backend always sends it */
+  flow?: FlowView
 }
 
 // ---------------------------------------------------------------- 大需求拆成小需求 (brain-kit's split, phase 1)
@@ -413,6 +439,38 @@ export interface RepoInfo {
   remote?: boolean
   /** how it keeps up with the team (a loaded repo; null otherwise). The backend always sends it */
   sync?: RepoSync | null
+  /** 设置's 「允许快速模式」 (a loaded repo with a remote; null otherwise). The backend always sends it */
+  fast?: FastModeView | null
+}
+
+/** 「允许快速模式」 for one repo: a team rule, .brain/kit.json fast_mode on the default branch (missing: allowed), changed
+ * only through an MR a person merges (backend kitmr.py). */
+export interface FastModeView {
+  /** fast_mode on the default branch, as this machine last fetched it */
+  on: boolean
+  /** why fast runs are not offered here whatever the switch says, in brain-kit's words (a regulated repo, a Lean too
+   * old to run without an intent, no Lean); '' when nothing else stops them. The switch is off with it */
+  why: string
+  /** a change of the switch not merged yet: what it sets, its MR (iid and url null when this machine cannot read it:
+   * no GitLab token). 「MR !N 等合并」 */
+  pending: { on: boolean; iid: number | null; url: string | null } | null
+}
+
+/** POST /repos/fast-mode: flip 「允许快速模式」 once the person confirmed (*on*: what the default branch should say). */
+export interface FastModeBody { repo: string; on: boolean }
+
+/** What a flip did: kit.json changed on branch brain/fast-mode and an MR into the default branch opened with the
+ * person's GitLab token; without a token or a GitLab project, the commands to do it by hand and GitLab's new-MR link;
+ * nothing when the default branch says *on* already (an MR still open for the other value is named in text). */
+export interface FastModeResult {
+  ok: boolean
+  /** one line: 「开了 MR !31：合并以后生效」, 「已经是这样了」 … */
+  text: string
+  mr: { iid: number; url: string; existing: boolean } | null
+  commands: string[]
+  new_mr_url: string | null
+  /** the switch now */
+  fast: FastModeView
 }
 
 /** A repo's last fetch (every few minutes by itself, or 「从远端取最新」), in repo.fetch()'s words. */
@@ -1179,6 +1237,9 @@ export interface IntakeNext {
   push?: { branch: string; remote_url: string } | null
   /** 「大需求：先拆成小需求」 can be chosen here (tracker none, a brain-kit with brain split), and why not */
   big: { ok: boolean; why: string }
+  /** 「快速：直接写代码」 can be chosen here, and why not in brain-kit's words (the team switched it off in kit.json, a
+   * regulated repo, a Lean too old, no Lean). The backend always sends it */
+  fast?: { ok: boolean; why: string }
 }
 
 /** POST /pick {kind}: this machine's own dialog (选文件… / 选文件夹…) answers the absolute paths chosen, [] for a cancel */
@@ -1241,6 +1302,9 @@ export interface StartBody extends IntakeBody {
   /** 「大需求：先拆成小需求」: Lean's requirements and design as usual, the design with the unit split (unit-of-work.md,
    * brain-kit's skill brain-split); the DESIGN approval approves the split; then 拆成小需求 */
   big?: boolean
+  /** 「快速：直接写代码」 (`brain start --fast`): no Lean intent, no stages or approvals; the commit check, CI and the risk
+   * paths stay; it ends with 开 MR. Never together with big */
+  fast?: boolean
 }
 
 export interface StartResult {
@@ -1868,10 +1932,10 @@ export interface BeltItem {
 }
 
 /** One cell of the check wall: a Lean approval, a verify check, the bridge's and the signer's checks, Brain lint, the
- * 14 days after the merge. */
+ * 14 days after the merge; a fast run's: its MR's CI and the risk paths. */
 export interface CheckCell {
   id: string
-  group: 'gate' | 'verify' | 'handover' | 'brain' | 'after'
+  group: 'gate' | 'verify' | 'ci' | 'risk' | 'handover' | 'brain' | 'after'
   /** in the cell: 需求, pytest, 桥 … */
   label: string
   /** in the inspector line: 需求审批（REQUIREMENTS） */
@@ -1965,6 +2029,50 @@ export interface ReqBoard {
   /** a big requirement split into small ones: the family's numbers from its trace (brain-kit 0d52e97 trace family
    * rollup: itself and every small one added up), and each small one's; null otherwise */
   rollup: FamilyRollup | null
+  /** a fast run's way, five steps in place of the stage graph (phases, nodes, runs, relays and lean_steps are empty);
+   * null: the stage graph applies. The backend always sends it */
+  steps?: FastStep[] | null
+}
+
+/** One step of a fast run (backend fastboard.py): 写代码 (its commits), 自动检查 (the newest `lean verify`), 开 MR, CI
+ * (the MR's newest pipeline on its head), 合并. */
+export type FastStepId = 'code' | 'verify' | 'mr' | 'ci' | 'merge'
+export interface FastStep {
+  id: FastStepId
+  label: string
+  /** done; running (the session writing, CI running); waiting (not reached, or waits for a person); failed (verify or
+   * CI red, a risk path changed) */
+  status: 'done' | 'running' | 'waiting' | 'failed'
+  /** one short line: 提交了 3 次 · 没过：pytest · MR !12 · 改到了风险目录：转完整流程 · 等人审、合并 */
+  text: string
+  /** when it got to its status (null: not yet, or not known) */
+  at: number | null
+  /** where it is on GitLab: the MR (开 MR, 合并), its pipeline (CI); null otherwise */
+  url: string | null
+}
+
+// ---------------------------------------------------------------- POST /requirements/{repo}/{key}/act/{action}
+
+/** 开 MR (mr) and 转完整流程 (full) of a fast run: `brain mr --json` / `brain full --json` in its worktree on this
+ * machine (backend acts.py). Refusals before anything runs (not a fast run, someone else's, no worktree here, the
+ * session writing, merged or closed) are error answers, in words. */
+export interface ActResult {
+  ok: boolean
+  action: 'mr' | 'full'
+  /** one line: 「推上去了，开了 MR !12」, 「转成完整流程：Lean intent 261120-pay-3-coupon」, or brain-kit's refusal */
+  text: string
+  pushed: boolean
+  mr: { iid: number; url: string; existing: boolean } | null
+  /** no GitLab token or project here: the push and `glab mr create` lines to run by hand */
+  commands: string[]
+  new_mr_url: string | null
+  /** 转完整流程: the run's Lean intent now */
+  intent: string | null
+  /** 转完整流程: the live session was idle and was told to go on under Lean (one line, ids only); false: it was busy
+   * or there was none, so the person tells it (or opens a new one) */
+  told: boolean
+  /** brain-kit's own output, credentials hidden (shown folded under 细节) */
+  output: string
 }
 
 /** One file a round handed in or changed, as GET /outputs/{repo}/{key}?node&round lists it (backend outputs.py). */

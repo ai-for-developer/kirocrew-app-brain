@@ -55,6 +55,11 @@
           "text": "已经从远端取到最新。",
           "raw": ""
         }
+      },
+      "fast": {
+        "on": true,
+        "why": "",
+        "pending": null
       }
     },
     {
@@ -67,7 +72,8 @@
       "pending": null,
       "me": null,
       "remote": true,
-      "sync": null
+      "sync": null,
+      "fast": null
     }
   ],
   "crew": {

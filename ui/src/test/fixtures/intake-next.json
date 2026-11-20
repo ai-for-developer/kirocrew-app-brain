@@ -9,5 +9,9 @@
   "big": {
     "ok": true,
     "why": ""
+  },
+  "fast": {
+    "ok": true,
+    "why": ""
   }
 }

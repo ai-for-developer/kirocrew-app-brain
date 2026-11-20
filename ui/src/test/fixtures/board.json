@@ -62,7 +62,16 @@
     "home": null,
     "verify_fails": 0,
     "progress_pushed_at": null,
-    "credits_whole": true
+    "credits_whole": true,
+    "flow": {
+      "id": "lean",
+      "label": "完整流程",
+      "intent": true,
+      "actions": [
+        "handoff",
+        "review"
+      ]
+    }
   },
   "branch": "ai/alice/PAY-3-refund-export",
   "base": "main",
@@ -3023,5 +3032,6 @@
   "missing": [
     "CI 流水线：在 GitLab 上，这里读不到"
   ],
-  "rollup": null
+  "rollup": null,
+  "steps": null
 }
