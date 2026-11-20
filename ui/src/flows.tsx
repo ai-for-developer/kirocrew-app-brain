@@ -5,7 +5,8 @@
  * table. Each wrapper below is given the Lean widget as its child and renders it for a Lean run, the fast one otherwise.
  */
 import type { CSSProperties, ReactNode } from 'react'
-import type { FastStep, FastStepId, FlowAction, FlowId, FlowView, Requirement, WaitDo, Waits } from './types'
+import { RoleIcon } from './board/RoleIcon'
+import type { FastStep, FastStepId, FlowAction, FlowId, FlowView, ReqBoard, Requirement, WaitDo, Waits } from './types'
 import type { FlowStep } from './ui'
 import { ACT, FAMILY_ACT, leanNow, waitsOn } from './vocab'
 
@@ -61,6 +62,20 @@ export const FLOW_FORM: Record<FlowId, { way: (o: { big: boolean; localOnly: boo
 }
 
 // ---------------------------------------------------------------- a fast run's five steps
+
+export const STEP_ICON: Record<FastStepId, string> = { code: 'code', verify: 'lint', mr: 'pr', ci: 'ci', merge: 'merge' }
+
+/** the part of 运行过程 a step leads to (写代码: its commits and their diffs; 自动检查: the check wall); 开 MR, CI and 合并
+ * lead to their page on GitLab instead (stepHref) */
+export const STEP_PART: Partial<Record<FastStepId, string>> = { code: 'kt-conveyor', verify: 'kt-wall' }
+
+/** Scrolls the board *from* is on to the part step *id* leads to. */
+export function toPart(from: Element, id: FastStepId): void {
+  const part = STEP_PART[id]
+  if (part) from.closest('[data-testid="br-board"]')?.querySelector(`[data-testid="${part}"]`)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+}
+
+export const stepHref = (s: FastStep): string | null => (s.url && /^https?:\/\//i.test(s.url) ? s.url : null)
 
 /** the step a person's turn is at: 开 MR waits for the owner to say it is done, 合并 for people to merge it */
 const ASKED: Partial<Record<WaitDo, FastStepId>> = { open_mr: 'mr', merge: 'merge' }
@@ -137,5 +152,62 @@ export function FlowCard({ r, steps, children }: { r: Requirement; steps: FastSt
         </div>
       )}
     </section>
+  )
+}
+
+/** 运行过程's AI-DLC Lean counter: LeanKpi, or for a board with steps the fast run's: its commits, its steps, where it is. */
+export function FlowKpi({ board, children }: { board: ReqBoard; children: ReactNode }) {
+  const steps = board.steps
+  if (!steps) return <>{children}</>
+  const label = flowOf(board.row).label
+  const now = flowNow(board.row)
+  return (
+    <div className="kt-kpi kt-kpi-gates br-kpi-lean" aria-label={`${label}：${now}`} data-testid="br-fast-kpi">
+      <div className="kt-kpi-label">{label}</div>
+      <div className="kt-kpi-value">
+        <span className="kt-kpi-big">{board.belt.filter((b) => b.kind === 'commit').length}</span>
+        <span className="kt-kpi-of">次提交</span>
+      </div>
+      <div className="kt-segs" aria-hidden="true">
+        {steps.map((s) => <i key={s.id} className={stepLook(s, board.row.waits).seg} />)}
+      </div>
+      <div className="kt-kpi-note br-lean-next">{now}</div>
+    </div>
+  )
+}
+
+/** 运行过程's 这条路走到哪了: StepsKpi (the stages on the way), or for a board with steps the five steps, one icon each. */
+export function FlowWayKpi({ board, children }: { board: ReqBoard; children: ReactNode }) {
+  const steps = board.steps
+  if (!steps) return <>{children}</>
+  const looks = steps.map((s) => ({ s, look: stepLook(s, board.row.waits) }))
+  const working = steps.filter((s) => s.status === 'running').length
+  const asked = looks.find(({ look }) => look.node.startsWith('awaiting'))?.look
+  return (
+    <div className="kt-kpi kt-kpi-roles">
+      <div className="kt-kpi-label">这条路走到哪了</div>
+      <div className="kt-kpi-value" data-testid="br-steps-counter">
+        <span className="kt-kpi-big">{steps.filter((s) => s.status === 'done').length}</span>
+        <span className="kt-kpi-of">/{steps.length}</span>
+      </div>
+      <div className="kt-role-dots">
+        {looks.map(({ s, look }) => {
+          const cls = `kt-role-dot tone-${look.tone}${s.status === 'running' ? ' is-working' : ''}`
+          const name = `${s.label}：${look.word}`
+          const icon = <RoleIcon role={STEP_ICON[s.id]} size={15} />
+          const href = stepHref(s)
+          if (href) return <a key={s.id} className={cls} href={href} target="_blank" rel="noopener noreferrer" title={`${name}（在 GitLab 上看）`} aria-label={`${name} ↗`}>{icon}</a>
+          return (
+            <button key={s.id} type="button" className={cls} title={name} aria-label={name} disabled={!STEP_PART[s.id]} onClick={(e) => toPart(e.currentTarget, s.id)}>
+              {icon}
+            </button>
+          )
+        })}
+      </div>
+      <div className="kt-kpi-note">
+        {working ? <b className="tone-run">在做 {working}</b> : '没有在做的'}
+        {asked ? <b className={`tone-${asked.tone}`}> · {asked.word}</b> : null}
+      </div>
+    </div>
   )
 }

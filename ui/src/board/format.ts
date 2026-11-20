@@ -226,6 +226,8 @@ export function brief(s: string, maxEm: number, or: string | null = null): strin
 export const CELL_GROUPS: { key: string; label: string }[] = [
   { key: 'gate', label: 'Lean 审批' },
   { key: 'verify', label: '自动检查' },
+  { key: 'ci', label: 'CI' },
+  { key: 'risk', label: '风险目录' },
   { key: 'handover', label: '交接' },
   { key: 'brain', label: 'Brain 和仓库' },
   { key: 'after', label: '合并以后' },

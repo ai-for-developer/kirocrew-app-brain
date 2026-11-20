@@ -144,7 +144,7 @@ export const DECIDED_BY: Record<string, string> = {
 
 /** what a check of the wall is about (CheckCell.group) */
 export const CHECK_GROUP_NAME: Record<string, string> = {
-  gate: 'Lean 审批', verify: '自动检查', handover: '交接', brain: 'Brain', after: '合并后观察',
+  gate: 'Lean 审批', verify: '自动检查', ci: 'CI', risk: '风险目录', handover: '交接', brain: 'Brain', after: '合并后观察',
 }
 
 /** a source brain-kit's trace could not read (its English words, ReqBoard.missing) → what it is */

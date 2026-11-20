@@ -1,10 +1,10 @@
 /**
  * Where a requirement's way is, read off its boxes: the one rule the AI-DLC Lean card, the graph's edges and the check
  * ring follow. A box's status has one writer (backend stages.node_status); where the way goes next is the card's
- * 下一步 (vocab.leanNow).
+ * 下一步 (flows.flowNow: Lean's, as vocab.leanNow says it).
  */
+import { flowNow } from '../flows'
 import type { GateKind, ReqBoard, Round, StageNode } from '../types'
-import { leanNow } from '../vocab'
 import { openGate } from './format'
 
 /** Approvals of a document its stage has finished: Lean marks the stage done, then asks. A box waiting on one of these
@@ -30,7 +30,7 @@ export function wayAt(nodes: readonly StageNode[]): { at: StageNode | null; next
  * the 审查 still to do before it (Lean releases only after a review in a new session); else the first box not reached. */
 export function wayAhead(board: Pick<ReqBoard, 'nodes' | 'row'>): ReadonlySet<string> {
   const drawn = board.nodes.filter((n) => n.status !== 'skipped')
-  const said = leanNow(board.row, []).split(' · ').pop()!.startsWith('下一步：')
+  const said = flowNow(board.row, []).split(' · ').pop()!.startsWith('下一步：')
   const lean = said ? drawn.findIndex((n) => n.stage === board.row.lean.next?.id && n.status === 'waiting') : -1
   if (lean < 0) {
     const { next } = wayAt(drawn)
@@ -65,4 +65,15 @@ export function verifyCount(nodes: readonly StageNode[]): VerifyCount {
   const before = rounds.slice(0, -1).filter((r) => r.outcome.kind === 'failed').map((r) => r.n)
   const say = before.length ? `第 ${last.n} 轮 · 第 ${before.join('、')} 轮没过` : rounds.length > 1 ? `第 ${last.n} 轮 · ${rounds.length} 轮都过` : `第 ${last.n} 轮 · 全过`
   return { passed, failed, total, say, tone: 'ok' }
+}
+
+/** 检查通过 of a fast run (no stages, no rounds): the checks of its newest verify as its wall has them (自动检查), said as
+ * its 自动检查 step says it. */
+export function fastVerifyCount(b: Pick<ReqBoard, 'checks' | 'steps'>): VerifyCount {
+  const cells = b.checks.cells.filter((c) => c.group === 'verify' && (c.status === 'pass' || c.status === 'fail'))
+  const passed = cells.filter((c) => c.status === 'pass').length
+  const failed = cells.length - passed
+  const said = b.steps?.find((s) => s.id === 'verify')?.text
+  if (!cells.length) return { passed: 0, failed: 0, total: 0, say: said || '还没跑过检查', tone: 'idle' }
+  return { passed, failed, total: cells.length, say: said || (failed ? `${failed} 项没过` : '全过'), tone: failed ? 'bad' : 'ok' }
 }

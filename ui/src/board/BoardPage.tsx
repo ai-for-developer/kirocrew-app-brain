@@ -20,6 +20,9 @@
  * made; while it plays nothing can be done, and the drawer shows what each step had at the replayed moment.
  * Reduced motion: nothing flies or pulses, states still change.
  *
+ * A fast run (快速, board.steps) has its five steps (FastSteps.tsx) where the stage graph goes; with no stages it has no
+ * lanes, and it ends with its MR merged on GitLab, not with 验收.
+ *
  * A big requirement split into small ones (row.family, views/Family.tsx): a small one names its big one in the crumb
  * and the top bar; a big one's small ones are lanes with the roll-up and the trace's family numbers. Either family card
  * (a small one's: its dependencies, paths, 认领 / 开工 / 同步) sits under the conveyor, before the requirement's own
@@ -42,6 +45,7 @@ import { Conveyor } from './Conveyor'
 import { effects, type BoardDiff, type Flash } from './diff'
 import type { Item } from './engine'
 import { EventFeed } from './EventFeed'
+import { FastSteps } from './FastSteps'
 import { BOARD_EXTRA_CSS } from './extra'
 import { PERSON, WORKING, boardWho, replySession } from './format'
 import { NextStep } from './NextStep'
@@ -352,15 +356,17 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, pus
                 <div className="kt-body">
                   <div className="kt-col">
                     <div ref={graphBox}>
-                      <StageGraph key={`${entry.repo}/${entry.key}${rp.on ? ':replay' : ''}`} board={board} run={picked} lay={lay} focus={focus} onNode={onNode} flashes={fx.flashes}
-                        reducedMotion={reducedMotion} feed={feed} quiet={quiet} onSession={(url) => navigate(url)} onAct={quiet ? undefined : onAct}
-                        onOutputs={onOutputs} held={rp.held} />
+                      {board.steps ? <FastSteps steps={board.steps} waits={board.row.waits} reducedMotion={reducedMotion} /> : (
+                        <StageGraph key={`${entry.repo}/${entry.key}${rp.on ? ':replay' : ''}`} board={board} run={picked} lay={lay} focus={focus} onNode={onNode} flashes={fx.flashes}
+                          reducedMotion={reducedMotion} feed={feed} quiet={quiet} onSession={(url) => navigate(url)} onAct={quiet ? undefined : onAct}
+                          onOutputs={onOutputs} held={rp.held} />
+                      )}
                     </div>
                     {focus && <FocusBar board={board} focus={focus} onClear={() => setFocus(null)} />}
                     <Conveyor board={view} fresh={fx.belt} focus={focus} onNode={onNode} />
                     {(fam?.role === 'parent' || fam?.role === 'child') && famCard}
-                    <Lanes board={view} focus={focus} bumps={fx.bumps} onNode={onNode} quiet={quiet} onOutputs={onOutputs} />
-                    {!acceptTop && <Accept board={board} onDetail={toDetail} quiet={quiet} />}
+                    {!board.steps && <Lanes board={view} focus={focus} bumps={fx.bumps} onNode={onNode} quiet={quiet} onOutputs={onOutputs} />}
+                    {!acceptTop && !board.steps && <Accept board={board} onDetail={toDetail} quiet={quiet} />}
                   </div>
                   <aside className="kt-side" aria-label="检查、问题和事件">
                     <CheckWall board={view} focus={focus} onNode={onNode} flips={fx.flips} onSettings={() => go({ kind: 'settings' })} />
