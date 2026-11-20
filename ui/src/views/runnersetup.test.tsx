@@ -13,7 +13,8 @@ import { SETUP_POINTER, SettingsView } from './Settings'
 function never(): TeamSetup {
   const s = fx.teamSetup()
   s.started_at = s.ended_at = null
-  s.input = { gitlab_base: '', project: '', roles: { product: [], builder: [], security: [], data: [] }, push: 'auto', patrol: true }
+  s.input = { gitlab_base: '', project: '', roles: { product: [], builder: [], security: [], data: [] }, push: 'auto', patrol: true,
+    jenkins: { base: '', user: '' } }
   s.steps = s.steps.map((x) => ({ ...x, status: 'todo', message: '', link: null, detail: '' }))
   return s
 }

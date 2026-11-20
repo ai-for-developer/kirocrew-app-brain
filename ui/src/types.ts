@@ -1613,15 +1613,17 @@ export interface TeamSetup {
   ended_at: number | null
   /** the step a run cut off part-way had not finished (the app or the command stopped while it ran); null otherwise */
   cut_off: string | null
-  /** that run's input; never the token. patrol: 巡检所有开着的 MR */
-  input: { gitlab_base: string; project: string; roles: Record<SetupRole, string[]>; push: 'auto' | 'ssh' | 'token'; patrol: boolean }
+  /** that run's input; never a token. patrol: 巡检所有开着的 MR; jenkins: where MR 巡检 reads failed builds' logs
+   * and as whom ('' and '': no Jenkins) */
+  input: { gitlab_base: string; project: string; roles: Record<SetupRole, string[]>; push: 'auto' | 'ssh' | 'token'; patrol: boolean; jenkins: { base: string; user: string } }
   /** every step of the table, in order */
   steps: SetupStep[]
   /** where its configs, tokens and keys are */
   root: string
 }
 /** POST /team/setup (answers TeamSetup, running). admin_token: a one-time personal token with api, used for this run
- * only; roles: GitLab usernames, a role left out is the token's owner; patrol: 巡检所有开着的 MR (left out: on). */
+ * only; roles: GitLab usernames, a role left out is the token's owner; patrol: 巡检所有开着的 MR (left out: on);
+ * jenkins: a read-only user's, its token kept on the team server ('': the one kept before; left out: no Jenkins). */
 export interface TeamSetupBody {
   gitlab_base: string
   project: string
@@ -1629,6 +1631,7 @@ export interface TeamSetupBody {
   roles: Partial<Record<SetupRole, string[]>>
   push?: 'auto' | 'ssh' | 'token'
   patrol?: boolean
+  jenkins?: { base: string; user: string; token: string }
 }
 
 // ---------------------------------------------------------------- POST /refresh {repo}

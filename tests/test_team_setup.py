@@ -257,10 +257,11 @@ def fake_reach(world):
     return reach
 
 
-def setup_ctx(world, push="auto", roles=None, patrol=True):
+def setup_ctx(world, push="auto", roles=None, patrol=True, jenkins=None):
     setup, rest = mod("team.setup"), mod("bk").m("rest")
     inp = setup.SetupInput.parse({"gitlab_base": BASE, "project": P, "admin_token": world["admin"],
-                                  "roles": roles or {"builder": "bob"}, "push": push, "patrol": patrol})
+                                  "roles": roles or {"builder": "bob"}, "push": push, "patrol": patrol,
+                                  "jenkins": jenkins})
     paths = setup.Paths.default(BRAINKIT, root=world["tmp"] / "team-setup")
     return setup.Ctx(inp, paths, gitlab=lambda tok: rest.GitLab(BASE, tok, world["gl"]), team_mode=team_mode(world),
                      signer=fake_signer(world), reach=fake_reach(world))
@@ -636,6 +637,30 @@ def test_the_persons_token_is_never_written(world):
     assert "admin_token" not in state
 
 
+def test_jenkins_s_address_and_read_only_user_go_into_bridge_json_and_its_token_into_a_file_only_its_owner_reads(world):
+    """Typed once: the token is in jenkins-token alone (0600), and the page shows the address and the user again. A
+    rerun with the token left empty keeps the one saved; one with the address cleared names no Jenkins. An address
+    with no token typed or saved stops at the configs, saying so."""
+    jenkins = {"base": "https://jenkins.example.com/", "user": "brain-reader", "token": ""}
+    first, ps = build(world, jenkins=jenkins)
+    assert step(first, "configs")["status"] == "failed" and "Jenkins 的 token 没填" in step(first, "configs")["message"]
+    jenkins["token"] = "fake-" + secrets.token_hex(8)
+    view, _ = build(world, jenkins=jenkins)
+    token = ps.root / "jenkins-token"
+    block = {"base": "https://jenkins.example.com", "user": "brain-reader", "token_file": str(token)}
+    assert everything_done(view) and json.loads(ps.bridge_json.read_text())["jenkins"] == block
+    assert mode(token) == "0o600" and mode(ps.bridge_json) == "0o600"
+    files = files_under(ps.root, ps.work, ps.agent_spec.parent)
+    assert [os.path.relpath(p, ps.root) for p, b in files.items() if jenkins["token"].encode() in b] == ["jenkins-token"]
+    assert view["input"]["jenkins"] == {"base": "https://jenkins.example.com", "user": "brain-reader"}
+    again, _ = build(world, jenkins=dict(jenkins, token=""))
+    assert everything_done(again) and json.loads(ps.bridge_json.read_text())["jenkins"] == block
+    assert token.read_text().strip() == jenkins["token"]
+    off, _ = build(world)
+    assert everything_done(off) and "jenkins" not in json.loads(ps.bridge_json.read_text())
+    assert off["input"]["jenkins"] == {"base": "", "user": ""}
+
+
 def test_everyone_on_the_project_who_can_push_may_hand_over_and_the_roles_stay_as_typed(world):
     """users: each member with Developer or more, not only the people in a role; no bot (the account the runner
     pushes as, the bridge's token user); a role may name a Reporter."""
@@ -679,9 +704,17 @@ def test_the_input_is_read_at_the_boundary():
                                    "patrol": False}).public()["patrol"] is False
     assert got.roles == {"product": ("carol", "dave"), "builder": ()} and "tok-123456" not in repr(got)
     assert "tok-123456" not in json.dumps(got.public())
+    assert got.jenkins is None and got.public()["jenkins"] is None       # no Jenkins unless an address is typed
+    jk = setup.SetupInput.parse({"gitlab_base": BASE, "project": P, "admin_token": "tok-123456", "jenkins": {
+        "base": " http://127.0.0.1:8080/ ", "user": " brain-reader ", "token": " jen-123456 "}}).jenkins
+    assert (jk.base, jk.user, jk.token) == ("http://127.0.0.1:8080", "brain-reader", "jen-123456")
+    assert "jen-123456" not in repr(jk)
     for bad in ({"gitlab_base": "gitlab.example.com"}, {"gitlab_base": "https://u:p@gitlab.example.com"},
                 {"project": "pay"}, {"admin_token": ""}, {"admin_token": "a b"}, {"roles": {"boss": "x"}},
-                {"roles": {"product": "a/b"}}, {"push": "ftp"}, {"patrol": "yes"}):
+                {"roles": {"product": "a/b"}}, {"push": "ftp"}, {"patrol": "yes"}, {"jenkins": "jenkins.example.com"},
+                {"jenkins": {"base": "jenkins.example.com", "user": "r"}}, {"jenkins": {"base": "https://j.example.com"}},
+                {"jenkins": {"base": "https://j.example.com", "user": "a:b"}},
+                {"jenkins": {"base": "https://j.example.com", "user": "r", "token": "a b"}}):
         body = dict({"gitlab_base": BASE, "project": P, "admin_token": "tok-123456"}, **bad)
         with pytest.raises(setup.SetupRefused):
             setup.SetupInput.parse(body)
@@ -851,9 +884,13 @@ def test_the_command_line_says_one_line_per_step(world):
     token_file = world["tmp"] / "token"
     token_file.write_text(world["admin"] + "\n")
     token_file.chmod(0o600)
+    jenkins_token = world["tmp"] / "jenkins-token-typed"
+    jenkins_token.write_text("fake-" + secrets.token_hex(8) + "\n")
     root = world["tmp"] / "cli-setup"
     cmd = [sys.executable, "-I", str(ROOT / "scripts" / "runner_setup.py"), "--root", str(root), "--gitlab", served.base,
-           "--project", P, "--token-file", str(token_file), "--role", "builder=bob", "--brainkit", str(BRAINKIT)]
+           "--project", P, "--token-file", str(token_file), "--role", "builder=bob", "--brainkit", str(BRAINKIT),
+           "--jenkins", "https://jenkins.example.com", "--jenkins-user", "brain-reader",
+           "--jenkins-token-file", str(jenkins_token)]
     signerproc = mod("team.signerproc")
     try:
         first = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
@@ -874,3 +911,6 @@ def test_the_command_line_says_one_line_per_step(world):
     assert second.returncode == 0 and world["gl"].writes(seen) == [], second.stdout + second.stderr
     assert "✓ 桥的令牌  用上次建的项目令牌 brain-bridge" in second.stdout
     assert world["admin"] not in first.stdout + first.stderr + second.stdout + second.stderr
+    assert json.loads((root / "bridge.json").read_text())["jenkins"] == {
+        "base": "https://jenkins.example.com", "user": "brain-reader", "token_file": str(root / "jenkins-token")}
+    assert (root / "jenkins-token").read_text() == jenkins_token.read_text() and mode(root / "jenkins-token") == "0o600"
