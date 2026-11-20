@@ -205,15 +205,19 @@ class PatrolGitLab:
 
 
 class FakeSessions:
-    """crewadapter's patrol surface in memory. A turn is running from its send until end() or stop."""
+    """crewadapter's patrol surface in memory, answering as the session runner does. A turn is running from its send
+    until end() or a stop. *refuse*: KiroCrew answers no to every message (patrol.Refused: nothing goes in). *lose*: it
+    answers none, and the message never lands; the session runner follows such a turn as running until it is stopped."""
 
     def __init__(self) -> None:
         self.opened: list[tuple[str, str, str, str]] = []
         self.projects: dict[str, str] = {}
-        self.sent: list[tuple[str, str, str]] = []      # (slot, message, send_id)
-        self.turns: dict[str, str] = {}
+        self.asked: list[str] = []                      # the slot of every message patrol handed over
+        self.sent: list[tuple[str, str, str]] = []      # (slot, message, send_id): the ones that landed
+        self.turns: dict[str, str] = {}                 # send_id -> running | ended | failed
+        self.slot_of: dict[str, str] = {}
         self.stopped: list[str] = []
-        self.fail_send = False
+        self.refuse = self.lose = False
 
     def open_patrol(self, name, agent, model, label):
         if any(o[0] == name for o in self.opened):
@@ -224,19 +228,26 @@ class FakeSessions:
         self.projects[name] = path
 
     def patrol_send(self, name, message, send_id):
-        if self.fail_send:
-            raise mod("bk").brain_error()("KiroCrew：boom")
+        self.asked.append(name)
+        if self.refuse:
+            raise mod("team.patrol").Refused("KiroCrew 没收下：HTTP 409 slot_busy")
+        self.turns[send_id], self.slot_of[send_id] = "running", name
+        if self.lose:
+            raise mod("bk").brain_error()("KiroCrew 90 秒内没有回应")
         self.sent.append((name, message, send_id))
-        self.turns[send_id] = "running"
 
     def patrol_turn(self, name, send_id):
         return self.turns.get(send_id, "unknown")
 
     def patrol_stop(self, name):
         self.stopped.append(name)
-        for slot, _, sid in self.sent:
-            if slot == name and self.turns.get(sid) == "running":
+        for sid, slot in self.slot_of.items():
+            if slot == name and self.turns[sid] == "running":
                 self.turns[sid] = "failed"
+
+    def running(self) -> list[str]:
+        """The slot of every turn at work now."""
+        return [self.slot_of[sid] for sid, st in self.turns.items() if st == "running"]
 
     def end(self, how: str = "ended") -> None:
         """Every running turn ends (*how*: ended, or failed: KiroCrew's error)."""

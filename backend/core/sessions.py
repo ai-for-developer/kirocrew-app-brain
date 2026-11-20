@@ -1094,7 +1094,9 @@ class SessionManager:
 
     async def adapter_send(self, name: str, message: str, send_id: str) -> dict[str, Any]:
         """One message, delivered once (no automatic resend): a new turn of the slot, its sendId the bridge's. Only a
-        runner slot opened through adapter_create."""
+        runner slot opened through adapter_create. A message KiroCrew refused is a turn that failed at once. One it did
+        not answer (cut off, timed out, a 5xx) may have landed: its turn is followed like any other, running until the
+        transcript shows how it went, or until it is stopped."""
         root = self._runner_slot(name)
         info = SessionInfo(id=PREFIX + secrets.token_hex(5), task=message, parent_session_key=root.parent_session_key,
                            requested=self.now(), conv_root=root.id, first_send_id=send_id)
@@ -1102,8 +1104,15 @@ class SessionManager:
         info.resend_ok, info.nudge_ok, info.shown = False, False, bridge_shown(message)
         self._infos[info.id] = info
         self._dirty = True
-        await self._send(info)
-        info.queued, info.queued_reason, info.started = False, None, self.now()
+        try:
+            await self._send(info)
+        except GatewayError as exc:
+            if exc.refused:
+                info.done, info.error = True, "KiroCrew 没收下这条消息：" + said(exc)
+            raise
+        finally:
+            if not info.done:
+                info.queued, info.queued_reason, info.started = False, None, self.now()
         return {"ok": True}
 
     async def adapter_stop(self, name: str) -> dict[str, Any]:

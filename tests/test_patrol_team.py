@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from appkit import BRAINKIT, ROOT, FakeGateway, commit_file, git_repo, mod, sh
+from appkit import BRAINKIT, ROOT, FakeGateway, GatewayError, commit_file, git_repo, mod, sh
 from brainfix import make_service, needs_brainkit, run
 from http_fakes import AppRoute, FakeWeb, call
 from patrolfix import BASE, Clock, PatrolGitLab
@@ -149,6 +149,35 @@ def test_a_turn_kiro_crew_cut_short_with_an_error_is_a_failed_attempt_and_its_th
     told = [m["content"] for m in gw.msgs[slot] if m["role"] == "user"]
     assert (item["state"], item["attempts"]) == ("working", 2), item
     assert len(told) == 2 and "评论 #%d" % d["notes"][0]["id"] in told[1]
+
+
+def test_a_message_kiro_crew_refuses_is_a_failed_attempt_and_two_block_the_mr_with_one_comment(
+        tmp_path, home, monkeypatch):
+    w = light_world(tmp_path, home, monkeypatch, {"work_sources": ["mr-handoff", "mr-patrol"]})
+    gw = FakeGateway()
+
+    async def refuse(key, message, send_id):
+        raise GatewayError(403, "this app may not send to that slot", "forbidden")
+    gw.send = refuse
+    svc, routes = app(w, tmp_path, gw)
+    w.gl.mr(P, 7, sha=w.head)
+    w.gl.thread(P, 7, "carol", "百分比要限制在 0-100", "src/discount.py", 1)
+
+    async def go():
+        await svc.start()
+        try:
+            for _ in range(3):
+                await call(routes, "POST", "/team/loop")
+            return await call(routes, "GET", "/team/patrol")
+        finally:
+            await svc.stop()
+
+    seen = run(go())
+    item, = seen.body["items"]
+    assert (item["state"], item["attempts"], item["slot"]) == ("blocked", 2, "patrol-42-7"), item
+    assert [k for k in gw.slot_rows if k.startswith("patrol-")] == ["patrol-42-7"]
+    told = w.gl.posted("notes")
+    assert len(told) == 1 and told[0]["body"].startswith("MR 巡检：运行机派了 2 次，它的会话都没收下")
 
 
 @pytest.mark.parametrize("kit, polled, patrolled",[({}, True, False), ({"work_sources": ["mr-patrol"]}, False, True)])

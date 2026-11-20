@@ -454,6 +454,11 @@ class Moved(Exception):
     """The source branch on origin is not at the head this round read: the MR is looked at again next round."""
 
 
+class Refused(Exception):
+    """The session surface's: KiroCrew answered no to setting a session up or to its message, so nothing of it went
+    in. Its BrainError means no answer: a message may then have landed."""
+
+
 @dataclass(frozen=True)
 class Workspaces:
     """A clone per MR under *root*, made once; before each dispatch fetched and reset to the source branch on origin."""
@@ -504,9 +509,13 @@ def slot_name(project_id: int, iid: int, gen: int) -> str:
     return "patrol-%d-%d" % (project_id, iid) + ("-%d" % gen if gen > 1 else "")
 
 
-def blocked_text(item: PatrolItem) -> str:
+def blocked_text(row: MrRow, item: PatrolItem) -> str:
+    what = "\n".join("- " + problem_text(p) for p in item.problems)
+    if row.outcome == "refused":
+        return ("MR 巡检：运行机派了 %d 次，它的会话都没收下，这些还没修：\n%s\n\n请管运行机的人看一下它的 KiroCrew。运行机先不管"
+                "这个 MR；它有新的提交、新的流水线或新的评审意见以后再看。" % (MAX_ATTEMPTS, what))
     return ("MR 巡检：运行机试了 %d 次，没修好这些：\n%s\n\n运行机先不管这个 MR；它有新的提交、新的流水线或新的评审意见以后再看。"
-            % (MAX_ATTEMPTS, "\n".join("- " + problem_text(p) for p in item.problems)))
+            % (MAX_ATTEMPTS, what))
 
 
 # ---- the round ------------------------------------------------------------------------------------------------ #
@@ -650,7 +659,7 @@ class Patrol:
             row = replace(row, state=IDLE)
         if row.state == BLOCKED and row.told_fp != row.fingerprint:
             try:
-                self.gl.comment(e.project, item.iid, blocked_text(item))
+                self.gl.comment(e.project, item.iid, blocked_text(row, item))
                 row = replace(row, told_fp=row.fingerprint)
             except bk.m("common").BrainError as exc:    # told next round
                 self.out("%s!%d: the blocked comment is not posted yet: %s" % (e.project, item.iid, _said(exc)))
@@ -713,28 +722,42 @@ class Patrol:
 
     def _dispatch(self, entries: list[Entry], now: float) -> None:
         """The MRs with work to give, the ones open before patrol started first, then by when each last changed, while
-        fewer than CAP sessions are at work (every project's, also one this round could not read)."""
+        fewer than CAP sessions are at work (every project's, also one this round could not read) or were handed work
+        this round, whatever KiroCrew made of it."""
+        common = bk.m("common")
         busy = sum(1 for r in self.led.rows() if self._busy(r))
         todo = [e for e in entries if e.standing == "todo"]
         for e in sorted(todo, key=lambda e: (_ts(e.mr.get("created_at")) >= e.since, _ts(e.mr.get("updated_at")),
                                              e.project, int(e.mr["iid"]))):
             if e.row is not None and self._busy(e.row):
                 e.standing, e.note = "waiting", "它的会话还在做上一轮：做完再派"
-            elif busy >= CAP:
+                continue
+            if busy >= CAP:
                 e.standing = "queued"
-            else:
-                try:
-                    self._send(e, now)
-                    busy += 1
-                except Moved:
-                    e.standing, e.note = "waiting", "MR 刚有新的提交：下一轮再看"
-                except (bk.m("common").BrainError, OSError) as exc:     # git, KiroCrew: tried again next round
-                    e.standing, e.note = "error", "没派出去：%s" % _said(exc)
-                    self.out("%s!%s: not dispatched: %s" % (e.project, e.mr.get("iid"), _said(exc)))
+                continue
+            try:
+                path = self.workspaces.prepare(e.item)
+            except Moved:
+                e.standing, e.note = "waiting", "MR 刚有新的提交：下一轮再看"
+                continue
+            except (common.BrainError, OSError) as exc:     # git: tried again next round
+                e.standing, e.note = "error", "工作区没准备好：%s" % _said(exc)
+                self.out("%s!%s: its workspace is not ready: %s" % (e.project, e.mr.get("iid"), _said(exc)))
+                continue
+            busy += 1
+            try:
+                self._send(e, path, now)
+            except common.BrainError as exc:                # its session not opened or set up: nothing was sent
+                e.standing, e.note = "error", "没派出去：%s" % _said(exc)
+                self.out("%s!%s: not dispatched: %s" % (e.project, e.mr.get("iid"), _said(exc)))
 
-    def _send(self, e: Entry, now: float) -> None:
+    def _send(self, e: Entry, path: str, now: float) -> None:
+        """e's problems to its MR's session, which is opened the first time and kept for as long as the MR is open.
+        The row is working, with the message's sendId, before the message goes. A message KiroCrew did not answer may
+        have landed: it stays working (one of CAP, never sent again; its turn, or TIMEOUT_S, says how it went). One
+        KiroCrew refused is a failed attempt. Raises BrainError when the session was not opened or set up and KiroCrew
+        did not answer: nothing was sent, and it is no attempt."""
         item, row, led = e.item, e.row, self.led
-        path = self.workspaces.prepare(item)
         if not row.slot:
             name = slot_name(item.project_id, item.iid, row.gen + 1)
             row = replace(row, gen=row.gen + 1)
@@ -742,25 +765,52 @@ class Patrol:
             self.sessions.open_patrol(name, AGENT, str(e.kit.get("model") or ""), "%s!%d" % (item.project, item.iid))
             row = replace(row, slot=name)
             led.put(row)
+        e.row = row
         attempts = row.attempts + 1 if row.fingerprint == item.fingerprint else 1
         sid = "P-" + hashlib.sha256(("%s\n%s\n%d\n%r" % (row.slot, item.fingerprint, attempts, now)).encode()
                                     ).hexdigest()[:20]
         went = replace(row, state=WORKING, head_sha=item.head_sha, pipeline_id=item.pipeline_id, conflict=item.conflict,
                        fingerprint=item.fingerprint, attempts=attempts, dispatched_at=now, send_id=sid,
                        sent_notes=item.note_ids, outcome="")
-        led.put(went)
         try:
             self.sessions.patrol_project(row.slot, path)
-            self.sessions.patrol_send(row.slot, message(item, path, self.helper), sid)
-        except BaseException:
-            led.put(replace(row, slot=""))      # not sent: no attempt, and a session of its own next time
-            raise
+        except Refused as exc:
+            self._refused(e, went, exc)
+            return
+        led.put(went)                                   # from here on the message may be in its session
         e.row, e.standing = went, "working"
+        try:
+            self.sessions.patrol_send(row.slot, message(item, path, self.helper), sid)
+        except Refused as exc:
+            self._refused(e, went, exc)
+            return
+        except bk.m("common").BrainError as exc:
+            e.note = "送没送到不清楚（%s）：算它在做，不再送一次" % _said(exc)
+            self.out("%s!%d: its message to %s may or may not have landed: %s" % (item.project, item.iid, row.slot,
+                                                                                _said(exc)))
+            return
         self.out("patrol: %s!%d dispatched to %s (attempt %d)" % (item.project, item.iid, row.slot, attempts))
+
+    def _refused(self, e: Entry, went: MrRow, exc: Refused) -> None:
+        row = _failed(went, "refused")
+        self.led.put(row)
+        e.row = row
+        if row.state == BLOCKED:
+            e.standing = "blocked"
+        else:
+            e.standing, e.note = "error", "会话没收下（%s）：算一次，下一轮再派" % _said(exc)
+        self.out("%s!%d: %s refused its message: %s" % (e.project, went.iid, went.slot, _said(exc)))
 
 
 def _seen(mr: Mapping[str, Any]) -> str:
     return "%s %s" % (mr.get("updated_at"), mr.get("sha"))
+
+
+def _note(standing: str, row: MrRow | None) -> str:
+    if standing == "blocked" and row is not None:
+        tried = "派了 %d 次，会话都没收下" if row.outcome == "refused" else "试了 %d 次没修好"
+        return (tried % row.attempts) + "，在 MR 上说了：等它有新变化"
+    return "这些已经交给会话做过一轮：等 MR 有新变化" if standing == "done" else ""
 
 
 def view_of(projects: list[dict[str, Any]], entries: list[Entry], at: float | None) -> dict[str, Any]:
@@ -769,8 +819,7 @@ def view_of(projects: list[dict[str, Any]], entries: list[Entry], at: float | No
     for e in entries:
         row, item = e.row, e.item
         author = e.mr.get("author") if isinstance(e.mr.get("author"), dict) else {}
-        note = e.note or {"blocked": "试了 %d 次没修好，在 MR 上说了：等它有新变化" % (row.attempts if row else 0),
-                          "done": "这些已经交给会话做过一轮：等 MR 有新变化"}.get(e.standing, "")
+        note = e.note or _note(e.standing, row)
         items.append({"project": e.project, "iid": int(e.mr["iid"]), "title": str(e.mr.get("title") or ""),
                       "url": e.mr.get("web_url") or None, "author": str(author.get("username") or ""),
                       "state": e.standing, "problems": [{"kind": p.kind, "text": problem_text(p)}

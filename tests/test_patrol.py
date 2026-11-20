@@ -12,13 +12,14 @@ import json
 import logging
 import subprocess
 import sys
+import threading
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from appkit import BRAINKIT, ROOT, FakeGateway, commit_file, git_repo, mod, sh
+from appkit import BRAINKIT, ROOT, FakeGateway, GatewayError, commit_file, git_repo, mod, sh
 from brainfix import needs_brainkit
 from patrolfix import BASE, SHA, Clock, FakeSessions, FakeWorkspaces, PatrolGitLab
 
@@ -43,17 +44,22 @@ def kit(**over):
 
 class World:
     def __init__(self, tmp_path, kits=None, claims=None):
-        patrol = mod("team.patrol")
         self.clock = Clock()
         self.gl = PatrolGitLab(self.clock)
         self.kits = kits or {P: kit()}
         for n, path in enumerate(self.kits):
             self.gl.project(path, PID + n)
         self.sessions, self.ws = FakeSessions(), FakeWorkspaces()
-        self.patrol = patrol.Patrol(
+        self.ledger, self.claims = str(tmp_path / "patrol.sqlite"), claims or (lambda: [])
+        self.patrol = self.start(list(self.kits))
+
+    def start(self, projects):
+        """Patrol as team mode starts it on bridge.json's *projects*, on the ledger and sessions there are."""
+        patrol = mod("team.patrol")
+        return patrol.Patrol(
             gl=mod("bk").m("rest").GitLab(BASE, "bridge-tok", self.gl), sessions=self.sessions,
-            kit=lambda p: self.kits[p], projects=list(self.kits), ledger_path=str(tmp_path / "patrol.sqlite"),
-            workspaces=self.ws, claims=claims or (lambda: []), now=self.clock, out=lambda *_: None,
+            kit=lambda p: self.kits[p], projects=projects, ledger_path=self.ledger, workspaces=self.ws,
+            claims=self.claims, now=self.clock, out=lambda *_: None,
             helper=patrol.Helper("/usr/bin/python3", "/app/backend/core/team/patrol_reply.py", "/setup/bridge.json",
                                  "/kit"))
 
@@ -353,16 +359,60 @@ def test_a_merged_mr_is_forgotten_and_its_turn_stopped(bk, tmp_path):
     assert w.sessions.stopped == ["patrol-42-4"] and w.patrol.view()["items"] == [] and w.patrol.held() == []
 
 
-def test_a_send_kiro_crew_did_not_take_is_no_attempt_and_the_next_one_gets_a_new_session(bk, tmp_path):
+def test_a_message_kiro_crew_refuses_is_an_attempt_on_the_mr_s_one_session_and_two_block_it_with_one_comment(
+        bk, tmp_path):
     w = World(tmp_path)
-    w.gl.mr(P, 4, **conflicted())
-    w.sessions.fail_send = True
+    for iid in (1, 2, 3):
+        w.gl.mr(P, iid, **conflicted())
+    w.sessions.refuse = True
+    asked = []
+    for _ in range(6):
+        before = len(w.sessions.asked)
+        w.round()
+        asked.append(len(w.sessions.asked) - before)
+        w.later()
+    assert asked == [2, 2, 1, 1, 0, 0]          # two at a time, two refusals each, then the MR is left alone
+    assert [o[0] for o in w.sessions.opened] == ["patrol-42-1", "patrol-42-2", "patrol-42-3"]
+    assert [(w.item(i)["state"], w.item(i)["attempts"]) for i in (1, 2, 3)] == [("blocked", 2)] * 3
+    assert w.item(1)["note"] == "派了 2 次，会话都没收下，在 MR 上说了：等它有新变化"
+    told = w.gl.posted("notes")
+    assert len(told) == 3 and all(t["body"].startswith("MR 巡检：运行机派了 2 次，它的会话都没收下") for t in told)
+
+
+def test_a_message_kiro_crew_did_not_answer_stays_at_work_on_its_session_and_is_never_sent_again(bk, tmp_path):
+    patrol = mod("team.patrol")
+    w = World(tmp_path)
+    s = w.sessions
+    land = s.patrol_send
+
+    def landed_without_an_answer(name, message, send_id):
+        land(name, message, send_id)                            # KiroCrew took it, the turn runs ...
+        raise bk.brain_error()("KiroCrew 90 秒内没有回应")        # ... but its answer did not come back in time
+    s.patrol_send = landed_without_an_answer
+    for iid in range(1, 6):
+        w.gl.mr(P, iid, **conflicted())
     w.round()
-    assert w.item(4)["state"] == "error" and "没派出去" in w.item(4)["note"] and w.item(4)["attempts"] == 0
-    w.sessions.fail_send = False
+    assert w.item(1)["state"] == "working" and w.item(1)["note"].startswith("送没送到不清楚")
+    for _ in range(3):
+        w.later()
+        w.round()
+    assert s.running() == ["patrol-42-1", "patrol-42-2"] and s.asked == ["patrol-42-1", "patrol-42-2"]
+    assert [w.item(i)["state"] for i in range(1, 6)] == ["working", "working", "queued", "queued", "queued"]
+    s.patrol_send = land
+    s.end()                             # both turns end: those two MRs were worked
+    s.lose = True                       # the next two messages never land, and no answer comes back
     w.later()
     w.round()
-    assert w.slots() == ["patrol-42-4-2"] and w.item(4)["attempts"] == 1
+    assert s.asked[2:] == ["patrol-42-3", "patrol-42-4"] and s.running() == ["patrol-42-3", "patrol-42-4"]
+    s.lose = False
+    w.later()
+    w.round()
+    assert len(s.asked) == 4 and w.item(5)["state"] == "queued"
+    w.later(patrol.TIMEOUT_S)
+    w.round()                           # stopped, a failed attempt, and the next message goes to the same session
+    assert s.stopped == ["patrol-42-3", "patrol-42-4"] and s.asked[4:] == ["patrol-42-3", "patrol-42-4"]
+    assert (w.item(3)["state"], w.item(3)["attempts"]) == ("working", 2)
+    assert [o[0] for o in s.opened] == ["patrol-42-%d" % i for i in (1, 2, 3, 4)]
 
 
 def test_a_workspace_is_cloned_once_then_reset_to_the_source_branch_on_origin(bk, home, tmp_path):
@@ -498,6 +548,54 @@ def test_a_patrol_turn_kiro_crew_cut_short_with_an_error_failed_whatever_it_wrot
     assert asyncio.run(go()) == ["failed", "ended"]
 
 
+def test_the_session_runner_follows_a_message_kiro_crew_did_not_answer_and_ends_one_it_refused(tmp_path):
+    sessions = mod("sessions")
+    gw = FakeGateway()
+    mgr = sessions.SessionManager(gw, app="brain", state_file=tmp_path / "sessions.json", log=logging.getLogger("t"))
+    slot = "patrol-42-7"
+    land = gw.send
+
+    async def landed_without_an_answer(key, message, send_id):
+        await land(key, message, send_id)
+        raise GatewayError(0, "gateway unreachable (TimeoutError)", "unreachable")
+
+    async def refused(key, message, send_id):
+        raise GatewayError(409, "this slot is busy", "slot_busy")
+
+    async def send(sid, how):
+        gw.send = how
+        try:
+            await mgr.adapter_send(slot, "修一下", sid)
+        except GatewayError:
+            pass
+        finally:
+            gw.send = land
+
+    async def go():
+        await mgr.adapter_create(slot, agent="brain-patrol", model="m", memory_mode="incognito", title="t", folder="巡检",
+                                 parent="brain-patrol:grp/repo!7", key="patrol:grp/repo!7", root_folder="Brain 运行机")
+        await mgr.adapter_set_project(slot, str(tmp_path))
+        await send("P-1", landed_without_an_answer)
+        out = [await mgr.adapter_turn(slot, "P-1")]
+        gw.finish(slot)
+        for _ in range(4):
+            await mgr.poll()
+        out.append(await mgr.adapter_turn(slot, "P-1"))
+        gw.fail_send = True                     # KiroCrew fails before it takes the message: no row of it, ever
+        await send("P-2", land)
+        gw.fail_send = False
+        for _ in range(4):
+            await mgr.poll()
+        out.append(await mgr.adapter_turn(slot, "P-2"))
+        await mgr.adapter_stop(slot)
+        out.append(await mgr.adapter_turn(slot, "P-2"))
+        await send("P-3", refused)
+        out.append(await mgr.adapter_turn(slot, "P-3"))
+        return out
+
+    assert asyncio.run(go()) == ["running", "ended", "running", "failed", "failed"]
+
+
 def test_the_adapter_keeps_patrol_slots_and_run_slots_apart(bk):
     crew = mod("team.crewadapter")
     err = bk.brain_error()
@@ -508,3 +606,32 @@ def test_the_adapter_keeps_patrol_slots_and_run_slots_apart(bk):
             call()
     assert crew.PATROL_SLOT_RE.match("patrol-42-7") and crew.PATROL_SLOT_RE.match("patrol-42-7-2")
     assert not crew.PATROL_SLOT_RE.match("patrol-42-7-1") and not crew.PATROL_SLOT_RE.match("patrol-0-7")
+
+
+def test_the_adapter_says_refused_only_when_kiro_crew_answered_no(bk):
+    crew, patrol, err = mod("team.crewadapter"), mod("team.patrol"), bk.brain_error()
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    answer = {}
+
+    async def fails(*_args):
+        if answer["exc"] is None:
+            await asyncio.sleep(5)              # no answer within the adapter's wait
+        raise answer["exc"]
+    kc = crew.KiroCrewAdapter(loop, SimpleNamespace(app="brain", adapter_send=fails, adapter_set_project=fails), err,
+                              timeout=0.2)
+    refused = []
+    try:
+        for exc in (GatewayError(409, "this slot is busy", "slot_busy"), GatewayError(403, "no", "forbidden"),
+                    GatewayError(0, "gateway unreachable (TimeoutError)", "unreachable"), GatewayError(502, "bad"),
+                    None):
+            answer["exc"] = exc
+            for call in (lambda: kc.patrol_send("patrol-42-7", "x", "P-1"), lambda: kc.patrol_project("patrol-42-7", "/w")):
+                with pytest.raises((patrol.Refused, err)) as got:
+                    call()
+                refused.append(isinstance(got.value, patrol.Refused))
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(5)
+    assert refused == [True] * 4 + [False] * 6

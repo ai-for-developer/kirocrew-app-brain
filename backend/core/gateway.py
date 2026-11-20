@@ -32,6 +32,12 @@ class GatewayError(RuntimeError):
         super().__init__(f"{path} → HTTP {status} {code} {message}".strip())
         self.status, self.code, self.path, self.message = status, code, path, message
 
+    @property
+    def refused(self) -> bool:
+        """KiroCrew (or this app) answered no: nothing of the call went in. A call with no answer (status 0: cut off,
+        timed out, unreachable) or a 5xx may have."""
+        return 400 <= self.status < 500
+
 
 # a failed call as a person reads it, with what to do; the HTTP details stay in the app's log
 RELOAD = "这个 app 和 KiroCrew 没接上：在 KiroCrew 里重启这个 app"
