@@ -72,7 +72,7 @@ function outputsFor(path: string): unknown {
   const [route, query = ''] = path.slice(API.length).split('?')
   const q = [...new URLSearchParams(query)].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join('&')
   const got = W.outputs?.[`${route}?${q}`] as { __error?: { status: number; code: string; error: string } } | undefined
-  if (!got) throw new StubApiError(404, { error: '预览里只有 PAY-9 和 PAY-2 的产出：别的需求要在真的 app 里看', code: 'not_in_preview' })
+  if (!got) throw new StubApiError(404, { error: '预览里只有 PAY-9、PAY-2 和 PAY-17 的产出：别的需求要在真的 app 里看', code: 'not_in_preview' })
   if (got.__error) throw new StubApiError(got.__error.status, { error: got.__error.error, code: got.__error.code })
   return route.endsWith('/turns') ? shift(got) : clone(got)
 }
@@ -100,8 +100,8 @@ const W = world as unknown as {
   /** 先检查's stop lines: brain-kit's own (its dry run: the picks 机密 / 不确定 / 绝密, the partner guide marked 机密,
    * gate 3) and the page's words for each, by "<pick>|<line>" (intake.gate_text) */
   intake_gates?: { raw: Record<'confidential' | 'unsure' | 'secret' | 'partner' | 'business', string>; said: Record<string, string> }
-  /** the 产出 drawer's answers (backend/core/outputs.py over PAY-9's and PAY-2's real commits), by the route's path and
-   * its query sorted (preview_world.outputs_key); a refusal as __error */
+  /** the 产出 drawer's answers (backend/core/outputs.py over PAY-9's, PAY-2's and PAY-17's real commits), by the route's
+   * path and its query sorted (preview_world.outputs_key); a refusal as __error */
   outputs?: Record<string, unknown>
   /** 「快速：直接写代码」 as GET /intake/next says it for each repo (brain-kit's refusal, or the app's for a repo without a
    * remote) */

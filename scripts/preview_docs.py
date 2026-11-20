@@ -353,3 +353,70 @@ def pay2(r: Any) -> None:
         ("release", None): [release("Code Generation (refund-api) — done", [("REQUIREMENTS", "requirements"), ("DESIGN", "application-design")],
                                     [], ["旧的 7 位单号明年停用（D-1）"])],
     })
+
+
+# ---------------------------------------------------------------- PAY-17 订单优惠码 (快速)
+
+PAY17_ONE = "PAY-17：订单优惠码 SAVE10 和 FULL100，带测试"
+PAY17_TWO = "PAY-17：结算页用上优惠码"
+
+COUPON_V1 = '''"""订单优惠码：SAVE10 打九折，FULL100 满 100 减 15。"""
+
+from decimal import Decimal
+
+CODES = {
+    "SAVE10": ("rate", Decimal("0.9")),
+    "FULL100": ("minus", Decimal("15")),
+}
+FULL_AT = Decimal("100")
+
+
+def apply(total: Decimal, code: str) -> Decimal:
+    """用了优惠码以后要付的钱；码不认识、不够满减的门槛，原价。"""
+    kind, value = CODES.get(code, (None, None))
+    if kind == "rate":
+        return (total * value).quantize(Decimal("0.01"))
+    if kind == "minus" and total >= FULL_AT:
+        return total - value
+    return total
+'''
+
+COUPON_V2 = COUPON_V1.replace('''    kind, value = CODES.get(code, (None, None))''', '''    kind, value = CODES.get(code.strip().upper(), (None, None))''')
+
+TEST_COUPON = '''from decimal import Decimal
+
+from shop import coupon
+
+
+def test_save10_is_ten_percent_off():
+    assert coupon.apply(Decimal("80"), "SAVE10") == Decimal("72.00")
+
+
+def test_full100_needs_a_hundred():
+    assert coupon.apply(Decimal("120"), "FULL100") == Decimal("105")
+    assert coupon.apply(Decimal("99"), "FULL100") == Decimal("99")
+
+
+def test_an_unknown_code_changes_nothing():
+    assert coupon.apply(Decimal("50"), "HELLO") == Decimal("50")
+'''
+
+CHECKOUT = '''"""结算：订单的应付金额。"""
+
+from decimal import Decimal
+
+from shop import coupon
+
+
+def payable(items: list[tuple[Decimal, int]], code: str = "") -> Decimal:
+    """商品（单价、数量）的合计，用了优惠码（填了的话）以后的应付金额。"""
+    total = sum((price * qty for price, qty in items), Decimal("0"))
+    return coupon.apply(total, code) if code else total
+'''
+
+
+def pay17(r: Any) -> None:
+    r.code.update({
+        PAY17_ONE: {"shop/coupon.py": COUPON_V1, "tests/test_coupon.py": TEST_COUPON},
+        PAY17_TWO: {"shop/checkout.py": CHECKOUT, "shop/coupon.py": COUPON_V2},
+    })

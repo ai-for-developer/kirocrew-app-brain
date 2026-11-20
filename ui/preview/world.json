@@ -981,13 +981,13 @@
      "raw": "",
      "do": "open_mr",
      "todo": "",
-     "since": 1794145500.0,
+     "since": 1794146160.0,
      "where": "app",
      "review": false
     },
     "summary": "订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。",
     "credits": 2.4,
-    "updated_at": 1794145500,
+    "updated_at": 1794146160,
     "mr": null,
     "worktree": "/Users/alice/workplace/brain-app/shop-pay/coupon",
     "run_ids": [],
@@ -1068,6 +1068,78 @@
     "open_questions": [],
     "expected_paths": [
      "src/reports/refund_csv.py"
+    ],
+    "local_only": false,
+    "session_url": null,
+    "family": null,
+    "home": null,
+    "verify_fails": 0,
+    "progress_pushed_at": null,
+    "credits_whole": true,
+    "flow": {
+     "id": "fast",
+     "label": "快速",
+     "intent": false,
+     "actions": [
+      "full",
+      "mr"
+     ]
+    }
+   },
+   {
+    "repo": "r1",
+    "key": "PAY-19",
+    "title": "发票抬头记住上次填的",
+    "owner": "bob",
+    "source": "product",
+    "state": "local",
+    "state_label": "本地开发中",
+    "where": "branch",
+    "branch": "ai/bob/PAY-19-invoice-title",
+    "intent": null,
+    "lean": {
+     "stage": null,
+     "stage_label": null,
+     "stage_n": null,
+     "stage_state": null,
+     "done": 0,
+     "total": 11,
+     "done_n": 0,
+     "skipped_n": 0,
+     "next": {
+      "id": "reverse-engineering",
+      "label": "逆向工程",
+      "n": "2.1"
+     },
+     "skipped_phases": []
+    },
+    "stage": null,
+    "waits": {
+     "who": "people",
+     "text": "MR !13：CI 过了，等人审、合并",
+     "line": null,
+     "raw": "",
+     "do": "merge",
+     "todo": "",
+     "since": 1794128280.0,
+     "where": "mr",
+     "review": false
+    },
+    "summary": "开发票时记住上次填的抬头和税号。",
+    "credits": null,
+    "updated_at": 1794128280,
+    "mr": {
+     "iid": 13,
+     "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/13",
+     "state": "opened"
+    },
+    "worktree": null,
+    "run_ids": [],
+    "sessions": 0,
+    "overlap": [],
+    "open_questions": [],
+    "expected_paths": [
+     "shop/invoice.py"
     ],
     "local_only": false,
     "session_url": null,
@@ -2810,7 +2882,7 @@
   },
   "counts": {
    "claimed": 2,
-   "local": 11,
+   "local": 12,
    "handed_over": 1,
    "rejected": 1,
    "running": 1,
@@ -3233,6 +3305,16 @@
      ]
     },
     {
+     "owner": "bob",
+     "you": false,
+     "open": 2,
+     "limit": 3,
+     "keys": [
+      "PAY-19",
+      "PAY-13"
+     ]
+    },
+    {
      "owner": "erin",
      "you": false,
      "open": 2,
@@ -3240,15 +3322,6 @@
      "keys": [
       "ORD-10",
       "ORD-12"
-     ]
-    },
-    {
-     "owner": "bob",
-     "you": false,
-     "open": 1,
-     "limit": 3,
-     "keys": [
-      "PAY-13"
      ]
     },
     {
@@ -4075,13 +4148,13 @@
        "raw": "",
        "do": "open_mr",
        "todo": "",
-       "since": 1794145500.0,
+       "since": 1794146160.0,
        "where": "app",
        "review": false
       },
       "summary": "订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。",
       "credits": 2.4,
-      "updated_at": 1794145500,
+      "updated_at": 1794146160,
       "mr": null,
       "worktree": "/Users/alice/workplace/brain-app/shop-pay/coupon",
       "run_ids": [],
@@ -4162,6 +4235,78 @@
       "open_questions": [],
       "expected_paths": [
        "src/reports/refund_csv.py"
+      ],
+      "local_only": false,
+      "session_url": null,
+      "family": null,
+      "home": null,
+      "verify_fails": 0,
+      "progress_pushed_at": null,
+      "credits_whole": true,
+      "flow": {
+       "id": "fast",
+       "label": "快速",
+       "intent": false,
+       "actions": [
+        "full",
+        "mr"
+       ]
+      }
+     },
+     {
+      "repo": "r1",
+      "key": "PAY-19",
+      "title": "发票抬头记住上次填的",
+      "owner": "bob",
+      "source": "product",
+      "state": "local",
+      "state_label": "本地开发中",
+      "where": "branch",
+      "branch": "ai/bob/PAY-19-invoice-title",
+      "intent": null,
+      "lean": {
+       "stage": null,
+       "stage_label": null,
+       "stage_n": null,
+       "stage_state": null,
+       "done": 0,
+       "total": 11,
+       "done_n": 0,
+       "skipped_n": 0,
+       "next": {
+        "id": "reverse-engineering",
+        "label": "逆向工程",
+        "n": "2.1"
+       },
+       "skipped_phases": []
+      },
+      "stage": null,
+      "waits": {
+       "who": "people",
+       "text": "MR !13：CI 过了，等人审、合并",
+       "line": null,
+       "raw": "",
+       "do": "merge",
+       "todo": "",
+       "since": 1794128280.0,
+       "where": "mr",
+       "review": false
+      },
+      "summary": "开发票时记住上次填的抬头和税号。",
+      "credits": null,
+      "updated_at": 1794128280,
+      "mr": {
+       "iid": 13,
+       "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/13",
+       "state": "opened"
+      },
+      "worktree": null,
+      "run_ids": [],
+      "sessions": 0,
+      "overlap": [],
+      "open_questions": [],
+      "expected_paths": [
+       "shop/invoice.py"
       ],
       "local_only": false,
       "session_url": null,
@@ -5904,7 +6049,7 @@
     },
     "counts": {
      "claimed": 2,
-     "local": 11,
+     "local": 12,
      "handed_over": 1,
      "rejected": 1,
      "running": 1,
@@ -6327,6 +6472,16 @@
        ]
       },
       {
+       "owner": "bob",
+       "you": false,
+       "open": 2,
+       "limit": 3,
+       "keys": [
+        "PAY-19",
+        "PAY-13"
+       ]
+      },
+      {
        "owner": "erin",
        "you": false,
        "open": 2,
@@ -6334,15 +6489,6 @@
        "keys": [
         "ORD-10",
         "ORD-12"
-       ]
-      },
-      {
-       "owner": "bob",
-       "you": false,
-       "open": 1,
-       "limit": 3,
-       "keys": [
-        "PAY-13"
        ]
       },
       {
@@ -7167,13 +7313,13 @@
        "raw": "",
        "do": "open_mr",
        "todo": "",
-       "since": 1794145500.0,
+       "since": 1794146160.0,
        "where": "app",
        "review": false
       },
       "summary": "订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。",
       "credits": 2.4,
-      "updated_at": 1794145500,
+      "updated_at": 1794146160,
       "mr": null,
       "worktree": "/Users/alice/workplace/brain-app/shop-pay/coupon",
       "run_ids": [],
@@ -7254,6 +7400,78 @@
       "open_questions": [],
       "expected_paths": [
        "src/reports/refund_csv.py"
+      ],
+      "local_only": false,
+      "session_url": null,
+      "family": null,
+      "home": null,
+      "verify_fails": 0,
+      "progress_pushed_at": null,
+      "credits_whole": true,
+      "flow": {
+       "id": "fast",
+       "label": "快速",
+       "intent": false,
+       "actions": [
+        "full",
+        "mr"
+       ]
+      }
+     },
+     {
+      "repo": "r1",
+      "key": "PAY-19",
+      "title": "发票抬头记住上次填的",
+      "owner": "bob",
+      "source": "product",
+      "state": "local",
+      "state_label": "本地开发中",
+      "where": "branch",
+      "branch": "ai/bob/PAY-19-invoice-title",
+      "intent": null,
+      "lean": {
+       "stage": null,
+       "stage_label": null,
+       "stage_n": null,
+       "stage_state": null,
+       "done": 0,
+       "total": 11,
+       "done_n": 0,
+       "skipped_n": 0,
+       "next": {
+        "id": "reverse-engineering",
+        "label": "逆向工程",
+        "n": "2.1"
+       },
+       "skipped_phases": []
+      },
+      "stage": null,
+      "waits": {
+       "who": "people",
+       "text": "MR !13：CI 过了，等人审、合并",
+       "line": null,
+       "raw": "",
+       "do": "merge",
+       "todo": "",
+       "since": 1794128280.0,
+       "where": "mr",
+       "review": false
+      },
+      "summary": "开发票时记住上次填的抬头和税号。",
+      "credits": null,
+      "updated_at": 1794128280,
+      "mr": {
+       "iid": 13,
+       "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/13",
+       "state": "opened"
+      },
+      "worktree": null,
+      "run_ids": [],
+      "sessions": 0,
+      "overlap": [],
+      "open_questions": [],
+      "expected_paths": [
+       "shop/invoice.py"
       ],
       "local_only": false,
       "session_url": null,
@@ -8074,7 +8292,7 @@
     },
     "counts": {
      "claimed": 2,
-     "local": 8,
+     "local": 9,
      "handed_over": 1,
      "rejected": 1,
      "running": 0,
@@ -8321,9 +8539,10 @@
       {
        "owner": "bob",
        "you": false,
-       "open": 1,
+       "open": 2,
        "limit": 3,
        "keys": [
+        "PAY-19",
         "PAY-13"
        ]
       }
@@ -11620,13 +11839,13 @@
        "raw": "",
        "do": "open_mr",
        "todo": "",
-       "since": 1794145500.0,
+       "since": 1794146160.0,
        "where": "app",
        "review": false
       },
       "summary": "订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。",
       "credits": 2.4,
-      "updated_at": 1794145500,
+      "updated_at": 1794146160,
       "mr": null,
       "worktree": "/Users/alice/workplace/brain-app/shop-pay/coupon",
       "run_ids": [],
@@ -11707,6 +11926,78 @@
       "open_questions": [],
       "expected_paths": [
        "src/reports/refund_csv.py"
+      ],
+      "local_only": false,
+      "session_url": null,
+      "family": null,
+      "home": null,
+      "verify_fails": 0,
+      "progress_pushed_at": null,
+      "credits_whole": true,
+      "flow": {
+       "id": "fast",
+       "label": "快速",
+       "intent": false,
+       "actions": [
+        "full",
+        "mr"
+       ]
+      }
+     },
+     {
+      "repo": "r1",
+      "key": "PAY-19",
+      "title": "发票抬头记住上次填的",
+      "owner": "bob",
+      "source": "product",
+      "state": "local",
+      "state_label": "本地开发中",
+      "where": "branch",
+      "branch": "ai/bob/PAY-19-invoice-title",
+      "intent": null,
+      "lean": {
+       "stage": null,
+       "stage_label": null,
+       "stage_n": null,
+       "stage_state": null,
+       "done": 0,
+       "total": 11,
+       "done_n": 0,
+       "skipped_n": 0,
+       "next": {
+        "id": "reverse-engineering",
+        "label": "逆向工程",
+        "n": "2.1"
+       },
+       "skipped_phases": []
+      },
+      "stage": null,
+      "waits": {
+       "who": "people",
+       "text": "MR !13：CI 过了，等人审、合并",
+       "line": null,
+       "raw": "",
+       "do": "merge",
+       "todo": "",
+       "since": 1794128280.0,
+       "where": "mr",
+       "review": false
+      },
+      "summary": "开发票时记住上次填的抬头和税号。",
+      "credits": null,
+      "updated_at": 1794128280,
+      "mr": {
+       "iid": 13,
+       "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/13",
+       "state": "opened"
+      },
+      "worktree": null,
+      "run_ids": [],
+      "sessions": 0,
+      "overlap": [],
+      "open_questions": [],
+      "expected_paths": [
+       "shop/invoice.py"
       ],
       "local_only": false,
       "session_url": null,
@@ -13338,7 +13629,7 @@
     },
     "counts": {
      "claimed": 2,
-     "local": 11,
+     "local": 12,
      "handed_over": 1,
      "rejected": 1,
      "running": 1,
@@ -13491,6 +13782,16 @@
        ]
       },
       {
+       "owner": "bob",
+       "you": false,
+       "open": 2,
+       "limit": 3,
+       "keys": [
+        "PAY-19",
+        "PAY-13"
+       ]
+      },
+      {
        "owner": "erin",
        "you": false,
        "open": 2,
@@ -13498,15 +13799,6 @@
        "keys": [
         "ORD-10",
         "ORD-12"
-       ]
-      },
-      {
-       "owner": "bob",
-       "you": false,
-       "open": 1,
-       "limit": 3,
-       "keys": [
-        "PAY-13"
        ]
       },
       {
@@ -14331,13 +14623,13 @@
        "raw": "",
        "do": "open_mr",
        "todo": "",
-       "since": 1794145500.0,
+       "since": 1794146160.0,
        "where": "app",
        "review": false
       },
       "summary": "订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。",
       "credits": 2.4,
-      "updated_at": 1794145500,
+      "updated_at": 1794146160,
       "mr": null,
       "worktree": "/Users/alice/workplace/brain-app/shop-pay/coupon",
       "run_ids": [],
@@ -14418,6 +14710,78 @@
       "open_questions": [],
       "expected_paths": [
        "src/reports/refund_csv.py"
+      ],
+      "local_only": false,
+      "session_url": null,
+      "family": null,
+      "home": null,
+      "verify_fails": 0,
+      "progress_pushed_at": null,
+      "credits_whole": true,
+      "flow": {
+       "id": "fast",
+       "label": "快速",
+       "intent": false,
+       "actions": [
+        "full",
+        "mr"
+       ]
+      }
+     },
+     {
+      "repo": "r1",
+      "key": "PAY-19",
+      "title": "发票抬头记住上次填的",
+      "owner": "bob",
+      "source": "product",
+      "state": "local",
+      "state_label": "本地开发中",
+      "where": "branch",
+      "branch": "ai/bob/PAY-19-invoice-title",
+      "intent": null,
+      "lean": {
+       "stage": null,
+       "stage_label": null,
+       "stage_n": null,
+       "stage_state": null,
+       "done": 0,
+       "total": 11,
+       "done_n": 0,
+       "skipped_n": 0,
+       "next": {
+        "id": "reverse-engineering",
+        "label": "逆向工程",
+        "n": "2.1"
+       },
+       "skipped_phases": []
+      },
+      "stage": null,
+      "waits": {
+       "who": "people",
+       "text": "MR !13：CI 过了，等人审、合并",
+       "line": null,
+       "raw": "",
+       "do": "merge",
+       "todo": "",
+       "since": 1794128280.0,
+       "where": "mr",
+       "review": false
+      },
+      "summary": "开发票时记住上次填的抬头和税号。",
+      "credits": null,
+      "updated_at": 1794128280,
+      "mr": {
+       "iid": 13,
+       "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/13",
+       "state": "opened"
+      },
+      "worktree": null,
+      "run_ids": [],
+      "sessions": 0,
+      "overlap": [],
+      "open_questions": [],
+      "expected_paths": [
+       "shop/invoice.py"
       ],
       "local_only": false,
       "session_url": null,
@@ -15127,7 +15491,7 @@
     },
     "counts": {
      "claimed": 2,
-     "local": 8,
+     "local": 9,
      "handed_over": 1,
      "rejected": 1,
      "running": 0,
@@ -15273,9 +15637,10 @@
       {
        "owner": "bob",
        "you": false,
-       "open": 1,
+       "open": 2,
        "limit": 3,
        "keys": [
+        "PAY-19",
         "PAY-13"
        ]
       }
@@ -17990,13 +18355,13 @@
        "raw": "",
        "do": "open_mr",
        "todo": "",
-       "since": 1794145500.0,
+       "since": 1794146160.0,
        "where": "app",
        "review": false
       },
       "summary": "订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。",
       "credits": 2.4,
-      "updated_at": 1794145500,
+      "updated_at": 1794146160,
       "mr": null,
       "worktree": "/Users/alice/workplace/brain-app/shop-pay/coupon",
       "run_ids": [],
@@ -18077,6 +18442,78 @@
       "open_questions": [],
       "expected_paths": [
        "src/reports/refund_csv.py"
+      ],
+      "local_only": false,
+      "session_url": null,
+      "family": null,
+      "home": null,
+      "verify_fails": 0,
+      "progress_pushed_at": null,
+      "credits_whole": true,
+      "flow": {
+       "id": "fast",
+       "label": "快速",
+       "intent": false,
+       "actions": [
+        "full",
+        "mr"
+       ]
+      }
+     },
+     {
+      "repo": "r1",
+      "key": "PAY-19",
+      "title": "发票抬头记住上次填的",
+      "owner": "bob",
+      "source": "product",
+      "state": "local",
+      "state_label": "本地开发中",
+      "where": "branch",
+      "branch": "ai/bob/PAY-19-invoice-title",
+      "intent": null,
+      "lean": {
+       "stage": null,
+       "stage_label": null,
+       "stage_n": null,
+       "stage_state": null,
+       "done": 0,
+       "total": 11,
+       "done_n": 0,
+       "skipped_n": 0,
+       "next": {
+        "id": "reverse-engineering",
+        "label": "逆向工程",
+        "n": "2.1"
+       },
+       "skipped_phases": []
+      },
+      "stage": null,
+      "waits": {
+       "who": "people",
+       "text": "MR !13：CI 过了，等人审、合并",
+       "line": null,
+       "raw": "",
+       "do": "merge",
+       "todo": "",
+       "since": 1794128280.0,
+       "where": "mr",
+       "review": false
+      },
+      "summary": "开发票时记住上次填的抬头和税号。",
+      "credits": null,
+      "updated_at": 1794128280,
+      "mr": {
+       "iid": 13,
+       "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/13",
+       "state": "opened"
+      },
+      "worktree": null,
+      "run_ids": [],
+      "sessions": 0,
+      "overlap": [],
+      "open_questions": [],
+      "expected_paths": [
+       "shop/invoice.py"
       ],
       "local_only": false,
       "session_url": null,
@@ -19974,7 +20411,7 @@
     },
     "counts": {
      "claimed": 2,
-     "local": 11,
+     "local": 12,
      "handed_over": 2,
      "rejected": 1,
      "running": 0,
@@ -20396,6 +20833,16 @@
        ]
       },
       {
+       "owner": "bob",
+       "you": false,
+       "open": 2,
+       "limit": 3,
+       "keys": [
+        "PAY-19",
+        "PAY-13"
+       ]
+      },
+      {
        "owner": "erin",
        "you": false,
        "open": 2,
@@ -20403,15 +20850,6 @@
        "keys": [
         "ORD-12",
         "ORD-10"
-       ]
-      },
-      {
-       "owner": "bob",
-       "you": false,
-       "open": 1,
-       "limit": 3,
-       "keys": [
-        "PAY-13"
        ]
       },
       {
@@ -21076,13 +21514,13 @@
        "raw": "",
        "do": "open_mr",
        "todo": "",
-       "since": 1794145500.0,
+       "since": 1794146160.0,
        "where": "app",
        "review": false
       },
       "summary": "订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。",
       "credits": 2.4,
-      "updated_at": 1794145500,
+      "updated_at": 1794146160,
       "mr": null,
       "worktree": "/Users/alice/workplace/brain-app/shop-pay/coupon",
       "run_ids": [],
@@ -21163,6 +21601,78 @@
       "open_questions": [],
       "expected_paths": [
        "src/reports/refund_csv.py"
+      ],
+      "local_only": false,
+      "session_url": null,
+      "family": null,
+      "home": null,
+      "verify_fails": 0,
+      "progress_pushed_at": null,
+      "credits_whole": true,
+      "flow": {
+       "id": "fast",
+       "label": "快速",
+       "intent": false,
+       "actions": [
+        "full",
+        "mr"
+       ]
+      }
+     },
+     {
+      "repo": "r1",
+      "key": "PAY-19",
+      "title": "发票抬头记住上次填的",
+      "owner": "bob",
+      "source": "product",
+      "state": "local",
+      "state_label": "本地开发中",
+      "where": "branch",
+      "branch": "ai/bob/PAY-19-invoice-title",
+      "intent": null,
+      "lean": {
+       "stage": null,
+       "stage_label": null,
+       "stage_n": null,
+       "stage_state": null,
+       "done": 0,
+       "total": 11,
+       "done_n": 0,
+       "skipped_n": 0,
+       "next": {
+        "id": "reverse-engineering",
+        "label": "逆向工程",
+        "n": "2.1"
+       },
+       "skipped_phases": []
+      },
+      "stage": null,
+      "waits": {
+       "who": "people",
+       "text": "MR !13：CI 过了，等人审、合并",
+       "line": null,
+       "raw": "",
+       "do": "merge",
+       "todo": "",
+       "since": 1794128280.0,
+       "where": "mr",
+       "review": false
+      },
+      "summary": "开发票时记住上次填的抬头和税号。",
+      "credits": null,
+      "updated_at": 1794128280,
+      "mr": {
+       "iid": 13,
+       "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/13",
+       "state": "opened"
+      },
+      "worktree": null,
+      "run_ids": [],
+      "sessions": 0,
+      "overlap": [],
+      "open_questions": [],
+      "expected_paths": [
+       "shop/invoice.py"
       ],
       "local_only": false,
       "session_url": null,
@@ -22138,7 +22648,7 @@
     },
     "counts": {
      "claimed": 2,
-     "local": 8,
+     "local": 9,
      "handed_over": 2,
      "rejected": 1,
      "running": 0,
@@ -22384,9 +22894,10 @@
       {
        "owner": "bob",
        "you": false,
-       "open": 1,
+       "open": 2,
        "limit": 3,
        "keys": [
+        "PAY-19",
         "PAY-13"
        ]
       }
@@ -25523,13 +26034,13 @@
        "raw": "",
        "do": "open_mr",
        "todo": "",
-       "since": 1794145500.0,
+       "since": 1794146160.0,
        "where": "app",
        "review": false
       },
       "summary": "订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。",
       "credits": 2.4,
-      "updated_at": 1794145500,
+      "updated_at": 1794146160,
       "mr": null,
       "worktree": "/Users/alice/workplace/brain-app/shop-pay/coupon",
       "run_ids": [],
@@ -25610,6 +26121,78 @@
       "open_questions": [],
       "expected_paths": [
        "src/reports/refund_csv.py"
+      ],
+      "local_only": false,
+      "session_url": null,
+      "family": null,
+      "home": null,
+      "verify_fails": 0,
+      "progress_pushed_at": null,
+      "credits_whole": true,
+      "flow": {
+       "id": "fast",
+       "label": "快速",
+       "intent": false,
+       "actions": [
+        "full",
+        "mr"
+       ]
+      }
+     },
+     {
+      "repo": "r1",
+      "key": "PAY-19",
+      "title": "发票抬头记住上次填的",
+      "owner": "bob",
+      "source": "product",
+      "state": "local",
+      "state_label": "本地开发中",
+      "where": "branch",
+      "branch": "ai/bob/PAY-19-invoice-title",
+      "intent": null,
+      "lean": {
+       "stage": null,
+       "stage_label": null,
+       "stage_n": null,
+       "stage_state": null,
+       "done": 0,
+       "total": 11,
+       "done_n": 0,
+       "skipped_n": 0,
+       "next": {
+        "id": "reverse-engineering",
+        "label": "逆向工程",
+        "n": "2.1"
+       },
+       "skipped_phases": []
+      },
+      "stage": null,
+      "waits": {
+       "who": "people",
+       "text": "MR !13：CI 过了，等人审、合并",
+       "line": null,
+       "raw": "",
+       "do": "merge",
+       "todo": "",
+       "since": 1794128280.0,
+       "where": "mr",
+       "review": false
+      },
+      "summary": "开发票时记住上次填的抬头和税号。",
+      "credits": null,
+      "updated_at": 1794128280,
+      "mr": {
+       "iid": 13,
+       "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/13",
+       "state": "opened"
+      },
+      "worktree": null,
+      "run_ids": [],
+      "sessions": 0,
+      "overlap": [],
+      "open_questions": [],
+      "expected_paths": [
+       "shop/invoice.py"
       ],
       "local_only": false,
       "session_url": null,
@@ -27396,7 +27979,7 @@
     },
     "counts": {
      "claimed": 2,
-     "local": 11,
+     "local": 12,
      "handed_over": 2,
      "rejected": 1,
      "running": 0,
@@ -27548,6 +28131,16 @@
        ]
       },
       {
+       "owner": "bob",
+       "you": false,
+       "open": 2,
+       "limit": 3,
+       "keys": [
+        "PAY-19",
+        "PAY-13"
+       ]
+      },
+      {
        "owner": "erin",
        "you": false,
        "open": 2,
@@ -27555,15 +28148,6 @@
        "keys": [
         "ORD-12",
         "ORD-10"
-       ]
-      },
-      {
-       "owner": "bob",
-       "you": false,
-       "open": 1,
-       "limit": 3,
-       "keys": [
-        "PAY-13"
        ]
       },
       {
@@ -28228,13 +28812,13 @@
        "raw": "",
        "do": "open_mr",
        "todo": "",
-       "since": 1794145500.0,
+       "since": 1794146160.0,
        "where": "app",
        "review": false
       },
       "summary": "订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。",
       "credits": 2.4,
-      "updated_at": 1794145500,
+      "updated_at": 1794146160,
       "mr": null,
       "worktree": "/Users/alice/workplace/brain-app/shop-pay/coupon",
       "run_ids": [],
@@ -28315,6 +28899,78 @@
       "open_questions": [],
       "expected_paths": [
        "src/reports/refund_csv.py"
+      ],
+      "local_only": false,
+      "session_url": null,
+      "family": null,
+      "home": null,
+      "verify_fails": 0,
+      "progress_pushed_at": null,
+      "credits_whole": true,
+      "flow": {
+       "id": "fast",
+       "label": "快速",
+       "intent": false,
+       "actions": [
+        "full",
+        "mr"
+       ]
+      }
+     },
+     {
+      "repo": "r1",
+      "key": "PAY-19",
+      "title": "发票抬头记住上次填的",
+      "owner": "bob",
+      "source": "product",
+      "state": "local",
+      "state_label": "本地开发中",
+      "where": "branch",
+      "branch": "ai/bob/PAY-19-invoice-title",
+      "intent": null,
+      "lean": {
+       "stage": null,
+       "stage_label": null,
+       "stage_n": null,
+       "stage_state": null,
+       "done": 0,
+       "total": 11,
+       "done_n": 0,
+       "skipped_n": 0,
+       "next": {
+        "id": "reverse-engineering",
+        "label": "逆向工程",
+        "n": "2.1"
+       },
+       "skipped_phases": []
+      },
+      "stage": null,
+      "waits": {
+       "who": "people",
+       "text": "MR !13：CI 过了，等人审、合并",
+       "line": null,
+       "raw": "",
+       "do": "merge",
+       "todo": "",
+       "since": 1794128280.0,
+       "where": "mr",
+       "review": false
+      },
+      "summary": "开发票时记住上次填的抬头和税号。",
+      "credits": null,
+      "updated_at": 1794128280,
+      "mr": {
+       "iid": 13,
+       "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/13",
+       "state": "opened"
+      },
+      "worktree": null,
+      "run_ids": [],
+      "sessions": 0,
+      "overlap": [],
+      "open_questions": [],
+      "expected_paths": [
+       "shop/invoice.py"
       ],
       "local_only": false,
       "session_url": null,
@@ -29179,7 +29835,7 @@
     },
     "counts": {
      "claimed": 2,
-     "local": 8,
+     "local": 9,
      "handed_over": 2,
      "rejected": 1,
      "running": 0,
@@ -29324,9 +29980,10 @@
       {
        "owner": "bob",
        "you": false,
-       "open": 1,
+       "open": 2,
        "limit": 3,
        "keys": [
+        "PAY-19",
         "PAY-13"
        ]
       }
@@ -31636,7 +32293,7 @@
       "title": "PAY-17 订单优惠码",
       "url": "/chat?sid=brain-PAY-17-5e1a"
      },
-     "since": 1794145500.0,
+     "since": 1794146160.0,
      "review": false,
      "path": null,
      "todo": "",
@@ -31847,7 +32504,7 @@
       "title": "PAY-17 订单优惠码",
       "url": "/chat?sid=brain-PAY-17-5e1a"
      },
-     "since": 1794145500.0,
+     "since": 1794146160.0,
      "review": false,
      "path": null,
      "todo": "",
@@ -32075,7 +32732,7 @@
       "title": "PAY-17 订单优惠码",
       "url": "/chat?sid=brain-PAY-17-5e1a"
      },
-     "since": 1794145500.0,
+     "since": 1794146160.0,
      "review": false,
      "path": null,
      "todo": "",
@@ -36338,7 +36995,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r1/PAY-3": {
    "at": 1794146400,
@@ -39375,7 +40033,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r1/PAY-4": {
    "at": 1794146400,
@@ -41515,7 +42174,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r1/PAY-5": {
    "at": 1794146400,
@@ -44744,7 +45404,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r1/PAY-7": {
    "at": 1794146400,
@@ -46947,7 +47608,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r1/PAY-6": {
    "at": 1794146400,
@@ -47354,7 +48016,8 @@
    "error": "",
    "missing": [],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r1/PAY-8": {
    "at": 1794146400,
@@ -47761,7 +48424,8 @@
    "error": "",
    "missing": [],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r1/PAY-10": {
    "at": 1794146400,
@@ -49915,7 +50579,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r1/PAY-1": {
    "at": 1794146400,
@@ -52270,7 +52935,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r1/PAY-16": {
    "at": 1794146400,
@@ -53852,7 +54518,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r1/PAY-17": {
    "at": 1794146400,
@@ -53891,13 +54558,13 @@
      "raw": "",
      "do": "open_mr",
      "todo": "",
-     "since": 1794145500.0,
+     "since": 1794146160.0,
      "where": "app",
      "review": false
     },
     "summary": "订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。",
     "credits": 2.4,
-    "updated_at": 1794145500,
+    "updated_at": 1794146160,
     "mr": null,
     "worktree": "/Users/alice/workplace/brain-app/shop-pay/coupon",
     "run_ids": [],
@@ -53983,7 +54650,7 @@
     },
     {
      "seq": 4,
-     "at": 1794143700,
+     "at": 1794144720,
      "kind": "answer",
      "from": "person",
      "to": "person",
@@ -54026,7 +54693,46 @@
      "kind": "commit",
      "from": "branch",
      "to": "branch",
-     "text": "提交 b7684725：PAY-17：订单优惠码 SAVE10 和 FULL100，带测试",
+     "text": "提交 c2d37141：PAY-17：订单优惠码 SAVE10 和 FULL100，带测试",
+     "detail": false,
+     "src": null,
+     "node": null,
+     "run": null,
+     "round": null
+    },
+    {
+     "seq": 8,
+     "at": 1794145800,
+     "kind": "answer",
+     "from": "person",
+     "to": "person",
+     "text": "你在会话里回话了",
+     "detail": false,
+     "src": null,
+     "node": null,
+     "run": null,
+     "round": null
+    },
+    {
+     "seq": 9,
+     "at": 1794145980,
+     "kind": "verify",
+     "from": "branch",
+     "to": "checks",
+     "text": "自动检查通过（1 项）",
+     "detail": false,
+     "src": null,
+     "node": null,
+     "run": null,
+     "round": null
+    },
+    {
+     "seq": 10,
+     "at": 1794146040.0,
+     "kind": "commit",
+     "from": "branch",
+     "to": "branch",
+     "text": "提交 cc204952：PAY-17：结算页用上优惠码",
      "detail": false,
      "src": null,
      "node": null,
@@ -54039,31 +54745,50 @@
     {
      "kind": "commit",
      "at": 1794145440.0,
-     "sha": "b76847259b07",
+     "sha": "c2d37141a241",
      "by": "person",
      "text": "PAY-17：订单优惠码 SAVE10 和 FULL100，带测试",
-     "files": 3,
+     "files": 2,
      "records_only": false,
      "run": null,
      "node": null,
      "changes": [
       {
+       "path": "shop/coupon.py",
+       "added": 19,
+       "removed": 0,
+       "status": "A"
+      },
+      {
        "path": "tests/test_coupon.py",
-       "added": 9,
+       "added": 16,
+       "removed": 0,
+       "status": "A"
+      }
+     ]
+    },
+    {
+     "kind": "commit",
+     "at": 1794146040.0,
+     "sha": "cc204952eaa7",
+     "by": "person",
+     "text": "PAY-17：结算页用上优惠码",
+     "files": 2,
+     "records_only": false,
+     "run": null,
+     "node": null,
+     "changes": [
+      {
+       "path": "shop/checkout.py",
+       "added": 11,
        "removed": 0,
        "status": "A"
       },
       {
-       "path": "tests/test_coupon_api.py",
-       "added": 5,
-       "removed": 0,
-       "status": "A"
-      },
-      {
-       "path": "src/coupon/service.py",
-       "added": 4,
-       "removed": 0,
-       "status": "A"
+       "path": "shop/coupon.py",
+       "added": 1,
+       "removed": 1,
+       "status": "M"
       }
      ]
     }
@@ -54076,7 +54801,7 @@
       "label": "pytest",
       "name": "自动检查：pytest",
       "status": "pass",
-      "at": 1794145380,
+      "at": 1794145980,
       "detail": "通过",
       "node": null,
       "run": null
@@ -54110,7 +54835,7 @@
     "todo": [
      "CI"
     ],
-    "at": 1794145380,
+    "at": 1794145980,
     "history": [
      {
       "at": 1794144960,
@@ -54119,6 +54844,11 @@
      },
      {
       "at": 1794145380,
+      "passed": 1,
+      "failed": 0
+     },
+     {
+      "at": 1794145980,
       "passed": 1,
       "failed": 0
      }
@@ -54149,7 +54879,7 @@
    "questions": [],
    "mr_desc": {
     "available": true,
-    "text": "## PAY-17 · 订单优惠码\n\n**一句话**：订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。\n（分支 `ai/alice/PAY-17-coupon`；负责人 alice；快速，没有 Lean intent）\n\n### 做了什么 / 没做什么\n- 订单优惠码 SAVE10 和 FULL100，带测试\n\n### 验收标准和证据\nverify 通过：pytest -q。\n\n### 还没有\n- 还没合并\n\n---\n由 `brain mr-desc` 从记录生成（run.json、Lean 记录、git），别手改。重新生成：`brain mr-desc PAY-17 --write`。\n",
+    "text": "## PAY-17 · 订单优惠码\n\n**一句话**：订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。\n（分支 `ai/alice/PAY-17-coupon`；负责人 alice；快速，没有 Lean intent）\n\n### 做了什么 / 没做什么\n- 订单优惠码 SAVE10 和 FULL100，带测试\n- 结算页用上优惠码\n\n### 验收标准和证据\nverify 通过：pytest -q。\n\n### 还没有\n- 还没合并\n\n---\n由 `brain mr-desc` 从记录生成（run.json、Lean 记录、git），别手改。重新生成：`brain mr-desc PAY-17 --write`。\n",
     "first": "订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。",
     "source": "file",
     "path": "runs/PAY-17/MR.md",
@@ -54166,7 +54896,7 @@
      "turns": 3,
      "busy": false,
      "awaiting": false,
-     "last_activity": 1794145500,
+     "last_activity": 1794146160,
      "opened_at": 1794143540,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-17-5e1a",
@@ -54192,8 +54922,8 @@
      "id": "code",
      "label": "写代码",
      "status": "done",
-     "text": "提交了 1 次",
-     "at": 1794145440.0,
+     "text": "提交了 2 次",
+     "at": 1794146040.0,
      "url": null
     },
     {
@@ -54201,7 +54931,7 @@
      "label": "自动检查",
      "status": "done",
      "text": "过了",
-     "at": 1794145380,
+     "at": 1794145980,
      "url": null
     },
     {
@@ -54228,7 +54958,14 @@
      "at": null,
      "url": null
     }
-   ]
+   ],
+   "time": {
+    "agent": 1830,
+    "person": 1020,
+    "waits": 3,
+    "sessions": 1,
+    "whole": true
+   }
   },
   "r1/PAY-18": {
    "at": 1794146400,
@@ -54580,7 +55317,318 @@
      "at": null,
      "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/12"
     }
-   ]
+   ],
+   "time": null
+  },
+  "r1/PAY-19": {
+   "at": 1794146400,
+   "row": {
+    "repo": "r1",
+    "key": "PAY-19",
+    "title": "发票抬头记住上次填的",
+    "owner": "bob",
+    "source": "product",
+    "state": "local",
+    "state_label": "本地开发中",
+    "where": "branch",
+    "branch": "ai/bob/PAY-19-invoice-title",
+    "intent": null,
+    "lean": {
+     "stage": null,
+     "stage_label": null,
+     "stage_n": null,
+     "stage_state": null,
+     "done": 0,
+     "total": 11,
+     "done_n": 0,
+     "skipped_n": 0,
+     "next": {
+      "id": "reverse-engineering",
+      "label": "逆向工程",
+      "n": "2.1"
+     },
+     "skipped_phases": []
+    },
+    "stage": null,
+    "waits": {
+     "who": "people",
+     "text": "MR !13：CI 过了，等人审、合并",
+     "line": null,
+     "raw": "",
+     "do": "merge",
+     "todo": "",
+     "since": 1794128280.0,
+     "where": "mr",
+     "review": false
+    },
+    "summary": "开发票时记住上次填的抬头和税号。",
+    "credits": null,
+    "updated_at": 1794128280,
+    "mr": {
+     "iid": 13,
+     "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/13",
+     "state": "opened"
+    },
+    "worktree": null,
+    "run_ids": [],
+    "sessions": 0,
+    "overlap": [],
+    "open_questions": [],
+    "expected_paths": [
+     "shop/invoice.py"
+    ],
+    "local_only": false,
+    "session_url": null,
+    "family": null,
+    "home": null,
+    "verify_fails": 0,
+    "progress_pushed_at": null,
+    "credits_whole": true,
+    "flow": {
+     "id": "fast",
+     "label": "快速",
+     "intent": false,
+     "actions": [
+      "full",
+      "mr"
+     ]
+    }
+   },
+   "branch": "ai/bob/PAY-19-invoice-title",
+   "base": "main",
+   "started_at": 1794124800.0,
+   "ended_at": null,
+   "live": false,
+   "person": {
+    "status": "waiting",
+    "doing": "MR !13：CI 过了，等人审、合并",
+    "owner": "bob",
+    "me": false,
+    "you": false
+   },
+   "phases": [],
+   "nodes": [],
+   "runs": [],
+   "relays": [],
+   "other_runs": [],
+   "events": [
+    {
+     "seq": 1,
+     "at": 1794124800.0,
+     "kind": "claim",
+     "from": "person",
+     "to": "person",
+     "text": "认领 PAY-19：发票抬头记住上次填的",
+     "detail": false,
+     "src": "认领记录 claim/PAY-19",
+     "node": null,
+     "run": null,
+     "round": null
+    },
+    {
+     "seq": 2,
+     "at": 1794124980.0,
+     "kind": "start",
+     "from": "person",
+     "to": "person",
+     "text": "开工：在它自己的工作目录里",
+     "detail": false,
+     "src": "开工记录 runs/PAY-19/run.json",
+     "node": null,
+     "run": null,
+     "round": null
+    },
+    {
+     "seq": 3,
+     "at": 1794127380,
+     "kind": "verify",
+     "from": "branch",
+     "to": "checks",
+     "text": "自动检查通过（1 项）",
+     "detail": false,
+     "src": null,
+     "node": null,
+     "run": null,
+     "round": null
+    },
+    {
+     "seq": 4,
+     "at": 1794127500.0,
+     "kind": "commit",
+     "from": "branch",
+     "to": "branch",
+     "text": "提交 e188665a：PAY-19：发票抬头记住上次填的，带测试",
+     "detail": false,
+     "src": null,
+     "node": null,
+     "run": null,
+     "round": null
+    }
+   ],
+   "lean_steps": [],
+   "belt": [
+    {
+     "kind": "commit",
+     "at": 1794127500.0,
+     "sha": "e188665aeadd",
+     "by": "person",
+     "text": "PAY-19：发票抬头记住上次填的，带测试",
+     "files": 2,
+     "records_only": false,
+     "run": null,
+     "node": null,
+     "changes": [
+      {
+       "path": "src/invoice/models.py",
+       "added": 12,
+       "removed": 0,
+       "status": "A"
+      },
+      {
+       "path": "src/invoice/api.py",
+       "added": 58,
+       "removed": 0,
+       "status": "A"
+      }
+     ]
+    }
+   ],
+   "checks": {
+    "cells": [
+     {
+      "id": "verify-pytest-1",
+      "group": "verify",
+      "label": "pytest",
+      "name": "自动检查：pytest",
+      "status": "pass",
+      "at": 1794127380,
+      "detail": "通过",
+      "node": null,
+      "run": null
+     },
+     {
+      "id": "ci",
+      "group": "ci",
+      "label": "CI",
+      "name": "MR 的流水线",
+      "status": "pass",
+      "at": 1794128280,
+      "detail": "过了",
+      "node": null,
+      "run": null
+     },
+     {
+      "id": "risk",
+      "group": "risk",
+      "label": "风险",
+      "name": "风险目录（gates/risk-paths）",
+      "status": "pass",
+      "at": null,
+      "detail": "没改到风险目录",
+      "node": null,
+      "run": null
+     }
+    ],
+    "passed": 3,
+    "failed": 0,
+    "total": 3,
+    "todo": [],
+    "at": 1794128280,
+    "history": [
+     {
+      "at": 1794127380,
+      "passed": 1,
+      "failed": 0
+     }
+    ]
+   },
+   "accept": {
+    "state": "not_yet",
+    "step": {
+     "text": "",
+     "who": "",
+     "line": null,
+     "comment": null,
+     "mr_url": null,
+     "session_url": null
+    },
+    "by": [],
+    "checks": "全部 3 项都过",
+    "done": null
+   },
+   "brain": {
+    "loaded": null,
+    "cited": [],
+    "stale": [],
+    "unknown": [],
+    "proposals": 0
+   },
+   "decisions": [],
+   "questions": [],
+   "mr_desc": {
+    "available": true,
+    "text": "## PAY-19 · 发票抬头记住上次填的\n\n**一句话**：开发票时记住上次填的抬头和税号。\n（分支 `ai/bob/PAY-19-invoice-title`；负责人 bob；快速，没有 Lean intent）\n\n### 做了什么 / 没做什么\n- 发票抬头记住上次填的，带测试\n\n### 验收标准和证据\nverify 通过：pytest -q。\n\n### 还没有\n- 还没合并\n\n---\n由 `brain mr-desc` 从记录生成（run.json、Lean 记录、git），别手改。重新生成：`brain mr-desc PAY-19 --write`。\n",
+    "first": "开发票时记住上次填的抬头和税号。",
+    "source": "file",
+    "path": "runs/PAY-19/MR.md",
+    "ref": "c40b284c2f65",
+    "error": ""
+   },
+   "sessions": [],
+   "live_slot": null,
+   "credits": {
+    "total": null,
+    "whole": true,
+    "missing": [],
+    "note": "KiroCrew 只报 credits，没有别的用量数"
+   },
+   "source": "trace",
+   "error": "",
+   "missing": [],
+   "rollup": null,
+   "steps": [
+    {
+     "id": "code",
+     "label": "写代码",
+     "status": "done",
+     "text": "提交了 1 次",
+     "at": 1794127500.0,
+     "url": null
+    },
+    {
+     "id": "verify",
+     "label": "自动检查",
+     "status": "done",
+     "text": "过了",
+     "at": 1794127380,
+     "url": null
+    },
+    {
+     "id": "mr",
+     "label": "开 MR",
+     "status": "done",
+     "text": "MR !13",
+     "at": null,
+     "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/13"
+    },
+    {
+     "id": "ci",
+     "label": "CI",
+     "status": "done",
+     "text": "过了",
+     "at": 1794128280,
+     "url": "https://gitlab.example.com/shop/shop-pay/-/pipelines/1311"
+    },
+    {
+     "id": "merge",
+     "label": "合并",
+     "status": "waiting",
+     "text": "等人审、合并",
+     "at": null,
+     "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/13"
+    }
+   ],
+   "time": null
   },
   "r1/PAY-9": {
    "at": 1794146400,
@@ -59652,7 +60700,8 @@
     "推送记录：git 不记推送，交接以后人的提交当作推送"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r1/PAY-11": {
    "at": 1794146400,
@@ -62132,7 +63181,8 @@
      }
     ]
    },
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r1/PAY-12": {
    "at": 1794146400,
@@ -64350,7 +65400,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r1/PAY-13": {
    "at": 1794146400,
@@ -66605,7 +67656,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r1/PAY-14": {
    "at": 1794146400,
@@ -66998,7 +68050,8 @@
    "error": "",
    "missing": [],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r3/ORD-1": {
    "at": 1794146400,
@@ -70258,7 +71311,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r3/ORD-2": {
    "at": 1794146400,
@@ -73703,7 +74757,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r3/ORD-3": {
    "at": 1794146400,
@@ -77160,7 +78215,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r3/ORD-4": {
    "at": 1794146400,
@@ -80475,7 +81531,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r3/ORD-5": {
    "at": 1794146400,
@@ -83213,7 +84270,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r3/ORD-6": {
    "at": 1794146400,
@@ -86803,7 +87861,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r3/ORD-7": {
    "at": 1794146400,
@@ -90077,7 +91136,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r3/ORD-8": {
    "at": 1794146400,
@@ -93667,7 +94727,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r3/ORD-9": {
    "at": 1794146400,
@@ -97086,7 +98147,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r3/ORD-10": {
    "at": 1794146400,
@@ -99161,7 +100223,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r4/TOOL-1": {
    "at": 1794146400,
@@ -100493,7 +101556,8 @@
    "error": "",
    "missing": [],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r1/PAY-15": {
    "at": 1794146400,
@@ -101960,7 +103024,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r3/ORD-11": {
    "at": 1794146400,
@@ -103792,7 +104857,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "r3/ORD-12": {
    "at": 1794146400,
@@ -106029,7 +107095,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "runner/PAY-9": {
    "at": 1794146400,
@@ -106536,7 +107603,8 @@
    "error": "",
    "missing": [],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "runner/PAY-4": {
    "at": 1794146400,
@@ -108673,7 +109741,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "runner/PAY-5": {
    "at": 1794146400,
@@ -111902,7 +112971,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "runner/PAY-2": {
    "at": 1794146400,
@@ -115887,7 +116957,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   },
   "runner/ORD-10": {
    "at": 1794146400,
@@ -118022,7 +119093,8 @@
     "CI 流水线：在 GitLab 上，这里读不到"
    ],
    "rollup": null,
-   "steps": null
+   "steps": null,
+   "time": null
   }
  },
  "details": {
@@ -124565,13 +125637,13 @@
      "raw": "",
      "do": "open_mr",
      "todo": "",
-     "since": 1794145500.0,
+     "since": 1794146160.0,
      "where": "app",
      "review": false
     },
     "summary": "订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。",
     "credits": 2.4,
-    "updated_at": 1794145500,
+    "updated_at": 1794146160,
     "mr": null,
     "worktree": "/Users/alice/workplace/brain-app/shop-pay/coupon",
     "run_ids": [],
@@ -124964,7 +126036,23 @@
       "at": "2026-11-08T13:44:00Z",
       "kind": "commit",
       "label": "提交",
-      "detail": "b76847259b07",
+      "detail": "c2d37141a241",
+      "who": "owner",
+      "src": null
+     },
+     {
+      "at": "2026-11-08T13:53:00Z",
+      "kind": "verify",
+      "label": "自动检查通过",
+      "detail": null,
+      "who": null,
+      "src": "aidlc-docs/audit/L-3F2A1C.jsonl"
+     },
+     {
+      "at": "2026-11-08T13:54:00Z",
+      "kind": "commit",
+      "label": "提交",
+      "detail": "cc204952eaa7",
       "who": "owner",
       "src": null
      }
@@ -124984,7 +126072,7 @@
      "turns": 3,
      "busy": false,
      "awaiting": false,
-     "last_activity": 1794145500,
+     "last_activity": 1794146160,
      "opened_at": 1794143540,
      "project": "/Users/alice/workplace/brain-app/PAY-3-refund-export",
      "url": "/chat?sid=brain-PAY-17-5e1a",
@@ -125008,7 +126096,7 @@
    },
    "mr_desc": {
     "available": true,
-    "text": "## PAY-17 · 订单优惠码\n\n**一句话**：订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。\n（分支 `ai/alice/PAY-17-coupon`；负责人 alice；快速，没有 Lean intent）\n\n### 做了什么 / 没做什么\n- 订单优惠码 SAVE10 和 FULL100，带测试\n\n### 验收标准和证据\nverify 通过：pytest -q。\n\n### 还没有\n- 还没合并\n\n---\n由 `brain mr-desc` 从记录生成（run.json、Lean 记录、git），别手改。重新生成：`brain mr-desc PAY-17 --write`。\n",
+    "text": "## PAY-17 · 订单优惠码\n\n**一句话**：订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。\n（分支 `ai/alice/PAY-17-coupon`；负责人 alice；快速，没有 Lean intent）\n\n### 做了什么 / 没做什么\n- 订单优惠码 SAVE10 和 FULL100，带测试\n- 结算页用上优惠码\n\n### 验收标准和证据\nverify 通过：pytest -q。\n\n### 还没有\n- 还没合并\n\n---\n由 `brain mr-desc` 从记录生成（run.json、Lean 记录、git），别手改。重新生成：`brain mr-desc PAY-17 --write`。\n",
     "first": "订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。",
     "source": "file",
     "path": "runs/PAY-17/MR.md",
@@ -125487,6 +126575,456 @@
     "source": "file",
     "path": "runs/PAY-18/MR.md",
     "ref": "3b22b7db4cf9",
+    "error": ""
+   }
+  },
+  "r1/PAY-19": {
+   "row": {
+    "repo": "r1",
+    "key": "PAY-19",
+    "title": "发票抬头记住上次填的",
+    "owner": "bob",
+    "source": "product",
+    "state": "local",
+    "state_label": "本地开发中",
+    "where": "branch",
+    "branch": "ai/bob/PAY-19-invoice-title",
+    "intent": null,
+    "lean": {
+     "stage": null,
+     "stage_label": null,
+     "stage_n": null,
+     "stage_state": null,
+     "done": 0,
+     "total": 11,
+     "done_n": 0,
+     "skipped_n": 0,
+     "next": {
+      "id": "reverse-engineering",
+      "label": "逆向工程",
+      "n": "2.1"
+     },
+     "skipped_phases": []
+    },
+    "stage": null,
+    "waits": {
+     "who": "people",
+     "text": "MR !13：CI 过了，等人审、合并",
+     "line": null,
+     "raw": "",
+     "do": "merge",
+     "todo": "",
+     "since": 1794128280.0,
+     "where": "mr",
+     "review": false
+    },
+    "summary": "开发票时记住上次填的抬头和税号。",
+    "credits": null,
+    "updated_at": 1794128280,
+    "mr": {
+     "iid": 13,
+     "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/13",
+     "state": "opened"
+    },
+    "worktree": null,
+    "run_ids": [],
+    "sessions": 0,
+    "overlap": [],
+    "open_questions": [],
+    "expected_paths": [
+     "shop/invoice.py"
+    ],
+    "local_only": false,
+    "session_url": null,
+    "family": null,
+    "home": null,
+    "verify_fails": 0,
+    "progress_pushed_at": null,
+    "credits_whole": true,
+    "flow": {
+     "id": "fast",
+     "label": "快速",
+     "intent": false,
+     "actions": [
+      "full",
+      "mr"
+     ]
+    }
+   },
+   "where_label": "分支 （没在这台机器上检出）",
+   "run": {
+    "owner": "bob",
+    "branch": "ai/bob/PAY-19-invoice-title",
+    "intent": null,
+    "brain_commit": "2a54eff7ded7",
+    "origin": "product",
+    "created_at": "2026-11-08T08:03:00Z",
+    "materials": [
+     "PKG-PAY-19"
+    ],
+    "handoff": null
+   },
+   "claim": {
+    "owner": "bob",
+    "title": "发票抬头记住上次填的",
+    "created_at": "2026-11-08T08:00:00Z",
+    "source": "product",
+    "closed": null
+   },
+   "lean": {
+    "stages": [
+     {
+      "id": "intent-capture",
+      "n": "1.1",
+      "label": "意图捕获",
+      "phase": "ideation",
+      "state": "optional",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "market-research",
+      "n": "1.2",
+      "label": "市场调研",
+      "phase": "ideation",
+      "state": "optional",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "feasibility",
+      "n": "1.3",
+      "label": "可行性评估",
+      "phase": "ideation",
+      "state": "optional",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "scope-definition",
+      "n": "1.4",
+      "label": "范围定义",
+      "phase": "ideation",
+      "state": "optional",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "team-formation",
+      "n": "1.5",
+      "label": "团队组建",
+      "phase": "ideation",
+      "state": "optional",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "rough-mockups",
+      "n": "1.6",
+      "label": "草图原型",
+      "phase": "ideation",
+      "state": "optional",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "approval-handoff",
+      "n": "1.7",
+      "label": "审批交接",
+      "phase": "ideation",
+      "state": "optional",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "reverse-engineering",
+      "n": "2.1",
+      "label": "逆向工程",
+      "phase": "inception",
+      "state": "todo",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "requirements",
+      "n": "2.3",
+      "label": "需求分析",
+      "phase": "inception",
+      "state": "todo",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "user-stories",
+      "n": "2.4",
+      "label": "用户故事",
+      "phase": "inception",
+      "state": "todo",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "application-design",
+      "n": "2.6",
+      "label": "应用设计",
+      "phase": "inception",
+      "state": "todo",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "units",
+      "n": "2.7",
+      "label": "拆分单元",
+      "phase": "inception",
+      "state": "todo",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "functional-design",
+      "n": "3.1",
+      "label": "功能设计",
+      "phase": "construction",
+      "state": "todo",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "nfr-design",
+      "n": "3.2",
+      "label": "非功能设计",
+      "phase": "construction",
+      "state": "todo",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "infrastructure-design",
+      "n": "3.4",
+      "label": "基础设施设计",
+      "phase": "construction",
+      "state": "todo",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "code-generation",
+      "n": "3.5",
+      "label": "代码生成",
+      "phase": "construction",
+      "state": "todo",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "build-and-test",
+      "n": "3.6",
+      "label": "构建测试",
+      "phase": "construction",
+      "state": "todo",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "ci-pipeline",
+      "n": "3.7",
+      "label": "CI 流水线",
+      "phase": "construction",
+      "state": "optional",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "release",
+      "n": "✓",
+      "label": "发布",
+      "phase": "release",
+      "state": "todo",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "deployment-pipeline",
+      "n": "4.1",
+      "label": "部署流水线",
+      "phase": "operations",
+      "state": "optional",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "environment-provisioning",
+      "n": "4.2",
+      "label": "环境准备",
+      "phase": "operations",
+      "state": "optional",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "deployment-execution",
+      "n": "4.3",
+      "label": "部署执行",
+      "phase": "operations",
+      "state": "optional",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "observability-setup",
+      "n": "4.4",
+      "label": "可观测性",
+      "phase": "operations",
+      "state": "optional",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "incident-response",
+      "n": "4.5",
+      "label": "故障响应",
+      "phase": "operations",
+      "state": "optional",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "performance-validation",
+      "n": "4.6",
+      "label": "性能验证",
+      "phase": "operations",
+      "state": "optional",
+      "units": [],
+      "note": null,
+      "at": null
+     },
+     {
+      "id": "feedback-optimization",
+      "n": "4.7",
+      "label": "反馈优化",
+      "phase": "operations",
+      "state": "optional",
+      "units": [],
+      "note": null,
+      "at": null
+     }
+    ],
+    "phases": [
+     {
+      "key": "ideation",
+      "n": "1",
+      "name": "构思",
+      "state": "optional",
+      "note": null
+     },
+     {
+      "key": "inception",
+      "n": "2",
+      "name": "启动",
+      "state": "used",
+      "note": null
+     },
+     {
+      "key": "construction",
+      "n": "3",
+      "name": "构建",
+      "state": "used",
+      "note": null
+     },
+     {
+      "key": "release",
+      "n": "✓",
+      "name": "发布",
+      "state": "used",
+      "note": null
+     },
+     {
+      "key": "operations",
+      "n": "4",
+      "name": "运维",
+      "state": "optional",
+      "note": null
+     }
+    ],
+    "approvals": [],
+    "status": null,
+    "next": [],
+    "open_questions": []
+   },
+   "decisions": [],
+   "questions": [],
+   "timeline": {
+    "source": "trace",
+    "items": [
+     {
+      "at": "2026-11-08T08:43:00Z",
+      "kind": "verify",
+      "label": "自动检查通过",
+      "detail": null,
+      "who": null,
+      "src": "aidlc-docs/audit/L-3F2A1C.jsonl"
+     },
+     {
+      "at": "2026-11-08T08:45:00Z",
+      "kind": "commit",
+      "label": "提交",
+      "detail": "e188665aeadd",
+      "who": "owner",
+      "src": null
+     }
+    ],
+    "error": "",
+    "missing": [
+     "CI 流水线：在 GitLab 上，这里读不到"
+    ]
+   },
+   "sessions": [],
+   "live_slot": null,
+   "credits": {
+    "total": null,
+    "whole": true,
+    "missing": [],
+    "note": "KiroCrew 只报 credits，没有别的用量数"
+   },
+   "brain": {
+    "loaded": null,
+    "cited": [],
+    "stale": [],
+    "unknown": [],
+    "proposals": 0
+   },
+   "mr_desc": {
+    "available": true,
+    "text": "## PAY-19 · 发票抬头记住上次填的\n\n**一句话**：开发票时记住上次填的抬头和税号。\n（分支 `ai/bob/PAY-19-invoice-title`；负责人 bob；快速，没有 Lean intent）\n\n### 做了什么 / 没做什么\n- 发票抬头记住上次填的，带测试\n\n### 验收标准和证据\nverify 通过：pytest -q。\n\n### 还没有\n- 还没合并\n\n---\n由 `brain mr-desc` 从记录生成（run.json、Lean 记录、git），别手改。重新生成：`brain mr-desc PAY-19 --write`。\n",
+    "first": "开发票时记住上次填的抬头和税号。",
+    "source": "file",
+    "path": "runs/PAY-19/MR.md",
+    "ref": "c40b284c2f65",
     "error": ""
    }
   },
@@ -144739,6 +146277,268 @@
     "at": null
    }
   ],
+  "r1/PAY-19": [
+   {
+    "id": "intent-capture",
+    "n": "1.1",
+    "label": "意图捕获",
+    "phase": "ideation",
+    "state": "optional",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "market-research",
+    "n": "1.2",
+    "label": "市场调研",
+    "phase": "ideation",
+    "state": "optional",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "feasibility",
+    "n": "1.3",
+    "label": "可行性评估",
+    "phase": "ideation",
+    "state": "optional",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "scope-definition",
+    "n": "1.4",
+    "label": "范围定义",
+    "phase": "ideation",
+    "state": "optional",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "team-formation",
+    "n": "1.5",
+    "label": "团队组建",
+    "phase": "ideation",
+    "state": "optional",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "rough-mockups",
+    "n": "1.6",
+    "label": "草图原型",
+    "phase": "ideation",
+    "state": "optional",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "approval-handoff",
+    "n": "1.7",
+    "label": "审批交接",
+    "phase": "ideation",
+    "state": "optional",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "reverse-engineering",
+    "n": "2.1",
+    "label": "逆向工程",
+    "phase": "inception",
+    "state": "todo",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "requirements",
+    "n": "2.3",
+    "label": "需求分析",
+    "phase": "inception",
+    "state": "todo",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "user-stories",
+    "n": "2.4",
+    "label": "用户故事",
+    "phase": "inception",
+    "state": "todo",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "application-design",
+    "n": "2.6",
+    "label": "应用设计",
+    "phase": "inception",
+    "state": "todo",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "units",
+    "n": "2.7",
+    "label": "拆分单元",
+    "phase": "inception",
+    "state": "todo",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "functional-design",
+    "n": "3.1",
+    "label": "功能设计",
+    "phase": "construction",
+    "state": "todo",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "nfr-design",
+    "n": "3.2",
+    "label": "非功能设计",
+    "phase": "construction",
+    "state": "todo",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "infrastructure-design",
+    "n": "3.4",
+    "label": "基础设施设计",
+    "phase": "construction",
+    "state": "todo",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "code-generation",
+    "n": "3.5",
+    "label": "代码生成",
+    "phase": "construction",
+    "state": "todo",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "build-and-test",
+    "n": "3.6",
+    "label": "构建测试",
+    "phase": "construction",
+    "state": "todo",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "ci-pipeline",
+    "n": "3.7",
+    "label": "CI 流水线",
+    "phase": "construction",
+    "state": "optional",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "release",
+    "n": "✓",
+    "label": "发布",
+    "phase": "release",
+    "state": "todo",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "deployment-pipeline",
+    "n": "4.1",
+    "label": "部署流水线",
+    "phase": "operations",
+    "state": "optional",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "environment-provisioning",
+    "n": "4.2",
+    "label": "环境准备",
+    "phase": "operations",
+    "state": "optional",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "deployment-execution",
+    "n": "4.3",
+    "label": "部署执行",
+    "phase": "operations",
+    "state": "optional",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "observability-setup",
+    "n": "4.4",
+    "label": "可观测性",
+    "phase": "operations",
+    "state": "optional",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "incident-response",
+    "n": "4.5",
+    "label": "故障响应",
+    "phase": "operations",
+    "state": "optional",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "performance-validation",
+    "n": "4.6",
+    "label": "性能验证",
+    "phase": "operations",
+    "state": "optional",
+    "units": [],
+    "note": null,
+    "at": null
+   },
+   {
+    "id": "feedback-optimization",
+    "n": "4.7",
+    "label": "反馈优化",
+    "phase": "operations",
+    "state": "optional",
+    "units": [],
+    "note": null,
+    "at": null
+   }
+  ],
   "r1/PAY-9": [
    {
     "id": "intent-capture",
@@ -151347,6 +153147,43 @@
     "note": null
    }
   ],
+  "r1/PAY-19": [
+   {
+    "key": "ideation",
+    "n": "1",
+    "name": "构思",
+    "state": "optional",
+    "note": null
+   },
+   {
+    "key": "inception",
+    "n": "2",
+    "name": "启动",
+    "state": "used",
+    "note": null
+   },
+   {
+    "key": "construction",
+    "n": "3",
+    "name": "构建",
+    "state": "used",
+    "note": null
+   },
+   {
+    "key": "release",
+    "n": "✓",
+    "name": "发布",
+    "state": "used",
+    "note": null
+   },
+   {
+    "key": "operations",
+    "n": "4",
+    "name": "运维",
+    "state": "optional",
+    "note": null
+   }
+  ],
   "r1/PAY-9": [
    {
     "key": "ideation",
@@ -154000,6 +155837,244 @@
     "turns": null,
     "calls": null
    }
+  },
+  "/outputs/r1/PAY-17/commits?": {
+   "branch": "ai/alice/PAY-17-coupon",
+   "head": "cc204952eaa7e3147d6729add13eef662bb77eb4",
+   "commits": [
+    {
+     "sha": "c2d37141a2410c5d277af40592fdc9bbc8d40a7f",
+     "at": 1794145440.0,
+     "subject": "PAY-17：订单优惠码 SAVE10 和 FULL100，带测试",
+     "by": "person",
+     "records_only": false,
+     "files": [
+      {
+       "path": "shop/coupon.py",
+       "output": false,
+       "status": "A",
+       "added": 19,
+       "removed": 0,
+       "ref": "c2d37141a2410c5d277af40592fdc9bbc8d40a7f",
+       "pin": null,
+       "base_round": null,
+       "vs": [],
+       "why": null,
+       "base": null
+      },
+      {
+       "path": "tests/test_coupon.py",
+       "output": false,
+       "status": "A",
+       "added": 16,
+       "removed": 0,
+       "ref": "c2d37141a2410c5d277af40592fdc9bbc8d40a7f",
+       "pin": null,
+       "base_round": null,
+       "vs": [],
+       "why": null,
+       "base": null
+      }
+     ],
+     "more": 0
+    },
+    {
+     "sha": "cc204952eaa7e3147d6729add13eef662bb77eb4",
+     "at": 1794146040.0,
+     "subject": "PAY-17：结算页用上优惠码",
+     "by": "person",
+     "records_only": false,
+     "files": [
+      {
+       "path": "shop/checkout.py",
+       "output": false,
+       "status": "A",
+       "added": 11,
+       "removed": 0,
+       "ref": "cc204952eaa7e3147d6729add13eef662bb77eb4",
+       "pin": null,
+       "base_round": null,
+       "vs": [],
+       "why": null,
+       "base": null
+      },
+      {
+       "path": "shop/coupon.py",
+       "output": false,
+       "status": "M",
+       "added": 1,
+       "removed": 1,
+       "ref": "cc204952eaa7e3147d6729add13eef662bb77eb4",
+       "pin": null,
+       "base_round": null,
+       "vs": [],
+       "why": null,
+       "base": "c2d37141a2410c5d277af40592fdc9bbc8d40a7f"
+      }
+     ],
+     "more": 0
+    }
+   ],
+   "files": [
+    {
+     "path": "shop/checkout.py",
+     "output": false,
+     "status": "A",
+     "added": 11,
+     "removed": 0,
+     "ref": "cc204952eaa7e3147d6729add13eef662bb77eb4",
+     "pin": null,
+     "base_round": null,
+     "vs": [],
+     "why": null,
+     "base": null
+    },
+    {
+     "path": "shop/coupon.py",
+     "output": false,
+     "status": "A",
+     "added": 20,
+     "removed": 1,
+     "ref": "cc204952eaa7e3147d6729add13eef662bb77eb4",
+     "pin": null,
+     "base_round": null,
+     "vs": [],
+     "why": null,
+     "base": null
+    },
+    {
+     "path": "tests/test_coupon.py",
+     "output": false,
+     "status": "A",
+     "added": 16,
+     "removed": 0,
+     "ref": "c2d37141a2410c5d277af40592fdc9bbc8d40a7f",
+     "pin": null,
+     "base_round": null,
+     "vs": [],
+     "why": null,
+     "base": null
+    }
+   ],
+   "more": 0,
+   "why": null
+  },
+  "/outputs/r1/PAY-17/file?path=shop/coupon.py&ref=c2d37141a2410c5d277af40592fdc9bbc8d40a7f&view=source": {
+   "path": "shop/coupon.py",
+   "view": "source",
+   "at": "c2d37141a2410c5d277af40592fdc9bbc8d40a7f",
+   "base": null,
+   "pinned": false,
+   "lang": "python",
+   "asked": null,
+   "text": "\"\"\"订单优惠码：SAVE10 打九折，FULL100 满 100 减 15。\"\"\"\n\nfrom decimal import Decimal\n\nCODES = {\n    \"SAVE10\": (\"rate\", Decimal(\"0.9\")),\n    \"FULL100\": (\"minus\", Decimal(\"15\")),\n}\nFULL_AT = Decimal(\"100\")\n\n\ndef apply(total: Decimal, code: str) -> Decimal:\n    \"\"\"用了优惠码以后要付的钱；码不认识、不够满减的门槛，原价。\"\"\"\n    kind, value = CODES.get(code, (None, None))\n    if kind == \"rate\":\n        return (total * value).quantize(Decimal(\"0.01\"))\n    if kind == \"minus\" and total >= FULL_AT:\n        return total - value\n    return total\n",
+   "binary": false,
+   "truncated": false,
+   "size": 582
+  },
+  "/outputs/r1/PAY-17/file?path=shop/coupon.py&ref=c2d37141a2410c5d277af40592fdc9bbc8d40a7f&view=diff": {
+   "path": "shop/coupon.py",
+   "view": "diff",
+   "at": "c2d37141a2410c5d277af40592fdc9bbc8d40a7f",
+   "base": null,
+   "pinned": false,
+   "lang": "python",
+   "asked": null,
+   "text": "diff --git a/shop/coupon.py b/shop/coupon.py\nnew file\n--- /dev/null\n+++ b/shop/coupon.py\n@@ -0,0 +1,19 @@\n+\"\"\"订单优惠码：SAVE10 打九折，FULL100 满 100 减 15。\"\"\"\n+\n+from decimal import Decimal\n+\n+CODES = {\n+    \"SAVE10\": (\"rate\", Decimal(\"0.9\")),\n+    \"FULL100\": (\"minus\", Decimal(\"15\")),\n+}\n+FULL_AT = Decimal(\"100\")\n+\n+\n+def apply(total: Decimal, code: str) -> Decimal:\n+    \"\"\"用了优惠码以后要付的钱；码不认识、不够满减的门槛，原价。\"\"\"\n+    kind, value = CODES.get(code, (None, None))\n+    if kind == \"rate\":\n+        return (total * value).quantize(Decimal(\"0.01\"))\n+    if kind == \"minus\" and total >= FULL_AT:\n+        return total - value\n+    return total\n",
+   "binary": false,
+   "truncated": false,
+   "size": 625
+  },
+  "/outputs/r1/PAY-17/file?path=tests/test_coupon.py&ref=c2d37141a2410c5d277af40592fdc9bbc8d40a7f&view=source": {
+   "path": "tests/test_coupon.py",
+   "view": "source",
+   "at": "c2d37141a2410c5d277af40592fdc9bbc8d40a7f",
+   "base": null,
+   "pinned": false,
+   "lang": "python",
+   "asked": null,
+   "text": "from decimal import Decimal\n\nfrom shop import coupon\n\n\ndef test_save10_is_ten_percent_off():\n    assert coupon.apply(Decimal(\"80\"), \"SAVE10\") == Decimal(\"72.00\")\n\n\ndef test_full100_needs_a_hundred():\n    assert coupon.apply(Decimal(\"120\"), \"FULL100\") == Decimal(\"105\")\n    assert coupon.apply(Decimal(\"99\"), \"FULL100\") == Decimal(\"99\")\n\n\ndef test_an_unknown_code_changes_nothing():\n    assert coupon.apply(Decimal(\"50\"), \"HELLO\") == Decimal(\"50\")\n",
+   "binary": false,
+   "truncated": false,
+   "size": 447
+  },
+  "/outputs/r1/PAY-17/file?path=tests/test_coupon.py&ref=c2d37141a2410c5d277af40592fdc9bbc8d40a7f&view=diff": {
+   "path": "tests/test_coupon.py",
+   "view": "diff",
+   "at": "c2d37141a2410c5d277af40592fdc9bbc8d40a7f",
+   "base": null,
+   "pinned": false,
+   "lang": "python",
+   "asked": null,
+   "text": "diff --git a/tests/test_coupon.py b/tests/test_coupon.py\nnew file\n--- /dev/null\n+++ b/tests/test_coupon.py\n@@ -0,0 +1,16 @@\n+from decimal import Decimal\n+\n+from shop import coupon\n+\n+\n+def test_save10_is_ten_percent_off():\n+    assert coupon.apply(Decimal(\"80\"), \"SAVE10\") == Decimal(\"72.00\")\n+\n+\n+def test_full100_needs_a_hundred():\n+    assert coupon.apply(Decimal(\"120\"), \"FULL100\") == Decimal(\"105\")\n+    assert coupon.apply(Decimal(\"99\"), \"FULL100\") == Decimal(\"99\")\n+\n+\n+def test_an_unknown_code_changes_nothing():\n+    assert coupon.apply(Decimal(\"50\"), \"HELLO\") == Decimal(\"50\")\n",
+   "binary": false,
+   "truncated": false,
+   "size": 587
+  },
+  "/outputs/r1/PAY-17/file?path=shop/checkout.py&ref=cc204952eaa7e3147d6729add13eef662bb77eb4&view=source": {
+   "path": "shop/checkout.py",
+   "view": "source",
+   "at": "cc204952eaa7e3147d6729add13eef662bb77eb4",
+   "base": null,
+   "pinned": false,
+   "lang": "python",
+   "asked": null,
+   "text": "\"\"\"结算：订单的应付金额。\"\"\"\n\nfrom decimal import Decimal\n\nfrom shop import coupon\n\n\ndef payable(items: list[tuple[Decimal, int]], code: str = \"\") -> Decimal:\n    \"\"\"商品（单价、数量）的合计，用了优惠码（填了的话）以后的应付金额。\"\"\"\n    total = sum((price * qty for price, qty in items), Decimal(\"0\"))\n    return coupon.apply(total, code) if code else total\n",
+   "binary": false,
+   "truncated": false,
+   "size": 402
+  },
+  "/outputs/r1/PAY-17/file?path=shop/checkout.py&ref=cc204952eaa7e3147d6729add13eef662bb77eb4&view=diff": {
+   "path": "shop/checkout.py",
+   "view": "diff",
+   "at": "cc204952eaa7e3147d6729add13eef662bb77eb4",
+   "base": null,
+   "pinned": false,
+   "lang": "python",
+   "asked": null,
+   "text": "diff --git a/shop/checkout.py b/shop/checkout.py\nnew file\n--- /dev/null\n+++ b/shop/checkout.py\n@@ -0,0 +1,11 @@\n+\"\"\"结算：订单的应付金额。\"\"\"\n+\n+from decimal import Decimal\n+\n+from shop import coupon\n+\n+\n+def payable(items: list[tuple[Decimal, int]], code: str = \"\") -> Decimal:\n+    \"\"\"商品（单价、数量）的合计，用了优惠码（填了的话）以后的应付金额。\"\"\"\n+    total = sum((price * qty for price, qty in items), Decimal(\"0\"))\n+    return coupon.apply(total, code) if code else total\n",
+   "binary": false,
+   "truncated": false,
+   "size": 439
+  },
+  "/outputs/r1/PAY-17/file?path=shop/coupon.py&ref=cc204952eaa7e3147d6729add13eef662bb77eb4&view=source": {
+   "path": "shop/coupon.py",
+   "view": "source",
+   "at": "cc204952eaa7e3147d6729add13eef662bb77eb4",
+   "base": null,
+   "pinned": false,
+   "lang": "python",
+   "asked": null,
+   "text": "\"\"\"订单优惠码：SAVE10 打九折，FULL100 满 100 减 15。\"\"\"\n\nfrom decimal import Decimal\n\nCODES = {\n    \"SAVE10\": (\"rate\", Decimal(\"0.9\")),\n    \"FULL100\": (\"minus\", Decimal(\"15\")),\n}\nFULL_AT = Decimal(\"100\")\n\n\ndef apply(total: Decimal, code: str) -> Decimal:\n    \"\"\"用了优惠码以后要付的钱；码不认识、不够满减的门槛，原价。\"\"\"\n    kind, value = CODES.get(code.strip().upper(), (None, None))\n    if kind == \"rate\":\n        return (total * value).quantize(Decimal(\"0.01\"))\n    if kind == \"minus\" and total >= FULL_AT:\n        return total - value\n    return total\n",
+   "binary": false,
+   "truncated": false,
+   "size": 598
+  },
+  "/outputs/r1/PAY-17/file?base=c2d37141a2410c5d277af40592fdc9bbc8d40a7f&path=shop/coupon.py&ref=cc204952eaa7e3147d6729add13eef662bb77eb4&view=diff": {
+   "path": "shop/coupon.py",
+   "view": "diff",
+   "at": "cc204952eaa7e3147d6729add13eef662bb77eb4",
+   "base": "c2d37141a2410c5d277af40592fdc9bbc8d40a7f",
+   "pinned": false,
+   "lang": "python",
+   "asked": null,
+   "text": "diff --git a/shop/coupon.py b/shop/coupon.py\nindex 3fe4cc1..cb22745 100644\n--- a/shop/coupon.py\n+++ b/shop/coupon.py\n@@ -11,7 +11,7 @@ FULL_AT = Decimal(\"100\")\n \n def apply(total: Decimal, code: str) -> Decimal:\n     \"\"\"用了优惠码以后要付的钱；码不认识、不够满减的门槛，原价。\"\"\"\n-    kind, value = CODES.get(code, (None, None))\n+    kind, value = CODES.get(code.strip().upper(), (None, None))\n     if kind == \"rate\":\n         return (total * value).quantize(Decimal(\"0.01\"))\n     if kind == \"minus\" and total >= FULL_AT:\n",
+   "binary": false,
+   "truncated": false,
+   "size": 494
+  },
+  "/outputs/r1/PAY-17/file?path=shop/coupon.py&ref=cc204952eaa7e3147d6729add13eef662bb77eb4&view=diff": {
+   "path": "shop/coupon.py",
+   "view": "diff",
+   "at": "cc204952eaa7e3147d6729add13eef662bb77eb4",
+   "base": null,
+   "pinned": false,
+   "lang": "python",
+   "asked": null,
+   "text": "diff --git a/shop/coupon.py b/shop/coupon.py\nnew file\n--- /dev/null\n+++ b/shop/coupon.py\n@@ -0,0 +1,19 @@\n+\"\"\"订单优惠码：SAVE10 打九折，FULL100 满 100 减 15。\"\"\"\n+\n+from decimal import Decimal\n+\n+CODES = {\n+    \"SAVE10\": (\"rate\", Decimal(\"0.9\")),\n+    \"FULL100\": (\"minus\", Decimal(\"15\")),\n+}\n+FULL_AT = Decimal(\"100\")\n+\n+\n+def apply(total: Decimal, code: str) -> Decimal:\n+    \"\"\"用了优惠码以后要付的钱；码不认识、不够满减的门槛，原价。\"\"\"\n+    kind, value = CODES.get(code.strip().upper(), (None, None))\n+    if kind == \"rate\":\n+        return (total * value).quantize(Decimal(\"0.01\"))\n+    if kind == \"minus\" and total >= FULL_AT:\n+        return total - value\n+    return total\n",
+   "binary": false,
+   "truncated": false,
+   "size": 641
   },
   "/outputs/r1/PAY-9?node=requirements&round=1": {
    "node": "requirements",

@@ -22,7 +22,10 @@ The world (times relative to 2026-11-08 14:00 UTC, the fixtures' `at`; the previ
       quiet (the design's Scenario A). PAY-9 on the runner · its release sent back once by the product (D-2), asked
       again after two CI fixes, waits for the product's acceptance (D-3; Scenario B, the mockup's story). Its local
       half's session is on alice's machine (scripts/preview_session.py), so the 产出 drawer's 它的回复 · 接到的任务 ·
-      做了什么 show its turns there, and its runner rounds the card that says where theirs are.
+      做了什么 show its turns there, and its runner rounds the card that says where theirs are. 快速 (fast runs):
+      PAY-17 本机 · committed and checked, waits for alice's 开 MR (its two commits are real ones, so the drawer by
+      commit reads them; its session's time adds up as sessions.Spent adds it); PAY-18 本机 · MR !12 passed CI, waits
+      to be merged; PAY-19 bob's · MR !13 passed CI, waits for review, read from GitLab on alice's machine.
   shop-web (r2): brain-kit not installed yet.
   shop-order (r3, GitLab shop/shop-order): ORD-1 … ORD-9 merged over ten weeks (most unattended; ORD-8 handed over
       twice: its first run stopped once its question was answered), ORD-10 running now.
@@ -186,6 +189,7 @@ class Req:
                  mode: str = "lean") -> None:
         self.repo, self.key, self.title, self.owner, self.slug, self.intent, self.project = repo, key, title, owner, slug, intent, project
         self.mode = mode    # run.json's: "fast" (快速) has no Lean intent
+        self.elsewhere = False  # run on its owner's machine, not this one: read on its branch
         self.branch = "ai/%s/%s-%s" % (owner, key, slug)
         self.events: list[dict] = []
         self.commits: list[dict] = []
@@ -436,7 +440,8 @@ class Req:
         return {"key": self.key, "claim": {"owner": self.owner, "title": self.title, "created_at": iso(self.claim_at or self.start_at or T0),
                                            "source": "product"},
                 # repo._key_facts: merged, else read in its checkout here when this machine has one, else on its branch
-                "where": "main" if self.merged_at else "worktree" if self.worktree or self.hand_at is None else "branch",
+                "where": "main" if self.merged_at else "branch" if self.elsewhere else
+                         "worktree" if self.worktree or self.hand_at is None else "branch",
                 "branch": self.branch if run else None,
                 "owner": self.owner, "worktree": None if self.merged_at else self.worktree, "run": run, "park": park, "merged": bool(self.merged_at),
                 "merged_at": self.merged_at, "tip_at": self.merged_at or (_epoch(self.commits[-1]["at"]) if self.commits else None),
@@ -893,12 +898,13 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
              decisions: list | None = None, local_only: bool = False, kit_rows: list | None = None, reflect: list | None = None,
              mr: dict | None = None, me: str | None = "alice", mr_desc: dict | None = None, questions: list | None = None,
              credits: dict | None = None, facts: dict | None = None, team_decisions: list | None = None,
-             bid: str | None = None, family: dict | None = None, keep: dict | None = None, counted: list | None = None) -> dict:
+             bid: str | None = None, family: dict | None = None, keep: dict | None = None, counted: list | None = None,
+             stats: list | None = None) -> dict:
     """The board snapshot the backend answers (service._board_sync), built the same way. *facts*: what the board is
     folded from when they are not *r*'s own records as this machine reads them (the team runner's workspace).
     *family*: a big requirement's trace family (brain-kit 0d52e97's roll-up of its small ones). *keep*: gets the
     fold the 产出 drawer reads, as the service keeps it. *counted*: the sessions its 成本 (*credits*) is over, listed on
-    the page; *sessions*: the ones the board's runs are read from."""
+    the page; *sessions*: the ones the board's runs are read from; *stats*: their slot_stats, a fast run's time."""
     f = facts or r.facts(park)
     STAGES[bid or "%s/%s" % (r.repo, r.key)] = f["stages"]
     t = r.trace(brain, family) if f.get("run") else None
@@ -925,7 +931,8 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
             "sessions": sessions if counted is None else [{k: x.get(k) for k in SESSION_KEYS} for x in counted],
             "live_slot": (live or {}).get("slot"), "credits": credits or cost_of([], None),
             "source": "trace" if t else "app", "error": "", "missing": g["missing"], "rollup": board.rollup(t),
-            "steps": g.get("steps")}
+            "steps": g.get("steps"),
+            "time": fastboard.time_spent(stats or [], now=T0, until=g["ended_at"]) if fast is not None else None}
 
 
 U = {"api": "services/api/**", "web": "web/order/**", "jobs": "jobs/**"}
@@ -1157,6 +1164,13 @@ def drawer_payloads(r: Req, rid: str, keep: dict) -> dict[str, dict]:
             slots = [turns_mod.Slot(str(s["slot"]), str(s["url"]), r.session["cwd"], False, r.session["rows"], True,
                                     r.session["sent"]) for s in turns_mod.sessions_to_read(f, nq) if r.session]
             put(base + "/turns", {"node": n.id, "round": str(rnd.n)}, lambda: turns_mod.turn_views(f, nq, slots, r.key, T0, service.basic_scrub))
+    if r.mode == "fast":       # by its commits: each commit's files and all of them, in every way the page reads them
+        listed = outputs.commits_output(f)
+        put(base + "/commits", {}, lambda: listed)
+        for x in [x for c in listed["commits"] for x in c["files"]] + listed["files"]:
+            for view, b in (("source", None), ("diff", x["base"])) if x["ref"] else ():
+                q = {"ref": x["ref"], "path": x["path"], "view": view, "base": b, "pin": None}
+                put(base + "/file", q, lambda q=q: outputs.file_view(f, outputs.file_query(q)))
     return out
 
 
@@ -1496,25 +1510,36 @@ def world(scratch: Path) -> None:
     # PAY-17 (快速): a fast run on this machine; the first verify went red, the fix and its tests are committed with a green
     # one: it waits for alice to say it is done (开 MR)
     p17 = Req("r1", "PAY-17", "订单优惠码", "alice", "coupon", None, project="shop/shop-pay", mode="fast")
+    p17.scratch = DrawerRepo(scratch / "PAY-17")
+    preview_docs.pay17(p17)
     p17.claim_at = T0 - 50 * M
     t = p17.start_at = T0 - 48 * M
     p17.app += [app_event(t, "在 app 里开工", "工作区 /Users/alice/workplace/brain-app/shop-pay/coupon，分支 %s" % p17.branch),
                 app_event(t + 20, "开了本机会话", store.TRUSTED)]
     p17.turn(t + 30)
-    p17.turn(t + 3 * M)
+    p17.turn(t + 20 * M)
     p17.verify(t + 24 * M, [("pytest -q", 1)])
     p17.verify(t + 31 * M, [("pytest -q", 0)])
-    p17.commit(t + 32 * M, "person", "PAY-17：订单优惠码 SAVE10 和 FULL100，带测试", files=3)
+    p17.commit(t + 32 * M, "person", preview_docs.PAY17_ONE)
+    p17.turn(t + 38 * M)
+    p17.verify(t + 41 * M, [("pytest -q", 0)])
+    p17.commit(t + 42 * M, "person", preview_docs.PAY17_TWO)
     reqs["r1"].append(p17)
+    # its session's transcript as the app adds it up (sessions.Spent): three turns, alice's two messages between them
+    said17 = [("user", 30), ("assistant", 5 * M), ("tool", 8 * M), ("assistant", 12 * M), ("user", 20 * M),
+              ("tool", 24 * M), ("tool", 31 * M), ("assistant", 33 * M), ("user", 38 * M), ("tool", 41 * M),
+              ("assistant", 44 * M)]
+    p17_stats = dict(sessions_mod.spend([{"role": role, "content": "", "meta": {}, "ts": iso(t + dt)} for role, dt in said17],
+                                        busy=False), busy=False, whole=True)
     p17_sess = dict(det["sessions"][0], slot="brain-PAY-17-5e1a", url="/chat?sid=brain-PAY-17-5e1a", title="PAY-17 订单优惠码",
-                    credits=2.4, turns=3, busy=False, awaiting=False, last_activity=t + 33 * M, opened_at=t + 20)
+                    credits=2.4, turns=3, busy=False, awaiting=False, last_activity=t + 44 * M, opened_at=t + 20)
     row = copy.deepcopy(rows["PAY-3"])
-    row.update(key="PAY-17", title=p17.title, owner="alice", branch=p17.branch, intent=None, credits=2.4, updated_at=t + 33 * M,
+    row.update(key="PAY-17", title=p17.title, owner="alice", branch=p17.branch, intent=None, credits=2.4, updated_at=t + 44 * M,
                summary="订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。", sessions=1,
                expected_paths=["shop/coupon.py"], overlap=[], open_questions=[], mr=None,
                worktree="/Users/alice/workplace/brain-app/shop-pay/coupon")
     extra_rows.append(classified(p17, row, slot=p17_sess))
-    board_later(p17, row, sessions=[p17_sess], credits=2.4, mr_desc=mrdesc(p17, row["summary"]))
+    board_later(p17, row, sessions=[p17_sess], stats=[p17_stats], credits=2.4, mr_desc=mrdesc(p17, row["summary"]))
 
     # PAY-18 (快速): done on this machine this morning, its MR !12 opened from 需求现状; CI passed on its head: it waits for
     # people to review and merge it
@@ -1538,6 +1563,25 @@ def world(scratch: Path) -> None:
                worktree="/Users/alice/workplace/brain-app/shop-pay/refund-csv")
     extra_rows.append(classified(p18, row, mr=mr18))
     board_later(p18, row, credits=5.6, mr=mr18, mr_desc=mrdesc(p18, row["summary"]))
+
+    # PAY-19 (快速): bob's, done on his machine; its MR !13 passed CI and waits to be reviewed: alice's machine reads it
+    # from GitLab, as every teammate's does
+    p19 = Req("r1", "PAY-19", "发票抬头记住上次填的", "bob", "invoice-title", None, project="shop/shop-pay", mode="fast")
+    p19.elsewhere = True
+    p19.claim_at = T0 - 6 * H
+    t = p19.start_at = T0 - 6 * H + 3 * M
+    p19.verify(t + 40 * M, [("pytest -q", 0)])
+    head19 = p19.commit(t + 42 * M, "person", "PAY-19：发票抬头记住上次填的，带测试", files=2)
+    reqs["r1"].append(p19)
+    mr19 = {"iid": 13, "url": "%s/shop/shop-pay/-/merge_requests/13" % GL, "state": "opened", "sha": head19, "labels": [],
+            "questions": [], "pipelines": [{"id": 1311, "status": "success", "sha": head19, "at": t + 55 * M,
+                                            "url": "%s/shop/shop-pay/-/pipelines/1311" % GL}]}
+    row = copy.deepcopy(rows["PAY-3"])
+    row.update(key="PAY-19", title=p19.title, owner="bob", branch=p19.branch, intent=None, credits=None, updated_at=t + 55 * M,
+               summary="开发票时记住上次填的抬头和税号。", sessions=0, expected_paths=["shop/invoice.py"], overlap=[],
+               open_questions=[], mr={"iid": 13, "url": mr19["url"], "state": "opened"}, session_url=None, worktree=None)
+    extra_rows.append(classified(p19, row, mr=mr19))
+    board_later(p19, row, mr=mr19, mr_desc=mrdesc(p19, row["summary"]))
 
     # PAY-9 (Scenario B, the mockup's story; 16:15 is now): alice's requirements and design approved on this machine
     # (INCEPTION), split into api and web, handed over at 11:05. Its run on the team runner (RUN-PAY-9-1) checks on
