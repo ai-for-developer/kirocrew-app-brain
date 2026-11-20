@@ -44,29 +44,45 @@ def utc_today():
 
 
 class FakeGitLab:
-    """GitLab REST v4 for project grp/pay (id 42). Tokens: the person's (alice, Maintainer) and the project access
-    tokens it makes, each with its own bot user, only with scopes a project token may have and ending at most 365 days
-    from today (400 otherwise); rotating one gives a new value of the same bot user and revokes the old one, and
-    rotating a revoked one revokes every token of its bot user (GitLab's reuse detection). A token ends at the start of
-    its expires_at (UTC). members: (username, access level), and a token's bot user at its level, as GitLab adds it.
-    GET /user needs api, read_api or read_user, as on GitLab. Every request is kept in calls
-    (method, path, query, body); fail holds one-shot answers (method, path, status, who): who is None (any token), a
-    token, or a test on the token."""
+    """GitLab REST v4 for one project, grp/pay (id 42) unless named. Tokens: the person's (alice, Maintainer: level)
+    and the project access tokens it makes, each with its own bot user, only with scopes a project token may have and
+    ending at most 365 days from today (400 otherwise); rotating one gives a new value of the same bot user and revokes
+    the old one, and rotating a revoked one revokes every token of its bot user (GitLab's reuse detection). A token ends
+    at the start of its expires_at (UTC). members: (username, access level), and a token's bot user at its level, as
+    GitLab adds it; anyone but alice sees the project as a member only, at their level. users and scopes may be shared
+    with other projects' fakes (FakeTeam). GET /user needs api, read_api or read_user, as on GitLab. Every request is
+    kept in calls (method, path, query, body, the token's username); fail holds one-shot answers (method, path, status,
+    who): who is None (any token), a token, or a test on the token."""
 
     def __init__(self, admin, ssh_url, kit, level=40,
-                 members=(("alice", 40), ("bob", 30), ("carol", 30), ("rita", 20)), labels=("ai-handoff",)):
-        self.users = {admin: {"id": 1, "username": "alice", "name": "Alice", "email": "alice@example.com"}}
-        self.scopes = {admin: ["api"]}
+                 members=(("alice", 40), ("bob", 30), ("carol", 30), ("rita", 20)), labels=("ai-handoff",),
+                 path=P, pid=PID, users=None, scopes=None):
+        self.path, self.pid = path, pid
+        self.users = {} if users is None else users
+        self.scopes = {} if scopes is None else scopes
+        self.users.setdefault(admin, {"id": 1, "username": "alice", "name": "Alice", "email": "alice@example.com"})
+        self.scopes.setdefault(admin, ["api"])
         self.level, self.members, self.labels = level, list(members), list(labels)
         self.ssh_url = ssh_url
         self.files = {"main": {".brain/kit.json": kit}}
         self.tokens, self.mrs, self.calls, self.fail = [], [], [], []
         self.revoked = set()
 
-    def project(self):
-        return {"id": PID, "path_with_namespace": P, "default_branch": "main", "web_url": BASE + "/" + P,
-                "ssh_url_to_repo": self.ssh_url, "http_url_to_repo": "%s/%s.git" % (BASE, P),
-                "permissions": {"project_access": {"access_level": self.level}, "group_access": None}}
+    def prefix(self, path):
+        """The part of *path* that names this project (/api/v4/projects/<path or id>); None: another one's, or none."""
+        return next(("%s/projects/%s" % (API, k) for k in (self.path, str(self.pid))
+                     if path == "%s/projects/%s" % (API, k) or path.startswith("%s/projects/%s/" % (API, k))), None)
+
+    def level_of(self, username):
+        """*username*'s access level in the project as a member (0: none); alice's is level."""
+        return self.level if username == "alice" else max([lv for n, lv in self.members if n == username] or [0])
+
+    def project(self, tok=None):
+        level = self.level_of((self.users.get(tok) or {"username": "alice"})["username"])
+        return {"id": self.pid, "path_with_namespace": self.path, "default_branch": "main",
+                "web_url": BASE + "/" + self.path, "ssh_url_to_repo": self.ssh_url,
+                "http_url_to_repo": "%s/%s.git" % (BASE, self.path),
+                "permissions": {"project_access": {"access_level": level}, "group_access": None}}
 
     def made(self, name):
         """The tokens of this name POST /access_tokens made (a rotation's new value is not one)."""
@@ -90,7 +106,7 @@ class FakeGitLab:
         n = len(self.tokens) + 1
         value = "fake-bot-%d-%s" % (n, secrets.token_hex(8))
         if user_id is None:
-            user_id, user = 100 + n, "project_%d_bot_%s" % (PID, secrets.token_hex(4))
+            user_id, user = 100 + n, "project_%d_bot_%s" % (self.pid, secrets.token_hex(4))
             self.users[value] = {"id": user_id, "username": user, "name": fields["name"], "bot": True,
                                  "email": "%s@noreply.gitlab.example.com" % user}
             self.members.append((user, fields["access_level"]))
@@ -125,7 +141,7 @@ class FakeGitLab:
         path, q = unquote(u.path), dict(parse_qsl(u.query))
         data = json.loads(body.decode()) if body else None
         tok = headers.get("PRIVATE-TOKEN")
-        self.calls.append((method, path, q, data))
+        self.calls.append((method, path, q, data, (self.users.get(tok) or {}).get("username")))
         for f in self.fail:
             who = f[3]
             if f[0] == method and f[1] == path and (who is None or who == tok or callable(who) and who(tok)):
@@ -139,15 +155,12 @@ class FakeGitLab:
             if not {"api", "read_api", "read_user"} & set(self.scopes[tok]):
                 return ok({"error": "insufficient_scope"}, 403)
             return ok(self.users[tok])
-        pre = None
-        for key in (P, str(PID)):
-            if path == "%s/projects/%s" % (API, key) or path.startswith("%s/projects/%s/" % (API, key)):
-                pre = "%s/projects/%s" % (API, key)
-        if pre is None:
+        pre = self.prefix(path)
+        if pre is None or not self.level_of(self.users[tok]["username"]):
             return ok({"message": "404 Project Not Found"}, 404)
         rest = path[len(pre):]
         if rest == "" and method == "GET":
-            return ok(self.project())
+            return ok(self.project(tok))
         m = re.fullmatch(r"/repository/files/(.+)/raw", rest)
         if m and method == "GET":
             text = self.files.get(q.get("ref"), {}).get(m.group(1))
@@ -186,6 +199,13 @@ class FakeGitLab:
         if rest == "/members/all" and method == "GET":
             return ok(self.page([{"id": i, "username": n, "access_level": lv}
                                  for i, (n, lv) in enumerate(self.members)], q))
+        m = re.fullmatch(r"/members/all/(\d+)", rest)
+        if m and method == "GET":
+            user = next((u for u in self.users.values() if u["id"] == int(m.group(1))), None)
+            level = self.level_of(user["username"]) if user else 0
+            if not level:
+                return ok({"message": "404 Not found"}, 404)
+            return ok({"id": user["id"], "username": user["username"], "access_level": level})
         m = re.fullmatch(r"/repository/branches/(.+)", rest)
         if m and method == "GET":
             return ok({"name": m.group(1)}) if m.group(1) in self.files else ok({"message": "404 Branch Not Found"}, 404)
@@ -200,7 +220,7 @@ class FakeGitLab:
             return ok([m for m in self.mrs if m["state"] == q.get("state") and m["source_branch"] == q.get("source_branch")])
         if rest == "/merge_requests" and method == "POST":
             iid = 7 + len(self.mrs)
-            mr = dict(data, iid=iid, state="opened", web_url="%s/%s/-/merge_requests/%d" % (BASE, P, iid))
+            mr = dict(data, iid=iid, state="opened", web_url="%s/%s/-/merge_requests/%d" % (BASE, self.path, iid))
             self.mrs.append(mr)
             return ok(mr, 201)
         return ok({"message": "404 (fake)"}, 404)
@@ -368,7 +388,7 @@ def test_a_first_run_builds_the_runner_and_waits_for_the_kit_mr(world):
                               "runnerd_config": str(ps.runnerd_json), "dev_same_user": True}]
     assert "合并以前" in by["team_mode"]["message"] and world["signer"][0] == s
     state = json.loads(ps.state.read_text())
-    assert saved_tokens(state)["bridge"]["username"] == bot and state["project"]["id"] == PID and not state["running"]
+    assert saved_tokens(state)["bridge"]["username"] == bot and state["projects"][0]["id"] == PID and not state["running"]
 
 
 def test_a_second_run_makes_nothing_new(world):
@@ -673,7 +693,7 @@ def test_the_input_is_read_at_the_boundary():
     setup = mod("team.setup")
     got = setup.SetupInput.parse({"gitlab_base": BASE + "/", "project": BASE + "/grp/sub/pay/-/tree/main",
                                   "admin_token": " tok-123456 ", "roles": {"product": "@Carol，dave", "builder": []}})
-    assert (got.gitlab_base, got.project, got.admin_token, got.push) == (BASE, "grp/sub/pay", "tok-123456", "auto")
+    assert (got.gitlab_base, got.projects, got.admin_token, got.push) == (BASE, ("grp/sub/pay",), "tok-123456", "auto")
     assert got.patrol is True and got.public()["patrol"] is True     # 巡检所有开着的 MR: on unless the page says no
     assert setup.SetupInput.parse({"gitlab_base": BASE, "project": P, "admin_token": "tok-123456",
                                    "patrol": False}).public()["patrol"] is False
@@ -874,3 +894,300 @@ def test_the_command_line_says_one_line_per_step(world):
     assert second.returncode == 0 and world["gl"].writes(seen) == [], second.stdout + second.stderr
     assert "✓ 桥的令牌  用上次建的项目令牌 brain-bridge" in second.stdout
     assert world["admin"] not in first.stdout + first.stderr + second.stdout + second.stderr
+
+
+# ---- bot-account: one runner, several projects, as GitLab users of its own ---------------------------------------- #
+
+TEAM = (("grp/a", 51), ("grp/b", 52), ("grp/c", 53))
+LABELS4 = ["ai-handoff", "ai-handoff-rejected", "ai-running", "brain-reflect"]
+BRIDGE_ID, BOT_ID = 201, 202
+# the people of each project besides alice (Maintainer everywhere) and the runner's two accounts (Developer everywhere)
+PEOPLE = {"grp/a": (("bob", 30), ("dave", 20)), "grp/b": (("carol", 30),), "grp/c": (("erin", 30),)}
+
+
+class FakeTeam:
+    """One GitLab with several projects, a FakeGitLab each (its files, labels, members, MRs and calls), sharing their
+    users: alice (the one-time token), and brain-bridge and brain-bot by personal tokens (pat()). GET
+    /personal_access_tokens/self shows a personal token's scopes and last day to a token that reaches the API (api or
+    read_api). A request about a project goes to its fake; GET /user and a token's record are answered here, and a
+    project no fake has is not found."""
+
+    def __init__(self, admin, projects):
+        self.users, self.scopes, self.pats = {}, {}, {}
+        self.repos = {path: FakeGitLab(admin, ssh, kit, members=members, path=path, pid=pid, users=self.users,
+                                       scopes=self.scopes)
+                      for path, (pid, ssh, kit, members) in projects.items()}
+
+    def pat(self, uid, username, scopes, days=200):
+        """A new personal token of user *uid* (made at run time): its value."""
+        tok = "fake-pat-" + secrets.token_hex(10)
+        same = next((u for u in self.users.values() if u["id"] == uid), None)
+        self.users[tok] = same or {"id": uid, "username": username, "name": username.title(),
+                                   "email": "%s@example.com" % username}
+        self.scopes[tok] = list(scopes)
+        self.pats[tok] = {"id": 900 + len(self.pats), "name": "runner", "scopes": list(scopes), "active": True,
+                          "revoked": False, "user_id": uid,
+                          "expires_at": (utc_today() + timedelta(days=days)).isoformat()}
+        return tok
+
+    def revoke(self, tok):
+        self.pats[tok].update(active=False, revoked=True)
+        del self.users[tok]
+
+    def seen(self):
+        """How many requests each project has had so far."""
+        return {path: len(r.calls) for path, r in self.repos.items()}
+
+    def writes(self, since=None):
+        """Each project's writes since *since* (a seen())."""
+        return {path: r.writes((since or {}).get(path, 0)) for path, r in self.repos.items()}
+
+    def __call__(self, method, url, headers, body):
+        path = unquote(urlsplit(url).path)
+        repo = next((r for r in self.repos.values() if r.prefix(path)), None)
+        if repo is not None:
+            return repo(method, url, headers, body)
+        ok = lambda o, s=200: (s, json.dumps(o).encode())  # noqa: E731
+        tok = headers.get("PRIVATE-TOKEN")
+        if tok not in self.users:
+            return ok({"message": "401 Unauthorized"}, 401)
+        scopes = set(self.scopes[tok])
+        if path == API + "/user":
+            return ok(self.users[tok]) if scopes & {"api", "read_api", "read_user"} else \
+                ok({"error": "insufficient_scope"}, 403)
+        if path == API + "/personal_access_tokens/self" and tok in self.pats:
+            return ok(self.pats[tok]) if scopes & {"api", "read_api"} else ok({"error": "insufficient_scope"}, 403)
+        return ok({"message": "404 Project Not Found"}, 404)
+
+
+@pytest.fixture
+def team(tmp_path, home):
+    bk = mod("bk")
+    assert bk.load(str(BRAINKIT))["ok"]
+    kit = kit_file(tmp_path)
+    projects = {}
+    for path, pid in TEAM:
+        bare = tmp_path / "origin" / (path + ".git")
+        bare.parent.mkdir(parents=True, exist_ok=True)
+        sh("git", "init", "-q", "--bare", bare)
+        projects[path] = (pid, str(bare), kit, (("alice", 40),) + PEOPLE[path] + (("brain-bridge", 30), ("brain-bot", 30)))
+    admin = "fake-" + secrets.token_hex(12)
+    gl = FakeTeam(admin, projects)
+    yield {"tmp": tmp_path, "home": home, "admin": admin, "gl": gl, "team": [], "signer": [],
+           "bridge": gl.pat(BRIDGE_ID, "brain-bridge", ["api"]),
+           "bot": gl.pat(BOT_ID, "brain-bot", ["write_repository", "read_user"])}
+    bk.unload()
+
+
+def team_reach(world):
+    """git ls-remote in bot-account mode: the bare repos (the projects' SSH addresses) with real git; GitLab's HTTPS
+    address with a live personal token whose user is a Developer or more of the project in it."""
+    common = mod("bk").m("common")
+
+    def reach(url):
+        if url.startswith("https://"):
+            gl, project = world["gl"], unquote(urlsplit(url).path).strip("/")[:-len(".git")]
+            ok = any("oauth2:%s@" % quote(t, safe="") in url and gl.repos[project].level_of(gl.users[t]["username"]) >= 30
+                     for t in gl.pats if t in gl.users)
+            return ok, "" if ok else "fatal: unable to access '%s': The requested URL returned error: 403" % url
+        p = common.git_net(str(world["tmp"]), "ls-remote", url, "HEAD", timeout=20, check=False)
+        return p.returncode == 0, (p.stderr or p.stdout).strip()
+    return reach
+
+
+def team_ctx(world, projects=("grp/a", "grp/b"), push="token", admin=True, bridge=True, bot=True, roles=None):
+    """bot-account on *projects*. admin, bridge, bot: whether this run types the one-time token and the two accounts'
+    personal tokens (False: left out; a string: that token)."""
+    setup, rest = mod("team.setup"), mod("bk").m("rest")
+    typed = lambda given, key: given if isinstance(given, str) else world[key] if given else ""  # noqa: E731
+    inp = setup.SetupInput.parse({
+        "gitlab_base": BASE, "mode": "bot-account", "projects": list(projects), "push": push,
+        "roles": {"product": "bob", "builder": "carol"} if roles is None else roles,
+        "admin_token": typed(admin, "admin"), "bridge_token": typed(bridge, "bridge"), "bot_token": typed(bot, "bot")})
+    paths = setup.Paths.default(BRAINKIT, root=world["tmp"] / "team-setup")
+    return setup.Ctx(inp, paths, gitlab=lambda tok: rest.GitLab(BASE, tok, world["gl"]), team_mode=team_mode(world),
+                     signer=fake_signer(world), reach=team_reach(world))
+
+
+def build_team(world, **kw):
+    setup = mod("team.setup")
+    ctx = team_ctx(world, **kw)
+    with setup.Lock(ctx.paths.root):
+        return setup.run(ctx), ctx.paths
+
+
+def rows(view, sid):
+    return [(x["project"], x["status"]) for x in step(view, sid)["projects"]]
+
+
+def test_one_runner_serves_two_projects_as_gitlab_users_of_its_own(team):
+    """grp/a and grp/b with brain-bridge's and brain-bot's personal tokens, the one-time token making the labels and
+    MRs: no project token is made; each project gets its labels and its own kit.json MR naming the two accounts; the
+    configs list both, identities.json has the people of both and no account of the runner's."""
+    view, ps = build_team(team)
+    gl = team["gl"]
+    assert everything_done(view), [(s["id"], s["status"], s["message"], s["detail"][:200]) for s in view["steps"]]
+    assert not [c for r in gl.repos.values() for c in r.calls if "/access_tokens" in c[1]]
+    for key in ("bridge", "bot"):
+        assert ps.token(key).read_text().strip() == team[key] and mode(ps.token(key)) == "0o600"
+    b, r, s = (json.loads(p.read_text()) for p in (ps.bridge_json, ps.runnerd_json, ps.signer_json))
+    assert b["projects"] == s["projects"] == ["grp/a", "grp/b"]
+    assert s["bridge_users"] == ["brain-bridge"] and s["gitlab"]["token_file"] == b["gitlab"]["token_file"] == str(ps.token("bridge"))
+    assert r["clone_url"] == "https://oauth2:%s@gitlab.example.com/{project}.git" % team["bot"]
+    assert (r["git_name"], r["git_email"]) == ("Brain-Bot", "brain-bot@example.com")
+    mrs = step(view, "kit_mr")
+    assert (mrs["status"], mrs["message"], mrs["link"]) == ("waiting", "2 个项目的 kit.json MR 等你在 GitLab 上合并", None)
+    assert rows(view, "kit_mr") == [("grp/a", "waiting"), ("grp/b", "waiting")]
+    for row in mrs["projects"]:
+        repo = gl.repos[row["project"]]
+        assert len(repo.mrs) == 1 and row["link"] == repo.mrs[0]["web_url"] == "%s/%s/-/merge_requests/7" % (BASE, row["project"])
+        assert row["message"] == "开了 MR !7：请在 GitLab 上合并这个 MR"
+        kit = json.loads(repo.files["brain/runner-setup"][KIT])
+        assert (kit["bridge_user"], kit["bot_users"], kit["bot_emails"]) == ("brain-bridge", ["brain-bot"], ["brain-bot@example.com"])
+        assert kit["gitlab"]["project"] == row["project"] and sorted(repo.labels) == LABELS4
+    assert rows(view, "labels") == rows(view, "project") == [("grp/a", "done"), ("grp/b", "done")]
+    assert json.loads(ps.identities.read_text()) == {
+        "users": {"alice": {}, "bob": {}, "carol": {}},
+        "roles": {"product": ["bob"], "builder": ["carol"], "security": ["alice"], "data": ["alice"]}}
+    assert [x["message"] for x in step(view, "identities")["projects"]] == [
+        "2 个 Developer 以上的人；carol 不是这个项目的成员，答不了这里的问题",
+        "2 个 Developer 以上的人；bob 不是这个项目的成员，答不了这里的问题"]
+    assert {c[4] for r in gl.repos.values() for c in r.writes()} == {"alice"}      # the one-time token made them
+    assert step(view, "team_mode")["message"] == "团队模式开了；可是 grp/a、grp/b 的 kit.json MR 合并以前，这些项目的交接都会被拒"
+    assert team["signer"][0] == s and view["accounts"] == {"bridge": "brain-bridge", "bot": "brain-bot"}
+    state = ps.state.read_text()
+    assert team["admin"] not in state and team["bridge"] not in state and team["bot"] not in state
+    from test_contract import diff_keys, fixture
+    assert diff_keys(fixture("team-setup-bot.json"), json.loads(json.dumps(view))) == []
+
+
+def test_without_a_one_time_token_brain_bridge_makes_the_labels_and_mrs(team):
+    """No one-time token: brain-bridge finds the projects and makes their labels and MRs, as a Developer. The runner
+    pushes over this machine's SSH, each kit.json keeping its own bot_users. 产品 and 开发 are typed then, and 安全 and
+    数据 are the 开发 people."""
+    setup = mod("team.setup")
+    view, ps = build_team(team, admin=False, bot=False, push="ssh")
+    gl = team["gl"]
+    assert everything_done(view), [(s["id"], s["status"], s["message"], s["detail"][:200]) for s in view["steps"]]
+    assert {c[4] for r in gl.repos.values() for c in r.writes()} == {"brain-bridge"} and len(gl.repos["grp/b"].mrs) == 1
+    assert step(view, "project")["projects"][0]["message"] == "默认分支 main；桥的账号（brain-bridge）是 Developer"
+    assert json.loads(ps.runnerd_json.read_text())["clone_url"] == str(team["tmp"] / "origin") + "/{project}.git"
+    assert not ps.token("bot").exists() and view["accounts"] == {"bridge": "brain-bridge", "bot": ""}
+    kit = json.loads(gl.repos["grp/b"].files["brain/runner-setup"][KIT])
+    assert (kit["bridge_user"], kit["bot_users"]) == ("brain-bridge", ["brain-bot"])
+    assert json.loads(ps.identities.read_text())["roles"] == {"product": ["bob"], "builder": ["carol"],
+                                                             "security": ["carol"], "data": ["carol"]}
+    with pytest.raises(setup.SetupRefused, match="「产品」和「开发」要填上"):
+        team_ctx(team, admin=False, roles={"product": "bob"})
+
+
+def test_a_project_added_later_with_the_kept_tokens_writes_nothing_in_the_others(team):
+    """grp/c added weeks later, the personal tokens left out (the ones kept are used): grp/c gets its labels and its
+    MR; grp/a (its MR merged) and grp/b (its MR still open) get no write; the configs and identities.json take grp/c
+    in."""
+    build_team(team)
+    gl = team["gl"]
+    gl.repos["grp/a"].merge(7)
+    since = gl.seen()
+    view, ps = build_team(team, projects=("grp/a", "grp/b", "grp/c"), bridge=False, bot=False)
+    assert everything_done(view), [(s["id"], s["status"], s["message"], s["detail"][:200]) for s in view["steps"]]
+    wrote = gl.writes(since)
+    assert wrote["grp/a"] == [] and wrote["grp/b"] == [] and len(gl.repos["grp/c"].mrs) == 1
+    assert sorted(gl.repos["grp/c"].labels) == LABELS4
+    assert [(x["project"], x["status"], x["message"]) for x in step(view, "kit_mr")["projects"]] == [
+        ("grp/a", "done", "默认分支上的 .brain/kit.json 已经写好了运行机要的几项"),
+        ("grp/b", "waiting", "还没合并 MR !7：请在 GitLab 上合并这个 MR"),
+        ("grp/c", "waiting", "开了 MR !7：请在 GitLab 上合并这个 MR")]
+    for path in (ps.bridge_json, ps.signer_json):
+        assert json.loads(path.read_text())["projects"] == ["grp/a", "grp/b", "grp/c"]
+    assert sorted(json.loads(ps.identities.read_text())["users"]) == ["alice", "bob", "carol", "erin"]
+    assert step(view, "bridge_token")["message"].startswith("桥的账号是 brain-bridge：用这台机器上存的个人令牌，")
+    assert "推送的账号是 brain-bot：用这台机器上存的个人令牌" in step(view, "push")["message"]
+    assert step(view, "team_mode")["message"] == "团队模式开了；可是 grp/b、grp/c 的 kit.json MR 合并以前，这些项目的交接都会被拒"
+
+
+def test_a_project_taken_out_leaves_the_runner_and_nothing_is_written(team):
+    """grp/b taken out: the configs and identities.json lose it and its people (carol); grp/b is not even looked at,
+    and no project gets a write."""
+    roles = {"product": "bob", "builder": "erin"}
+    build_team(team, projects=("grp/a", "grp/b", "grp/c"), roles=roles)
+    gl = team["gl"]
+    since = gl.seen()
+    view, ps = build_team(team, projects=("grp/a", "grp/c"), roles=roles)
+    assert everything_done(view), [(s["id"], s["status"], s["message"], s["detail"][:200]) for s in view["steps"]]
+    assert gl.writes(since) == {"grp/a": [], "grp/b": [], "grp/c": []} and len(gl.repos["grp/b"].calls) == since["grp/b"]
+    for path in (ps.bridge_json, ps.signer_json):
+        assert json.loads(path.read_text())["projects"] == ["grp/a", "grp/c"]
+    assert sorted(json.loads(ps.identities.read_text())["users"]) == ["alice", "bob", "erin"]
+    assert rows(view, "kit_mr") == [("grp/a", "waiting"), ("grp/c", "waiting")]
+    assert sorted(json.loads(ps.state.read_text())["kit_mr"]) == ["grp/a", "grp/c"]
+    view, _ = build_team(team, projects=("grp/a", "grp/c"), roles={"product": "bob", "builder": "carol"})
+    assert step(view, "identities")["message"] == \
+        "这些人不是这几个项目里任何一个的成员：carol。先在 GitLab 上把他们加进项目，或者改填别人"
+
+
+def test_a_project_gitlab_does_not_have_fails_its_own_row_and_the_others_are_still_looked_at(team):
+    view, ps = build_team(team, projects=("grp/a", "grp/nope", "grp/b"))
+    found = step(view, "project")
+    assert (found["status"], found["message"]) == ("failed", "3 个项目里 1 个没成：grp/nope")
+    assert rows(view, "project") == [("grp/a", "done"), ("grp/nope", "failed"), ("grp/b", "done")]
+    assert found["projects"][1]["message"].startswith("GitLab 上找不到 grp/nope：") and "404" in found["projects"][1]["detail"]
+    assert {statuses(view)[k] for k in ("bridge_token", "labels", "kit_mr", "configs")} == {"todo"}
+    assert team["gl"].writes() == {"grp/a": [], "grp/b": [], "grp/c": []} and not ps.bridge_json.exists()
+
+
+def test_the_two_accounts_are_developers_everywhere_and_users_of_their_own(team):
+    """brain-bridge a Reporter in grp/b; the person's own token typed as the bridge's; a second token of brain-bridge
+    typed as the bot's; a bridge token without api: each stops at its step with what to do, and a token refused is
+    never kept."""
+    gl = team["gl"]
+    b = gl.repos["grp/b"]
+    b.members = [m for m in b.members if m[0] != "brain-bridge"] + [("brain-bridge", 20)]
+    view, ps = build_team(team)
+    assert step(view, "bridge_token")["message"] == \
+        "桥的账号 brain-bridge 在 grp/b 是 Reporter：每个项目里都要是 Developer 以上，在 GitLab 上把它加进去"
+    assert not ps.token("bridge").exists() and gl.writes() == {"grp/a": [], "grp/b": [], "grp/c": []}
+    b.members.append(("brain-bridge", 30))
+    view, _ = build_team(team, bridge=gl.pat(1, "alice", ["api"]))
+    assert step(view, "bridge_token")["message"].startswith("桥的账号的个人令牌就是你自己（alice）：")
+    view, _ = build_team(team, bot=gl.pat(BRIDGE_ID, "brain-bridge", ["write_repository", "read_user"]))
+    assert step(view, "push")["message"] == "机器人账号和桥的账号是同一个 GitLab 用户 brain-bridge：要两个不同的用户，运行机不能替桥说话"
+    view, _ = build_team(team, bridge=gl.pat(BRIDGE_ID, "brain-bridge", ["read_api"]))
+    assert step(view, "bridge_token")["message"].startswith("桥的账号的个人令牌（brain-bridge 的）没有 api 权限：")
+    assert ps.token("bridge").read_text().strip() == team["bridge"]     # the one that passed, not the one without api
+    assert not ps.token("bot").exists() and not ps.bridge_json.exists()
+
+
+def test_a_personal_token_left_out_takes_the_one_kept_while_it_still_signs_in(team):
+    gl = team["gl"]
+    view, _ = build_team(team, bridge=False)
+    assert step(view, "bridge_token")["message"] == "填上桥的账号的个人令牌"
+    build_team(team)
+    gl.revoke(team["bridge"])
+    view, _ = build_team(team, bridge=False, bot=False)
+    assert step(view, "bridge_token")["message"] == \
+        "填上桥的账号的个人令牌：这台机器上存的那个不能用了（过期了、撤掉了，或者换成了别的）"
+    new = gl.pat(BRIDGE_ID, "brain-bridge", ["api"])
+    view, ps = build_team(team, bridge=new, bot=False)
+    assert everything_done(view) and ps.token("bridge").read_text().strip() == new
+
+
+def test_the_projects_and_the_accounts_are_read_at_the_boundary():
+    setup = mod("team.setup")
+    got = setup.SetupInput.parse({
+        "gitlab_base": BASE, "mode": "bot-account", "roles": {"product": "bob", "builder": "carol"},
+        "projects": "grp/a\n %s/grp/b/-/tree/main\nGRP/A，grp/c.git\n\n" % BASE,
+        "bridge_token": " tok-bridge-1 ", "bot_token": "tok-bot-22"})
+    assert (got.mode, got.projects, got.admin_token, got.bridge_token, got.bot_token) == \
+        ("bot-account", ("grp/a", "grp/b", "grp/c"), "", "tok-bridge-1", "tok-bot-22")
+    assert "tok-" not in repr(got) and "tok-" not in json.dumps(got.public())
+    assert got.public()["projects"] == ["grp/a", "grp/b", "grp/c"] and got.public()["mode"] == "bot-account"
+    for bad, said in (({"projects": ["grp/a", "grp/b"], "admin_token": "tok-123456"}, "账号选「机器人账号」"),
+                      ({"mode": "bot-account", "projects": ["grp/a"], "roles": {"product": "bob"}}, "「产品」和「开发」要填上"),
+                      ({"mode": "bot-account", "projects": ["grp/a"], "admin_token": "tok-123456",
+                        "bridge_token": "tok-same", "bot_token": "tok-same"}, "两个不同的 GitLab 用户"),
+                      ({"mode": "bot-account", "projects": "grp/a\npay", "admin_token": "tok-123456"}, "「pay」要写成"),
+                      ({"mode": "robots", "project": P, "admin_token": "tok-123456"}, "账号只能是")):
+        with pytest.raises(setup.SetupRefused, match=said):
+            setup.SetupInput.parse(dict({"gitlab_base": BASE}, **bad))
+

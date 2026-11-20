@@ -1,22 +1,40 @@
-"""一键建运行机: the team runner in same-user mode, built by the app from one GitLab token typed once.
+"""一键建运行机: the team runner in same-user mode, built by the app from GitLab tokens typed once.
 
 MIGRATE.md 第二、三部分 as one ordered table (STEPS) for the trial where the signer, the app and the agents are one OS user
 (settings team.dev_same_user): no sudo, no second user, nothing under /etc. Each step looks at what is there and makes
 only what is missing, so the table runs again safely: a second run makes nothing new, and a run that stopped part-way
-converges when it runs again. The first failed step stops the run; a step that waits for a person (the kit.json MR)
+converges when it runs again. The first failed step stops the run; a step that waits for a person (the kit.json MRs)
 does not.
 
+Where the runner's GitLab accounts come from (SetupInput.mode):
+  project-token  one project. The person's one-time token (Maintainer or Owner) makes the project access tokens
+                 brain-bridge, and brain-bot when the runner pushes with a token, keeps them for a year and gives them a
+                 new value in their last 14 days. A project token sees its own project only.
+  bot-account    one project or several. A GitLab user of the bridge's own (brain-bridge, Developer in every project)
+                 and its personal token (api); the runner pushes over this machine's SSH, or as a second user (brain-bot,
+                 Developer) with its personal token (write_repository, read_user). Nothing is made or rotated: the tokens
+                 are the person's, kept under the root, and a later run that leaves one out uses the one kept while it
+                 still signs in as that account. The one-time token is optional: without it the labels and the kit.json
+                 MRs are made as brain-bridge.
+A step about the projects (finding them, the labels, the members, the kit.json MR) does its work for each of them, every
+one even after another failed, and keeps each one's result (StepResult.projects) when there are two or more. bridge.json
+and signer.json list them all, and identities.json holds the members of all of them; runnerd clones each from one
+address. A run with a project added or taken out writes nothing in the projects that stay.
+
 Under one root (default ~/.brain/team-setup; files 0600, folders 0700):
-  setup-state.json       the last run: each step's result and what the steps found (the project, the tokens' ids and
-                         bot usernames, how the runner pushes, the MR), with times. Nothing secret.
-  bridge-gitlab-token    project access token brain-bridge (api, Developer): the bridge's and the signer's GitLab
-  bot-gitlab-token       project access token brain-bot (token push mode only): runnerd's clone and the runs' pushes
+  setup-state.json       the last run: each step's result and what the steps found (the projects, the project tokens'
+                         ids and bot usernames, the accounts of the personal tokens kept, how the runner pushes, the MRs
+                         that wait), with times. Nothing secret.
+  bridge-gitlab-token    the bridge's and the signer's GitLab token (api): project access token brain-bridge
+                         (Developer), or brain-bridge's personal token
+  bot-gitlab-token       runnerd's clone and the runs' pushes, when the runner pushes with a token: project access token
+                         brain-bot, or the bot user's personal token
   identities.json, keys/, bridge.json, runnerd.json, signer.json, the spools, vouchers and ledgers, signer.pid / .log
 Under ~/workplace/brain-team (KiroCrew lets agents work only under ~/workplace): runs/ and cache/, and MR 巡检's clones
 in patrol/. The agents: ~/.kiro/agents/brain-run.json, and brain-patrol.json beside it when 巡检所有开着的 MR is on (the
-kit.json MR then also switches work source mr-patrol on). The person's token (SetupInput.admin_token) lives in memory
-for one run: it is never written, logged or answered, and text from GitLab or a command goes through Ctx.redact before
-it is kept.
+kit.json MRs then also switch work source mr-patrol on). The person's one-time token (SetupInput.admin_token) lives in
+memory for one run: it is never written, logged or answered, and text from GitLab or a command goes through Ctx.redact
+before it is kept.
 """
 
 from __future__ import annotations
@@ -48,8 +66,15 @@ except ImportError:  # pragma: no cover - not macOS or Linux: nothing keeps two 
 ROLES = ("product", "builder", "security", "data")
 ROLE_NAME = {"product": "产品", "builder": "开发", "security": "安全", "data": "数据"}
 PUSH_MODES = ("auto", "ssh", "token")
+PROJECT_TOKEN, BOT_ACCOUNT = "project-token", "bot-account"
+MODES = (PROJECT_TOKEN, BOT_ACCOUNT)
 LEVEL_NAME = {10: "Guest", 20: "Reporter", 30: "Developer", 40: "Maintainer", 50: "Owner"}
 MAINTAINER, DEVELOPER, OWNER = 40, 30, 50
+# the role the account that makes the labels and the kit.json MRs needs in each project: a project token is made by a
+# Maintainer
+MAKER_LEVEL = {PROJECT_TOKEN: MAINTAINER, BOT_ACCOUNT: DEVELOPER}
+MAKER_LOW = {PROJECT_TOKEN: "%s在 %s 是 %s：要 Maintainer 或 Owner 才能建项目令牌和标签",
+             BOT_ACCOUNT: "%s在 %s 是 %s：要 Developer 以上才能建标签、开 kit.json 的 MR"}
 # a year less a day from today in UTC: GitLab refuses an expires_at more than 365 days past its own today, which is
 # UTC's (this machine's may be a day ahead), or a day behind it on a GitLab set to a zone west of UTC
 TOKEN_DAYS = 364
@@ -62,6 +87,12 @@ BRIDGE_SCOPES = ("api",)
 # GET /user, which the reuse check and the bot's username and address come from, takes read_api (GitLab gives a project
 # token no read_user: it answers 400 to one asked with it)
 BOT_SCOPES = ("read_repository", "write_repository", "read_api")
+# bot-account mode: what the personal token of each account is called on the page, and the scopes it needs, any one of
+# them (git over HTTPS takes api as well as write_repository)
+ACCOUNT_NAME = {"bridge": "桥的账号的个人令牌", "bot": "机器人账号的个人令牌"}
+ACCOUNT_SCOPES = {"bridge": ("api",), "bot": ("write_repository", "api")}
+ACCOUNT_NEEDS = {"bridge": "没有 api 权限：桥要用它在 MR 上贴问题、改标签。在 GitLab 上给 %s 换一个有 api 的令牌",
+                 "bot": "没有 write_repository 权限：运行机要用它推代码。在 GitLab 上给 %s 换一个有 write_repository 的令牌"}
 SSH_BOT = ("brain-bot", "brain-bot@noreply.invalid")    # git_name, git_email of a runner pushing over this machine's SSH
 REACH_WAIT_S = 20
 KIT = ".brain/kit.json"
@@ -85,9 +116,12 @@ PROJECT_RE = re.compile(r"^[A-Za-z0-9_.][A-Za-z0-9_.-]*(?:/[A-Za-z0-9_.][A-Za-z0
 CTRL_RE = re.compile(r"[\x00-\x20\x7f]")
 HTTP_SAID = {400: "GitLab 不接受这一步的请求（HTTP 400）：再跑一次也一样，看细节里 GitLab 说的原因",
              401: "GitLab 不认这个 token：过期了，或者填错了",
-             403: "这个 token 做不了这一步：要有 api 权限，你在项目里要是 Maintainer 或 Owner",
              404: "GitLab 上找不到要用的东西：看细节"}
+FORBIDDEN = {PROJECT_TOKEN: "这个 token 做不了这一步：要有 api 权限，你在项目里要是 Maintainer 或 Owner",
+             BOT_ACCOUNT: "这个 token 做不了这一步：要有 api 权限，它的账号在项目里要是 Developer 以上"}
 SIGN_IN = "GitLab 回的是登录页：这个 GitLab 要单点登录，先放好它的登录辅助文件（~/.brain/local_transport.py），再跑一次"
+# a step's result from those of its projects: the first of these one of them has
+WORST = ("failed", "waiting", "done", "skipped")
 
 
 class SetupRefused(ValueError):
@@ -106,18 +140,41 @@ class StepFailed(Exception):
         self.message, self.detail = message, detail
 
 
+def project_path(base: str, text: str) -> str:
+    """group/repo from what was typed for a project: the path, or its page on *base* (or any address) pasted."""
+    project = text.strip()
+    if project.startswith(base + "/"):
+        project = project[len(base) + 1:]
+    elif "://" in project:
+        project = urllib.parse.urlsplit(project).path
+    project = project.split("/-/", 1)[0].strip("/")
+    return project[:-4] if project.endswith(".git") else project
+
+
+def typed_token(raw: Mapping[str, Any], key: str) -> str | None:
+    """The token typed in *key* ('' when none); None when it cannot be one."""
+    tok = raw.get(key)
+    tok = tok.strip() if isinstance(tok, str) else ""
+    return None if CTRL_RE.search(tok) or len(tok) > 1000 else tok
+
+
 @dataclass(frozen=True)
 class SetupInput:
     gitlab_base: str
-    project: str                                  # group/repo
-    admin_token: str = field(repr=False)          # the person's one-time token (api): this run's memory only
+    projects: tuple[str, ...]                     # group/repo, each once, in the order given; project-token: one
+    admin_token: str = field(repr=False)          # the person's one-time token (api): this run's memory only; '' when
+                                                  # bot-account mode goes without it
     roles: Mapping[str, tuple[str, ...]] = field(default_factory=dict)   # role -> usernames; none: the token's owner
     push: str = "auto"                            # auto | ssh | token
     patrol: bool = True                           # 巡检所有开着的 MR
+    mode: str = PROJECT_TOKEN
+    bridge_token: str = field(default="", repr=False)   # bot-account: brain-bridge's personal token ('': the one kept)
+    bot_token: str = field(default="", repr=False)      # bot-account: the bot user's personal token ('': the one kept)
 
     @classmethod
     def parse(cls, raw: Any) -> "SetupInput":
-        """The page's (or the command line's) fields, checked; SetupRefused says what is wrong."""
+        """The page's (or the command line's) fields, checked; SetupRefused says what is wrong. The projects come as a
+        list (or text, one per line) in "projects", else the one in "project"."""
         if not isinstance(raw, Mapping):
             raise SetupRefused("页面发来的内容不对：刷新页面再试")
         base = str(raw.get("gitlab_base") or "").strip().rstrip("/")
@@ -125,24 +182,39 @@ class SetupInput:
         if u.scheme not in ("https", "http") or not u.hostname or "@" in u.netloc or u.query or u.fragment \
                 or CTRL_RE.search(base):
             raise SetupRefused("GitLab 地址要写成 https://gitlab.example.com 这样")
-        project = str(raw.get("project") or "").strip()
-        if project.startswith(base + "/"):            # the project's page, pasted
-            project = project[len(base) + 1:]
-        elif "://" in project:
-            project = urllib.parse.urlsplit(project).path
-        project = project.split("/-/", 1)[0].strip("/")
-        project = project[:-4] if project.endswith(".git") else project
-        if not PROJECT_RE.match(project):
+        mode = raw.get("mode") or PROJECT_TOKEN
+        if mode not in MODES:
+            raise SetupRefused("账号只能是 %s（项目令牌）或 %s（机器人账号）" % MODES)
+        typed = raw.get("projects") if raw.get("projects") is not None else [raw.get("project") or ""]
+        if isinstance(typed, str):
+            typed = re.split(r"[\s,，、]+", typed)
+        if not isinstance(typed, (list, tuple)) or not all(isinstance(t, str) for t in typed):
+            raise SetupRefused("项目的格式不对：刷新页面再试")
+        got: dict[str, str] = {}
+        for t in typed:
+            if t.strip():
+                path = project_path(base, t)
+                if not PROJECT_RE.match(path):
+                    raise SetupRefused("「%s」要写成「组/仓库」，比如 grp/pay" % t.strip()[:200])
+                got.setdefault(path.lower(), path)        # GitLab's paths are not case-sensitive
+        if not got:
             raise SetupRefused("项目要写成「组/仓库」，比如 grp/pay")
-        token = raw.get("admin_token")
-        token = token.strip() if isinstance(token, str) else ""
-        if not token or CTRL_RE.search(token) or len(token) > 1000:
+        if mode == PROJECT_TOKEN and len(got) > 1:
+            raise SetupRefused("项目令牌只看得到自己那个项目：一台运行机管几个项目，账号选「机器人账号」")
+        token = typed_token(raw, "admin_token")
+        if token is None or (not token and mode == PROJECT_TOKEN):
             raise SetupRefused("填一个一次性的 GitLab 个人 token（要有 api 权限）")
-        got = raw.get("roles") or {}
-        if not isinstance(got, Mapping):
+        bridge, bot = (typed_token(raw, k) if mode == BOT_ACCOUNT else "" for k in ("bridge_token", "bot_token"))
+        for key, tok in (("bridge", bridge), ("bot", bot)):
+            if tok is None:
+                raise SetupRefused("%s不像一个 token：重新粘贴一次" % ACCOUNT_NAME[key])
+        if bridge and bridge == bot:
+            raise SetupRefused("桥的账号和机器人账号要是两个不同的 GitLab 用户：两个令牌填成一样的了")
+        got_roles = raw.get("roles") or {}
+        if not isinstance(got_roles, Mapping):
             raise SetupRefused("角色的格式不对：刷新页面再试")
         roles: dict[str, tuple[str, ...]] = {}
-        for role, names in got.items():
+        for role, names in got_roles.items():
             if role not in ROLES:
                 raise SetupRefused("角色只有 %s" % "、".join(ROLES))
             if isinstance(names, str):
@@ -154,18 +226,30 @@ class SetupInput:
             if bad:
                 raise SetupRefused("这些不像 GitLab 用户名：%s" % "、".join(bad))
             roles[role] = tuple(dict.fromkeys(clean))
+        if not token and not (roles.get("product") and roles.get("builder")):
+            raise SetupRefused("没填一次性 token 时，「产品」和「开发」要填上 GitLab 用户名：空着的角色没有 token 的主人来顶")
         push = raw.get("push") or "auto"
         if push not in PUSH_MODES:
             raise SetupRefused("推送方式只能是 auto、ssh 或 token")
         patrol = raw.get("patrol", True)
         if not isinstance(patrol, bool):
             raise SetupRefused("「巡检所有开着的 MR」的值不对：刷新页面再试")
-        return cls(base, project, token, roles, push, patrol)
+        return cls(base, tuple(got.values()), token, roles, push, patrol, mode, bridge or "", bot or "")
 
     def public(self) -> dict[str, Any]:
-        """What setup-state.json keeps of the input: all of it but the token."""
-        return {"gitlab_base": self.gitlab_base, "project": self.project, "push": self.push,
+        """What setup-state.json keeps of the input: all of it but the tokens."""
+        return {"gitlab_base": self.gitlab_base, "mode": self.mode, "projects": list(self.projects), "push": self.push,
                 "roles": {r: list(self.roles.get(r) or ()) for r in ROLES}, "patrol": self.patrol}
+
+
+@dataclass(frozen=True)
+class Row:
+    """One project's part of a step about the projects."""
+    project: str
+    status: str
+    message: str
+    link: str | None = None
+    detail: str = ""
 
 
 @dataclass(frozen=True)
@@ -175,6 +259,7 @@ class StepResult:
     message: str              # short plain Chinese
     link: str | None = None
     detail: str = ""          # what GitLab or a command said (the page folds it under 细节)
+    projects: tuple[Row, ...] = ()   # a step about two projects or more: each one's own result
 
 
 def done(message: str, link: str | None = None, detail: str = "") -> StepResult:
@@ -198,6 +283,24 @@ class Step:
     id: str
     title: str
     run: Callable[["Ctx"], StepResult]
+
+
+@dataclass(frozen=True)
+class Proj:
+    """A project of the runner as GitLab has it this run (the first step finds it), with its .brain/kit.json on the
+    default branch."""
+    id: int
+    path: str                 # GitLab's path_with_namespace
+    default_branch: str
+    web_url: str | None
+    ssh_url: str
+    http_url: str
+    kit: dict
+    kit_text: str
+
+    def record(self) -> dict[str, Any]:
+        """What setup-state.json keeps of it."""
+        return {"id": self.id, "path": self.path, "default_branch": self.default_branch, "web_url": self.web_url}
 
 
 def _under(base: str, *parts: str) -> Any:
@@ -257,32 +360,24 @@ class Ctx:
     reach: Callable[[str], tuple[bool, str]] | None = None      # clone URL -> (git reaches it, what git said)
     state: dict = field(default_factory=dict)
     results: list = field(default_factory=list)
-    project: dict = field(default_factory=dict)       # GitLab's answer for the project, this run
-    kit: dict = field(default_factory=dict)           # .brain/kit.json on the default branch, and its text
-    kit_text: str = ""
-    owner: str = ""                                   # the token's GitLab username
-    _admin: Any = field(default=None, repr=False)
+    found: list = field(default_factory=list)         # the projects (Proj) the first step found, in the input's order
+    owner: str = ""                                   # the username of the account that makes the labels and MRs
+    _maker: Any = field(default=None, repr=False)
+    _accounts: dict = field(default_factory=dict, repr=False)   # bot-account: key -> (token, GitLab's user), this run
     _secrets: set = field(default_factory=set, repr=False)
 
     def __post_init__(self) -> None:
-        self._secrets.add(self.inp.admin_token)
+        for s in (self.inp.admin_token, self.inp.bridge_token, self.inp.bot_token):
+            self.remember(s)
 
     @property
     def gl(self) -> Any:
-        """GitLab with the person's token, made on first use (a broken sign-in helper fails the step that needs it)."""
-        if self._admin is None:
-            self._admin = self.gitlab(self.inp.admin_token)
-        return self._admin
-
-    @property
-    def pid(self) -> int:
-        return int(self.state["project"]["id"])
-
-    @property
-    def tokens(self) -> dict:
-        """The project tokens this setup made for this project on this GitLab (bridge, bot), kept under
-        "<GitLab>/projects/<id>": another GitLab's project of the same id has its own."""
-        return self.state.setdefault("tokens", {}).setdefault("%s/projects/%d" % (self.inp.gitlab_base, self.pid), {})
+        """GitLab as the account that finds the projects and makes the labels and the kit.json MRs: the person's one-time
+        token, else (bot-account) brain-bridge's. Made on first use: a broken sign-in helper, or no token for the
+        bridge, fails the step that needs it."""
+        if self._maker is None:
+            self._maker = self.gitlab(self.inp.admin_token or account(self, "bridge")[0])
+        return self._maker
 
     def remember(self, secret: str) -> None:
         if secret:
@@ -410,8 +505,9 @@ def run(ctx: Ctx, on_step: Callable[[Step, StepResult], None] | None = None) -> 
         for step in STEPS:
             ctx.state["current"] = step.id
             save_state(ctx)
-            r = _attempt(ctx, step)
-            r = replace(r, id=step.id, message=ctx.redact(r.message), detail=ctx.redact(r.detail)[-4000:])
+            r = _attempt(ctx, lambda: step.run(ctx))
+            r = replace(_redacted(ctx, r), id=step.id,
+                        projects=tuple(_redacted(ctx, x) for x in r.projects))
             ctx.results.append(r)
             ctx.state["steps"].append(asdict(r))
             if on_step is not None:
@@ -424,14 +520,45 @@ def run(ctx: Ctx, on_step: Callable[[Step, StepResult], None] | None = None) -> 
     return view(ctx.state, ctx.paths)
 
 
-def _attempt(ctx: Ctx, step: Step) -> StepResult:
+def _redacted(ctx: Ctx, r: Any) -> Any:
+    return replace(r, message=ctx.redact(r.message), detail=ctx.redact(r.detail)[-4000:])
+
+
+def _attempt(ctx: Ctx, work: Callable[[], StepResult]) -> StepResult:
     try:
-        return step.run(ctx)
+        return work()
     except StepFailed as exc:
         return failed(exc.message, detail=exc.detail)
     except Exception as exc:  # noqa: BLE001 - GitLab, git, a file: said on the page, and the run stops here
-        message, raw = _said(exc)
+        message, raw = _said(exc, ctx.inp.mode)
         return failed(message, detail=raw)
+
+
+def each(ctx: Ctx, items: list[tuple[str, Any]], one: Callable[[Any], StepResult]) -> list[Row]:
+    """*one* for each project of *items* (its name, what *one* takes), every one tried even after another failed: their
+    results as rows."""
+    rows = []
+    for name, item in items:
+        r = _attempt(ctx, lambda: one(item))
+        rows.append(Row(name, r.status, r.message, r.link, r.detail))
+    return rows
+
+
+def of_found(ctx: Ctx) -> list[tuple[str, Proj]]:
+    return [(p.path, p) for p in ctx.found]
+
+
+def summed(rows: list[Row], done_said: str, waiting_said: str = "") -> StepResult:
+    """A step whose result is its projects' (the labels, the kit.json MRs): with one project, that one's result; with
+    more, the first of failed, waiting, done that one of them has, in words, over every row."""
+    if len(rows) == 1:
+        r = rows[0]
+        return StepResult("", r.status, r.message, r.link, r.detail)
+    status = next(s for s in WORST if any(r.status == s for r in rows))
+    bad = [r.project for r in rows if r.status == "failed"]
+    said = {"failed": "%d 个项目里 %d 个没成：%s" % (len(rows), len(bad), "、".join(bad)),
+            "waiting": waiting_said, "done": done_said, "skipped": done_said}[status]
+    return StepResult("", status, said, projects=tuple(rows))
 
 
 def _gitlab_status(exc: BaseException) -> int | None:
@@ -440,11 +567,13 @@ def _gitlab_status(exc: BaseException) -> int | None:
     return status if type(status) is int else None
 
 
-def _said(exc: BaseException) -> tuple[str, str]:
+def _said(exc: BaseException, mode: str = PROJECT_TOKEN) -> tuple[str, str]:
     raw = str(exc).strip() or type(exc).__name__
     status = _gitlab_status(exc)
     if "sign-in" in raw:
         return SIGN_IN, raw
+    if status == 403:
+        return FORBIDDEN[mode], raw
     if status is not None:
         return HTTP_SAID.get(status, "GitLab 出错了（HTTP %d）：等一会儿再跑一次" % status), raw
     if any(c.__name__ == "BrainError" for c in type(exc).__mro__):
@@ -455,8 +584,9 @@ def _said(exc: BaseException) -> tuple[str, str]:
 
 
 def view(state: Mapping[str, Any], paths: Paths, running: bool | None = None) -> dict[str, Any]:
-    """GET /team/setup (TeamSetup in ui/src/types.ts): every step of the table with the last run's result, the one in
-    progress, or todo; that run's input without the token. *running*: whether a run holds the root now. A run cut off
+    """GET /team/setup (TeamSetup in ui/src/types.ts): every step of the table with the last run's result (and its
+    projects' when there were two or more), the one in progress, or todo; that run's input without the tokens; the
+    accounts of the personal tokens kept here (bot-account). *running*: whether a run holds the root now. A run cut off
     part-way (the app or the command stopped) left running in its file with no one holding the root: cut_off is the
     step it had not finished."""
     on = bool(state.get("running")) if running is None else bool(running)
@@ -465,18 +595,32 @@ def view(state: Mapping[str, Any], paths: Paths, running: bool | None = None) ->
     for st in STEPS:
         r = got.get(st.id) or {}
         status = str(r.get("status") or ("running" if on and state.get("current") == st.id else "todo"))
-        steps.append({"id": st.id, "title": st.title, "status": status, "message": str(r.get("message") or ""),
-                      "link": r.get("link") or None, "detail": str(r.get("detail") or "")})
+        steps.append({"id": st.id, "title": st.title, **_shown(r, status),
+                      "projects": [{"project": str(x.get("project") or ""), **_shown(x, str(x.get("status") or "todo"))}
+                                   for x in r.get("projects") or [] if isinstance(x, dict)]})
     cut = bool(state.get("running")) and not on
     inp = state.get("input") if isinstance(state.get("input"), dict) else {}
     roles = inp.get("roles") if isinstance(inp.get("roles"), dict) else {}
+    projects = inp.get("projects")
+    if not isinstance(projects, list):          # a run before bot-account mode kept its one project as "project"
+        projects = [inp["project"]] if inp.get("project") else []
+    kept = state.get("accounts") if isinstance(state.get("accounts"), dict) else {}
     return {"running": on, "started_at": _time(state.get("started_at")),
             "ended_at": None if on else _time(state.get("ended_at")),
             "cut_off": next((s["id"] for s in steps if s["status"] == "todo"), None) if cut else None,
-            "input": {"gitlab_base": str(inp.get("gitlab_base") or ""), "project": str(inp.get("project") or ""),
+            "input": {"gitlab_base": str(inp.get("gitlab_base") or ""),
+                      "mode": inp.get("mode") if inp.get("mode") in MODES else PROJECT_TOKEN,
+                      "projects": [str(p) for p in projects],
                       "roles": {r: [str(n) for n in roles.get(r) or []] for r in ROLES},
                       "push": str(inp.get("push") or "auto"), "patrol": inp.get("patrol") is not False},
+            "accounts": {k: str((kept.get(k) if isinstance(kept.get(k), dict) else {}).get("username") or "")
+                         for k in ("bridge", "bot")},
             "steps": steps, "root": str(paths.root)}
+
+
+def _shown(r: Mapping[str, Any], status: str) -> dict[str, Any]:
+    return {"status": status, "message": str(r.get("message") or ""), "link": r.get("link") or None,
+            "detail": str(r.get("detail") or "")}
 
 
 def _time(v: Any) -> float | None:
@@ -506,25 +650,41 @@ def run_tool(cmd: list[str], what: str, cwd: Path | None = None, timeout: float 
     return p.stdout
 
 
-# ---- 1 the project ---------------------------------------------------------------------------------------------- #
+# ---- 1 the projects --------------------------------------------------------------------------------------------- #
 
 def step_project(ctx: Ctx) -> StepResult:
-    """The project as GitLab has it (id, default branch, web address, clone addresses), the token owner's role in it
-    (Maintainer or Owner: they make project tokens and labels), and its .brain/kit.json on the default branch."""
+    """Each project as GitLab has it (id, default branch, web address, clone addresses), the role in it of the account
+    that makes the labels and MRs (project-token: Maintainer or Owner, as they make the project tokens too; bot-account:
+    Developer or more), and its .brain/kit.json on the default branch."""
     gl = ctx.gl
     me = gl.current_user() or {}
+    ctx.owner = str(me.get("username") or "").lower()
+    ctx.state["owner"] = ctx.owner
+    ctx.found = []
+    rows = each(ctx, [(n, n) for n in ctx.inp.projects], lambda name: find_project(ctx, me, name))
+    ctx.state.pop("project", None)          # a run before bot-account mode kept its one project there
+    ctx.state["projects"] = [p.record() for p in ctx.found]
+    if len(rows) == 1 and rows[0].status == "done":
+        return done("%s，%s" % (ctx.found[0].path, rows[0].message), link=rows[0].link)
+    return summed(rows, "%d 个项目都找到了" % len(rows))
+
+
+def find_project(ctx: Ctx, me: Mapping[str, Any], name: str) -> StepResult:
+    gl, mode = ctx.gl, ctx.inp.mode
     try:
-        p = gl.project(ctx.inp.project) or {}
+        p = gl.project(name) or {}
     except Exception as exc:  # noqa: BLE001 - a 404 said with the project's name; anything else as every step says it
         if _gitlab_status(exc) == 404:
-            raise StepFailed("GitLab 上找不到 %s：项目名写错了，或者这个 token 看不到它" % ctx.inp.project, str(exc))
+            raise StepFailed("GitLab 上找不到 %s：项目名写错了，或者这个 token 看不到它" % name, str(exc))
         raise
-    path, branch = str(p.get("path_with_namespace") or ctx.inp.project), str(p.get("default_branch") or "")
-    owner = str(me.get("username") or "").lower()
+    twin = next((f for f in ctx.found if f.id == int(p["id"])), None)
+    if twin is not None:
+        return failed("%s 和 %s 是同一个项目：只留一个" % (name, twin.path))
+    path, branch = str(p.get("path_with_namespace") or name), str(p.get("default_branch") or "")
+    who = ("你（%s）" if ctx.inp.admin_token else "桥的账号（%s）") % ctx.owner
     level = access_level(gl, p, me)
-    if level < MAINTAINER:
-        return failed("你（%s）在 %s 是 %s：要 Maintainer 或 Owner 才能建项目令牌和标签"
-                      % (owner, path, LEVEL_NAME.get(level, "没有权限的人")))
+    if level < MAKER_LEVEL[mode]:
+        return failed(MAKER_LOW[mode] % (who, path, LEVEL_NAME.get(level, "没有权限的人")))
     if not branch:
         return failed("%s 还没有默认分支：先推一个分支上去" % path)
     raw = gl.file_raw(p["id"], KIT, branch)
@@ -537,15 +697,10 @@ def step_project(ctx: Ctx) -> StepResult:
         return failed("默认分支上的 .brain/kit.json 读不懂：先在个人电脑上导入这个仓库，让它修好", detail=str(exc))
     if not isinstance(kit, dict):
         return failed("默认分支上的 .brain/kit.json 读不懂：先在个人电脑上导入这个仓库，让它修好")
-    old = ctx.state.get("project") if isinstance(ctx.state.get("project"), dict) else {}
-    if old.get("id") not in (None, p["id"]):
-        ctx.state.pop("kit_mr", None)          # another project's MR
-    ctx.project, ctx.kit, ctx.kit_text, ctx.owner = p, kit, text, owner
-    ctx.state["project"] = {"id": int(p["id"]), "path": path, "default_branch": branch, "web_url": p.get("web_url")}
-    ctx.state["owner"] = owner
+    ctx.found.append(Proj(int(p["id"]), path, branch, p.get("web_url") or None, str(p.get("ssh_url_to_repo") or ""),
+                          str(p.get("http_url_to_repo") or ""), kit, text))
     note = "；它用 Jira 跟踪需求：团队模式还配不了 Jira，交接会被拒" if kit.get("tracker") == "jira" else ""
-    return done("%s，默认分支 %s；你（%s）是 %s%s" % (path, branch, owner, LEVEL_NAME.get(level, level), note),
-                link=p.get("web_url") or None)
+    return done("默认分支 %s；%s是 %s%s" % (branch, who, LEVEL_NAME.get(level, level), note), link=p.get("web_url") or None)
 
 
 def access_level(gl: Any, project: Mapping[str, Any], me: Mapping[str, Any]) -> int:
@@ -557,8 +712,13 @@ def access_level(gl: Any, project: Mapping[str, Any], me: Mapping[str, Any]) -> 
     level = max(int(((perms.get(k) or {}).get("access_level")) or 0) for k in ("project_access", "group_access"))
     if level or not me.get("id"):
         return level
+    return member_level(gl, int(project["id"]), int(me["id"]))
+
+
+def member_level(gl: Any, pid: int, uid: int) -> int:
+    """*uid*'s access level in project *pid*, its own or its groups' (0: not a member)."""
     try:
-        got = gl.call("GET", "/projects/%d/members/all/%d" % (int(project["id"]), int(me["id"]))) or {}
+        got = gl.call("GET", "/projects/%d/members/all/%d" % (pid, uid)) or {}
     except Exception as exc:  # noqa: BLE001 - not a member: no level
         if _gitlab_status(exc) != 404:
             raise
@@ -569,21 +729,103 @@ def access_level(gl: Any, project: Mapping[str, Any], me: Mapping[str, Any]) -> 
 # ---- 2 the bridge's token --------------------------------------------------------------------------------------- #
 
 def step_bridge_token(ctx: Ctx) -> StepResult:
-    """brain-bridge: the project access token the bridge and the signer use (Developer, api, a year)."""
-    rec, how = project_token(ctx, "bridge", "brain-bridge", BRIDGE_SCOPES)
-    return done(token_said(how, rec))
+    """The bridge's and the signer's GitLab account. project-token: the project access token brain-bridge (Developer,
+    api, a year). bot-account: brain-bridge's personal token, given or kept: it takes api, and its account is
+    Developer or more in every project and is not the person's own."""
+    if ctx.inp.mode == PROJECT_TOKEN:
+        rec, how = project_token(ctx, ctx.found[0], "bridge", "brain-bridge", BRIDGE_SCOPES)
+        ctx.state["bridge_user"] = rec["username"]
+        return done(token_said(how, rec))
+    tok, me = account(ctx, "bridge")
+    name = str(me.get("username") or "").lower()
+    if ctx.inp.admin_token and name == ctx.owner:
+        return failed("%s就是你自己（%s）：桥要一个专门的 GitLab 用户（比如 brain-bridge），它发的评论都算桥的，你的回答就不算数了"
+                      % (ACCOUNT_NAME["bridge"], name))
+    rec, problem = check_account(ctx, "bridge", tok, me)
+    if problem:
+        return failed(problem)
+    ctx.state["bridge_user"] = name
+    return done("桥的账号是 %s：%s" % (name, account_said(ctx, "bridge", rec)))
 
 
-def project_token(ctx: Ctx, key: str, name: str, scopes: tuple[str, ...]) -> tuple[dict, str]:
-    """(the token's record, how: a TOKEN_SAID key). The one this setup made on this GitLab for this project while GitLab
+def account(ctx: Ctx, key: str) -> tuple[str, dict]:
+    """bot-account: (the personal token of the bridge's or the bot's account, GitLab's user for it), once per run: the
+    token given this run, else the one an earlier run kept under the root while it still signs in as the account kept
+    with it. StepFailed when there is neither, or GitLab does not take the one given."""
+    if key not in ctx._accounts:
+        given = ctx.inp.bridge_token if key == "bridge" else ctx.inp.bot_token
+        kept = (ctx.state.get("accounts") or {}).get(key)
+        kept = kept if isinstance(kept, dict) else None
+        tok = given or (read_secret(ctx.paths.token(key)) if kept else "")
+        ctx.remember(tok)
+        me = whoami(ctx, tok) if tok else None
+        if given and me is None:
+            raise StepFailed("GitLab 不认%s：过期了、撤掉了，或者填错了" % ACCOUNT_NAME[key])
+        if not given and (me is None or kept is None or me.get("id") != kept.get("user_id")):
+            raise StepFailed("填上%s%s" % (ACCOUNT_NAME[key], "：这台机器上存的那个不能用了（过期了、撤掉了，或者换成了别的）"
+                                           if kept else ""))
+        ctx._accounts[key] = (tok, me)
+    return ctx._accounts[key]
+
+
+def check_account(ctx: Ctx, key: str, tok: str, me: Mapping[str, Any]) -> tuple[dict, str]:
+    """(what setup-state.json keeps of the account, what is wrong with it or ''): its token takes one of
+    ACCOUNT_SCOPES[key] (when this GitLab says what it takes) and its account is Developer or more in every project.
+    Kept, its value in its own file, only when nothing is wrong."""
+    info = pat_info(ctx, tok)
+    scopes = info.get("scopes") if isinstance(info.get("scopes"), list) else None
+    name = str(me.get("username") or "").lower()
+    if scopes is not None and not set(scopes) & set(ACCOUNT_SCOPES[key]):
+        return {}, "%s（%s 的）%s" % (ACCOUNT_NAME[key], name, ACCOUNT_NEEDS[key] % name)
+    levels = {p.path: member_level(ctx.gl, p.id, int(me["id"])) for p in ctx.found}
+    low = ["%s 是 %s" % (path, LEVEL_NAME[lv]) if lv in LEVEL_NAME else "%s 不是成员" % path
+           for path, lv in levels.items() if lv < DEVELOPER]
+    if low:
+        return {}, "%s %s 在 %s：每个项目里都要是 Developer 以上，在 GitLab 上把它加进去" % (
+            "桥的账号" if key == "bridge" else "机器人账号", name, "、".join(low))
+    write_file(ctx.paths.token(key), tok + "\n")
+    rec = dict(bot_fields(me), user_id=me.get("id"), expires_at=info.get("expires_at"), scopes=scopes)
+    ctx.state.setdefault("accounts", {})[key] = rec
+    return rec, ""
+
+
+def account_said(ctx: Ctx, key: str, rec: Mapping[str, Any]) -> str:
+    given = ctx.inp.bridge_token if key == "bridge" else ctx.inp.bot_token
+    end = rec.get("expires_at")
+    said = "用%s个人令牌，%s" % ("你填的" if given else "这台机器上存的", "%s 到期" % end if end else "GitLab 没说它哪天到期")
+    if end and ends_soon(end):
+        said += "；它快到期了：在 GitLab 上给 %s 换一个新令牌，再跑一次填上" % rec.get("username")
+    return said
+
+
+def pat_info(ctx: Ctx, tok: str) -> dict:
+    """GitLab's record of personal token *tok* (GET /personal_access_tokens/self: its scopes, its last day); {} when
+    this GitLab does not say (an older one, or a token whose scopes do not reach the API)."""
+    try:
+        got = ctx.gitlab(tok).call("GET", "/personal_access_tokens/self")
+    except Exception as exc:  # noqa: BLE001
+        if _gitlab_status(exc) in (403, 404):
+            return {}
+        raise
+    return got if isinstance(got, dict) else {}
+
+
+def tokens_of(ctx: Ctx, p: Proj) -> dict:
+    """The project tokens this setup made for project *p* on this GitLab (bridge, bot), kept under
+    "<GitLab>/projects/<id>": another GitLab's project of the same id has its own."""
+    return ctx.state.setdefault("tokens", {}).setdefault("%s/projects/%d" % (ctx.inp.gitlab_base, p.id), {})
+
+
+def project_token(ctx: Ctx, p: Proj, key: str, name: str, scopes: tuple[str, ...]) -> tuple[dict, str]:
+    """(the token's record, how: a TOKEN_SAID key). The one this setup made on this GitLab for project *p* while GitLab
     has it active: kept while its file signs in as its bot user and it has more than RENEW_DAYS to go, else rotated (a
     new value for the same bot user, so kit.json stays as it is). A new one (Developer, *scopes*) only when there is
     none, or GitLab has it revoked, expired or gone. A token's value goes only into its own file. Nothing is revoked
     here: rotating a token revokes its old value, and a token this setup did not make is never rotated."""
-    saved = ctx.tokens.get(key)
-    live = active_token(ctx, saved) if isinstance(saved, dict) else None
+    saved = tokens_of(ctx, p).get(key)
+    live = active_token(ctx, p, saved) if isinstance(saved, dict) else None
     if live is None:
-        return keep(ctx, key, name, ctx.gl.call("POST", "/projects/%d/access_tokens" % ctx.pid, body={
+        return keep(ctx, p, key, name, ctx.gl.call("POST", "/projects/%d/access_tokens" % p.id, body={
             "name": name, "scopes": list(scopes), "access_level": DEVELOPER, "expires_at": until()})), "made"
     tok = read_secret(ctx.paths.token(key))
     ctx.remember(tok)
@@ -592,16 +834,16 @@ def project_token(ctx: Ctx, key: str, name: str, scopes: tuple[str, ...]) -> tup
     if signs_in and not ends_soon(live.get("expires_at")):
         saved.update(bot_fields(me), expires_at=live.get("expires_at"))
         return saved, "kept"
-    got = ctx.gl.call("POST", "/projects/%d/access_tokens/%d/rotate" % (ctx.pid, int(saved["id"])),
+    got = ctx.gl.call("POST", "/projects/%d/access_tokens/%d/rotate" % (p.id, int(saved["id"])),
                       body={"expires_at": until()})
-    return keep(ctx, key, name, got), "ending" if signs_in else "lost"
+    return keep(ctx, p, key, name, got), "ending" if signs_in else "lost"
 
 
-def active_token(ctx: Ctx, saved: Mapping[str, Any]) -> dict | None:
+def active_token(ctx: Ctx, p: Proj, saved: Mapping[str, Any]) -> dict | None:
     """GitLab's record of the token *saved* names while it is active and still that token (its name, its bot user);
     None when it is revoked, expired or gone."""
     try:
-        got = ctx.gl.call("GET", "/projects/%d/access_tokens/%d" % (ctx.pid, int(saved["id"])))
+        got = ctx.gl.call("GET", "/projects/%d/access_tokens/%d" % (p.id, int(saved["id"])))
     except Exception as exc:  # noqa: BLE001 - gone: made again; anything else as every step says it
         if _gitlab_status(exc) == 404:
             return None
@@ -612,7 +854,7 @@ def active_token(ctx: Ctx, saved: Mapping[str, Any]) -> dict | None:
     return got
 
 
-def keep(ctx: Ctx, key: str, name: str, got: Any) -> dict:
+def keep(ctx: Ctx, p: Proj, key: str, name: str, got: Any) -> dict:
     """A token GitLab just made or rotated: its value into its own file, its id into the state at once (before anything
     else can go wrong), then its bot user."""
     got = got if isinstance(got, dict) else {}
@@ -623,7 +865,7 @@ def keep(ctx: Ctx, key: str, name: str, got: Any) -> dict:
     write_file(ctx.paths.token(key), tok + "\n")
     rec = {"id": got["id"], "user_id": got["user_id"], "name": name, "scopes": list(got.get("scopes") or ()),
            "expires_at": got.get("expires_at"), "username": "", "email": "", "display": ""}
-    ctx.tokens[key] = rec
+    tokens_of(ctx, p)[key] = rec
     save_state(ctx)
     me = whoami(ctx, tok)
     if me is None:
@@ -673,37 +915,78 @@ def bot_fields(me: Mapping[str, Any]) -> dict[str, str]:
 # ---- 3 how the runner pushes ------------------------------------------------------------------------------------ #
 
 def step_push(ctx: Ctx) -> StepResult:
-    """How runnerd clones and the runs push. auto: this machine's SSH when `git ls-remote` reaches the project (the
-    commits are brain-bot's, kit.json's bot_users kept), else a project token brain-bot over HTTPS (its own account and
-    address), once git reaches the project with it too; ssh or token: that one only."""
-    p, path = ctx.project, ctx.state["project"]["path"]
+    """How runnerd clones and the runs push: one clone address for every project (runnerd's {project}). auto: this
+    machine's SSH when `git ls-remote` reaches every project (the commits are brain-bot's, each kit.json's bot_users
+    kept), else a token over HTTPS (its own account and address) once git reaches every project with it too: the
+    project token brain-bot (project-token), the bot user's personal token (bot-account); ssh or token: that one only."""
     host = urllib.parse.urlsplit(ctx.inp.gitlab_base).hostname or ""
     reach = ctx.reach or (lambda url: git_reaches(ctx, url))
     why = ""
     if ctx.inp.push != "token":
-        url = str(p.get("ssh_url_to_repo") or "")
-        template = clone_template(url, path)
-        ok, why = reach(url) if template else (False, "GitLab 没给这个项目的 SSH 地址")
-        if ok:
-            bots = [str(u).lower() for u in ctx.kit.get("bot_users") or [] if str(u).strip()] or [SSH_BOT[0]]
+        template, why = common_template(ctx, "ssh_url")
+        missed, said = unreached(ctx, reach, lambda p: p.ssh_url) if template else ([], "")
+        why = "\n".join(x for x in (why, said) if x)
+        if template and not missed:
             ctx.state["push"] = {"mode": "ssh", "clone_url": template, "git_name": SSH_BOT[0], "git_email": SSH_BOT[1],
-                                 "bot_users": bots}
+                                 "bot_user": ""}
             return done("这台机器的 SSH 连得上 GitLab：运行机用 SSH 拉取和推送")
         if ctx.inp.push == "ssh":
-            return failed("这台机器的 SSH 连不上 %s：先让 git ls-remote %s 能用，再跑一次" % (host, url), detail=why)
-    template = clone_template(str(p.get("http_url_to_repo") or ""), path)
+            if len(ctx.found) == 1:
+                return failed("这台机器的 SSH 连不上 %s：先让 git ls-remote %s 能用，再跑一次" % (host, ctx.found[0].ssh_url),
+                              detail=why)
+            return failed("这台机器的 SSH 连不上 %s 上的 %s：先让 git ls-remote 能用，再跑一次"
+                          % (host, "、".join(missed) or "这些项目"), detail=why)
+    template, no = common_template(ctx, "http_url")
     if not template:
-        return failed("GitLab 没给这个项目的 HTTPS 地址", detail=why)
-    rec, how = project_token(ctx, "bot", "brain-bot", BOT_SCOPES)
-    ok, said = reach(with_token(template, read_secret(ctx.paths.token("bot"))).format(project=path))
-    if not ok:
-        return failed("这台机器的 git 用 SSH 和项目令牌 brain-bot 都连不上 %s：运行机拉不到代码" % host,
-                      detail="\n".join(x for x in (why, said) if x))
+        return failed(no, detail=why)
+    if ctx.inp.mode == PROJECT_TOKEN:
+        rec, how = project_token(ctx, ctx.found[0], "bot", "brain-bot", BOT_SCOPES)
+        tok, who, said = read_secret(ctx.paths.token("bot")), "项目令牌 brain-bot", token_said(how, rec)
+    else:
+        try:
+            tok, me = account(ctx, "bot")
+        except StepFailed as exc:
+            return failed(exc.message + ("，或者让这台机器的 SSH 能用" if ctx.inp.push == "auto" else ""), detail=why)
+        if me.get("id") == account(ctx, "bridge")[1].get("id"):
+            return failed("机器人账号和桥的账号是同一个 GitLab 用户 %s：要两个不同的用户，运行机不能替桥说话" % me.get("username"))
+        rec, problem = check_account(ctx, "bot", tok, me)
+        if problem:
+            return failed(problem, detail=why)
+        who, said = "机器人账号 %s" % rec["username"], "推送的账号是 %s：%s" % (rec["username"], account_said(ctx, "bot", rec))
+    missed, git_said = unreached(ctx, reach, lambda p: with_token(template, tok).format(project=p.path))
+    if missed:
+        where = host if len(ctx.found) == 1 else "%s 上的 %s" % (host, "、".join(missed))
+        how = " SSH 和%s 都连不上" % who if ctx.inp.push == "auto" else "%s 连不上" % who
+        return failed("这台机器的 git 用%s %s：运行机拉不到代码" % (how, where), detail="\n".join(x for x in (why, git_said) if x))
     email = rec.get("email") or "%s@noreply.%s" % (rec["username"], host)
     ctx.state["push"] = {"mode": "token", "clone_url": template, "git_name": rec.get("display") or "brain-bot",
-                         "git_email": email, "bot_users": [rec["username"]]}
-    return done("%s运行机用项目令牌拉取和推送。%s"
-                % ("这台机器的 SSH 连不上 GitLab，" if ctx.inp.push == "auto" else "", token_said(how, rec)), detail=why)
+                         "git_email": email, "bot_user": rec["username"]}
+    return done("%s运行机用%s拉取和推送。%s"
+                % ("这台机器的 SSH 连不上 GitLab，" if ctx.inp.push == "auto" else "",
+                   "项目令牌" if ctx.inp.mode == PROJECT_TOKEN else "机器人账号的个人令牌", said), detail=why)
+
+
+def common_template(ctx: Ctx, attr: str) -> tuple[str, str]:
+    """(runnerd's clone template made from GitLab's *attr* address of every project, or ''; why there is none)."""
+    kind = "SSH" if attr == "ssh_url" else "HTTPS"
+    got = {p.path: clone_template(getattr(p, attr), p.path) for p in ctx.found}
+    missing = [path for path, t in got.items() if not t]
+    if missing:
+        return "", "GitLab 没给%s的 %s 地址" % ("这个项目" if len(got) == 1 else " %s " % "、".join(missing), kind)
+    if len(set(got.values())) > 1:
+        return "", "这些项目的 %s 地址不在同一个地方：运行机只有一个拉取地址，{project} 换成项目" % kind
+    return next(iter(got.values())), ""
+
+
+def unreached(ctx: Ctx, reach: Callable[[str], tuple[bool, str]], url: Callable[[Proj], str]) -> tuple[list[str], str]:
+    """The projects git does not reach at *url*, and what git said for them."""
+    missed, said = [], []
+    for p in ctx.found:
+        ok, why = reach(url(p))
+        if not ok:
+            missed.append(p.path)
+            said.append(why if len(ctx.found) == 1 else "%s: %s" % (p.path, why))
+    return missed, "\n".join(x for x in said if x)
 
 
 def clone_template(url: str, path: str) -> str:
@@ -715,7 +998,7 @@ def clone_template(url: str, path: str) -> str:
 
 
 def with_token(template: str, token: str) -> str:
-    """An https clone template that signs in with *token* (GitLab takes any user name with a project token)."""
+    """An https clone template that signs in with *token* (GitLab takes any user name with an access token)."""
     u = urllib.parse.urlsplit(template)
     host = u.netloc.rsplit("@", 1)[-1]
     return urllib.parse.urlunsplit((u.scheme, "oauth2:%s@%s" % (urllib.parse.quote(token, safe=""), host), u.path,
@@ -733,23 +1016,37 @@ def git_reaches(ctx: Ctx, url: str) -> tuple[bool, str]:
     return p.returncode == 0, (p.stderr or p.stdout).strip()[-2000:]
 
 
+def bot_users(ctx: Ctx, p: Proj) -> list[str]:
+    """kit.json bot_users for project *p*: the account the runner pushes as with a token; over SSH the ones *p*'s
+    kit.json names, else brain-bot."""
+    push = ctx.state["push"]
+    if push["mode"] == "token":
+        return [push["bot_user"]]
+    return [str(u).lower() for u in p.kit.get("bot_users") or [] if str(u).strip()] or [SSH_BOT[0]]
+
+
 # ---- 4 labels ----------------------------------------------------------------------------------------------------- #
 
 def step_labels(ctx: Ctx) -> StepResult:
-    """The labels the bridge moves (kit.json's names) and brain reflect's, made where the project has none."""
+    """The labels the bridge moves (each kit.json's names) and brain reflect's, made where a project has none."""
+    rows = each(ctx, of_found(ctx), lambda p: project_labels(ctx, p))
+    return summed(rows, "%d 个项目的标签都好了" % len(rows))
+
+
+def project_labels(ctx: Ctx, p: Proj) -> StepResult:
     want: list[tuple[str, str]] = []
     for key, default, color in LABELS:
-        name = str(ctx.kit.get(key) or default) if key else default
+        name = str(p.kit.get(key) or default) if key else default
         if name.lower() not in {w.lower() for w, _ in want}:
             want.append((name, color))
     have = {str(row.get("name") or "").lower()
-            for row in ctx.gl.pages("/projects/%d/labels" % ctx.pid, {}, 100, 20, "labels")}
+            for row in ctx.gl.pages("/projects/%d/labels" % p.id, {}, 100, 20, "labels")}
     made = []
     for name, color in want:
         if name.lower() in have:
             continue
         try:
-            ctx.gl.call("POST", "/projects/%d/labels" % ctx.pid, body={"name": name, "color": color})
+            ctx.gl.call("POST", "/projects/%d/labels" % p.id, body={"name": name, "color": color})
         except Exception as exc:  # noqa: BLE001 - one made meanwhile is there
             if _gitlab_status(exc) != 409:
                 raise
@@ -763,83 +1060,120 @@ def step_labels(ctx: Ctx) -> StepResult:
 # ---- 5 who is who ------------------------------------------------------------------------------------------------- #
 
 def step_identities(ctx: Ctx) -> StepResult:
-    """identities.json in brain-authz's shape (brain-kit's examples/identities.json): in users every member of the
-    project with Developer or more (each of them may hand over), the bots left out (project and group token users, the
-    accounts the runner pushes as); the roles as typed, a role left empty the token's owner, each one a member."""
-    roles = {r: list(ctx.inp.roles.get(r) or ()) or [ctx.owner] for r in ROLES}
-    bots = set(ctx.state["push"]["bot_users"])
+    """identities.json in brain-authz's shape (brain-kit's examples/identities.json): in users every member with
+    Developer or more of any of the projects (each of them may hand over), the bots left out (project and group token
+    users, the bridge's account, the accounts the runner pushes as); the roles as typed, each one a member of a project
+    and not the bridge's account. A role left empty is the one-time token's owner; with no one-time token (bot-account),
+    安全 and 数据 left empty are the 开发 people."""
+    bridge = str(ctx.state.get("bridge_user") or "")
+    bots = {bridge} | {u for p in ctx.found for u in bot_users(ctx, p)}
+    seen: dict[str, dict[str, int]] = {}      # project path -> member -> access level, people only
+
+    def members(p: Proj) -> StepResult:
+        got = seen.setdefault(p.path, {})
+        for m in ctx.gl.pages("/projects/%d/members/all" % p.id, {}, 100, 50, "members"):
+            name = str(m.get("username") or "").lower()
+            if name and name not in bots and not BOT_USER_RE.match(name):
+                got[name] = max(got.get(name, 0), int(m.get("access_level") or 0))
+        return done("")
+    rows = each(ctx, of_found(ctx), members)
+    if any(r.status == "failed" for r in rows):
+        return summed(rows, "")
     level: dict[str, int] = {}
-    for m in ctx.gl.pages("/projects/%d/members/all" % ctx.pid, {}, 100, 50, "members"):
-        name = str(m.get("username") or "").lower()
-        if name and name not in bots and not BOT_USER_RE.match(name):
-            level[name] = max(level.get(name, 0), int(m.get("access_level") or 0))
-    unknown = list(dict.fromkeys(n for r in ROLES for n in roles[r] if n not in level))
+    for got in seen.values():
+        for name, lv in got.items():
+            level[name] = max(level.get(name, 0), lv)
+    fallback = [ctx.owner] if ctx.inp.admin_token else list(ctx.inp.roles.get("builder") or ())
+    roles = {r: list(ctx.inp.roles.get(r) or ()) or fallback for r in ROLES}
+    named = list(dict.fromkeys(n for r in ROLES for n in roles[r]))
+    if bridge in named:
+        return failed("%s 是桥的账号，不能当角色：桥的账号发的评论都算桥的，它的回答不算数" % bridge)
+    unknown = [n for n in named if n not in level]
     if unknown:
-        return failed("这些人不是 %s 的成员：%s。先在 GitLab 上把他们加进项目，或者改填别人"
-                      % (ctx.state["project"]["path"], "、".join(unknown)))
+        where = " %s 的" % ctx.found[0].path if len(ctx.found) == 1 else "这几个项目里任何一个的"
+        return failed("这些人不是%s成员：%s。先在 GitLab 上把他们加进项目，或者改填别人" % (where, "、".join(unknown)))
     users = sorted(n for n, lv in level.items() if lv >= DEVELOPER)
     wrote = write_file(ctx.paths.identities, dumps({"users": {n: {} for n in users}, "roles": roles}))
-    said = "；".join("%s %s" % (ROLE_NAME[r], "、".join(roles[r])) for r in ROLES)
-    return done("%s：%d 个 Developer 以上的人能交接；%s" % ("写好了身份表" if wrote else "身份表没变", len(users), said))
+    said = done("%s：%d 个 Developer 以上的人能交接；%s" % ("写好了身份表" if wrote else "身份表没变", len(users),
+                                                   "；".join("%s %s" % (ROLE_NAME[r], "、".join(roles[r])) for r in ROLES)))
+    if len(ctx.found) == 1:
+        return said
+    per = []
+    for p in ctx.found:
+        away = [n for n in named if n not in seen[p.path]]
+        per.append(Row(p.path, "done", "%d 个 Developer 以上的人%s" % (
+            sum(1 for lv in seen[p.path].values() if lv >= DEVELOPER),
+            "；%s 不是这个项目的成员，答不了这里的问题" % "、".join(away) if away else "")))
+    return replace(said, projects=tuple(per))
 
 
-# ---- 6 kit.json, through an MR ------------------------------------------------------------------------------------- #
+# ---- 6 kit.json, through an MR per project ----------------------------------------------------------------------- #
 
 def step_kit_mr(ctx: Ctx) -> StepResult:
-    """kit.json on the default branch names the bridge's account, the bot's, GitLab and the default branch (MIGRATE
-    第二部分 4). When it does not: the change on branch brain/runner-setup (the file's own formatting kept) and an MR to
-    the default branch, which a person merges: waiting until then."""
-    want = wanted_kit(ctx)
-    if want == ctx.kit:
-        ctx.state.pop("kit_mr", None)
+    """Each project's kit.json on its default branch names the bridge's account, the bot's, GitLab and the default
+    branch (MIGRATE 第二部分 4). Where it does not: the change on branch brain/runner-setup (the file's own formatting
+    kept) and an MR to the default branch, which a person merges: waiting until then. The MRs that wait are kept in the
+    state (kit_mr), with whether each only switches MR 巡检."""
+    ctx.state["kit_mr"] = {}
+    rows = each(ctx, of_found(ctx), lambda p: project_kit_mr(ctx, p))
+    if not ctx.state["kit_mr"]:
+        ctx.state.pop("kit_mr")
+    n = sum(1 for r in rows if r.status == "waiting")
+    return summed(rows, "%d 个项目的 .brain/kit.json 都写好了运行机要的几项" % len(rows),
+                  "%d 个项目的 kit.json MR 等你在 GitLab 上合并" % n)
+
+
+def project_kit_mr(ctx: Ctx, p: Proj) -> StepResult:
+    want = wanted_kit(ctx, p)
+    if want == p.kit:
         return done("默认分支上的 .brain/kit.json 已经写好了运行机要的几项")
-    gl, pid, default = ctx.gl, ctx.pid, ctx.state["project"]["default_branch"]
+    gl, pid = ctx.gl, p.id
     if not branch_exists(gl, pid, BRANCH):
-        gl.call("POST", "/projects/%d/repository/branches" % pid, body={"branch": BRANCH, "ref": default})
+        gl.call("POST", "/projects/%d/repository/branches" % pid, body={"branch": BRANCH, "ref": p.default_branch})
     raw = gl.file_raw(pid, KIT, BRANCH)
     there = raw.decode("utf-8-sig") if raw is not None else ""
-    changed = kit_changes(ctx, want)
+    changed = kit_changes(p, want)
     if parse_json(there) != want:
         gl.call("POST", "/projects/%d/repository/commits" % pid, body={
             "branch": BRANCH, "commit_message": "运行机：kit.json 写上 %s" % "、".join(changed),
             "actions": [{"action": "update" if raw is not None else "create", "file_path": KIT,
-                         "content": kit_text(want, there or ctx.kit_text)}]})
+                         "content": kit_text(want, there or p.kit_text)}]})
     mr = gl.mr_for_branch(pid, BRANCH)
     opened = mr is None
+    only = patrol_only(p, want)
     if opened:
         patrol = MR_PATROL[sources.PATROL in sources.enabled(want)]
-        text = ("一键建运行机开的 MR：" + patrol if patrol_only(ctx, want) else
+        text = ("一键建运行机开的 MR：" + patrol if only else
                 MR_TEXT + ("\n\n" + patrol if "work_sources" in changed else ""))
         mr = gl.call("POST", "/projects/%d/merge_requests" % pid, body={
-            "source_branch": BRANCH, "target_branch": default, "title": MR_TITLE, "description": text,
+            "source_branch": BRANCH, "target_branch": p.default_branch, "title": MR_TITLE, "description": text,
             "remove_source_branch": True}) or {}
-    ctx.state["kit_mr"] = {"iid": mr.get("iid"), "web_url": mr.get("web_url")}
+    ctx.state["kit_mr"][p.path] = {"iid": mr.get("iid"), "web_url": mr.get("web_url"), "patrol_only": only}
     return waiting("%s MR !%s：请在 GitLab 上合并这个 MR" % ("开了" if opened else "还没合并", mr.get("iid")),
                    link=mr.get("web_url") or None)
 
 
-def kit_changes(ctx: Ctx, want: dict[str, Any]) -> list[str]:
-    """The keys of kit.json the MR changes."""
-    return [k for k in want if want[k] != ctx.kit.get(k)]
+def kit_changes(p: Proj, want: dict[str, Any]) -> list[str]:
+    """The keys of *p*'s kit.json the MR changes."""
+    return [k for k in want if want[k] != p.kit.get(k)]
 
 
-def patrol_only(ctx: Ctx, want: dict[str, Any]) -> bool:
-    """Whether the kit.json MR only switches mr-patrol on or off: everything the hand-over needs is on the default
+def patrol_only(p: Proj, want: dict[str, Any]) -> bool:
+    """Whether *p*'s kit.json MR only switches mr-patrol on or off: everything the hand-over needs is on the default
     branch already."""
-    kinds = set(sources.enabled(want)) ^ set(sources.enabled(ctx.kit))
-    return kit_changes(ctx, want) == ["work_sources"] and sources.HANDOFF not in kinds
+    kinds = set(sources.enabled(want)) ^ set(sources.enabled(p.kit))
+    return kit_changes(p, want) == ["work_sources"] and sources.HANDOFF not in kinds
 
 
-def wanted_kit(ctx: Ctx) -> dict[str, Any]:
-    """kit.json as it is on the default branch, with what the runner needs set."""
-    push, project = ctx.state["push"], ctx.state["project"]
-    want = json.loads(json.dumps(ctx.kit))
-    want["bridge_user"] = ctx.tokens["bridge"]["username"]
-    want["bot_users"] = list(push["bot_users"])
-    want["bot_emails"] = [push["git_email"]]
+def wanted_kit(ctx: Ctx, p: Proj) -> dict[str, Any]:
+    """*p*'s kit.json as it is on the default branch, with what the runner needs set."""
+    want = json.loads(json.dumps(p.kit))
+    want["bridge_user"] = ctx.state["bridge_user"]
+    want["bot_users"] = bot_users(ctx, p)
+    want["bot_emails"] = [ctx.state["push"]["git_email"]]
     gitlab = want.get("gitlab") if isinstance(want.get("gitlab"), dict) else {}
-    want["gitlab"] = dict(gitlab, base=ctx.inp.gitlab_base, project=project["path"])
-    want["default_branch"] = project["default_branch"]
+    want["gitlab"] = dict(gitlab, base=ctx.inp.gitlab_base, project=p.path)
+    want["default_branch"] = p.default_branch
     raw = want.get("work_sources")
     kinds = [k for k in raw if isinstance(k, str)] if isinstance(raw, list) else []
     if ctx.inp.patrol:
@@ -911,9 +1245,10 @@ def step_signing_key(ctx: Ctx) -> StepResult:
 # ---- 9 the three configs ----------------------------------------------------------------------------------------- #
 
 def step_configs(ctx: Ctx) -> StepResult:
-    """bridge.json, runnerd.json and signer.json in the shapes of MIGRATE 第三部分 7, for one OS user: no MR filter, no
-    brain-intake, vouchers not published, the signer on the bridge's token with its account as bridge_users, one
-    pseudonym_salt for both (made once, kept on every run). A file is written only when its content changes."""
+    """bridge.json, runnerd.json and signer.json in the shapes of MIGRATE 第三部分 7, for one OS user and every project:
+    no MR filter, no brain-intake, vouchers not published, the signer on the bridge's token with its account as
+    bridge_users, one pseudonym_salt for both (made once, kept on every run). A file is written only when its content
+    changes."""
     ps = ctx.paths
     salt = old_salt(ps) or secrets.token_hex(16)
     ctx.remember(salt)
@@ -935,7 +1270,7 @@ def old_salt(ps: Paths) -> str:
 def bridge_doc(ctx: Ctx, salt: str) -> dict[str, Any]:
     ps = ctx.paths
     return {
-        "projects": [ctx.state["project"]["path"]],
+        "projects": [p.path for p in ctx.found],
         "gitlab": {"base": ctx.inp.gitlab_base, "token_env": NO_TOKEN_ENV["bridge"], "token_file": str(ps.token("bridge"))},
         "identities": str(ps.identities),
         "ledger": str(ps.root / "bridge-ledger.sqlite"),
@@ -971,14 +1306,14 @@ def signer_doc(ctx: Ctx, salt: str) -> dict[str, Any]:
         "brainkit": str(ps.kit_dir),
         "spool": str(ps.signer_spool),
         "signing_key": str(ps.key),
-        "projects": [ctx.state["project"]["path"]],
+        "projects": [p.path for p in ctx.found],
         "gitlab": {"base": ctx.inp.gitlab_base, "token_env": NO_TOKEN_ENV["signer"], "token_file": str(ps.token("bridge"))},
         "identities": str(ps.identities),
         "vouchers_dir": str(ps.signer_vouchers),
         "publish_vouchers": False,
         "ledger": str(ps.root / "signer-ledger.sqlite"),
         "pseudonym_salt": salt,
-        "bridge_users": [ctx.tokens["bridge"]["username"]],
+        "bridge_users": [ctx.state["bridge_user"]],
     }
 
 
@@ -1030,8 +1365,8 @@ def step_signer(ctx: Ctx) -> StepResult:
 
 def step_team_mode(ctx: Ctx) -> StepResult:
     """Team mode on with the two configs and the same-user trial, through the app's settings (its TeamRuntime starts,
-    and the signer with it), and what it says then. The app starts it again when a file it read at its start has
-    changed since, whichever run changed it."""
+    and the signer with it), and what it says then: which kit.json MRs still hold up the hand-overs, or MR 巡检. The app
+    starts it again when a file it read at its start has changed since, whichever run changed it."""
     ps = ctx.paths
     if ctx.team_mode is None:
         return skipped("这次没打开团队模式：在设置 → 团队模式里填上 %s 和 %s，勾上本机试用"
@@ -1041,13 +1376,22 @@ def step_team_mode(ctx: Ctx) -> StepResult:
     st = ctx.team_mode(want) or {}
     if not st.get("ok"):
         return failed(str(st.get("error") or "团队模式没开起来"), detail=str(st.get("error_raw") or ""))
-    said = str(st.get("said") or "团队模式开了")
-    if any(r.id == "kit_mr" and r.status == "waiting" for r in ctx.results):
-        if patrol_only(ctx, wanted_kit(ctx)):
-            said += "；上面那个 MR 合并以后，巡检才" + ("开始" if ctx.inp.patrol else "停")
-        else:
-            said += "；可是上面那个 MR 合并以前，交接都会被拒"
-    return done(said)
+    return done(str(st.get("said") or "团队模式开了") + mrs_said(ctx))
+
+
+def mrs_said(ctx: Ctx) -> str:
+    """What the kit.json MRs that wait hold up until they are merged: the hand-overs of their projects, or (an MR that
+    only switches mr-patrol) MR 巡检."""
+    wait = ctx.state.get("kit_mr") or {}
+    handoff = [path for path, mr in wait.items() if not mr.get("patrol_only")]
+    if not wait:
+        return ""
+    if len(ctx.found) == 1:
+        return "；可是上面那个 MR 合并以前，交接都会被拒" if handoff else \
+            "；上面那个 MR 合并以后，巡检才" + ("开始" if ctx.inp.patrol else "停")
+    if handoff:
+        return "；可是 %s 的 kit.json MR 合并以前，这些项目的交接都会被拒" % "、".join(handoff)
+    return "；%s 的 kit.json MR 合并以后，那里的巡检才%s" % ("、".join(wait), "开始" if ctx.inp.patrol else "停")
 
 
 STEPS: tuple[Step, ...] = (

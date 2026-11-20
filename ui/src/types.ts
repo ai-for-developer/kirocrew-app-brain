@@ -1594,6 +1594,19 @@ export interface RunnerStatus {
  * running (the one in progress), todo (not reached by the last run). */
 export type SetupStepStatus = 'done' | 'waiting' | 'failed' | 'skipped' | 'running' | 'todo'
 export type SetupRole = 'product' | 'builder' | 'security' | 'data'
+/** Where the runner's GitLab accounts come from: project-token (one project; the one-time token makes project access
+ * tokens) or bot-account (several projects; the personal tokens of two GitLab users of the runner's own). */
+export type SetupMode = 'project-token' | 'bot-account'
+export type SetupPush = 'auto' | 'ssh' | 'token'
+/** One project's part of a step about the projects (finding them, the labels, the members, the kit.json MR). */
+export interface SetupProjectRow {
+  project: string
+  status: SetupStepStatus
+  message: string
+  /** its page on GitLab, its MR to merge */
+  link: string | null
+  detail: string
+}
 export interface SetupStep {
   id: string
   title: string
@@ -1604,6 +1617,8 @@ export interface SetupStep {
   link: string | null
   /** what GitLab or a command said, for 细节 */
   detail: string
+  /** a step about two projects or more: each one's own result; [] otherwise (the step's words say it) */
+  projects: SetupProjectRow[]
 }
 /** The same-user team runner the app builds itself (backend/core/team/setup.py), as the last run left it. */
 export interface TeamSetup {
@@ -1613,22 +1628,39 @@ export interface TeamSetup {
   ended_at: number | null
   /** the step a run cut off part-way had not finished (the app or the command stopped while it ran); null otherwise */
   cut_off: string | null
-  /** that run's input; never the token. patrol: 巡检所有开着的 MR */
-  input: { gitlab_base: string; project: string; roles: Record<SetupRole, string[]>; push: 'auto' | 'ssh' | 'token'; patrol: boolean }
+  /** that run's input; never a token. projects: one in project-token mode. patrol: 巡检所有开着的 MR */
+  input: { gitlab_base: string; mode: SetupMode; projects: string[]; roles: Record<SetupRole, string[]>; push: SetupPush; patrol: boolean }
+  /** bot-account: the GitLab users whose personal tokens an earlier run kept on this machine ('' none); a run may
+   * leave such a token out */
+  accounts: { bridge: string; bot: string }
   /** every step of the table, in order */
   steps: SetupStep[]
   /** where its configs, tokens and keys are */
   root: string
 }
-/** POST /team/setup (answers TeamSetup, running). admin_token: a one-time personal token with api, used for this run
- * only; roles: GitLab usernames, a role left out is the token's owner; patrol: 巡检所有开着的 MR (left out: on). */
-export interface TeamSetupBody {
+/** POST /team/setup (answers TeamSetup, running). roles: GitLab usernames, a role left out is the one-time token's
+ * owner; patrol: 巡检所有开着的 MR (left out: on). */
+export type TeamSetupBody = ProjectTokenSetupBody | BotAccountSetupBody
+interface SetupBodyBase {
   gitlab_base: string
+  roles: Partial<Record<SetupRole, string[]>>
+  push?: SetupPush
+  patrol?: boolean
+}
+/** One project; admin_token: a one-time personal token with api (Maintainer), used for this run only. */
+export interface ProjectTokenSetupBody extends SetupBodyBase {
+  mode?: 'project-token'
   project: string
   admin_token: string
-  roles: Partial<Record<SetupRole, string[]>>
-  push?: 'auto' | 'ssh' | 'token'
-  patrol?: boolean
+}
+/** Every project in projects; bridge_token, bot_token: the two accounts' personal tokens (left out: the ones kept);
+ * admin_token optional (left out: product and builder named, the labels and MRs made as the bridge's account). */
+export interface BotAccountSetupBody extends SetupBodyBase {
+  mode: 'bot-account'
+  projects: string[]
+  admin_token?: string
+  bridge_token?: string
+  bot_token?: string
 }
 
 // ---------------------------------------------------------------- POST /refresh {repo}

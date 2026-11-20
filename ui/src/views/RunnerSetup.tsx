@@ -43,7 +43,7 @@ function formOf(s: TeamSetup, repos: RepoInfo[]): Form {
   const kit = repos.find((r) => r.kit?.gitlab_project)?.kit
   return {
     base: s.input.gitlab_base || kit?.gitlab_base || '',
-    project: s.input.project || kit?.gitlab_project || '',
+    project: s.input.projects[0] || kit?.gitlab_project || '',
     product: s.input.roles.product.join(', '),
     builder: s.input.roles.builder.join(', '),
     patrol: s.input.patrol !== false,

@@ -36,6 +36,7 @@ import statusJson from './fixtures/status.json'
 import teamJson from './fixtures/team.json'
 import teamPatrolJson from './fixtures/team-patrol.json'
 import teamSetupJson from './fixtures/team-setup.json'
+import teamSetupBotJson from './fixtures/team-setup-bot.json'
 import teamStatusJson from './fixtures/team-status.json'
 import todoJson from './fixtures/todo.json'
 
@@ -74,6 +75,7 @@ const files = {
   team: exact<TeamView>()(teamJson),
   teamPatrol: exact<TeamPatrol>()(teamPatrolJson),
   teamSetup: exact<TeamSetup>()(teamSetupJson),
+  teamSetupBot: exact<TeamSetup>()(teamSetupBotJson),
   teamStatus: exact<RunnerStatus>()(teamStatusJson),
   settings: exact<Settings>()(settingsJson),
   importDefaults: exact<ImportDefaults>()(importDefaultsJson),
