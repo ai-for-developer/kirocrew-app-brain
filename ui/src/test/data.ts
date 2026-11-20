@@ -6,7 +6,7 @@
  */
 import type {
   BrainView, ReqBoard, CloneResult, CrewChecks, ImportDefaults, ImportInspect, ImportJob, InstallResult, IntakeCheck, IntakeNext, Overview,
-  PublishResult, ReflectPreview, RequirementDetail, Settings, StartResult, Status, TeamPatrol, TeamSetup, TeamView, Todo, UpgradeResult,
+  PublishResult, ReflectPreview, RequirementDetail, RunnerStatus, Settings, StartResult, Status, TeamPatrol, TeamSetup, TeamView, Todo, UpgradeResult,
   InstallChoices, MergeResult, PullResult, PushResult,
 } from '../types'
 import boardJson from './fixtures/board.json'
@@ -36,6 +36,7 @@ import statusJson from './fixtures/status.json'
 import teamJson from './fixtures/team.json'
 import teamPatrolJson from './fixtures/team-patrol.json'
 import teamSetupJson from './fixtures/team-setup.json'
+import teamStatusJson from './fixtures/team-status.json'
 import todoJson from './fixtures/todo.json'
 
 type Loose<T> = T extends string ? string
@@ -73,6 +74,7 @@ const files = {
   team: exact<TeamView>()(teamJson),
   teamPatrol: exact<TeamPatrol>()(teamPatrolJson),
   teamSetup: exact<TeamSetup>()(teamSetupJson),
+  teamStatus: exact<RunnerStatus>()(teamStatusJson),
   settings: exact<Settings>()(settingsJson),
   importDefaults: exact<ImportDefaults>()(importDefaultsJson),
   importInspect: exact<ImportInspect>()(importInspectJson),

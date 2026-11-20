@@ -56,6 +56,8 @@ export const paths = {
   teamPatrol: () => `${BASE}/team/patrol`,
   /** 一键建运行机: GET the last run's steps, POST to run them (in the background: GET until it is not running) */
   teamSetup: () => `${BASE}/team/setup`,
+  /** 运行机 on a personal install: each repo's team runner as GitLab shows it */
+  teamStatus: () => `${BASE}/team/status`,
   importDefaults: () => `${BASE}/import/defaults`,
   importInspect: () => `${BASE}/import/inspect`,
   importClone: () => `${BASE}/import/clone`,

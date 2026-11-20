@@ -1527,6 +1527,67 @@ export interface TeamPatrol {
   items: PatrolMr[]
 }
 
+// ---------------------------------------------------------------- 团队运行机 as GitLab shows it: GET /team/status
+
+/** An open MR the team runner works on: running, its hand-over label says so (kit.json running_label); patrol, MR 巡检
+ * replied on it or summed it up within the last recent_h hours. */
+export interface RunnerMr {
+  iid: number
+  title: string
+  url: string | null
+  why: 'running' | 'patrol'
+  /** the newest note the bridge's account wrote on it (epoch s); null: none */
+  at: number | null
+}
+/** A question the bridge asked on an MR that names the person among who may answer, with no answer after it yet. */
+export interface RunnerQuestion {
+  /** D-n */
+  id: string
+  iid: number
+  /** its MR's title */
+  title: string
+  /** the question's note on the MR */
+  url: string | null
+  kind: string
+  kind_label: string
+  question: string
+  options: { id: string; text: string }[]
+  /** when it was asked (epoch s) */
+  at: number | null
+}
+export interface RunnerSeen {
+  /** when GitLab was read (epoch s) */
+  at: number
+  /** the runner's newest act on the MRs read: a note of its account, a label it changed (null: none in recent_h) */
+  last_at: number | null
+  at_work: RunnerMr[]
+  /** oldest first */
+  waiting: RunnerQuestion[]
+}
+/** A repo's team runner, read with the person's own GitLab token: the last read that worked (seen), and why the last
+ * one did not (problem, in words; raw: GitLab's own, for 细节). */
+export interface TeamRunner {
+  /** the bridge's GitLab account (kit.json bridge_user) */
+  bridge_user: string
+  project: string
+  /** whom the questions are read for: the person's name in this repo; null: the app cannot tell */
+  me: string | null
+  seen: RunnerSeen | null
+  problem: { text: string; todo: string; raw: string } | null
+}
+export interface RunnerRepo {
+  repo: string
+  name: string
+  /** null: its kit.json names no bridge_user, so it has no team runner */
+  runner: TeamRunner | null
+}
+/** GET /team/status: every listed repo, in the app's order. */
+export interface RunnerStatus {
+  /** what 「最近」 means for MR 巡检's notes, in hours */
+  recent_h: number
+  repos: RunnerRepo[]
+}
+
 // ---------------------------------------------------------------- 一键建运行机: GET/POST /team/setup
 
 /** A step's state: done, waiting (for a person: the kit.json MR to merge), failed (the run stopped there), skipped;

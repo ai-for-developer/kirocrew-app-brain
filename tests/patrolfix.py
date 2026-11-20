@@ -1,10 +1,11 @@
 """MR 巡检 (team/patrol.py), offline: GitLab in memory, the session surface in memory, and a clock both read.
 
 PatrolGitLab answers what patrol and the bridge's hand-over poll ask: projects and their kit.json on the default branch,
-open MRs (paged, the label filter the bridge uses), an MR with its head pipeline, a pipeline's failed jobs and their
-logs, discussions (paged), the notes posted, and the commits a push brought (ref_name old..new, with who committed them). Its times are the clock's, so "before patrol started" is the same
-moment for both. FakeSessions is crewadapter's patrol surface (open_patrol … patrol_stop): a turn runs until a test
-ends it.
+MRs (paged; by state, all of them included, the label filter the bridge uses, updated_after), an MR with its head
+pipeline, a pipeline's failed jobs and their logs, discussions (paged), an MR's notes (paged, oldest first, as GitLab's
+notes API lists the discussions' notes), the notes posted, and the commits a push brought (ref_name old..new, with who
+committed them). Its times are the clock's, so "before patrol started" is the same moment for both. FakeSessions is
+crewadapter's patrol surface (open_patrol … patrol_stop): a turn runs until a test ends it.
 """
 
 from __future__ import annotations
@@ -190,9 +191,11 @@ class PatrolGitLab:
             return ok([{"id": c, "committer_email": self.commits[(name, c)][1]} for c in self._line(name, new)
                        if c not in seen])
         if rest == "/merge_requests" and method == "GET":
+            since = q.get("updated_after")
             rows = [self.shown(x) for (pp, _), x in sorted(self.mrs.items()) if pp == name
-                    and x["state"] == q.get("state", x["state"])
-                    and (not q.get("labels") or q["labels"] in x["labels"])]
+                    and q.get("state", "all") in ("all", x["state"])
+                    and (not q.get("labels") or q["labels"] in x["labels"])
+                    and (not since or _when(x["updated_at"]) >= _when(since))]
             return ok(self.page(rows, q))
         m = re.fullmatch(r"/merge_requests/(\d+)(/.*)?", rest)
         mr = self.mrs.get((name, int(m.group(1)))) if m else None
@@ -203,6 +206,10 @@ class PatrolGitLab:
             return ok(dict(self.shown(mr), head_pipeline=mr["_pipeline"]))
         if sub == "/discussions" and method == "GET":
             return ok(self.page(self.discussions[(name, mr["iid"])], q))
+        if sub == "/notes" and method == "GET":
+            notes = sorted((n for x in self.discussions[(name, mr["iid"])] for n in x["notes"]),
+                           key=lambda n: (_when(n["created_at"]), n["id"]))
+            return ok(self.page(notes, q))
         if sub == "/notes" and method == "POST":
             n = self._note(self.who[tok], data["body"], False, False)
             self.discussions[(name, mr["iid"])].append({"id": "%040x" % next(self.ids), "individual_note": True,
@@ -224,6 +231,10 @@ class PatrolGitLab:
             raw = self.traces.get(int(t.group(1)))
             return (200, raw) if raw is not None else ok({"message": "404"}, 404)
         return ok({"message": "404 (fake)"}, 404)
+
+
+def _when(stamp: str) -> datetime:
+    return datetime.fromisoformat(stamp.replace("Z", "+00:00"))
 
 
 class FakeSessions:

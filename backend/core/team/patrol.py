@@ -597,6 +597,10 @@ def slot_name(project_id: int, iid: int, gen: int) -> str:
     return "patrol-%d-%d" % (project_id, iid) + ("-%d" % gen if gen > 1 else "")
 
 
+# the first line of every blocked_text: a person's machine reads it as patrol having left the MR alone (runner_view.py)
+STOPPED_RE = re.compile(r"^MR 巡检：运行机(?:连着修了|派了|试了) \d+ 次")
+
+
 def blocked_text(row: MrRow, item: PatrolItem) -> str:
     what = "\n".join("- " + problem_text(p) for p in item.problems)
     if row.state == PAUSED:

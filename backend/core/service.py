@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import (bk, brainview, crewcheck, deliveries, detail, evidence, family, identity, importer, inplace, installer,
-               intake, landing, lean_view, mrdesc_view, mrinfo, picker, progress, roster)
+               intake, landing, lean_view, mrdesc_view, mrinfo, picker, progress, roster, runner_view)
 from . import outputs as outputs_mod
 from . import problems, stages
 from . import board as board_mod
@@ -148,6 +148,7 @@ class Service:
                                                    scrub=self.scrub)
         self.store = Store(self.data_dir / "events")
         self.mr = mrinfo.MrCache()
+        self.runners = runner_view.Runners()   # 运行机 on a personal install: the team runner as GitLab shows it
         self.repos: dict[str, Repo] = {}
         self.repo_errors: dict[str, tuple[str, str]] = {}
         # listed repos whose brain-kit is on its way (the install branch, merged but not pulled): (path, state)
@@ -2227,6 +2228,16 @@ class Service:
                           "updated": r.get("updated"), "notes": notes.get(r["run_id"], [])} for r in led["runs"]],
                 "handovers": handovers, "signer": signer, "config": self.team.config_view(),
                 "hooks": await asyncio.to_thread(self.team.hook_rows)}
+
+    async def runner_status(self) -> dict[str, Any]:
+        """GET /team/status: each listed repo's team runner as GitLab shows it (runner_view.py), read with this person's
+        own token: 运行机 on a personal install."""
+        repos = list(self.repos.values())
+
+        def view() -> dict[str, Any]:
+            rows = [runner_view.Listed(r.id, r.name, r.cfg, *self._gitlab_of(r), self.me_in(r)) for r in repos]
+            return self.runners.view(rows, now=self.now(), transport=self.transport)
+        return scrub_tree(await asyncio.to_thread(view), self.scrub)
 
     async def team_patrol(self) -> dict[str, Any]:
         """GET /team/patrol: MR 巡检's last round, every open MR it looked at (team/patrol.py)."""
