@@ -3,10 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, test, vi } from 'vitest'
 import { colOf } from '../cto/Flow'
 import { fx } from '../test/data'
-import { MERGE_STEPS, MR, MR_URL, WAITS, fastBoard, fastDetail, fastRow } from '../test/fast'
+import { MERGE_STEPS, MR, MR_URL, WAITS, actAnswer as answer, fastBoard, fastDetail, fastRow } from '../test/fast'
 import { API, installFixtureRoutes } from '../test/routes'
 import { apiCalls, apiError } from '../test/stubs/app-sdk'
-import type { ActResult, FastTime, Requirement, RequirementDetail } from '../types'
+import type { FastTime, Requirement, RequirementDetail } from '../types'
 import { DetailView } from './Detail'
 import { FULL_ASK } from './FastActs'
 import { OverviewView } from './Overview'
@@ -111,9 +111,6 @@ describe('需求现状 of a fast run: 时间花在哪, from its sessions on this
 
 const ACT_MR = `${API}/requirements/r1/PAY-17/act/mr`
 const ACT_FULL = `${API}/requirements/r1/PAY-17/act/full`
-const answer = (over: Partial<ActResult>): ActResult => ({
-  ok: true, action: 'mr', text: '', pushed: false, mr: null, commands: [], new_mr_url: null, intent: null, told: false, output: '', ...over,
-})
 const posts = () => apiCalls.filter((c) => c.method === 'POST')
 
 describe('开 MR and 转完整流程 on 需求现状', () => {

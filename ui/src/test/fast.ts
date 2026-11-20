@@ -4,7 +4,7 @@
  * phases, nodes, runs, relays or Lean steps), its own commits on the conveyor (on no node and no run) and a wall of
  * 自动检查, CI, 风险目录 and the Brain's cells. PAY-17 is ready for 开 MR; PAY-18 has MR !12 open with CI green.
  */
-import type { BeltItem, CheckCell, CommitOut, CommitsOutput, FastStep, FlowView, LeanSummary, OutFile, ReqBoard, Requirement, RequirementDetail, Waits } from '../types'
+import type { ActResult, BeltItem, CheckCell, CommitOut, CommitsOutput, FastStep, FlowView, LeanSummary, OutFile, ReqBoard, Requirement, RequirementDetail, Waits } from '../types'
 import { fx } from './data'
 
 export const FAST: FlowView = { id: 'fast', label: '快速', intent: false, actions: ['full', 'mr'] }
@@ -104,9 +104,14 @@ export function fastBoard(row: Partial<Requirement> = {}, steps: FastStep[] = RE
     cell('risk', 'risk', '风险目录', '风险目录（gates/risk-paths）', 'pass', '没改到'), ...b.checks.cells.filter((c) => c.group === 'brain'),
   ]
   return {
-    ...b, row: fastRow(row, b.row), steps, phases: [], nodes: [], runs: [], relays: [], other_runs: [], lean_steps: [], belt: beltOf(COMMITS),
+    ...b, row: fastRow(row, b.row), steps, phases: [], nodes: [], runs: [], relays: [], other_runs: [], lean_steps: [], belt: beltOf(COMMITS), decisions: [], questions: [],
     checks: { ...b.checks, cells, todo: [], passed: cells.filter((c) => c.status === 'pass').length, failed: cells.filter((c) => c.status === 'fail').length,
       total: cells.filter((c) => c.status === 'pass' || c.status === 'fail').length },
     accept: { ...b.accept, state: 'not_yet' },
   }
 }
+
+/** 开 MR's or 转完整流程's answer (POST /requirements/{repo}/{key}/act/{action}): 开 MR that did nothing yet, with *over*. */
+export const actAnswer = (over: Partial<ActResult>): ActResult => ({
+  ok: true, action: 'mr', text: '', pushed: false, mr: null, commands: [], new_mr_url: null, intent: null, told: false, output: '', ...over,
+})

@@ -3,10 +3,11 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, test, vi } from 'vitest'
 import type { BoardEntry } from '../nav'
 import { fx } from '../test/data'
-import { C1, C2, C3, C4, COMMITS, FORK, MERGE_STEPS, MR, MR_URL, PIPELINE_URL, READY_STEPS, WAITS, beltOf, fastBoard, fastCommits } from '../test/fast'
+import { C1, C2, C3, C4, COMMITS, FORK, MERGE_STEPS, MR, MR_URL, PIPELINE_URL, READY_STEPS, WAITS, actAnswer, beltOf, fastBoard, fastCommits } from '../test/fast'
 import { API, installFixtureRoutes } from '../test/routes'
 import { apiCalls, apiError, navigations, type RouteHandler } from '../test/stubs/app-sdk'
 import type { CommitOut, CommitsOutput, FileView, ReqBoard } from '../types'
+import { FULL_ASK } from '../views/FastActs'
 import type { ViewProps } from '../views/props'
 import { BoardPage } from './BoardPage'
 
@@ -245,3 +246,91 @@ describe('产出 of a fast run: the code it wrote, by commit', () => {
     expect(within(pane).getByTestId('out-at')).toHaveTextContent(/^全部改动 · 到最后一个提交 c2c2c2c$/)
   })
 })
+
+describe('你要做的一步 of a fast run: its step right there', () => {
+  const ACT_MR = `${API}/requirements/r1/PAY-17/act/mr`
+  const ACT_FULL = `${API}/requirements/r1/PAY-17/act/full`
+  const OPENED = actAnswer({ text: '推上去了，开了 MR !12（没有交接标签：人来审、合并）', pushed: true, mr: { iid: 12, url: MR_URL, existing: false }, output: 'pushed ai/alice/PAY-17-coupon\nopened !12' })
+  const strip = () => screen.findByRole('region', { name: '你要做的一步' })
+  const posts = () => apiCalls.filter((c) => c.method === 'POST')
+
+  test('开 MR runs on one click as on 需求现状: the answer under the strip (the MR, 细节, 收起), the board read again; 去需求现状 → second', async () => {
+    const user = userEvent.setup()
+    let reads = 0
+    const p = renderBoard(() => { reads++; return fastBoard() }, { routes: { [`POST ${ACT_MR}`]: () => OPENED } })
+    const s = await strip()
+    expect(within(s).getAllByRole('button').map((b) => [b.textContent, b.className])).toEqual([['开 MR', 'kt-btn br-act is-primary'], ['去需求现状 →', 'kt-btn']])
+    const before = reads
+    await user.click(within(s).getByRole('button', { name: '开 MR' }))
+    const out = await screen.findByTestId('act-result')
+    expect(within(out).getByRole('status')).toHaveTextContent('推上去了，开了 MR !12（没有交接标签：人来审、合并）')
+    expect(within(out).getByRole('link', { name: 'MR !12' })).toHaveAttribute('href', MR_URL)
+    expect(out.querySelector('details')).not.toHaveAttribute('open')
+    expect(out.querySelector('details')).toHaveTextContent('opened !12')
+    expect(posts()).toEqual([{ method: 'POST', path: ACT_MR, body: {} }])
+    await waitFor(() => expect(reads).toBeGreaterThan(before))
+    expect(p.reloadStatus).toHaveBeenCalled()
+    await user.click(within(out).getByRole('button', { name: '收起' }))
+    expect(screen.queryByTestId('act-result')).toBeNull()
+    expect(p.go).not.toHaveBeenCalled()
+  })
+
+  test('the answer stays when the board moves on after it, until 收起', async () => {
+    const user = userEvent.setup()
+    let opened = false
+    renderBoard(() => (opened ? fastBoard({ waits: WAITS.merge, mr: MR }, MERGE_STEPS) : fastBoard()), {
+      routes: { [`POST ${ACT_MR}`]: () => { opened = true; return OPENED } },
+    })
+    await user.click(within(await strip()).getByRole('button', { name: '开 MR' }))
+    await waitFor(() => expect(screen.getByTestId('br-next')).toHaveTextContent('此刻不用你做什么'))
+    expect(screen.getByTestId('act-result')).toHaveTextContent('推上去了，开了 MR !12')
+  })
+
+  test('a risk path changed: 转完整流程 asks once, runs only after 确定转, and says whether the session was told', async () => {
+    const user = userEvent.setup()
+    renderBoard(fastBoard({ waits: WAITS.risk }), {
+      routes: { [`POST ${ACT_FULL}`]: () => actAnswer({ action: 'full', text: '转成完整流程：Lean intent 261120-pay-17-coupon', intent: '261120-pay-17-coupon' }) },
+    })
+    const s = await strip()
+    expect(within(s).getAllByRole('button').map((b) => b.textContent)).toEqual(['转完整流程', '去需求现状 →'])
+    await user.click(within(s).getByRole('button', { name: '转完整流程' }))
+    const ask = screen.getByRole('group', { name: '确定转完整流程' })
+    expect(ask).toHaveTextContent(FULL_ASK)
+    await user.click(within(ask).getByRole('button', { name: '取消' }))
+    expect(screen.queryByRole('group', { name: '确定转完整流程' })).toBeNull()
+    expect(posts()).toEqual([])
+    await user.click(within(s).getByRole('button', { name: '转完整流程' }))
+    await user.click(screen.getByRole('button', { name: '确定转' }))
+    const out = await screen.findByTestId('act-result')
+    expect(within(out).getByRole('status')).toHaveTextContent('转成完整流程：Lean intent 261120-pay-17-coupon')
+    expect(out).toHaveTextContent('在会话里跟它说一声以后按 Lean 走')
+    expect(posts()).toEqual([{ method: 'POST', path: ACT_FULL, body: {} }])
+  })
+
+  test('a refusal says why in the backend’s words; while the AI writes, 开 MR waits with why', async () => {
+    const user = userEvent.setup()
+    const why = '这个需求的会话正在写代码：等它停下再开 MR'
+    renderBoard(fastBoard(), { routes: { [`POST ${ACT_MR}`]: () => { throw apiError(409, 'busy', why) } } })
+    await user.click(within(await strip()).getByRole('button', { name: '开 MR' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(why)
+    expect(screen.queryByTestId('act-result')).toBeNull()
+    cleanup()
+    const b = fastBoard()
+    b.sessions = b.sessions.map((x) => ({ ...x, busy: true }))
+    renderBoard(b)
+    expect(within(await strip()).getByRole('button', { name: '开 MR' })).toBeDisabled()
+    expect(within(screen.getByTestId('act-follow')).getByRole('status')).toHaveTextContent(/^AI 正在会话里做事：等它停下再开 MR。$/)
+  })
+
+  test.each([
+    ['a repo done only on this machine', () => fastBoard({ local_only: true })],
+    ['its worktree not on this machine', () => fastBoard({ worktree: null })],
+    ['its step a reply in the session', () => fastBoard({ waits: WAITS.stopped })],
+    ['a Lean run', () => fx.board()],
+  ] as [string, () => ReqBoard][])('no act where it cannot run, 去需求现状 → alone and first: %s', async (_, b) => {
+    renderBoard(b())
+    expect(within(await strip()).getAllByRole('button').map((x) => [x.textContent, x.className])).toEqual([['去需求现状 →', 'kt-btn is-primary']])
+    expect(screen.queryByTestId('act-follow')).toBeNull()
+  })
+})
+

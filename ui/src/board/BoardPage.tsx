@@ -22,7 +22,8 @@
  *
  * A fast run (快速, board.steps) has its five steps (FastSteps.tsx) where the stage graph goes; with no stages it has no
  * lanes, and it ends with its MR merged on GitLab, not with 验收. Its 产出 is 写代码's, by commit (?out=code&commit=):
- * 写代码's box and dot and the top bar's 产出 open it on 全部改动, a commit on the conveyor on that commit.
+ * 写代码's box and dot and the top bar's 产出 open it on 全部改动, a commit on the conveyor on that commit. Its 你要做的一步
+ * has 开 MR (or 转完整流程) right there when that is the step; the board is read again after it answers.
  *
  * A big requirement split into small ones (row.family, views/Family.tsx): a small one names its big one in the crumb
  * and the top bar; a big one's small ones are lanes with the roll-up and the trace's family numbers. Either family card
@@ -351,7 +352,7 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, pus
               </>
             ) : (
               <>
-                {!quiet && <NextStep board={board} onDetail={toDetail} />}
+                {!quiet && <NextStep board={board} repo={entry.repo} reqKey={entry.key} onDetail={toDetail} onActed={() => { live.reload(); reloadStatus() }} />}
                 <Kpis key={`${rp.on ? 'replay' : 'live'}`} board={view} run={picked} reducedMotion={reducedMotion} onNode={onNode} onCode={() => toCode()} replaying={rp.on} />
                 {acceptTop && <Accept board={board} onDetail={toDetail} quiet={quiet} />}
                 {fam?.role === 'big' && famCard}

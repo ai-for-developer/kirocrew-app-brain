@@ -94,6 +94,8 @@ ${toneVars}
 .br-btn.is-small { padding: 4px 10px; font-size: .84em; border-radius: 8px; }
 .br-btn.is-big { padding: 10px 20px; font-size: 1.02em; border-radius: 12px; }
 .br-btn[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--card)); color: var(--text-strong); }
+.kt-btn.br-act { display: inline-flex; align-items: center; gap: 6px; }
+.kt-btn.br-act:disabled { cursor: not-allowed; opacity: .55; }
 .br-link { appearance: none; border: 0; background: transparent; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-decoration: none; }
 .br-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 a.br-link { display: inline-flex; align-items: center; gap: 3px; }
