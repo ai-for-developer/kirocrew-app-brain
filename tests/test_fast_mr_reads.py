@@ -1,7 +1,10 @@
-"""What a fast run reads of its MR on GitLab, in the background and on its row: only while the MR can still change
-(a teammate's open one, the person's own once it is opened, a first look at app start; never a merged or closed one),
-a copy GitLab cannot refresh said to be old, and without a GitLab token a 开 MR that pushed the branch says its MR is
-opened on GitLab by hand instead of asking for 开 MR again."""
+"""What a fast run reads of its MR on GitLab, in the background and on its row: until it is merged, whoever's run it
+is, since nothing on this machine says when its MR opens, closes or opens again (开 MR here, `brain mr` in a terminal
+or the AI's session, GitLab itself) and a read GitLab did not answer is tried again; a copy GitLab cannot refresh said
+to be old, and without a GitLab token a 开 MR that pushed the branch says its MR is opened on GitLab by hand instead of
+asking for 开 MR again."""
+
+from urllib.parse import parse_qsl, urlsplit
 
 from appkit import BRAINKIT, mod, sh
 from brainfix import lean, needs_brainkit, run
@@ -12,16 +15,24 @@ pytestmark = needs_brainkit
 fastrow = mod("fastrow")
 
 
-def gets(gl, branch):
-    return [c for c in gl.calls if c[0] == "GET" and c[1].endswith("/merge_requests") and c[2].get("source_branch") == branch]
-
-
-def test_a_fast_runs_mr_is_read_while_it_can_change_and_no_longer(tmp_path, home, monkeypatch):
+def test_the_owners_fast_run_follows_its_mr_on_gitlab_until_it_is_merged(tmp_path, home, monkeypatch):
     repo = project(tmp_path)
     gl = GitLab((repo / ".brain" / "kit.json").read_text(encoding="utf-8"))
     monkeypatch.setattr(mod("mrinfo"), "TTL_S", 0.0)
+    monkeypatch.setattr(mod("service"), "MR_EVERY_S", 3600.0)    # only the rounds below read GitLab
     svc, gw = fast_service(tmp_path, home, repo)
-    svc.transport = gl
+    asked, down = [], {"branch": None}
+
+    def gitlab(method, url, headers, body):
+        u = urlsplit(url)
+        if method == "GET" and u.path.endswith("/merge_requests"):
+            br = dict(parse_qsl(u.query)).get("source_branch")
+            asked.append(br)
+            if br == down["branch"]:
+                down["branch"] = None
+                raise OSError("GitLab is down")
+        return gl(method, url, headers, body)
+    svc.transport = gitlab
 
     async def go():
         await svc.start()
@@ -30,41 +41,47 @@ def test_a_fast_runs_mr_is_read_while_it_can_change_and_no_longer(tmp_path, home
             await idle(svc, gw, out["slot"])
             monkeypatch.setenv("GITLAB_TOKEN", TOKEN)      # after the start: brain start would ask GitLab for the key
             br, seen = out["branch"], {}
-            await svc.overview("all")
-            await svc.refresh_mrs()
-            seen["first look"] = len(gets(gl, br))
-            await svc.overview("all")
-            await svc.refresh_mrs()
-            seen["no MR, read once"] = len(gets(gl, br)) - seen["first look"]
-            gl.mrs.append({"iid": 12, "source_branch": br, "target_branch": "main", "state": "opened", "sha": "d" * 40,
+            tip = verified_commit(home / "workplace" / "brain-app" / "pay" / "coupon", "shop/coupon.py", "RATE = 0.9\n")
+
+            async def look(name):
+                svc._repo("r1").invalidate()
+                await svc.overview("all")
+                before = asked.count(br)
+                await svc.refresh_mrs()
+                svc._repo("r1").invalidate()
+                row = {r["key"]: r for r in (await svc.overview("all"))["rows"]}[out["key"]]
+                seen[name] = (asked.count(br) - before, row["state"], (row.get("mr") or {}).get("state"))
+
+            await look("no MR yet")
+            await look("no MR yet, again")
+            gl.mrs.append({"iid": 12, "source_branch": br, "target_branch": "main", "state": "opened", "sha": tip,
                            "labels": [], "web_url": "https://gitlab.example.com/grp/pay/-/merge_requests/12"})
-            svc.mr.refresh("https://gitlab.example.com", "grp/pay", br, transport=gl)     # as 开 MR does
-            await svc.overview("all")
-            before = len(gets(gl, br))
-            await svc.refresh_mrs()
-            seen["opened"] = len(gets(gl, br)) - before
+            down["branch"] = br
+            await look("brain mr in a terminal opened it, GitLab down")
+            await look("GitLab back")
+            gl.mrs[-1]["state"] = "closed"
+            await look("closed")
+            gl.mrs[-1]["state"] = "opened"
+            await look("opened again on GitLab")
             gl.mrs[-1]["state"] = "merged"
-            await svc.refresh_mrs()
-            await svc.overview("all")
-            before = len(gets(gl, br))
-            await svc.refresh_mrs()
-            seen["merged"] = len(gets(gl, br)) - before
+            await look("merged")
+            await look("after the merge")
             return seen
         finally:
             await svc.stop()
 
-    assert run(go()) == {"first look": 1, "no MR, read once": 0, "opened": 1, "merged": 0}
+    assert run(go()) == {
+        "no MR yet": (1, "local", None), "no MR yet, again": (1, "local", None),
+        "brain mr in a terminal opened it, GitLab down": (1, "local", None), "GitLab back": (1, "local", "opened"),
+        "closed": (1, "closed", "closed"), "opened again on GitLab": (1, "local", "opened"),
+        "merged": (1, "merged", "merged"), "after the merge": (0, "merged", "merged")}
 
 
-def test_polls_mr_follows_who_can_still_change_it():
+def test_polls_mr_until_it_is_merged():
     f = {"merged": False}
-    opened, merged, closed = {"state": "opened"}, {"state": "merged"}, {"state": "closed"}
-    assert fastrow.polls_mr(f, None, mine=True, read=False), "a first look"
-    assert not fastrow.polls_mr(f, None, mine=True, read=True), "no MR yet: 开 MR reads it when it opens one"
-    assert fastrow.polls_mr(f, opened, mine=True, read=True)
-    assert fastrow.polls_mr(f, None, mine=False, read=True), "a teammate opens it on their machine"
-    assert not any(fastrow.polls_mr(f, m, mine=mine, read=True) for m in (merged, closed) for mine in (True, False))
-    assert not fastrow.polls_mr({"merged": True}, opened, mine=False, read=True)
+    assert all(fastrow.polls_mr(f, mr) for mr in (None, {"state": "opened"}, {"state": "closed"}))
+    assert not fastrow.polls_mr(f, {"state": "merged"})
+    assert not fastrow.polls_mr({"merged": True}, {"state": "opened"}), "the run is on the default branch"
 
 
 def test_a_row_that_never_reads_the_git_half_skips_it():

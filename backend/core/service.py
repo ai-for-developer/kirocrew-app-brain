@@ -356,7 +356,7 @@ class Service:
         return ""
 
     async def refresh_mrs(self) -> None:
-        """The MRs of handed-over runs and of fast runs whose MR can still change (fastrow.polls_mr; person mode), each
+        """The MRs of handed-over runs and of fast runs until their MR is merged (fastrow.polls_mr; person mode), each
         at most every mrinfo.TTL_S. Only the notes of the account the repo's kit.json names as bridge_user are the
         bridge's (when it names one)."""
         for (base, project, branch), (_, bridge_user) in list(self._mr_wanted.items()):
@@ -596,7 +596,7 @@ class Service:
         if (run.get("handoff") or own_mr) and f.get("branch") and base and project:
             wanted = (base, project, f["branch"])
             mr = self.mr.get(project, f["branch"])
-            if run.get("handoff") or fastrow.polls_mr(f, mr, mine=mine, read=self.mr.read(project, f["branch"])):
+            if run.get("handoff") or fastrow.polls_mr(f, mr):
                 self._mr_wanted[wanted] = (scope, str(repo.cfg.get("bridge_user") or ""))
             else:
                 self._mr_wanted.pop(wanted, None)

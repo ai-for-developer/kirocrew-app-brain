@@ -230,10 +230,6 @@ class MrCache:
         row = self._rows.get((project, branch))
         return row is None or time.monotonic() - row["at"] > TTL_S
 
-    def read(self, project: str, branch: str) -> bool:
-        """GitLab was asked about the branch's MR since the app started (whatever it answered)."""
-        return (project, branch) in self._rows
-
     def stale_since(self, project: str, branch: str) -> float | None:
         """When the MR get() gives was read, if every read since failed (GitLab down, the token refused); None when the
         last read worked."""

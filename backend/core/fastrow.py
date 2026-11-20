@@ -98,14 +98,11 @@ def fast_facts(repo: Any, f: dict[str, Any], cache: dict[tuple, tuple[int, Optio
                      patrol=sources.PATROL in sources.enabled(repo.cfg), stale_s=stale_s, by_hand=by_hand)
 
 
-def polls_mr(f: dict[str, Any], mr: Optional[dict[str, Any]], *, mine: bool, read: bool) -> bool:
-    """Whether this machine keeps reading a fast run's MR from GitLab: never once it is merged or closed; a teammate's
-    while it is open (they open its MR on their machine); the person's own while its MR is open, or until it was read
-    once (开 MR reads it again when it opens one)."""
-    state = (mr or {}).get("state")
-    if f.get("merged") or state in ("merged", "closed"):
-        return False
-    return not mine or state == "opened" or not read
+def polls_mr(f: dict[str, Any], mr: Optional[dict[str, Any]]) -> bool:
+    """Whether this machine keeps reading a fast run's MR from GitLab: until it is merged (on GitLab, or the run is on
+    the default branch), whoever's run it is. Nothing on this machine says when its MR opens, closes or opens again
+    (开 MR here, `brain mr` in a terminal or the AI's session, GitLab itself)."""
+    return not f.get("merged") and (mr or {}).get("state") != "merged"
 
 
 def _ago(s: float) -> str:
