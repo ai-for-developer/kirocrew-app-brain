@@ -205,7 +205,8 @@ class TeamRuntime:
                 else None,
                 helper=patrol_mod.Helper(PYTHON_BIN, str(APP_ROOT / "backend" / "core" / "team" / "patrol_reply.py"),
                                          config, str(bk.root())),
-                claims=lambda: sources.held(self), jenkins=Jenkins.of(cfg.get("jenkins"), self.transport))
+                claims=lambda: sources.held(self), jenkins=Jenkins.of(cfg.get("jenkins"), self.transport),
+                shared=lambda: self.staging_view()["working"])
             self.staging = staging_mod.StagingWatch(
                 gl=gl, sessions=kc, kit=self.host.kit, out=self._out, projects=cfg["projects"],
                 ledger_path=os.path.join(os.path.dirname(config), "staging.sqlite"),

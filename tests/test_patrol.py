@@ -2,9 +2,9 @@
 GitLab and Jenkins, the session surface in memory, one clock for both. What it finds (a failed pipeline, a check
 Jenkins reported with its log read where the runner reaches Jenkins, an open review thread, a conflict), what it
 dispatches and when again (a fingerprint once; a new comment, pipeline, Jenkins build or head again), what it skips
-and why, two sessions at a time with the MRs open before it started first, the two failed attempts that block an MR
-with one comment, the claim an MR handed over keeps, a workspace cloned once and reset to origin (real git), the reply
-helper's requests, and the session runner's word on a patrol turn.
+and why, two sessions at a time (测试环境报错's fixes counted) with the MRs open before it started first, the two
+failed attempts that block an MR with one comment, the claim an MR handed over keeps, a workspace cloned once and reset
+to origin (real git), the reply helper's requests, and the session runner's word on a patrol turn.
 """
 
 import asyncio
@@ -57,6 +57,7 @@ class World:
         self.sessions, self.ws = FakeSessions(), FakeWorkspaces()
         self.ledger, self.claims = str(tmp_path / "patrol.sqlite"), claims or (lambda: [])
         self.said: list[str] = []
+        self.staging = [0]                  # 测试环境报错's fix sessions at work
         self.patrol = self.start(list(self.kits))
 
     def start(self, projects):
@@ -65,7 +66,8 @@ class World:
         return patrol.Patrol(
             gl=mod("bk").m("rest").GitLab(BASE, "bridge-tok", self.gl), sessions=self.sessions,
             kit=lambda p: self.kits[p], projects=projects, ledger_path=self.ledger, workspaces=self.ws,
-            claims=self.claims, jenkins=self.jenkins, now=self.clock, out=self.said.append,
+            claims=self.claims, jenkins=self.jenkins, shared=lambda: self.staging[0], now=self.clock,
+            out=self.said.append,
             helper=patrol.Helper("/usr/bin/python3", "/app/backend/core/team/patrol_reply.py", "/setup/bridge.json",
                                  "/kit"))
 
@@ -424,6 +426,20 @@ def test_a_session_at_work_in_a_project_this_round_could_not_read_still_counts(b
         w.round()
     assert w.slots() == ["patrol-42-1", "patrol-43-1"] and w.item(2, "grp/other")["state"] == "queued"
     assert w.patrol.view()["projects"][0] == {"project": P, "on": False, "error": "grp/repo: .brain/kit.json not found on main"}
+
+
+def test_the_fix_sessions_of_staging_errors_count_toward_the_two(bk, tmp_path):
+    """测试环境报错 counts MR 巡检's sessions toward CAP, and MR 巡检 counts its fixes: two brain-patrol sessions at most."""
+    w = World(tmp_path)
+    w.staging[0] = 1
+    for iid in (1, 2):
+        w.gl.mr(P, iid, created=w.clock.t - 300 + iid, **conflicted())
+    w.round()
+    assert w.slots() == ["patrol-42-1"] and w.item(2)["state"] == "queued"
+    w.staging[0] = 0                    # its fix ended
+    w.later()
+    w.round()
+    assert w.slots() == ["patrol-42-1", "patrol-42-2"]
 
 
 def test_two_failed_attempts_on_one_fingerprint_block_the_mr_with_one_comment(bk, tmp_path):

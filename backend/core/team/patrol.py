@@ -16,9 +16,10 @@ the open review notes and comments, and nothing else.
 The ledger, <root>/patrol.sqlite, has one row per open MR of the projects patrol is on (MrRow). It is a state machine
 (settle, Patrol._look and Patrol._send):
   idle -> working     the fingerprint was not worked to the end of a turn yet, and a session is free: at most CAP at
-                      work or handed work this round, the others wait (first the MRs open before patrol started in
-                      their project, then by when each MR last changed). The row is working before its message goes,
-                      so a message KiroCrew did not answer, which may have landed, is never sent again.
+                      work or handed work this round, 测试环境报错's fixes counted, the others wait (first the MRs open
+                      before patrol started in their project, then by when each MR last changed). The row is working
+                      before its message goes, so a message KiroCrew did not answer, which may have landed, is never
+                      sent again.
   working -> idle     the turn ended (the review notes it named count as answered then), or the MR head moved
   working -> idle     a failed attempt: TIMEOUT_S without either (the turn is stopped), or a turn that ended without a
                       reply or with KiroCrew's error. A message KiroCrew refused is a failed attempt as well.
@@ -54,7 +55,7 @@ from .jenkins import Jenkins, build_path
 
 KIND = sources.PATROL
 AGENT = "brain-patrol"
-CAP = 2                     # patrol sessions at work at once, counting those handed work this round
+CAP = 2                     # patrol sessions at work at once, counting those handed work this round and 测试环境报错's
 TIMEOUT_S = 30 * 60         # a turn with no end and no new head this long is a failed attempt
 MAX_ATTEMPTS = 2            # failed attempts on one fingerprint before the MR is blocked
 MAX_STREAK = 3              # dispatches in a row with no person pushing or commenting in between before it is paused
@@ -714,16 +715,18 @@ def _said(exc: BaseException) -> str:
 
 
 class Patrol:
-    """The work source mr-patrol, hosted by TeamRuntime: round() each bridge round on its worker thread, view() for the
-    page from any thread (what the last round saw), held() for sources.holder."""
+    """The work source mr-patrol, hosted by TeamRuntime: round() each bridge round on its worker thread (*shared* says
+    how many of 测试环境报错's fix sessions are at work), view() for the page from any thread (what the last round saw),
+    held() for sources.holder."""
 
     def __init__(self, *, gl: Any, sessions: Any, kit: Callable[[str], Mapping[str, Any]], projects: list[str],
                  ledger_path: str, workspaces: Workspaces | None, helper: Helper,
                  claims: Callable[[], list[sources.Claim]], jenkins: Jenkins = Jenkins(),
+                 shared: Callable[[], int] = lambda: 0,
                  now: Callable[[], float] = time.time, out: Callable[[str], None] = print) -> None:
         self.gl, self.jenkins, self.sessions, self.kit, self.projects = gl, jenkins, sessions, kit, list(projects)
         self.ledger_path, self.workspaces, self.helper, self.claims = ledger_path, workspaces, helper, claims
-        self.now, self.out = now, out
+        self.now, self.out, self.shared = now, out, shared
         self._led: Ledger | None = None
         self._me = ""
         self._turns: dict[tuple[str, str], str] = {}
@@ -922,10 +925,10 @@ class Patrol:
 
     def _dispatch(self, entries: list[Entry], now: float) -> None:
         """The MRs with work to give, the ones open before patrol started first, then by when each last changed, while
-        fewer than CAP sessions are at work (every project's, also one this round could not read) or were handed work
-        this round, whatever KiroCrew made of it."""
+        fewer than CAP sessions are at work (every project's, also one this round could not read, and 测试环境报错's) or
+        were handed work this round, whatever KiroCrew made of it."""
         common = bk.m("common")
-        busy = sum(1 for r in self.led.rows() if self._busy(r))
+        busy = self.shared() + sum(1 for r in self.led.rows() if self._busy(r))
         todo = [e for e in entries if e.standing == "todo"]
         for e in sorted(todo, key=lambda e: (_ts(e.mr.get("created_at")) >= e.since, _ts(e.mr.get("updated_at")),
                                              e.project, int(e.mr["iid"]))):
