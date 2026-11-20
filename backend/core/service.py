@@ -1284,6 +1284,13 @@ class Service:
         return scrub_tree(await asyncio.to_thread(lambda: outputs_mod.node_output(self._fold(rid, key, snap), q)),
                           self.scrub)
 
+    async def outputs_commits(self, rid: str, key: str) -> dict[str, Any]:
+        """产出 of a fast run: the run branch's commits, each with its files, and all of them added up
+        (outputs.commits_output)."""
+        snap = self._sessions_snapshot()
+        return scrub_tree(await asyncio.to_thread(lambda: outputs_mod.commits_output(self._fold(rid, key, snap))),
+                          self.scrub)
+
     async def outputs_file(self, rid: str, key: str, q: outputs_mod.FileQuery) -> dict[str, Any]:
         """产出: one file of it, its text or its change (outputs.file_view)."""
         snap = self._sessions_snapshot()

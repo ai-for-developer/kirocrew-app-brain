@@ -76,6 +76,9 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
         rid, key = _rid(request), _key(request)
         return kit.json(await svc.outputs_file(rid, key, outputs_mod.file_query(request.query)))
 
+    async def outputs_commits(request: Any) -> Any:
+        return kit.json(await svc.outputs_commits(_rid(request), _key(request)))
+
     async def outputs_turns(request: Any) -> Any:
         rid, key = _rid(request), _key(request)
         return kit.json(await svc.outputs_turns(rid, key, outputs_mod.node_query(request.query.get("node"),
@@ -270,6 +273,7 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
         AppRoute("GET", "/board/{repo}/{key}", kit.guarded(board)),
         AppRoute("GET", "/outputs/{repo}/{key}", kit.guarded(outputs)),
         AppRoute("GET", "/outputs/{repo}/{key}/file", kit.guarded(outputs_file)),
+        AppRoute("GET", "/outputs/{repo}/{key}/commits", kit.guarded(outputs_commits)),
         AppRoute("GET", "/outputs/{repo}/{key}/turns", kit.guarded(outputs_turns)),
         AppRoute("POST", "/requirements/{repo}/{key}/session", kit.guarded(open_session)),
         AppRoute("POST", "/requirements/{repo}/{key}/stop", kit.guarded(stop_session)),

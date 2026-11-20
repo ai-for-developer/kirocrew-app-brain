@@ -32,7 +32,7 @@ import os
 import re
 import stat
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from . import mrdesc_view, stages
 from .httpkit import AppError
@@ -82,6 +82,7 @@ MISSING = "这一版里没有这个文件（可能这一轮删掉了它）：看
 GONE = "工作区里没有这个文件了：到会话里看"
 TOO_BIG = "文件太大（超过 4 MB），这里不显示：到会话里看"
 NO_DIFF = "这两版比不出来：刷新看板再试"
+NO_COMMITS = "运行分支上还没有提交：AI 提交以后，每次提交改了哪些文件都在这里"
 
 
 def pseudonymize(text: str) -> str:
@@ -352,13 +353,20 @@ def _out_file(fold: Fold, allowed: AllowedRefs, n: stages.Node, r: stages.Round,
 
 
 def _others(fold: Fold, allowed: AllowedRefs, n: stages.Node, r: stages.Round, skip: set) -> List[Dict[str, Any]]:
-    """The other files the round's commits changed: added up per file (A while its first change adds it, D when its
-    last deletes it), read at the round's last commit that changed it, compared with the commit before its first."""
+    """The other files the round's commits changed (_summed)."""
+    return _summed(fold, allowed, r.commits, lambda p: p not in skip and _in_unit(fold, n, p))
+
+
+def _summed(fold: Fold, allowed: AllowedRefs, shas: Sequence[str], keep: Callable[[str], bool]
+            ) -> List[Dict[str, Any]]:
+    """The files the commits *shas* (oldest first) changed that *keep* takes, Lean's ledgers never: added up per file
+    (A while its first change adds it, D when its last deletes it), read at the last of them that changed it, compared
+    with the commit before its first."""
     by: Dict[str, Dict[str, Any]] = {}
-    for sha in r.commits:
+    for sha in shas:
         for ch in fold.changes.get(sha) or []:
             p = str(ch.get("path") or "")
-            if not p or p in skip or HIDDEN.search(p) or not _in_unit(fold, n, p):
+            if not p or HIDDEN.search(p) or not keep(p):
                 continue
             had = by.get(p)
             st = str(ch.get("status") or "M")
@@ -376,6 +384,24 @@ def _others(fold: Fold, allowed: AllowedRefs, n: stages.Node, r: stages.Round, s
         f["base"] = None if f["status"] == "A" else allowed.parent.get(first)
         out.append(f)
     return out
+
+
+def commits_output(fold: Fold) -> Dict[str, Any]:
+    """产出 by commit, a fast run's drawer (it has no stage rounds; ui/src/types.ts CommitsOutput): each commit of the
+    run branch, oldest first, with the files it changed, and every file they changed added up; at most MAX_FILES
+    files each."""
+    _reader(fold)
+    allowed = AllowedRefs(fold)
+    shas = [str(c["sha"]) for c in fold.commits]
+    commits = []
+    for c in fold.commits:
+        files = _summed(fold, allowed, [str(c["sha"])], lambda p: True)
+        commits.append({"sha": str(c["sha"]), "at": c["at"], "subject": str(c.get("subject") or ""),
+                        "by": "bot" if c.get("by") == "bot" else "person", "records_only": bool(c.get("records_only")),
+                        "files": files[:MAX_FILES], "more": max(0, len(files) - MAX_FILES)})
+    files = _summed(fold, allowed, shas, lambda p: True)
+    return {"branch": fold.branch, "head": shas[-1] if shas else None, "commits": commits, "files": files[:MAX_FILES],
+            "more": max(0, len(files) - MAX_FILES), "why": None if shas else NO_COMMITS}
 
 
 def node_output(fold: Fold, q: NodeQuery) -> Dict[str, Any]:
