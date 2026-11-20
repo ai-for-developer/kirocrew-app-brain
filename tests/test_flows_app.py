@@ -11,7 +11,7 @@ from appkit import BRAINKIT, ROOT, mod, sh
 from brainfix import make_project, make_service, needs_brainkit, run
 
 pytestmark = needs_brainkit
-intake, flowview = mod("intake"), mod("flowview")
+intake, flowview, acts, fastrow = mod("intake"), mod("flowview"), mod("acts"), mod("fastrow")
 GITLAB = {"gitlab": {"base": "https://gitlab.example.com", "project": "grp/pay"}}
 
 
@@ -37,6 +37,14 @@ def test_every_table_keyed_by_flow_has_brain_kits_flows_and_the_ui_says_the_same
     assert flowview.wire(flows.Flow.FAST) == {"id": "fast", "label": "快速", "intent": False, "actions": ["full", "mr"]}
     assert flowview.wire(flows.Flow.LEAN) == {"id": "lean", "label": "完整流程", "intent": True,
                                               "actions": ["handoff", "review"]}
+
+
+def test_every_action_has_its_door_and_the_rows_name_the_buttons_by_the_uis_words(flows):
+    assert set(acts.COMMAND) | {"handoff", "review"} == {a.value for a in flows.Action}
+    vocab = (ROOT / "ui" / "src" / "vocab.ts").read_text(encoding="utf-8")
+    ui = dict(re.findall(r"^  (openMr|toFull): '([^']+)',$", vocab, re.M))
+    assert (ui["openMr"], ui["toFull"]) == (acts.NAME["mr"], acts.NAME["full"])
+    assert "「%s」" % acts.NAME["mr"] in fastrow.READY and "「%s」" % acts.NAME["full"] in fastrow.RISKY
 
 
 def test_a_lean_runs_session_words_are_the_same_as_before():

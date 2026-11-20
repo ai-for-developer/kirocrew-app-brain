@@ -16,6 +16,7 @@ from .lean_view import INTENT_RE
 
 TIMEOUT_S = 300
 COMMAND = {"mr": ("mr", "--json"), "full": ("full", "--json")}
+NAME = {"mr": "开 MR", "full": "转完整流程"}      # the buttons' words (ui/src/vocab.ts ACT.openMr, ACT.toFull)
 OUT_MAX = 8000
 
 

@@ -604,7 +604,7 @@ class Service:
         if run.get("handoff") and not mr:
             bot = repo.bot_commits_since((run.get("handoff") or {}).get("local_head"), f.get("origin_sha"))
         merged = bool(f.get("merged") or (mr or {}).get("state") == "merged")
-        fast = fastrow.fast_facts(repo, f, self._fast_git) if own_mr and not flow.intent else None
+        fast = self._fast_of(repo, f)
         deliveries.classify(row, f, mr=mr, slot=live, cfg=repo.cfg, bot_commits=bot,
                             at_handover=bool(mr) and repo.is_handover_tip(f), me=self.me_in(repo),
                             reflected=merged and f["key"] in repo.reflected(), now=self.now(),
@@ -625,6 +625,13 @@ class Service:
             row["open_questions"] = [q["id"] for q in mr.get("questions") or [] if q.get("state") == "open"]
             row["run_ids"] = sorted({q["run_id"] for q in mr.get("questions") or [] if q.get("run_id")})
         return row
+
+    def _fast_of(self, repo: Repo, f: dict[str, Any]) -> fastrow.FastFacts | None:
+        """The FastFacts of a run without a Lean intent (a fast run): its row and its board read them. Blocking."""
+        flow = f.get("flow")
+        if not f.get("run") or f.get("flow_error") or flow is None or flow.intent:
+            return None
+        return fastrow.fast_facts(repo, f, self._fast_git)
 
     # ---- 变更说明 (brain mr-desc) ------------------------------------------------------------------------- #
 
@@ -1203,9 +1210,7 @@ class Service:
         units = self._planned_units(git, f) if git is not None else []
         kept: dict[str, Any] = {}
         live_slot = (self._live(sessions) or {}).get("slot")
-        flow = f.get("flow")
-        fast = fastrow.fast_facts(repo, f, self._fast_git) if repo is not None and f.get("run") and flow is not None \
-            and not flow.intent and not f.get("flow_error") else None
+        fast = self._fast_of(repo, f) if repo is not None else None
         if fast is not None:
             g = fastboard.board(
                 f, d["row"], t, mr=parts.get("mr"), app_events=app_events, subjects=subjects, changes=changes,
@@ -1727,7 +1732,7 @@ class Service:
                         parent_session_key=self.sessions.get(live["id"]).parent_session_key)
                     told = not turn.error
                 await asyncio.to_thread(self.store.append, scope, "app", "%s：%s" % (
-                    {"mr": "开 MR", "full": "转完整流程"}[action], out["text"] or ("做好了" if out["ok"] else "没做成")), None)
+                    acts.NAME[action], out["text"] or ("做好了" if out["ok"] else "没做成")), None)
                 return scrub_tree(dict(out, told=told), self.scrub)
 
             running = self._acting[scope] = asyncio.ensure_future(go())
