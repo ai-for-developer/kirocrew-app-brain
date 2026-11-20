@@ -69,6 +69,7 @@ def test_a_fast_run_goes_from_its_start_to_open_mr(tmp_path, home):
             first = (await rows(svc))[out["key"]]
             tip = verified_commit(wt, "shop/coupon.py", "def apply(total, code):\n    return total\n")
             ready = (await rows(svc))[out["key"]]
+            board = await svc.board("r1", out["key"])
             svc.sync_tick()
             origin = sh("git", "-C", tmp_path / "pay-origin.git", "rev-parse", out["branch"]).stdout.strip()
             with pytest.raises(AppError) as review:
@@ -76,11 +77,11 @@ def test_a_fast_run_goes_from_its_start_to_open_mr(tmp_path, home):
             facts = svc._facts(svc._repo("r1"), out["key"])
             flows = mod("bk").m("flows")
             said = flows.action_problem(flows.Flow.FAST, flows.Action.REVIEW)
-            return out, wt, first, ready, tip, origin, (str(review.value), said), facts
+            return out, wt, first, ready, tip, origin, (str(review.value), said), facts, board
         finally:
             await svc.stop()
 
-    out, wt, first, ready, tip, origin, review, facts = run(go())
+    out, wt, first, ready, tip, origin, review, facts, board = run(go())
     assert out["ok"] and out["intent"] is None and out["branch"] == "ai/alice/PAY-1-coupon"
     rec = json.loads((wt / "runs" / "PAY-1" / "run.json").read_text())
     assert rec["mode"] == "fast" and rec["intent"] is None
@@ -94,6 +95,15 @@ def test_a_fast_run_goes_from_its_start_to_open_mr(tmp_path, home):
     assert review[0] == review[1] and review[1]
     verifies = [e for e in facts["events"] if e.get("event") == "VERIFY"]
     assert verifies and all(e["intent"] is None and e["data"]["branch"] == out["branch"] for e in verifies)
+    assert [(s["id"], s["status"]) for s in board["steps"]] == [
+        ("code", "done"), ("verify", "done"), ("mr", "waiting"), ("ci", "waiting"), ("merge", "waiting")]
+    assert board["phases"] == board["nodes"] == board["runs"] == board["relays"] == board["lean_steps"] == []
+    assert tip[:12] in [b["sha"] for b in board["belt"] if b["kind"] == "commit"]
+    cells = {c["id"]: c for c in board["checks"]["cells"]}
+    assert cells["verify-python3-1"]["status"] == "pass" and cells["ci"]["status"] == "skip"
+    assert (cells["risk"]["group"], cells["risk"]["status"]) == ("risk", "pass")
+    assert not [c for c in board["checks"]["cells"] if c["group"] in ("gate", "handover")]
+    assert board["accept"]["state"] == "not_yet" and board["row"]["flow"]["id"] == "fast"
 
 
 def test_a_fast_run_that_changes_a_risk_path_waits_for_the_full_flow(tmp_path, home):

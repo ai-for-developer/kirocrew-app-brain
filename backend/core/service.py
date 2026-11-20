@@ -18,8 +18,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import (bk, brainview, crewcheck, deliveries, detail, family, fastrow, flowview, identity, importer, inplace,
-               installer, intake, landing, lean_view, mrdesc_view, mrinfo, picker, progress, roster)
+from . import (bk, brainview, crewcheck, deliveries, detail, family, fastboard, fastrow, flowview, identity, importer,
+               inplace, installer, intake, landing, lean_view, mrdesc_view, mrinfo, picker, progress, roster)
 from . import outputs as outputs_mod
 from . import problems, stages
 from . import board as board_mod
@@ -944,7 +944,9 @@ class Service:
                      "approvals": [{k: a[k] for k in ("kind", "state", "sha8", "at", "line", "path")}
                                    for a in f.get("approvals") or []],
                      **lean_view.notes(f.get("state_text"))},
-            "decisions": detail.decisions(f.get("decisions_text"), "aidlc-docs/%s/decisions.md" % run.get("intent"),
+            "decisions": detail.decisions(f.get("decisions_text"),
+                                          flowview.decisions_path(f["flow"], run, repo.cfg["runs_dir"])
+                                          or "aidlc-docs/%s/decisions.md" % run.get("intent"),
                                           repo.cfg.get("bot_users") or []),
             "questions": questions,
             "timeline": {"source": tl["source"], "items": tl["items"], "error": tl["error"],
@@ -1198,15 +1200,26 @@ class Service:
         units = self._planned_units(git, f) if git is not None else []
         kept: dict[str, Any] = {}
         live_slot = (self._live(sessions) or {}).get("slot")
-        g = board_mod.build(
-            f, d["row"], t, mr=parts.get("mr"), sessions=sessions, app_events=app_events,
-            team_decisions=parts.get("decisions") or [], subjects=subjects, changes=changes,
-            docs=self._docs(git, (f.get("run") or {}).get("intent"), changes) if git is not None else {},
-            reflect_refs=self._reflects_of(git, key, str(cfg.get("default_branch") or "main")) if git is not None else [],
-            default_branch=str(cfg.get("default_branch") or "main"), local_only=bool(parts.get("local_only")),
-            kit_rows=board_mod.kit_cells(self.crew.get("rows") or [], parts.get("path") or ""),
-            decisions=d["decisions"], brain=d["brain"], me=parts.get("me"), now=self.now(), units=units, fold=kept,
-            live_slot=live_slot)
+        flow = f.get("flow")
+        fast = fastrow.fast_facts(repo, f, self._fast_git) if repo is not None and f.get("run") and flow is not None \
+            and not flow.intent and not f.get("flow_error") else None
+        if fast is not None:
+            g = fastboard.board(
+                f, d["row"], t, mr=parts.get("mr"), app_events=app_events, subjects=subjects, changes=changes,
+                default_branch=str(cfg.get("default_branch") or "main"), local_only=bool(parts.get("local_only")),
+                kit_rows=board_mod.kit_cells(self.crew.get("rows") or [], parts.get("path") or ""),
+                decisions=d["decisions"], me=parts.get("me"), fast=fast, fold=kept)
+        else:
+            g = board_mod.build(
+                f, d["row"], t, mr=parts.get("mr"), sessions=sessions, app_events=app_events,
+                team_decisions=parts.get("decisions") or [], subjects=subjects, changes=changes,
+                docs=self._docs(git, (f.get("run") or {}).get("intent"), changes) if git is not None else {},
+                reflect_refs=self._reflects_of(git, key, str(cfg.get("default_branch") or "main"))
+                if git is not None else [],
+                default_branch=str(cfg.get("default_branch") or "main"), local_only=bool(parts.get("local_only")),
+                kit_rows=board_mod.kit_cells(self.crew.get("rows") or [], parts.get("path") or ""),
+                decisions=d["decisions"], brain=d["brain"], me=parts.get("me"), now=self.now(), units=units, fold=kept,
+                live_slot=live_slot)
         if len(self._folds) > 50:
             self._folds.clear()
         self._folds[(rid, key)] = (time.monotonic(), outputs_mod.Fold(
@@ -1223,7 +1236,8 @@ class Service:
                 "accept": g["accept"], "brain": d["brain"], "decisions": d["decisions"], "questions": d["questions"],
                 "mr_desc": d["mr_desc"],
                 "sessions": d["sessions"], "live_slot": live_slot, "credits": d["credits"], "source": d["timeline"]["source"],
-                "missing": g["missing"], "error": d["timeline"]["error"], "rollup": board_mod.rollup(t)}
+                "missing": g["missing"], "error": d["timeline"]["error"], "rollup": board_mod.rollup(t),
+                "steps": g.get("steps")}
 
     async def board(self, rid: str, key: str) -> dict[str, Any]:
         """运行过程: polled every 2 s; the trace, the facts and the 变更说明 come from their caches."""
