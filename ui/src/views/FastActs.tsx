@@ -148,6 +148,7 @@ function ActOut({ r, onClose }: { r: ActResult; onClose: () => void }) {
   return (
     <div className={`br-hand-out ${r.ok ? 'is-ok' : 'is-bad'}`} data-testid="act-result" data-action={r.action}>
       <p className="br-hand-verdict" role="status"><i aria-hidden="true">{r.ok ? '✓' : '✕'}</i><b>{r.text}</b></p>
+      {r.warnings.map((w, i) => <p key={i} className="br-warn-text" data-testid="act-warning">{w}</p>)}
       {r.action === 'full' && r.ok && (
         <p>{r.told ? '会话正空着：已经跟它说了以后按 Lean 走。' : '会话在忙，或者没开着：在会话里跟它说一声以后按 Lean 走，或者开一个新会话。'}</p>
       )}

@@ -480,7 +480,7 @@ setApiRoutes({
 function actAnswer({ repo, key, id }: ReturnType<typeof reqOf>, action: ActResult['action']): ActResult {
   const r = repos.find((x) => x.id === repo)
   const project = `${r?.kit?.gitlab_base || 'https://gitlab.example.com'}/${r?.kit?.gitlab_project || `shop/${r?.name ?? repo}`}`
-  const none = { pushed: false, mr: null, commands: [], new_mr_url: null, intent: null, told: false, output: '' }
+  const none = { pushed: false, mr: null, commands: [], new_mr_url: null, intent: null, told: false, warnings: [], output: '' }
   if (action === 'mr') {
     return { ...none, ok: true, action, pushed: true, text: '预览：没有真的推。推上去了，开了 MR !12（没有交接标签：人来审、合并）',
       mr: { iid: 12, url: `${project}/-/merge_requests/12`, existing: false } }

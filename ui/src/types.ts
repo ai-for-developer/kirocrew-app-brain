@@ -2093,6 +2093,8 @@ export interface ActResult {
   /** 转完整流程: the live session was idle and was told to go on under Lean (one line, ids only); false: it was busy
    * or there was none, so the person tells it (or opens a new one) */
   told: boolean
+  /** brain-kit's warnings, Chinese, one line each (brain full: MR 巡检's bot commits on the branch) */
+  warnings: string[]
   /** brain-kit's own output, credentials hidden (shown folded under 细节) */
   output: string
 }

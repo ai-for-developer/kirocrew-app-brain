@@ -145,6 +145,21 @@ describe('开 MR and 转完整流程 on 需求现状', () => {
     expect(await navigator.clipboard.readText()).toBe(cmd)
   })
 
+  test('brain-kit’s warnings are said under the verdict, each on its own line', async () => {
+    const user = userEvent.setup()
+    const warnings = ['运行机的 MR 巡检在这个分支上已经有 2 个提交：转了以后 CI 要先交接', '风险目录里的改动留着：Lean 的审查会看它']
+    renderDetail(fastDetail({ waits: WAITS.risk }), fastBoard(), {
+      [`POST ${ACT_FULL}`]: () => answer({ action: 'full', text: '转成完整流程：Lean intent 261120-pay-17-coupon', intent: '261120-pay-17-coupon', warnings }),
+    })
+    const card = await screen.findByTestId('fast-acts')
+    await user.click(within(card).getByRole('button', { name: '转完整流程' }))
+    await user.click(within(card).getByRole('button', { name: '确定转' }))
+    const out = await within(card).findByTestId('act-result')
+    const said = within(out).getAllByTestId('act-warning')
+    expect(said.map((w) => w.textContent)).toEqual(warnings)
+    expect(said.every((w) => w.compareDocumentPosition(within(out).getByRole('status')) & Node.DOCUMENT_POSITION_PRECEDING)).toBe(true)
+  })
+
   test('a refusal before anything ran says why in the backend’s words', async () => {
     const user = userEvent.setup()
     const why = '这个需求的会话正在写代码：等它停下再开 MR'

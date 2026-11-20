@@ -113,5 +113,5 @@ export function fastBoard(row: Partial<Requirement> = {}, steps: FastStep[] = RE
 
 /** 开 MR's or 转完整流程's answer (POST /requirements/{repo}/{key}/act/{action}): 开 MR that did nothing yet, with *over*. */
 export const actAnswer = (over: Partial<ActResult>): ActResult => ({
-  ok: true, action: 'mr', text: '', pushed: false, mr: null, commands: [], new_mr_url: null, intent: null, told: false, output: '', ...over,
+  ok: true, action: 'mr', text: '', pushed: false, mr: null, commands: [], new_mr_url: null, intent: null, told: false, warnings: [], output: '', ...over,
 })

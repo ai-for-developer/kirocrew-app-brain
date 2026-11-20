@@ -286,6 +286,15 @@ describe('你要做的一步 of a fast run: its step right there', () => {
     expect(screen.getByTestId('act-result')).toHaveTextContent('推上去了，开了 MR !12')
   })
 
+  test('an answer with brain-kit’s warnings says them under its verdict here too', async () => {
+    const user = userEvent.setup()
+    const warnings = ['推上去了，但这台机器上没有 GitLab 令牌：MR 要你自己开']
+    renderBoard(fastBoard(), { routes: { [`POST ${ACT_MR}`]: () => ({ ...OPENED, warnings }) } })
+    await user.click(within(await strip()).getByRole('button', { name: '开 MR' }))
+    const out = await screen.findByTestId('act-result')
+    expect(within(out).getAllByTestId('act-warning').map((w) => w.textContent)).toEqual(warnings)
+  })
+
   test('a risk path changed: 转完整流程 asks once, runs only after 确定转, and says whether the session was told', async () => {
     const user = userEvent.setup()
     renderBoard(fastBoard({ waits: WAITS.risk }), {
