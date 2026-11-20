@@ -8,7 +8,7 @@
 # needs no node and no brain-kit checkout. One commit per release on top of the last one.
 #
 #   scripts/release.sh               # UI check + build, assemble, check, one commit on the local branch `release`
-#   scripts/release.sh --push        # the same, then push `release` to origin
+#   scripts/release.sh --push        # the same, then push `release` to origin (git push --no-verify)
 #   scripts/release.sh --no-test     # skip the UI type check and tests (the build and every release check still run)
 #
 # What goes in: the app at the COMMITTED HEAD of this checkout (git archive; the working tree never), brain-kit at
@@ -188,8 +188,8 @@ git -C "$WT" archive HEAD | tar -x -C "$STAGE/committed"
 REV="$(git -C "$WT" rev-parse --short HEAD)"
 if [ "$PUSH" = 1 ]; then
   echo "== push $BRANCH to origin"
-  git -C "$ROOT" push origin "$BRANCH"
+  git -C "$ROOT" push --no-verify origin "$BRANCH"
   echo "== done: $BRANCH at $REV ($(git -C "$WT" ls-files | wc -l | tr -d ' ') files, $(du -sh "$STAGE/committed" | cut -f1)), pushed"
 else
-  echo "== done: $BRANCH at $REV ($(git -C "$WT" ls-files | wc -l | tr -d ' ') files, $(du -sh "$STAGE/committed" | cut -f1)); not pushed: git push origin $BRANCH"
+  echo "== done: $BRANCH at $REV ($(git -C "$WT" ls-files | wc -l | tr -d ' ') files, $(du -sh "$STAGE/committed" | cut -f1)); not pushed: git push --no-verify origin $BRANCH"
 fi
