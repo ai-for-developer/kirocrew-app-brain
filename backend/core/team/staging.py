@@ -282,8 +282,8 @@ def recur_text(row: Row, web: str) -> str:
     g = row.group
     return "\n".join([
         "这个报错在新的部署里又出现了：部署的提交 %s，一共 %d 次。这个 Issue 是人关的（或者打了 wontfix 标签）：运行机不会再打开它，也不修，"
-        "以后每个新的部署最多在这里说一次。要它接着修：重新打开这个 Issue（去掉 wontfix 标签）。" % (_commit(web, row), g.count),
-        "", "日志（最近的一次）：", "", *_fenced(g.sample)])
+        "以后每个新的部署最多在这里说一次。要它接着修：重新打开这个 Issue（去掉 wontfix 标签），下一个部署里再出现时它接着修。"
+        % (_commit(web, row), g.count), "", "日志（最近的一次）：", "", *_fenced(g.sample)])
 
 
 def jump_text(row: Row, web: str) -> str:
