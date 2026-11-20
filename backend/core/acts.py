@@ -55,7 +55,8 @@ def parse(code: int, stdout: str, stderr: str, action: str) -> dict[str, Any]:
     doc: Any = None
     if code == 0:
         text = (stdout or "").strip()
-        for cand in (text, text.rsplit("\n", 1)[-1]):
+        start = text.rfind("\n{")      # brain prints its object last, indented over many lines
+        for cand in (text, text[start + 1:] if start >= 0 else ""):
             try:
                 doc = json.loads(cand)
                 break

@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from appkit import mod
+from appkit import mod, sh
 from brainfix import (FakeGateway, install_brain_dev, make_project, make_service, needs_brainkit, run,
                       start_in_worktree)
 
@@ -19,7 +19,7 @@ def test_brains_answer_is_read_at_the_boundary():
     ok = json.dumps({"ok": True, "action": "mr", "text": "推上去了，开了 MR !12", "pushed": True,
                      "mr": {"iid": 12, "url": "https://gitlab.example.com/grp/pay/-/merge_requests/12", "existing": False},
                      "commands": [], "new_mr_url": None, "intent": None, "warnings": []})
-    got = acts.parse(0, "some progress\n" + ok, "", "mr")
+    got = acts.parse(0, "some progress\n" + json.dumps(json.loads(ok), indent=2, sort_keys=True), "", "mr")
     assert (got["ok"], got["text"], got["pushed"], got["mr"]["iid"], got["mr"]["existing"]) == (
         True, "推上去了，开了 MR !12", True, 12, False)
     assert "some progress" in got["output"]
@@ -79,3 +79,35 @@ def test_a_lean_run_has_no_open_mr_and_a_fast_one_no_hand_over(tmp_path, home):
     assert got["PAY-2"] == (said[(F, A.HANDOFF)], "not_this_flow", 409)
     assert got["PAY-2 review"] == (said[(F, A.REVIEW)], "not_this_flow", 409)
     assert got["PAY-2 nothing"][1:] == ("unknown_action", 404)
+
+
+@needs_brainkit
+def test_open_mr_pushes_it_and_full_makes_it_a_lean_run_on_the_same_branch(tmp_path, home):
+    from test_fast_flow import START, idle, project, service as fast_service, verified_commit
+    repo = project(tmp_path)
+    svc, gw = fast_service(tmp_path, home, repo)
+
+    async def go():
+        await svc.start()
+        try:
+            out = await svc.intake_start(dict(START))
+            await idle(svc, gw, out["slot"])
+            wt = home / "workplace" / "brain-app" / "pay" / "coupon"
+            head = verified_commit(wt, "shop/coupon.py", "def apply(total, code):\n    return total\n")
+            opened = await svc.act("r1", out["key"], "mr")
+            origin = sh("git", "-C", tmp_path / "pay-origin.git", "rev-parse", out["branch"]).stdout.strip()
+            full = await svc.act("r1", out["key"], "full")
+            for r in svc.repos.values():
+                r.invalidate()
+            row = {r["key"]: r for r in (await svc.overview("all"))["rows"]}[out["key"]]
+            return out, head, opened, origin, full, row
+        finally:
+            await svc.stop()
+
+    out, head, opened, origin, full, row = run(go())
+    assert opened["ok"] and opened["pushed"] and opened["mr"] is None and origin == head, opened
+    assert any(c.startswith("glab mr create") for c in opened["commands"]), "no GitLab token here: the MR by hand"
+    assert opened["new_mr_url"].startswith("https://gitlab.example.com/grp/pay/-/merge_requests/new?")
+    assert full["ok"] and mod("intake").INTENT_RE.match(full["intent"] or ""), full
+    assert full["told"] and gw.msgs[out["slot"]][-1]["content"] == mod("intake").switched_line(full["intent"])
+    assert (row["flow"]["id"], row["intent"], row["branch"]) == ("lean", full["intent"], out["branch"])

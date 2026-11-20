@@ -50,7 +50,7 @@ NEEDS = (("sign", "SpoolSigner"), ("sign", "SignerRefused"), ("sign", "signer_fr
          ("rest", "GitLab.note_edits"), ("flows", "of"), ("flows", "refusals"), ("flows", "policy_at"),
          ("flows", "belongs"), ("flows", "decisions_path"), ("flows", "prepare_clone"), ("flows", "action_problem"),
          ("flows", "Refusal.zh"), ("riskpaths", "hits"), ("ci", "changed_paths"), ("ci", "gitlinks"))
-VERSION_NEEDED = "533d670"
+VERSION_NEEDED = "86a4da5"
 
 _lock = threading.RLock()
 _state: dict[str, Any] = {"path": None, "mods": {}, "errors": {}, "error": "", "version": None}
