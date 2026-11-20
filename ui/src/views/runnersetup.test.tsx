@@ -273,6 +273,23 @@ describe('一键建运行机', () => {
       roles: { product: ['carol'], builder: ['dave'] }, patrol: true, push: 'token' })
   })
 
+  test('机器人账号 with Jenkins: one Jenkins for the runner, its address and user posted again on 再跑一次 with the token left empty (the one kept)', async () => {
+    const user = userEvent.setup()
+    const last = fx.teamSetupBot()
+    last.input.jenkins = { base: 'https://jenkins.example.com', user: 'brain-reader' }
+    installFixtureRoutes({ [`GET ${API}/team/setup`]: () => last, [`POST ${API}/team/setup`]: () => going() })
+    render(<RunnerSetupCard repos={[]} pollMs={60_000} />)
+    const card = await screen.findByRole('region', { name: '一键建运行机' })
+    expect(await within(card).findByLabelText('Jenkins 地址')).toHaveValue('https://jenkins.example.com')
+    expect(within(card).getAllByLabelText('Jenkins token')).toHaveLength(1)
+    await user.click(within(card).getByRole('button', { name: '再跑一次' }))
+    await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).toEqual({
+      mode: 'bot-account', gitlab_base: 'https://gitlab.example.com', projects: ['shop/shop-pay', 'shop/shop-order', 'shop/shop-stock'],
+      roles: { product: ['carol'], builder: ['dave'] }, patrol: true, push: 'token',
+      jenkins: { base: 'https://jenkins.example.com', user: 'brain-reader', token: '' } })
+  })
+
   test('on 设置, below 团队模式: the pointer to it, and after a run the form shows the team settings it saved', async () => {
     const user = userEvent.setup()
     const on: Settings = { ...fx.settings(), team: { enabled: true, bridge_config: '/Users/alice/.brain/team-setup/bridge.json',

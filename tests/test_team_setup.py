@@ -1037,15 +1037,16 @@ def team_reach(world):
     return reach
 
 
-def team_ctx(world, projects=("grp/a", "grp/b"), push="token", admin=True, bridge=True, bot=True, roles=None):
+def team_ctx(world, projects=("grp/a", "grp/b"), push="token", admin=True, bridge=True, bot=True, roles=None, jenkins=None):
     """bot-account on *projects*. admin, bridge, bot: whether this run types the one-time token and the two accounts'
-    personal tokens (False: left out; a string: that token)."""
+    personal tokens (False: left out; a string: that token); jenkins: the Jenkins fields typed (None: none)."""
     setup, rest = mod("team.setup"), mod("bk").m("rest")
     typed = lambda given, key: given if isinstance(given, str) else world[key] if given else ""  # noqa: E731
     inp = setup.SetupInput.parse({
         "gitlab_base": BASE, "mode": "bot-account", "projects": list(projects), "push": push,
         "roles": {"product": "bob", "builder": "carol"} if roles is None else roles,
-        "admin_token": typed(admin, "admin"), "bridge_token": typed(bridge, "bridge"), "bot_token": typed(bot, "bot")})
+        "admin_token": typed(admin, "admin"), "bridge_token": typed(bridge, "bridge"), "bot_token": typed(bot, "bot"),
+        "jenkins": jenkins})
     paths = setup.Paths.default(BRAINKIT, root=world["tmp"] / "team-setup")
     return setup.Ctx(inp, paths, gitlab=lambda tok: rest.GitLab(BASE, tok, world["gl"]), team_mode=team_mode(world),
                      signer=fake_signer(world), reach=team_reach(world))
@@ -1101,6 +1102,21 @@ def test_one_runner_serves_two_projects_as_gitlab_users_of_its_own(team):
     assert team["admin"] not in state and team["bridge"] not in state and team["bot"] not in state
     from test_contract import diff_keys, fixture
     assert diff_keys(fixture("team-setup-bot.json"), json.loads(json.dumps(view))) == []
+
+
+def test_jenkins_is_one_block_for_the_runner_whatever_its_projects(team):
+    """机器人账号 on two projects with Jenkins typed: bridge.json names Jenkins once, its token in jenkins-token alone;
+    a rerun with the token left empty keeps the one saved."""
+    jenkins = {"base": "https://jenkins.example.com", "user": "brain-reader", "token": "fake-" + secrets.token_hex(8)}
+    view, ps = build_team(team, jenkins=jenkins)
+    assert everything_done(view), [(s["id"], s["status"], s["message"], s["detail"][:200]) for s in view["steps"]]
+    block = {"base": "https://jenkins.example.com", "user": "brain-reader", "token_file": str(ps.root / "jenkins-token")}
+    assert json.loads(ps.bridge_json.read_text())["jenkins"] == block
+    files = files_under(ps.root, ps.work, ps.agent_spec.parent)
+    assert [os.path.relpath(p, ps.root) for p, b in files.items() if jenkins["token"].encode() in b] == ["jenkins-token"]
+    assert view["input"]["jenkins"] == {"base": "https://jenkins.example.com", "user": "brain-reader"}
+    again, _ = build_team(team, jenkins=dict(jenkins, token=""))
+    assert everything_done(again) and json.loads(ps.bridge_json.read_text())["jenkins"] == block
 
 
 def test_without_a_one_time_token_brain_bridge_makes_the_labels_and_mrs(team):
