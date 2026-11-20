@@ -258,4 +258,15 @@ describe('交付总览 with fast runs', () => {
     const [ready, merge] = rows()
     expect([colOf(ready), colOf(merge), colOf({ ...merge, state: 'merged' })]).toEqual(['构建', '发布验收', '已合并'])
   })
+
+  test('a fast MR waiting for review waits on the people who review it, a teammate’s as the person’s own', async () => {
+    const ov = fx.overview()
+    ov.rows = [fastRow({ key: 'PAY-18', waits: WAITS.merge, mr: MR }), fastRow({ key: 'PAY-20', owner: 'bob', waits: WAITS.merge, mr: { ...MR, iid: 13 } })]
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
+    render(<OverviewView entry={{}} {...props()} />)
+    const flow = await screen.findByTestId('flow')
+    const meta = (key: string) => (flow.querySelector(`[data-testid="flow-card"][data-key="${key}"] .cto-kmeta`) as HTMLElement).textContent
+    expect(meta('PAY-18')).toMatch(/^alice · 等人审、合并/)
+    expect(meta('PAY-20')).toMatch(/^bob · 等人审、合并/)
+  })
 })

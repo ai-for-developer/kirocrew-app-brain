@@ -24,6 +24,8 @@ const VIEWS = [
   ['运行过程 PAY-9', 'view=board&repo=r1&key=PAY-9'],
   ['运行过程 PAY-2', 'view=board&repo=r1&key=PAY-2'],
   ['运行过程 PAY-11', 'view=board&repo=r1&key=PAY-11'],
+  ['运行过程 PAY-17', 'view=board&repo=r1&key=PAY-17'],
+  ['运行过程 PAY-17 产出', 'view=board&repo=r1&key=PAY-17&out=code&commit=cc204952eaa7&file=shop/coupon.py'],
   ['运行过程 PAY-18', 'view=board&repo=r1&key=PAY-18'],
   ['运行过程 PAY-9 产出', 'view=board&repo=r1&key=PAY-9&out=release&round=3'],
   ['开需求', 'view=new&repo=r1'],
