@@ -16,7 +16,7 @@ from .lean_view import INTENT_RE
 
 TIMEOUT_S = 300
 COMMAND = {"mr": ("mr", "--json"), "full": ("full", "--json")}
-NAME = {"mr": "开 MR", "full": "转完整流程"}      # the buttons' words (ui/src/vocab.ts ACT.openMr, ACT.toFull)
+NAME = {"mr": "开 MR", "full": "转完整流程"}
 # the app's record of a 开 MR that pushed without a GitLab token: the person opens the MR on GitLab (fastrow.BY_HAND)
 BY_HAND = "开 MR：推上去了，没有 GitLab 令牌，MR 在 GitLab 上开"
 OUT_MAX = 8000

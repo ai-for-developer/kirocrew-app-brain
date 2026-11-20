@@ -150,7 +150,7 @@ def _checks(f: dict[str, Any], fast: FastFacts, mr: Optional[dict[str, Any]], ki
         cell("risk", "risk", "风险", "风险目录（gates/risk-paths）", "skip", None, RISK_UNKNOWN)
     else:
         cell("risk", "risk", "风险", "风险目录（gates/risk-paths）", "pass", None, "没改到风险目录")
-    for i, k in enumerate(kit_rows):     # a ! reminder is about the team runner, which never takes a fast run
+    for i, k in enumerate(kit_rows):
         level = k.get("level")
         cell("kit-%d" % i, "brain", k.get("label") or board_mod.KIT_LABEL, k.get("text") or "",
              "fail" if level == "FAIL" else "not_needed" if level == "WARN" else "pass", None,

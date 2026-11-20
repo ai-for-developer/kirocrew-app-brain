@@ -160,7 +160,7 @@ def test_a_mode_brain_kit_does_not_know_still_opens_its_live_session(tmp_path, h
             rec.write_text(json.dumps(dict(json.loads(rec.read_text()), mode="turbo")), encoding="utf-8")
             svc._repo("r1").invalidate()
             again = await svc.open_session("r1", out["key"])
-            gw.slot_rows.pop(out["slot"])          # the person deletes it in KiroCrew
+            gw.slot_rows.pop(out["slot"])
             sm = mod("sessions")
             for _ in range(sm.STATS_EVERY * sm.MISSING_POLLS + 1):
                 await svc.sessions.poll()

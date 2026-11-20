@@ -122,7 +122,6 @@ export function FastActs({ x, repo, reqKey, localOnly, onDone }: {
   const offers = fastActs(x.row, !!x.run, localOnly)
   if (!offers.length && !f.act.result && !f.act.error && !f.act.busy) return null
   const busy = aiWriting(x.sessions)
-  // the step the run waits for leads: 转完整流程 once a risk path changed
   const lead: Act = stepAct(offers, x.row.waits.do) ?? offers[0] ?? f.sent
   const mr = x.row.mr
   const says = lead === 'full' ? FULL_SAYS

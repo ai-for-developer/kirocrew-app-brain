@@ -627,7 +627,7 @@ def brain_views(reqs: dict[str, list[Req]], rows: list[dict], said: dict[str, li
                     {"key": r.key, "owner": r.owner, "branch": r.branch, "intent": r.intent, "brain_commit": brain_commit,
                      "created_at": iso(r.start_at or T0), **({"mode": r.mode} if r.mode != "lean" else {})}),
                     encoding="utf-8")
-                d = top / "aidlc-docs" / r.intent if r.intent else top / "runs" / r.key      # a fast run keeps its own
+                d = top / "aidlc-docs" / r.intent if r.intent else top / "runs" / r.key
                 if r.intent:
                     (d / "inception" / "requirements").mkdir(parents=True, exist_ok=True)
                 rows_ = said.get("%s/%s" % (rid, r.key)) or []
@@ -1135,7 +1135,8 @@ def drawer_payloads(r: Req, rid: str, keep: dict) -> dict[str, dict]:
     """The 产出 drawer's answers for *r* (GET /outputs/{repo}/{key}?node&round, …/file and …/turns), made by
     backend/core/outputs.py over its real commits from the board's own fold, for every round of every stage with a
     lane and every way the page reads each file (源码, 改动 from each version it offers); and by backend/core/turns.py
-    over its session's transcript (Req.session) for the same rounds. A refusal as the route's error."""
+    over its session's transcript (Req.session) for the same rounds. A fast run's by its commits (…/commits): each
+    commit's files and all of them, each read both ways. A refusal as the route's error."""
     f = outputs.Fold(reader=outputs.GitReader(repo_mod.Git(str(r.scratch.path))), intent=r.intent, branch=r.branch,
                      nodes=tuple(keep["nodes"]), commits=tuple(keep["commits"]), changes=changes(r),
                      runs=tuple(keep["runs"]), turns=tuple(keep["turns"]))
@@ -1164,7 +1165,7 @@ def drawer_payloads(r: Req, rid: str, keep: dict) -> dict[str, dict]:
             slots = [turns_mod.Slot(str(s["slot"]), str(s["url"]), r.session["cwd"], False, r.session["rows"], True,
                                     r.session["sent"]) for s in turns_mod.sessions_to_read(f, nq) if r.session]
             put(base + "/turns", {"node": n.id, "round": str(rnd.n)}, lambda: turns_mod.turn_views(f, nq, slots, r.key, T0, service.basic_scrub))
-    if r.mode == "fast":       # by its commits: each commit's files and all of them, in every way the page reads them
+    if r.mode == "fast":
         listed = outputs.commits_output(f)
         put(base + "/commits", {}, lambda: listed)
         for x in [x for c in listed["commits"] for x in c["files"]] + listed["files"]:
