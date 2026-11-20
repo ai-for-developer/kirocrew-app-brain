@@ -8,7 +8,8 @@ Before a kind dispatches anything it turns the GitLab object into a Claim. Its k
 has one (a Brain branch ai/<owner>/<KEY>-<slug>, a hand-over's run), else ``<kind>:<project>:<type>!<iid>``. A kind
 does not dispatch work whose key another kind holds, so work is claimed once. What a kind holds is read from its own
 ledger (Source.held) and merged only here. mr-handoff is brain-kit's bridge, which asks no one: it holds the
-requirement keys of its open runs, and every other kind yields to it.
+requirement keys of its open runs, and every other kind yields to it. staging-errors (team/staging.py) holds the Issues
+it opened for errors in the test environment: ``staging-errors:<project>:issue!<iid>``.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from typing import Any, Callable, Iterable, Literal, Mapping, TypedDict
 
 from .. import bk
 
-HANDOFF, PATROL = "mr-handoff", "mr-patrol"
+HANDOFF, PATROL, STAGING = "mr-handoff", "mr-patrol", "staging-errors"
 
 
 class Ref(TypedDict):
@@ -79,9 +80,15 @@ def _patrol_held(rt: Any) -> list[Claim]:
     return p.held() if p is not None else []
 
 
+def _staging_held(rt: Any) -> list[Claim]:
+    s = getattr(rt, "staging", None)
+    return s.held() if s is not None else []
+
+
 SOURCES: dict[str, Source] = {s.kind: s for s in (
     Source(HANDOFF, "交接过来的 MR", _handoff_held),
     Source(PATROL, "巡检开着的 MR", _patrol_held),
+    Source(STAGING, "测试环境报错", _staging_held),
 )}
 DEFAULT: tuple[str, ...] = (HANDOFF,)
 
