@@ -2,17 +2,21 @@
 
 PatrolGitLab answers what patrol and the bridge's hand-over poll ask: projects and their kit.json on the default branch,
 MRs (paged; by state, all of them included, the label filter the bridge uses, updated_after), an MR with its head
-pipeline, a pipeline's failed jobs and their logs, discussions (paged), an MR's notes (paged, oldest first, as GitLab's
-notes API lists the discussions' notes), the notes posted, and the commits a push brought (ref_name old..new, with who
-committed them). Its times are the clock's, so "before patrol started" is the same moment for both. FakeSessions is
-crewadapter's patrol surface (open_patrol … patrol_stop): a turn runs until a test ends it.
+pipeline, a pipeline's failed jobs and their logs, a commit's statuses (its pipelines' jobs, and what external CI posted
+into them, as measured on a GitLab CE with Jenkins' GitLab plugin), discussions (paged), an MR's notes (paged, oldest
+first, as GitLab's notes API lists the discussions' notes), the notes posted, and the commits a push brought (ref_name
+old..new, with who committed them). Its times are the clock's, so "before patrol started" is the same moment for both.
+A request to JENKINS goes to its FakeJenkins. FakeSessions is crewadapter's patrol surface (open_patrol …
+patrol_stop): a turn runs until a test ends it.
 """
 
 from __future__ import annotations
 
+import base64
 import itertools
 import json
 import re
+import secrets
 from datetime import datetime, timezone
 from urllib.parse import parse_qsl, unquote, urlsplit
 
@@ -22,6 +26,39 @@ BASE = "https://gitlab.example.com"
 API = "/api/v4"
 SHA = {n: ("%x" % n) * 40 for n in range(1, 16)}      # a head sha per number: SHA[1] = "111…", SHA[10] = "aaa…"
 RUNNER = "brain-bot@noreply.invalid"                   # the runner's git email (brain-kit's default kit.json bot_emails)
+JENKINS = "https://jenkins.example.com"                # where the runner reaches Jenkins
+JENKINS_URL = "http://jenkins:8080"                    # Jenkins' own address, in the links it posts to GitLab
+
+
+class FakeJenkins:
+    """Jenkins at JENKINS: a build's consoleText for its read-only user signed in with its token (basic auth); 401 to
+    a wrong token, 403 to no one signed in (anonymous read off, as measured) and to a user without Job/Read
+    (*can_read* False); 404 to a build it does not have. Every request is kept in calls: (method, url, user)."""
+
+    def __init__(self, user: str = "brain-reader") -> None:
+        self.user, self.token = user, "fake-" + secrets.token_hex(8)     # made at run time: no token-looking text
+        self.can_read = True
+        self.logs: dict[str, bytes] = {}
+        self.calls: list[tuple[str, str, str]] = []
+
+    def build(self, path: str, log: bytes) -> str:
+        """A build at *path* (/job/<…>/<number>) with its console. -> its link, as the GitLab plugin posts it."""
+        self.logs[path] = log
+        return JENKINS_URL + path + "/display/redirect"
+
+    def __call__(self, method, url, headers, body):
+        auth = str(headers.get("Authorization") or "")
+        signed = base64.b64decode(auth[6:]).decode() if auth.startswith("Basic ") else ""
+        user, _, token = signed.partition(":")
+        self.calls.append((method, url, user))
+        if user and (user, token) != (self.user, self.token):
+            return 401, b"Unauthorized"
+        if not user or not self.can_read:
+            return 403, b"<html><body>Access Denied: missing the Job/Read permission</body></html>"
+        m = re.fullmatch(r"(/job/.+/\d+)/consoleText", urlsplit(url).path)
+        if method != "GET" or m is None or m.group(1) not in self.logs:
+            return 404, b"Not Found"
+        return 200, self.logs[m.group(1)]
 
 
 class Clock:
@@ -42,6 +79,9 @@ class PatrolGitLab:
         self.mrs: dict[tuple[str, int], dict] = {}
         self.discussions: dict[tuple[str, int], list[dict]] = {}
         self.jobs: dict[int, list[dict]] = {}
+        self.pipes: dict[int, dict] = {}                                # every pipeline made, by its id
+        self.statuses: dict[int, list[dict]] = {}                       # pipeline id -> what external CI posted into it
+        self.jenkins: FakeJenkins | None = None
         self.commits: dict[tuple[str, str], tuple[str, str]] = {}    # (project, sha) -> (its parent, its committer)
         self.ranges = True          # False: GitLab will not list a range of commits (ref_name old..new is a 400)
         self.traces: dict[int, bytes] = {}
@@ -80,15 +120,54 @@ class PatrolGitLab:
             jid = next(self.ids)
             self.jobs[pid].append({"id": jid, "name": name, "status": "failed", "allow_failure": name in allowed})
             self.traces[jid] = log
-        m["_pipeline"] = {"id": pid, "status": "failed", "sha": m["sha"]}
+        m["_pipeline"] = self.pipes[pid] = {"id": pid, "status": "failed", "sha": m["sha"]}
         return pid
 
     def pipeline(self, path: str, iid: int, status: str) -> int:
         m = self.mrs[(path, iid)]
         pid = next(self.ids)
         self.jobs[pid] = []
-        m["_pipeline"] = {"id": pid, "status": status, "sha": m["sha"]}
+        m["_pipeline"] = self.pipes[pid] = {"id": pid, "status": status, "sha": m["sha"]}
         return pid
+
+    def check(self, path: str, iid: int, name: str, status: str, target_url: str) -> int:
+        """External CI (Jenkins' GitLab plugin) posts commit status *name* on the MR head, as GitLab takes it: into the
+        head's pipeline (one of source external made when the head has none); the status of that name that is still
+        running gets the new state, one that ended is retried and a new one made. The pipeline fails while one of its
+        jobs or latest statuses failed, runs while one runs, else passed. -> the status' id."""
+        m = self.mrs[(path, iid)]
+        if m["_pipeline"] is None:
+            pid = next(self.ids)
+            self.jobs[pid] = []
+            m["_pipeline"] = self.pipes[pid] = {"id": pid, "status": "pending", "sha": m["sha"], "source": "external"}
+        pipe = m["_pipeline"]
+        rows = self.statuses.setdefault(pipe["id"], [])
+        last = next((r for r in rows if r["name"] == name and not r["retried"]), None)
+        if last is not None and last["status"] in ("pending", "running"):
+            last.update(status=status, target_url=target_url)
+        else:
+            if last is not None:
+                last["retried"] = True
+            last = {"id": next(self.ids), "sha": m["sha"], "name": name, "status": status, "target_url": target_url,
+                    "allow_failure": False, "pipeline_id": pipe["id"], "retried": False}
+            rows.append(last)
+        now = [r["status"] for r in rows if not r["retried"]] + ["failed" for j in self.jobs[pipe["id"]]
+                                                                  if not j["allow_failure"]]
+        pipe["status"] = "failed" if "failed" in now else "running" if {"pending", "running"} & set(now) else "success"
+        return last["id"]
+
+    def commit_statuses(self, path: str, sha: str, pipeline_id: str | None) -> list[dict]:
+        """GET …/repository/commits/:sha/statuses, its latest ones: each pipeline's jobs as statuses (GitLab lists them
+        so, with the job's id), then what external CI posted."""
+        out = []
+        for pid, pipe in sorted(self.pipes.items()):
+            if pipe["sha"] == sha and pipeline_id in (None, str(pid)):
+                out += [{"id": j["id"], "sha": sha, "name": j["name"], "status": j["status"],
+                         "target_url": "%s/%s/-/jobs/%d" % (BASE, path, j["id"]), "allow_failure": j["allow_failure"],
+                         "pipeline_id": pid} for j in self.jobs[pid]]
+                out += [{k: v for k, v in r.items() if k != "retried"}
+                        for r in self.statuses.get(pid, []) if not r["retried"]]
+        return out
 
     def thread(self, path: str, iid: int, author: str, body: str, file: str | None = None, line: int | None = None,
                resolvable: bool = True, resolved: bool = False) -> dict:
@@ -160,6 +239,8 @@ class PatrolGitLab:
         return {k: v for k, v in m.items() if not k.startswith("_")}
 
     def __call__(self, method, url, headers, body):
+        if self.jenkins is not None and url.startswith(JENKINS + "/"):
+            return self.jenkins(method, url, headers, body)
         u = urlsplit(url)
         path, q = unquote(u.path), dict(parse_qsl(u.query))
         data = json.loads(body.decode()) if body else None
@@ -180,6 +261,9 @@ class PatrolGitLab:
             return ok({"id": p["id"], "path_with_namespace": name, "default_branch": p["default_branch"]})
         if rest == "/repository/files/.brain/kit.json/raw" and q.get("ref") == p["default_branch"]:
             return 200, json.dumps(p["kit"]).encode()
+        s = re.fullmatch(r"/repository/commits/([0-9a-f]{40})/statuses", rest)
+        if s and method == "GET":
+            return ok(self.page(self.commit_statuses(name, s.group(1), q.get("pipeline_id")), q))
         c = re.fullmatch(r"/repository/commits/([0-9a-f]{40})", rest)
         if c and method == "GET" and (name, c.group(1)) in self.commits:
             return ok({"id": c.group(1), "committer_email": self.commits[(name, c.group(1))][1]})
