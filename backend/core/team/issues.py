@@ -252,6 +252,9 @@ class Clones:
                    sec(runnerd_cfg.get("git_timeout"), 300.0), sec(runnerd_cfg.get("clone_timeout"), 3600.0))
 
     def prepare(self, project: str, project_id: int, default: str) -> str:
+        """The clone at the default branch as origin has it, its ignored files gone too: Lean's .aidlc-lean/ holds the
+        clone's Lean id, so a start made after this is a clone of its own to Lean, its ledger lines a new file from
+        the chain's first line (the signer takes only new ledger files in a start commit)."""
         common = bk.m("common")
         path = os.path.join(self.root, str(int(project_id)))
         if not os.path.isdir(os.path.join(path, ".git")):
@@ -500,7 +503,7 @@ class IssueSource:
         common, kit = bk.m("common"), e.kit
         prefix, default = kit["branch_prefix"], kit["default_branch"]
         branch = common.branch_name(prefix, row.labeler, row.key, "issue-%d" % row.iid)
-        path = self._clone(e)
+        path = self._clone(e, fresh=True)
         remote = "refs/remotes/origin/" + branch
         common.git_net(path, "fetch", "-q", "origin", "+refs/heads/%s:%s" % (branch, remote),
                        timeout=self.clones.git_timeout, check=False)
@@ -595,8 +598,9 @@ class IssueSource:
 
     # ---- GitLab and the clone ------------------------------------------------------------------------- #
 
-    def _clone(self, e: Entry) -> str:
-        if e.project not in self._paths:
+    def _clone(self, e: Entry, fresh: bool = False) -> str:
+        """The project's clone, prepared once a round; *fresh*: prepared again (each start commit)."""
+        if fresh or e.project not in self._paths:
             pid = int(e.issue.get("project_id") or 0) or int((self.gl.project(e.project) or {}).get("id") or 0)
             self._paths[e.project] = self.clones.prepare(e.project, pid, e.kit["default_branch"])
         return self._paths[e.project]

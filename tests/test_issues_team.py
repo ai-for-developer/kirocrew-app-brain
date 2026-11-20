@@ -201,6 +201,29 @@ def test_a_round_cut_off_anywhere_converges_to_one_claim_mr_and_request(w, monke
         rt.stop()
 
 
+def test_two_issues_in_one_round_each_start_a_lean_ledger_of_their_own(w):
+    gl = w["gl"]
+    gl.issue(4, "退款单导出", "要一个导出退款单的接口。\n\n验收标准：\n- A-1 导出 CSV\n")
+    gl.label("alice")
+    gl.label("bob", iid=4)
+    rt = runtime(w)
+    try:
+        assert rounds(rt) == [None]
+        assert [rt.issues.led.get(P, i).state for i in (3, 4)] == ["started", "started"]
+        heads = [gl.head("ai/alice/PAY-1-issue-3"), gl.head("ai/bob/PAY-2-issue-4")]
+        ledgers = []
+        for sha in heads:
+            files = git(w, "diff-tree", "-r", "--no-commit-id", "--name-status", sha).splitlines()
+            (audit,) = [f.split("\t")[1] for f in files if "/audit/" in f]
+            assert files[[f.split("\t")[1] for f in files].index(audit)].startswith("A\t")
+            first = json.loads(git(w, "show", "%s:%s" % (sha, audit)).splitlines()[0])
+            ledgers.append((audit, first["seq"], first["event"]))
+        assert ledgers[0][0] != ledgers[1][0] and [x[1:] for x in ledgers] == [(1, "INTENT_CREATED")] * 2
+        assert sorted(requests(w)) == ["RUN-PAY-1-1.json", "RUN-PAY-2-1.json"]
+    finally:
+        rt.stop()
+
+
 def test_a_reporters_label_starts_nothing_and_says_why(w):
     gl = w["gl"]
     gl.label("rita")
