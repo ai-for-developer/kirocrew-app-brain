@@ -736,13 +736,19 @@ def test_the_app_runs_it_in_the_background_and_team_mode_starts_with_the_signer(
             signer.write_text(json.dumps(dict(doc, keep_days=7)))       # a rerun that changes it: a new one
             changed = signerproc.ensure(signer, ROOT, python)
             old_gone = subprocess.run(["ps", "-p", str(pid)], capture_output=True).returncode != 0
-            return bad, started, again, end, got, team, signer, pid, same, new_token, changed, old_gone
+            update = tmp_path / "app-updated"                           # an app update brings another signer
+            (update / "signer").mkdir(parents=True)
+            code = (ROOT / signerproc.SCRIPT).read_text(encoding="utf-8")
+            (update / signerproc.SCRIPT).write_text(code + "\n# updated\n", encoding="utf-8")
+            updated = signerproc.ensure(signer, update, python), signerproc.ensure(signer, update, python)
+            return bad, started, again, end, got, team, signer, pid, same, new_token, changed, old_gone, updated
         finally:
             await svc.stop()
 
-    bad, started, again, end, got, team, signer, pid, same, new_token, changed, old_gone = run(go())
+    bad, started, again, end, got, team, signer, pid, same, new_token, changed, old_gone, updated = run(go())
     assert same == (pid, False) and new_token[1] is True and new_token[0] != pid and old_gone
     assert changed[1] is True and changed[0] != new_token[0]
+    assert updated[0][1] is True and updated[0][0] != changed[0] and updated[1] == (updated[0][0], False)
     assert bad.status == 400 and bad.body["code"] == "invalid_setup" and "组/仓库" in bad.body["error"]
     assert started.status == 200 and started.body["running"] is True
     assert {s["status"] for s in started.body["steps"]} <= {"todo", "running", "done"}
