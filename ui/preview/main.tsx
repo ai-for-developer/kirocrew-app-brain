@@ -31,7 +31,7 @@ import { API, fixtureRoutes } from '../src/test/routes'
 import { StubApiError, setApiRoutes, setNavigateHook } from '../src/test/stubs/app-sdk'
 import { simulated } from './simulate'
 import type {
-  BrainView, CheckRow, CrewFixBody, ImportInspect, ImportJob, InstallResult, IntakeBody, IntakeNext, KitForm, OpenSessionBody, Overview, PickKind, PickResult, ReflectApplyBody, ReflectApplyResult, ReflectPreview, RepoInfo, ReqBoard, RequirementDetail, Settings, SplitResult, StartBody, Status, TeamView, Todo,
+  BrainView, CheckRow, CrewFixBody, ImportInspect, ImportJob, InstallResult, IntakeBody, IntakeCheck, IntakeNext, KitForm, OpenSessionBody, Overview, PickKind, PickResult, ReflectApplyBody, ReflectApplyResult, ReflectPreview, RepoInfo, ReqBoard, RequirementDetail, Settings, SplitResult, StartBody, Status, TeamView, Todo,
 } from '../src/types'
 
 const FLAGS = ['team', 'nokit', 'crewfail', 'noeval', 'norepos', 'race', 'light'] as const
@@ -327,6 +327,16 @@ function keyed<T>(x: T, b: IntakeBody): T {
   return JSON.parse(JSON.stringify(x).split('PAY-8').join(key).split('merchant-weekly').join(b.slug || 'merchant-weekly')) as T
 }
 
+/** A check's answer with the paragraph typed on the page, as brain-kit takes it in (backend/core/intake.py documents):
+ * 需求描述.md first, one segment, nothing found in it; the documents after it, each one number on. */
+function withParagraph(c: IntakeCheck): IntakeCheck {
+  const on = JSON.parse(JSON.stringify(c).replace(/\bD0([1-8])\b/g, (_m, n: string) => `D0${Number(n) + 1}`)) as IntakeCheck
+  return {
+    ...on, sources: on.sources + 1, segments: on.segments + 1, findings: ['- **D01 需求描述.md**：无', ...on.findings],
+    files: [{ id: 'D01', name: '需求描述.md', items: [], review: '', refused: '' }, ...(on.files ?? [])],
+  }
+}
+
 const routes = fixtureRoutes()
 setApiRoutes({
   ...Object.fromEntries(Object.entries(routes).map(([k, h]) => [k, (...a: Parameters<typeof h>) => shift(h(...a))])),
@@ -385,13 +395,16 @@ setApiRoutes({
   },
   [`POST ${API}/intake/check`]: (body) => {
     const b = body as IntakeBody
-    const c = keyed(fx.intakeCheck(), b)
-    if (!b.consent) return { ...c, ok: false, findings: [], files: [], blocking: [], blocking_raw: [], refused: [], error: '第 1 关：勾上「我是作者，或已取得作者同意」' }
+    const fixture = keyed(fx.intakeCheck(), b)
+    if (!b.consent) return { ...fixture, ok: false, findings: [], files: [], blocking: [], blocking_raw: [], refused: [], error: '第 1 关：勾上「我是作者，或已取得作者同意」' }
+    // the fixture is what brain-kit says of the documents: a paragraph alone has none of them
+    const docs = b.docs.length > 0
+    const c = docs ? fixture : { ...fixture, findings: [], files: [], review: [], refused: [], sources: 0, segments: 0 }
     // as brain-kit's rules go with this repo's kit.json (intake.allow_confidential false, the default): the partner
     // guide (D03) is marked Confidential, so it stops the check unless it is left out; so does a confidential pick
-    const partner = !b.exclude.some((g) => '合作方接口说明.pdf'.includes(g.replace(/\*/g, '')))
+    const partner = docs && !b.exclude.some((g) => '合作方接口说明.pdf'.includes(g.replace(/\*/g, '')))
     const given = b.classification === 'unsure' ? 'confidential' : b.classification
-    if (!partner) {
+    if (docs && !partner) {
       c.findings = c.findings.filter((l) => !l.includes('D03'))
       c.files = (c.files ?? []).filter((f) => f.id !== 'D03')
       c.sources -= 1
@@ -402,7 +415,7 @@ setApiRoutes({
     if (given === 'secret') raw.push(gate.raw.secret)
     else if (partner) raw.push(gate.raw.partner)
     else if (b.classification === 'confidential' || b.classification === 'unsure') raw.push(gate.raw[b.classification])
-    if (!b.business) raw.push(gate.raw.business)
+    if (docs && !b.business) raw.push(gate.raw.business)
     const plain = raw.map((l) => gate.said[`${b.classification}|${l}`] ?? l)
     if (b.business === 'mask') {
       // brain-kit masks them (its line: 商业敏感（已打码）), and backend/core/intake.py file_items says so
@@ -410,7 +423,8 @@ setApiRoutes({
       c.files = (c.files ?? []).map((f) => ({ ...f, items: f.items.map((t) => t.replace(/^((?:金额|公司名) \d+ 处)：原样保留$/, '$1：已换成占位符')) }))
     }
     c.classification = given === 'secret' ? 'secret' : partner ? 'confidential' : given || 'internal'
-    return { ...c, ok: raw.length === 0, blocking: plain, blocking_raw: raw }
+    const checked = { ...c, ok: raw.length === 0, blocking: plain, blocking_raw: raw }
+    return b.text ? withParagraph(checked) : checked
   },
   [`POST ${API}/intake/start`]: (body) => {
     const b = body as StartBody
