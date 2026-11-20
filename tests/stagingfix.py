@@ -1,9 +1,9 @@
 """测试环境报错 (team/staging.py), offline: the patrol tests' in-memory GitLab, answering as well what staging asks.
 
 StagingGitLab adds a project's Issues (opened, listed by label and state, read, closed and reopened with state_event,
-commented on), the MRs GitLab lists for a commit (commits/:sha/merge_requests), a branch's head, the MRs from a source
-branch (state all or opened) and an MR opened through the API. *lose_issue_answer*: GitLab makes the next Issue but its
-answer never comes back (a 502).
+commented on; an iid is never given twice, a deleted Issue's included), the MRs GitLab lists for a commit
+(commits/:sha/merge_requests), a branch's head, the MRs from a source branch (state all, opened or merged) and an MR
+opened through the API. *lose_issue_answer*: GitLab makes the next Issue but its answer never comes back (a 502).
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ class StagingGitLab(PatrolGitLab):
         self.issues: dict[tuple[str, int], dict] = {}
         self.merged_by: dict[tuple[str, str], list[dict]] = {}
         self.heads: dict[tuple[str, str], str] = {}
+        self.last_iid: dict[str, int] = {}
         self.lose_issue_answer = False
 
     # ---- the world ------------------------------------------------------------------------------------------- #
@@ -59,7 +60,7 @@ class StagingGitLab(PatrolGitLab):
         name, p = hit
         rest = m.group(2)
         if rest == "issues" and method == "POST":
-            iid = 1 + max((i for (pp, i) in self.issues if pp == name), default=0)
+            iid = self.last_iid[name] = self.last_iid.get(name, 0) + 1
             issue = {"iid": iid, "project_id": p["id"], "title": data["title"], "description": data.get("description") or "",
                      "labels": [x for x in str(data.get("labels") or "").split(",") if x], "state": "opened",
                      "web_url": "%s/%s/-/issues/%d" % (BASE, name, iid), "_notes": []}

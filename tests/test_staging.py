@@ -384,6 +384,31 @@ def test_lines_the_old_build_logged_just_before_a_deploy_do_not_open_the_fixed_i
     assert [o[0] for o in w.sessions.opened] == ["staging-42-1", "staging-42-1-2"]
 
 
+def test_a_deleted_issue_whose_error_comes_back_gets_a_new_one_and_a_deleted_fix_mr_leaves_it_to_people(bk, tmp_path):
+    staging = mod("team.staging")
+    w = started(tmp_path)
+    w.write(gateway())
+    w.round()
+    w.sessions.end()
+    del w.gl.issues[(P, 1)]                     # deleted on GitLab: 404 from now on
+    w.round()
+    assert (w.item(GATEWAY)["state"], w.item(GATEWAY)["issue"]) == ("closed", None)
+    w.version.write_text(SHA[2] + "\n")
+    w.round()
+    w.clock.t += staging.REOPEN_S
+    w.write(gateway(5))
+    w.round()
+    assert [i["iid"] for i in w.gl.opened(P)] == [2] and w.item(GATEWAY)["issue"]["iid"] == 2
+    assert w.item(GATEWAY)["state"] == "fixing"
+    w.gl.mr(P, 53, sha=SHA[4], source=fix_branch(GATEWAY) + "-2")
+    w.round()
+    assert w.item(GATEWAY)["state"] == "fix_mr"
+    del w.gl.mrs[(P, 53)]                       # the fix MR deleted
+    w.round()
+    w.round()
+    assert w.item(GATEWAY)["state"] == "stopped" and len(w.gl.notes(P, 2)) == 1
+
+
 def flood(n):
     """*n* user names without a number or an id in them."""
     return ["user%s" % chr(97 + i % 26) * (1 + i // 26) for i in range(n)]

@@ -6,7 +6,8 @@ transaction as the counts, so a restart reads on where the last round stopped.
 A row is a state machine (Row.state):
   new      seen, its Issue not open: one is opened (label staging-error, with the error's lines, the deployed commit and
            the MR that merged it, as GitLab's commits/:sha/merge_requests says), or found (an open Issue that names the
-           signature: a request whose answer was lost), or opened again (a closed one seen on another deployed commit).
+           signature: a request whose answer was lost), or opened again (a closed one seen on another deployed commit;
+           a deleted one is opened anew).
            The open Issues are listed once a round; at most NEW_PER_ROUND are opened in a project a round, and none
            once it has OPEN_CAP open: the rest wait, saying why.
   issued   its Issue open, no fix at work. A brain-patrol session of its own (slot staging-<project id>-<issue>) is given
@@ -17,13 +18,13 @@ A row is a state machine (Row.state):
   fixing   an MR from the fix branch is there: fix_mr. A failed attempt: the turn ended without one, ended with
            KiroCrew's error, or neither within TIMEOUT_S (the turn is stopped), or KiroCrew refused the message; issued
            again, or stopped on the MAX_ATTEMPTS-th.
-  fix_mr   the MR merged: closed. Closed without merging (a person said no): stopped.
+  fix_mr   the MR merged: closed. Closed without merging, or deleted (people said no): stopped.
   stopped  left to people; the Issue was told why, once.
-  closed   its Issue closed (by the MR's Closes #, or a person). Seen on another deployed commit once a round first read
-           that commit REOPEN_S ago (lines read sooner may be the old build's last ones), it is new again, and its next
-           fix branch is fix/staging-<id>-<n>.
-Every open state whose Issue was closed is closed (its turn stopped). An open Issue gets a comment when its count jumps:
-doubled, and up by JUMP or more, since the Issue last said it.
+  closed   its Issue closed (by the MR's Closes #, or a person), or deleted. Seen on another deployed commit once a round
+           first read that commit REOPEN_S ago (lines read sooner may be the old build's last ones), it is new again,
+           and its next fix branch is fix/staging-<id>-<n>.
+Every open state whose Issue was closed or deleted is closed (its turn stopped). An open Issue gets a comment when its
+count jumps: doubled, and up by JUMP or more, since the Issue last said it.
 A project the source is no longer on, or bridge.json no longer names, is forgotten: its turns stopped, its clones
 deleted, its rows and cursor gone. Its Issues stay; an open one is found again when its error comes back.
 """
@@ -451,17 +452,15 @@ class StagingWatch:
     def _watch(self, row: Row, now: float) -> None:
         """An open row as its Issue, its fix MR and its session's turn say; its Issue told once when it stopped."""
         rest = bk.m("rest")
-        try:
-            issue = self.gl.call("GET", "/projects/%s/issues/%d" % (rest.q(row.project), row.issue.iid)) or {}
-        except rest.HttpError as exc:
-            if exc.status != 404:
-                raise
-            issue = {"state": "closed"}                 # deleted: nobody waits on it
-        if issue.get("state") == "closed":
+        issue = self._issue(row)
+        if issue is None or issue.get("state") == "closed":
             if row.state == FIXING:
                 self._stop(row)
             self._drop_clone(row)
-            self.led.put(closed(row))
+            if issue is None:                           # deleted: a new one is opened when the error comes back
+                self.led.put(closed(replace(row, issue=None, fix_mr=None)))
+            else:
+                self.led.put(closed(row))
             return
         if row.state == FIXING:
             turn = self._turn(row)
@@ -474,7 +473,12 @@ class StagingWatch:
                 self._stop(row)
                 row = failed(row, "timeout")
         elif row.state == FIX_MR:
-            state = (self.gl.mr(row.project, row.fix_mr.iid) or {}).get("state")
+            try:
+                state = (self.gl.mr(row.project, row.fix_mr.iid) or {}).get("state")
+            except rest.HttpError as exc:
+                if exc.status != 404:
+                    raise
+                state = "closed"                        # deleted: as one closed without merging
             if state == "merged":
                 self._drop_clone(row)
                 row = closed(row)
@@ -496,7 +500,8 @@ class StagingWatch:
     def _file(self, project: str, kit: Mapping[str, Any], rows: list[Row]) -> None:
         """The new rows' Issues, the earliest seen first: an open one that names the signature found (a request whose
         answer was lost, or one from before the ledger); else, at most NEW_PER_ROUND this round and while fewer than
-        OPEN_CAP are open, its closed one opened again or a new one. The open ones are listed once."""
+        OPEN_CAP are open, its closed one opened again (a deleted one is opened anew) or a new one. The open ones are
+        listed once."""
         if not rows:
             return
         path = "/projects/%s/issues" % bk.m("rest").q(project)
@@ -527,8 +532,9 @@ class StagingWatch:
             if room["open"] >= OPEN_CAP:
                 self._notes[key] = "排队：这个项目开着的测试环境报错 Issue 已经有 %d 个：人关掉一些，剩下的再开" % OPEN_CAP
                 return
+            issue = self._issue(row) if row.issue is not None else None
             origin = self._origin(row)
-            if row.issue is not None:
+            if issue is not None:
                 self.gl.call("PUT", "%s/%d" % (path, row.issue.iid), body={"state_event": "reopen"})
                 self.gl.call("POST", "%s/%d/notes" % (path, row.issue.iid), body={"body": reopen_text(row, origin, self.web)})
             else:
@@ -541,6 +547,16 @@ class StagingWatch:
             issued(row, origin)
 
         self._each(sorted(rows, key=lambda r: (r.group.first_seen, r.signature)), file)
+
+    def _issue(self, row: Row) -> dict[str, Any] | None:
+        """Its Issue as GitLab has it; None when it was deleted."""
+        rest = bk.m("rest")
+        try:
+            return self.gl.call("GET", "/projects/%s/issues/%d" % (rest.q(row.project), row.issue.iid)) or {}
+        except rest.HttpError as exc:
+            if exc.status == 404:
+                return None
+            raise
 
     def _origin(self, row: Row) -> Link | None:
         """The MR that merged the deployed commit (a merged one first), or None when GitLab knows none."""
@@ -695,7 +711,7 @@ def _note(row: Row) -> str:
     if row.state == CLOSED and row.group.deployed_sha != row.closed_sha:
         return "新的部署里又看到了：部署 %d 分钟以内的先不算（可能是旧版本最后写的），再看到就重新打开" % (REOPEN_S // 60)
     if row.state == CLOSED:
-        return "Issue 关了：在新的部署里又出现的话，重新打开"
+        return "Issue 关了：在新的部署里又出现的话，重新打开" if row.issue is not None else "Issue 删了：在新的部署里又出现的话，开一个新的"
     return ""
 
 
