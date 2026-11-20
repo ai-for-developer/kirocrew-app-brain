@@ -7,7 +7,7 @@ import json
 import pytest
 
 from appkit import mod, sh
-from brainfix import (FakeGateway, install_brain_dev, make_project, make_service, needs_brainkit, run,
+from brainfix import (FakeGateway, install_brain_dev, lean, make_project, make_service, needs_brainkit, run,
                       start_in_worktree)
 
 acts = mod("acts")
@@ -111,3 +111,32 @@ def test_open_mr_pushes_it_and_full_makes_it_a_lean_run_on_the_same_branch(tmp_p
     assert full["ok"] and mod("intake").INTENT_RE.match(full["intent"] or ""), full
     assert full["told"] and gw.msgs[out["slot"]][-1]["content"] == mod("intake").switched_line(full["intent"])
     assert (row["flow"]["id"], row["intent"], row["branch"]) == ("lean", full["intent"], out["branch"])
+
+
+@needs_brainkit
+def test_open_mrs_commands_are_scrubbed_like_the_description_card(tmp_path, home):
+    """Without a token 开 MR answers with `glab mr create … --description '<the 变更说明>'`: what the run wrote in it
+    goes through the app's scrubber, as the 变更说明 card does."""
+    from test_fast_flow import START, idle, project, service as fast_service
+    repo = project(tmp_path)
+    svc, gw = fast_service(tmp_path, home, repo)
+    secret = "sk-" + "Q7x" * 8
+
+    async def go():
+        await svc.start()
+        try:
+            out = await svc.intake_start(dict(START))
+            await idle(svc, gw, out["slot"])
+            wt = home / "workplace" / "brain-app" / "pay" / "coupon"
+            (wt / "shop").mkdir(exist_ok=True)
+            (wt / "shop" / "coupon.py").write_text("RATE = 0.9\n", encoding="utf-8")
+            lean(wt, "verify")
+            sh("git", "-C", wt, "add", "-A")
+            sh("git", "-C", wt, "commit", "-qm", "coupon codes (api_key=%s)" % secret)
+            return await svc.act("r1", out["key"], "mr")
+        finally:
+            await svc.stop()
+
+    opened = run(go())
+    assert opened["ok"] and any(c.startswith("glab mr create") for c in opened["commands"]), opened
+    assert not [c for c in opened["commands"] if secret in c], "the commands are scrubbed"
