@@ -1317,6 +1317,11 @@ class Service:
     async def _open_local(self, repo: Repo, key: str, branch: str, wt: str, run: dict[str, Any], *, trust: bool,
                           kickoff: bool, review: bool = False, task: str | None = None, fresh: bool = False
                           ) -> dict[str, Any]:
+        got = flowview.read(run)
+        flow = got["flow"]
+        why = got["flow_error"] or (flowview.action_problem(flow, "review") if review else "")
+        if why:
+            raise AppError(why, "not_this_flow", 409)
         self.crew = await asyncio.to_thread(self.crew_sync)
         why = await asyncio.to_thread(crewcheck.session_problem, self.crew["rows"], wt)
         if why:
@@ -1333,14 +1338,19 @@ class Service:
                 return {"ok": True, "slot": live["slot"], "url": live["url"], "said": live_said(live)}
             if task is None:     # a small requirement's start brings its own first message (family.kickoff)
                 task = intake.kickoff(key, branch, run.get("intent"),
-                                      [str(m.get("package")) for m in run.get("materials") or [] if isinstance(m, dict)]) \
-                    if kickoff else ""
+                                      [str(m.get("package")) for m in run.get("materials") or [] if isinstance(m, dict)],
+                                      flow.value) if kickoff else ""
                 if kickoff and scope_of(repo.id, key) in self._big:
                     task += "\n" + family.BIG_KICKOFF
             title, said, cause = "%s · 本地开发" % key, "开了本机会话", "开工消息，只有编号"
             if fresh:
-                task += "\n" + intake.RESUME_KICKOFF
+                task += "\n" + intake.resume_line(flow.value, flowview.decisions_path(flow, run, repo.cfg["runs_dir"]))
                 title, said = "%s · 本地开发（重开）" % key, "重开了本机会话"
+            try:
+                await asyncio.to_thread(bk.m("flows").prepare_clone, flow, wt)
+            except bk.brain_error() as exc:
+                raise AppError("这个工作区里选不了「不开 Lean intent」（%s）：先更新 kit 文件" % str(exc)[:200],
+                               "lean_none", 409)
         slug = branch.rsplit("/", 1)[-1][len(key) + 1:] or key.lower()
         info = await self.sessions.open_session(
             task, parent_session_key="%s:%s" % (self.name, scope), cwd=wt, title=title,
@@ -1440,7 +1450,8 @@ class Service:
     # ---- 开需求 --------------------------------------------------------------------------------------- #
 
     async def intake_next(self, rid: str) -> dict[str, Any]:
-        return await asyncio.to_thread(intake.next_key, self._repo(rid))
+        repo = self._repo(rid)
+        return await asyncio.to_thread(lambda: intake.next_key(repo, local_only=self._local_only(repo)))
 
     async def intake_check(self, body: dict[str, Any]) -> dict[str, Any]:
         repo = self._repo(str(body.get("repo") or ""))
@@ -1454,7 +1465,8 @@ class Service:
     async def intake_start(self, body: dict[str, Any]) -> dict[str, Any]:
         repo = self._repo(str(body.get("repo") or ""))
         try:
-            out = await asyncio.to_thread(intake.start, repo, body, self.settings["work_root"])
+            out = await asyncio.to_thread(lambda: intake.start(repo, body, self.settings["work_root"],
+                                                               local_only=self._local_only(repo)))
         except intake.IntakeError as exc:
             raise AppError(str(exc), "invalid_intake")
         out = scrub_tree(out, self.scrub)
