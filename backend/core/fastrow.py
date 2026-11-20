@@ -35,7 +35,9 @@ class FastFacts:
     """What a fast row and its board read besides the requirement's facts."""
     code_commits: int            # commits since the default branch that change a file outside the run's records
     verify: Optional[Verify]
-    risky: tuple[str, ...]       # changed files under the default branch's gates/risk-paths: CI fails a fast MR on them
+    # changed files under the default branch's gates/risk-paths: CI fails a fast MR on them; None when git could not
+    # tell what the branch changed (`brain mr` and CI still check)
+    risky: Optional[tuple[str, ...]]
     patrol: bool                 # MR 巡检 works this repo's open MRs (kit.json work_sources has mr-patrol)
 
 
@@ -50,31 +52,41 @@ def newest_verify(evs: list[dict[str, Any]]) -> Optional[Verify]:
     return Verify(ok=bool(d.get("ok")), at=e.get("_at"), failed=tuple(dict.fromkeys(failed)))
 
 
-def _git_facts(repo: Any, tip: str, main: str) -> tuple[int, tuple[str, ...]]:
+def _git_facts(repo: Any, tip: str, main: str) -> tuple[int, Optional[tuple[str, ...]]]:
     """(code commits, risky files) of the branch at *tip* against the default branch at *main*: what changed since
-    they parted, judged by brain-kit as brain-ci and `brain mr` judge it (the default branch's risk paths)."""
+    they parted, judged by brain-kit as brain-ci and `brain mr` judge it (the default branch's risk paths); risky None
+    when git could not diff them."""
     base = repo.git.out("merge-base", main, tip)
     if not base:
         return 0, ()
     runs = repo.cfg["runs_dir"]
     n = repo.git.out("rev-list", "--count", "%s..%s" % (base, tip), "--", ".", ":(exclude)%s/" % runs,
                      ":(exclude)%s/" % lean_view.DOCS)
+    count = int(n) if n.isdigit() else 0
     raw = repo.git.show(main, repo.cfg["risk_paths_file"])
     text = raw.decode("utf-8", "replace") if raw else ""
     ci = bk.m("ci")
-    _, risky = bk.m("riskpaths").hits(text, ci.changed_paths(repo.path, base, tip), ci.gitlinks(repo.path, base, tip))
-    return int(n) if n.isdigit() else 0, tuple(risky)
+    try:
+        changed, links = ci.changed_paths(repo.path, base, tip), ci.gitlinks(repo.path, base, tip)
+    except bk.brain_error():
+        return count, None
+    _, risky = bk.m("riskpaths").hits(text, changed, links)
+    return count, tuple(risky)
 
 
-def fast_facts(repo: Any, f: dict[str, Any], cache: dict[tuple, tuple[int, tuple[str, ...]]]) -> FastFacts:
-    """A fast run's FastFacts. The git half only changes with its tip or the default branch: kept in *cache*."""
+def fast_facts(repo: Any, f: dict[str, Any], cache: dict[tuple, tuple[int, Optional[tuple[str, ...]]]]) -> FastFacts:
+    """A fast run's FastFacts. The git half only changes with its tip or the default branch: kept in *cache*, unless
+    git failed (read again next time)."""
     tip, main = f.get("tip"), repo.main_sha()
     k = (repo.path, tip, main)
-    if k not in cache:
+    got = cache.get(k)
+    if got is None:
         if len(cache) > 512:
             cache.clear()
-        cache[k] = _git_facts(repo, tip, main) if tip and main else (0, ())
-    commits, risky = cache[k]
+        got = _git_facts(repo, tip, main) if tip and main else (0, ())
+        if got[1] is not None:
+            cache[k] = got
+    commits, risky = got
     return FastFacts(code_commits=commits, verify=newest_verify(f.get("events") or []), risky=risky,
                      patrol=sources.PATROL in sources.enabled(repo.cfg))
 

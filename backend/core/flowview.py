@@ -14,6 +14,8 @@ from . import bk
 
 BROKEN = "run.json 的 mode 这个 Brain 不认识（%s）：用新版的 Brain app；是改坏了的话，在会话里让 AI 改回来"
 LOCAL_ONLY = "这个仓库只在本机做（没有远端，或没写 GitLab 项目）：快速需求做完要开 MR，这里开不了"
+POLICY_UNREADABLE = "默认分支上的 .brain/kit.json 读不了：%s"
+POLICY_BROKEN = "默认分支上的 .brain/kit.json 有一项的值写错了（类型不对），brain-kit 读不懂它：改好、合并以后才能用快速模式"
 
 
 def read(run: Any) -> dict[str, Any]:
@@ -62,14 +64,26 @@ def reads_own_mr(flow: Any) -> bool:
     return bk.m("flows").Action.MR in flow.actions
 
 
+def policy(path: str, ref: str | None) -> tuple[Any, str]:
+    """brain-kit's Policy of the branch at *ref* (flows.policy_at), or None and why it cannot be read: brain-kit's words
+    for a kit.json it refuses, a plain sentence for one whose wrong-typed value trips its checks. The file is the team's
+    to write, so whatever brain-kit raises on it is a reason, never a failed page."""
+    try:
+        return bk.m("flows").policy_at(path, ref), ""
+    except bk.brain_error() as exc:
+        return None, POLICY_UNREADABLE % str(exc)[:200]
+    except Exception:  # noqa: BLE001 - config.validate meets "allowed_models": null with a TypeError
+        return None, POLICY_BROKEN
+
+
 def offer(path: str, ref: str | None, *, local_only: bool) -> dict[str, Any]:
     """IntakeNext.fast: whether 开需求 offers 「快速：直接写代码」 for the repo at *path*, by its default branch at *ref*
     (origin's when fetched, else the local one, as a start branches from it), and why not in brain-kit's words."""
-    fl = bk.m("flows")
     if local_only:
         return {"ok": False, "why": LOCAL_ONLY}
-    try:
-        why = fl.refusals(fl.Flow.FAST, lambda: fl.policy_at(path, ref))
-    except bk.brain_error() as exc:
-        return {"ok": False, "why": "默认分支上的 .brain/kit.json 读不了：%s" % str(exc)[:200]}
+    p, unreadable = policy(path, ref)
+    if p is None:
+        return {"ok": False, "why": unreadable}
+    fl = bk.m("flows")
+    why = fl.refusals(fl.Flow.FAST, lambda: p)
     return {"ok": not why, "why": why[0].zh if why else ""}

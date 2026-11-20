@@ -67,16 +67,20 @@ def next_key(repo: Repo, *, local_only: bool = False) -> dict[str, Any]:
     from .family import JIRA_REPO, NO_SPLIT
     big = {"ok": False, "why": JIRA_REPO} if cfg["tracker"] != "none" else \
         {"ok": True, "why": ""} if bk.has("split") else {"ok": False, "why": NO_SPLIT}
-    out = {"repo": repo.id, "key": None, "tracker": cfg["tracker"], "prefix": cfg["req_prefix"], "error": "",
-           "allow_confidential": bool((cfg.get("intake") or {}).get("allow_confidential")), "push": unpushed(repo),
-           "big": big, "fast": flowview.offer(repo.path, repo.main_ref(), local_only=local_only)}
-    if cfg["tracker"] != "none":
-        return out
-    rx = re.compile(r"^refs/(?:heads|remotes/origin)/claim/%s-([1-9][0-9]*)$" % re.escape(cfg["req_prefix"]))
+    return {"repo": repo.id, "key": free_key(repo) if cfg["tracker"] == "none" else None, "tracker": cfg["tracker"],
+            "prefix": cfg["req_prefix"], "error": "",
+            "allow_confidential": bool((cfg.get("intake") or {}).get("allow_confidential")), "push": unpushed(repo),
+            "big": big, "fast": flowview.offer(repo.path, repo.main_ref(), local_only=local_only)}
+
+
+def free_key(repo: Repo) -> str:
+    """The key a start claims in a repo whose tracker is none: one past the highest claim/<PREFIX>-<n> here or on
+    origin."""
+    prefix = repo.cfg["req_prefix"]
+    rx = re.compile(r"^refs/(?:heads|remotes/origin)/claim/%s-([1-9][0-9]*)$" % re.escape(prefix))
     taken = {int(m.group(1)) for m in (rx.match(r) for r in repo.git.refs("refs/heads/claim/",
                                                                           "refs/remotes/origin/claim/")) if m}
-    out["key"] = "%s-%d" % (cfg["req_prefix"], max(taken or {0}) + 1)
-    return out
+    return "%s-%d" % (prefix, max(taken or {0}) + 1)
 
 
 def unpushed(repo: Repo) -> dict[str, str] | None:
@@ -412,27 +416,10 @@ def brain_cmd() -> list[str]:
     return [PYTHON_BIN, "-I", str(bk.root() / "bin" / "brain")]
 
 
-def start(repo: Repo, body: dict[str, Any], work_root: str, *, local_only: bool = False) -> dict[str, Any]:
-    """``brain start`` in a new worktree (blocking: call it in a thread); ``--fast`` for a fast run, refused first,
-    before anything is made, when this repo does not offer it (next_key's *fast*)."""
-    out = {"ok": False, "key": None, "branch": None, "intent": None, "worktree": None, "output": "", "slot": None,
-           "url": None, "session_error": "", "problem": None, "me": None}
-    b = clean_body(repo, body, start=True)
-    if b["fast"]:
-        offer = flowview.offer(repo.path, repo.main_ref(), local_only=local_only)
-        if not offer["ok"]:
-            raise IntakeError(offer["why"])
-    wt = _worktree_for(repo, work_root, b["slug"])
-    wt.parent.mkdir(parents=True, exist_ok=True)
-    d = repo.cfg["default_branch"]
-    base = next((r for r in ("refs/remotes/origin/" + d, "refs/heads/" + d, "HEAD")
-                 if repo.git.ok("rev-parse", "-q", "--verify", r + "^{commit}")), "HEAD")
-    p = repo.git.run("worktree", "add", "-q", "--detach", str(wt), base, timeout=120)
-    if p.returncode != 0:
-        raise IntakeError("建工作区失败：%s" % (p.stderr or p.stdout).strip()[:300])
+def _brain_start(repo: Repo, b: dict[str, Any], wt: Path) -> tuple[int, str]:
+    """``brain start`` in the new worktree *wt* with the cleaned body *b*: its exit status and what it said."""
     args = ["start", b["slug"], "--title", b["title"]]
-    preview = next_key(repo)["key"]
-    if b["key"] and not (repo.cfg["tracker"] == "none" and b["key"] == preview):
+    if b["key"] and not (repo.cfg["tracker"] == "none" and b["key"] == free_key(repo)):
         args += ["--key", b["key"]]  # the next free key is taken by brain-kit itself (it asks GitLab, this did not)
     if b["paths"]:
         args += ["--paths", ",".join(b["paths"])]
@@ -451,12 +438,36 @@ def start(repo: Repo, body: dict[str, Any], work_root: str, *, local_only: bool 
         try:
             r = subprocess.run(brain_cmd() + args, cwd=str(wt), capture_output=True, text=True,
                                timeout=START_TIMEOUT_S, env=env)
-            text = ((r.stdout or "") + (("\n" + r.stderr) if r.stderr else "")).strip()
-            code = r.returncode
+            return r.returncode, ((r.stdout or "") + (("\n" + r.stderr) if r.stderr else "")).strip()
         except subprocess.TimeoutExpired:
-            text, code = "brain start 超过 %d 秒没结束" % START_TIMEOUT_S, 124
+            return 124, "brain start 超过 %d 秒没结束" % START_TIMEOUT_S
         except OSError as exc:
-            text, code = "跑不了 brain：%s" % exc, 127
+            return 127, "跑不了 brain：%s" % exc
+
+
+def start(repo: Repo, body: dict[str, Any], work_root: str, *, local_only: bool = False) -> dict[str, Any]:
+    """``brain start`` in a new worktree (blocking: call it in a thread); ``--fast`` for a fast run, refused first,
+    before anything is made, when this repo does not offer it (next_key's *fast*)."""
+    out = {"ok": False, "key": None, "branch": None, "intent": None, "worktree": None, "output": "", "slot": None,
+           "url": None, "session_error": "", "problem": None, "me": None}
+    b = clean_body(repo, body, start=True)
+    if b["fast"]:
+        offer = flowview.offer(repo.path, repo.main_ref(), local_only=local_only)
+        if not offer["ok"]:
+            raise IntakeError(offer["why"])
+    wt = _worktree_for(repo, work_root, b["slug"])
+    wt.parent.mkdir(parents=True, exist_ok=True)
+    d = repo.cfg["default_branch"]
+    base = next((r for r in ("refs/remotes/origin/" + d, "refs/heads/" + d, "HEAD")
+                 if repo.git.ok("rev-parse", "-q", "--verify", r + "^{commit}")), "HEAD")
+    p = repo.git.run("worktree", "add", "-q", "--detach", str(wt), base, timeout=120)
+    if p.returncode != 0:
+        raise IntakeError("建工作区失败：%s" % (p.stderr or p.stdout).strip()[:300])
+    try:
+        code, text = _brain_start(repo, b, wt)
+    except BaseException:
+        repo.git.run("worktree", "remove", "--force", str(wt))
+        raise
     out["output"] = text[-MAX_OUT:]
     branch = repo.git.run("rev-parse", "--abbrev-ref", "HEAD", cwd=str(wt)).stdout.strip()
     parsed = parse_branch(branch, repo.cfg["branch_prefix"])

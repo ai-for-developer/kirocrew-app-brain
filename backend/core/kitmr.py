@@ -16,7 +16,7 @@ import shlex
 import urllib.parse
 from typing import Any, Mapping
 
-from . import bk
+from . import bk, flowview
 from .installer import new_mr_link
 
 KIT = ".brain/kit.json"
@@ -91,12 +91,11 @@ def kit_mr(gl: Any, project: Any, default: str, branch: str, want: Mapping[str, 
 
 def fast_policy(path: str, ref: str | None) -> tuple[bool, str]:
     """(fast_mode on the branch at *ref*, why fast runs are not offered there whatever the switch says: brain-kit's
-    first other refusal, '' when none)."""
+    first other refusal, or why its kit.json cannot be read; '' when none)."""
+    p, unreadable = flowview.policy(path, ref)
+    if p is None:
+        return True, unreadable
     fl = bk.m("flows")
-    try:
-        p = fl.policy_at(path, ref)
-    except bk.brain_error() as exc:
-        return True, "默认分支上的 .brain/kit.json 读不了：%s" % str(exc)[:200]
     why = fl.refusals(fl.Flow.FAST, lambda: dataclasses.replace(p, fast_mode=True))
     return p.fast_mode, why[0].zh if why else ""
 

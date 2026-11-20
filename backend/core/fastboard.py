@@ -18,6 +18,7 @@ from .fastrow import FastFacts, ci_state, head_pipeline
 STEPS: tuple[tuple[str, str], ...] = (("code", "写代码"), ("verify", "自动检查"), ("mr", "开 MR"), ("ci", "CI"),
                                       ("merge", "合并"))
 RISK_STEP = "改到了风险目录：转完整流程"
+RISK_UNKNOWN = "这台机器上 git 比不出这个分支改了哪些文件：开 MR 和 CI 照样会查风险目录"
 
 
 def steps(f: dict[str, Any], *, fast: FastFacts, mr: Optional[dict[str, Any]], busy: bool) -> list[dict[str, Any]]:
@@ -138,6 +139,8 @@ def _checks(f: dict[str, Any], fast: FastFacts, mr: Optional[dict[str, Any]], ki
     if fast.risky:
         cell("risk", "risk", "风险", "风险目录（gates/risk-paths）", "fail", None,
              "改到了 %d 个：快速需求不能合并，转完整流程" % len(fast.risky))
+    elif fast.risky is None:
+        cell("risk", "risk", "风险", "风险目录（gates/risk-paths）", "skip", None, RISK_UNKNOWN)
     else:
         cell("risk", "risk", "风险", "风险目录（gates/risk-paths）", "pass", None, "没改到风险目录")
     for i, k in enumerate(kit_rows):     # a ! reminder is about the team runner, which never takes a fast run
