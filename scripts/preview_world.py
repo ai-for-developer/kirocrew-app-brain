@@ -42,6 +42,7 @@ import hashlib
 import json
 import os
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -66,6 +67,7 @@ detail = importlib.import_module("_brainapp_backend.core.detail")
 lean_view = importlib.import_module("_brainapp_backend.core.lean_view")
 stage_table = importlib.import_module("_brainapp_backend.core.stages")
 deliveries = importlib.import_module("_brainapp_backend.core.deliveries")
+deploys_view = importlib.import_module("_brainapp_backend.core.deploys_view")
 identity = importlib.import_module("_brainapp_backend.core.identity")
 family_mod = importlib.import_module("_brainapp_backend.core.family")
 service = importlib.import_module("_brainapp_backend.core.service")
@@ -194,6 +196,7 @@ class Req:
         self.merged_at: float | None = None
         self.merge_how = "merge commit"
         self.after14: dict | None = None
+        self.deploy: dict | None = None     # outcome.deploy (brainkit/deploys.py): its deploys after the merge
         self.app: list[dict] = []
         self.proposals = 0
         self.worktree: str | None = None    # its checkout on this machine, if it has one
@@ -457,6 +460,8 @@ class Req:
                             "merged_at": {"value": iso(self.merged_at) if self.merged_at else None, "how": self.merge_how,
                                           "commit": sha(self.key, "merge") if self.merged_at else None, "src": "git", "note": None},
                             "reverted_or_hotfixed_within_14d": self.after14 or {"value": None, "window_closed": None, "window_end": None, "evidence": []}}}
+        if self.deploy:
+            out["outcome"]["deploy"] = self.deploy
         if family:
             out["family"] = family
         return out
@@ -769,6 +774,85 @@ def merged(r: Req, t: float, h: str, did: str, how: str = "merge commit") -> Non
     r.approve(t + 1 * M, "RELEASE", h, who="P-9E3B")
     r.stage(t + 2 * M, "release", "done", note="RELEASE approved (sha %s)" % h[:8])
     r.merge(t + 35 * M, how)
+
+
+# shop-order deploys each merge of main to staging by its image's digest, through a canary (20%, smoke, 50%, smoke,
+# all): brain-kit's deploy records (brainkit/deploys.py) as `brain deploys` read a demo's GitLab on 2026-11-18, moved to
+# the world's merges. ORD-7 went live as the demo's pipeline 4137972 did; ORD-8's canary failed its smoke checks as
+# 4138009's did, staging kept ORD-7's image, and a fix went live as 4138161; ORD-9's canary failed the same checks, so
+# staging still runs that fix.
+CANARY = ("setWeight 20", "analysis smoke", "setWeight 50", "analysis smoke", "complete")
+SMOKE_FAILED = ({"step": 1, "check": "create_order", "error": "expected HTTP 201, got 500: Internal Server Error"},
+                {"step": 1, "check": "read_order", "error": "no order to read because create_order failed"})
+ABORTED = ('RolloutAborted: Rollout aborted update to revision 5: Step-based analysis phase error/failed: Metric "smoke" '
+           'assessed Failed due to failed (1) > failureLimit (0)')
+LIVE_7D4 = "sha256:7d479c543ed89c65139a43a02de40420d902c7787518c27974c0df43cd2f189e"
+LIVE_168 = "sha256:168d16c5a244384d3d434ccd4adc5a8e6ee168b4ce638e7653ed9541f82750e1"
+BAD_412 = "sha256:4120ee577b2a1d036324052bf70364b3abc01461fa13b01558cf9bf403e23c5b"
+ORDER_SRC = "GitLab deployments (project shop/shop-order, environment staging)"
+
+
+def staged(did: int, pipeline: int, job: int, commit: str, start: float, live: bool, digest: str, before: str) -> dict:
+    """One deploy to shop-order's staging (brain-kit's deploy record): *live* went live, else its canary failed the
+    demo's smoke checks and staging kept *before*."""
+    return {"deployment": did, "pipeline": pipeline, "job": job, "web_url": "%s/shop/shop-order/-/jobs/%d" % (GL, job),
+            "ref": "main", "sha": commit, "created_at": iso(start), "finished_at": iso(start + (190 if live else 140)),
+            "status": "success" if live else "failed", "result": "promoted" if live else "aborted", "why": None,
+            "digest": digest, "image": "registry.example.com/shop/shop-order@" + digest, "previous_stable_digest": before,
+            "stable_digest_after": digest if live else before, "reason": "every canary step passed" if live else ABORTED,
+            "steps": [{"index": i, "step": x, "at": iso(start + 70 + 4 * i)} for i, x in enumerate(CANARY if live else CANARY[:2])],
+            "failed_checks": [] if live else [dict(c) for c in SMOKE_FAILED], "build": None,
+            "src": "GitLab deployment %d, job %d deploy-evidence.json" % (did, job)}
+
+
+def order_deploys(order: dict[str, "Req"]) -> dict:
+    """Each merged ORD-n's outcome.deploy, with a canary that aborted in its 14 days counted as the rollback brain-kit
+    counts it; and the eval's ``deploys`` over them (brain-kit evaluate's: the last 28 days before the fixtures' `at`)."""
+    before, tries = "sha256:" + h64("shop-order", "image"), {}
+    for n in range(1, 10):
+        key, r = "ORD-%d" % n, order["ORD-%d" % n]
+        start, merge = r.merged_at + 2 * M, sha("ORD-%d" % n, "merge")
+        if key == "ORD-8":
+            tries[key] = [staged(844613, 4138009, 34417471, merge, start, False, BAD_412, before),
+                          staged(844623, 4138161, 34418480, sha(key, "fix"), start + 25 * M, True, LIVE_168, before)]
+        elif key == "ORD-9":
+            tries[key] = [staged(844640, 4138402, 34419016, merge, start, False, "sha256:" + h64(key, "image"), before)]
+        elif key == "ORD-7":
+            tries[key] = [staged(844608, 4137972, 34416893, merge, start, True, LIVE_7D4, before)]
+        else:
+            tries[key] = [staged(844500 + n, 4130000 + 1000 * n, 34400000 + 1000 * n, merge, start, True,
+                                 "sha256:" + h64(key, "image"), before)]
+        live = next((a for a in tries[key] if a["result"] == "promoted"), None)
+        r.deploy = {"value": "promoted" if live else "aborted", "environment": "staging", "commit": merge,
+                    "at": live["finished_at"] if live else None, "digest": live["digest"] if live else None,
+                    "lead_time_hours": round((_epoch(live["finished_at"]) - r.merged_at) / H, 2) if live else None,
+                    "attempts": tries[key], "missing": [], "src": ORDER_SRC, "rules": None}
+        before = live["digest"] if live else before
+        bad = [a for a in tries[key] if a["result"] == "aborted"]
+        if bad:
+            r.after14 = dict(r.after14, value=True, evidence=[
+                {"deployment": a["deployment"], "sha": a["sha"], "at": a["finished_at"], "src": a["src"],
+                 "rule": "canary aborted on staging: %s kept" % a["stable_digest_after"]} for a in bad])
+    since = T0 - 28 * D
+    recent = [a for t in tries.values() for a in t if since <= _epoch(a["created_at"]) <= T0]
+    went = [a for a in recent if a["result"] == "promoted"]
+    weeks: dict[str, int] = {}
+    for a in went:
+        w = time.strftime("%G-W%V", time.gmtime(_epoch(a["finished_at"])))
+        weeks[w] = weeks.get(w, 0) + 1
+    lead = {k: order[k].deploy["lead_time_hours"] for k in tries if order[k].deploy["lead_time_hours"] is not None}
+    judged = {k: order[k].after14 for k in tries}
+    cf = {"failed": [k for k, a in judged.items() if a["window_closed"] and a["value"]],
+          "ok": [k for k, a in judged.items() if a["window_closed"] and not a["value"]],
+          "failed_open": [k for k, a in judged.items() if not a["window_closed"] and a["value"]],
+          "pending": [k for k, a in judged.items() if not a["window_closed"] and not a["value"]], "unknown": [],
+          "not_deployed": []}
+    return {"environment": "staging", "src": ORDER_SRC,
+            "frequency": {"promoted": len(went), "aborted": len(recent) - len(went), "unknown": 0, "since": iso(since),
+                          "until": iso(T0), "per_week": round(len(went) * 7 / 28, 2), "weeks": weeks},
+            "lead_time_hours": {"median": round(statistics.median(lead.values()), 2), "by_run": lead},
+            "change_failure": dict({"value": [len(cf["failed"]), len(cf["failed"]) + len(cf["ok"])]}, **cf),
+            "missing": [], "rule": None}
 
 
 # the requirement handed over twice: its first run on the team runner stopped once its question was answered (the
@@ -1084,7 +1168,8 @@ def detail_of(r: Req, row: dict, kw: dict, b: dict) -> dict:
                      "items": sorted((detail.trace_timeline(t) if t else []) + r.app, key=lambda x: (x["at"] or "", x["kind"])),
                      "error": "", "missing": board.missing_sources(TRACE_MISSING if t else [], local_only=bool(kw.get("local_only")), handed=handed)},
         "sessions": [{k: x.get(k) for k in SESSION_KEYS} for x in sess], "live_slot": (live_of(sess) or {}).get("slot"),
-        "credits": kw["credits"], "brain": b["brain"], "mr_desc": b["mr_desc"]}
+        "credits": kw["credits"], "brain": b["brain"], "mr_desc": b["mr_desc"],
+        "deploy": deploys_view.requirement(t, {"gitlab": {"base": GL, "project": r.project}})}
 
 
 def outputs_key(path: str, q: dict) -> str:
@@ -1283,6 +1368,7 @@ def world(scratch: Path) -> None:
                                   sessions=det["sessions"], decisions=det["decisions"], questions=det["questions"],
                                   mr_desc=det["mr_desc"], credits=row.get("credits"))
     det["credits"] = LATER["r1/PAY-3"][2]["credits"]       # service._local_credits over its sessions
+    det["deploy"] = None        # PAY-3 is not merged: no 上线 yet
     details["r1/PAY-3"] = det
 
     # PAY-4: on the runner, parked on D-2 (a design question for the product)
@@ -1630,6 +1716,7 @@ def world(scratch: Path) -> None:
         n_hum = sum(1 for h in r.humans if h["judgment_point"])
         runs.append({"key": key, "repo": "r3", "how": how, "beyond": ["交接后推代码"] if how == "people" and not i % 2 else (["回答问题"] if how == "people" else []),
                      "at_points": n_hum, "outside": 1 if how == "people" and not i % 2 else 0, "credits": cr, "merged_at": r.merged_at})
+    order_eval = order_deploys({r_.key: r_ for r_ in reqs["r3"]})
     # ORD-10: running on the runner right now
     r = Req("r3", "ORD-10", "订单状态推送到企业微信", "erin", "wecom-push", "261106-wecom-push", project="shop/shop-order")
     r.claim_at = T0 - 9 * H
@@ -1794,6 +1881,11 @@ def world(scratch: Path) -> None:
             o["eval"]["metrics"] = [dict(m, value=None) for m in o["eval"]["metrics"]]
             o["eval"]["notes"] = []
             o["funnel"] = dict(deliveries.funnel_app([], {"asked": 0, "answered": 0, "delivered": 0}), source="evaluate")
+        if "r3" in ids:     # shop-order's 部署 numbers and notes: the only repo whose kit.json reads its deploys
+            o["eval"]["metrics"] = o["eval"]["metrics"] + deploys_view.metrics(order_eval)
+            said = deploys_view.notes(order_eval, [])
+            o["eval"]["note_rows"] = o["eval"]["note_rows"] + said
+            o["eval"]["notes"] = o["eval"]["notes"] + [x["text"] for x in said]
         o["eval"]["queue"] = [q for q in o["eval"]["queue"] if q["key"] in keys]
         o["eval"]["families"] = [x for x in fam_eval if x["repo"] in ids]     # brain-kit 0d52e97's, shop-pay's here
         o["eval"]["skipped"] = [x for x in o["eval"]["skipped"] if x["key"] in keys]
@@ -1916,7 +2008,8 @@ def world(scratch: Path) -> None:
                          "other_runs": []},
             "sessions": [{k: x.get(k) for k in ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting",
                                                  "last_activity", "opened_at", "project", "url", "error")} for x in counted],
-            "credits": cost, "brain": brain_t, "mr_desc": b["mr_desc"]}
+            "credits": cost, "brain": brain_t, "mr_desc": b["mr_desc"],
+            "deploy": deploys_view.requirement(q.trace(brain_t) if path else None, {"gitlab": {"base": GL, "project": q.project}})}
     team_items = todo.build(team_entries, team=True, crew_rows=[])["items"]
     world_todo["team"] = {"items": [i for i in world_todo["ok"]["items"] if (i["repo"], i["key"]) not in taken] + team_items,
                           "team": True}

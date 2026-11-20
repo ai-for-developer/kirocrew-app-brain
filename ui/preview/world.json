@@ -18,7 +18,8 @@
     "golden": false,
     "intents": true,
     "mrdesc": true,
-    "split": true
+    "split": true,
+    "deploys": true
    }
   },
   "repos": [
@@ -2329,6 +2330,27 @@
      "label": "每个正确交付的 credits",
      "value": null,
      "rule": "完成的 run 花的 credits 合计 ÷ 正确交付数；只用来诊断，不设上限"
+    },
+    {
+     "id": "deploy_frequency",
+     "label": "部署频率",
+     "value": 0.5,
+     "rule": "最近 28 天，默认分支部署到 staging、灰度走完上线的次数，按周算（中止的、读不到的不算）"
+    },
+    {
+     "id": "lead_time",
+     "label": "合并到上线",
+     "value": 0.09,
+     "rule": "从合并到第一次上线了这个需求的部署（staging），取中位"
+    },
+    {
+     "id": "change_failure",
+     "label": "变更失败率",
+     "value": [
+      0,
+      7
+     ],
+     "rule": "部署过的需求里，上线前灰度中止过、或合并后 14 天内有回滚、热修、缺陷的 ÷ 14 天已满、结果读得到的部署过的需求（staging）"
     }
    ],
    "queue": [
@@ -2351,7 +2373,8 @@
    ],
    "notes": [
     "花费只有一个总数，却有 6 个需求：分不出是谁的，没有算给任何一个",
-    "已知有问题、14 天还没满（满了再算进交付正确率）：PAY-2"
+    "已知有问题、14 天还没满（满了再算进交付正确率）：PAY-2",
+    "已知变更失败、14 天还没满（满了再算进变更失败率）：ORD-8、ORD-9"
    ],
    "raw": "",
    "note_rows": [
@@ -2363,6 +2386,11 @@
     {
      "text": "已知有问题、14 天还没满（满了再算进交付正确率）：PAY-2",
      "todo": "不用管：满 14 天会自动算进去；要看是什么问题，点开需求",
+     "raw": ""
+    },
+    {
+     "text": "已知变更失败、14 天还没满（满了再算进变更失败率）：ORD-8、ORD-9",
+     "todo": "不用管：满 14 天会自动算进去；要看是哪次部署没过，点开需求看「上线」",
      "raw": ""
     }
    ],
@@ -5020,6 +5048,27 @@
        "label": "每个正确交付的 credits",
        "value": null,
        "rule": "完成的 run 花的 credits 合计 ÷ 正确交付数；只用来诊断，不设上限"
+      },
+      {
+       "id": "deploy_frequency",
+       "label": "部署频率",
+       "value": 0.5,
+       "rule": "最近 28 天，默认分支部署到 staging、灰度走完上线的次数，按周算（中止的、读不到的不算）"
+      },
+      {
+       "id": "lead_time",
+       "label": "合并到上线",
+       "value": 0.09,
+       "rule": "从合并到第一次上线了这个需求的部署（staging），取中位"
+      },
+      {
+       "id": "change_failure",
+       "label": "变更失败率",
+       "value": [
+        0,
+        7
+       ],
+       "rule": "部署过的需求里，上线前灰度中止过、或合并后 14 天内有回滚、热修、缺陷的 ÷ 14 天已满、结果读得到的部署过的需求（staging）"
       }
      ],
      "queue": [
@@ -5042,7 +5091,8 @@
      ],
      "notes": [
       "花费只有一个总数，却有 6 个需求：分不出是谁的，没有算给任何一个",
-      "已知有问题、14 天还没满（满了再算进交付正确率）：PAY-2"
+      "已知有问题、14 天还没满（满了再算进交付正确率）：PAY-2",
+      "已知变更失败、14 天还没满（满了再算进变更失败率）：ORD-8、ORD-9"
      ],
      "raw": "",
      "note_rows": [
@@ -5054,6 +5104,11 @@
       {
        "text": "已知有问题、14 天还没满（满了再算进交付正确率）：PAY-2",
        "todo": "不用管：满 14 天会自动算进去；要看是什么问题，点开需求",
+       "raw": ""
+      },
+      {
+       "text": "已知变更失败、14 天还没满（满了再算进变更失败率）：ORD-8、ORD-9",
+       "todo": "不用管：满 14 天会自动算进去；要看是哪次部署没过，点开需求看「上线」",
        "raw": ""
       }
      ],
@@ -8347,11 +8402,34 @@
        "label": "每个正确交付的 credits",
        "value": null,
        "rule": "完成的 run 花的 credits 合计 ÷ 正确交付数；只用来诊断，不设上限"
+      },
+      {
+       "id": "deploy_frequency",
+       "label": "部署频率",
+       "value": 0.5,
+       "rule": "最近 28 天，默认分支部署到 staging、灰度走完上线的次数，按周算（中止的、读不到的不算）"
+      },
+      {
+       "id": "lead_time",
+       "label": "合并到上线",
+       "value": 0.09,
+       "rule": "从合并到第一次上线了这个需求的部署（staging），取中位"
+      },
+      {
+       "id": "change_failure",
+       "label": "变更失败率",
+       "value": [
+        0,
+        7
+       ],
+       "rule": "部署过的需求里，上线前灰度中止过、或合并后 14 天内有回滚、热修、缺陷的 ÷ 14 天已满、结果读得到的部署过的需求（staging）"
       }
      ],
      "queue": [],
      "skipped": [],
-     "notes": [],
+     "notes": [
+      "已知变更失败、14 天还没满（满了再算进变更失败率）：ORD-8、ORD-9"
+     ],
      "raw": "",
      "note_rows": [
       {
@@ -8362,6 +8440,11 @@
       {
        "text": "已知有问题、14 天还没满（满了再算进交付正确率）：PAY-2",
        "todo": "不用管：满 14 天会自动算进去；要看是什么问题，点开需求",
+       "raw": ""
+      },
+      {
+       "text": "已知变更失败、14 天还没满（满了再算进变更失败率）：ORD-8、ORD-9",
+       "todo": "不用管：满 14 天会自动算进去；要看是哪次部署没过，点开需求看「上线」",
        "raw": ""
       }
      ],
@@ -17406,6 +17489,27 @@
        "label": "每个正确交付的 credits",
        "value": null,
        "rule": "完成的 run 花的 credits 合计 ÷ 正确交付数；只用来诊断，不设上限"
+      },
+      {
+       "id": "deploy_frequency",
+       "label": "部署频率",
+       "value": 0.5,
+       "rule": "最近 28 天，默认分支部署到 staging、灰度走完上线的次数，按周算（中止的、读不到的不算）"
+      },
+      {
+       "id": "lead_time",
+       "label": "合并到上线",
+       "value": 0.09,
+       "rule": "从合并到第一次上线了这个需求的部署（staging），取中位"
+      },
+      {
+       "id": "change_failure",
+       "label": "变更失败率",
+       "value": [
+        0,
+        7
+       ],
+       "rule": "部署过的需求里，上线前灰度中止过、或合并后 14 天内有回滚、热修、缺陷的 ÷ 14 天已满、结果读得到的部署过的需求（staging）"
       }
      ],
      "queue": [
@@ -17428,7 +17532,8 @@
      ],
      "notes": [
       "花费只有一个总数，却有 6 个需求：分不出是谁的，没有算给任何一个",
-      "已知有问题、14 天还没满（满了再算进交付正确率）：PAY-2"
+      "已知有问题、14 天还没满（满了再算进交付正确率）：PAY-2",
+      "已知变更失败、14 天还没满（满了再算进变更失败率）：ORD-8、ORD-9"
      ],
      "raw": "",
      "note_rows": [
@@ -17440,6 +17545,11 @@
       {
        "text": "已知有问题、14 天还没满（满了再算进交付正确率）：PAY-2",
        "todo": "不用管：满 14 天会自动算进去；要看是什么问题，点开需求",
+       "raw": ""
+      },
+      {
+       "text": "已知变更失败、14 天还没满（满了再算进变更失败率）：ORD-8、ORD-9",
+       "todo": "不用管：满 14 天会自动算进去；要看是哪次部署没过，点开需求看「上线」",
        "raw": ""
       }
      ],
@@ -20726,11 +20836,34 @@
        "label": "每个正确交付的 credits",
        "value": null,
        "rule": "完成的 run 花的 credits 合计 ÷ 正确交付数；只用来诊断，不设上限"
+      },
+      {
+       "id": "deploy_frequency",
+       "label": "部署频率",
+       "value": 0.5,
+       "rule": "最近 28 天，默认分支部署到 staging、灰度走完上线的次数，按周算（中止的、读不到的不算）"
+      },
+      {
+       "id": "lead_time",
+       "label": "合并到上线",
+       "value": 0.09,
+       "rule": "从合并到第一次上线了这个需求的部署（staging），取中位"
+      },
+      {
+       "id": "change_failure",
+       "label": "变更失败率",
+       "value": [
+        0,
+        7
+       ],
+       "rule": "部署过的需求里，上线前灰度中止过、或合并后 14 天内有回滚、热修、缺陷的 ÷ 14 天已满、结果读得到的部署过的需求（staging）"
       }
      ],
      "queue": [],
      "skipped": [],
-     "notes": [],
+     "notes": [
+      "已知变更失败、14 天还没满（满了再算进变更失败率）：ORD-8、ORD-9"
+     ],
      "raw": "",
      "note_rows": [
       {
@@ -20741,6 +20874,11 @@
       {
        "text": "已知有问题、14 天还没满（满了再算进交付正确率）：PAY-2",
        "todo": "不用管：满 14 天会自动算进去；要看是什么问题，点开需求",
+       "raw": ""
+      },
+      {
+       "text": "已知变更失败、14 天还没满（满了再算进变更失败率）：ORD-8、ORD-9",
+       "todo": "不用管：满 14 天会自动算进去；要看是哪次部署没过，点开需求看「上线」",
        "raw": ""
       }
      ],
@@ -88783,18 +88921,18 @@
       "group": "after",
       "label": "14 天",
       "name": "合并后 14 天没有回滚或热修",
-      "status": "watch",
-      "at": null,
-      "detail": "观察中：到 2026-11-10",
+      "status": "fail",
+      "at": 1794332700.0,
+      "detail": "有回滚或热修",
       "node": null,
       "run": null
      }
     ],
     "passed": 9,
-    "failed": 0,
-    "total": 9,
+    "failed": 1,
+    "total": 10,
     "todo": [],
-    "at": 1793121060,
+    "at": 1794332700.0,
     "history": [
      {
       "at": 1793116140.0,
@@ -88814,7 +88952,7 @@
      "session_url": null
     },
     "by": [],
-    "checks": "目前 9 项都过 · 1 项在观察",
+    "checks": "检查 9/10 过 · 没过：合并后 14 天没有回滚或热修",
     "done": {
      "at": 1793123100.0,
      "who": "产品",
@@ -92191,18 +92329,18 @@
       "group": "after",
       "label": "14 天",
       "name": "合并后 14 天没有回滚或热修",
-      "status": "watch",
-      "at": null,
-      "detail": "观察中：到 2026-11-19",
+      "status": "fail",
+      "at": 1795114320.0,
+      "detail": "有回滚或热修",
       "node": null,
       "run": null
      }
     ],
     "passed": 9,
-    "failed": 0,
-    "total": 9,
+    "failed": 1,
+    "total": 10,
     "todo": [],
-    "at": 1793902680,
+    "at": 1795114320.0,
     "history": [
      {
       "at": 1793897760.0,
@@ -92222,7 +92360,7 @@
      "session_url": null
     },
     "by": [],
-    "checks": "目前 9 项都过 · 1 项在观察",
+    "checks": "检查 9/10 过 · 没过：合并后 14 天没有回滚或热修",
     "done": {
      "at": 1793904720.0,
      "who": "产品",
@@ -113972,7 +114110,8 @@
     "path": "runs/PAY-3/MR.md",
     "ref": "7d2c9e4a1b30",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "r1/PAY-2": {
    "row": {
@@ -114862,7 +115001,8 @@
     "path": "runs/PAY-2/MR.md",
     "ref": "69bc4ac06c1b",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "r1/PAY-4": {
    "row": {
@@ -115556,7 +115696,8 @@
     "path": "runs/PAY-4/MR.md",
     "ref": "d1e5032dfcf8",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "r1/PAY-5": {
    "row": {
@@ -116334,7 +116475,8 @@
     "path": "runs/PAY-5/MR.md",
     "ref": "eaf63e109564",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "r1/PAY-7": {
    "row": {
@@ -116964,7 +117106,8 @@
     "path": "runs/PAY-7/MR.md",
     "ref": "83ea7046ff32",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "r1/PAY-6": {
    "row": {
@@ -117369,7 +117512,8 @@
     "path": null,
     "ref": null,
     "error": "还没开工：开工以后才有变更说明"
-   }
+   },
+   "deploy": null
   },
   "r1/PAY-8": {
    "row": {
@@ -117774,7 +117918,8 @@
     "path": null,
     "ref": null,
     "error": "还没开工：开工以后才有变更说明"
-   }
+   },
+   "deploy": null
   },
   "r1/PAY-10": {
    "row": {
@@ -118383,7 +118528,8 @@
     "path": "runs/PAY-10/MR.md",
     "ref": "92a2568e797f",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "r1/PAY-1": {
    "row": {
@@ -119006,7 +119152,8 @@
     "path": "runs/PAY-1/MR.md",
     "ref": "a2a7b2a6a024",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "r1/PAY-16": {
    "row": {
@@ -119519,7 +119666,8 @@
     "path": null,
     "ref": null,
     "error": "还没有提交：做完第一步以后才有变更说明"
-   }
+   },
+   "deploy": null
   },
   "r1/PAY-9": {
    "row": {
@@ -120519,7 +120667,8 @@
     "path": "runs/PAY-9/MR.md",
     "ref": "f621fd5814dd",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "r1/PAY-11": {
    "row": {
@@ -121178,7 +121327,8 @@
     "path": "runs/PAY-11/MR.md",
     "ref": "52717cfcb945",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "r1/PAY-12": {
    "row": {
@@ -121684,7 +121834,8 @@
     "path": "runs/PAY-12/MR.md",
     "ref": "8c5fd11cd949",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "r1/PAY-13": {
    "row": {
@@ -122175,7 +122326,8 @@
     "path": null,
     "ref": null,
     "error": "还没开工：开工以后才有变更说明"
-   }
+   },
+   "deploy": null
   },
   "r1/PAY-14": {
    "row": {
@@ -122629,7 +122781,8 @@
     "path": null,
     "ref": null,
     "error": "还没开工：开工以后才有变更说明"
-   }
+   },
+   "deploy": null
   },
   "r3/ORD-1": {
    "row": {
@@ -123339,6 +123492,32 @@
     "path": "runs/ORD-1/MR.md",
     "ref": "78a11ad3c9cd",
     "error": ""
+   },
+   "deploy": {
+    "value": "promoted",
+    "environment": "staging",
+    "digest": "sha256:6f3d3c686c429b398f105d2d3cdb8c89689e1cc500819899d03cbfd4cfab2bff",
+    "at": 1788286330.0,
+    "lead_s": 324,
+    "why": "",
+    "raw": [],
+    "attempts": [
+     {
+      "result": "promoted",
+      "deployment": 844501,
+      "at": 1788286330.0,
+      "pipeline": 4131000,
+      "url": "https://gitlab.example.com/shop/shop-order/-/pipelines/4131000",
+      "sha": "9949225d8406",
+      "digest": "sha256:6f3d3c686c429b398f105d2d3cdb8c89689e1cc500819899d03cbfd4cfab2bff",
+      "kept": null,
+      "failed": [],
+      "why": "",
+      "raw": [
+       "every canary step passed"
+      ]
+     }
+    ]
    }
   },
   "r3/ORD-2": {
@@ -124065,6 +124244,32 @@
     "path": "runs/ORD-2/MR.md",
     "ref": "063f9ff17231",
     "error": ""
+   },
+   "deploy": {
+    "value": "promoted",
+    "environment": "staging",
+    "digest": "sha256:d228ef2aa4817aab9b40c3db89f9d7c7fc21464a9a6d308d0db5e640926f3aaa",
+    "at": 1788889450.0,
+    "lead_s": 324,
+    "why": "",
+    "raw": [],
+    "attempts": [
+     {
+      "result": "promoted",
+      "deployment": 844502,
+      "at": 1788889450.0,
+      "pipeline": 4132000,
+      "url": "https://gitlab.example.com/shop/shop-order/-/pipelines/4132000",
+      "sha": "f7fe20f5e4eb",
+      "digest": "sha256:d228ef2aa4817aab9b40c3db89f9d7c7fc21464a9a6d308d0db5e640926f3aaa",
+      "kept": null,
+      "failed": [],
+      "why": "",
+      "raw": [
+       "every canary step passed"
+      ]
+     }
+    ]
    }
   },
   "r3/ORD-3": {
@@ -124802,6 +125007,32 @@
     "path": "runs/ORD-3/MR.md",
     "ref": "afe61953d54f",
     "error": ""
+   },
+   "deploy": {
+    "value": "promoted",
+    "environment": "staging",
+    "digest": "sha256:3c3353b231458dcca80d31bde9bdf49a94f2af6e2c1dfb6ca9930bc5e627063a",
+    "at": 1789664830.0,
+    "lead_s": 324,
+    "why": "",
+    "raw": [],
+    "attempts": [
+     {
+      "result": "promoted",
+      "deployment": 844503,
+      "at": 1789664830.0,
+      "pipeline": 4133000,
+      "url": "https://gitlab.example.com/shop/shop-order/-/pipelines/4133000",
+      "sha": "f56fc0166eed",
+      "digest": "sha256:3c3353b231458dcca80d31bde9bdf49a94f2af6e2c1dfb6ca9930bc5e627063a",
+      "kept": null,
+      "failed": [],
+      "why": "",
+      "raw": [
+       "every canary step passed"
+      ]
+     }
+    ]
    }
   },
   "r3/ORD-4": {
@@ -125512,6 +125743,32 @@
     "path": "runs/ORD-4/MR.md",
     "ref": "cb15a38ac465",
     "error": ""
+   },
+   "deploy": {
+    "value": "promoted",
+    "environment": "staging",
+    "digest": "sha256:bed53f6de4debdb0521ae196095bb1b363e2a112e4a82dc910a697b67c8e052f",
+    "at": 1790262730.0,
+    "lead_s": 324,
+    "why": "",
+    "raw": [],
+    "attempts": [
+     {
+      "result": "promoted",
+      "deployment": 844504,
+      "at": 1790262730.0,
+      "pipeline": 4134000,
+      "url": "https://gitlab.example.com/shop/shop-order/-/pipelines/4134000",
+      "sha": "0325cdcf1e22",
+      "digest": "sha256:bed53f6de4debdb0521ae196095bb1b363e2a112e4a82dc910a697b67c8e052f",
+      "kept": null,
+      "failed": [],
+      "why": "",
+      "raw": [
+       "every canary step passed"
+      ]
+     }
+    ]
    }
   },
   "r3/ORD-5": {
@@ -126118,6 +126375,32 @@
     "path": "runs/ORD-5/MR.md",
     "ref": "d2097cb9d046",
     "error": ""
+   },
+   "deploy": {
+    "value": "promoted",
+    "environment": "staging",
+    "digest": "sha256:988e85078004bd0a8fca7b234f33711796ab38b80ec18afebeac9d81da0799e8",
+    "at": 1790954950.0,
+    "lead_s": 324,
+    "why": "",
+    "raw": [],
+    "attempts": [
+     {
+      "result": "promoted",
+      "deployment": 844505,
+      "at": 1790954950.0,
+      "pipeline": 4135000,
+      "url": "https://gitlab.example.com/shop/shop-order/-/pipelines/4135000",
+      "sha": "f7b3e490339e",
+      "digest": "sha256:988e85078004bd0a8fca7b234f33711796ab38b80ec18afebeac9d81da0799e8",
+      "kept": null,
+      "failed": [],
+      "why": "",
+      "raw": [
+       "every canary step passed"
+      ]
+     }
+    ]
    }
   },
   "r3/ORD-6": {
@@ -126860,6 +127143,32 @@
     "path": "runs/ORD-6/MR.md",
     "ref": "2f522271a628",
     "error": ""
+   },
+   "deploy": {
+    "value": "promoted",
+    "environment": "staging",
+    "digest": "sha256:a5efa45b784219eb87931fa5830e5014dd637a6202e5746176a290dfaeb75e2f",
+    "at": 1791570550.0,
+    "lead_s": 324,
+    "why": "",
+    "raw": [],
+    "attempts": [
+     {
+      "result": "promoted",
+      "deployment": 844506,
+      "at": 1791570550.0,
+      "pipeline": 4136000,
+      "url": "https://gitlab.example.com/shop/shop-order/-/pipelines/4136000",
+      "sha": "9662e8b8c341",
+      "digest": "sha256:a5efa45b784219eb87931fa5830e5014dd637a6202e5746176a290dfaeb75e2f",
+      "kept": null,
+      "failed": [],
+      "why": "",
+      "raw": [
+       "every canary step passed"
+      ]
+     }
+    ]
    }
   },
   "r3/ORD-7": {
@@ -127573,6 +127882,32 @@
     "path": "runs/ORD-7/MR.md",
     "ref": "c54cb6c6fb3a",
     "error": ""
+   },
+   "deploy": {
+    "value": "promoted",
+    "environment": "staging",
+    "digest": "sha256:7d479c543ed89c65139a43a02de40420d902c7787518c27974c0df43cd2f189e",
+    "at": 1792253530.0,
+    "lead_s": 324,
+    "why": "",
+    "raw": [],
+    "attempts": [
+     {
+      "result": "promoted",
+      "deployment": 844608,
+      "at": 1792253530.0,
+      "pipeline": 4137972,
+      "url": "https://gitlab.example.com/shop/shop-order/-/pipelines/4137972",
+      "sha": "ed0900d3ae54",
+      "digest": "sha256:7d479c543ed89c65139a43a02de40420d902c7787518c27974c0df43cd2f189e",
+      "kept": null,
+      "failed": [],
+      "why": "",
+      "raw": [
+       "every canary step passed"
+      ]
+     }
+    ]
    }
   },
   "r3/ORD-8": {
@@ -128366,6 +128701,56 @@
     "path": "runs/ORD-8/MR.md",
     "ref": "873cd0195f05",
     "error": ""
+   },
+   "deploy": {
+    "value": "promoted",
+    "environment": "staging",
+    "digest": "sha256:168d16c5a244384d3d434ccd4adc5a8e6ee168b4ce638e7653ed9541f82750e1",
+    "at": 1793124910.0,
+    "lead_s": 1800,
+    "why": "",
+    "raw": [],
+    "attempts": [
+     {
+      "result": "aborted",
+      "deployment": 844613,
+      "at": 1793123360.0,
+      "pipeline": 4138009,
+      "url": "https://gitlab.example.com/shop/shop-order/-/pipelines/4138009",
+      "sha": "80cd2951dfb7",
+      "digest": "sha256:4120ee577b2a1d036324052bf70364b3abc01461fa13b01558cf9bf403e23c5b",
+      "kept": "sha256:7d479c543ed89c65139a43a02de40420d902c7787518c27974c0df43cd2f189e",
+      "failed": [
+       {
+        "check": "create_order",
+        "error": "expected HTTP 201, got 500: Internal Server Error"
+       },
+       {
+        "check": "read_order",
+        "error": "no order to read because create_order failed"
+       }
+      ],
+      "why": "",
+      "raw": [
+       "RolloutAborted: Rollout aborted update to revision 5: Step-based analysis phase error/failed: Metric \"smoke\" assessed Failed due to failed (1) > failureLimit (0)"
+      ]
+     },
+     {
+      "result": "promoted",
+      "deployment": 844623,
+      "at": 1793124910.0,
+      "pipeline": 4138161,
+      "url": "https://gitlab.example.com/shop/shop-order/-/pipelines/4138161",
+      "sha": "d08441a80fd0",
+      "digest": "sha256:168d16c5a244384d3d434ccd4adc5a8e6ee168b4ce638e7653ed9541f82750e1",
+      "kept": null,
+      "failed": [],
+      "why": "",
+      "raw": [
+       "every canary step passed"
+      ]
+     }
+    ]
    }
   },
   "r3/ORD-9": {
@@ -129095,6 +129480,41 @@
     "path": "runs/ORD-9/MR.md",
     "ref": "2d53d9151933",
     "error": ""
+   },
+   "deploy": {
+    "value": "aborted",
+    "environment": "staging",
+    "digest": null,
+    "at": null,
+    "lead_s": null,
+    "why": "",
+    "raw": [],
+    "attempts": [
+     {
+      "result": "aborted",
+      "deployment": 844640,
+      "at": 1793904980.0,
+      "pipeline": 4138402,
+      "url": "https://gitlab.example.com/shop/shop-order/-/pipelines/4138402",
+      "sha": "9ff999a46669",
+      "digest": "sha256:16de79e72976978859dca3252a387115a9b7c03842f8b10635c65719daf9d74b",
+      "kept": "sha256:168d16c5a244384d3d434ccd4adc5a8e6ee168b4ce638e7653ed9541f82750e1",
+      "failed": [
+       {
+        "check": "create_order",
+        "error": "expected HTTP 201, got 500: Internal Server Error"
+       },
+       {
+        "check": "read_order",
+        "error": "no order to read because create_order failed"
+       }
+      ],
+      "why": "",
+      "raw": [
+       "RolloutAborted: Rollout aborted update to revision 5: Step-based analysis phase error/failed: Metric \"smoke\" assessed Failed due to failed (1) > failureLimit (0)"
+      ]
+     }
+    ]
    }
   },
   "r3/ORD-10": {
@@ -129721,7 +130141,8 @@
     "path": "runs/ORD-10/MR.md",
     "ref": "2b7745230929",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "r4/TOOL-1": {
    "row": {
@@ -130216,7 +130637,8 @@
     "path": null,
     "ref": null,
     "error": "还没有提交：做完第一步以后才有变更说明"
-   }
+   },
+   "deploy": null
   },
   "r1/PAY-15": {
    "row": {
@@ -130712,7 +131134,8 @@
     "path": "runs/PAY-15/MR.md",
     "ref": "9ff8bff681cd",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "r3/ORD-11": {
    "row": {
@@ -131261,7 +131684,8 @@
     "path": "runs/ORD-11/MR.md",
     "ref": "7e5864cb8525",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "r3/ORD-12": {
    "row": {
@@ -131858,7 +132282,8 @@
     "path": "runs/ORD-12/MR.md",
     "ref": "2f91020e0821",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "runner/PAY-9": {
    "row": {
@@ -132325,7 +132750,8 @@
     "path": null,
     "ref": null,
     "error": "运行机还没开始做：它做完提交以后才有变更说明"
-   }
+   },
+   "deploy": null
   },
   "runner/PAY-4": {
    "row": {
@@ -133001,7 +133427,8 @@
     "path": "runs/PAY-4/MR.md",
     "ref": "d1e5032dfcf8",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "runner/PAY-5": {
    "row": {
@@ -133771,7 +134198,8 @@
     "path": "runs/PAY-5/MR.md",
     "ref": "eaf63e109564",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "runner/PAY-2": {
    "row": {
@@ -134684,7 +135112,8 @@
     "path": "runs/PAY-2/MR.md",
     "ref": "69bc4ac06c1b",
     "error": ""
-   }
+   },
+   "deploy": null
   },
   "runner/ORD-10": {
    "row": {
@@ -135325,7 +135754,8 @@
     "path": "runs/ORD-10/MR.md",
     "ref": "2b7745230929",
     "error": ""
-   }
+   },
+   "deploy": null
   }
  },
  "stages": {
