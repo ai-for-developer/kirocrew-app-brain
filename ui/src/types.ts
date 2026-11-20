@@ -1427,6 +1427,9 @@ export type TodoKind = 'lean_approval' | 'question' | 'clarify' | 'acceptance' |
   | 'child_start' | 'parent_release' | 'closed_leftover'
   /** push_failed: the person's progress at a Lean checkpoint that origin refused (todo and raw say what and why) */
   | 'push_failed'
+  /** open_mr: a fast run's code committed and checked (开 MR, on 需求现状); full: a fast run changed a risk path
+   * (转完整流程, on 需求现状) */
+  | 'open_mr' | 'full'
 export interface TodoItem {
   kind: TodoKind
   repo: string
