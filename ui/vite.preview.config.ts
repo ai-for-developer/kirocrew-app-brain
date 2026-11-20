@@ -46,6 +46,8 @@ export default defineConfig({
       { find: '@kirocrew/app-sdk', replacement: stub('app-sdk.tsx') },
       { find: 'lucide-react', replacement: stub('lucide-preview.tsx') },
     ],
+    // one React for the page and the stubs: without it the bundle held two, and the first hook failed (useState of null)
+    dedupe: ['react', 'react-dom'],
   },
   build: {
     outDir: here('./preview-dist'),
