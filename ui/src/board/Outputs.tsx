@@ -480,7 +480,7 @@ function CommitPane({ board, repo, reqKey, data, commits, c, file, onFile, momen
           <RoleIcon role="code" size={22} />
           <h3>{c ? `提交 ${sha7}` : '全部改动'}</h3>
           {c?.records_only && <span className="kt-pill tone-idle">只改记录</span>}
-          {branch && <span className="kt-run-meta kt-mono">{branch} @ {last.sha.slice(0, 7)}</span>}
+          {branch && <span className="kt-run-meta kt-mono">{branch} @ {sha7}</span>}
         </div>
         <p className="kt-pane-scope" data-testid="out-scope">
           {c ? `${c.subject} · ${c.by === 'bot' ? '运行机' : '本机'} · ${clockAt(c.at, board.at)}` : `${commits.length} 次提交加起来，和运行分支出发的地方比`}
