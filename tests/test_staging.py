@@ -188,7 +188,7 @@ def test_a_fix_goes_to_a_brain_patrol_session_of_its_own_two_at_a_time_counting_
                  "测试环境部署的是提交 %s，它是 MR !41「折扣按百分比算」合进来的。" % SHA[1][:12],
                  "工作区：/Users/alice/workplace/brain-team/staging/42-1（已经检出 main，在它最新的提交上）。",
                  "   > ZeroDivisionError: division by zero",
-                 "1. 从 main 开分支 %s：git checkout -b %s" % (branch, branch),
+                 "1. 从 main 开分支 %s：git checkout -B %s（" % (branch, branch),
                  "能复现就先写一个测试复现它，再修；跑项目的测试",
                  "git push origin HEAD:%s（不加 --force）" % branch,
                  "（命令会在描述末尾加上 Closes #1）",
@@ -260,7 +260,7 @@ def test_the_fix_mr_is_followed_to_its_merge_and_a_recurrence_on_a_newer_deploy_
                             % (SHA[2][:12], BASE, SHA[2], ZERO))
     assert "修复分支是 %s-2。" % branch in again and 'discount.py", line 13, in apply' in again
     assert (w.item(ZERO)["state"], w.item(ZERO)["slot"]) == ("fixing", "staging-42-1-2")
-    assert "git checkout -b %s-2" % branch in w.sessions.messages("staging-42-1-2")[0]
+    assert "git checkout -B %s-2（" % branch in w.sessions.messages("staging-42-1-2")[0]
 
 
 def test_a_fix_mr_closed_without_merging_leaves_the_error_to_people(bk, tmp_path):

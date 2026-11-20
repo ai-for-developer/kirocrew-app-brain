@@ -273,8 +273,8 @@ def message(row: Row, path: str, base: str, helper: patrol.Helper) -> str:
         out += ["", "这是第 %d 次修：上一次%s。origin 上分支 %s 已经有提交的话，接着它做。" % (
             row.attempts + 1, OUTCOME.get(row.outcome, row.outcome), br)]
     out += ["", "要做的：",
-            "1. 从 %s 开分支 %s：git checkout -b %s（origin 上已经有这个分支：git fetch origin，再 git checkout -B %s origin/%s）。"
-            % (base, br, br, br, br),
+            "1. 从 %s 开分支 %s：git checkout -B %s（origin 上已经有这个分支：git fetch origin，再 git checkout -B %s origin/%s，"
+            "接着它做）。" % (base, br, br, br, br),
             "2. 能复现就先写一个测试复现它，再修；跑项目的测试，没过就接着修。提交写清楚改了什么，推上去：git push origin "
             "HEAD:%s（不加 --force）。" % br,
             "3. 开 MR，标题「%s」，描述写改了什么、怎么验证的（命令会在描述末尾加上 Closes #%d）：" % (title, iid),
