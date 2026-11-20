@@ -289,6 +289,18 @@ def test_an_issue_a_person_closes_while_it_is_being_fixed_stops_its_turn_and_is_
     assert w.watch.view()["items"] == [] and w.watch.held() == []
 
 
+def test_a_log_that_cannot_be_read_this_round_still_has_its_issues_and_fixes_followed(bk, tmp_path):
+    w = started(tmp_path)
+    w.write(zero())
+    w.round()
+    os.remove(w.log)
+    w.gl.close_issue(P, 1)
+    with pytest.raises(bk.brain_error(), match="app.log"):
+        w.round()
+    assert w.sessions.stopped == ["staging-42-1"] and w.item(ZERO)["state"] == "closed"
+    assert w.watch.view()["projects"][0]["error"].startswith("[Errno 2] No such file or directory")
+
+
 def test_the_cursor_survives_a_restart_and_a_traceback_still_being_written_waits_for_its_end(bk, tmp_path):
     w = started(tmp_path)
     w.write(gateway())

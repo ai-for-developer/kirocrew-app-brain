@@ -396,17 +396,17 @@ class StagingWatch:
         return read
 
     def _look(self, project: str, kit: Mapping[str, Any], now: float) -> str:
-        """*project*'s Issues and fixes as GitLab and the sessions say, then its new errors counted, then its Issues
-        told. -> the deployed commit."""
+        """*project*'s Issues and fixes as GitLab and the sessions say (also when its log cannot be read), then its new
+        errors counted, then its Issues told. -> the deployed commit."""
         cfg = self.staging.get(project)
         if cfg is None:
             raise ValueError("bridge.json 的 projects 里 %s 没写 staging：测试环境的日志和 VERSION 文件在哪" % project)
         if isinstance(cfg, str):
             raise ValueError("bridge.json 里 %s 的 staging 用不了：%s" % (project, cfg))
+        self._each([r for r in self.led.rows(project) if r.state in OPEN], lambda r: self._watch(r, now))
         sha = cfg.version.read()
         chunk = cfg.log.read(self.led.cursor(project))
         events, used = stagelog.errors_in(chunk.lines)
-        self._each([r for r in self.led.rows(project) if r.state in OPEN], lambda r: self._watch(r, now))
         self.led.take(project, chunk.cursors[used], stagelog.grouped(events, now, sha))
         self._each(self.led.rows(project), lambda r: self._tell(r, kit))
         for r in self.led.rows(project):
@@ -423,7 +423,7 @@ class StagingWatch:
                 self._errors.append("%s「%s」: %s" % (row.project, stagelog.short(row.signature, 40), _said(exc)))
 
     def _watch(self, row: Row, now: float) -> None:
-        """An open row as its Issue, its fix MR and its session's turn say."""
+        """An open row as its Issue, its fix MR and its session's turn say; its Issue told once when it stopped."""
         rest = bk.m("rest")
         try:
             issue = self.gl.call("GET", "/projects/%s/issues/%d" % (rest.q(row.project), row.issue.iid)) or {}
@@ -455,10 +455,13 @@ class StagingWatch:
             elif state == "closed":
                 row = replace(row, state=STOPPED, outcome="mr_closed", said=False)
         self.led.put(row)
+        if row.state == STOPPED and not row.said:
+            self.gl.call("POST", "/projects/%s/issues/%d/notes" % (rest.q(row.project), row.issue.iid),
+                         body={"body": stopped_text(row)})
+            self.led.put(replace(row, said=True))
 
     def _tell(self, row: Row, kit: Mapping[str, Any]) -> None:
-        """A new row's Issue opened (or found, or opened again); an open one's comment when its count jumped, or when
-        it stopped."""
+        """A new row's Issue opened (or found, or opened again); an open one's comment when its count jumped."""
         rest = bk.m("rest")
         path = "/projects/%s/issues" % rest.q(row.project)
         if row.state == NEW:
@@ -473,12 +476,7 @@ class StagingWatch:
                 self.gl.call("POST", "%s/%d/notes" % (path, row.issue.iid), body={"body": reopen_text(row, origin, self.web)})
             self.led.put(replace(row, state=ISSUED, origin=origin, told=row.group.count))
             self.out("staging: %s#%d %s" % (row.project, row.issue.iid, issue_title(row)))
-            return
-        if row.state == STOPPED and not row.said:
-            self.gl.call("POST", "%s/%d/notes" % (path, row.issue.iid), body={"body": stopped_text(row)})
-            row = replace(row, said=True)
-            self.led.put(row)
-        if jumped(row):
+        elif jumped(row):
             self.gl.call("POST", "%s/%d/notes" % (path, row.issue.iid), body={"body": jump_text(row, self.web)})
             self.led.put(replace(row, told=row.group.count))
 
