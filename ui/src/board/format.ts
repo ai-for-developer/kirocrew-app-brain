@@ -5,7 +5,7 @@
  * A tone is a meaning, not a colour: styles.ts maps each to a colour per host mode (kiro-dark / kiro-light), so the
  * same word always has the same colour and every colour has a word next to it.
  */
-import type { ActorStatus, BeltItem, BoardEvent, BoardEventKind, CheckWall, Gate, GateKind, LeanSummary, PipelineRef, ReqBoard, Round, Run, StageNode, WaitWho } from '../types'
+import type { ActorStatus, BeltItem, BoardEvent, BoardEventKind, CheckWall, Gate, GateKind, LeanSummary, PipelineRef, ReqBoard, Round, Run, StageNode, WaitDo, WaitWho } from '../types'
 import { approvalName, waitsOn } from '../vocab'
 
 export const POLL_MS = 2000
@@ -244,8 +244,10 @@ export const CELL_META: Record<string, { label: string; glyph: string }> = {
 
 /** Who a requirement waits on, in one word, the one rule every view reads: 「等你」 only for the person looking
  * (`you`); 「等 carol」 for the owner when that is someone else (`people`, the owner's name known and *me* false: the
- * person looking is not the owner); else vocab's word (等产品, 等别人 …). */
-export function whoWord(who: WaitWho, owner: string | null, me = false): string {
+ * person looking is not the owner), unless the step is a fast run's MR waiting to be merged (*step* merge: its
+ * reviewers, 等人审); else vocab's word (等产品, 等别人 …). */
+export function whoWord(who: WaitWho, owner: string | null, me = false, step?: WaitDo): string {
+  if (step === 'merge') return '等人审'
   if (who === 'people' && owner && !me) return `等 ${owner}`
   return waitsOn(who) || '等人'
 }

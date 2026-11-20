@@ -77,6 +77,14 @@ describe('需求现状 of a fast run (快速)', () => {
     expect(within(now()).getByRole('link', { name: '看 MR' })).toHaveAttribute('href', MR_URL)
     expect(screen.getByTestId('fast-card')).toHaveTextContent('MR !12 等合并')
   })
+
+  test('a teammate’s MR waiting for review waits on its reviewers, not on its owner', async () => {
+    const board = fastBoard({ owner: 'bob', waits: WAITS.merge, mr: MR }, MERGE_STEPS)
+    renderDetail(fastDetail({ owner: 'bob', waits: WAITS.merge, mr: MR }), { ...board, person: { ...board.person, owner: 'bob', me: false, you: false } })
+    await screen.findByTestId('fast-card')
+    expect(now()).toHaveTextContent('等人审')
+    expect(now()).not.toHaveTextContent('等 bob')
+  })
 })
 
 describe('需求现状 of a fast run: 时间花在哪, from its sessions on this machine', () => {
@@ -266,7 +274,7 @@ describe('交付总览 with fast runs', () => {
     render(<OverviewView entry={{}} {...props()} />)
     const flow = await screen.findByTestId('flow')
     const meta = (key: string) => (flow.querySelector(`[data-testid="flow-card"][data-key="${key}"] .cto-kmeta`) as HTMLElement).textContent
-    expect(meta('PAY-18')).toMatch(/^alice · 等人审、合并/)
-    expect(meta('PAY-20')).toMatch(/^bob · 等人审、合并/)
+    expect(meta('PAY-18')).toMatch(/^alice · 等人审 ·/)
+    expect(meta('PAY-20')).toMatch(/^bob · 等人审 ·/)
   })
 })

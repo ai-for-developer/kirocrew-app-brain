@@ -16,6 +16,7 @@
  */
 import { useState } from 'react'
 import { useNavigate } from '@kirocrew/app-sdk'
+import { whoWord } from '../board/format'
 import { RoleIcon } from '../board/RoleIcon'
 import type { View } from '../nav'
 import type { ChildState, FamilyDep, ReqFamily, Requirement, Roster, Stuck, StuckKind, WaitDo, WaitWho } from '../types'
@@ -42,8 +43,6 @@ const LANE_OF_WHO: Record<WaitWho, Lane | null> = {
   you: 'you', product: 'people', people: 'people', builder: 'people', agent: 'agent', runner: 'runner', bridge: 'runner', nobody: null,
 }
 const RUNNER_STATES = new Set(['handed_over', 'running', 'rejected', 'parked'])
-/** whom a fast run's open MR waits on: the people who review and merge it, not its owner */
-const MERGE_WAIT = '等人审、合并'
 
 /** The column of a requirement on its journey: its state (a hand-over, refused or not, is 交给运行机 whatever Lean's
  * stage), else its Lean stage by its AI-DLC number (stage_n): 需求 before 2.6 应用设计, 设计 before 3.5 代码生成, 构建
@@ -257,7 +256,7 @@ function Card({ r, at, hl, repoName, late = [], h }: { r: Requirement; at: numbe
   const since = wait ? waitedText(r, at) : ''
   const when = since || (r.updated_at !== null ? ago(r.updated_at, at) : '')
   const owner = free ? '还没人认领'
-    : r.waits.do === 'merge' ? [r.owner, MERGE_WAIT].filter(Boolean).join(' · ')
+    : r.waits.do === 'merge' ? [r.owner, whoWord(r.waits.who, r.owner, false, 'merge')].filter(Boolean).join(' · ')
       : lane === 'people' && r.waits.who === 'people' ? (r.owner ? `等 ${r.owner}` : waitsOn('people')) : [r.owner, lane === 'people' ? waitsOn(r.waits.who) : ''].filter(Boolean).join(' · ')
   // what it waits on; a small one's line already naming what blocks it says its state instead (the blockers follow)
   let focus = r.waits.text || f?.state_label || r.state_label

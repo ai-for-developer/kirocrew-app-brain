@@ -219,7 +219,7 @@ function nowOf(x: RequirementDetail, board: ReqBoard | null, live: SessionRow | 
     : step === 'start' || step === 'write_back' ? 'app' : step === 'none' || step === 'watch' ? null : onMr ? 'mr' : 'session'
   const open = x.questions.find((q) => isOpenQuestion(q) && q.source !== 'park')
   return {
-    who: w.who, whoSay: whoWord(w.who, x.row.owner, board?.person.me ?? false), do: step, where, text: w.text, line: w.line,
+    who: w.who, whoSay: whoWord(w.who, x.row.owner, board?.person.me ?? false, step), do: step, where, text: w.text, line: w.line,
     since: w.since ?? (step === 'start' ? isoSec(x.claim?.created_at) : step === 'reply' ? live?.last_activity ?? null : null),
     sessionUrl: live?.url ?? null,
     mrUrl: board?.accept.step.mr_url ?? open?.mr_url ?? x.row.mr?.url ?? null,
