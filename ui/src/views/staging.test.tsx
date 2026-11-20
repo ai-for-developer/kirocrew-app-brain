@@ -34,7 +34,7 @@ describe('测试环境报错', () => {
       ['fixing', 'fix_mr', 'issued', 'new', 'stopped', 'closed'])
     const zero = row('ZeroDivisionError at orders/discount.py in apply')
     expect(within(zero).getByText('26')).toHaveClass('tm-st-count')
-    expect(within(zero).getByText('修好了，等人审 MR')).toHaveClass('tone-wait')
+    expect(within(zero).getByText('开了修复 MR，等人审')).toHaveClass('tone-wait')
     expect(within(zero).getByRole('link', { name: '#12' })).toHaveAttribute('href', `${GITLAB}/issues/12`)
     expect(within(zero).getByRole('link', { name: '!41' })).toHaveAttribute('href', `${GITLAB}/merge_requests/41`)
     expect(within(zero).getByRole('link', { name: '!41' }).closest('span')).toHaveAttribute('title', '折扣按百分比算')

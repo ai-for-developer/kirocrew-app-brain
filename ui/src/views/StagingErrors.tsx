@@ -12,7 +12,7 @@ import { ACT } from '../vocab'
 /** staging.py's states, in words, in the order the list shows them; another one as it is. */
 export const STAGING_STATE: Record<StagingState, { label: string; tone: Tone }> = {
   fixing: { label: '在修', tone: 'run' },
-  fix_mr: { label: '修好了，等人审 MR', tone: 'wait' },
+  fix_mr: { label: '开了修复 MR，等人审', tone: 'wait' },
   issued: { label: '开了 Issue，等修', tone: 'hand' },
   new: { label: '刚看到', tone: 'warn' },
   stopped: { label: '交给人了', tone: 'bad' },
