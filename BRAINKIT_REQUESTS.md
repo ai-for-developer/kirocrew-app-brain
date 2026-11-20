@@ -242,6 +242,12 @@ Lean timeline follow them when trace is missing), `decisions.USER` (the MR reade
     doctor still prints `WARN no origin remote: Brain freshness not checked`; the app shows doctor's rows verbatim
     after an install, so the person reads that the repo has no origin. Wanted: `WARN offline: Brain freshness not
     checked` (and the origin check apart from the fetch).
+40. **`mrdesc.build` reads the deploys** (new, cicd-deploy-evidence). Its trace (`T.build` without `deploys`) reads
+    GitLab's deployments of a merged requirement through a client it makes itself, though the 变更说明 uses none
+    of outcome.deploy; behind single sign-on that client signs in again for every 变更说明 the app makes rather than
+    reads from MR.md (a requirement merged without a hand-over). Wanted: `mrdesc.build` reads no deploys (a
+    `trace.build(deploys=…)` value that means off), or takes `deploys` and passes it on, as `evaluate.collect`
+    does; the app hands every other trace its own Source (`deploys_view.Clients`).
 
 ## Note for the next brain-kit
 
