@@ -1,0 +1,12 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "brain-review-turn",
+      "trigger": "UserPromptSubmit",
+      "description": "brain-kit: records review-sheet lines a person types (an item id first, e.g. 'A-3 改：…', 'F-2 对') against the approval request that is open, next to AI-DLC Lean's ledger. It never approves or rejects anything in Lean; Lean's own hook reads the approval lines.",
+      "action": { "type": "command", "command": "python3 .kiro/brain/lean-hook.py --observe UserPromptSubmit" },
+      "timeout": 30
+    }
+  ]
+}

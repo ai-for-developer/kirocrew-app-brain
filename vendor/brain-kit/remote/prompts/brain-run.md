@@ -41,6 +41,14 @@ Work the `### Next` items within the run's scope only:
   subagent with only those pages and its diff. Fix what matters and write
   `aidlc-docs/<intent>/construction/build-and-test/review.md`;
 - CI: when the pipeline fails, fix and push; at most 3 rounds, then park;
+- verify: when the same check fails `lean verify` 3 times in a row, stop changing code: write what you tried and
+  what you think is wrong into Session notes, then park (section 5a) with `kind` `clarify` if you think the
+  requirement is wrong, `design` if the design is, else `other`. A failure that will not go away usually means the
+  requirement or the design is wrong, not the code;
+- screenshots: `lean verify` also takes the screenshots and keeps the whole test output (skill `brain-proof`):
+  keep proof-plan.md rows for the criteria you change. If it says 没有 Chrome on this machine, the owner's
+  screenshots still count while the code is unchanged; once you change code they are old, and the acceptance
+  question must say the screenshots are missing;
 - evidence: `lean verify` writes build-and-test-summary.md; keep `decisions.md` current, citing the Brain
   entry ids you relied on, and add `brain-proposal` blocks under `## Brain proposals` (skill `brain-reflect`)
   for every correction, rejection and lesson worth keeping, and `brain-gap` blocks for missing knowledge or
@@ -111,7 +119,8 @@ The bridge asks the acceptance question only on a commit whose MR pipeline passe
 accepts what CI accepted. While the pipeline runs you hear nothing; when it fails you get `CI 没过：…` instead of the
 question: fix it, run `lean release` and `lean request RELEASE` again, and park again with the new hash (commit, push).
 Then park for acceptance: `"kind": "acceptance", "options": [], "lean_request": "RELEASE <hash>"`, with the AC ids the
-acceptor should look at and the line `变更说明见 runs/<KEY>/MR.md` in the question, and `review_items`: every decision you took yourself (decisions.md rows with
+acceptor should look at, one line for each AC that `brain mr-desc` lists without evidence or with
+old or failed evidence, and the line `变更说明见 runs/<KEY>/MR.md` in the question, and `review_items`: every decision you took yourself (decisions.md rows with
 `Who` = `agent`) and every assumption `A-n` from requirements.md, each with its id and one line (at most 200
 characters, no line breaks):
 ```json

@@ -1157,18 +1157,17 @@ def md_decisions(text, path, bot_users, lines=None):
 
 
 def assumptions(text, path, at, at_src, lines=None):
-    out, on = [], False
-    for n, line in enumerate((text or "").split("\n"), 1):
-        if line.startswith("## "):
-            on = line[3:].strip().lower().startswith("assumption")
+    """requirements.md's assumptions A-n (`- A-n:` lines or an assumptions table), read by brainkit.review's
+    extractor; `lines` (a split): only those on these line numbers (the run's own)."""
+    from . import review
+    out = []
+    for it in review.items(path, (text or "").encode("utf-8", "surrogatepass")):
+        if it.kind.value != "A" or (lines is not None and it.line not in lines):
             continue
-        m = ASSUMPTION_RE.match(line) if on and (lines is None or n in lines) else None
-        if m and not m.group(2).strip().startswith("<!--"):
-            out.append({"id": m.group(1), "source": "requirements.md", "at": at, "stage": "requirements",
-                        "by": "agent", "who": "agent", "text": m.group(2).strip(), "why": None,
-                        "cites": sorted(set(usage.CITE_RE.findall(m.group(2)))), "refs": {"vouchers": [],
-                                                                                         "decisions": []},
-                        "bridge_decision": None, "src": "%s:%d (date: %s)" % (path, n, at_src)})
+        out.append({"id": it.id, "source": "requirements.md", "at": at, "stage": "requirements",
+                    "by": "agent", "who": "agent", "text": it.main, "why": None,
+                    "cites": sorted(set(usage.CITE_RE.findall(it.main))), "refs": {"vouchers": [], "decisions": []},
+                    "bridge_decision": None, "src": "%s:%d (date: %s)" % (path, it.line, at_src)})
     return out
 
 
@@ -1183,6 +1182,23 @@ def proposals_of(text, path) -> dict:
             "repeats": sorted(p.target for p in props if p.rel == "repeats" and p.target),
             "correction_src": sorted({s for p in corr for s in p.src}), "problems": len(probs),
             "src": "%s (brain-proposal blocks)" % path}
+
+
+def review_rejections(repo, intent, ref) -> list:
+    """`humans` entries for the review sheet's standing rejections (brainkit.review.rejections): one per round, kind
+    rejection, channel local, rejected_items its items, so evaluate.gaps asks for a correction per item."""
+    from . import review
+    try:
+        rejected = review.rejections(repo, intent, ref=ref)
+    except BrainError:
+        return []
+    rounds = {}
+    for r in rejected:
+        rounds.setdefault((r.gate.kind.value, r.round_sha8), []).append(r)
+    return [{"at": _utc(rs[0].at) if rs[0].at else None, "kind": "rejection", "what": kind, "choice": None,
+             "who": None, "channel": "local", "decision": None, "voucher_id": None, "judgment_point": True,
+             "after_handover": None, "rejected_items": [r.item for r in rs], "src": sorted({r.ref for r in rs})}
+            for (kind, _), rs in rounds.items()]
 
 
 # ---------- bridge ledger and vouchers ----------
@@ -2081,6 +2097,8 @@ def _build(repo, cfg, key, ref, ledger_path, vouchers_dir, credits, as_of, allow
                        "decision": None, "voucher_id": vid, "judgment_point": ev != "HUMAN_TURN",
                        "after_handover": None, "check": d.get("check") if ev == "APPROVAL_REFUSED" else None,
                        "src": [e["_src"]]})
+    if intent and not rec.get("parent"):           # a split child's gates are its parent's
+        humans += review_rejections(repo, intent, ref)
     for c in hist["commits"] or []:
         # after_handover None: handed over, but neither the commit graph nor the times tell: kept, never dropped
         if c["by"] == "person" and c["after_handover"] is not False:

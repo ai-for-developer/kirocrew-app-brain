@@ -328,3 +328,7 @@ A fixes-only release: the round-1 review items R1-106 to R1-120, one false block
 ### 10.3 Docs
 
 - README "什么时候用 Lean": small, clear requirements use plain Kiro (vibe); Lean is for requirements with gaps, cross-team work and regulated work. Reason: the 3-round benchmark (Kiro v3 + Kimi K3): on the small task Lean cost about 5.6× the credits and 4× the time with the same quality. The vibe vs Lean results are in the report. COMPARISON follows.
+
+### 10.4 Settled questions are not asked again (a team's run, 2026-11-16)
+
+- decisions.md held "interface pending" (D-48), later its answer (D-74) and the client version (D-72), yet the next unit's Functional Design asked both again. No rule said to look in decisions.md before asking, and no line tied D-74 to D-48. The steering now says: before asking, search decisions.md and requirements.md's answers and assumptions, cite what they settle ("per D-74"), and name the IDs checked in each question still asked; a confirmed fact (interface, version, endpoint) is a decisions.md line, not a separate questions file, and a line that answers or supersedes another says so ("answers D-48"). The construction skill's per-unit design and the decisions.md template say the same; old lines are still never rewritten. To stay at 999 words the steering dropped what the steering, the tool or a card already says (what the hooks gate, regulated mode's details, which stages record themselves, the plan's AC/BR table), and the construction skill its copy of the steering's "verify as its own command".

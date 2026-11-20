@@ -6,9 +6,11 @@ only, never a removal, and the person who runs it reviews and commits the file (
 """
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 
@@ -33,6 +35,8 @@ TEMPLATE_NEXT = (
 )
 # Lean's DEFAULT_CONFIG fingerprint_exclude (aidlc_lean.py). A lean.json that sets the key replaces this list.
 DEFAULT_FINGERPRINT_EXCLUDE = (DOCS + "/**", ".kiro/**")
+# Lean's RECORD_GLOBS (aidlc_lean.py, since 0.3.1): records whatever fingerprint_exclude lists, which adds to them.
+RECORD_GLOBS = (DOCS + "/**", ".kiro/**")
 
 
 def installed(repo) -> bool:
@@ -60,6 +64,58 @@ def call(repo, *args, check=True):
     return run([sys.executable, SCRIPT] + list(args), cwd=repo, check=check)
 
 
+# Run by open_requests with the project's own Lean on sys.path: Lean's rules, executed, never copied.
+_OPEN_REQUESTS = """import json, sys
+sys.path.insert(0, sys.argv[1])
+import aidlc_lean as L
+pj = L.Project(sys.argv[2])
+intent = pj.active()
+requests, stale = [], []
+for doc in ((L.REQ_DOC, L.DESIGN_DOC) if intent else ()):
+    path = pj.doc(intent, doc)
+    e = pj.pending_request(path)
+    if e is not None:
+        requests.append(e)
+        continue
+    last = None
+    for x in pj.events():
+        if x.get("event") in ("APPROVAL_REQUESTED", "APPROVED", "REJECTED") and L.covers(x, L.rel(pj.root, path)):
+            last = x
+    if last is not None and last["event"] == "APPROVAL_REQUESTED":
+        stale.append(last)
+def once(es):
+    out = []
+    for e in es:
+        if e not in out:
+            out.append(e)
+    return out
+print(json.dumps({"intent": intent, "requests": once(requests), "stale": once(stale)}, ensure_ascii=False))
+"""
+
+
+def open_requests(repo) -> dict:
+    """{"intent": Lean's active intent (or None), "requests": the APPROVAL_REQUESTED records Lean's own
+    Project.pending_request returns for the intent's requirements.md and application-design.md (an INCEPTION
+    request once), "stale": the requests still last on one of those pages that no longer hash as requested}, from
+    the project's own Lean run in a subprocess. BrainError when Lean is not installed or cannot run."""
+    kit = os.path.join(repo, ".kiro", "aidlc-lean")
+    if not os.path.isfile(os.path.join(kit, "aidlc_lean.py")):
+        raise BrainError("这里没装 AI-DLC Lean（先 `brain install`）")
+    try:
+        # -B: no __pycache__ written into the project's .kiro/aidlc-lean/ (it would show as an uncommitted file)
+        p = subprocess.run([sys.executable, "-I", "-B", "-c", _OPEN_REQUESTS, kit, repo], cwd=repo,
+                           capture_output=True, text=True, timeout=300)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise BrainError("没能运行 Lean 读审批请求：%s" % e)
+    try:
+        out = json.loads(p.stdout) if p.returncode == 0 else None
+    except ValueError:
+        out = None
+    if not isinstance(out, dict):
+        raise BrainError("Lean 没能读出审批请求：%s" % (p.stderr or p.stdout).strip()[-500:])
+    return out
+
+
 def install(repo, lean_src, extra=()):
     script = os.path.join(lean_src, "install.sh")
     if not os.path.exists(script):
@@ -76,6 +132,23 @@ def fingerprint_exclude(cfg) -> list:
     if not isinstance(pats, list) or not all(isinstance(p, str) for p in pats):
         raise BrainError("%s fingerprint_exclude is not a list of patterns" % CONFIG)
     return list(pats)
+
+
+def is_record_path(path, lcfg) -> bool:
+    """Lean's is_record_path for a repo path, as brain-kit reads lean.json (`lcfg`, its content): RECORD_GLOBS
+    (aidlc-docs/**, .kiro/**) and fingerprint_exclude, except contracts, and the per-clone .aidlc-lean/ state. Not
+    code: changing it leaves Lean's code fingerprint as it is. One rule for the verify line (brainkit.mrdesc) and for
+    evidence (brainkit.proof)."""
+    if path.startswith(".aidlc-lean/"):
+        return True
+    contracts = str(lcfg.get("contracts_dir") or DOCS + "/contracts").strip("/") + "/"
+    if path.startswith(contracts) and path != contracts + "OWNERS" and not path.startswith(contracts + "changes/"):
+        return False
+    pats = lcfg.get("fingerprint_exclude")
+    for pat in RECORD_GLOBS + tuple(pats if isinstance(pats, list) else DEFAULT_FINGERPRINT_EXCLUDE):
+        if isinstance(pat, str) and ((pat.endswith("/") and path.startswith(pat)) or fnmatch.fnmatchcase(path, pat)):
+            return True
+    return False
 
 
 def merge_fingerprint_exclude(repo, patterns) -> list:

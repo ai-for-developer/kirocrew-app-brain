@@ -49,6 +49,8 @@ One to five lines the next run can act on. State the rule, not the story.
 - If they rejected review items at acceptance (`answer D-n reject A-3,D-7 ...`), write one `correction` per item,
   with the item id and the voucher id in `src` (`src: A-3, V-1a2b3c4d5e`). Reflect warns about each item nobody
   wrote down.
+- If they sent items back on a review sheet (the `[brain-kit] 审批单` line names them), write one `correction` per
+  item you changed, with the item id in `src` (`src: A-3`; skill `brain-review`). Reflect warns about each one.
 
 ## Gaps: what is missing becomes the next requirement
 

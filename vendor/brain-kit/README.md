@@ -6,7 +6,7 @@
 - **不接 Jira 也能用**（`tracker: none`）：需求号由 git 认领分支分配，问答走 GitLab MR 评论。要接 Jira 时，改成 `tracker: jira`。
 - **需求可以直接交文档**：飞书 / Lark 导出的文件夹、md、docx、xlsx、pptx、html、txt 都行；PDF 需要装 MarkItDown。文档先过五道关，打码后打成材料包。原件不进任何仓库。
 - 只用 Python 标准库（3.8 以上）、git 和 `ssh-keygen`。签名用 Ed25519（`ssh-keygen -Y`）。
-- **不监听任何端口**：所有组件都只往外连。KiroCrew 客户端只接受本机回环地址。
+- **不监听任何端口**：所有组件都只往外连。KiroCrew 客户端只接受本机回环地址。`lean verify` 拍截图时，会在本机回环地址上临时启动项目自己的程序，拍完就停（只在本机监听时才拍）。
 
 怎么装、怎么用（含 AI-DLC Lean）：[docs/安装和使用.md](docs/安装和使用.md)
 
@@ -22,6 +22,8 @@
    - 开分支 `ai/<你>/PAY-3-refund`，用 Lean 建 intent。
    - 写 `runs/PAY-3/run.json`，记下 Brain commit 和材料包的哈希。
 2. **本地开发**：用 `brain-dev` agent，走 Lean 的阶段和关卡。agent 先读材料包的 `toc.md`，再按需读具体的段；每条验收标准都标出来源段号。
+   - agent 为每条看得见的验收标准写一行证据计划（`proof-plan.md`）。`lean verify` 照着拍截图，留下整份测试输出；MR 说明的「验收标准和证据」链到它们，并说哪条没有证据、哪张没看到要的、哪些是旧代码的。详见 [docs/proof.md](docs/proof.md)。
+   - 批需求和设计之前，`brain review` 让另外两个模型（kit.json 的 `model` 和 `review_model`）各读一份请求的那一版做预审，打出一页**审批单**：只列要人定的，两个模型都提的排在最前；要改才回一行（`A-3 改：原因`），第 2 轮起只列改了的。批准还是人自己打 Lean 的那一行。
 3. **交接**：运行 `brain handoff`。它会：
    - 检查交接单（Lean 的 `aidlc-state.md`）填好了没有；
    - 把材料包推到 brain-intake；
@@ -165,8 +167,9 @@ brain-kit/bin/brain install <项目目录> --lean <AI-DLC Lean 的 checkout 目�
 
 ## 测过什么
 
-本机 1097 个测试，在 python3.9（pytest）和 python3.12（`python3.12 -W error -m unittest discover -s tests -t .`）上都加 `-W error` 跑：除了 2 个跳过的（真实需求文档的测试，要 `BRAIN_TEST_REAL_DOCS` 指向一个文件夹），都要通过。加了或删了测试，就改这个数（`tests/test_r1_k2_cli.py` 的 R1-34 核对它）。做过三轮独立的对抗评审：流程部分找出 15 个问题，Brain 部分（条目工具、lint、reflect、usage）又找出 15 个，大需求拆分找出 16 个，都已修掉，每个问题都补了回归测试。
+本机 1381 个测试，在 python3.9（pytest）和 python3.12（`python3.12 -W error -m unittest discover -s tests -t .`）上都加 `-W error` 跑：除了 3 个跳过的（真实需求文档的测试，要 `BRAIN_TEST_REAL_DOCS` 指向一个文件夹）和 1 个要 markdown-it-py 的（照 GitLab 的读法渲染 MR 文字，看会不会加载图片；`uv run --python 3.12 --with markdown-it-py python -W error -m unittest discover -s tests -t .` 会跑它），都要通过。加了或删了测试，就改这个数（`tests/test_r1_k2_cli.py` 的 R1-34 核对它）。做过三轮独立的对抗评审：流程部分找出 15 个问题，Brain 部分（条目工具、lint、reflect、usage）又找出 15 个，大需求拆分找出 16 个，都已修掉，每个问题都补了回归测试。
 
+- **审批单**（`tests/test_review_*.py`）：用真的 Lean 和装进项目的 adapter，按 KiroCrew 和 Kiro CLI 两种 hook 顺序送人的回复：记录的哈希链和快照，只算 Lean 记成人发的那一条；条目号开头的行和 Lean 的批准、驳回行互不相交（用 Lean 自己的正则核对）；第 1 轮和第 2 轮的审批单（每个条目不是列出就是折叠，一屏放得下，没有一行会被读成批准）；两个预审用假的 kiro-cli，失败、超时、答错版本都不挡审批单；`brain review` 和 `brain review log`；reflect、trace、eval 读出退回了但没写 correction 的条目。
 - **认领**：本地和远端都测了；两个 clone 抢同一个号，git 本身就会拒掉后到的那个；钩子按 claim.json 认人。
 - **大需求拆成小需求**（`tests/test_split.py`、`tests/test_split_trace.py`）：用真的 Lean、一个 bare origin 和两个 clone 端到端跑（两人只靠登录名区分，没有 GitLab）：拆、认领、被拒的认领、被拒的开工、合并后开工、`brain sync` 解决 Lean 进度页的冲突、进度 n/m、大需求发布和关闭、重拆、`--on`、多团队模式下两个小需求之间走 Lean 的 CR；服务器钩子的每条认领规则；两个人抢同一个待认领；trace、eval、usage 的汇总。
 - **文档接收**：

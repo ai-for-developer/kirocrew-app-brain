@@ -382,13 +382,19 @@ def substantive(ops) -> bool:
     return any(op.kind != "same" for op in ops)
 
 
-def rejected_without_correction(vouchers_dir, key, proposals) -> list:
-    """Answers that rejected something but no proposal names them: a lesson about to be lost."""
+def rejected_without_correction(vouchers_dir, key, proposals, local=()) -> list:
+    """Answers that rejected something but no proposal names them: a lesson about to be lost. `local`: the review
+    sheet's standing chat rejections of the run's intent (brainkit.review.rejections), each needing a correction
+    proposal whose src names its item."""
     out = []
     cited = set()
     for p in proposals:
         if p.fields.get("type") == "correction" or p.rel == "repeats":
             cited.update(p.src)
+    for r in local:
+        if r.item not in cited:
+            out.append("%s in %s %s (review sheet, sent back in chat) was rejected, but no correction or repeats "
+                       "proposal cites %s" % (r.item, r.gate.kind.value, r.round_sha8, r.item))
     for path in sorted(glob.glob(os.path.join(vouchers_dir or "", "RUN-%s-*" % key, "V-*.json"))):
         try:
             data = load_json(path)

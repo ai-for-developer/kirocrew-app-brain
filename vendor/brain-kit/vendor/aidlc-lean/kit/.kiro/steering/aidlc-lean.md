@@ -59,14 +59,15 @@ Pass `--unit <unit>` to stages 6–9 (`app` unless `unit-of-work.md` lists units
 
 Go in order; skip a conditional stage that does not apply or adds nothing (`lean stage skip`, with a real reason).
 
-After each stage, run `lean stage done` with its note (`lean verify` and the RELEASE approval record their own), then go straight on without asking.
+After each stage, run `lean stage done` with its note, then go straight on without asking.
 
 ## Questions and pages
 
 - At the start, read the code, then ask what it cannot answer in ONE numbered batch, each with your recommended answer. Copy them, answered, into requirements.md; what you still guess becomes an assumption (A-1…). Later, ask only what blocks you.
+- Before asking, search `decisions.md` and requirements.md's answers and assumptions; cite what they settle ("per D-74") instead of asking. A later line that answers or supersedes an entry settles it. Each question you still ask names the IDs you checked.
 - One page per document, AI-DLC file names, no boilerplate; prefer tables and lists.
-- Trace with IDs: AC-n (requirements), US-n (stories), BR-n (functional design). Each code-generation plan maps every AC and BR to its test.
-- One line per real decision in `decisions.md`.
+- Trace with IDs: AC-n (requirements), US-n (stories), BR-n (functional design).
+- One line per real decision or confirmed fact (interface, version, endpoint) in `decisions.md`, not a separate questions file; a line answering or superseding another says so ("answers D-48").
 - Keep the Session notes in `aidlc-state.md` current at every pause (skill `aidlc-lean-resume`).
 
 ## The only human stops
@@ -84,13 +85,12 @@ Write no code for an intent before its requirements and design are approved (or 
 ## Gates and hooks
 
 - Lines beginning `[AI-DLC Lean]` come from the hooks, not the user.
-- Hooks gate code writes on the approvals and commits on verify, and block edits to protected tests, other teams' contracts, records and kit files, and denied commands.
 - A blocked call returns `[AI-DLC Lean] blocked (<gate>): <reason>`. Do what the reason says; never try another route around a gate (shell redirection, other tools, subagents, scripts). If a gate seems wrong, tell the human.
 - Never weaken, skip or delete tests, or remove authentication, authorization or validation, to get green.
 - Acceptance tests under `protected_paths` change only after the human types `allow test change`; that lasts until their next message.
 
 ## Modes (set in `aidlc-docs/lean.json`)
 
-- **regulated**: skill `aidlc-lean-regulated`. Every code change needs an intent, approvals carry the hash, stale approvals block, PLAN per unit, verify writes evidence.
+- **regulated**: skill `aidlc-lean-regulated`. Every code change needs an intent.
 - **multi-team**: skill `aidlc-lean-multi-team`. Contracts belong to teams; changing another team's needs their approved change request.
 - **Multi-day work** (any mode): skill `aidlc-lean-resume`.

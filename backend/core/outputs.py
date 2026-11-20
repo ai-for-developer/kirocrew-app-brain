@@ -2,10 +2,17 @@
 
 ``GET /outputs/{repo}/{key}?node=<id>&round=<n>`` (node_output) lists a round's files: first the documents Lean
 recorded for it (约定它交的: its outputs, its approval request's document, ``lean release``'s release.md, each with the
-sha256 Lean wrote), then the other files its commits changed (其他改动; a unit's code generation keeps only that unit's
-Paths). Each file names the commit to read it at, and the version to compare it with: the round before's, else the
-commit before it. ``GET /outputs/{repo}/{key}/file?ref&base&path&view&pin`` (file_view) reads one of them: its text
-(view source or content) or its change (view diff).
+sha256 Lean wrote; a build-and-test round's evidence too, below), then the other files its commits changed (其他改动; a
+unit's code generation keeps only that unit's Paths). Each file names the commit to read it at, and the version to
+compare it with: the round before's, else the commit before it. ``GET /outputs/{repo}/{key}/file?ref&base&path&view&pin``
+(file_view) reads one of them: its text (view source or content), its change (view diff), or a PNG or JPEG of it as a
+picture (view image: a data: URL, sniffed by its first bytes, never by its name; never SVG).
+
+证据 (brain-kit's proof module): a build-and-test round, one per VERIFY, hands in the evidence that verify sealed. Each
+evidence check's set is the output.txt, in one of the branch's commits, whose blob hashes to the output_sha256 Lean
+recorded for that check, then the files its manifest names at the sha256s it names, each labelled by its plan row (P-2 ·
+AC-2 · 看什么, and how it went). Content-addressed like the seal itself: a set another verify left, or one made by hand,
+is never listed as this round's, and set folders are never another round's 其他改动.
 
 Both read the board's own fold (Fold: what Service._board_sync folded last for the requirement), never a second one,
 and only what it names: a path none of the requirement's commits changed and Lean recorded for none of its rounds
@@ -24,6 +31,7 @@ of a secret. git runs with GIT_NO_REPLACE_OBJECTS: a replace ref never swaps a c
 
 from __future__ import annotations
 
+import base64
 import difflib
 import errno
 import fnmatch
@@ -34,7 +42,7 @@ import stat
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from . import mrdesc_view, stages
+from . import bk, evidence, mrdesc_view, stages
 from .httpkit import AppError
 from .repo import Git
 from .runs import LOCAL, RunView
@@ -45,7 +53,8 @@ BINARY_PROBE = 8000         # a NUL in the first bytes: a binary file
 MAX_FILES = 200             # files listed for a round
 MAX_TRIES = 24              # commits whose blob is hashed to find the version Lean recorded
 DIFF_TIMEOUT_S = 20
-VIEWS = ("content", "source", "diff")
+VIEWS = ("content", "source", "diff", "image")
+IMAGES = ((b"\x89PNG\r\n\x1a\n", "image/png"), (b"\xff\xd8\xff", "image/jpeg"))   # the only pictures shown
 HEX40 = re.compile(r"[0-9a-f]{40}")             # these four: whole strings only (fullmatch)
 HEX64 = re.compile(r"[0-9a-f]{64}")
 NODE_RE = re.compile(r"[a-z][a-z-]{0,39}(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?")
@@ -63,7 +72,7 @@ LANG = {"md": "markdown", "markdown": "markdown", "py": "python", "ts": "typescr
 BAD_PATH = "文件路径不对（要是仓库里的相对路径）：刷新页面再试"
 BAD_NODE = "页面说的这一步不对：刷新页面再试"
 BAD_ROUND = "页面说的第几轮不对：刷新页面再试"
-BAD_VIEW = "只能看内容、源码或改动：刷新页面再试"
+BAD_VIEW = "只能看内容、源码、改动或图片：刷新页面再试"
 BAD_SHA = "页面说的提交不对：刷新页面再试"
 BAD_PIN = "页面说的文件指纹不对：刷新页面再试"
 NO_NODE = "看板上没有这一步：刷新运行过程再看"
@@ -82,6 +91,7 @@ MISSING = "这一版里没有这个文件（可能这一轮删掉了它）：看
 GONE = "工作区里没有这个文件了：到会话里看"
 TOO_BIG = "文件太大（超过 4 MB），这里不显示：到会话里看"
 NO_DIFF = "这两版比不出来：刷新看板再试"
+NO_IMAGE = "这不是 PNG 或 JPEG 图片（按文件开头的字节认），这里不当图片显示"
 
 
 def pseudonymize(text: str) -> str:
@@ -324,17 +334,21 @@ def _earlier(fold: Fold, n: stages.Node, r: stages.Round, path: str, h: Optional
     return out
 
 
-def _out_file(fold: Fold, allowed: AllowedRefs, n: stages.Node, r: stages.Round, path: str, h: Optional[str]
-              ) -> Dict[str, Any]:
-    """A declared file: read at the commit holding the version Lean recorded, compared with the round before's
-    version, else the commit before; not committed but waiting in this machine's worktree: the pinned read."""
+def _out_file(fold: Fold, allowed: AllowedRefs, n: stages.Node, r: stages.Round, path: str, h: Optional[str],
+              proof: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """A declared file: read at the commit holding the version Lean recorded (evidence: its sealed manifest), compared
+    with the round before's version, else the commit before; not committed but waiting in this machine's worktree:
+    the pinned read. *proof*: an evidence file's label (_evidence)."""
     ref = _version(fold, path, h, r)
     vs = _earlier(fold, n, r, path, h, ref)
     out = {"path": path, "output": True, "status": "M", "added": None, "removed": None, "ref": ref, "pin": None,
-           "base": None, "base_round": None, "vs": vs, "why": None}
+           "base": None, "base_round": None, "vs": vs, "why": None, "proof": proof}
     if ref is None:
         if r.run == LOCAL and fold.worktree and h and path == _doc(fold, n):
             out.update(ref="worktree", pin=h, status="M" if vs else "A")
+        elif proof is not None and _touched(fold, path):     # committed, never with the bytes its set sealed
+            P = bk.m("proof")
+            out["why"] = P.TEXT[P.GapKind.VOID] % path
         else:
             out["why"] = _why_none(r, h)
     else:
@@ -351,21 +365,24 @@ def _out_file(fold: Fold, allowed: AllowedRefs, n: stages.Node, r: stages.Round,
     return out
 
 
-def _others(fold: Fold, allowed: AllowedRefs, n: stages.Node, r: stages.Round, skip: set) -> List[Dict[str, Any]]:
+def _others(fold: Fold, allowed: AllowedRefs, n: stages.Node, r: stages.Round, skip: set,
+            sets: Optional[str] = None) -> List[Dict[str, Any]]:
     """The other files the round's commits changed: added up per file (A while its first change adds it, D when its
-    last deletes it), read at the round's last commit that changed it, compared with the commit before its first."""
+    last deletes it), read at the round's last commit that changed it, compared with the commit before its first.
+    Nothing under *sets* (the intent's evidence folder): a set is the round's whose VERIFY sealed it, never the round
+    its records commit happens to fall in."""
     by: Dict[str, Dict[str, Any]] = {}
     for sha in r.commits:
         for ch in fold.changes.get(sha) or []:
             p = str(ch.get("path") or "")
-            if not p or p in skip or HIDDEN.search(p) or not _in_unit(fold, n, p):
+            if not p or p in skip or HIDDEN.search(p) or not _in_unit(fold, n, p) or (sets and p.startswith(sets)):
                 continue
             had = by.get(p)
             st = str(ch.get("status") or "M")
             if had is None:
                 by[p] = {"path": p, "output": False, "status": st, "added": int(ch.get("added") or 0),
                          "removed": int(ch.get("removed") or 0), "ref": sha, "pin": None, "first": sha,
-                         "base_round": None, "vs": [], "why": None}
+                         "base_round": None, "vs": [], "why": None, "proof": None}
             else:
                 had.update(added=had["added"] + int(ch.get("added") or 0), removed=had["removed"] + int(ch.get("removed") or 0),
                            ref=sha, status="D" if st == "D" else "A" if had["status"] == "A" else st)
@@ -378,16 +395,75 @@ def _others(fold: Fold, allowed: AllowedRefs, n: stages.Node, r: stages.Round, s
     return out
 
 
+def proof_kit() -> Any:
+    """brain-kit's evidence kit (brainkit.proof.kit(): the set layout and its reader); None when this brain-kit has no
+    proof module or its kit file does not load."""
+    if not bk.has("proof"):
+        return None
+    try:
+        return bk.m("proof").kit()
+    except Exception:  # noqa: BLE001 - a brain-kit without its kit file: no evidence, never a broken drawer
+        return None
+
+
+def _sets_dir(fold: Fold, K: Any) -> Optional[str]:
+    return "%s/%s/%s/" % (K.DOCS, fold.intent, K.PROOF_DIR) if K is not None and fold.intent else None
+
+
+def _item_label(i: Any, several: bool) -> str:
+    """A set's item as the drawer names it: a plan row 「P-2 · AC-2 · 点退款以后状态是「已退款」」 (web/P-2 when the set
+    shot rows of several units); a file a wrapped command left, by its ACs and its name."""
+    return " · ".join(x for x in ("%s/%s" % (i.unit, i.id) if several and i.unit else i.id, "、".join(i.ac), i.what) if x)
+
+
+def _evidence(fold: Fold, n: stages.Node, r: stages.Round, sets: Optional[str]) -> List[Tuple[str, str, Dict[str, Any]]]:
+    """(path, sha256, label) of what a build-and-test round's VERIFY sealed: per evidence check, the output.txt among
+    the branch's commits whose blob hashes to the output_sha256 Lean recorded for it, then each file its manifest
+    names, at the sha256 it names. A set no commit holds yet is left out: none of its files can be read here."""
+    if sets is None or n.stage.id != "build-and-test":
+        return []
+    K, rd = proof_kit(), _reader(fold)
+    outs = [(str(c["sha"]), p) for c in fold.commits for p in _paths(fold, str(c["sha"]))
+            if p.startswith(sets) and K.set_output_of(p)]
+    got: List[Tuple[str, str, Dict[str, Any]]] = []
+    for c in r.end.checks:
+        hit = next(((s, p) for s, p in outs if rd.digest(s, p) == c.output_sha256), None) \
+            if c.output_sha256 and K.is_proof_check(c.cmd) else None
+        if hit is None:
+            continue
+        try:
+            items = K.parse_set(rd.blob(*hit) or b"").items
+        except K.SetError:          # a newer brain-kit's set, or a broken one: its output alone
+            items = ()
+        name, folder = K.set_output_of(hit[1])[2], hit[1].rsplit("/", 1)[0]
+        several = len({i.unit for i in items if i.unit}) > 1
+        got.append((hit[1], c.output_sha256, {"set": name, "label": K.check_label(c.cmd) or name, "result": None,
+                                              "mark": "", "note": ""}))
+        got += [("%s/%s" % (folder, i.file), i.sha256, {"set": name, "label": _item_label(i, several),
+                                                         "result": i.result.value,
+                                                         "mark": evidence.RESULT_MARK.get(i.result.value, ""),
+                                                         "note": i.note})
+                for i in items if i.file]
+    return got
+
+
 def node_output(fold: Fold, q: NodeQuery) -> Dict[str, Any]:
-    """One round of one node: its files (declared first), the branch and its last commit; at most MAX_FILES files."""
+    """One round of one node: its files (declared first, a build-and-test round's evidence after Lean's), the branch
+    and its last commit; at most MAX_FILES files."""
     n, r = round_of(fold, q)
     if r is None:
         return {"node": n.id, "round": None, "run": None, "branch": fold.branch, "head": None, "files": [], "more": 0,
                 "why": "这一步还没开始：开始以后，它每一轮交的文件都在这里"}
     _reader(fold)
     allowed = AllowedRefs(fold)
+    sets = _sets_dir(fold, proof_kit())
     declared = [_out_file(fold, allowed, n, r, p, h) for p, h in _declared(fold, n, r)]
-    files = declared + _others(fold, allowed, n, r, {f["path"] for f in declared})
+    listed = {f["path"] for f in declared}
+    for p, h, label in _evidence(fold, n, r, sets):
+        if p not in listed:
+            listed.add(p)
+            declared.append(_out_file(fold, allowed, n, r, p, h, label))
+    files = declared + _others(fold, allowed, n, r, listed, sets)
     return {"node": n.id, "round": r.n, "run": r.run, "branch": fold.branch, "head": r.commits[-1] if r.commits else None,
             "files": files[:MAX_FILES], "more": max(0, len(files) - MAX_FILES),
             "why": None if files else "这一轮没有提交文件" if r.ended is not None else "这一轮还没提交文件"}
@@ -487,6 +563,12 @@ def shown_text(text: str, limit: int = TEXT_MAX) -> Tuple[str, bool]:
     return pseudonymize(cut[:cut.rfind("\n") + 1]), True
 
 
+def image_mime(raw: bytes) -> Optional[str]:
+    """A blob's picture type by its first bytes, PNG or JPEG; None for anything else, whatever its name. Never SVG: it
+    is a document that can carry script and links."""
+    return next((mime for magic, mime in IMAGES if raw.startswith(magic)), None)
+
+
 def _text(raw: bytes) -> Tuple[str, bool, bool]:
     """(text, binary, truncated): decoded, then _shown."""
     if b"\0" in raw[:BINARY_PROBE]:
@@ -528,7 +610,8 @@ def _added_diff(path: str, raw: bytes) -> str:
 def file_view(fold: Fold, q: FileQuery) -> Dict[str, Any]:
     """One file of the requirement: at a commit of it (*ref*), or the pinned worktree version (ref ``worktree`` with
     *pin*, the sha256 Lean recorded). View source and content: its text; diff: its change from *base* (none: all of it
-    added)."""
+    added); image: a PNG or JPEG as a data: URL (base64 in the answer: the dashboard's CSP admits data: images, and
+    the picture is read through the same checks and the same owner-only route as its text)."""
     path, view, ref, pin = q.path, q.view, q.ref, q.pin
     rd = _reader(fold)
     if path not in _own_paths(fold):
@@ -549,6 +632,12 @@ def file_view(fold: Fold, q: FileQuery) -> Dict[str, Any]:
         h = hashlib.sha256(raw).hexdigest() if raw is not None else rd.digest(ref, path)
     out = {"path": path, "view": view, "at": ref, "base": base, "pinned": pinned, "lang": _lang(path),
            "asked": _asked(fold, path, h)}
+    if view == "image":
+        mime = image_mime(raw)
+        if mime is None:
+            raise AppError(NO_IMAGE, "not_an_image", 415)
+        return dict(out, text="", binary=True, truncated=False, size=len(raw),
+                    image="data:%s;base64,%s" % (mime, base64.b64encode(raw).decode("ascii")))
     if view != "diff":
         text, binary, cut = _text(raw)
         return dict(out, text=text, binary=binary, truncated=cut, size=len(raw))

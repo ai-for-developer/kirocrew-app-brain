@@ -29,8 +29,9 @@ What counts is one pure function, check_answer(), which an outside signer can im
 Run-written text is posted inside a code block: GitLab quick actions and @mentions in it do nothing.
 
 Before an acceptance question (kind acceptance, or lean_request RELEASE) the bridge posts runs/<KEY>/MR.md at the MR
-head (`brain mr-desc`'s 变更说明) as a separate comment, made inert (mrdesc.inert), and edits that comment of its own
-when MR.md changes at a later push (ledger mr_desc_notes). It is never part of the question note (check_answer
+head (`brain mr-desc`'s 变更说明) as a separate comment, made inert (mrdesc.inert; its line of screenshots shows only
+when each image in it is the run's sealed evidence at that head, mrdesc.sealed_evidence), and edits that comment of
+its own when MR.md changes at a later push (ledger mr_desc_notes). It is never part of the question note (check_answer
 compares that one word for word), and nothing about it holds up the questions and answers.
 """
 from __future__ import annotations
@@ -121,10 +122,13 @@ DESC_TITLE = "**变更说明**"
 DESC_MAX_CHARS = 60000
 
 
-def description_note(key, runs_dir, sha, raw) -> str:
+def description_note(key, runs_dir, sha, raw, web=None, read=None) -> str:
     """The bridge's 「变更说明」 comment for runs/<KEY>/MR.md at commit `sha`. `raw`: the file's bytes, None when the
     run did not write it (then one line says so). The file comes from a bot's commit: it is made inert
-    (mrdesc.inert: no mention, quick action, HTML, image or approval-like line acts) and cut to DESC_MAX_CHARS."""
+    (mrdesc.inert: no mention, quick action, HTML, image or approval-like line acts) and cut to DESC_MAX_CHARS.
+    `web`: mrdesc.web_root() of the project's kit config on main, and `read(path, ref)`: a file of the project at a
+    commit (gl.file_raw). With both, the one line of screenshots shows when each image in it is this run's sealed
+    evidence at `sha` (mrdesc.sealed_evidence)."""
     from .. import mrdesc
     path = "%s/%s/%s" % (runs_dir, key, mrdesc.MR_FILE)
     if raw is None:
@@ -134,8 +138,9 @@ def description_note(key, runs_dir, sha, raw) -> str:
     cut = ""
     if len(text) > DESC_MAX_CHARS:
         text, cut = text[:DESC_MAX_CHARS], "\n\n（MR.md 太长，这里只贴了前 %d 个字符，全文见文件。）" % DESC_MAX_CHARS
+    sealed = mrdesc.sealed_evidence(read, sha, runs_dir, key) if read else None
     return ("%s（`%s`，提交 %s：run 从记录生成，桥原样转贴；文件变了，这条评论跟着改）\n\n%s%s"
-            % (DESC_TITLE, path, sha[:12], mrdesc.inert(text), cut))
+            % (DESC_TITLE, path, sha[:12], mrdesc.inert(text, web, sealed), cut))
 
 
 def is_acceptance(park) -> bool:
@@ -1186,11 +1191,13 @@ class DecisionLoop(Delivery):
         led, project, iid = self.ledger, row["project"], int(row["iid"])
         raw = self.gl.file_raw(project, mrdesc.md_path(kit, row["req"]), head)
         h = hashlib.sha256(raw).hexdigest() if raw is not None else "missing"
-        text = description_note(row["req"], kit["runs_dir"], head, raw)
+        if d["state"] == "posted" and d["md_hash"] == h:
+            led.mr_desc_checked(project, iid, d["note_id"], h, head)
+            return "current"
+        # the evidence its line of screenshots names is read only for a comment to post or edit
+        text = description_note(row["req"], kit["runs_dir"], head, raw, mrdesc.web_root(kit),
+                                lambda path, ref: self.gl.file_raw(project, path, ref))
         if d["state"] == "posted":
-            if d["md_hash"] == h:
-                led.mr_desc_checked(project, iid, d["note_id"], h, head)
-                return "current"
             nid = int(d["note_id"] or 0)
             if nid > 0:
                 try:

@@ -7,6 +7,7 @@ description: Use for the Construction phase of an AI-DLC Lean intent - per-unit 
 One unit at a time (`app` without unit-of-work.md), in "Depends on" order: design pages, plan, code. End each stage with `lean stage done ... --unit <unit> --note "<inputs, outputs, decisions>"`, or `lean stage skip ... --unit <unit> --reason "<why>"`. A stage marked `(edited since)` changed after its record: record it again, noting what changed.
 
 ## Per-unit design (optional, one page each)
+Read decisions.md; ask only what it, requirements.md and the code leave open.
 - **Functional Design** (`functional-design`): entities, testable business rules BR-1… with examples, edge cases. Skip for simple logic.
 - **NFR Requirements + Design** (`nfr-design`): numeric targets and how each is checked, patterns, tech-stack decisions. Skip if nothing is new.
 - **Infrastructure Design** (`infrastructure-design`): resources, environments, deployment and rollback, cost notes; no secrets. Skip if unchanged.
@@ -18,7 +19,7 @@ One unit at a time (`app` without unit-of-work.md), in "Depends on" order: desig
 4. Once every step is ticked: `lean stage done code-generation --unit <unit> --note "..."` (refused before).
 
 ## Build and Test (`build-and-test`)
-`lean verify` runs the checks, writes `construction/build-and-test/build-and-test-summary.md` and, on PASS, records Build and Test for this code. Commit per step, `aidlc-docs/` included, once it passed as its own command (not chained with `git commit`).
+`lean verify` runs the checks, writes `construction/build-and-test/build-and-test-summary.md` and, on PASS, records Build and Test for this code. Commit per step, `aidlc-docs/` included.
 
 Optional next: `ci-pipeline` (skill `aidlc-lean-operations`) when CI is new or changes; else skip it with a reason.
 

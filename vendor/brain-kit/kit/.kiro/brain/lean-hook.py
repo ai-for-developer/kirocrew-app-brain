@@ -2,15 +2,18 @@
 """KiroCrew -> AI-DLC Lean hook adapter (installed by brain-kit; Lean itself is unchanged).
 
   python3 .kiro/brain/lean-hook.py <event>
-      a local KiroCrew session (crew/brain-dev.json, `brain crew-agent`): the project's own copy
+      a local KiroCrew session (crew/brain-dev-crew.json, `brain crew-agent`): the project's own copy
+  python3 .kiro/brain/lean-hook.py --observe UserPromptSubmit
+      a local Kiro CLI session (.kiro/hooks/brain-review-turn.json, next to Lean's own workspace hooks): the review
+      sheet's record only; Lean is not run, and it exits 0 whatever happens
   /usr/bin/python3 -I /opt/brain-kit/kit/.kiro/brain/lean-hook.py --runner /etc/brain-kit/runnerd.json <event>
       the team runner (remote/agents/brain-run.json): the installed brain-kit's copy, never the workspace's (the run
       could change that one). The file after --runner is runnerd's config: spool_dir, runs_root, allowed_signers, and
       hook_path, the PATH for git and ssh-keygen here (default /usr/bin:/bin, not the session's).
 
 KiroCrew does not read a project's .kiro/hooks/ (v3 workspace hooks). It fires the hooks written in an agent's spec
-instead, in the session's workspace, with the session id as `acp_session_id` / $KIRO_SESSION_ID. Lean reads
-`session_id`. This fills that in and runs Lean's own hook (the project's .kiro/aidlc-lean/aidlc_lean.py, in the
+instead, in the session's workspace, with the session id as `session_id` (seen 2026-11-12), or as `acp_session_id`
+/ $KIRO_SESSION_ID. Lean reads `session_id`. This fills it in when it is missing and runs Lean's own hook (the project's .kiro/aidlc-lean/aidlc_lean.py, in the
 nearest folder at or above the hook's cwd that has one), its output and exit code going straight through (exit 2 on
 PreToolUse blocks the tool). Lean runs in this process from the bytes the kit check below just read and compared, not
 from a second read of the file. Without Lean nothing can be checked, so PreToolUse is refused.
@@ -43,6 +46,10 @@ Lean takes a prompt with `<original_user_request>` anywhere in it for a host mes
 approval or rejection read from it, the turn not counted). Text the bridge forwards (CI logs, MR notes) may contain
 that string, so it is escaped (HOST_MARK_SAFE) in the prompt Lean gets, and alike in the prompts a delegation tool
 call hands to subagents: Lean matches a subagent's prompt to its dispatch by hash.
+
+The review sheet's record (review_turn.py) reads only what the person typed in a turn (person_text: KiroCrew puts a
+replay of the conversation before its current-request header, and blocks of its own after it). Lean gets the whole
+prompt, as before.
 """
 import fnmatch
 import hashlib
@@ -54,8 +61,9 @@ import subprocess
 import sys
 
 # brain doctor, brain handoff and brain-runnerd check this number (2: the park.json allowance; 3: the kit-file
-# check, runner mode, the escaped host marker). Bump it when the adapter changes in a way the team runner depends on.
-ADAPTER_VERSION = 3
+# check, runner mode, the escaped host marker; 4: the review sheet's record in local sessions, --observe). Bump it
+# when the adapter changes in a way the team runner or brain doctor depends on.
+ADAPTER_VERSION = 4
 
 # The kit's own files (brainkit.pre_receive.KIT_PATHS: bot commits may not change them either).
 KIT_PATHS = (".kiro/brain/", ".kiro/agents/", ".kiro/hooks/", ".kiro/aidlc-lean/", ".brain/kit.json", "gates/")
@@ -72,12 +80,61 @@ READ_TOOL_RE = re.compile(r"(read|list|glob|grep|search|fetch|view|thinking|todo
 # Lean's HOST_PROMPT_RE matches this anywhere in a prompt.
 HOST_MARK = "<original_user_request>"
 HOST_MARK_SAFE = "&lt;original_user_request&gt;"
+# KiroCrew's prompt hook gets the whole turn KiroCrew assembled (kiro_crew/context_assembly/turn_message.py): a session
+# block, a replay of the conversation so far, then this header and what the person typed. KiroCrew folds the turn's
+# em dashes to "--" and scrubs this header out of the text it did not write (the replay, the person's own words), so
+# the person's turn is what follows the last one.
+PERSON_MARK_RE = re.compile(r"\[CURRENT USER REQUEST (?:—|--) respond to this\]\n?")
+# What KiroCrew itself puts after that header, in front of what the person typed (kiro_crew 0.13,
+# dashboard/chat_turn/prompt_assembly.py _turn_build_prompt; first here is outermost): (opener, closer, the first
+# closer is the real one, what it is). KiroCrew scrubs copies of the background-context frame out of its content; the
+# Shared Crew sender line is one line; the restore of a turn the person stopped holds their old request and the
+# agent's partial reply as they were, so it ends at its closer only when that closer is there once.
+KIROCREW_FRAMES = (
+    (re.compile(r'\[Background context from "[^"\n]*"\]\n'), "\n[End of background context]\n", True, "后台上下文"),
+    (re.compile(r"\[from: [^\n]*\]\n"), None, True, "发送人"),
+    (re.compile(r"\[PREVIOUS TURN WAS CANCELLED BY THE USER (?:—|--) context restore\]\n"), "\n[END PREVIOUS TURN]",
+     False, "被停下那一轮的回放"),
+    # a dashboard with no context builder sends the chat so far, then the message, with no header
+    # (dashboard/chat_persistence.py _build_history_prefix)
+    (re.compile(r"\[Previous chat history for this tab (?:—|--) session was reset after stop\]\n"), "\n[End of history]\n",
+     False, "之前的对话回放"),
+)
+# Text after the header that KiroCrew wrote with no end that can be found (a sub-agent's notice), or a turn that is
+# KiroCrew's from the header on (a report, a task, a notification, an automatic recovery, a quick prompt's or an
+# @prompt's text): no line of such a turn is the person's for sure. (opener, what it is.)
+KIROCREW_UNFRAMED = (
+    ("[Subagent completion event]", "子代理通知"), ("[Subagent batch completion event]", "子代理通知"),
+    ("You are a focused sub-agent.", "子代理的任务"), ("[system] Your previous attempt", "子代理的任务"),
+    ("[Cron notification from ", "定时通知"), ("[MCP app message from ", "应用消息"),
+    ("[sent by session ", "别的会话发来的消息"), ("[Dashboard card]", "卡片消息"), ("[Monitor wake]", "监控提醒"),
+    ("[Worker report]", "队友会话的消息"), ("[Worker upgrade]", "队友会话的消息"), ("[Agent change]", "队友会话的消息"),
+    ("[HEARTBEAT TASK", "心跳任务"), ("[Hook continuation", "自动续写的提示"), ("[Stop-hook nudge cap reached]", "自动续写的提示"),
+    ("[Continue -- requested by the user]", "自动续写的提示"), ("[Content filter -- ", "自动续写的提示"),
+    ("[Tool blocked -- ", "自动续写的提示"), ("[marker-removed] automatic recovery]", "自动续写的提示"),
+    ("[QUICK PROMPT ", "快捷指令"), ("Execute the following instructions:", "@ 提示词"),
+)
+RECOVERY_RE = re.compile(r"\[[A-Za-z ]+ -- automatic recovery\]")     # [Connection lost -- automatic recovery] …
+# A block of KiroCrew's that carries other people's or the agent's words, at a line start further down: something
+# came in front of it (an operator's transform hook prefix, kiro_crew/hooks.py), so where the person's text starts is
+# not known.
+KIROCREW_INSIDE_RE = re.compile(r"(?m)^(?:(\[PREVIOUS TURN WAS CANCELLED BY THE USER )|(\[Background context from \")|"
+                                r"(\[Subagent completion event\])|(\[Previous chat history for this tab ))")
+INSIDE_WHAT = ("被停下那一轮的回放", "后台上下文", "子代理通知", "之前的对话回放")
+# What a channel appends after the typed text (messaging/attachments.py append_attachment_context: files, documents,
+# voice memo transcripts, image and rejection notes, each after a blank line; a file's body may hold copies of its
+# closer, so the person's text ends where the first one starts), and the context entry a Slack options click brings
+# (slack/handler_runtime/inbound.py: the text before it is the agent's option labels).
+APPENDED_RE = re.compile(r"(?:^|\n\n)(?=\[(?:File|Document|Attached file|Attached document): |\[Attachment |"
+                         r"\[Audio attachment |\[Voice memo transcription\]|\[Image [^\n\]]* is saved in the folder |"
+                         r"--- CONTEXT ENTRY BEGIN ---\n)")
 RUN_ID_RE = re.compile(r"^RUN-[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}-[1-9][0-9]{0,5}$")   # brainkit.bridge.runnerd
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 REGULAR = ("100644", "100755")
 MAX_FILE = 64 * 1024 * 1024
 MAX_REQUEST = 64 * 1024
 LEAN = ".kiro/aidlc-lean/aidlc_lean.py"
+REVIEW_TURN = ".kiro/brain/review_turn.py"
 RUNNER_PATH = "/usr/bin:/bin"        # runner mode: where git and ssh-keygen come from (runnerd.json hook_path)
 
 # File-write tools (Kiro / KiroCrew names). Shell, delegation and unknown tools never take the allowance.
@@ -494,6 +551,59 @@ def neutral(value, key=None, depth=0):
     return value
 
 
+def person_text(prompt):
+    """(what the person typed in this turn, why that cannot be told): the text after KiroCrew's last current-request
+    header, or the whole prompt when it has none or starts with KiroCrew's own block (Kiro CLI hands the prompt over
+    as typed; a backend for which KiroCrew fires the hook itself hands over the turn's message, unfolded and
+    unscrubbed), without the blocks KiroCrew puts in front of the typed text (KIROCREW_FRAMES) and what a channel
+    appends after it (APPENDED_RE). `why` is '' when the text is the person's, else what KiroCrew put there that has no
+    end to cut at (KIROCREW_UNFRAMED, a frame without its closer, a Slack options click): then no line of the text is
+    the person's for sure."""
+    last = None
+    if not _kirocrew_block_at(prompt):          # else the turn's own message: any header in it is a copy
+        for last in PERSON_MARK_RE.finditer(prompt):
+            pass
+    text = prompt if last is None else prompt[last.end():]
+    while True:
+        for opener, closer, first_is_real, what in KIROCREW_FRAMES:
+            m = opener.match(text)
+            if m is None:
+                continue
+            rest = text[m.end():]
+            if closer is None:
+                text = rest
+            elif rest.count(closer) == 1 or (first_is_real and closer in rest):
+                text = rest[rest.index(closer) + len(closer):]
+            else:
+                return text, what
+            text = text.lstrip("\n")
+            break
+        else:
+            break
+    head = text[:200].replace("—", "--")          # a turn's message the hook gets unfolded
+    for opener, what in KIROCREW_UNFRAMED:
+        if head.startswith(opener):
+            return text, what
+    if RECOVERY_RE.match(head):
+        return text, "自动续写的提示"
+    inside = KIROCREW_INSIDE_RE.search(text)
+    if inside is not None:
+        return text, INSIDE_WHAT[inside.lastindex - 1]
+    appended = APPENDED_RE.search(text)
+    if appended is None:
+        return text, ""
+    if text[appended.end():].startswith("--- CONTEXT ENTRY BEGIN ---"):
+        return text, "Slack 上点的选项"
+    return text[:appended.start()], ""
+
+
+def _kirocrew_block_at(prompt):
+    """Does the prompt start with a block KiroCrew puts in front of typed text (the turn's message itself)?"""
+    head = prompt[:200].replace("—", "--")
+    return any(opener.match(head) for opener, _, _, _ in KIROCREW_FRAMES) or \
+        any(head.startswith(opener) for opener, _ in KIROCREW_UNFRAMED[:2])
+
+
 # ---------- the hook ----------
 
 def refuse(event, msg) -> int:
@@ -506,10 +616,20 @@ def refuse(event, msg) -> int:
     return 0
 
 
+def say(text):
+    """Lines for the session on stdout, as UTF-8 whatever the locale's encoding is (Lean's lines follow them)."""
+    sys.stdout.flush()
+    sys.stdout.buffer.write(text.encode("utf-8", "replace") + b"\n")
+    sys.stdout.buffer.flush()
+
+
 def main(argv=None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     runner = None
-    if args[:1] == ["--runner"]:
+    observe_only = args[:1] == ["--observe"]
+    if observe_only:
+        args = args[1:]
+    elif args[:1] == ["--runner"]:
         runner, args = (args[1] if len(args) > 1 else ""), args[2:]
     event = args[0] if args else ""
     raw = sys.stdin.read() if not sys.stdin.isatty() else ""
@@ -528,23 +648,29 @@ def main(argv=None) -> int:
         if not diffs and LEAN not in files:
             raise Refused("%s is not a regular file" % LEAN)
     except Exception as e:  # noqa: BLE001  fail closed: what cannot be checked is not let through
+        if observe_only:
+            say("[brain-kit] 审批单没记下这条消息：kit 文件没法检查（%s）。" % " ".join(str(e).split()))
+            return 0
         return refuse(event, "[brain-kit] blocked (kit files not checked): the kit's own files could not be "
                              "checked: %s. Until they can, every tool call is refused and nothing said in this chat "
                              "reaches AI-DLC Lean. A person has to look at it; stop and say so.\n" % e)
     if diffs:
         shown = "; ".join("%s (%s)" % d for d in diffs[:6]) + ("; and %d more" % (len(diffs) - 6)
                                                              if len(diffs) > 6 else "")
+        if observe_only:
+            say("[brain-kit] 审批单没记下这条消息：kit 文件和 %s 不一样（%s）。" % (what, " ".join(shown.split())))
+            return 0
         return refuse(event, "[brain-kit] blocked (kit files changed): the kit's own files are not those of %s: %s. "
                              "They decide what this session may do (AI-DLC Lean, its hooks, the agent specs, this "
                              "adapter, .brain/kit.json, gates/), so the session may not change them. A person has to "
                              "restore them (%s). Until then every tool call is refused and nothing said in this chat "
                              "reaches AI-DLC Lean (approvals in it are not recorded). Stop and say so.\n"
                              % (what, shown, fix))
-    if not payload.get("session_id"):
+    if not observe_only and not payload.get("session_id"):     # --observe: as Lean's own workspace hook reads it
         sid = payload.get("acp_session_id") or os.environ.get("KIRO_SESSION_ID") or payload.get("session_key")
         if sid:
             payload["session_id"] = sid
-    if event == "PreToolUse":
+    if event == "PreToolUse" and not observe_only:
         try:
             allowed = park_target(root, payload)
         except Exception:  # noqa: BLE001  fail closed: whatever cannot be told goes to Lean
@@ -563,8 +689,37 @@ def main(argv=None) -> int:
         if "tool_input" in payload:
             payload["tool_input"] = neutral(payload["tool_input"])
     elif isinstance(payload.get("prompt"), str):
-        payload = neutral(payload)
-    return run_lean(root, files[LEAN], event, payload)
+        if not observe_only:
+            payload = neutral(payload)      # Lean's own workspace hook (Kiro CLI) gets the prompt as typed
+        if event == "UserPromptSubmit":
+            note = observe(root, files, payload, runner)
+            if note:
+                say(note)
+    return 0 if observe_only else run_lean(root, files[LEAN], event, payload)
+
+
+def observe(root, files, payload, runner) -> str:
+    if runner is not None or REVIEW_TURN not in files:
+        return ""
+    try:
+        lean = vars(library("aidlc_lean_library", files[LEAN], os.path.join(root, *LEAN.split("/"))))
+        rt = library("brain_review_turn", files[REVIEW_TURN], os.path.join(root, *REVIEW_TURN.split("/")))
+        runs = _runs_dir(root) or ["runs"]
+        said, unsure = person_text(payload["prompt"])
+        return rt.observe(root, payload["prompt"], payload.get("session_id"), lean, run_key(root, runs),
+                          "/".join(runs), said=said, unsure=unsure)
+    except (Exception, SystemExit) as e:  # noqa: BLE001  Lean's Project raises SystemExit too
+        return "[brain-kit] 审批单没记下这条消息：%s" % " ".join(("%s: %s" % (type(e).__name__, e)).split())[:300]
+
+
+def library(name, code, path):
+    import types
+    mod = types.ModuleType(name)
+    mod.__file__ = path
+    # In sys.modules before it runs: a dataclass under postponed annotations looks its module up there.
+    sys.modules[name] = mod
+    exec(compile(code, path, "exec", dont_inherit=True), mod.__dict__)
+    return mod
 
 
 def run_lean(root, code, event, payload) -> int:

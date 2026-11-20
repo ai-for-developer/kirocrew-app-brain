@@ -40,12 +40,13 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import stat
 import sys
 import time
 
-from . import __version__, brainlint, claims, config, entries, lean, mrdesc, reflect, runrec, usage
+from . import __version__, brainlint, claims, config, entries, lean, mrdesc, proof, reflect, review, runrec, usage
 from .common import (BrainError, JIRA_RE, SLUG_RE, USER_RE, branch_name, git, git_net, git_out, iso, load_json,
                      parse_branch, repo_root, run, utcnow, write_json)
 from .intake import package as intake
@@ -60,6 +61,17 @@ CREW_HOOK = ".kiro/brain/lean-hook.py"
 # the reference commit, has the runner mode (the team runner runs the installed kit's copy) and escapes Lean's host
 # marker in forwarded text.
 CREW_HOOK_VERSION = 3
+# The adapter version that records a person's review-sheet lines in local sessions (review_turn.py, --observe for
+# Kiro CLI). Only `brain doctor` asks for it; the team runner's need stays CREW_HOOK_VERSION.
+REVIEW_HOOK_VERSION = 4
+REVIEW_TURN = ".kiro/brain/review_turn.py"
+PROOF_KIT = ".kiro/brain/proof.py"
+# Words a shell runs itself when they come first (reserved words, builtins), not as the program exec would find
+SHELL_WORDS = frozenset(". : alias bg break case cd command continue coproc do done elif else esac eval exec exit "
+                        "export fc fg fi for function getopts hash if in jobs read readonly return select set shift "
+                        "source then time times trap type ulimit umask unalias unset until wait while".split())
+ASSIGNMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+REVIEW_HOOK = ".kiro/hooks/brain-review-turn.json"
 KIT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUNNER_HOOK = os.path.join("kit", ".kiro", "brain", "lean-hook.py")     # in an installed brain-kit (/opt/brain-kit)
 VENDORED_LEAN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "vendor", "aidlc-lean")
@@ -453,8 +465,13 @@ def cmd_install(a):
     elif not lean.installed(repo):
         print("WARN: AI-DLC Lean is not installed: run `git submodule update --init` in brain-kit "
               "(vendor/aidlc-lean), or pass --lean <path-to-aidlc-lean>")
-    for dirpath, _, files in os.walk(KIT_SRC):
+    for dirpath, dirs, files in os.walk(KIT_SRC):
+        # A file the project's HEAD does not have under a kit path makes the adapter refuse every tool call, and a
+        # bytecode cache next to review_turn.py is invisible here (.gitignore), so it would ship unnoticed.
+        dirs[:] = [d for d in dirs if d != "__pycache__"]
         for name in files:
+            if name.endswith((".pyc", ".pyo")):
+                continue
             src = os.path.join(dirpath, name)
             dst = os.path.join(repo, os.path.relpath(src, KIT_SRC))
             os.makedirs(os.path.dirname(dst), exist_ok=True)
@@ -737,6 +754,9 @@ def lean_approvers(repo) -> list:
 def doctor_checks(repo, cfg, fetch=True) -> list:
     out = []
     add = out.append
+    # first: every row that reads origin's default branch (_on_main) then reads the one this run fetched
+    fetched = git(repo, "fetch", "-q", "origin", cfg["default_branch"], check=False) \
+        if fetch and _has_origin(repo) else None
     add(("OK", "kit config valid (%s), tracker %s, keys %s-<n>" % (config.KIT_CONFIG, cfg["tracker"],
                                                                      cfg["req_prefix"])))
     if lean.installed(repo):
@@ -779,12 +799,12 @@ def doctor_checks(repo, cfg, fetch=True) -> list:
         if os.path.isfile(hook):
             ref, there = _on_main(repo, cfg, CREW_HOOK)
             with open(hook, encoding="utf-8", errors="replace") as f:
-                why = crew_hook_problem(f.read(), _merge_fix(ref) if ref and not crew_hook_problem(there) else
-                                        UPGRADE_FIX)
+                text = f.read()
+            why = crew_hook_problem(text, _merge_fix(ref) if ref and not crew_hook_problem(there) else UPGRADE_FIX)
             add(("FAIL", why) if why else
                 ("OK", "%s lets a run write its own %s/<KEY>/park.json whatever Lean's approvals, and refuses tool "
                        "calls while the kit's own files differ from the commit (version %d)"
-                 % (CREW_HOOK, cfg["runs_dir"], CREW_HOOK_VERSION)))
+                 % (CREW_HOOK, cfg["runs_dir"], crew_hook_version(text))))
         else:
             add(("FAIL", "%s missing in this repo (run `brain install`): KiroCrew sessions, the team runner's too, run "
                          "Lean through it" % CREW_HOOK))
@@ -811,8 +831,7 @@ def doctor_checks(repo, cfg, fetch=True) -> list:
     elif not fetch:
         add(("WARN", "Brain vs origin/%s not checked (--offline: nothing fetched)" % cfg["default_branch"]))
     else:
-        p = git(repo, "fetch", "-q", "origin", cfg["default_branch"], check=False)
-        if p.returncode != 0:
+        if fetched.returncode != 0:
             add(("WARN", "cannot fetch origin/%s: Brain freshness unknown" % cfg["default_branch"]))
         else:
             stale = git(repo, "diff", "--quiet", "HEAD", "origin/" + cfg["default_branch"], "--",
@@ -1017,6 +1036,9 @@ def crew_checks(repo) -> list:
 
 
 def cmd_crew_agent(a):
+    # the pre-review agent is its own file: installed or replaced whatever brain-dev-crew.json needs
+    _, note = review.reviewer_spec(install=True, force=bool(a.force or getattr(a, "reset", False)))
+    print(note)
     p = crew_agent_path()
     ship = load_json(CREW_AGENT_SRC)
     if os.path.exists(p):
@@ -1066,10 +1088,135 @@ def cmd_crew_agent(a):
     return 0
 
 
+def _kit_fix(repo, cfg, path, current) -> str:
+    """What brings the kit's `path` up to date here, as the older-adapter row says it: `git merge <ref>` when the
+    default branch, not merged yet, has it as `current` (its text) wants; else `brain install --upgrade`."""
+    ref, there = _on_main(repo, cfg, path)
+    return _merge_fix(ref) if ref and current(there) else UPGRADE_FIX
+
+
+def record_checks(repo, cfg) -> list:
+    """What records the lines a person types against a review sheet: the adapter, review_turn.py, the Kiro CLI hook,
+    and the record's chain. `brain review` warns with those that are not OK."""
+    out = []
+    hook = os.path.join(repo, CREW_HOOK)
+    if os.path.isfile(hook):
+        with open(hook, encoding="utf-8", errors="replace") as f:
+            have = crew_hook_version(f.read())
+        out.append(("OK", "%s records lines typed against a review sheet (version %d)" % (CREW_HOOK, have))
+                   if have >= REVIEW_HOOK_VERSION else
+                   ("WARN", "%s is version %d, needs %d: lines a person types against a review sheet are not "
+                            "recorded; %s" % (CREW_HOOK, have, REVIEW_HOOK_VERSION, _kit_fix(
+                                repo, cfg, CREW_HOOK, lambda t: crew_hook_version(t) >= REVIEW_HOOK_VERSION))))
+    else:
+        out.append(("WARN", "%s missing: lines a person types against a review sheet are not recorded; run `brain "
+                            "install`" % CREW_HOOK))
+    mine, ship = os.path.join(repo, REVIEW_TURN), os.path.join(KIT_SRC, ".kiro", "brain", "review_turn.py")
+    same = os.path.isfile(mine) and _same_bytes(mine, ship)
+    out.append(("OK", "%s is this brain-kit's" % REVIEW_TURN) if same else
+               ("WARN", "%s %s: %s" % (REVIEW_TURN, "differs from this brain-kit's" if os.path.isfile(mine) else
+                                       "is missing", _kit_fix(repo, cfg, REVIEW_TURN, lambda t: t == _text(ship)))))
+    out.append(("OK", "%s present (Kiro CLI records review-sheet lines with it)" % REVIEW_HOOK)
+               if os.path.isfile(os.path.join(repo, REVIEW_HOOK)) else
+               ("WARN", "%s missing: in Kiro CLI the lines a person types against a review sheet are not recorded "
+                        "(KiroCrew does not need it); %s" % (REVIEW_HOOK, _kit_fix(repo, cfg, REVIEW_HOOK,
+                                                                                 lambda t: True))))
+    probs = review.log_problems(repo)
+    out.append(("FAIL", "review log: %s" % "; ".join(probs[:3])) if probs else
+               ("OK", "review log (aidlc-docs/audit/brain/): chain intact"))
+    return out
+
+
+def review_checks(repo, cfg) -> list:
+    """The review sheet (审批单): what records a person's lines, which models pre-review, and the record's chain."""
+    record = record_checks(repo, cfg)
+    out = record[:-1]
+    if cfg["model"] == cfg["review_model"]:
+        out.append(("WARN", "%s model and review_model are both %s: the review sheet's two pre-reviewers are one model "
+                            "twice" % (config.KIT_CONFIG, cfg["model"])))
+    else:
+        out.append(("OK", "review sheet pre-reviewers: %s and %s (%s model, review_model)"
+                    % (cfg["model"], cfg["review_model"], config.KIT_CONFIG)))
+    usable, note = review.reviewer_spec(install=False)
+    out.append(("OK" if usable else "WARN", note))
+    return out + record[-1:]
+
+
+def proof_lines(checks) -> list:
+    """The lean.json checks that keep evidence: each check there now wrapped with `proof.py run` (through `sh -c` when
+    it needs a shell), then `proof.py shots`."""
+    old = [c for c in checks if isinstance(c, str) and c.strip()]
+    if not old:
+        return ["python3 %s run tests -- <测试命令>" % PROOF_KIT, "python3 %s shots" % PROOF_KIT]
+    names = ["tests"] if len(old) == 1 else ["check-%d" % n for n in range(1, len(old) + 1)]
+    return ["python3 %s run %s -- %s" % (PROOF_KIT, n, "sh -c %s" % shlex.quote(c) if _needs_shell(c) else c)
+            for n, c in zip(names, old)] + ["python3 %s shots" % PROOF_KIT]
+
+
+def _needs_shell(check) -> bool:
+    """Does a shell read `check` otherwise than `proof.py run`, which execs its words? Yes unless every word is one
+    shlex leaves unquoted (no quotes, $, globs, braces, redirects, ; | &, backticks, tabs or newlines) and the first
+    is neither NAME=value nor a word only a shell runs."""
+    words = check.split(" ")
+    return any(shlex.quote(w) != w for w in words) or bool(ASSIGNMENT_RE.match(words[0])) or words[0] in SHELL_WORDS
+
+
+def proof_checks(repo, cfg) -> list:
+    """Does lean verify keep evidence (证据, docs/proof.md): the proof lines in lean.json, the kit file they run,
+    whether Python here reads output as UTF-8 (the seal needs it), and once `shots` is there the kit's own doctor
+    (Chrome, kit.json proof, the listener check), run from the project's copy as verify runs it. WARN at most: in v1
+    nothing refuses on missing evidence."""
+    if not lean.installed(repo):
+        return []
+    try:
+        checks = load_json(os.path.join(repo, lean.CONFIG)).get("checks")
+    except (OSError, ValueError, AttributeError):
+        return []
+    checks = [c for c in checks if isinstance(c, str)] if isinstance(checks, list) else []
+    K = proof.kit()
+    mine = [c for c in checks if K.is_proof_check(c)]
+    if not mine:
+        return [("WARN", "verify 不留证据：%s 的 checks 里没有 %s，审查的人看不到截图和整份测试输出。请人改成 %s（先合并 kit 升级："
+                         "分支上没有 %s 时这些行会让每次 verify 失败；截图还要在 %s 写 proof.url 和 proof.launch，见 "
+                         "docs/proof.md）" % (lean.CONFIG, PROOF_KIT, json.dumps(proof_lines(checks), ensure_ascii=False),
+                                             PROOF_KIT, config.KIT_CONFIG))]
+    if not os.path.isfile(os.path.join(repo, PROOF_KIT)):
+        return [("WARN", "%s 的 checks 用了 %s，这个分支没有它：每次 verify 都会失败；%s" % (
+            lean.CONFIG, PROOF_KIT, _kit_fix(repo, cfg, PROOF_KIT, lambda t: bool(t))))]
+    out = [("OK", "lean verify 留证据：%s" % "、".join(K.check_label(c) for c in mine))]
+    if not _same_bytes(os.path.join(repo, PROOF_KIT), os.path.join(KIT_SRC, ".kiro", "brain", "proof.py")):
+        out.append(("WARN", "%s differs from this brain-kit's: %s" % (PROOF_KIT, _kit_fix(
+            repo, cfg, PROOF_KIT, lambda t: t == _text(os.path.join(KIT_SRC, ".kiro", "brain", "proof.py"))))))
+    enc = K.encoding_problem()
+    if enc:
+        out.append(("WARN", enc))
+    if any(K.check_label(c) == "截图" for c in mine):
+        p = run([sys.executable, "-I", "-B", PROOF_KIT, "doctor"], cwd=repo, check=False)
+        for line in p.stdout.splitlines():
+            level, _, text = line.partition(" ")
+            if level in ("OK", "WARN") and text.strip() != enc:
+                out.append((level, "证据截图：" + text.strip()))
+    return out
+
+
+def _same_bytes(a, b) -> bool:
+    try:
+        with open(a, "rb") as f, open(b, "rb") as g:
+            return f.read().replace(b"\r\n", b"\n") == g.read().replace(b"\r\n", b"\n")
+    except OSError:
+        return False
+
+
+def _text(path) -> str:
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
 def cmd_doctor(a):
     repo = repo_root()
     cfg = config.load(repo)
-    rows = doctor_checks(repo, cfg, fetch=not a.offline) + crew_checks(repo)
+    rows = doctor_checks(repo, cfg, fetch=not a.offline) + proof_checks(repo, cfg) + review_checks(repo, cfg) + \
+        crew_checks(repo)
     for level, msg in rows:
         print("%-4s %s" % (level, msg))
     return 1 if any(l == "FAIL" for l, _ in rows) else 0
@@ -1972,6 +2119,26 @@ def _reflect_key(repo, cfg, given):
     return b["key"]
 
 
+def _run_intent(repo, cfg, key, ref=None):
+    """The Lean intent runs/<KEY>/run.json names, in the working tree or at `ref`; None when it cannot be read."""
+    rel = runrec.path(cfg["runs_dir"], key)
+    if ref:
+        p = git(repo, "show", "%s:%s" % (ref, rel), check=False)
+        text = p.stdout if p.returncode == 0 else None
+    else:
+        try:
+            with open(os.path.join(repo, rel), encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            text = None
+    try:
+        rec = json.loads(text) if text else None
+    except ValueError:
+        rec = None
+    intent = rec.get("intent") if isinstance(rec, dict) else None
+    return intent if isinstance(intent, str) and intent else None
+
+
 def cmd_reflect(a):
     repo = repo_root()
     cfg = config.load(repo)
@@ -1999,7 +2166,14 @@ def cmd_reflect(a):
     probs += more
     rows, more = reflect.plan_gaps(repo, cfg, gaps, key)
     probs += more
-    lost = reflect.rejected_without_correction(store, key, proposals)
+    intent = _run_intent(repo, cfg, key, a.ref)
+    try:
+        local = review.rejections(repo, intent, ref=a.ref) if intent else []
+        unread = []
+    except BrainError as e:
+        local, unread = [], ["the review sheet's record was not read (%s): rejections typed in chat are not "
+                             "checked" % e]
+    lost = unread + reflect.rejected_without_correction(store, key, proposals, local=local)
     print("brain reflect %s：%s 里有 %d 个提案%s，对照 %s" % (key, label, len(proposals),
                                                       "、%d 个缺口" % len(gaps) if gaps else "", base))
     for op in ops:

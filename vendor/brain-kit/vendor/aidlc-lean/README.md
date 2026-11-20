@@ -282,7 +282,7 @@ Status: released (RELEASE approved)
 `lean` 是 `python3 .kiro/aidlc-lean/aidlc_lean.py` 的简称。人和 AI 都能用 `lean status` 看进度和下一步。
 
 1. 你说要做什么。AI 先读代码，用 `lean new <名字>` 开一个 intent（目录是 `aidlc-docs/<yymmdd>-<名字>/`，日期按 UTC，和页面里的 Created 一样）。老代码先做逆向工程，新项目跳过。产品经理要先把想法理清楚的，用 `lean new <名字> --ideation`：先走构想，批了 IDEATION 再到这一步（见 1a）。
-2. AI 把问题**一次**问完，每题带推荐答案。你可以回"都按推荐"，或者只改几条。问答抄进 requirements.md；AI 猜的部分写成"假设"（A-1……），你让 AI 自己定的也写成假设，不算你的回答。
+2. AI 把问题**一次**问完，每题带推荐答案。你可以回"都按推荐"，或者只改几条。问答抄进 requirements.md；AI 猜的部分写成"假设"（A-1……），你让 AI 自己定的也写成假设，不算你的回答。之后 AI 每次提问前先查 decisions.md 和 requirements.md：已经定了的就引用编号（比如"按 D-74"），不再问。后来确认的事实（接口、版本、地址）也记进 decisions.md，写明它回答的是哪一条（"answers D-48"），不另开问题文件。
 3. AI 写 requirements.md：大小（把模板里占位的 `Size: <small|large>` 改成 `small` 或 `large`；新的公开模块或接口、新的数据模型、改 schema 或接口、跨好几个模块，都算 `large`）、目标、不做什么、验收标准（AC-1……）、非功能指标、假设。需要时再写用户故事、应用设计、拆分单元。每做完一个阶段跑 `lean stage done`，用不上的阶段跑 `lean stage skip`。这些都不停下来问你。
 4. AI 跑 `lean request INCEPTION`，把口令给你，比如 `approve INCEPTION 8cf2cbce`。你读需求和设计两页，同意就自己打这一行。想先定需求，就先批 REQUIREMENTS，设计写完再批 DESIGN。每次停下来等你之前（问问题、要审批），AI 都要先更新 Session notes；Session notes 还是模板原样时，`lean request` 会提醒它。
 5. 一个单元一个单元地做（没拆单元就只有 `app`）：
@@ -438,7 +438,7 @@ python3 tools/vendor_pstack.py <pstack 目录>   # 或者指定一个 pstack 目
 
 ## 测过什么
 
-- **单元测试**：`python3 -W error::ResourceWarning -m unittest discover -s tests`，共 291 个。2026-11-10 在 Python 3.9.6 和 3.12.15 上各跑一遍，290 个全部通过，没有跳过（机器负载很高，各约 53 和 44 分钟）；之后加的 1 个（`fingerprint_exclude` 的默认值）单独跑过。又让依赖 Lean 的 brain-kit 用这份代码跑了它用到 Lean 的 13 个测试文件：py3.12 上 384 个全部通过；py3.9 上 381 个里有 1 个失败（brain-kit 读 `DEFAULT_CONFIG` 里 `fingerprint_exclude` 的默认值，0.3.1 一度把它清空了），改回以后那一组通过。
+- **单元测试**：`python3 -W error::ResourceWarning -m unittest discover -s tests`，共 294 个。2026-11-10 在 Python 3.9.6 和 3.12.15 上各跑一遍，290 个全部通过，没有跳过（机器负载很高，各约 53 和 44 分钟）；之后加的 1 个（`fingerprint_exclude` 的默认值）单独跑过。2026-11-16 在 3.12.15 上把 294 个全部跑了一遍，全部通过，没有跳过（约 11 分钟）。又让依赖 Lean 的 brain-kit 用这份代码跑了它用到 Lean 的 13 个测试文件：py3.12 上 384 个全部通过；py3.9 上 381 个里有 1 个失败（brain-kit 读 `DEFAULT_CONFIG` 里 `fingerprint_exclude` 的默认值，0.3.1 一度把它清空了），改回以后那一组通过。
 
   | 文件 | 个数 |
   |---|---|
@@ -451,7 +451,7 @@ python3 tools/vendor_pstack.py <pstack 目录>   # 或者指定一个 pstack 目
   | `test_v03_phases.py`（v0.3 的构想、CI 流水线、运维段） | 25 |
   | `test_v03_qa_fixes.py`（v0.3 四轮 QA 找到的逻辑问题，包括契约算代码） | 46 |
   | `test_v03_install_fixes.py`（重装时留下人改过和团队加的模板，`.kit-new` 只给一次，清单或模板读不了时） | 18 |
-  | `test_v031_fixes.py`（v0.3.1：review 第 1 轮 R1-106..120、只读 shell 不再误拦、v0.3 实测后的修复） | 40 |
+  | `test_v031_fixes.py`（v0.3.1：review 第 1 轮 R1-106..120、只读 shell 不再误拦、v0.3 实测后的修复、提问前先查 decisions.md） | 43 |
 
   覆盖：每道关卡（包括 v0.3 的 ideation）、审批规则（包括 IDEATION 的哈希、过期、驳回、白名单）、阶段命令和阶段记录、整段跳过构想和运维、发布后的运维阶段、每个单元的 PLAN、篡改可检测、多团队的单元和 CR、契约和代码一样等审批、发布流程、pstack 质量包、安装和从 v0.1 升级、重装时留下团队改过和自己加的模板、并行 hook、子目录安装、打码。还查了说明文字本身：常驻说明、技能卡和模板里提到的每条命令、每个关卡名都真的存在，字数没超（常驻说明不超过 1,000 词，8 张核心技能卡每张不超过 600 词；pstack 包的卡不设上限）。本机没有 pstack 0.15.32 源码时，其中 7 个 vendor_pstack 测试会跳过（这次没跳过）。Python 3.8 没有真跑过（本机没有 3.8），只按 3.8 的语法检查过。
 - **v0.2 的模拟跑**（2026-11-08）：没开 kiro-cli，也没有真的 AI。脚本按 Kiro v3 hook 的格式，把"AI"的每次写文件、跑命令和"人"发的每条消息都喂给 hook，走完了 4 个场景：普通模式、普通模式加 pstack、受监管（两个单元、每个单元批 PLAN、有一次驳回）、多团队（两个 clone、一个 CR、一次合并冲突）。上面 aidlc-state.md 的例子就是这样跑出来的。
@@ -518,8 +518,8 @@ kit/.kiro/steering/aidlc-lean.md          常驻规则（999 词）
 kit/.kiro/skills/aidlc-lean-*/            8 张按需加载的技能卡：ideation、inception、construction、release、operations、resume、multi-team、regulated（共 4,784 词）
 kit/.kiro/hooks/aidlc-lean-*.json         3 个 v3 hook
 kit/.kiro/aidlc-lean/aidlc_lean.py        唯一的脚本（4,434 行）
-kit/.kiro/aidlc-lean/templates/           28 个模板（共 5,484 词）：24 个阶段文档（v0.2 的 9 个，加 v0.3 构想 7 个、CI 流水线 1 个、运维 7 个），加 aidlc-state.md、decisions.md、cr.md、lean.json
-tests/                                    单元测试（10 个文件，291 个）
+kit/.kiro/aidlc-lean/templates/           28 个模板（共 5,502 词）：24 个阶段文档（v0.2 的 9 个，加 v0.3 构想 7 个、CI 流水线 1 个、运维 7 个），加 aidlc-state.md、decisions.md、cr.md、lean.json
+tests/                                    单元测试（10 个文件，294 个）
 docs/design-v0.2.md                       v0.2 的设计说明（§9 是 v0.3 的构想、CI 流水线和运维段，§10 是 v0.3.1 的修复）
 docs/e2e-2026-11-07.md                    v0.1 的真机测试记录（摘要）
 docs/e2e-2026-11-08-v0.2.md               v0.2 的真机测试：普通模式

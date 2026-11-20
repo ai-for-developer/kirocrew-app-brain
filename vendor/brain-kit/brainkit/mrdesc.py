@@ -25,7 +25,9 @@ latest verify recorded; with --ref, the files changed since the verify's commit.
 
 People: GitLab usernames and pseudonyms already in the records only. Emails and home directories in record text
 are replaced (trace.scrub); an unrecognised decisions.md Who cell is not shown (it may be a real name).
-Record text is put on one line, with '@' and '<' made inert: no mention, quick action or HTML comment reaches GitLab.
+Record text is put on one line and made inert (_defang): no mention, quick action or HTML comment reaches GitLab.
+No image loads but the one line of screenshots render() makes from bind()'s data (inert(), is_thumbnail_line()); the
+bridge keeps that line of MR.md only when each image in it is the run's sealed evidence (sealed_evidence()).
 """
 from __future__ import annotations
 
@@ -36,8 +38,10 @@ import os
 import re
 import subprocess
 import sys
+import types
+import urllib.parse
 
-from . import ci, lean, reflect, runrec, usage
+from . import ci, lean, proof, reflect, runrec, usage
 from . import trace as T
 from .common import JIRA_RE, USER_RE, BrainError, git, plain
 from .intake import checks
@@ -58,7 +62,6 @@ SUMMARY_DOC = "construction/build-and-test/build-and-test-summary.md"
 REVIEW_DOC = "construction/build-and-test/review.md"
 RELEASE_DOC = "operations/release.md"
 DECISIONS_DOC = "decisions.md"
-LEAN_EXCLUDE = list(lean.DEFAULT_FINGERPRINT_EXCLUDE)     # Lean's default fingerprint_exclude
 STAGE_NAMES = {"intent-capture": "意图捕获", "market-research": "市场调研", "feasibility": "可行性评估",
                "scope-definition": "范围定义", "team-formation": "团队组建", "rough-mockups": "草图原型",
                "approval-handoff": "审批交接", "ci-pipeline": "CI 流水线", "deployment-pipeline": "部署流水线",
@@ -76,7 +79,9 @@ APPROVER = {"IDEATION": "产品", "REQUIREMENTS": "产品", "DESIGN": "Builder",
 MISSING_DOC = {"IDEATION": "还没写构想文档（initiative-brief.md）", "REQUIREMENTS": "还没有 requirements.md", "DESIGN": "还没写 application-design.md",
                "PLAN": "还没有代码生成计划", "RELEASE": "还没跑 lean release"}
 LIMIT = {"ac": 12, "decisions": 10, "assumptions": 8, "open_items": 5, "groups": 8, "code": 8, "risky": 5,
-         "proposals": 5, "gaps": 3, "not_doing": 5, "approvals": 6, "findings": 3}
+         "proposals": 5, "gaps": 3, "not_doing": 5, "approvals": 6, "findings": 3, "evidence": 5}
+# evidence gaps the 证据 line, the AC table or 「怎么审」 already say; the rest go into 「还没有」
+EVIDENCE_SAID = ("no_proof_check", "missed", "old", "unknown")
 # Lean's own patterns (aidlc_lean.py SIZE_RE, CHECKBOX_RE): the first Size line counts; plan checkboxes
 SIZE_RE = re.compile(r"(?im)^[ \t>*-]*\**[ \t]*Size[ \t]*\**[ \t]*[:：][ \t]*\**[ \t]*([A-Za-z]+|<)")
 CHECKBOX_RE = re.compile(rb"(?m)^([ \t]*[-*] )\[[xX ]\]")
@@ -92,34 +97,167 @@ REVIEW_OPEN_RE = re.compile(r"(?i)^\W*(?:open|todo|to do|pending|not (?:yet )?fi
 REVIEW_FIXED_RE = re.compile(r"(?i)^\W*(?:fixed|resolved|done|closed|addressed|yes)\b|"
                              r"^\W*(?:已修|修了|修好|已改|改了|已解决|已处理|已完成)")
 NO_FIX = ("", "-", "—", "–", "n/a", "none", "无", "没有")
+# the line of screenshots the product sees inline on GitLab, the one image inert() lets through (is_thumbnail_line)
+THUMBS_MAX = 4
+THUMB_WIDTH = 360
+WEB_RE = re.compile(r"https?://[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:/[A-Za-z0-9._~-]+)+")
+EMBED_RE = re.compile(r"!\[([^\]]*)\]\(([^()\s]*)\)(?:\{width=%d\})?" % THUMB_WIDTH)
+ALT_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff][A-Za-z0-9\u4e00-\u9fff._/-]{0,99}")   # a row label or a file name
+COMMIT_RE = re.compile(r"[0-9a-f]{40}")
+IMAGE_EXTS = (".png", ".jpg", ".jpeg")
+# an '&' that starts an entity GitLab reads as its character (&#33; is '!', &#91; and &lsqb; are '[', &lt; is '<')
+ENTITY_RE = re.compile(r"&(?=#[0-9]+;|#[xX][0-9A-Fa-f]+;|[A-Za-z][A-Za-z0-9]*;)")
 
 
 # ---------- text: from a record into one inert Markdown line ----------
 
+def _defang(s) -> str:
+    """Text with nothing GitLab acts on: no mention ('@'), no HTML ('<'), and no image. GitLab reads an escape (\\[)
+    or an entity as the character itself, and its SpacedLinkFilter shows any text that then reads ![t](u) as an
+    image, so '![', '!' before a backslash and '&' starting an entity all become full-width look-alikes."""
+    s = s.replace("@", "＠").replace("<", "＜").replace("![", "!［").replace("!\\", "！\\")
+    return ENTITY_RE.sub("＆", s)
+
+
 def _one(text, limit=None) -> str:
-    """Record text as one line: emails and home directories replaced (trace.scrub), whitespace collapsed, '@' and '<'
-    made inert (no mention, no HTML comment that would hide the rest), images not loaded, cut to `limit`."""
-    s = " ".join(T.scrub(str(text or "")).split())
-    s = s.replace("@", "＠").replace("<", "＜").replace("![", "!［")
+    """Record text as one line: emails and home directories replaced (trace.scrub), whitespace collapsed, made inert
+    (_defang: no mention, no HTML comment that would hide the rest, no image loaded), cut to `limit`."""
+    s = _defang(" ".join(T.scrub(str(text or "")).split()))
     if limit and len(s) > limit:
         s = s[:limit - 1].rstrip() + "…"
     return s
 
 
-def inert(text) -> str:
+def inert(text, web=None, sealed=None) -> str:
     """Markdown someone else wrote (a runs/<KEY>/MR.md a bot committed), made safe to post on GitLab: no mention, no
-    HTML (an HTML comment would hide what follows), no image loaded, no line that GitLab runs as a quick action, and
-    no line that reads as an approval, a rejection or an answer (`approve RELEASE …`, `answer D-3 approve`: quoted
-    with '> ', so neither Lean nor the bridge, nor a person copying it, takes it as one). Idempotent: render()'s own
-    output (it ends with this) comes back unchanged."""
+    HTML (an HTML comment would hide what follows), no image loaded (_defang), no line that GitLab runs as a quick
+    action, and no line that reads as an approval, a rejection or an answer (`approve RELEASE …`, `answer D-3
+    approve`: quoted with '> ', so neither Lean nor the bridge, nor a person copying it, takes it as one). CR goes
+    first: GitLab deletes it before it reads Markdown, so `!<CR>[` is '!['.
+
+    With `web` (web_root() of the project's kit config) and `sealed` (sealed_evidence(): the bridge's check), one line
+    may stay as it is: the first that is_thumbnail_line() and is a paragraph of its own, so no link around it can send
+    a click elsewhere. It stays when sealed(alt, commit, path) holds for each image in it; no later line is asked
+    about. That is render()'s line of screenshots: checked at a commit that holds its evidence, render()'s output comes
+    back unchanged."""
+    lines = str(text).replace("\r", "").split("\n")
+    # a blank line, as GitLab reads one: nothing but spaces and tabs
+    keep = next((i for i, x in enumerate(lines) if is_thumbnail_line(x, web) and
+                 all(not lines[j].strip(" \t") for j in (i - 1, i + 1) if 0 <= j < len(lines))), None)
+    if keep is not None and not (sealed and all(sealed(*e) for e in _embeds(lines[keep], web))):
+        keep = None
     out = []
-    for line in str(text).replace("@", "＠").replace("<", "＜").replace("![", "!［").split("\n"):
-        if line.lstrip().startswith("/"):
-            line = "\\" + line.lstrip()
-        elif checks.APPROVAL_LINE_RE.match(line) or ANSWER_LINE_RE.match(line):
-            line = "> " + line
+    for i, line in enumerate(lines):
+        if i != keep:
+            line = _defang(line)
+            if line.lstrip().startswith("/"):
+                line = "\\" + line.lstrip()
+            elif checks.APPROVAL_LINE_RE.match(line) or ANSWER_LINE_RE.match(line):
+                line = "> " + line
         out.append(line)
     return "\n".join(out)
+
+
+def web_root(cfg):
+    """<gitlab.base>/<gitlab.project> of a kit config, where links and the line of screenshots point; None without
+    both."""
+    g = cfg.get("gitlab")
+    if isinstance(g, dict) and isinstance(g.get("base"), str) and isinstance(g.get("project"), str) and \
+            g["base"] and g["project"]:
+        return "%s/%s" % (g["base"].rstrip("/"), g["project"].strip("/"))
+    return None
+
+
+def _url(web, view, commit, path) -> str:
+    """A file of the project at a commit on GitLab: view "blob" is its page, "raw" its bytes (what an image loads)."""
+    return "%s/-/%s/%s/%s" % (web, view, commit, "/".join(urllib.parse.quote(x) for x in path.split("/")))
+
+
+def is_thumbnail_line(line, web) -> bool:
+    """The one shape of image inert() lets through. 1 to THUMBS_MAX embeds, one space apart, and nothing else on the
+    line: each `![alt](<web>/-/raw/<40-hex commit>/<path>)`, then `{width=THUMB_WIDTH}` or nothing. path is a png,
+    jpg or jpeg in an evidence set folder of this project
+    (aidlc-docs/<intent>/construction/build-and-test/proof/<clone>/<set>/), and the URL is exactly what _url() makes
+    of it: no other quoting, no query, no '..'. alt is a row label or a file name, as the kit writes them. web:
+    web_root() of the project's kit config; without one, nothing is."""
+    return _embeds(line, web) is not None
+
+
+def _embeds(line, web):
+    """[(alt, commit, path)] of each image of a line of screenshots (is_thumbnail_line), or None."""
+    if not web or not WEB_RE.fullmatch(web):
+        return None
+    parts = [_embed(x, web) for x in line.split(" ")]
+    return parts if len(parts) <= THUMBS_MAX and all(parts) else None
+
+
+def _embed(s, web):
+    m = EMBED_RE.fullmatch(s)
+    prefix = web + "/-/raw/"
+    if not m or not ALT_RE.fullmatch(m.group(1)) or not m.group(2).startswith(prefix):
+        return None
+    commit, _, quoted = m.group(2)[len(prefix):].partition("/")
+    path = urllib.parse.unquote(quoted)
+    folder, _, name = path.rpartition("/")
+    K = proof.kit()
+    where = K.set_output_of("%s/%s" % (folder, K.OUTPUT))
+    # isprintable: the kit's name patterns end in $, which also matches before a final newline
+    ok = bool(COMMIT_RE.fullmatch(commit) and where and runrec.INTENT_RE.match(where[0]) and path.isprintable()
+              and K.FILE_NAME_RE.match(name) and name.lower().endswith(IMAGE_EXTS)) and \
+        _url(web, "raw", commit, path) == m.group(2)
+    return (m.group(1), commit, path) if ok else None
+
+
+def sealed_evidence(read, head, runs_dir, key):
+    """For the bridge, which reads the project through GitLab's API only: the `sealed` of inert(). sealed(alt, commit,
+    path) holds when `path` is evidence of run `key` at `head`, as bind() counts evidence: a file of a set of the
+    run's intent (a split child: of its own clone; runs/<KEY>/run.json as build() reads it) whose output.txt a VERIFY
+    of that intent in the clone's Lean ledger printed, in the folder its manifest names, and that ledger's hash chain
+    holds (trace.lean_events: unkeyed, so it stops stale or foreign evidence, not a hand-written line). The manifest
+    lists the file with its sha256, result ok and as `alt` (its id, or unit/id as a row label), and the blob at
+    `commit` hashes to that sha256 (_holding_commit's rule). A record that does not parse is not evidence. read(path, ref): a file's bytes at a commit, None when it has none
+    (rest.GitLab.file_raw); each file is read once."""
+    K = proof.kit()
+    got = {}
+
+    def get(path, ref):
+        if (path, ref) not in got:
+            got[path, ref] = read(path, ref)
+        return got[path, ref]
+
+    def sealed(alt, commit, path):
+        # a record built to overflow a float or the JSON parser's depth is not evidence: the comment still posts
+        try:
+            return check(alt, commit, path)
+        except (ValueError, TypeError, RecursionError, OverflowError, KeyError):
+            return False
+
+    def check(alt, commit, path):
+        rec = json.loads(get("%s/%s/run.json" % (runs_dir, key), head) or b"null")
+        intent, _, clone = _scope(rec if isinstance(rec, dict) else {})
+        folder, _, name = path.rpartition("/")
+        out = "%s/%s" % (folder, K.OUTPUT)
+        where = K.set_output_of(out)
+        if not where or where[0] != intent or (clone and not where[1].endswith("-" + clone)):
+            return False
+        data = get(out, head)
+        if data is None:
+            return False
+        m = K.parse_set(data)
+        ledger_path = "%s/audit/%s.jsonl" % (lean.DOCS, where[1])
+        ledger = (get(ledger_path, head) or b"").decode("utf-8", "replace")
+        events, chains = T.lean_events(types.SimpleNamespace(files=lambda prefix: [ledger_path],
+                                                             read=lambda path: ledger), intent)
+        verifies = [e for e in events if e.get("event") == "VERIFY"]
+        if (m.name, m.clone) != (where[2], where[1]) or any(c["chain"] != "ok" for c in chains.values()) or \
+                K.sealing_verify(data, verifies) is None:
+            return False                               # not a set that counts: proof.Found.counts
+        item = next((i for i in m.items if i.file == name), None)
+        if item is None or item.result is not K.Result.OK or alt not in (item.id, "%s/%s" % (item.unit, item.id)):
+            return False
+        blob = get(path, commit)
+        return blob is not None and hashlib.sha256(blob).hexdigest() == item.sha256
+    return sealed
 
 
 def _cell(text, limit=None) -> str:
@@ -210,15 +348,23 @@ def _events(tree, intent, clone=None) -> list:
     for path in tree.files(lean.DOCS + "/audit"):
         if not path.endswith(".jsonl") or (clone and not path.endswith("-%s.jsonl" % clone)):
             continue
-        for line in (tree.read(path) or "").splitlines():
-            try:
-                rec = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(rec, dict) and rec.get("intent") == intent and isinstance(rec.get("event"), str):
-                rec["_file"] = path                 # which clone recorded it: seq orders records within one file
-                out.append(rec)
+        for rec in _records(tree.read(path), intent):
+            rec["_file"] = path                     # which clone recorded it: seq orders records within one file
+            out.append(rec)
     out.sort(key=lambda e: str(e.get("ts") or ""))
+    return out
+
+
+def _records(text, intent) -> list:
+    """The records of one Lean ledger file (JSON lines) about `intent`."""
+    out = []
+    for line in (text or "").splitlines():
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(rec, dict) and rec.get("intent") == intent and isinstance(rec.get("event"), str):
+            out.append(rec)
     return out
 
 
@@ -276,28 +422,28 @@ def _first_sentence(text, limit=120) -> str:
     return _one(m.group(1) if m else text, limit)
 
 
+def _req_items(text) -> list:
+    """The ACs and assumptions of a requirements.md text, through brainkit.review's extractor (the one reader of
+    both the template's tables and `| ID | 条件 → 结果 | 来源 |` / `| ID | 假设 | 谁确认 |`)."""
+    from . import review
+    return list(review.page(lean.DOCS + "/-/" + REQ_DOC, text.encode("utf-8", "surrogatepass")).items)
+
+
 def _requirements(text):
-    """What requirements.md says, or None when it is missing; 'written' False while it is still the template."""
+    """What requirements.md says, or None when it is missing; 'written' False while it is still the template.
+    An AC's text is its condition and result as written (the template's two columns joined with " → ")."""
     if text is None:
         return None
     secs = _sections(text)
     goal = " ".join(x.strip() for x in _section(secs, "goal") or [] if x.strip())
     title = re.search(r"(?m)^#\s*Requirements:\s*(.+?)\s*$", text)
     size = SIZE_RE.search(text)
-    acs = []
-    for header, rows in _tables("\n".join(_section(secs, "acceptance") or [])):
-        i, g, t = _col(header, "id"), _col(header, "given", "when"), _col(header, "then", "expected")
-        for cells in rows if i is not None else []:
-            aid = cells[i].strip("`* ")
-            given = cells[g] if g is not None else ""
-            then = cells[t] if t is not None else ""
-            if AC_ID_RE.fullmatch(aid) and (given.strip() or then.strip()):
-                acs.append({"id": aid, "given": given, "then": then})
-    assumptions = []
-    for line in _section(secs, "assumption") or []:
-        m = T.ASSUMPTION_RE.match(line)
-        if m and m.group(2).strip():
-            assumptions.append({"id": m.group(1), "text": m.group(2).strip()})
+    acs, assumptions = [], []
+    for it in _req_items(text):
+        if it.kind.value == "AC":
+            acs.append({"id": it.id, "given": it.main, "then": "", "line": it.line})
+        else:
+            assumptions.append({"id": it.id, "text": it.main, "line": it.line})
     not_doing = _items(_section(secs, "not doing"))
     return {"title": title.group(1) if title and "{{" not in title.group(1) else None,
             "size": size.group(1).lower() if size and size.group(1) != "<" else None,
@@ -340,21 +486,6 @@ def _lean_cfg(tree) -> dict:
     return cfg if isinstance(cfg, dict) else {}
 
 
-def _record_path(path, lcfg) -> bool:
-    """Lean's is_record_path: fingerprint_exclude (aidlc-docs/**, .kiro/** by default), except contracts, and the
-    per-clone .aidlc-lean/ state. Not code: changing it leaves Lean's code fingerprint as it is."""
-    if path.startswith(".aidlc-lean/"):
-        return True
-    contracts = str(lcfg.get("contracts_dir") or lean.DOCS + "/contracts").strip("/") + "/"
-    if path.startswith(contracts) and path != contracts + "OWNERS" and not path.startswith(contracts + "changes/"):
-        return False
-    pats = lcfg.get("fingerprint_exclude")
-    for pat in pats if isinstance(pats, list) else LEAN_EXCLUDE:
-        if isinstance(pat, str) and ((pat.endswith("/") and path.startswith(pat)) or fnmatch.fnmatchcase(path, pat)):
-            return True
-    return False
-
-
 def write_problem(repo, cfg, key=None):
     """Why `--write` must not write runs/<KEY>/MR.md here, or None (`brain doctor` can ask it without a key). Lean
     counts every file outside fingerprint_exclude as code: an MR.md (or park.json) written after `lean verify` reads
@@ -363,7 +494,7 @@ def write_problem(repo, cfg, key=None):
     if not lean.installed(repo):
         return None
     lcfg = _lean_cfg(_Tree(repo, None))
-    if _record_path("%s/%s/%s" % (cfg["runs_dir"], key or "KEY-1", MR_FILE), lcfg):
+    if lean.is_record_path("%s/%s/%s" % (cfg["runs_dir"], key or "KEY-1", MR_FILE), lcfg):
         return None
     return ("%s/ 下的文件（MR.md、park.json）算在 Lean 的代码指纹里：verify 之后写它们，Lean 会当成代码改了（提交被拦，"
             "release 和 RELEASE 审批要重来）。请人在 %s/lean.json 的 fingerprint_exclude 里加上 \"%s/**\"（AI 改不了"
@@ -449,7 +580,7 @@ def _changed_since(repo, tree, v, lcfg):
             paths += [x for x in p.stdout.decode("utf-8", "surrogateescape").split("\0") if x]
     except BrainError:
         return None
-    return sorted({p for p in paths if not _record_path(p, lcfg)})
+    return sorted({p for p in paths if not lean.is_record_path(p, lcfg)})
 
 
 def _verify_state(repo, tree, v, lcfg, runs_dir):
@@ -720,8 +851,7 @@ def _own_commits(repo, tr, base, tree) -> set:
 
 def _own_assumptions(text, lines) -> list:
     """The assumptions A-n on these line numbers of requirements.md (a split child's own)."""
-    kept = [x if n in lines or not T.ASSUMPTION_RE.match(x) else "" for n, x in enumerate(text.split("\n"), 1)]
-    return (_requirements("\n".join(kept)) or {}).get("assumptions", [])
+    return [a for a in (_requirements(text) or {}).get("assumptions", []) if a["line"] in lines]
 
 
 # ---------- git: what the MR changes ----------
@@ -926,6 +1056,18 @@ def _design_cover(repo, cfg, rec, key, tree, ch, events, docs, approvals, vouche
 
 # ---------- the description ----------
 
+def _scope(rec):
+    """(intent, child, clone) of a run.json: its Lean intent (None when it names none), whether it is a split child
+    (brain split), and a child's own Lean clone, whose records and evidence are the child's (its 6-hex lean_clone;
+    None: every clone's are the run's)."""
+    intent = rec.get("intent") if isinstance(rec.get("intent"), str) and runrec.INTENT_RE.match(rec["intent"]) \
+        else None
+    child = bool(JIRA_RE.match(str(rec.get("parent") or "")) and isinstance(rec.get("unit"), str) and
+                 plain(rec["unit"]))
+    clone = rec.get("lean_clone") if child and re.match(r"^[0-9a-f]{6}$", str(rec.get("lean_clone") or "")) else None
+    return intent, child, clone
+
+
 def build(repo, cfg, key, base=None, ref=None, credits=None, vouchers_dir=None, allowed_signers=None) -> dict:
     """The MR description of requirement `key`, as data (render() makes the Markdown). `ref`: read the records from
     this commit instead of the working tree. `base`: diff against this instead of the merge base with the default
@@ -944,8 +1086,7 @@ def build(repo, cfg, key, base=None, ref=None, credits=None, vouchers_dir=None, 
         raise BrainError("%s is not valid JSON" % rp)
     if not isinstance(rec, dict):
         raise BrainError("%s is not an object" % rp)
-    intent = rec.get("intent") if isinstance(rec.get("intent"), str) and runrec.INTENT_RE.match(rec["intent"]) \
-        else None
+    intent, child, clone = _scope(rec)
     owner = rec.get("owner") if isinstance(rec.get("owner"), str) and USER_RE.match(rec["owner"]) else None
     branch = rec.get("branch") if plain(rec.get("branch")) else None
     handoff = rec.get("handoff") if isinstance(rec.get("handoff"), dict) else None
@@ -957,10 +1098,9 @@ def build(repo, cfg, key, base=None, ref=None, credits=None, vouchers_dir=None, 
     lcfg = _lean_cfg(tree)
     # a split child (brain split): one unit of its parent's intent; its MR goes into the parent's run branch
     family = None
-    if JIRA_RE.match(str(rec.get("parent") or "")) and isinstance(rec.get("unit"), str) and plain(rec["unit"]):
+    if child:
         family = {"parent": rec["parent"], "unit": _one(rec["unit"], 40),
                   "target_branch": _one(rec.get("target_branch"), 100) if plain(rec.get("target_branch")) else None}
-    clone = rec.get("lean_clone") if family and re.match(r"^[0-9a-f]{6}$", str(rec.get("lean_clone") or "")) else None
     own = _events(tree, intent, clone) if intent and clone else events     # the child's own clone: verify, stage
     into, fork = None, None      # a child: diffed against its parent's branch (its MR's target), from the fork
     if family and base is None and family["target_branch"]:
@@ -1026,6 +1166,12 @@ def build(repo, cfg, key, base=None, ref=None, credits=None, vouchers_dir=None, 
         missing.append(why_no_changes)
     elif not ch["files"]:
         missing.append("和 %s 比，还没有提交的改动" % ch["base_label"])
+    evidence = None
+    if docs:
+        try:
+            evidence = _evidence(repo, cfg, tree, docs, own, lcfg, acs, tests, ch, family, clone)
+        except Exception as e:  # noqa: BLE001  evidence only adds to the description; the records above stand alone
+            missing.append("证据没读出来（%s）" % _one(str(e).replace(repo, "."), 160))
     approvals = _approvals(events, tree, docs, plans, lcfg, req) if docs else {"recorded": [], "missing": [],
                                                                               "design_skipped": False,
                                                                               "released": False}
@@ -1096,6 +1242,7 @@ def build(repo, cfg, key, base=None, ref=None, credits=None, vouchers_dir=None, 
         "plans": [{"unit": p["unit"], "steps": p["steps"], "done": p["done"]} for p in plans],
         "acceptance": acs,
         "verify": dict(v, current=current, why=why) if v else None,
+        "proof": evidence,
         "changes": ch,
         "decisions": decisions,
         "assumptions": [{"id": a["id"], "text": _one(a["text"], 160)} for a in assumptions],
@@ -1123,6 +1270,134 @@ def build(repo, cfg, key, base=None, ref=None, credits=None, vouchers_dir=None, 
     return data
 
 
+def _evidence(repo, cfg, tree, docs, own, lcfg, acs, tests, ch, family, clone) -> dict:
+    """build()'s "proof": brainkit.proof.bind() against the code under review (the working tree, or the ref's
+    commit), as its JSON (docs/proof.md), plus "links": {path: {"commit", "url"}} for each file it shows, pinned to the
+    commit that last wrote that exact file (later records commits change no link), and "web": web_root(cfg)."""
+    ui = cfg.get("proof").get("ui_paths") if isinstance(cfg.get("proof"), dict) else None
+    ui = [g for g in ui if isinstance(g, str)] if isinstance(ui, list) else []
+    changed = [c["path"] for c in (ch or {}).get("code") or []]
+    ev = proof.bind(repo, tree.files, tree.raw, docs, own, lcfg, tree.commit, clone=clone,
+                    units=[family["unit"]] if family else None, acs=[a["id"] for a in acs], tested=sorted(tests),
+                    ui_changed=[x for x in changed if any(fnmatch.fnmatchcase(x, g) for g in ui)]).to_json()
+    files = [(r["shown"]["path"], r["shown"]["sha256"]) for r in ev["rows"] if r["shown"]]
+    outputs = {f["output"]: f["output_sha256"] for f in ev["sets"]}
+    for lg in ev["logs"]:
+        files += [(lg["path"], outputs.get(lg["path"]))] + [(f["path"], f["sha256"]) for f in lg["files"] if f["ok"]]
+    files += [(pl["path"], pl["sha256"]) for pl in ev["plans"] if pl["sha256"]]
+    web = web_root(cfg)
+    ev["web"], ev["links"] = web, {}
+    for path, sha in files:
+        c = _holding_commit(repo, tree, path, sha)
+        ev["links"][path] = {"commit": c, "url": _url(web, "blob", c, path) if c and web else None}
+    return ev
+
+
+def _holding_commit(repo, tree, path, sha256):
+    """The newest commit, at the tree's commit (or HEAD), that wrote `path`, when its blob there hashes to sha256;
+    None when that file is not committed with these bytes."""
+    tip = tree.commit or _commit(repo, "HEAD")
+    if not tip or not sha256 or git(repo, "cat-file", "-e", "%s:%s" % (tip, path), check=False).returncode != 0:
+        return None                               # not at the tip at all: no need to walk its history
+    c = git(repo, "--literal-pathspecs", "log", "-1", "--format=%H", tip, "--", path, check=False).stdout.strip()
+    if not c:
+        return None
+    blob = subprocess.run(["git", "-C", repo, "cat-file", "blob", "%s:%s" % (c, path)], capture_output=True)
+    return c if blob.returncode == 0 and hashlib.sha256(blob.stdout).hexdigest() == sha256 else None
+
+
+def _ev_link(p, path, text) -> str:
+    url = ((p.get("links") or {}).get(path) or {}).get("url")
+    return "[%s](%s)" % (text, url) if url else text
+
+
+def _evidence_lines(p) -> list:
+    """The lines under 「最近一次 verify」: what verify left, and whether it is of the code under review."""
+    if p["state"] == "off":
+        return ["证据：%s。" % proof.TEXT[proof.GapKind.NO_PROOF_CHECK]]
+    shown = [r for r in p["rows"] if r["shown"]]
+    if not shown and not p["logs"]:
+        why = next((g["text"] for g in p["gaps"] if g["kind"] in ("no_verify", "lost")), "verify 还没留下截图和测试输出")
+        return ["证据：还没有（%s）。" % _one(why, 200)]
+    what = []
+    if shown:
+        missed = sum(1 for r in shown if r["shown"]["result"] == "failed")
+        what.append("%d 张截图%s" % (len(shown), "（%d 张看到了要的，%d 张没看到）" % (len(shown) - missed, missed)
+                                    if missed else ""))
+    if p["logs"]:
+        what.append("%d 份测试输出" % len(p["logs"]))
+    judged = [r["shown"] for r in shown] + p["logs"]
+    old = [x for x in judged if x["freshness"] == "stale"]
+    unknown = [x for x in judged if x["freshness"] == "unknown"]
+    paths = _ids(["`%s`" % _one(c, 100).replace("`", "'") for c in sorted({c for x in old for c in x["changed"]})], 3)
+    if old:
+        fresh = ("**是旧代码的**：拍完以后改了 %s。合并前要重跑 lean verify" % paths if len(old) == len(judged)
+                 else "其中 %d 份**是旧代码的**（拍完以后改了 %s）" % (len(old), paths))
+    elif unknown:
+        fresh = "%s核对不了是不是这份代码的（%s）" % ("" if len(unknown) == len(judged) else "其中 %d 份" % len(unknown),
+                                              _one(unknown[0]["why"], 120))
+    else:
+        fresh = "是这份代码的"
+    lines = ["证据：verify 留下了 %s，%s。" % ("和 ".join(what), fresh)]
+    late = next((r for r in shown if r["last"] and r["last"]["result"] == "skipped"), None)
+    if late:
+        lines.append("最近一次 verify 没拍截图（%s）：用的是 %s 那次 verify 拍的。" % (
+            _one(late["last"]["note"], 80), _when(late["shown"]["verify"]["at"])))
+    return lines
+
+
+def _evidence_cell(aid, p) -> tuple:
+    """The 证据 cell of one AC: its screenshots, linked, with what is wrong with each; files a wrapped command left.
+    And [(path, alt)] of the files it shows that may be seen inline (_thumbnails): of this code, showing what they
+    should."""
+    parts = []                          # (text, (path, alt) or None)
+    for r in p["rows"]:
+        if aid not in r["ac"]:
+            continue
+        s = r["shown"]
+        if s:
+            parts.append((_ev_link(p, s["path"], "%s 截图" % r["label"]) + {
+                "missed": "：**没看到**", "old": "（旧代码）", "unknown": "（核对不了）"}.get(r["state"], "") +
+                ("（还没提交）" if s["uncommitted"] else ""),
+                (s["path"], r["label"]) if r["state"] == "current" and not r["replanned"] else None))
+        else:
+            parts.append(("%s %s" % (r["label"], {"planned": "还没拍", "not_taken": "没拍成"}.get(r["state"], "不算")),
+                          None))
+    for lg in p["logs"]:
+        parts += [(_ev_link(p, f["path"], _one(f["id"], 60)), (f["path"], f["id"])
+                   if lg["freshness"] == "current" and f["result"] == "ok" else None)
+                  for f in lg["files"] if aid in f["ac"] and f["ok"]]
+    if not parts:
+        return ("**没有证据**" if aid in p["without"] else "—"), []
+    return ("；".join(t for t, _ in parts[:3]) + ("等 %d 项" % len(parts) if len(parts) > 3 else "")).replace(
+        "|", "\\|"), [x for _, x in parts[:3] if x]
+
+
+def _thumbnails(p, files):
+    """The line of screenshots the product sees inline on GitLab, the one image inert() keeps: the first THUMBS_MAX of
+    `files` [(path, alt)], raw at the commit each one's link is pinned to, as is_thumbnail_line() allows them (a file
+    no commit holds, or a kit config without gitlab, gives none); None without any."""
+    out = []
+    for path, alt in files:
+        embed = "![%s](%s){width=%d}" % (alt, _url(p["web"], "raw", p["links"][path]["commit"], path), THUMB_WIDTH)
+        if embed not in out and is_thumbnail_line(embed, p["web"]):
+            out.append(embed)
+    return " ".join(out[:THUMBS_MAX]) or None
+
+
+def _evidence_more(p) -> list:
+    """After the AC table: where the screenshots come from, and each test output."""
+    out = []
+    if p["rows"] and p["env"]:
+        plans = "、".join(_ev_link(p, pl["path"], pl["path"].rsplit("/", 2)[-2] + "/proof-plan.md") for pl in p["plans"])
+        out.append("截图按证据计划（%s）由 verify 拍，%s。" % (plans or "没有计划", _one(p["env"], 80)))
+    for lg in p["logs"]:
+        out.append("- 测试输出：%s（exit %s，%d 行%s）。" % (_ev_link(p, lg["path"], _one(lg["set"], 30)), lg["exit"],
+                                                       lg["lines"], {"stale": "，旧代码的", "unknown": "，核对不了"}.get(
+                                                           lg["freshness"], "")))
+    return out
+
+
 def _pointers(d) -> list:
     """2-4 concrete places to look first, derived from the data above."""
     out = []
@@ -1133,6 +1408,15 @@ def _pointers(d) -> list:
         out.append("改到了 risk path %s：%s" % (_ids(risk["files"], 2), dz.get("short", "设计批准没查")))
     if ch.get("brain_touched"):
         out.append("改到了 brain/：run 分支不能改 Brain（CI 会拦），应写成 brain-proposal")
+    pr = d.get("proof") or {}
+    missed = next((r for r in pr.get("rows") or [] if r["state"] == "missed"), None)
+    if missed:
+        out.append("先看 %s 的截图：verify 没看到要的（%s）%s" % (missed["label"], _one(missed["shown"]["note"], 60),
+                                                    "，" + "、".join(missed["ac"]) if missed["ac"] else ""))
+    old = sorted({c for x in [r["shown"] for r in pr.get("rows") or [] if r["shown"]] + list(pr.get("logs") or [])
+                  if x["freshness"] == "stale" for c in x["changed"]})
+    if old and not (v and v.get("current") is False):
+        out.append("证据是旧代码的（拍完以后改了 %s）：合并前要重跑 lean verify" % _ids(old, 2))
     if v and v.get("current") is False:
         out.append("verify 之后又改了代码（%s）：合并前要重跑 lean verify" % (v.get("why") or "指纹对不上"))
     elif v and not v["ok"]:
@@ -1180,7 +1464,7 @@ def render(d) -> str:
     title = d["title"] or "（没有标题）"
     if title.startswith(d["key"] + " "):
         title = title[len(d["key"]) + 1:]
-    out = ["## %s · %s" % (d["key"], title), ""]
+    out, thumbs = ["## %s · %s" % (d["key"], title), ""], None
     w = d["where"]
     st = w["stage"]
     now = ["Lean 在%s%s%s" % ("「%s」" % st["name"], "（%s）" % st["unit"] if st["unit"] else "", st["state"])
@@ -1240,18 +1524,33 @@ def render(d) -> str:
                 out.append("验收测试被改过 %d 处，没经过人允许（Lean 判 verify 没过）。" % v["protected_drift"])
         else:
             out.append("还没跑 verify。")
+        pr = d.get("proof")
+        if pr:
+            out += _evidence_lines(pr)
+        shown = bool(pr and (pr["configured"] or pr["counts"]["shots"] or pr["logs"]))
+        inline = []
         if d["acceptance"]:
-            out += ["", "| AC | 要求 | 测试 | 结果 |", "|---|---|---|---|"]
+            out += ["", "| AC | 要求 | 测试 | 证据 | 结果 |" if shown else "| AC | 要求 | 测试 | 结果 |",
+                    "|---|---|---|---|---|" if shown else "|---|---|---|---|"]
             for a in d["acceptance"][:LIMIT["ac"]]:
                 tests = "；".join("`%s`%s" % (t["test"].replace("`", "'").replace("|", "\\|"),
                                              "（文件不在）" if t["file_exists"] is False else "")
                                  for t in a["tests"][:2]) or "—"
-                out.append("| %s | %s | %s | %s |" % (a["id"], _cell(a["text"]), tests, a["result"]))
+                cell, files = _evidence_cell(a["id"], pr) if shown else (None, [])
+                inline += files
+                out.append("| %s |" % " | ".join([a["id"], _cell(a["text"]), tests] + ([cell] if shown else []) +
+                                                 [a["result"]]))
             out.append("")
             if len(d["acceptance"]) > LIMIT["ac"]:
                 out.append(_more(len(d["acceptance"]) - LIMIT["ac"], "requirements.md"))
             if v and any(a["tests"] for a in d["acceptance"]):
                 out.append("结果按整次 verify 算（Lean 不分单个测试）；测试名来自代码生成计划的 Tests 表。")
+        if shown:
+            out += _evidence_more(pr)
+            line = _thumbnails(pr, inline)
+            if line:
+                out += ["", line]
+                thumbs = len(out) - 1
 
     # 改了什么
     ch = d["changes"]
@@ -1385,13 +1684,20 @@ def render(d) -> str:
             "，%d 个回合" % d["cost"]["turns"] if d["cost"]["turns"] else "")]
 
     gone = list(d["missing"])
+    pr = d.get("proof")
+    said = [g["text"] for g in (pr or {}).get("gaps") or [] if g["kind"] not in EVIDENCE_SAID]
+    gone += [_one(x, 200) for x in said[:LIMIT["evidence"]]]
+    if len(said) > LIMIT["evidence"]:
+        gone.append("另有 %d 条证据的问题（`brain mr-desc --json` 的 proof.gaps）" % (len(said) - LIMIT["evidence"]))
     if d["audit_broken"]:
         gone.append("Lean 日志链断了：%s" % "、".join(d["audit_broken"][:3]))
     if gone:
         out += ["", "### 还没有"] + ["- %s" % x for x in gone]
     out += ["", "---", "由 `brain mr-desc` 从记录生成（run.json、Lean 记录、git），别手改。重新生成：`brain mr-desc %s --write`。"
             % d["key"]]
-    return inert("\n".join(out) + "\n")
+    # every line but the line of screenshots made above: a string of the data shaped like it shows no image, even
+    # one with blank lines around it
+    return "\n".join(x if n == thumbs else inert(x) for n, x in enumerate(out)) + "\n"
 
 
 def write(repo, cfg, key, text) -> str:
