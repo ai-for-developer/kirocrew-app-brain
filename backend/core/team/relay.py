@@ -1,5 +1,13 @@
-"""状态中转 on the team server: every requirement of the runner's projects as GitLab shows it, for the TeamSnapshot
-(snapshot.py) the server writes into GitLab for each person's app to read.
+"""状态中转 on the team server: the TeamSnapshot (snapshot.py) it writes into GitLab for each person's app to read
+(runner_view.Relays), and every requirement of the runner's projects as GitLab shows it, the snapshot's delivery.
+
+Writing (Relay): snapshot.json on branch main of the status project (bridge.json team_status.project; 一键建运行机's
+状态中转 makes it), through the commits API with the bridge's token (or team_status.token_file's). A round of the bridge
+builds a snapshot at most every FLOOR_S, and writes it only when it differs from the one there apart from when it was
+made and when the bridge last went round (content_key), or, the same, once the one there is HEARTBEAT_S old: so a reader
+tells a server at work from a stopped one (STALE_S). The one there is read once, when the relay starts, so a restart
+writes nothing new. A file there or not is created or updated, whichever GitLab takes. What went wrong is kept for the
+server's own 运行机 page; it never stops the round.
 
 The team view's rows come from GitLab only, read with the bridge's token: per project its claim/ and <prefix>/ branches
 (and brain/<KEY>-reflect-<n>, the write-backs made), its default branch's runs_dir (the requirements merged there), its
@@ -15,14 +23,20 @@ updated_at or head. A project GitLab does not answer for keeps its last rows, wi
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from typing import Any, Callable, Mapping
 
-from .. import bk, deliveries, lean_view, mrinfo
+from .. import bk, deliveries, lean_view, mrinfo, snapshot
 from ..constants import KEY_RE
 from ..repo import MAX_FILE, REFLECT_RE, Source, empty_facts, parse_branch, read_facts
 
+FILE, BRANCH = "snapshot.json", "main"
+NO_TOKEN_ENV = "BRAIN_STATUS_NO_TOKEN_ENV"   # nobody sets it: team_status.token_file is read, never the environment
+FLOOR_S = 5 * 60                # a snapshot is built, and written when it changed, at most this often
+HEARTBEAT_S = 30 * 60           # an unchanged one is written again this old, to say the server is alive
+STALE_S = 40 * 60               # a reader says the server may have stopped once the one there is this old
 MERGED_S = 14 * 86400           # a merged requirement stays this long after its merge
 FINAL_CI = ("success", "failed", "canceled", "skipped")
 # the steps (waits.do) its owner takes: a row waiting on one waits on them
@@ -301,3 +315,129 @@ class Deliveries:
                 raise
             self._deployed[k] = str(base.get("id") or "") == merge
         return self._deployed[k]
+
+
+# ---- writing ----------------------------------------------------------------------------------------------------- #
+
+def content_key(snap: Mapping[str, Any]) -> str:
+    """What decides whether a snapshot is new: all of it but when it was made and the bridge's last round (that one
+    moves every round, and the heartbeat says the server is alive)."""
+    body = dict(snap, generated_at=0, server=dict(snap["server"], last_round_at=None))
+    return hashlib.sha256(snapshot.dump(body).encode("utf-8")).hexdigest()
+
+
+WRITE_SAID = {401: "GitLab 不认写状态用的令牌", 403: "GitLab 不让这个账号写状态项目",
+              404: "GitLab 上找不到状态项目，或者这个账号看不到它"}
+WRITE_TODO = {401: "再跑一次一键建运行机：它会查令牌、换新的", 403: "在 GitLab 上把桥的账号加成状态项目的 Maintainer，或者再跑一次一键建运行机",
+              404: "再跑一次一键建运行机：它会建好状态项目、给好权限"}
+
+
+class Relay:
+    """snapshot.json on the status project, written by the bridge's rounds (round(), on its worker thread); view() for
+    the server's own 运行机 page, from any thread."""
+
+    def __init__(self, connect: Callable[[], Any], project: str, now: Callable[[], float] = time.time) -> None:
+        self.connect, self.project, self.now = connect, project, now
+        self.gl: Any = None                     # connect()'s GitLab client, made in the first round that writes
+        self.there: bool | None = None          # snapshot.json is on main (None: not read yet)
+        self.key: str | None = None             # content_key of the one there (None: unknown, or not one)
+        self.written_at: float | None = None    # when the one there was made
+        self.heartbeat = False                  # the last write wrote the same snapshot again
+        self.built_at: float | None = None      # when the last round built one (or tried)
+        self.error, self.todo, self.raw = "", "", ""
+
+    def round(self, build: Callable[[float], Mapping[str, Any]]) -> str:
+        """One round of the bridge: a snapshot built (build(now)) when FLOOR_S went by since the last, and written when
+        it is new or the one there is HEARTBEAT_S old. -> "wait", "same", "wrote", "heartbeat" or "failed"."""
+        now = self.now()
+        if self.built_at is not None and now - self.built_at < FLOOR_S:
+            return "wait"
+        self.built_at = now
+        try:
+            if self.gl is None:
+                self.gl = self.connect()
+            if self.there is None:
+                self._read()
+            snap = snapshot.parse(dict(build(now)))
+            key = content_key(snap)
+            same = key == self.key
+            if same and self.written_at is not None and now - self.written_at < HEARTBEAT_S:
+                self._ok()
+                return "same"
+            self._write(snap, same)
+            self.key, self.written_at, self.heartbeat = key, snap["generated_at"], same
+            self._ok()
+            return "heartbeat" if same else "wrote"
+        except Exception as exc:  # noqa: BLE001 - GitLab, a bad snapshot: said on the page, the round goes on
+            status = getattr(exc, "status", None)
+            if isinstance(exc, snapshot.Bad):
+                self.error, self.todo = "这一轮做出来的状态不对，没有写", "把细节里的原话发给管运行机的人：这是 app 的问题"
+            else:
+                self.error = WRITE_SAID.get(status, "这一轮没写成状态")
+                self.todo = WRITE_TODO.get(status, "%d 分钟以后会再写；一直这样就看细节里 GitLab 说的" % (FLOOR_S // 60))
+            self.raw = " ".join(str(exc).split())[:500]
+            return "failed"
+
+    def view(self) -> dict[str, Any]:
+        """TeamRelay (ui/src/types.ts): where it writes, when the one there was made, what went wrong last."""
+        return {"project": self.project, "written_at": self.written_at, "heartbeat": self.heartbeat,
+                "checked_at": self.built_at, "error": self.error, "todo": self.todo, "raw": self.raw}
+
+    def _ok(self) -> None:
+        self.error = self.todo = self.raw = ""
+
+    def _read(self) -> None:
+        """The snapshot there now: whether there is one, what it says and when it was made."""
+        raw = self.gl.file_raw(self.project, FILE, BRANCH)
+        self.there = raw is not None
+        try:
+            got = snapshot.parse(raw) if raw is not None else None
+        except snapshot.Bad:
+            got = None
+        self.key = content_key(got) if got else None
+        self.written_at = got["generated_at"] if got else None
+
+    def _write(self, snap: Mapping[str, Any], same: bool) -> None:
+        path = "/projects/%s/repository/commits" % bk.m("rest").q(self.project)
+        action = "update" if self.there else "create"
+        body = {"branch": BRANCH, "commit_message": "团队状态：%s" % ("没有变化（心跳）" if same else "更新"),
+                "actions": [{"action": action, "file_path": FILE, "content": snapshot.dump(snap)}]}
+        try:
+            self.gl.call("POST", path, body=body)
+        except bk.m("rest").HttpError as exc:
+            if exc.status != 400:
+                raise
+            body["actions"][0]["action"] = "create" if action == "update" else "update"    # it is there after all, or not
+            self.gl.call("POST", path, body=body)
+        self.there = True
+
+
+# ---- what the snapshot says of the server ------------------------------------------------------------------------- #
+
+def project_states(polled: list[Mapping[str, Any]], patrol: Mapping[str, Any], staging: Mapping[str, Any],
+                   unread: Mapping[str, str]) -> list[dict[str, Any]]:
+    """Each project as the round left it (the snapshot's server.projects): whether the runner takes its hand-overs, the
+    work sources its kit.json switches on, and what went wrong with it this round, each part in words."""
+    pat = {p["project"]: p.get("error") or "" for p in patrol.get("projects") or []}
+    sta = {p["project"]: p.get("error") or "" for p in staging.get("projects") or []}
+    out = []
+    for p in polled:
+        name = p["project"]
+        said = [p.get("error") or "", "全队交付没读成：%s" % unread[name] if unread.get(name) else "",
+                "MR 巡检：%s" % pat[name] if pat.get(name) else "", "测试环境报错：%s" % sta[name] if sta.get(name) else ""]
+        out.append({"project": name, "on": bool(p.get("on")), "sources": list(p.get("sources") or []),
+                    "error": "；".join(x for x in said if x)})
+    return out
+
+
+def identity_roles(path: Any) -> dict[str, list[str]]:
+    """identities.json's roles (brain-authz's shape: {"users", "roles": {role: [username]}}); {} when it cannot be
+    read."""
+    try:
+        with open(str(path), encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError, TypeError):
+        return {}
+    roles = doc.get("roles") if isinstance(doc, dict) else None
+    return {str(k): [str(n) for n in v if isinstance(n, str)] for k, v in roles.items() if isinstance(v, list)} \
+        if isinstance(roles, dict) else {}

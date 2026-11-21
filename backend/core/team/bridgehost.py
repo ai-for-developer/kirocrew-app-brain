@@ -46,10 +46,12 @@ from collections import deque
 from datetime import timedelta
 from typing import Any
 
-from .. import bk, deliveries, lean_view, problems
-from ..constants import APP_ROOT, PYTHON_BIN
+from .. import bk, deliveries, lean_view, problems, snapshot
+from ..constants import APP_ROOT, PYTHON_BIN, VERSION
 from ..repo import Git, Source, read_claim, read_facts
+from ..scrub import scrub_tree
 from . import patrol as patrol_mod
+from . import relay as relay_mod
 from . import signerproc, sources
 from . import staging as staging_mod
 from .crewadapter import KiroCrewAdapter
@@ -108,8 +110,10 @@ def start_inputs(team: dict[str, Any]) -> list[str]:
     gitlab = cfg.get("gitlab") if isinstance(cfg.get("gitlab"), dict) else {}
     signer = cfg.get("signer") if isinstance(cfg.get("signer"), dict) else {}
     jenkins = cfg.get("jenkins") if isinstance(cfg.get("jenkins"), dict) else {}
+    status = cfg.get("team_status") if isinstance(cfg.get("team_status"), dict) else {}
     named = [team.get("bridge_config"), team.get("runnerd_config"), gitlab.get("token_file"), cfg.get("identities"),
-             signer.get("allowed_signers"), signerproc.config_for(team), jenkins.get("token_file")]
+             signer.get("allowed_signers"), signerproc.config_for(team), jenkins.get("token_file"),
+             status.get("token_file")]
     return [os.path.expanduser(str(p)) for p in named if p]
 
 
@@ -136,6 +140,9 @@ class TeamRuntime:
         self.last_summary: dict[str, int] = {}
         self.last_handovers: list[dict[str, Any]] = []   # what Bridge.process said for each labelled MR, last round
         self.poll_checks: list[dict[str, Any]] = []      # CheckRows: the projects the last poll did not read or poll
+        self.poll_projects: list[dict[str, Any]] = []    # each project as the last poll left it (relay.project_states)
+        self.relay: relay_mod.Relay | None = None        # 状态中转: bridge.json team_status
+        self.deliveries: relay_mod.Deliveries | None = None
         self.lines: deque = deque(maxlen=200)
         self.same_user = False
         self.inputs = ""            # signerproc.digest of start_inputs, taken as start() read them
@@ -215,13 +222,29 @@ class TeamRuntime:
                 ledger_path=os.path.join(os.path.dirname(config), "staging.sqlite"),
                 workspaces=staging_mod.beside(self.patrol.workspaces), helper=self.patrol.helper,
                 claims=lambda: sources.held(self), shared=lambda: sources.at_work(self, but=sources.STAGING))
+            self.relay, self.deliveries = self._relay(cfg, gl)
             self.cfg, self.runnerd_cfg, self.spool, self.allowed_signers = cfg, rcfg, spool, allowed
             self.error = ""
             return True
         except Exception as exc:  # noqa: BLE001
             self.error = str(exc).split("\n", 1)[0][:400]
-            self.host = self.patrol = self.staging = None
+            self.host = self.patrol = self.staging = self.relay = self.deliveries = None
             return False
+
+    def _relay(self, cfg: dict[str, Any], gl: Any) -> tuple[relay_mod.Relay | None, relay_mod.Deliveries | None]:
+        """状态中转 when bridge.json names its project (team_status.project): written with the bridge's token, or the
+        one in team_status.token_file (a project token of the status project's own, as 一键建运行机 makes it for a
+        runner on project tokens), read when the first round writes."""
+        ts = cfg.get("team_status") if isinstance(cfg.get("team_status"), dict) else {}
+        project = str(ts.get("project") or "").strip()
+        if not project:
+            return None, None
+        base, rest = str(cfg["gitlab"]["base"]), bk.m("rest")
+        token_file = str(ts.get("token_file") or "")
+        connect = (lambda: rest.GitLab(base, rest.read_token(relay_mod.NO_TOKEN_ENV, relay_mod.NO_TOKEN_ENV,
+                                                             default_file=token_file), self.transport)) \
+            if token_file else (lambda: gl)
+        return relay_mod.Relay(connect, project), relay_mod.Deliveries(gl, base, self.host.kit)
 
     def stop(self) -> None:
         """Close the ledger after the round in progress (it runs on the executor), then let the executor go."""
@@ -284,8 +307,39 @@ class TeamRuntime:
                     self._out("%s failed this round: %s" % (step, exc))
             self.last_loop_at = time.time()
             self.loop_error = "；".join(errors)
+            if self.relay is not None:      # 状态中转: what goes wrong is its own to say, the round is done
+                summary["relay"] = int(self.relay.round(self.snapshot) in ("wrote", "heartbeat"))
             self.last_summary = summary
         return summary
+
+    def snapshot(self, now: float) -> dict[str, Any]:
+        """The TeamSnapshot this round relays (snapshot.py): the server and each project as the round left it; the
+        runner at work as 运行机 shows it (its runs, runner_rows, still open; MR 巡检's and 测试环境报错's views, as
+        they are); 全队交付 from GitLab (relay.Deliveries). Scrubbed as the pages are."""
+        projects = [p["project"] if isinstance(p, dict) else str(p) for p in self.host.cfg["projects"]]
+        patrol, staging = self.patrol_view(), self.staging_view()
+        roles = relay_mod.identity_roles(self.cfg.get("identities"))
+        deployed = {p["project"]: str(p.get("deployed_sha") or "") for p in staging.get("projects") or [] if p.get("on")}
+        rows, unread = self.deliveries.build(projects, deployed=deployed, roles=roles)
+        asked = {(r["project"], r["key"]): r["waits"] for r in rows}
+        handovers = []
+        for row, _facts, _decs, run in self.runner_rows():
+            if run["state"] in ("merged", "closed"):
+                continue
+            seen = asked.get((str(run["project"]), row["key"]))
+            gate = row["waits"]["do"] in deliveries.GATES
+            on = seen["on"] if seen and gate and seen["do"] in deliveries.GATES else relay_mod.on_names(row, None, roles)
+            handovers.append({"project": str(run["project"]), "iid": int(run["iid"]),
+                              "mr_url": self.mr_url(run["project"], run["iid"]), "key": row["key"], "title": row["title"],
+                              "run_id": str(run["run_id"]), "state": str(run["state"]), "owner": run.get("owner") or None,
+                              "waits": relay_mod.waits_of(row, on)})
+        snap = {"schema": snapshot.SCHEMA, "generated_at": now,
+                "server": {"version": VERSION, "team_mode": True, "last_round_at": self.last_loop_at,
+                           "projects": relay_mod.project_states(self.poll_projects, patrol, staging, unread)},
+                "runner": {"handovers": handovers, "patrol": patrol["items"], "staging": staging["items"],
+                           "cap": int(patrol["cap"]), "working": int(patrol["working"]) + int(staging["working"])},
+                "delivery": rows}
+        return scrub_tree(snap, self.scrub)
 
     def _poll(self, host: Any) -> int:
         """brain-kit's Bridge.poll, MR by MR, keeping each MR's result (Bridge.process) for the page. A project whose
@@ -296,11 +350,15 @@ class TeamRuntime:
         seen: list[dict[str, Any]] = []
         checks: list[dict[str, Any]] = []
         errors: list[str] = []
+        polled: list[dict[str, Any]] = []
         try:
             for proj in host.cfg["projects"]:
                 project = proj["project"] if isinstance(proj, dict) else proj
+                state = {"project": str(project), "on": False, "sources": [], "error": ""}
+                polled.append(state)
                 try:
                     kit = host.kit(project)
+                    state["sources"] = list(sources.enabled(kit))
                     if sources.HANDOFF not in sources.enabled(kit):
                         checks.append(problems.mk(
                             "WARN", "%s 的 kit.json 里 work_sources 没写 %s：运行机不接这个项目的交接" % (project, sources.HANDOFF),
@@ -311,11 +369,13 @@ class TeamRuntime:
                 except (common.BrainError, OSError, ValueError) as exc:     # read again next round
                     said = self.scrub(" ".join(str(exc).split())[:300])
                     errors.append("%s: %s" % (project, said))
+                    state["error"] = "这一轮没读成，它的交接没看：%s" % said
                     checks.append(problems.mk(
                         "FAIL", "%s 上一轮没读成：它的交接没看，别的项目照常" % project,
                         "下一轮会自动再试；一直这样就看细节：多半是这个项目默认分支上的 .brain/kit.json 读不了，或者桥的账号看不到这个项目",
                         raw=said))
                     continue
+                state["on"] = True
                 for mr in mrs:
                     row = {"project": str(project), "iid": int(mr.get("iid") or 0), "sha": str(mr.get("sha") or "")[:40],
                            "result": "error", "error": "", "at": time.time()}
@@ -326,7 +386,7 @@ class TeamRuntime:
                         row["error"] = self.scrub(str(e).split("\n", 1)[0][:300])
                     seen.append(row)
         finally:
-            self.last_handovers, self.poll_checks = seen, checks
+            self.last_handovers, self.poll_checks, self.poll_projects = seen, checks, polled
         if errors:
             raise common.BrainError("not done this round: " + "; ".join(errors))
         return len(seen)
@@ -510,7 +570,8 @@ class TeamRuntime:
                 "error": why["text"], "error_todo": why["todo"], "error_raw": why["raw"],
                 "last_loop_at": self.last_loop_at, "loop_error": self.loop_error, "checks": list(self.poll_checks),
                 "same_user": self.same_user,
-                "signer": {"pending": len(sig["pending"]), "refused": len(sig["refused"])}}
+                "signer": {"pending": len(sig["pending"]), "refused": len(sig["refused"])},
+                "relay": self.relay.view() if self.relay is not None else None}
 
     def signer_view(self) -> dict[str, Any]:
         return spool_view(self.spool) if self.host is not None and self.spool else {"pending": [], "refused": []}

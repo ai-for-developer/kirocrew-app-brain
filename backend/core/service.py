@@ -31,6 +31,7 @@ from .gateway import Gateway, GatewayError
 from .gateway import said as gateway_said
 from .httpkit import AppError
 from .repo import Git, Repo, files_stamp, git_stamp
+from .scrub import basic_scrub, scrub_tree
 from .repoids import RepoIds, from_records
 from .sessions import SessionManager, requirement_credits
 from . import store as store_mod
@@ -41,8 +42,6 @@ from .team import signerproc
 from .team import staging as staging_mod
 
 _REGISTRY: dict[str, "Service"] = {}
-_SECRETS = re.compile(r"(?i)((?:password|passwd|secret|token|api[_-]?key|authorization)\s*[=:]\s*|bearer\s+)\S+"
-                      r"|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{16,}")
 EVAL_TTL_S = 120.0
 REVIEW_TITLE = " · 审查"     # a review session's title ends so (开审查会话): it is never the live dev session
 REVIEW_OPEN = "这个需求的审查会话还开着，审查还没写好：打开它接着审，没有另开一个"
@@ -53,10 +52,6 @@ FAILED_TRACE_S = 15.0  # a trace brain-kit could not make (git timed out under l
 RUNNER_ELSEWHERE = "交接以后，运行机上的会话这台机器读不到，没算进来"
 LOCAL_ELSEWHERE = "交接以前，开发者机器上的会话这台机器读不到，没算进来"
 RUNNER_TOOK = ("running", "parked", "acceptance", "merged", "closed")   # a hand-over's states once the runner has it
-
-
-def basic_scrub(text: str) -> str:
-    return _SECRETS.sub(lambda m: (m.group(1) or "") + "[已隐去]", text)
 
 
 def scope_of(rid: str, key: str) -> str:
@@ -71,24 +66,6 @@ def trace_failed(tl: dict[str, Any]) -> bool:
 
 
 RECORD_SCOPE_RE = re.compile(r"^(r[1-9][0-9]{0,2})-([A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6})$")   # a local scope_of
-
-
-SCRUB_KEYS = ("text", "why", "question", "label", "detail", "status", "next", "open_questions", "output", "reasons",
-              "findings", "review", "blocking", "error", "session_error", "notes", "warnings", "problems", "summary",
-              "first", "todo", "raw", "doing", "facts", "title", "name", "checks", "note", "subject", "sub", "push_why",
-              "push_cmd", "reply", "task", "ticker", "why_not", "also", "cause", "missing", "here", "do")
-
-
-def scrub_tree(obj: Any, scrub: Callable[[str], str], key: str = "") -> Any:
-    """Agent- and tool-written text on its way to the page goes through the scrubber (KiroCrew's own when it has one):
-    decisions, Session notes, questions, timeline lines, command output. Ids, paths and numbers are left alone."""
-    if isinstance(obj, dict):
-        return {k: scrub_tree(v, scrub, k) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [scrub_tree(v, scrub, key) for v in obj]
-    if isinstance(obj, str) and key in SCRUB_KEYS and obj:
-        return scrub(obj)
-    return obj
 
 
 def me_line(repos: list[dict[str, Any]], token: bool, env: str) -> dict[str, Any]:
@@ -1761,7 +1738,7 @@ class Service:
             why = problems.team_start("brain-kit 没装载" if on else "")
             return {"enabled": on, "ok": False, "error": why["text"], "error_todo": why["todo"], "error_raw": why["raw"],
                     "last_loop_at": None, "loop_error": "", "checks": [], "same_user": False,
-                    "signer": {"pending": 0, "refused": 0}}
+                    "signer": {"pending": 0, "refused": 0}, "relay": None}
         return self.team.status()
 
     async def status(self) -> dict[str, Any]:

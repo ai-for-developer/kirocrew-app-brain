@@ -69,6 +69,7 @@ deliveries = importlib.import_module("_brainapp_backend.core.deliveries")
 identity = importlib.import_module("_brainapp_backend.core.identity")
 family_mod = importlib.import_module("_brainapp_backend.core.family")
 service = importlib.import_module("_brainapp_backend.core.service")
+scrub = importlib.import_module("_brainapp_backend.core.scrub")
 bk = importlib.import_module("_brainapp_backend.core.bk")
 brainview = importlib.import_module("_brainapp_backend.core.brainview")
 intake = importlib.import_module("_brainapp_backend.core.intake")
@@ -1134,7 +1135,7 @@ def drawer_payloads(r: Req, rid: str, keep: dict) -> dict[str, dict]:
             got = make()
         except AppError as e:
             got = {"__error": {"status": e.status, "code": e.code, "error": str(e)}}
-        out[outputs_key(path, q)] = service.scrub_tree(got, service.basic_scrub)
+        out[outputs_key(path, q)] = scrub.scrub_tree(got, scrub.basic_scrub)
 
     for n in f.nodes:
         if not n.rounds or (n.status or n.waits).status == "skipped":
@@ -1151,7 +1152,7 @@ def drawer_payloads(r: Req, rid: str, keep: dict) -> dict[str, dict]:
             nq = outputs.node_query(n.id, str(rnd.n))
             slots = [turns_mod.Slot(str(s["slot"]), str(s["url"]), r.session["cwd"], False, r.session["rows"], True,
                                     r.session["sent"]) for s in turns_mod.sessions_to_read(f, nq) if r.session]
-            put(base + "/turns", {"node": n.id, "round": str(rnd.n)}, lambda: turns_mod.turn_views(f, nq, slots, r.key, T0, service.basic_scrub))
+            put(base + "/turns", {"node": n.id, "round": str(rnd.n)}, lambda: turns_mod.turn_views(f, nq, slots, r.key, T0, scrub.basic_scrub))
     return out
 
 

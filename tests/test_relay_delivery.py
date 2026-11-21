@@ -22,7 +22,7 @@ from teamfix import BOT_ENV
 pytestmark = needs_brainkit
 P = "shop/pay"
 KIT = {"gitlab": {"base": BASE, "project": P}, "bridge_user": "brain-bridge"}
-ROLES = {"product": ["carol"], "builder": ["bob"]}
+ROLES = {"product": ["carol", "erin"], "builder": ["bob"]}
 DAY = 86400
 
 
@@ -213,6 +213,18 @@ def test_a_branchs_records_are_read_once_per_head_and_a_running_pipeline_until_i
     sixth = len(gl.calls)
     build(world)
     assert len(gl.asked("notes", since=sixth)) == 1
+
+
+def test_a_merge_older_than_14_days_is_no_row_however_lately_its_mr_moved(world):
+    gl = world["gl"]
+    old = gl.mrs[(P, 4)]
+    was = old["updated_at"]
+    old["updated_at"] = gl.mrs[(P, 5)]["updated_at"]          # someone commented on PAY-5's merged MR today
+    try:
+        rows, _ = build(world)
+    finally:
+        old["updated_at"] = was
+    assert any(c[2].get("state") == "merged" for c in gl.asked("mrs")) and "PAY-5" not in by_key(rows)
 
 
 def test_a_project_gitlab_does_not_answer_keeps_its_last_rows_and_says_why(world):

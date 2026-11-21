@@ -517,6 +517,26 @@ export interface TeamStatus {
    * sign whatever the app asks, so it is no boundary (never on a real team runner) */
   same_user: boolean
   signer: { pending: number; refused: number }
+  /** 状态中转 (bridge.json team_status): the snapshot the bridge's rounds write for every person's app; null when
+   * bridge.json names no status project */
+  relay: TeamRelay | null
+}
+
+/** 状态中转 as the team server's last rounds left it (backend/core/team/relay.py Relay.view). */
+export interface TeamRelay {
+  /** the GitLab project snapshot.json goes to */
+  project: string
+  /** when the snapshot there was made (epoch s); null: none written or read yet */
+  written_at: number | null
+  /** the last write wrote the same snapshot again, to say the server is alive */
+  heartbeat: boolean
+  /** when a round last built one (or tried) */
+  checked_at: number | null
+  /** why the last try did not write, in words ('' when it did, or found nothing new) */
+  error: string
+  todo: string
+  /** GitLab's or the app's own words, for 细节 */
+  raw: string
 }
 
 // ---------------------------------------------------------------- 导入仓库: /import/*, POST /repos/remove
