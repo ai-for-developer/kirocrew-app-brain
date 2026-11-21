@@ -43,6 +43,15 @@ DEFAULTS = {
     # the team's 允许快速模式: false makes `brain start --fast` refuse and brain-ci fail every fast run's MR (read from
     # the target branch, as every rule here is)
     "fast_mode": True,
+    # brain-ci new-coverage: coverage of the lines an MR adds; below block % fails, below warn % warns. ignore:
+    # paths not counted (gates/risk-paths rules); tests never are
+    "new_coverage": {"block": 60, "warn": 80, "ignore": []},
+    # brain-ci migrations: the migration files it lints (gates/risk-paths rules)
+    "migrations": {"paths": ["migrations/*.sql"]},
+    # what happened after a merge (brainkit/deploys.py): the GitLab environment whose deployments count, and the CI
+    # jobs and artifacts that hold the deploy and build evidence. environment "": off. Read from the default branch
+    "deploys": {"environment": "", "deploy_job": "", "deploy_evidence": "deploy-evidence.json", "build_job": "",
+                "build_evidence": "build-evidence.json"},
     # GitLab users (security / data owners) who may approve a Brain purge; empty: purges are refused
     "purge_approvers": [],
     # who may answer each kind of decision (owner = the run's owner; other names are roles in brain-authz)

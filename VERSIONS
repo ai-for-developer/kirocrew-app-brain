@@ -1,4 +1,4 @@
-brain (Brain 交付) 0.5.0
-app         96dbb37dbb85ebc6bf52fa33c7797eff73002143  https://github.com/ai-for-developer/kirocrew-app-brain  (main; backend/, ui/dist/ built from ui/)
-brain-kit   b57230372d6adbdf785e3064baa5724ac2fefdc9  https://github.com/ai-for-developer/brain-kit  (vendor/brain-kit, git archive, tests/ left out)
+brain (Brain 交付) 0.5.1
+app         8c6e5c257b15070cdb6c11008b6306231314ad24  https://github.com/ai-for-developer/kirocrew-app-brain  (main; backend/, ui/dist/ built from ui/)
+brain-kit   179273100861f9484cc9bc08dbece7421bc68589  https://github.com/ai-for-developer/brain-kit  (vendor/brain-kit, git archive, tests/ left out)
 aidlc-lean  6805945375b367fa515033646a588468d241d79b  https://github.com/ai-for-developer/aidlc-lean  (vendor/brain-kit/vendor/aidlc-lean, git archive, tests/ left out)

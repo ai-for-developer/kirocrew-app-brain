@@ -8,7 +8,7 @@
 - **eval**：把所有 trace 合起来算指标，列出要人复看的 run 和值得记的缺口。
 - **golden 题和消融**：固定考题，去掉一块 Brain 再考，看哪块知识在"承重"。
 
-都是只读的：只读已有的记录，不改仓库，不联网。同样的输入，结果一样。
+都是只读的：只读已有的记录，不改仓库。默认不联网；默认分支的 `.brain/kit.json` 写了 `deploys` 以后，还读 GitLab 上那个环境的部署记录和部署证据（第 2 节，合并后的部署）。同样的输入，结果一样；部署也按 `--as-of` 判断，这个时间以后的不看。
 
 ## 1. 命令
 
@@ -23,6 +23,7 @@ brain eval --ledger /srv/bridge/ledger.sqlite --stuck-hours 48   # 没合并的 
 brain eval --json
 brain eval gaps                                    # 值得记的缺口
 brain eval gaps --file                             # 记成需求（来源 eval-gap）
+brain deploys -n 10                                # main 最近 10 个改动合并后的部署（要 kit.json 的 deploys）
 
 brain golden plan --tasks tasks --repeats 3 --json > jobs.json
 brain golden snapshot tasks/G-1 --out /tmp/g1 --variant no-TECH    # --mask-secrets: 见第 4 节，要人明确选
@@ -53,7 +54,8 @@ brain golden summarize results.json --tasks tasks
 | humans | 人做的每件事：审批、驳回、没被接受的口令、回答、"允许改测试"、交接后往 ai/* 的提交、平台上手动停止或重启 | Lean 日志；ledger；凭证；git；KiroCrew app |
 | brain | 开工时装载了几条、引用了哪些、过时的引用、提案 | `brainkit.usage`（不另算） |
 | cost | credits，按回合拆分（有的话） | KiroCrew app 传入 |
-| outcome | 交接了没有、验收（是否一次通过）、合并时间、14 天内的回滚 / 热修 / 缺陷 | run.json；Lean 日志；ledger；git |
+| outcome | 交接了没有、验收（是否一次通过）、合并时间、14 天内的回滚 / 热修 / 缺陷 / 灰度中止 | run.json；Lean 日志；ledger；git；GitLab 的部署（打开 `deploys` 时） |
+| outcome.deploy | 合并后的部署：哪几次部署发布了它、第一次上线的 digest 和时间、合并到上线的小时数、每次的灰度步骤和没过的冒烟检查、构建门禁和扫描 | GitLab 的部署记录（Deployments API）和部署、构建作业的产物；字段名写在 `brainkit/deploys.py` 开头 |
 
 **人的身份**：只出现 GitLab 用户名和化名。git 和 Lean 记的邮箱、名字、主机名，换成 `G-` 加 6 位（邮箱的哈希）。Lean 的审计文件名里有主机名（`<主机>-<6 位>.jsonl`），trace 里写成 `aidlc-docs/audit/L-<6 位>.jsonl`（文件路径的哈希，每台机器上一样）。被拦下的命令、阶段说明、失败的检查命令里出现的邮箱换成 `G-` 化名，`/Users/<名字>`、`/home/<名字>` 换成 `~`。桥的答复人用凭证里的化名 `P-xxxx`。Lean 记的审批口令里写着 `(via gitlab P-xxxx V-…)` 只是"自称"：这个凭证号在读到的凭证或 ledger 里有，就和桥上那条合成一条（答复人是桥上记的）；给了凭证或 ledger、里面却没有它，不认口令里的化名，`who` 是 Lean 这条记录自己的身份（`G-` 化名，运行机上就是机器人账号的）；凭证和 ledger 都没给时没法核对，照口令写。decisions.md 的 Who 栏不是规定的写法时，不写出来（可能是人名）。人的消息原文不抄，decisions.md 里本来就有的除外。
 
@@ -111,6 +113,14 @@ brain golden summarize results.json --tasks tasks
 - 回滚（`This reverts commit <run 的提交>`），或者点名 KEY、又带修复词的提交（修复词和 R3 一样：regression test 不算），算回滚 / 热修；新的报告问题的 `claim/<KEY2>`，标题点名 KEY 又带修复词的，算缺陷（第 3 节）。
 - **A2**：回滚和热修，都要改了 `brain/`、`runs/`、`aidlc-docs/` 以外的东西才算。只改 Brain 和记录的不算：`brain reflect --apply` 的提交和它的 MR 合并，消息里都点名这个需求，缺口的标题又常带"回滚、故障、缺陷"这类词。这些列在 `ignored` 里（写明为什么），不算数。合并提交看它带进 main 的改动（和第一个父提交比）。
 
+**合并后的部署**（`outcome.deploy`，`brainkit/deploys.py`）：只在默认分支的 `.brain/kit.json` 写了 `deploys.environment` 时读（run 分支上改了不算）；没写就是 null，也不联网。`deploys` 还有 `deploy_job`（部署作业的名字，空着就是这个环境的所有作业）、`deploy_evidence`（它的产物里的部署证据，默认 `deploy-evidence.json`）、`build_job`（同一条流水线里构建镜像的作业，空着就不读构建证据）、`build_evidence`（默认 `build-evidence.json`）。GitLab 用同一个 kit.json 的 `gitlab.base`、`gitlab.project`，token 和别的命令一样（`GITLAB_TOKEN` 或 `~/.brain/gitlab-token`）。证据文件的字段也写在 `brainkit/deploys.py` 开头。
+
+- **D1**：部署的提交是默认分支上的、又包含合并提交（合并提交本身，或 main 上之后的任何提交；按这里的 git 历史判断），才算发布了这个需求。别的分支的部署（有人手动跑的流水线）不算在任何需求上（`brain deploys` 单列）；开始前就取消的部署什么都没发布，不算。
+- **D2**：上线（promoted）和灰度中止（aborted）只认部署证据：环境、提交要对得上，要写明结果和 digest；说上线了，部署后的稳定 digest 也要是它。GitLab 显示作业成功不算上线。证据读不到（没有、过期了、不是 JSON、对不上）、提交不在这个 clone 里（要 fetch）、作业跑到一半被取消（灰度可能自己接着走了），结果都是 unknown，不算上线；还在跑的是 running（按 `--as-of`）。
+- **D3**：`attempts` = 发布了它的部署，从早到晚，到第一次上线为止。`at`、`digest` 是第一次上线完成的时间和 digest，`lead_time_hours` 是合并到那时的小时数。之后的部署不看：第一次上线以后中止的，是后来的改动的失败，这个需求那时已经稳定了。
+- **D4**：14 天里灰度中止的尝试算一次回滚，写进 `reverted_or_hotfixed_within_14d.evidence`（`deployment`、`sha`、`rule`）。14 天里有结果是 unknown 或还在跑的尝试，或者部署读不到时，14 天满了 `value` 还是 null，`note` 写原因：读不到不算"没有"。这样的交付不算进交付正确率（`delivery.unknown_after_merge`）。
+- 构建证据：每次尝试的 `build`：门禁（pass / blocked）、扫描（status、critical、high）、构建出的 digest；和部署的 digest 对不上是 unknown。
+
 **同一件事只算一次**：桥送回 Lean 的审批口令，在 Lean 日志里也有一条。两条按凭证号合成一条，来源都列上。decisions.md 里记下桥上回答的那一行，也按凭证号连到桥上那条决策。
 
 ## 3. 指标
@@ -136,6 +146,9 @@ brain golden summarize results.json --tasks tasks
 | 重复纠正率 | correction 条目的 repeats 合计 ÷（correction 条目数 + repeats 合计），目标趋近 0 | 和 `brain usage` 一样 |
 | 知识有用率 | 被引用过的条目 ÷ 现有条目；另给每个 run 引用数之和 ÷ 装载数之和 | 只认 Lean 记录里写出的条目号 |
 | 过时与冲突 | 过时引用（开工时已归档的条目还被引用；给了 `--since` 时只算期内的 run 的）+ lint 的"同一个术语定义了两次" + 本期被覆盖或撤回的条目 | 桥上"两个人回答不一样"只发了 MR 评论，没进 ledger，数不到 |
+| 部署频率 | 期内（`--since`，否则最近 28 天）默认分支的部署上线（D2 的 promoted）到 `deploys.environment` 的次数，按周算（JSON `deploys.frequency`，`weeks` 是每个 ISO 周的次数） | 只算部署证据说上线了的；中止的、读不到的单列。没打开 `deploys` 时没有这一项 |
+| 合并到上线 | 从合并到第一次上线了这个需求的部署（D3）的小时数，期内合并的需求取中位（`deploys.lead_time_hours`） | 只看 staging 这类打开了的环境；fast-forward 合并的合并时间是最后一个 run 提交的时间，会偏长 |
+| 变更失败率 | 部署过的需求里，上线前灰度中止过（D4）、或合并后 14 天内有回滚 / 热修 / 缺陷的 ÷ 14 天已满、结果读得到、部署过的需求（`deploys.change_failure`） | 14 天没满的（`pending`，已知失败的 `failed_open`）、读不到的（`unknown`）、没部署过的（`not_deployed`）单列，不算 |
 | credits | 完成的 run 花的 credits 合计 ÷ 正确交付数。只用来诊断，不设上限 | **token 数量不到**：经 Kiro 跑模型，KiroCrew 只给 credits，input、output、cache 的 token 数都是 0。credits 也读不到，要 KiroCrew app 传进来 |
 
 **决策漏斗**：期内的每一条决策，按"谁定的"归一类，每条只算一次，也按周（ISO 周）列：
@@ -258,7 +271,8 @@ Who 的写法是运行机提示词（`remote/prompts/brain-run.md` 第 5 节）�
 ## 6. 还量不到的、还没验证的
 
 - **token**：见上。只有 credits，而且要 KiroCrew 传进来。
-- **CI 流水线**：GitLab 的流水线结果这里读不到；"修 CI 的轮数"只能用 verify 的失败次数代替。
+- **CI 流水线**：GitLab 的流水线结果这里读不到；"修 CI 的轮数"只能用 verify 的失败次数代替。打开 `deploys` 以后，只读部署记录和部署、构建证据。
+- **部署证据过期**：作业产物有保留期（演示项目是 90 天）。过期以后，那次部署的结果是 unknown：GitLab 还记得有这次部署，可不知道灰度过没过。
 - **推送**：git 不记推送；用交接后人的提交代替（一次推送可能有几个提交）。
 - **本地半程**：本地的提交用的是人的 git 身份，分不清是人写的还是 AI 写的，所以不算介入。
 - **复盘认定**：介入是不是"确实需要人判断"，要人看。

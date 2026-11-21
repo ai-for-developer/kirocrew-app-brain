@@ -79,6 +79,14 @@ LABEL_KIND = {"澄清": "clarify", "设计": "design", "计划": "plan", "验收
 OPT_RE = re.compile(r"^([A-H])\. (.*)$")
 
 
+def client(base: str, transport: Any = None) -> Any | None:
+    """brain-kit's GitLab client with this machine's token (the person's own), None without a GitLab address or a
+    token; brain-kit's error for a token file others can read."""
+    rest = bk.m("rest")
+    tok = rest.read_token()
+    return rest.GitLab(base, tok, transport) if base and tok else None
+
+
 def runner_note(first: str, at: Any = None) -> dict[str, Any] | None:
     """One of the run's own notes (RUNNER_NOTES) as {kind, text, raw, at}; None for any other line."""
     for rx, kind, text in RUNNER_NOTES:
@@ -140,7 +148,10 @@ def parse_notes(notes: list[dict[str, Any]], bridge_user: str | None = None) -> 
                               "at": n.get("created_at"),
                               # the commit and park.json the bridge asked at (12 hex each, Q_HEAD_RE)
                               "sha": m.group(4) if m.re.groups >= 5 else None,
-                              "park": m.group(5) if m.re.groups >= 5 else None}
+                              "park": m.group(5) if m.re.groups >= 5 else None,
+                              # who may answer it (需要 @alice、@carol 回答), lower case
+                              "who": [u.lstrip("@").lower() for u in m.group(6).split("、")]
+                              if m.re.groups >= 6 else []}
             continue
         m = delivered_re.match(first)
         if m and m.group(1) in qs:
@@ -240,11 +251,9 @@ class MrCache:
                 bridge_user: str | None = None) -> dict[str, Any] | None:
         """Read the branch's MR, its notes and its newest pipelines (blocking: call it in a thread). None when GitLab is
         not set up here."""
-        rest = bk.m("rest")
-        tok = rest.read_token()
-        if not base or not project or not tok:
+        gl = client(base, transport) if project else None
+        if gl is None:
             return None
-        gl = rest.GitLab(base, tok, transport)
         with self._lock:
             old = self._rows.get((project, branch)) or {}
         try:
@@ -284,11 +293,9 @@ class MrCache:
     def post_answer(self, base: str, project: str, iid: int, did: str, choice: str, note: str, *,
                     transport: Any = None) -> dict[str, Any]:
         """The person's own answer, as their own MR comment (their token): the bridge checks it like any other."""
-        rest = bk.m("rest")
-        tok = rest.read_token()
-        if not base or not project or not tok:
+        gl = client(base, transport) if project else None
+        if gl is None:
             raise RuntimeError("这台机器上没有 GitLab 的令牌：去 MR 上回答")
-        gl = rest.GitLab(base, tok, transport)
         line = "answer %s %s" % (did, choice) + ((" " + note) if note else "")
         return gl.comment(project, int(iid), line) or {}
 

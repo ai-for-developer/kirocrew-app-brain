@@ -12,15 +12,16 @@ import json
 import logging
 import os
 import re
+import statistics
 import subprocess
 import threading
 import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import (acts, bk, brainview, crewcheck, deliveries, detail, evidence, family, fastboard, fastrow, flowview,
-               identity, importer, inplace, installer, intake, kitmr, landing, lean_view, mrdesc_view, mrinfo, picker,
-               progress, roster)
+from . import (acts, bk, brainview, crewcheck, deliveries, deploys_view, detail, evidence, family, fastboard, fastrow,
+               flowview, identity, importer, inplace, installer, intake, kitmr, landing, lean_view, mrdesc_view, mrinfo,
+               picker, progress, roster, runner_view)
 from . import outputs as outputs_mod
 from . import problems, stages
 from . import board as board_mod
@@ -36,9 +37,11 @@ from .repoids import RepoIds, from_records
 from .sessions import SessionManager, requirement_credits
 from . import store as store_mod
 from .store import Store
+from .team import issues as issues_mod
 from .team import patrol as patrol_mod
 from .team import setup as setup_mod
 from .team import signerproc
+from .team import staging as staging_mod
 
 _REGISTRY: dict[str, "Service"] = {}
 _SECRETS = re.compile(r"(?i)((?:password|passwd|secret|token|api[_-]?key|authorization)\s*[=:]\s*|bearer\s+)\S+"
@@ -149,6 +152,8 @@ class Service:
                                                    scrub=self.scrub)
         self.store = Store(self.data_dir / "events")
         self.mr = mrinfo.MrCache()
+        self.runners = runner_view.Runners()   # 运行机 on a personal install: the team runner as GitLab shows it
+        self.deploys = deploys_view.Clients(transport)   # one GitLab client per GitLab for the deploys after a merge
         self.repos: dict[str, Repo] = {}
         self.repo_errors: dict[str, tuple[str, str]] = {}
         # listed repos whose brain-kit is on its way (the install branch, merged but not pulled): (path, state)
@@ -866,7 +871,9 @@ class Service:
                   "notes": [x for v in views for x in v.get("notes") or []],
                   "note_rows": [x for v in views for x in v.get("note_rows") or []],
                   "families": [x for v in views for x in v.get("families") or []]}
-        for m in views[0]["metrics"]:
+        # every repo's numbers, in the order they come (the 部署 ones only where kit.json turned the deploys on)
+        for mid in dict.fromkeys(x["id"] for v in views for x in v["metrics"]):
+            m = next(x for v in views for x in v["metrics"] if x["id"] == mid)
             vals = [next((x["value"] for x in v["metrics"] if x["id"] == m["id"]), None) for v in views]
             pairs = [x for x in vals if isinstance(x, list)]
             nums = [x for x in vals if isinstance(x, (int, float)) and not isinstance(x, bool)]
@@ -874,6 +881,9 @@ class Service:
                 spent = [p["credits_total"] for _, p in got_parts if p.get("credits_total") is not None]
                 good = sum(p.get("correct") or 0 for _, p in got_parts)
                 value: Any = round(sum(spent) / good, 4) if spent and good else None
+            elif m["id"] == "lead_time":   # a median: over every repo's requirements
+                hours = [h for _, p in got_parts for h in p.get("lead_hours") or []]
+                value = round(statistics.median(hours), 2) if hours else None
             elif pairs:
                 value = [sum(p[0] for p in pairs), sum(p[1] for p in pairs)]
             else:
@@ -893,7 +903,8 @@ class Service:
             repo = self.repos.get(rid)
             if repo is None:
                 return
-            view, funnel = deliveries.evaluate(repo.path, repo.cfg, repo.main_ref(), credits)
+            view, funnel = deliveries.evaluate(repo.path, repo.cfg, repo.main_ref(), credits,
+                                               deploys=self.deploys.source(repo.path, repo.cfg, repo.main_ref()))
             view["families"] = [dict(x, repo=rid) for x in view.get("families") or []]
             self._eval[rid] = (sha, time.monotonic(), view, funnel)
         except Exception as exc:  # noqa: BLE001
@@ -988,6 +999,7 @@ class Service:
             "credits": cost,
             "brain": detail.brain_block(tl.get("brain"), None, f.get("decisions_text")),
             "mr_desc": self._desc_now(self._desc_job(repo, f, cost["total"])),
+            "deploy": deploys_view.requirement(tl.get("trace"), repo.cfg),
         }
 
     def _desc_now(self, job: tuple[tuple, Callable[[], dict]] | None) -> dict[str, Any]:
@@ -1011,7 +1023,8 @@ class Service:
         else:
             tl = detail.timeline(src_repo, repo.cfg, f["key"], ref=ref, events=f.get("events") or [],
                                  credits={"runs": {f["key"]: {"credits": c}}} if c is not None else None,
-                                 vouchers_dir=vouchers, has_run=bool(f.get("run")))
+                                 vouchers_dir=vouchers, has_run=bool(f.get("run")),
+                                 deploys=self.deploys.source(src_repo, repo.cfg) if f.get("run") else None)
             self._trace[scope] = (sig, dict(tl), time.monotonic())
         tl["items"] = sorted(tl["items"] + self.store.events(scope), key=lambda x: (x["at"] or "", x["kind"]))
         return tl
@@ -1038,6 +1051,7 @@ class Service:
         path = f.get("worktree")
         tl = {"source": "app", "items": lean_view.stage_events(f.get("events") or []), "missing": [], "error": "",
               "brain": None, "other_runs": []}
+        deploy = None
         if path:
             try:
                 cfg = bk.m("config").load(path)
@@ -1048,7 +1062,9 @@ class Service:
                                  credits={"runs": {x: {"credits": snap["credits"].get(x)} for x in row["run_ids"]
                                                    if snap["credits"].get(x) is not None}} if c else None,
                                  ledger_path=self.team.cfg.get("ledger"), vouchers_dir=self.team.cfg.get("vouchers_dir"),
-                                 allowed_signers=self.team.allowed_signers or None)
+                                 allowed_signers=self.team.allowed_signers or None,
+                                 deploys=self.deploys.source(path, cfg))
+            deploy = deploys_view.requirement(tl.get("trace"), cfg)
         for rid in row["run_ids"]:
             tl["items"] += self.store.events(rid)
         tl["items"].sort(key=lambda x: (x["at"] or "", x["kind"]))
@@ -1088,6 +1104,7 @@ class Service:
             "brain": detail.brain_block(tl.get("brain"), None, f.get("decisions_text")),
             # no run read yet: the runner has not started on it, nothing is waiting for 开工
             "mr_desc": self._desc_now(self._runner_desc(f, key, row)) if run else mrdesc_view.empty(board_mod.RUNNER_NO_DESC),
+            "deploy": deploy,
         }
 
     @staticmethod
@@ -1897,7 +1914,8 @@ class Service:
             on = bool(self.settings["team"].get("enabled"))
             why = problems.team_start("brain-kit 没装载" if on else "")
             return {"enabled": on, "ok": False, "error": why["text"], "error_todo": why["todo"], "error_raw": why["raw"],
-                    "last_loop_at": None, "loop_error": "", "same_user": False, "signer": {"pending": 0, "refused": 0}}
+                    "last_loop_at": None, "loop_error": "", "checks": [], "same_user": False,
+                    "signer": {"pending": 0, "refused": 0}}
         return self.team.status()
 
     async def status(self) -> dict[str, Any]:
@@ -1931,7 +1949,8 @@ class Service:
             x["me"] = mes.get(x["id"])
             x["sync"] = syncs.get(x["id"])
             x["fast"] = fasts.get(x["id"])
-        return {"app": {"name": self.name, "version": VERSION, "team": self.team is not None},
+        return {"app": {"name": self.name, "version": VERSION, "team": self.team is not None,
+                        "role": self.settings["role"]},
                 "brainkit": {"path": info["path"], "ok": info["ok"], "version": info["version"], "error": info["error"],
                              "modules": info["modules"]},
                 "repos": repos, "crew": dict(self.crew, rows=list(self.crew["rows"]) + self.folders_stuck),
@@ -1998,10 +2017,14 @@ class Service:
         return {**self.settings, "team": dict(self.settings["team"]), "auto_push": dict(self.settings["auto_push"])}
 
     async def save_settings(self, body: Any) -> dict[str, Any]:
-        """Check, save atomically, reload. A key the body leaves out keeps its value (the 设置 form sends no repos: the
-        list is changed by 导入仓库 and 移出列表 only)."""
+        """Check, save atomically, reload. A key the body leaves out keeps its value (the 设置 form sends no repos and no
+        role: the list is changed by 导入仓库 and 移出列表 only, the role by its own switch). A team server made
+        personal again stops being the team runner: its team mode goes off."""
         if isinstance(body, dict):
             body = {**self.settings_view(), **body}
+            if body.get("role") == settings_mod.PERSONAL and self.settings["role"] != settings_mod.PERSONAL \
+                    and isinstance(body.get("team"), dict):
+                body["team"] = dict(body["team"], enabled=False)
         clean, probs = settings_mod.check(body)
         if probs:
             raise AppError("；".join(probs), "invalid_settings")
@@ -2395,11 +2418,33 @@ class Service:
                 "handovers": handovers, "signer": signer, "config": self.team.config_view(),
                 "hooks": await asyncio.to_thread(self.team.hook_rows)}
 
+    async def runner_status(self) -> dict[str, Any]:
+        """GET /team/status: each listed repo's team runner as GitLab shows it (runner_view.py), read with this person's
+        own token: 运行机 on a personal install."""
+        repos = list(self.repos.values())
+
+        def view() -> dict[str, Any]:
+            rows = [runner_view.Listed(r.id, r.name, r.cfg, *self._gitlab_of(r), self.me_in(r)) for r in repos]
+            return self.runners.view(rows, now=self.now(), transport=self.transport)
+        return scrub_tree(await asyncio.to_thread(view), self.scrub)
+
     async def team_patrol(self) -> dict[str, Any]:
         """GET /team/patrol: MR 巡检's last round, every open MR it looked at (team/patrol.py)."""
         if self.team is None:
             return patrol_mod.view_of([], [], None)
         return scrub_tree(self.team.patrol_view(), self.scrub)
+
+    async def team_staging(self) -> dict[str, Any]:
+        """GET /team/staging: 测试环境报错's last round, every error signature it holds (team/staging.py)."""
+        if self.team is None:
+            return staging_mod.view_of([], [], {}, None)
+        return scrub_tree(self.team.staging_view(), self.scrub)
+
+    async def team_issues(self) -> dict[str, Any]:
+        """GET /team/issues: the issues labelled for Brain that the last round looked at (team/issues.py)."""
+        if self.team is None:
+            return issues_mod.view_of([], [], None)
+        return scrub_tree(self.team.issues_view(), self.scrub)
 
     async def team_loop(self) -> dict[str, Any]:
         rt = self.team
@@ -2418,7 +2463,11 @@ class Service:
 
     async def team_setup(self, body: Any) -> dict[str, Any]:
         """POST /team/setup: team/setup.py's steps on a worker thread (they wait on GitLab, git and brain-kit for longer
-        than a request may take); the page polls GET /team/setup. The person's token stays in this run's memory."""
+        than a request may take); the page polls GET /team/setup. The person's token stays in this run's memory. Only
+        on the team server: a personal install never becomes the team runner by itself."""
+        if self.settings["role"] != settings_mod.TEAM_SERVER:
+            raise AppError("这台机器是个人电脑，不建运行机：团队运行机装在团队的服务器上。这台就是那台服务器的话，先在设置最下面勾上"
+                           "「%s」" % settings_mod.ROLE_SWITCH, "not_team_server", 409)
         try:
             inp = setup_mod.SetupInput.parse(body)
         except setup_mod.SetupRefused as exc:

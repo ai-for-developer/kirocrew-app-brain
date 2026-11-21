@@ -363,16 +363,18 @@ def _iso_minute(ts: Any) -> str:
 def timeline(repo_path: str, cfg: dict[str, Any], key: str, *, ref: str | None, events: list[dict[str, Any]],
              credits: Any = None, ledger_path: str | None = None, vouchers_dir: str | None = None,
              allowed_signers: str | None = None, app_events: list[dict[str, Any]] | None = None,
-             has_run: bool = True) -> dict[str, Any]:
+             has_run: bool = True, deploys: Any = None) -> dict[str, Any]:
     """The timeline: brainkit.trace's record, else the Lean ledger's. A requirement only claimed has no run to trace
-    (nothing recorded yet is not an error). other_runs: this requirement's runs on another branch (brain-kit 0d52e97)."""
+    (nothing recorded yet is not an error). other_runs: this requirement's runs on another branch (brain-kit 0d52e97).
+    *deploys*: the brainkit.deploys Source the trace reads the deploys after its merge from (deploys_view.Clients)."""
     out = {"source": "app", "items": [], "missing": [], "error": "", "brain": None, "cost": None, "trace": None,
            "other_runs": []}
     if has_run and bk.has("trace"):
         try:
             from .deliveries import _call
             t = _call(bk.m("trace").build, repo_path, cfg, key, ref=ref, ledger_path=ledger_path,
-                      vouchers_dir=vouchers_dir, credits=credits, allowed_signers=allowed_signers)
+                      vouchers_dir=vouchers_dir, credits=credits, allowed_signers=allowed_signers,
+                      **({"deploys": deploys} if deploys is not None else {}))
             out.update(source="trace", items=trace_timeline(t), missing=[str(x)[:200] for x in t.get("missing") or []],
                        brain=t.get("brain"), cost=t.get("cost"), trace=t, other_runs=other_runs(t))
         except Exception as exc:  # noqa: BLE001 - the Lean ledger's items stand in; brain-kit's words for 细节

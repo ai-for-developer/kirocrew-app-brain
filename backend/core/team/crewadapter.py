@@ -1,9 +1,10 @@
 """brain-kit's KiroCrew client surface (bridge/kirocrew.py: create_slot, set_project, send, slot, stop), served by
 the app's own session runner instead of brain-kit's HTTP client: the runner's sessions are opened like every other
 session of the app (gateway.py, the app token, sessionApproval), sit in the sidebar under 「Brain 运行机」, and count
-their credits. MR 巡检 (team/patrol.py) has a surface of its own (open_patrol … patrol_stop) on its own slot names:
-patrol_project and patrol_send raise patrol.Refused when KiroCrew answered no (nothing went in), BrainError when it did
-not answer (a message may then have landed).
+their credits. MR 巡检 (team/patrol.py) has a surface of its own (open_patrol … patrol_stop) on its own slot names, and
+测试环境报错's fix sessions (team/staging.py) use it on theirs (staging-…): patrol_project and patrol_send raise
+patrol.Refused when KiroCrew answered no (nothing went in), BrainError when it did not answer (a message may then have
+landed).
 
 The bridge loop runs in a worker thread and calls these synchronously; each call runs on the gateway's event loop
 (``run_coroutine_threadsafe``) and waits for its answer. A failure is raised as brain-kit's BrainError, which the
@@ -28,7 +29,7 @@ from .patrol import Refused
 
 SEND_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 RUN_SLOT_RE = re.compile(r"^run-[a-z][a-z0-9]{0,9}-[1-9][0-9]{0,6}-[1-9][0-9]{0,5}$")
-PATROL_SLOT_RE = re.compile(r"^patrol-[1-9][0-9]{0,11}-[1-9][0-9]{0,6}(?:-[2-9]|-[1-9][0-9]{1,3})?$")
+PATROL_SLOT_RE = re.compile(r"^(?:patrol|staging)-[1-9][0-9]{0,11}-[1-9][0-9]{0,6}(?:-[2-9]|-[1-9][0-9]{1,3})?$")
 
 
 class KiroCrewAdapter:

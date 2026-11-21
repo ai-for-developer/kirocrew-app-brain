@@ -17,6 +17,10 @@ Sources
   vouchers          brain-intake vouchers/<RUN-ID>/V-*.json, optional: hand-over and answer vouchers
   Brain usage       brainkit.usage: entries loaded at brain_commit, cited ids, stale and unknown citations
   credits           passed in by the KiroCrew app, optional. Kiro reports no token counts (input/output/cache = 0)
+  GitLab deploys    optional: the deployments to the environment that "deploys" in the default branch's .brain/kit.json
+                    names, with their deploy and build evidence (job artifacts), matched to the merge by git ancestry
+                    (brainkit/deploys.py has the rules and the field names): outcome.deploy. A canary that aborted
+                    while it tried to ship the change is a rollback in outcome.reverted_or_hotfixed_within_14d
 
 Git (docs/eval.md §2 has every rule, each with a test in tests/test_qa_r2_trace.py or tests/test_qa_r3_trace.py):
 how the run was merged (landing, rules M1-M6: merge commit, squash + merge commit, a merge made on another branch
@@ -67,7 +71,7 @@ import subprocess
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
-from . import intents, lean, reflect, sign, usage
+from . import deploys as D, intents, lean, reflect, sign, usage
 from .bridge.ledger import RESERVED
 from .common import BRANCH_RE, JIRA_RE, USER_RE, ZERO_SHA, BrainError, git, iso, parse_branch, utcnow
 
@@ -1009,18 +1013,22 @@ def handover(repo, hist, rec_handoff, led, vouchers) -> dict:
                 how="run.json's handoff (the run's commits are not here)" if rec_handoff else "run.json has no handoff")
 
 
-def after_merge(repo, cfg, key, merge, commits, dref, as_of, refs=None):
-    """Reverts, hotfix commits and defect claims within WINDOW_DAYS after the merge. Messages are read, not kept.
+def after_merge(repo, cfg, key, merge, commits, dref, as_of, refs=None, deploy=None):
+    """Reverts, hotfix commits, defect claims and aborted canaries within WINDOW_DAYS after the merge. Messages are
+    read, not kept.
     "After the merge" = on the default branch and not in the merge's history (no `git log --since`: one commit with
     an older committer date would stop the walk); the window is then judged by each commit's committer date. The
     run's own commits (the branch's, and its copies on the default branch) are never a hotfix, and neither is a
     commit that changes only the Brain, run records or Lean records (brain/, runs/, aidlc-docs/: `brain reflect
     --apply` and its MR name the key, and a gap's title often holds a fix word); those are listed in `ignored`. A
     commit at the very second of the merge is after it when it is not in the merge's history. A claim counts as a
-    defect only when it reports one (source product or alert, or an old claim without a source)."""
+    defect only when it reports one (source product or alert, or an old claim without a source). `deploy`: the
+    change record of its deploys (brainkit/deploys.py). A canary that aborted in the window while it tried to ship the
+    change is a rollback. A deploy in the window whose result is not known (its evidence unreadable, still running,
+    GitLab not read) leaves the value null after the 14 days too, and `note` says why: unknown is never "none"."""
     if not merge or not merge.get("at"):
         return {"value": None, "window_closed": None, "window_end": None, "evidence": [], "ignored": [],
-                "src": "no merge found", "rules": None}
+                "src": "no merge found", "rules": None, "note": None}
     start = _dt(merge["at"])
     end = start + timedelta(days=WINDOW_DAYS)
     closed = as_of >= end
@@ -1066,15 +1074,22 @@ def after_merge(repo, cfg, key, merge, commits, dref, as_of, refs=None):
         if at and start <= _dt(at) <= until and key_re.search(title) and FIX_RE.search(title):
             seen.add(k2)
             ev.append({"claim": "claim/" + k2, "at": at, "rule": "defect claim names %s" % key, "src": r})
-    return {"value": True if ev else (False if closed else None), "window_closed": closed, "window_end": iso(end),
-            "evidence": sorted(ev, key=lambda x: (x["at"], x.get("sha", x.get("claim")))),
-            "ignored": sorted(ignored, key=lambda x: (x["at"], x["sha"])),
-            "rules": "revert of a run commit; a commit after the merge (not one of the run's own) naming %s with "
-                     "hotfix/fix/bug/defect/revert/修复/热修/回滚/缺陷; either one only when it changes something "
-                     "outside %s/, %s/ and %s/; a new claim/<KEY> reporting a defect (source product or alert, or "
-                     "none) whose title names %s with such a word" % (key, cfg["brain_dir"], cfg["runs_dir"],
-                                                                       lean.DOCS, key),
-            "src": "git log %s ^%s, claim/* refs" % (dref, merge["commit"][:12])}
+    rules = ("revert of a run commit; a commit after the merge (not one of the run's own) naming %s with "
+             "hotfix/fix/bug/defect/revert/修复/热修/回滚/缺陷; either one only when it changes something outside "
+             "%s/, %s/ and %s/; a new claim/<KEY> reporting a defect (source product or alert, or none) whose title "
+             "names %s with such a word" % (key, cfg["brain_dir"], cfg["runs_dir"], lean.DOCS, key))
+    src = "git log %s ^%s, claim/* refs" % (dref, merge["commit"][:12])
+    canaries, unsure = D.failures(deploy, iso(start), iso(until))
+    ev += canaries
+    if deploy and deploy["value"] is not None:
+        env = deploy["environment"] or "?"
+        rules += "; a canary that aborted on %s while it tried to ship the change (its deploys through the first " \
+                 "promoted one)" % env
+        src += ", GitLab deployments to %s" % env
+    return {"value": True if ev else (None if unsure else False if closed else None), "window_closed": closed,
+            "window_end": iso(end), "evidence": sorted(ev, key=lambda x: (x["at"], x.get("sha", x.get("claim")))),
+            "ignored": sorted(ignored, key=lambda x: (x["at"], x["sha"])), "rules": rules, "src": src,
+            "note": None if ev else unsure}
 
 
 # ---------- decisions.md and requirements.md ----------
@@ -1863,22 +1878,26 @@ def _member_line(t):
 # ---------- the trace ----------
 
 def build(repo, cfg, key, ref=None, ledger_path=None, vouchers_dir=None, credits=None, as_of=None,
-          allowed_signers=None, _usage=None, _cache=None) -> dict:
+          allowed_signers=None, deploys=None, _usage=None, _cache=None) -> dict:
     """The trace of one requirement key. `credits`: a number, a KiroCrew record {credits|total, turns, manual,
     context_used, context_window}, or {"runs": {RUN-id or KEY: record}}. `as_of`: ISO time the 14-day window is
-    judged at (default now; recorded in the trace). `_cache` (brain eval): {(key, ref): trace} of the traces made
-    with these same arguments; a parent's children are taken from it and every trace made is put in it."""
+    judged at (default now; recorded in the trace). `deploys`: the brainkit.deploys Source to read the deploys from
+    (brain eval passes one to all its traces); None: the one .brain/kit.json on the default branch sets up, if any.
+    `_cache` (brain eval): {(key, ref): trace} of the traces made with these same arguments; a parent's children are
+    taken from it and every trace made is put in it."""
     if not JIRA_RE.match(key or ""):
         raise BrainError("%r is not a requirement key like PAY-1" % key)
     if _cache is not None and (key, ref) in _cache:
         return _cache[(key, ref)]
-    t = _build(repo, cfg, key, ref, ledger_path, vouchers_dir, credits, as_of, allowed_signers, _usage, _cache)
+    t = _build(repo, cfg, key, ref, ledger_path, vouchers_dir, credits, as_of, allowed_signers, deploys, _usage,
+               _cache)
     if _cache is not None:
         _cache[(key, ref)] = t
     return t
 
 
-def _build(repo, cfg, key, ref, ledger_path, vouchers_dir, credits, as_of, allowed_signers, _usage, _cache):
+def _build(repo, cfg, key, ref, ledger_path, vouchers_dir, credits, as_of, allowed_signers, deploys, _usage,
+           _cache):
     tree = Tree(repo, ref)
     as_of_dt = _dt(as_of) if as_of else utcnow()
     if as_of and not as_of_dt:
@@ -1927,10 +1946,11 @@ def _build(repo, cfg, key, ref, ledger_path, vouchers_dir, credits, as_of, allow
         "commits": None, "range": None, "handover_commit": None, "park": None, "requests": [], "_log": [], "_rp": rp}
     stale = fresher_than_worktree(repo, rp, hist) if ref is None else None
     if stale:      # the owner's old checkout of the run branch: read what any other clone reads (docs/eval.md §2)
-        t = _build(repo, cfg, key, stale["read"], ledger_path, vouchers_dir, credits, as_of, allowed_signers, None,
-                   _cache)
+        t = _build(repo, cfg, key, stale["read"], ledger_path, vouchers_dir, credits, as_of, allowed_signers,
+                   deploys, None, _cache)
         t["src"]["working_tree"] = stale
         return t
+    deploys = deploys if deploys is not None else D.source_for(repo, hist["default_ref"])
     if hist["tip"] is None:
         missing.append("run branch %s (not found locally, on origin, or as a merge on the default branch)"
                        % branch)
@@ -1977,7 +1997,8 @@ def _build(repo, cfg, key, ref, ledger_path, vouchers_dir, credits, as_of, allow
         try:
             kt = build(repo, cfg, k, ref=kref, ledger_path=ledger_path, vouchers_dir=vouchers_dir,
                        credits=None if credits_shape(credits) == "one" else credits, as_of=as_of,
-                       allowed_signers=allowed_signers, _usage=u if kref == ref else None, _cache=_cache)
+                       allowed_signers=allowed_signers, deploys=deploys, _usage=u if kref == ref else None,
+                       _cache=_cache)
             theirs |= {c["sha"] for c in kt["actions"]["commits"] or []}
         except BrainError as e:
             why = str(e)
@@ -2194,6 +2215,8 @@ def _build(repo, cfg, key, ref, ledger_path, vouchers_dir, credits, as_of, allow
         merged_at["note"] = "the bridge ledger says the MR was merged, but %s here has no merge of it (fetch it?)" % (
             hist["default_ref"] or cfg["default_branch"])
     waiting, answered = (None, None) if merged else parked(repo, cfg, key, tree, hist, decisions)
+    deploy = D.change(deploys, merged["commit"] if merged else None, merged["at"] if merged else None,
+                      D.contains_in(repo, merged["commit"]) if merged else None, iso(as_of_dt), cfg["default_branch"])
     outcome = {
         "handed_over": {"value": handed, "at": handoff_at, "bridge_accepted": hand["bridge_accepted"],
                         "requested": bool(handoff or hist["requests"]), "requests": hand["requests"],
@@ -2204,7 +2227,8 @@ def _build(repo, cfg, key, ref, ledger_path, vouchers_dir, credits, as_of, allow
         "accepted": accepted,
         "merged_at": merged_at,
         "reverted_or_hotfixed_within_14d": after_merge(repo, cfg, key, merged, hist["commits"], hist["default_ref"],
-                                                       as_of_dt, refs),
+                                                       as_of_dt, refs, deploy),
+        "deploy": deploy,
         "bridge_runs": [{"run_id": r["run_id"], "state": r["state"], "created": _utc(r["created"]),
                          "updated": _utc(r["updated"]), "src": "bridge ledger runs"}
                         for r in led["runs"]] if led is not None else None,
@@ -2218,7 +2242,11 @@ def _build(repo, cfg, key, ref, ledger_path, vouchers_dir, credits, as_of, allow
     elif not crecs:
         missing.append("credits (%s)" % credits_why)
     missing.append("pushes (git keeps no push log; person commits after hand-over stand in for them)")
-    missing.append("CI pipelines (GitLab, not readable here)")
+    if deploy["value"] is None:
+        missing.append("CI pipelines (GitLab, not readable here)")
+    else:
+        missing += deploy["missing"]
+        missing.append("CI pipelines other than the deploys to %s (GitLab, not read)" % (deploy["environment"] or "?"))
     t = {
         "schema": SCHEMA, "key": key, "as_of": iso(as_of_dt), "ref": tree.label,
         "intent": intent, "owner": owner, "branch": branch,
@@ -2437,6 +2465,9 @@ def render(t) -> str:
             "，已结束" if r["window_closed"] else "，还没结束"))
         out += ["  %s %s %s" % (x["at"], (x.get("sha") or x.get("claim", ""))[:12], x["rule"]) for x in r["evidence"]]
         out += ["  不算：%s %s %s（%s）" % (x["at"], x["sha"][:12], x["rule"], x["why"]) for x in r.get("ignored") or []]
+        if r.get("note"):
+            out.append("  还不知道：" + r["note"])
+    out += D.lines(o["deploy"])
     if t["missing"]:
         out.append("")
         out.append("没读到：" + "；".join(t["missing"]))

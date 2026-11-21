@@ -4,19 +4,22 @@ patrol-<project id>-<iid>), working in a clone of its own (<work>/patrol/<projec
 only under ~/workplace). Later problems of that MR go to the same session.
 
 A problem is one of four. The MR head's pipeline failed: its failed jobs, each with the last LOG_LINES lines of its
-log. A person left a review thread open: unresolved and resolvable, with no reply of patrol's own after it, and not
-named in a turn that ended. A person wrote a plain comment on the MR (no thread, so nothing marks it resolved) since
-patrol started in the project, not named in a turn that ended: the session answers it with a note on the MR that
-quotes it. Or the MR conflicts with its target branch. The MR's problems make a PatrolItem. Its
-fingerprint moves with the head, a failed pipeline, the conflict and the open review notes and comments, and nothing
-else.
+log, and the failed checks external CI reported into it as commit statuses (Jenkins' GitLab plugin: a pipeline of
+source external has nothing else), which GitLab has no job of: each with its link and the last lines of its log from
+Jenkins (jenkins.py), or why there is none. A person left a review thread open: unresolved and resolvable, with no
+reply of patrol's own after it, and not named in a turn that ended. A person wrote a plain comment on the MR (no
+thread, so nothing marks it resolved) since patrol started in the project, not named in a turn that ended: the session
+answers it with a note on the MR that quotes it. Or the MR conflicts with its target branch. The MR's problems make a
+PatrolItem. Its fingerprint moves with the head, a failed pipeline, a new build of a failed check, the conflict and
+the open review notes and comments, and nothing else.
 
 The ledger, <root>/patrol.sqlite, has one row per open MR of the projects patrol is on (MrRow). It is a state machine
 (settle, Patrol._look and Patrol._send):
   idle -> working     the fingerprint was not worked to the end of a turn yet, and a session is free: at most CAP at
-                      work or handed work this round, the others wait (first the MRs open before patrol started in
-                      their project, then by when each MR last changed). The row is working before its message goes,
-                      so a message KiroCrew did not answer, which may have landed, is never sent again.
+                      work or handed work this round, 测试环境报错's fixes counted, the others wait (first the MRs open
+                      before patrol started in their project, then by when each MR last changed). The row is working
+                      before its message goes, so a message KiroCrew did not answer, which may have landed, is never
+                      sent again.
   working -> idle     the turn ended (the review notes it named count as answered then), or the MR head moved
   working -> idle     a failed attempt: TIMEOUT_S without either (the turn is stopped), or a turn that ended without a
                       reply or with KiroCrew's error. A message KiroCrew refused is a failed attempt as well.
@@ -27,7 +30,8 @@ One comment on the MR says why it is blocked or paused, and what is not fixed. A
 its clone deleted, once its MR is merged or closed, or patrol is no longer on in its project.
 A round lists each project's open MRs once. It reads an MR's pipeline and threads only when the MR changed since, is
 being worked, its pipeline had not finished, or RECHECK_S went by: GitLab does not move an MR's updated_at when a
-pipeline ends, or when one runs again on the same head.
+pipeline ends, or when one runs again on the same head. A Jenkins build run again on the same head lands in the same
+pipeline: an external pipeline's checks are read each time its MR is, a build's log once.
 Skipped, with the reason on the page: MRs the hand-over owns (its labels), opted out (SKIP_LABEL), from a fork, claimed
 by another work source, and those whose only problems are bots' comments.
 """
@@ -47,10 +51,11 @@ from typing import Any, Callable, ClassVar, Mapping, Union
 
 from .. import bk
 from . import sources
+from .jenkins import Jenkins, build_path
 
 KIND = sources.PATROL
 AGENT = "brain-patrol"
-CAP = 2                     # patrol sessions at work at once, counting those handed work this round
+CAP = 2                     # patrol sessions at work at once, counting those handed work this round and 测试环境报错's
 TIMEOUT_S = 30 * 60         # a turn with no end and no new head this long is a failed attempt
 MAX_ATTEMPTS = 2            # failed attempts on one fingerprint before the MR is blocked
 MAX_STREAK = 3              # dispatches in a row with no person pushing or commenting in between before it is paused
@@ -78,9 +83,21 @@ class FailedJob:
 
 
 @dataclass(frozen=True)
+class FailedCheck:
+    """A failed commit status of the pipeline that no GitLab job of it stands for: what external CI (Jenkins' GitLab
+    plugin) reported, the newest of its name."""
+    status_id: int              # a new build of the check is a new status
+    name: str
+    url: str                    # its target_url (a Jenkins build's: at the address the runner reaches Jenkins at)
+    log: str | None             # the last LOG_LINES lines of its log; None: not read, *why* says why
+    why: str = ""
+
+
+@dataclass(frozen=True)
 class CiFailed:
     pipeline_id: int
     jobs: tuple[FailedJob, ...]
+    checks: tuple[FailedCheck, ...] = ()
     kind: ClassVar[str] = "ci_failed"
 
 
@@ -111,9 +128,12 @@ class Conflict:
 Problem = Union[CiFailed, Review, Comment, Conflict]
 
 
-def fingerprint(head_sha: str, pipeline_id: int | None, conflict: bool, note_ids: Any) -> str:
-    raw = json.dumps([head_sha, pipeline_id, bool(conflict), sorted(int(n) for n in note_ids)])
-    return hashlib.sha256(raw.encode()).hexdigest()[:20]
+def fingerprint(head_sha: str, pipeline_id: int | None, conflict: bool, note_ids: Any, status_ids: Any = ()) -> str:
+    """*status_ids*: the failed checks' commit status ids (FailedCheck), counted only when there are some."""
+    parts = [head_sha, pipeline_id, bool(conflict), sorted(int(n) for n in note_ids)]
+    if status_ids:
+        parts.append(sorted(int(s) for s in status_ids))
+    return hashlib.sha256(json.dumps(parts).encode()).hexdigest()[:20]
 
 
 @dataclass(frozen=True)
@@ -141,8 +161,12 @@ class PatrolItem:
         return tuple(p.note_id for p in self.problems if isinstance(p, (Review, Comment)))
 
     @property
+    def status_ids(self) -> tuple[int, ...]:
+        return tuple(c.status_id for p in self.problems if isinstance(p, CiFailed) for c in p.checks)
+
+    @property
     def fingerprint(self) -> str:
-        return fingerprint(self.head_sha, self.pipeline_id, self.conflict, self.note_ids)
+        return fingerprint(self.head_sha, self.pipeline_id, self.conflict, self.note_ids, self.status_ids)
 
 
 @dataclass(frozen=True)
@@ -155,13 +179,15 @@ class Read:
     bot_notes: int = 0                          # open threads only bots wrote in
     people_note: int = 0                        # the newest note a person wrote on the MR, anywhere (its id)
     comments: tuple[Comment, ...] = ()          # people's plain comments since patrol started in the project
+    checks: tuple[FailedCheck, ...] = ()        # the failed checks external CI reported, of a failed pipeline
 
     @classmethod
     def of(cls, d: Mapping[str, Any]) -> "Read":
         return cls(d.get("pipeline_id"), str(d.get("pipeline_status") or ""),
                    tuple(FailedJob(**j) for j in d.get("jobs") or ()),
                    tuple(Review(**r) for r in d.get("reviews") or ()), int(d.get("bot_notes") or 0),
-                   int(d.get("people_note") or 0), tuple(Comment(**c) for c in d.get("comments") or ()))
+                   int(d.get("people_note") or 0), tuple(Comment(**c) for c in d.get("comments") or ()),
+                   tuple(FailedCheck(**c) for c in d.get("checks") or ()))
 
 
 @dataclass(frozen=True)
@@ -172,7 +198,8 @@ class Skip:
 
 def problem_text(p: Problem) -> str:
     if isinstance(p, CiFailed):
-        return "流水线 #%d 没过：%s" % (p.pipeline_id, "、".join(j.name for j in p.jobs) or "看流水线")
+        return "流水线 #%d 没过：%s" % (p.pipeline_id, "、".join([j.name for j in p.jobs] + [c.name for c in p.checks])
+                                   or "看流水线")
     if isinstance(p, Review):
         return "@%s 的评审意见%s" % (p.author, "（%s）" % p.position if p.position else "")
     if isinstance(p, Comment):
@@ -251,29 +278,72 @@ def plain_comments(discussions: list[dict[str, Any]], own: set[str], bots: set[s
     return out
 
 
-def read_mr(gl: Any, project: str, mr: Mapping[str, Any], own: set[str], bots: set[str], since: float,
-            before: Read | None = None) -> Read:
-    """GitLab's MR (its head pipeline), the failed jobs and their logs when that pipeline failed (*before*'s while it
-    is the same failed pipeline), its threads, and its plain comments written *since* (patrol started in the
-    project)."""
+def read_mr(gl: Any, jenkins: Jenkins, project: str, mr: Mapping[str, Any], own: set[str], bots: set[str],
+            since: float, before: Read | None = None) -> Read:
+    """GitLab's MR (its head pipeline); when that pipeline failed, its failed jobs with their logs and the failed
+    checks external CI reported into it (failed_checks); its threads, and its plain comments written *since* (patrol
+    started in the project). *before*'s jobs while it is the same failed pipeline; its checks are read again unless it
+    is GitLab's own and had none: a Jenkins build run again lands in the same pipeline."""
     rest = bk.m("rest")
     iid = int(mr["iid"])
     hp = (gl.mr(project, iid) or {}).get("head_pipeline")
     hp = hp if isinstance(hp, dict) and hp.get("id") and hp.get("sha") in (None, mr.get("sha")) else None
     pid, status = (int(hp["id"]), str(hp.get("status") or "")) if hp else (None, "")
-    jobs: list[FailedJob] = []
-    if status == "failed" and pid and before is not None and (before.pipeline_id, before.pipeline_status) == (pid, status):
-        jobs = list(before.jobs)
+    external = bool(hp) and hp.get("source") == "external"
+    same = before is not None and (before.pipeline_id, before.pipeline_status) == (pid, status)
+    jobs: tuple[FailedJob, ...] = ()
+    checks: tuple[FailedCheck, ...] = ()
+    if status == "failed" and pid and same and not external and not before.checks:
+        jobs = before.jobs
     elif status == "failed" and pid:
-        for j in [j for j in gl.pipeline_jobs(project, pid) if isinstance(j, dict) and not j.get("allow_failure")][:MAX_JOBS]:
-            jobs.append(FailedJob(str(j.get("name") or j.get("id")), log_tail(gl.job_trace(project, int(j["id"])))))
+        listed = [] if external else [j for j in gl.pipeline_jobs(project, pid) if isinstance(j, dict) and j.get("id")]
+        jobs = before.jobs if same else tuple(
+            FailedJob(str(j.get("name") or j["id"]), log_tail(gl.job_trace(project, int(j["id"]))))
+            for j in [j for j in listed if not j.get("allow_failure")][:MAX_JOBS])
+        checks = failed_checks(gl, jenkins, project, str(mr.get("sha") or ""), pid, {int(j["id"]) for j in listed},
+                               before.checks if before is not None else ())
     threads = gl.pages("/projects/%s/merge_requests/%d/discussions" % (rest.q(project), iid), {}, 100, 20,
                        "discussions on !%d" % iid)
     threads = [d for d in threads if isinstance(d, dict)]
     reviews, bot_threads = open_reviews(threads, own, bots)
     people = [int(n["id"]) for notes in notes_of(threads) for n in notes if written_by(n, own, bots) == "person"]
-    return Read(pid, status, tuple(jobs), tuple(reviews), bot_threads, max(people, default=0),
-                tuple(plain_comments(threads, own, bots, since)))
+    return Read(pid, status, jobs, tuple(reviews), bot_threads, max(people, default=0),
+                tuple(plain_comments(threads, own, bots, since)), checks)
+
+
+def failed_checks(gl: Any, jenkins: Jenkins, project: str, sha: str, pipeline_id: int, jobs: set[int],
+                  known: tuple[FailedCheck, ...]) -> tuple[FailedCheck, ...]:
+    """The pipeline's failed commit statuses that none of its GitLab *jobs* (their ids: GitLab lists its jobs as
+    statuses too) stands for, the newest of each name, with the tail of each one's Jenkins log. *known*: the checks
+    read before, whose logs are kept; one whose log was not read is tried again. No checks when GitLab does not show
+    the statuses (403, 404)."""
+    rest = bk.m("rest")
+    try:
+        rows = gl.call("GET", "/projects/%s/repository/commits/%s/statuses" % (rest.q(project), rest.q(sha)),
+                       {"pipeline_id": pipeline_id, "per_page": 100})
+    except rest.HttpError as exc:
+        if exc.status not in (403, 404):
+            raise
+        return ()
+    newest: dict[str, Mapping[str, Any]] = {}
+    for s in rows or []:
+        ours = isinstance(s, dict) and s.get("id") and s.get("pipeline_id") in (None, pipeline_id)
+        if ours and int(s["id"]) not in jobs:
+            name = str(s.get("name") or s["id"])
+            if name not in newest or int(s["id"]) > int(newest[name]["id"]):
+                newest[name] = s
+    failed = sorted((s for s in newest.values() if s.get("status") == "failed" and not s.get("allow_failure")),
+                    key=lambda s: int(s["id"]))[:MAX_JOBS]
+    kept = {c.status_id: c for c in known if c.log is not None}
+    out = []
+    for s in failed:
+        sid, name = int(s["id"]), str(s.get("name") or s["id"])
+        if sid in kept:
+            out.append(kept[sid])
+            continue
+        url, raw, why = jenkins.console(str(s.get("target_url") or ""))
+        out.append(FailedCheck(sid, name, url, log_tail(raw) if raw is not None else None, why))
+    return tuple(out)
 
 
 def pushed_by_people(gl: Any, project: str, old: str, new: str, bots: set[str]) -> bool:
@@ -299,7 +369,7 @@ def item_of(project: str, mr: Mapping[str, Any], read: Read, answered: tuple[int
     if mr.get("detailed_merge_status") == "conflict" or (mr.get("has_conflicts") and not unsure):
         problems.append(Conflict(target))
     if read.pipeline_status == "failed" and read.pipeline_id:
-        problems.append(CiFailed(read.pipeline_id, read.jobs))
+        problems.append(CiFailed(read.pipeline_id, read.jobs, read.checks))
     problems += [r for r in read.reviews + read.comments if r.note_id not in answered]
     return PatrolItem(project, int(mr.get("project_id") or mr.get("target_project_id") or 0), int(mr["iid"]),
                       str(mr.get("title") or ""), mr.get("web_url") or None, str(mr.get("source_branch") or ""), target,
@@ -329,8 +399,9 @@ class MrRow:
     state: str = IDLE
     slot: str = ""                      # its session, kept while the MR is open ("": none yet)
     gen: int = 0                        # sessions opened for it (a slot name is used once)
-    head_sha: str = ""                  # the last dispatch's head, pipeline and conflict
+    head_sha: str = ""                  # the last dispatch's head, pipeline, its failed checks and conflict
     pipeline_id: int | None = None
+    status_ids: tuple[int, ...] = ()
     conflict: bool = False
     fingerprint: str = ""               # the last dispatch's
     attempts: int = 0                   # dispatches of that fingerprint
@@ -352,7 +423,8 @@ class MrRow:
     @classmethod
     def of(cls, d: Mapping[str, Any]) -> "MrRow":
         d = dict(d)
-        d["sent_notes"], d["answered"] = tuple(d.get("sent_notes") or ()), tuple(d.get("answered") or ())
+        for k in ("sent_notes", "answered", "status_ids"):
+            d[k] = tuple(d.get(k) or ())
         d["read"] = Read.of(d["read"]) if isinstance(d.get("read"), dict) else None
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
@@ -413,7 +485,7 @@ def settle(row: MrRow, head: str, turn: str, now: float) -> tuple[MrRow, bool]:
     if row.state == WORKING:
         if turn == "ended":
             return replace(row, state=IDLE, outcome="ended", answered=_union(row.answered, row.sent_notes),
-                           done_fp=fingerprint(row.head_sha, row.pipeline_id, row.conflict, ())), False
+                           done_fp=fingerprint(row.head_sha, row.pipeline_id, row.conflict, (), row.status_ids)), False
         if turn == "failed":
             return _failed(row, "failed"), False
         if head != row.head_sha:
@@ -508,6 +580,10 @@ def message(item: PatrolItem, path: str, helper: Helper) -> str:
             for j in p.jobs:
                 out.append("   - %s：" % j.name)
                 out += _quoted(j.log or "（没读到日志）", "     ")
+            for c in p.checks:
+                where = "Jenkins 构建 %s" % c.url if build_path(c.url) else "外部 CI 报给 GitLab 的，%s" % (c.url or "没有链接")
+                out.append("   - %s（%s）：" % (c.name, where))
+                out += ["     没读到日志：%s" % c.why] if c.log is None else _quoted(c.log or "（日志是空的）", "     ")
         elif isinstance(p, Comment):
             out.append("%d. MR 上的评论（不在讨论里）：评论 #%d，@%s：" % (n, p.note_id, p.author))
             out += _quoted(p.body, "   ")
@@ -597,6 +673,10 @@ def slot_name(project_id: int, iid: int, gen: int) -> str:
     return "patrol-%d-%d" % (project_id, iid) + ("-%d" % gen if gen > 1 else "")
 
 
+# the first line of every blocked_text: a person's machine reads it as patrol having left the MR alone (runner_view.py)
+STOPPED_RE = re.compile(r"^MR 巡检：运行机(?:连着修了|派了|试了) \d+ 次")
+
+
 def blocked_text(row: MrRow, item: PatrolItem) -> str:
     what = "\n".join("- " + problem_text(p) for p in item.problems)
     if row.state == PAUSED:
@@ -635,16 +715,18 @@ def _said(exc: BaseException) -> str:
 
 
 class Patrol:
-    """The work source mr-patrol, hosted by TeamRuntime: round() each bridge round on its worker thread, view() for the
-    page from any thread (what the last round saw), held() for sources.holder."""
+    """The work source mr-patrol, hosted by TeamRuntime: round() each bridge round on its worker thread (*shared* says
+    how many brain-patrol sessions the other work sources have in a turn: sources.at_work), view() for the page from
+    any thread (what the last round saw), held() for sources.holder, busy() for sources.at_work."""
 
     def __init__(self, *, gl: Any, sessions: Any, kit: Callable[[str], Mapping[str, Any]], projects: list[str],
                  ledger_path: str, workspaces: Workspaces | None, helper: Helper,
-                 claims: Callable[[], list[sources.Claim]], now: Callable[[], float] = time.time,
-                 out: Callable[[str], None] = print) -> None:
-        self.gl, self.sessions, self.kit, self.projects = gl, sessions, kit, list(projects)
+                 claims: Callable[[], list[sources.Claim]], jenkins: Jenkins = Jenkins(),
+                 shared: Callable[[], int] = lambda: 0,
+                 now: Callable[[], float] = time.time, out: Callable[[str], None] = print) -> None:
+        self.gl, self.jenkins, self.sessions, self.kit, self.projects = gl, jenkins, sessions, kit, list(projects)
         self.ledger_path, self.workspaces, self.helper, self.claims = ledger_path, workspaces, helper, claims
-        self.now, self.out = now, out
+        self.now, self.out, self.shared = now, out, shared
         self._led: Ledger | None = None
         self._me = ""
         self._turns: dict[tuple[str, str], str] = {}
@@ -666,6 +748,13 @@ class Patrol:
         if self._led is None and not os.path.exists(self.ledger_path):
             return []
         return [r.claim for r in self.led.rows() if r.state in (WORKING, BLOCKED, PAUSED) and r.claim]
+
+    def busy(self) -> int:
+        """Its sessions in a turn now, as its ledger says (_busy), every project's: also one this round could not
+        read."""
+        if self._led is None and not os.path.exists(self.ledger_path):
+            return 0
+        return sum(1 for r in self.led.rows() if self._busy(r))
 
     def view(self) -> dict[str, Any]:
         return self.last
@@ -747,8 +836,12 @@ class Patrol:
             if stop:
                 self._stop(row)
         if self._stale(row, mr, now):
-            row = replace(row, read=read_mr(self.gl, e.project, mr, *self._who(kit), e.since, before=row.read),
-                          seen=_seen(mr), read_at=now)
+            old = set(row.read.checks) if row.read is not None else set()
+            row = replace(row, read=read_mr(self.gl, self.jenkins, e.project, mr, *self._who(kit), e.since,
+                                            before=row.read), seen=_seen(mr), read_at=now)
+            for c in row.read.checks:
+                if c.log is None and c not in old:
+                    self.out("%s!%s: %s: no log: %s" % (e.project, mr["iid"], c.name, c.why))
         item = item_of(e.project, mr, row.read, row.answered)
         row = self._watched(e, replace(row, project_id=item.project_id), item)
         if row.state == BLOCKED and row.fingerprint != item.fingerprint:
@@ -839,10 +932,10 @@ class Patrol:
 
     def _dispatch(self, entries: list[Entry], now: float) -> None:
         """The MRs with work to give, the ones open before patrol started first, then by when each last changed, while
-        fewer than CAP sessions are at work (every project's, also one this round could not read) or were handed work
-        this round, whatever KiroCrew made of it."""
+        fewer than CAP sessions are at work (every project's, also one this round could not read, and 测试环境报错's) or
+        were handed work this round, whatever KiroCrew made of it."""
         common = bk.m("common")
-        busy = sum(1 for r in self.led.rows() if self._busy(r))
+        busy = self.shared() + self.busy()
         todo = [e for e in entries if e.standing == "todo"]
         for e in sorted(todo, key=lambda e: (_ts(e.mr.get("created_at")) >= e.since, _ts(e.mr.get("updated_at")),
                                              e.project, int(e.mr["iid"]))):
@@ -886,7 +979,8 @@ class Patrol:
         attempts = row.attempts + 1 if row.fingerprint == item.fingerprint else 1
         sid = "P-" + hashlib.sha256(("%s\n%s\n%d\n%r" % (row.slot, item.fingerprint, attempts, now)).encode()
                                     ).hexdigest()[:20]
-        went = replace(row, state=WORKING, head_sha=item.head_sha, pipeline_id=item.pipeline_id, conflict=item.conflict,
+        went = replace(row, state=WORKING, head_sha=item.head_sha, pipeline_id=item.pipeline_id,
+                       status_ids=item.status_ids, conflict=item.conflict,
                        fingerprint=item.fingerprint, attempts=attempts, streak=row.streak + 1,
                        people_note=row.read.people_note, checked_head=item.head_sha, dispatched_at=now, send_id=sid,
                        sent_notes=item.note_ids, outcome="")

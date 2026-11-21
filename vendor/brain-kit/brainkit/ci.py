@@ -16,6 +16,14 @@ status the bot cannot write; see the main plan §6).
   Vouchers name commits; after GitLab's Rebase a voucher counts for the rebased commit (rebased_commit).
   brain-ci brain-lint      the Brain's rules (brain lint) against the MR's diff base, config from the target branch.
                           Run it on every MR: Brain MRs (brain/<KEY>-reflect-<n>) and anything else that touches brain/.
+  brain-ci new-coverage [--report FILE]
+                          coverage of the lines the MR adds, from the test job's Cobertura report (FILE, or
+                          BRAIN_COVERAGE_REPORT): below new_coverage.block % fails, below new_coverage.warn % warns.
+                          No report: fails. Thresholds and ignore globs from the target branch.
+  brain-ci migrations     the migration files the MR adds or changes (migrations.paths on the target branch) against
+                          the expand-contract rules (brainkit/migrations.py); an edited merged migration fails.
+  new-coverage and migrations exit 3 when they pass with warnings (the template allows 3: the MR can merge and the
+  pipeline shows the warnings). Every command exits 1 when a check fails and 2 when it cannot check.
   brain-ci verify-voucher FILE --allowed-signers F
 """
 from __future__ import annotations
@@ -30,8 +38,10 @@ import subprocess
 import sys
 import unicodedata
 
-from . import config, flows, lean, riskpaths, runrec, sign
+from . import config, flows, lean, migrations, newcov, riskpaths, runrec, sign
 from .common import BrainError, git, git_out, load_json, parse_branch, parse_iso, utcnow
+
+WARNED = 3
 
 
 def load_voucher(path):
@@ -787,6 +797,102 @@ def cmd_brain_lint(a):
     return 1 if errors else 0
 
 
+NEEDS_MR = ("%s needs an MR pipeline whose target branch can be fetched (its config and the merge base come from it, "
+            "never from the MR branch)")
+REPORT_HELP = ("The report comes from the project's test job: keep it under that job's artifacts:paths and name the job "
+               "in this job's needs: (ci/brain-kit.gitlab-ci.yml). Without the report this check fails, it does not "
+               "pass")
+
+
+def _tree_files(repo, rev) -> set:
+    out = _git_bytes(repo, "ls-tree", "-r", "-z", "--name-only", rev).decode("utf-8", "surrogateescape")
+    return {x for x in out.split("\0") if x}
+
+
+def new_coverage(repo, env, report) -> tuple:
+    """(errors, warnings, lines) of `brain-ci new-coverage`: coverage of the lines the MR adds (merge-base(target,
+    HEAD)..HEAD), from the Cobertura report at `report` (relative to the repo). Fails closed: without the target
+    branch (thresholds, merge base) or a readable report from this pipeline's test job nothing shows the new code
+    is tested. A report committed in the repository does not count: the MR could write it."""
+    if not report:
+        return ["no coverage report given: pass --report FILE or set BRAIN_COVERAGE_REPORT"], [], []
+    tgt = Target(repo, env)
+    if not tgt.trusted:
+        return [NEEDS_MR % "new-coverage"], [], []
+    try:
+        block, warn, skip = newcov.settings(tgt.cfg())
+    except BrainError as e:
+        return ["target %s: %s" % (config.KIT_CONFIG, e)], [], []
+    path = os.path.join(repo, report)
+    rel = os.path.relpath(os.path.realpath(path), os.path.realpath(repo)).replace(os.sep, "/")
+    if rel != ".." and not rel.startswith("../") and _blob(repo, "HEAD", rel) is not None:
+        return ["coverage report %s is committed in the repository: it must come from this pipeline's test job (git "
+                "rm --cached it, add it to .gitignore)" % rel], [], []
+    try:
+        with open(path, "rb") as f:
+            entries = newcov.parse_report(f.read())
+    except OSError as e:
+        return ["cannot read coverage report %s (%s). %s" % (report, e.strerror or e, REPORT_HELP)], [], []
+    except BrainError as e:
+        return ["coverage report %s: %s" % (report, e)], [], []
+    if not entries:
+        return ["coverage report %s lists no files: the test job measured nothing" % report], [], []
+    measured = newcov.resolve(entries, _tree_files(repo, "HEAD"))
+    if not measured:
+        return ["none of the %d files in coverage report %s is a file of this repository (first: %s): it is not "
+                "this project's report" % (len(entries), report, entries[0][0][0])], [], []
+    base = git_out(repo, "merge-base", tgt.ref, "HEAD")
+    patch = _git_bytes(repo, "-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--no-textconv",
+                       "-M", "-U0", "--src-prefix=a/", "--dst-prefix=b/", base, "HEAD")
+    files = newcov.measure(newcov.added_lines(patch.decode("utf-8", "surrogateescape")), measured, skip)
+    return newcov.verdict(files, block, warn)
+
+
+def _print_result(name, errors, warnings, lines) -> int:
+    for line in lines:
+        print(line)
+    for w in warnings:
+        print("WARN %s" % w)
+    for e in errors:
+        print("FAIL %s" % e)
+    print("brain-ci %s: %s" % (name, "FAILED" if errors else "passed with warnings" if warnings else "ok"))
+    return 1 if errors else WARNED if warnings else 0
+
+
+def cmd_new_coverage(a):
+    repo = os.environ.get("CI_PROJECT_DIR") or os.getcwd()
+    report = a.report or os.environ.get("BRAIN_COVERAGE_REPORT", "")
+    return _print_result("new-coverage", *new_coverage(repo, os.environ, report))
+
+
+def migration_lint(repo, env) -> tuple:
+    """(errors, warnings, lines) of `brain-ci migrations`: the files matching the target branch's migrations.paths
+    that the MR (merge-base(target, HEAD)..HEAD) adds or changes. One on the target branch already whose bytes
+    differ at HEAD (edited or deleted) is an edited merged migration; the others are linted (brainkit/migrations.py)."""
+    tgt = Target(repo, env)
+    if not tgt.trusted:
+        return [NEEDS_MR % "migrations"], [], []
+    try:
+        pats = migrations.settings(tgt.cfg())
+    except BrainError as e:
+        return ["target %s: %s" % (config.KIT_CONFIG, e)], [], []
+    base = git_out(repo, "merge-base", tgt.ref, "HEAD")
+    new, edited = {}, []
+    for path in changed_paths(repo, base, "HEAD"):
+        if any(glob_match(path, p) for p in pats):
+            now, merged = _blob(repo, "HEAD", path), _blob(repo, tgt.ref, path)
+            if merged is not None and now != merged:
+                edited.append(path)
+            elif merged is None and now is not None:
+                new[path] = now.decode("utf-8", "replace")
+    return migrations.check(new, sorted(edited), env.get("CI_MERGE_REQUEST_TARGET_BRANCH_NAME"))
+
+
+def cmd_migrations(a):
+    repo = os.environ.get("CI_PROJECT_DIR") or os.getcwd()
+    return _print_result("migrations", *migration_lint(repo, os.environ))
+
+
 def cmd_verify_voucher(a):
     v, s = load_voucher(a.file)
     ok = sign.verify(v, s, a.allowed_signers)
@@ -802,6 +908,10 @@ def main(argv=None):
     sub.add_parser("check-run").set_defaults(fn=cmd_check_run)
     sub.add_parser("push-rules").set_defaults(fn=cmd_push_rules)
     sub.add_parser("brain-lint").set_defaults(fn=cmd_brain_lint)
+    s = sub.add_parser("new-coverage")
+    s.add_argument("--report", help="Cobertura coverage.xml from the test job (default: $BRAIN_COVERAGE_REPORT)")
+    s.set_defaults(fn=cmd_new_coverage)
+    sub.add_parser("migrations").set_defaults(fn=cmd_migrations)
     s = sub.add_parser("verify-voucher")
     s.add_argument("file")
     s.add_argument("--allowed-signers", required=True)

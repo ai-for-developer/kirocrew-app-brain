@@ -311,6 +311,23 @@ class GitLab(Rest):
         return self.call("GET", "/projects/%s/pipelines/%d/jobs" % (q(project), int(pipeline_id)),
                          {"scope[]": scope, "per_page": per_page}) or []
 
+    def deployments(self, project, environment, page=1, per_page=100):
+        """One page of an environment's deployments, newest first (GET /projects/:id/deployments)."""
+        return self.call("GET", "/projects/%s/deployments" % q(project),
+                         {"environment": environment, "order_by": "id", "sort": "desc", "per_page": per_page,
+                          "page": page}) or []
+
+    def job_artifact(self, project, job_id, path):
+        """One file of a job's artifacts (bytes), or None when the job has no such file (never written, or
+        expired)."""
+        try:
+            return self.call("GET", "/projects/%s/jobs/%d/artifacts/%s" % (
+                q(project), int(job_id), "/".join(q(p) for p in path.split("/"))), raw=True)
+        except HttpError as e:
+            if e.status == 404:
+                return None
+            raise
+
     def job_trace(self, project, job_id):
         """A job's log (bytes), or None when GitLab does not show it (no log yet, or no access to it)."""
         try:

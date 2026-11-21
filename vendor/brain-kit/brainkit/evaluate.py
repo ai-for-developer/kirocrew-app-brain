@@ -24,6 +24,15 @@ Brain usage (brainkit.usage); read-only.
   这一批            one row per requirement: state, autonomous or not (a run that failed on the runner or whose MR
                     was closed never is), human acts at / outside judgment points, questions asked, credits,
                     delivered correctly or still open
+  部署 (DORA)        with "deploys" in the default branch's .brain/kit.json (brainkit/deploys.py). JSON "deploys"
+                    (field names are stable: the KiroCrew app reads them): environment (null: off; then only src),
+                    frequency {promoted, aborted, unknown, since, until, per_week, weeks {ISO week: n}}: the deploys
+                    of the default branch in the period (--since, else the last 28 days); lead_time_hours {median,
+                    by_run {KEY: hours}}: from merge to the first promoted deploy shipping the run; change_failure
+                    {value: [failed, judged], failed, ok, failed_open, pending, unknown, not_deployed}: runs with an
+                    aborted canary or a revert / hotfix / defect claim within 14 days ÷ deployed runs whose 14 days
+                    are over and whose outcome is known; missing, src, rule. delivery.unknown_after_merge: runs
+                    whose 14 days are over but whose deploys could not all be read (not counted)
   大需求            a split (brainkit/split.py): one row per parent (families), its children, 已合并 n/m counted as
                     `brain intent list` counts it (m: the children not closed, started or not; n: those merged into
                     its branch), judgment / questions / credits of the parent and its children together (trace's
@@ -43,9 +52,10 @@ import json
 import os
 import re
 import statistics
+from datetime import timedelta
 
-from . import brainlint, entries as E, trace as T, usage
-from .common import BrainError, JIRA_RE, utcnow
+from . import brainlint, deploys as D, entries as E, trace as T, usage
+from .common import BrainError, JIRA_RE, iso, utcnow
 
 REQUIRED = {"IDEATION", "REQUIREMENTS", "DESIGN", "INCEPTION", "PLAN", "RELEASE", "ideation", "requirements",
             "design", "plan", "acceptance"}
@@ -74,7 +84,8 @@ STATE_LABEL = {"merged": "已合并", "accepted": "验收过了、没合并", "w
                "unreadable": "run.json 读不了", "merged_into_parent": "已合进大需求"}
 FAMILY_LABEL = {"in_progress": "小需求在做", "ready_to_release": "小需求都合并了，等大需求评审和发布"}   # as intent list
 DELIVERY_LABEL = {"correct": "对", "wrong": "不对", "pending": "14 天未满", "wrong_open": "有问题（14 天未满）",
-                  "unknown": "没有验收记录", "open": "还没合并", "closed": "没合并",
+                  "unknown": "没有验收记录", "unknown_after_merge": "合并后的部署结果读不到", "open": "还没合并",
+                  "closed": "没合并",
                   "merged_not_here": "桥说合并了（这里读不到合并，对不对不知道）"}
 # a hand-over run that ended without delivering is never autonomous, whoever stepped in (E5): the runner never got
 # going, or the MR was closed (a person's act outside every judgment point)
@@ -182,7 +193,8 @@ def last_at(t):
 
 def correctness(t):
     """'correct' | 'wrong' (both only once the 14 days are over) | 'wrong_open' (already known wrong, 14 days not
-    over) | 'pending' (14 days not over) | 'unknown' (no acceptance on record) | None (not merged).
+    over) | 'pending' (14 days not over) | 'unknown' (no acceptance on record) | 'unknown_after_merge' (14 days over,
+    but what happened in them is not known: a deploy whose result could not be read) | None (not merged).
     Only 'correct' and 'wrong' are counted: failures and successes of a period are judged at the same age."""
     o = t["outcome"]
     if not o["merged_at"]["value"]:
@@ -194,7 +206,86 @@ def correctness(t):
     bad = rv is True or ft is False
     if not r.get("window_closed"):
         return "wrong_open" if bad else "pending"
+    if rv is None and not bad:
+        return "unknown_after_merge"
     return "wrong" if bad else "correct"
+
+
+FREQ_DAYS = 28        # deploy frequency without --since: the last 28 days
+CF_LABEL = (("failed", "失败"), ("failed_open", "已知失败、14 天还没满（满了再算）"), ("pending", "14 天还没满"),
+            ("unknown", "结果读不到（不算）"), ("not_deployed", "没部署过（不算）"))
+DEPLOY_RULE = ("部署频率：期内（--since，否则最近 28 天）默认分支的部署上线（promoted）到这个环境的次数，按周算；合并到上线："
+               "从合并到第一次上线了这个需求的部署的小时数，取中位；变更失败率：部署过的需求里，上线前灰度中止过、或合并后 "
+               "14 天内有回滚 / 热修 / 缺陷的 ÷ 14 天已满、结果读得到的部署过的需求。上线和中止只认部署证据，读不到的不算上线，"
+               "也不算没失败")
+
+
+def deploy_numbers(src, merged, since, now, branch) -> dict:
+    """部署 (DORA): the deploys of `branch` to the environment of .brain/kit.json "deploys" (brainkit/deploys.py), and
+    `merged` runs' outcome.deploy. {"environment": None, "src": ...} when deploys are off."""
+    if src is None:
+        return {"environment": None, "src": D.OFF}
+    until = iso(now)
+    start = since or iso(now - timedelta(days=FREQ_DAYS))
+    freq = {"promoted": None, "aborted": None, "unknown": None, "since": start, "until": until, "per_week": None,
+            "weeks": {}}
+    missing = []
+    try:
+        rows = [src.evidence(d, until) for d in src.deployments(start) if d["ref"] == branch and
+                d["created_at"] <= until]
+    except BrainError as e:
+        missing.append("the deploys to %s: %s" % (src.environment or "?", e))
+    else:
+        done = [r for r in rows if r["result"] == "promoted"]
+        days = (now - T._dt(start)).total_seconds() / 86400
+        freq.update(promoted=len(done), aborted=sum(1 for r in rows if r["result"] == "aborted"),
+                    unknown=sum(1 for r in rows if r["result"] == "unknown"),
+                    per_week=round(len(done) * 7 / days, 2) if days > 0 else None)
+        for r in done:
+            w = week(r["finished_at"] or r["created_at"])
+            freq["weeks"][w] = freq["weeks"].get(w, 0) + 1
+        missing += ["deployment %d (%s): %s" % (r["deployment"], r["sha"][:12], r["why"]) for r in rows
+                    if r["result"] == "unknown"]
+    lead, cf = {}, {k: [] for k in ("failed", "ok", "failed_open", "pending", "unknown", "not_deployed")}
+    for t in merged:
+        dep, r = t["outcome"]["deploy"], t["outcome"]["reverted_or_hotfixed_within_14d"]
+        if dep["value"] is None:
+            continue
+        if dep["lead_time_hours"] is not None:
+            lead[t["key"]] = dep["lead_time_hours"]
+        if not any(a["result"] in ("promoted", "aborted") for a in dep["attempts"]):
+            k = {"not_deployed": "not_deployed", "running": "pending"}.get(dep["value"], "unknown")
+        elif not r["window_closed"]:
+            k = "failed_open" if r["value"] else "pending"
+        else:
+            k = {True: "failed", False: "ok", None: "unknown"}[r["value"]]
+        cf[k].append(t["key"])
+    return {"environment": src.environment, "src": "GitLab deployments (%s)" % src.where, "frequency": freq,
+            "lead_time_hours": {"median": round(statistics.median(lead.values()), 2) if lead else None,
+                                "by_run": lead},
+            "change_failure": dict({"value": [len(cf["failed"]), len(cf["failed"]) + len(cf["ok"])]},
+                                   **{k: sorted(v) for k, v in cf.items()}),
+            "missing": missing, "rule": DEPLOY_RULE}
+
+
+def deploy_report(dp) -> list:
+    """The 部署 lines of the Eval report; none when deploys are off."""
+    if not dp or not dp["environment"]:
+        return []
+    f, lt, cf = dp["frequency"], dp["lead_time_hours"], dp["change_failure"]
+    out = ["部署到 %s（DORA）：" % dp["environment"]]
+    if f["promoted"] is None:
+        out.append("  部署频率：读不到")
+    else:
+        out.append("  部署频率：%s 到 %s 上线 %d 次，每周 %s 次（灰度中止 %d 次，结果读不到 %d 次）" % (
+            f["since"][:10], f["until"][:10], f["promoted"], "-" if f["per_week"] is None else f["per_week"],
+            f["aborted"], f["unknown"]))
+    out.append("  合并到上线：%s" % ("中位 %s 小时（%d 个需求）" % (lt["median"], len(lt["by_run"]))
+                                 if lt["median"] is not None else "还没有已上线的需求"))
+    out.append("  变更失败率：%s（上线前灰度中止，或合并后 14 天内回滚、热修、缺陷）" % _pct(*cf["value"]))
+    out += ["    %s：%s" % (label, ", ".join(cf[k])) for k, label in CF_LABEL if cf.get(k)]
+    out += ["  读不到：" + m for m in dp["missing"][:5]]
+    return out
 
 
 def beyond_required(t) -> list:
@@ -246,12 +337,13 @@ def _brain(repo, cfg, ref):
 
 
 def build_traces(repo, cfg, ref=None, ledger_path=None, vouchers_dir=None, credits=None, as_of=None,
-                 allowed_signers=None, _usage=None, found=None) -> tuple:
+                 allowed_signers=None, _usage=None, found=None, deploys=None) -> tuple:
     """(traces, skipped, credits note). The runs: those in the tree read (`ref`), the unmerged ones on run branches
     here (each read from its branch), and the bridge ledger's (one whose run.json is nowhere here is skipped, with
     its ledger rows). A run whose record cannot be read is skipped with the reason, not fatal. One unkeyed credits
     record (a number, or {credits, turns, manual}) is one run's: with more runs it is not given to any of them (it
-    would multiply), and the note says so. `found` (a dict) gets {"branches": {key: ref}, "ledger_only": [keys]}."""
+    would multiply), and the note says so. `found` (a dict) gets {"branches": {key: ref}, "ledger_only": [keys]}.
+    `deploys`: the brainkit.deploys Source every trace reads its deploys from (None: each reads its kit.json's)."""
     if ledger_path and not os.path.exists(ledger_path):
         raise BrainError("bridge ledger %s not found" % ledger_path)
     keys = run_keys(repo, cfg, ref)
@@ -271,8 +363,8 @@ def build_traces(repo, cfg, ref=None, ledger_path=None, vouchers_dir=None, credi
             [(k, removed[k]["read_at"], None) for k in removed]:
         try:
             traces.append(T.build(repo, cfg, k, ref=r, ledger_path=ledger_path, vouchers_dir=vouchers_dir,
-                                  credits=credits, as_of=as_of, allowed_signers=allowed_signers, _usage=u,
-                                  _cache=made))
+                                  credits=credits, as_of=as_of, allowed_signers=allowed_signers, deploys=deploys,
+                                  _usage=u, _cache=made))
         except BrainError as e:
             skipped.append({"key": k, "why": str(e)})
         except (ValueError, TypeError, KeyError, AttributeError) as e:   # a record shaped in a way nobody foresaw
@@ -520,7 +612,7 @@ def families(traces, states, claims=None) -> list:
 
 
 def collect(repo, cfg, ref=None, since=None, traces=None, ledger_path=None, vouchers_dir=None, credits=None,
-            as_of=None, allowed_signers=None, min_runs=3, stuck_hours=STUCK_HOURS) -> dict:
+            as_of=None, allowed_signers=None, min_runs=3, stuck_hours=STUCK_HOURS, deploys=None) -> dict:
     if since is not None:
         since = T._utc(since)
         if not since:
@@ -529,10 +621,13 @@ def collect(repo, cfg, ref=None, since=None, traces=None, ledger_path=None, vouc
         raise BrainError("as_of %r is not an ISO time" % as_of)
     u = usage.collect(repo, cfg, ref=ref)
     skipped, credits_note, found = [], None, {}
+    if deploys is None:
+        deploys = D.source_for(repo, T.default_ref(repo, cfg, ref))
     if traces is None:
         traces, skipped, credits_note = build_traces(repo, cfg, ref=ref, ledger_path=ledger_path,
                                                      vouchers_dir=vouchers_dir, credits=credits, as_of=as_of,
-                                                     allowed_signers=allowed_signers, _usage=u, found=found)
+                                                     allowed_signers=allowed_signers, _usage=u, found=found,
+                                                     deploys=deploys)
     traces = sorted(traces, key=lambda t: t["key"])
     now = T._dt(traces[0]["as_of"]) if traces else (T._dt(as_of) if as_of else utcnow())
     claims = claims_here(repo)
@@ -556,6 +651,7 @@ def collect(repo, cfg, ref=None, since=None, traces=None, ledger_path=None, vouc
                 "pending": sorted(k for k, v in corr.items() if v == "pending"),
                 "wrong_open": sorted(k for k, v in corr.items() if v == "wrong_open"),
                 "unknown_acceptance": sorted(k for k, v in corr.items() if v == "unknown"),
+                "unknown_after_merge": sorted(k for k, v in corr.items() if v == "unknown_after_merge"),
                 "rule": "一次通过验收（没有被驳回过的 RELEASE / 验收），合并后 14 天内没有回滚、点名这个需求的修复提交、"
                         "或点名它的新缺陷认领；只算 14 天已满、有验收记录的交付（已知出了问题、14 天还没满的，也等满了再算）"}
 
@@ -677,6 +773,7 @@ def collect(repo, cfg, ref=None, since=None, traces=None, ledger_path=None, vouc
             "removed": found.get("removed", {}),
             "batch": batch(active, skipped, states), "families": families(active, states, claims),
             "autonomy": autonomy, "delivery": delivery, "judgment": judgment,
+            "deploys": deploy_numbers(deploys, merged, since, now, cfg["default_branch"]),
             "repeat_rate": u["repeat_rate"], "useful": u["useful"],
             "useful_loaded": _per_run_useful(u), "staleness": staleness, "cost": cost, "funnel": funnel,
             "review_queue": queue, "min_runs": min_runs,
@@ -909,6 +1006,9 @@ def report(data) -> str:
         out.append("  已知有问题、14 天还没满（满了再算）：" + ", ".join(d["wrong_open"]))
     if d["unknown_acceptance"]:
         out.append("  没有验收记录（不算）：" + ", ".join(d["unknown_acceptance"]))
+    if d.get("unknown_after_merge"):
+        out.append("  14 天满了，可合并后的部署结果读不到（不算）：" + ", ".join(d["unknown_after_merge"]))
+    out += deploy_report(data.get("deploys"))
     j = data["judgment"]
     out.append("介入落在判断点的比例：%s" % _pct(*j["value"]))
     for o in j["outside"]:

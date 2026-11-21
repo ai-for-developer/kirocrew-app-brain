@@ -111,11 +111,13 @@ Brain 是仓库里的 `brain/PRODUCT.md`、`TECH.md`、`IMPROVEMENT.md`、`PROJE
 
 | 命令 | 谁跑、在哪 | 做什么 |
 |---|---|---|
-| `brain` | 每个人的电脑 | `install`、`doctor`、`claim`、`intake`、`start`、`handoff`、`status`；快速需求：`start --fast`、`mr`、`full`（见 [docs/安装和使用.md](docs/安装和使用.md) 4.8）；大需求拆成小需求：`split`、`claim KEY`（认领待认领的）、`sync`（见 [docs/安装和使用.md](docs/安装和使用.md) 4.7）；Brain：`lint`、`entry`、`reflect`（含 `--draft`）、`usage`；入口：`intent add/list/show/close`（见 [docs/intents.md](docs/intents.md)）；评估：`trace`、`eval`、`eval gaps`、`golden`（见 [docs/eval.md](docs/eval.md)） |
+| `brain` | 每个人的电脑 | `install`、`doctor`、`claim`、`intake`、`start`、`handoff`、`status`；快速需求：`start --fast`、`mr`、`full`（见 [docs/安装和使用.md](docs/安装和使用.md) 4.8）；大需求拆成小需求：`split`、`claim KEY`（认领待认领的）、`sync`（见 [docs/安装和使用.md](docs/安装和使用.md) 4.7）；Brain：`lint`、`entry`、`reflect`（含 `--draft`）、`usage`；入口：`intent add/list/show/close`（见 [docs/intents.md](docs/intents.md)）；评估：`trace`、`eval`、`eval gaps`、`golden`、`deploys`（合并后的部署：哪个 digest 上了 staging、灰度通过还是中止）（见 [docs/eval.md](docs/eval.md)） |
 | `brain-bridge` | 团队运行机，`brainbridge` 用户 | `poll`（接手核对）、`dispatch`（送进 KiroCrew）、`watch`（贴问题）、`collect`（收回答并送回）、`reconcile`（MR 合并后收尾）、`report`（统计）、`loop`（循环跑以上全部） |
 | `brain-runnerd` | 团队运行机，`brainbot` 用户 | 验合同签名，按合同里的 commit 建 worktree，拷材料包 |
 | `brain-ci check-run` | GitLab MR 流水线（只在 MR 流水线里跑） | 检查五件事：run.json 和分支一致；材料包没被提交进仓库；run 分支没改 `brain/` 和 `AGENTS.md`；改了 risk-paths 必须有桥签名的设计批准；机器人提交的 commit 要有接手凭证。快速需求（run.json 的 `mode: fast`）不查 Lean intent，目标分支不许快速模式就失败，改了 risk-paths 直接失败（要转完整流程），机器人的提交以建 run.json 的那个提交为界。kit 配置、risk-paths 和 diff 基线都从**目标分支**读，MR 分支上改了也不算数 |
 | `brain-ci brain-lint` | GitLab MR 流水线（每个 MR） | Brain 的关系规则，对照 MR 的 diff 基线；配置从目标分支读 |
+| `brain-ci new-coverage` | GitLab MR 流水线（每个 MR） | MR 新加的代码要有测试：读项目测试作业的 Cobertura 报告（`BRAIN_COVERAGE_REPORT`，默认 `coverage.xml`），算 MR 新加的可执行行（从合并基点到 MR 头；测试文件和 `new_coverage.ignore` 不算）有多少被测试跑到。低于 `new_coverage.block`（默认 60%）失败，低于 `new_coverage.warn`（默认 80%）通过但告警，并列出最差的几个文件和没测到的行号。没有新加的可执行行就通过；拿不到报告就失败。阈值从**目标分支**读 |
+| `brain-ci migrations` | GitLab MR 流水线（每个 MR） | 灰度时旧版本还连着新的表结构，所以 MR 新加或改的迁移（`migrations.paths`，默认 `migrations/*.sql`，从目标分支读）只能扩、不能缩：DROP COLUMN、DROP TABLE、RENAME 列或表、ALTER COLUMN ... TYPE、加 NOT NULL 列不给 DEFAULT、SET NOT NULL、对已有的表 CREATE INDEX 不加 CONCURRENTLY，都失败；改已合并的迁移也失败。确实要收缩时，在语句正上方写 `-- brain: contract <规则号> <原因>`，失败就变成写明原因的告警 |
 | `brain-pre-receive` | GitLab 服务器钩子 | 人只能推 `ai/<自己>/*`；`claim/<KEY>` 只有 claim.json 里写的那个人能建、能改、能删（待认领的另有规则，见 [docs/intents.md](docs/intents.md) 2.2）；机器人只能推 `ai/*`，不能删分支、不能强推、不能推 tag，也不能改 gates、CI、`.brain/` |
 | `remote/agents/brain-run.json` + `remote/prompts/brain-run.md` | 团队运行机上的 KiroCrew | 接手模式的 agent |
 
@@ -157,7 +159,7 @@ brain-kit/bin/brain install <项目目录> --lean <AI-DLC Lean 的 checkout 目�
 
 **GitLab**
 - 服务器钩子：`bin/brain-pre-receive`，样例配置在 `examples/pre-receive.json`。
-- CI：引入 `ci/brain-kit.gitlab-ci.yml`，把 `brain-run-check` 和 `brain-lint` 设成必过检查。
+- CI：引入 `ci/brain-kit.gitlab-ci.yml`，把 `brain-run-check`、`brain-lint`、`brain-new-coverage` 和 `brain-migrations` 设成必过检查。`brain-new-coverage` 要拿到项目测试作业的覆盖率报告，怎么接写在模板的注释里。
 - risk-paths 写在 main 的 `gates/risk-paths` 里。
 
 ## 谁能回答哪类问题
@@ -174,7 +176,7 @@ brain-kit/bin/brain install <项目目录> --lean <AI-DLC Lean 的 checkout 目�
 
 ## 测过什么
 
-本机 1469 个测试，在 python3.9（pytest）和 python3.12（`python3.12 -W error -m unittest discover -s tests -t .`）上都加 `-W error` 跑：除了 3 个跳过的（真实需求文档的测试，要 `BRAIN_TEST_REAL_DOCS` 指向一个文件夹）和 1 个要 markdown-it-py 的（照 GitLab 的读法渲染 MR 文字，看会不会加载图片；`uv run --python 3.12 --with markdown-it-py python -W error -m unittest discover -s tests -t .` 会跑它），都要通过。加了或删了测试，就改这个数（`tests/test_r1_k2_cli.py` 的 R1-34 核对它）。做过三轮独立的对抗评审：流程部分找出 15 个问题，Brain 部分（条目工具、lint、reflect、usage）又找出 15 个，大需求拆分找出 16 个，都已修掉，每个问题都补了回归测试。
+本机 1524 个测试，在 python3.9（pytest）和 python3.12（`python3.12 -W error -m unittest discover -s tests -t .`）上都加 `-W error` 跑：除了 3 个跳过的（真实需求文档的测试，要 `BRAIN_TEST_REAL_DOCS` 指向一个文件夹）和 1 个要 markdown-it-py 的（照 GitLab 的读法渲染 MR 文字，看会不会加载图片；`uv run --python 3.12 --with markdown-it-py python -W error -m unittest discover -s tests -t .` 会跑它），都要通过。加了或删了测试，就改这个数（`tests/test_r1_k2_cli.py` 的 R1-34 核对它）。做过三轮独立的对抗评审：流程部分找出 15 个问题，Brain 部分（条目工具、lint、reflect、usage）又找出 15 个，大需求拆分找出 16 个，都已修掉，每个问题都补了回归测试。
 
 - **审批单**（`tests/test_review_*.py`）：用真的 Lean 和装进项目的 adapter，按 KiroCrew 和 Kiro CLI 两种 hook 顺序送人的回复：记录的哈希链和快照，只算 Lean 记成人发的那一条；条目号开头的行和 Lean 的批准、驳回行互不相交（用 Lean 自己的正则核对）；第 1 轮和第 2 轮的审批单（每个条目不是列出就是折叠，一屏放得下，没有一行会被读成批准）；两个预审用假的 kiro-cli，失败、超时、答错版本都不挡审批单；`brain review` 和 `brain review log`；reflect、trace、eval 读出退回了但没写 correction 的条目。
 - **认领**：本地和远端都测了；两个 clone 抢同一个号，git 本身就会拒掉后到的那个；钩子按 claim.json 认人。

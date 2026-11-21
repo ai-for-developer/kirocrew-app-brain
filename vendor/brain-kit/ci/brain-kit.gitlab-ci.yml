@@ -1,8 +1,10 @@
 # Include from the project's .gitlab-ci.yml (owned by the platform team; the bot cannot edit CI files).
-# Make all three jobs required checks, reported by jobs the bot cannot fake (see the main plan §6: only checks the
+# Make all five jobs required checks, reported by jobs the bot cannot fake (see the main plan §6: only checks the
 # bot cannot write count as gates). They run in every MR pipeline, whatever the source branch is called: the bot can
 # open an MR from any branch, and kit.json's branch_prefix need not be ai. On a branch that is not a run branch
-# check-run has nothing to check; push-rules refuses the bot's pushes and commits there.
+# check-run has nothing to check; push-rules refuses the bot's pushes and commits there. brain-new-coverage and
+# brain-migrations exit 3 for a warning. The pipeline shows the warning and the MR can still merge. Any other failure
+# blocks the merge.
 brain-run-check:
   stage: test
   image: ${BRAIN_CI_IMAGE}          # internal image with python3 (3.8+), git and openssh-client
@@ -47,3 +49,52 @@ brain-lint:
   script:
     - git clone -q --depth 1 --branch "${BRAIN_KIT_REF}" "${BRAIN_KIT_REPO}" /tmp/brain-kit
     - python3 /tmp/brain-kit/bin/brain-ci brain-lint
+
+# The lines an MR adds need tests. brain-ci new-coverage fails when the tests run fewer than new_coverage.block %
+# (default 60) of the executable lines the MR adds, and warns below new_coverage.warn % (default 80). Tests and
+# new_coverage.ignore do not count. The thresholds come from the target branch's .brain/kit.json, so an MR cannot
+# loosen its own gate. The project's test job must:
+#   - write a Cobertura report (pytest --cov=<package> --cov-report=xml, or a converter) to $BRAIN_COVERAGE_REPORT
+#     and list it under artifacts:paths (artifacts:reports alone does not reach other jobs);
+#   - measure the whole source tree (--cov=<package>, coverage `source`): a file no test imports is otherwise not in
+#     the report, and its lines are not counted;
+#   - be the job in needs: below. Named otherwise? Override in your .gitlab-ci.yml:
+#       brain-new-coverage:
+#         needs: [{job: unit-tests, artifacts: true}]
+# Without the report (the job did not run, the path is wrong, the file is not Cobertura) the check fails.
+brain-new-coverage:
+  stage: test
+  image: ${BRAIN_CI_IMAGE}
+  variables:
+    GIT_DEPTH: "0"                          # the merge base with the target branch
+    BRAIN_COVERAGE_REPORT: coverage.xml     # the test job's artifact, relative to the project directory
+  needs:
+    - job: test
+      artifacts: true
+      optional: true                        # with no test job in the pipeline this job still runs, and fails
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  allow_failure:
+    exit_codes: [3]
+  script:
+    - git clone -q --depth 1 --branch "${BRAIN_KIT_REF}" "${BRAIN_KIT_REPO}" /tmp/brain-kit
+    - python3 /tmp/brain-kit/bin/brain-ci new-coverage
+
+# During a canary the old version runs against the new schema, so the migrations an MR adds or changes
+# (migrations.paths on the target branch, default migrations/*.sql) may only expand it. brain-ci migrations fails on
+# DROP COLUMN, DROP TABLE, RENAME, ALTER COLUMN ... TYPE, ADD COLUMN ... NOT NULL without DEFAULT, SET NOT NULL,
+# CREATE INDEX without CONCURRENTLY on an existing table, and any edit to a merged migration. A deliberate contract
+# step gets `-- brain: contract <rule-id> <reason>` directly above the statement: its failure becomes a warning that
+# names the reason, for the reviewer.
+brain-migrations:
+  stage: test
+  image: ${BRAIN_CI_IMAGE}
+  variables:
+    GIT_DEPTH: "0"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  allow_failure:
+    exit_codes: [3]
+  script:
+    - git clone -q --depth 1 --branch "${BRAIN_KIT_REF}" "${BRAIN_KIT_REPO}" /tmp/brain-kit
+    - python3 /tmp/brain-kit/bin/brain-ci migrations
