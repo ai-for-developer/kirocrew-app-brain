@@ -1817,12 +1817,18 @@ def world(scratch: Path) -> None:
     def overview_of(repo: str, evaluated: bool, team: bool = False) -> dict:
         """交付总览 for 全部 or one repo, as service._overview_sync makes it: its rows, its repos' numbers; without
         brainkit.evaluate the funnel is the app's own count and every merge is still 还没评. *team*: on the team
-        runner's machine, where each requirement is listed once (a handed-over one as the runner's)."""
+        runner's machine, where each requirement is listed once (a handed-over one as the runner's); else alice's
+        machine, where it lists her own (deliveries.own_rows), an overlap with a teammate's still said on hers."""
         ids = [x for x in ("r1", "r3", "r4") if repo in ("all", x)]
         o = copy.deepcopy(ov)
         o["rows"] = copy.deepcopy([r_ for r_ in all_rows if r_["repo"] in ids and not (team and (r_["repo"], r_["key"]) in taken)]
                                   + ([r_ for r_ in runner_rows if repo in ("all", "runner", r_["home"])] if team else []))
         o["overlaps"], o["roster"] = team_view(o["rows"])
+        if not team:
+            o["rows"] = deliveries.own_rows(o["rows"], {x: ME for x in ids})
+            keys_ = {r_["key"] for r_ in o["rows"]}
+            o["overlaps"] = [x for x in o["overlaps"] if keys_ & set(x["keys"])]
+            o["roster"] = roster_mod.roster(o["rows"], me=ME, now=T0, settings=LIMITS)
         o["counts"] = deliveries.counts(o["rows"])
         o["errors"] = [e for e in ov["errors"] if repo in ("all", e["repo"])]
         mine = [p_ for p_ in parts if p_[0] in ids] if evaluated else []

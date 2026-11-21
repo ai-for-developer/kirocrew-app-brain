@@ -409,6 +409,7 @@ const RV_CSS = `
 .rv-filter { display: inline-flex; align-items: center; gap: .35em; font-size: .88em; color: var(--muted); }
 .rv-filter select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; max-width: 12em; }
 .rv-delivery td { vertical-align: top; }
+.rv-delivery td:first-child { min-width: 9.5em; }
 .rv-delivery tr[data-mine] td:first-child { box-shadow: inset 3px 0 0 var(--kt-approve, var(--kit-warn)); }
 .rv-title { color: var(--text-strong); }
 .rv-mr { display: inline-grid; gap: .2em; }
