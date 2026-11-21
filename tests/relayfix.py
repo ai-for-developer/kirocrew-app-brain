@@ -2,7 +2,7 @@
 the status project it writes its snapshot into.
 
 A code project's branches (search ^prefix, one by name, each with its head's id, parent_ids and committed_date), files
-at any ref (raw), trees (recursive or not; 404 for a folder not there), the newest commit touching a path, and merge
+at any ref (raw) and blobs by id, trees (recursive or not; 404 for a folder not there), the newest commit touching a path, and merge
 bases come from its bare repo with git. Its MRs, their notes and pipelines are in memory, the MR list paged and filtered
 by state, updated_after and source_branch as GitLab does. The status project (status()) keeps its files per branch in memory, takes the
 commits API's create and update actions (400 for a create of a file there or an update of one that is not, as GitLab
@@ -126,6 +126,10 @@ class RepoGitLab:
         bare, sub = self.repos[name]["bare"], rest[len(name):]
         if sub == "":
             return ok({"id": self.repos[name]["id"], "path_with_namespace": name, "default_branch": "main"})
+        if sub.startswith("/repository/blobs/") and sub.endswith("/raw"):
+            p = subprocess.run(["git", "-C", bare, "cat-file", "blob", sub[len("/repository/blobs/"):-4]],
+                               capture_output=True)
+            return (200, p.stdout) if p.returncode == 0 else ok({"message": "404 Blob Not Found"}, 404)
         if sub.startswith("/repository/files/") and sub.endswith("/raw"):
             p = subprocess.run(["git", "-C", bare, "show", "%s:%s" % (q.get("ref"), sub[len("/repository/files/"):-4])],
                                capture_output=True)

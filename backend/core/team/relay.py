@@ -15,8 +15,9 @@ open MRs and those merged or closed in the last MERGED_S, each requirement's new
 app takes a branch's (a hand-over's branch none of them is of asks GitLab for its own, once per head). A claim branch
 whose claim.json is not a JSON object is left out, and said. A requirement's records (run.json, park.json,
 aidlc-state.md, decisions.md and the Lean ledger, read_facts as a person's app reads a teammate's branch) are read at its
-branch's head through the files API (GitLabSource), once per head: a head that did not move is not read again. A merged
-one is read at its merge. The row is then what 交付总览 says of a teammate's requirement (deliveries.classify with no one
+branch's head (GitLabSource), once per head: a head that did not move is not read again, and a new head reads only the
+files that changed (each file by its blob id, once). A folder listed past MAX_PAGES of 100 files, and a default branch
+with more merged requirements than that, are read as far as that and said. A merged one is read at its merge. The row is then what 交付总览 says of a teammate's requirement (deliveries.classify with no one
 as "you", then family.classify for a big requirement and its small ones): its stage in 交付总览's words
 (deliveries.flow_stage; a closed one and a small one merged into its big one's branch, in no column there, by their
 state's words), its MR and the CI of its head (kept once the pipeline is over), whether the staging VERSION holds its
@@ -43,6 +44,9 @@ FLOOR_S = 5 * 60                # a snapshot is built, and written when it chang
 HEARTBEAT_S = 30 * 60           # an unchanged one is written again this old, to say the server is alive
 MERGED_S = 14 * 86400           # a merged requirement stays this long after its merge
 FINAL_CI = ("success", "failed", "canceled", "skipped")
+MAX_PAGES = 20                  # a folder of a commit is listed this many pages of 100 at most: past them, what fits
+CUT = "%s 里的文件超过 %d 个，只读了前 %d 个：Lean 的记录可能不全" % ("%s", MAX_PAGES * 100, MAX_PAGES * 100)
+CUT_RUNS = "默认分支的 %s 里的需求超过 %d 个，只读了前 %d 个：再早合并的不在全队交付里" % ("%s", MAX_PAGES * 100, MAX_PAGES * 100)
 # the steps (waits.do) its owner takes: a row waiting on one waits on them
 OWNER_STEPS = ("approve", "reply", "tool", "start", "redo_handoff", "label_handoff", "push_handoff", "write_back")
 ROLE_OF = {"product": "product", "builder": "builder"}      # waits.who -> the identities role that takes the step
@@ -50,34 +54,71 @@ ROLE_OF = {"product": "product", "builder": "builder"}      # waits.who -> the i
 
 class GitLabSource(Source):
     """The files of one commit on GitLab, read the way repo.Source reads a git ref (read_facts reads a requirement's
-    records through it): each file once."""
+    records through it). A folder is listed once (GitLab's tree: each file's blob id), and a file is read by its blob
+    id once whatever commit or path holds it (*blobs*, kept by Deliveries per project), so the Lean ledger's audit files
+    that did not change since another head are not read again. A listing past MAX_PAGES of 100 keeps what it read:
+    *cut* says which folder."""
 
-    def __init__(self, gl: Any, project: str, sha: str) -> None:
+    def __init__(self, gl: Any, project: str, sha: str, blobs: dict[str, bytes]) -> None:
         super().__init__(None, ref=sha)
-        self.gl, self.project, self.sha = gl, project, sha
-        self._files: dict[str, bytes | None] = {}
+        self.gl, self.project, self.sha, self.blobs = gl, project, sha, blobs
+        self._ids: dict[str, str] = {}          # path -> blob id at sha, for each folder listed
+        self._listed: set[str] = set()
+        self.used: set[str] = set()             # the blob ids read through it
+        self.cut: list[str] = []                # the folders listed only in part
 
     def read(self, rel: str) -> bytes | None:
-        if rel not in self._files:
-            raw = self.gl.file_raw(self.project, rel, self.sha)
-            self._files[rel] = raw[:MAX_FILE] if raw is not None else None
-        return self._files[rel]
+        folder = rel.rsplit("/", 1)[0] if "/" in rel else ""
+        if folder not in self._listed:
+            self._list(folder, recursive=False)
+        blob = self._ids.get(rel)
+        if blob is None:
+            return None
+        self.used.add(blob)
+        if blob not in self.blobs:
+            raw = self.gl.call("GET", "/projects/%s/repository/blobs/%s/raw" % (bk.m("rest").q(self.project), blob),
+                               raw=True) or b""
+            self.blobs[blob] = raw[:MAX_FILE]
+        return self.blobs[blob]
 
     def ls(self, prefix: str) -> list[str]:
+        folder = prefix.rstrip("/")
+        return sorted(path for path in self._list(folder, recursive=True) if path.startswith(folder + "/"))
+
+    def _list(self, folder: str, recursive: bool) -> list[str]:
+        """The files under *folder* (in it only, unless *recursive*), their blob ids kept; [] for a folder not
+        there."""
+        query = {"path": folder, "ref": self.sha, **({"recursive": "true"} if recursive else {})}
         try:
-            rows = self.gl.pages("/projects/%s/repository/tree" % bk.m("rest").q(self.project),
-                                 {"path": prefix.rstrip("/"), "ref": self.sha, "recursive": "true"}, 100, 20,
-                                 "files under %s" % prefix)
+            rows, cut = listed(self.gl, "/projects/%s/repository/tree" % bk.m("rest").q(self.project), query)
         except bk.m("rest").HttpError as exc:
-            if exc.status == 404:           # no such folder at this commit
-                return []
-            raise
-        return sorted(str(r["path"]) for r in rows if isinstance(r, dict) and r.get("type") == "blob")
+            if exc.status != 404:           # 404: no such folder at this commit
+                raise
+            rows, cut = [], False
+        files = [r for r in rows if r.get("type") == "blob" and r.get("path") and r.get("id")]
+        self._ids.update((str(r["path"]), str(r["id"])) for r in files)
+        self._listed.add(folder)                # a folder cut short is not listed again: what it has past that is not read
+        if cut:
+            self.cut.append(folder)
+        elif recursive:
+            self._listed |= {str(r["path"]) for r in rows if r.get("type") == "tree"}
+        return [str(r["path"]) for r in files]
 
     def changed_at(self, rel: str) -> float | None:
         rows = self.gl.call("GET", "/projects/%s/repository/commits" % bk.m("rest").q(self.project),
                             {"ref_name": self.sha, "path": rel, "per_page": 1}) or []
         return epoch(rows[0].get("committed_date")) if rows and isinstance(rows[0], dict) else None
+
+
+def listed(gl: Any, path: str, query: Mapping[str, Any]) -> tuple[list[dict[str, Any]], bool]:
+    """(the rows of a paged GitLab list, at most MAX_PAGES of 100; whether there are more than that)."""
+    out: list[dict[str, Any]] = []
+    for page in range(1, MAX_PAGES + 1):
+        rows = gl.call("GET", path, dict(query, per_page=100, page=page)) or []
+        out += [r for r in rows if isinstance(r, dict)]
+        if len(rows) < 100:
+            return out, False
+    return out, bool(gl.call("GET", path, dict(query, per_page=1, page=MAX_PAGES * 100 + 1)))
 
 
 def epoch(stamp: Any) -> float | None:
@@ -123,6 +164,13 @@ class Read(NamedTuple):
     notes: list[str]
 
 
+class Facts(NamedTuple):
+    """read_facts at one commit, with the blob ids read for it and the folders listed only in part there."""
+    facts: dict[str, Any]
+    blobs: frozenset[str]
+    cut: tuple[str, ...]
+
+
 class Gathered(NamedTuple):
     """What GitLab says of one requirement before it is worded: its records where they are read (facts, as read_facts
     and repo.scan give them), its newest MR, its claim and where it is (main, its branch, or only claimed)."""
@@ -157,13 +205,14 @@ class Deliveries:
     def __init__(self, gl: Any, base: str, kit: Callable[[str], Mapping[str, Any]],
                  now: Callable[[], float] = time.time) -> None:
         self.gl, self.base, self.kit, self.now = gl, base.rstrip("/"), kit, now
-        self._facts: dict[tuple, dict[str, Any]] = {}       # (project, key, sha) -> read_facts at that commit
+        self._facts: dict[tuple, Facts] = {}                # (project, key, sha) -> read_facts at that commit
+        self._blobs: dict[str, dict[str, bytes]] = {}       # project -> blob id -> the file (GitLabSource)
         self._claims: dict[tuple, Any] = {}                 # (project, sha) -> its claim.json, an object or None
         self._notes: dict[tuple, tuple] = {}                # (project, iid) -> ((updated_at, head), parse_notes)
         self._ci: dict[tuple, str | None] = {}              # (project, iid, head) -> its head pipeline's status
         self._deployed: dict[tuple, bool] = {}              # (project, merge, deployed) -> the deploy holds the merge
         self._branch_mr: dict[tuple, dict | None] = {}      # (project, branch, head) -> that branch's newest MR
-        self._merged: dict[str, tuple[str, frozenset[str]]] = {}   # project -> (default branch head, keys merged)
+        self._merged: dict[str, tuple[str, frozenset[str], bool]] = {}   # project -> (default head, keys merged, cut)
         self.last: dict[str, Read] = {}                     # project -> its last read that worked
 
     def read(self, project: str, *, deployed: str, roles: Mapping[str, Any]) -> Read:
@@ -181,14 +230,19 @@ class Deliveries:
             for c in caches:
                 for k in [k for k in c if k[0] == project and k not in seen]:
                     del c[k]
+            used = {b for k, x in self._facts.items() if k[0] == project for b in x.blobs}
+            blobs = self._blobs.get(project, {})
+            for b in [b for b in blobs if b not in used]:
+                del blobs[b]
         self.last[project] = got
         return got
 
     def forget(self, keep: list[str]) -> None:
         """Let go of the projects not in *keep* (the bridge no longer has them)."""
-        for p in [p for p in list(self.last) + list(self._merged) if p not in keep]:
+        for p in [p for p in list(self.last) + list(self._merged) + list(self._blobs) if p not in keep]:
             self.last.pop(p, None)
             self._merged.pop(p, None)
+            self._blobs.pop(p, None)
         for c in (self._facts, self._claims, self._notes, self._ci, self._deployed, self._branch_mr):
             for k in [k for k in c if k[0] not in keep]:
                 del c[k]
@@ -236,14 +290,16 @@ class Deliveries:
                 runs.setdefault(got["key"], dict(b, owner=got["owner"]))
         reflected = {m.group("key") for m in (REFLECT_RE.match("refs/heads/" + b["name"])
                                                for b in self._branches(project, "brain/")) if m}
-        merged_keys = self._merged_keys(project, default, runs_dir)
+        merged_keys = self._merged_keys(project, default, runs_dir, notes)
         mrs = self._mrs(project, pre, now)
         got: dict[str, Gathered] = {}
+        cut: set[str] = set()
         for key in sorted(set(claims) | set(runs) | set(mrs), key=key_order):
             g = self._gather(project, key, runs_dir, default, claims.get(key), runs.get(key), mrs, key in merged_keys,
-                             now, seen)
+                             now, seen, cut)
             if g is not None:
                 got[key] = g
+        notes += [CUT % folder for folder in sorted(cut)]
         fams = family.families([g.f for g in got.values()], None, me=None, cfg=dict(kit), can_split=False, big=set(),
                                at=None)
         rows = [self._row(project, g, fams.get(key), kit, key in reflected, bridge_user, deployed, roles, now, seen)
@@ -265,7 +321,7 @@ class Deliveries:
 
     def _gather(self, project: str, key: str, runs_dir: str, default: str, claimed: tuple | None,
                 run_b: dict | None, mrs: Mapping[str, dict[str, Any]], on_main: bool, now: float,
-                seen: set[tuple]) -> Gathered | None:
+                seen: set[tuple], cut: set[str]) -> Gathered | None:
         """Where *key* is and its records there, read once per commit; None when it is not a row: its claim closed,
         merged before the last MERGED_S (or not through an MR GitLab lists), its hand-over's MR merged or closed
         before them."""
@@ -284,7 +340,7 @@ class Deliveries:
             sha, where, tip_at = run_b["commit"]["id"], "branch", epoch(run_b["commit"].get("committed_date"))
         else:
             sha, where, tip_at = "", "claim", None
-        got = self._facts_at(project, key, sha, runs_dir, seen) if sha else empty_facts()
+        got = self._facts_at(project, key, sha, runs_dir, seen, cut) if sha else empty_facts()
         run = got["run"] or {}
         if where == "branch" and mr is None and run.get("handoff"):
             mr = self._mr_of_branch(project, str(run_b["name"]), sha, seen)
@@ -339,22 +395,25 @@ class Deliveries:
         return [b for b in rows if isinstance(b, dict) and str(b.get("name") or "").startswith(prefix)
                 and isinstance(b.get("commit"), dict) and b["commit"].get("id")]
 
-    def _merged_keys(self, project: str, default: str, runs_dir: str) -> frozenset[str]:
-        """The keys with a folder in runs_dir on the default branch: listed again when its head moves."""
+    def _merged_keys(self, project: str, default: str, runs_dir: str, notes: list[str]) -> frozenset[str]:
+        """The keys with a folder in runs_dir on the default branch (the first MAX_PAGES of 100, said when there are
+        more): listed again when its head moves."""
         b = self.gl.call("GET", "/projects/%s/repository/branches/%s" % (bk.m("rest").q(project),
                                                                       bk.m("rest").q(default))) or {}
         head = str((b.get("commit") or {}).get("id") or "")
         got = self._merged.get(project)
         if got is None or got[0] != head:
             try:
-                rows = self.gl.pages("/projects/%s/repository/tree" % bk.m("rest").q(project),
-                                     {"path": runs_dir, "ref": head}, 100, 20, "runs") if head else []
+                rows, cut = listed(self.gl, "/projects/%s/repository/tree" % bk.m("rest").q(project),
+                                   {"path": runs_dir, "ref": head}) if head else ([], False)
             except bk.m("rest").HttpError as exc:
                 if exc.status != 404:
                     raise
-                rows = []
-            got = self._merged[project] = (head, frozenset(str(r.get("name")) for r in rows if isinstance(r, dict)
-                                                           and r.get("type") == "tree" and KEY_RE.match(str(r.get("name")))))
+                rows, cut = [], False
+            got = self._merged[project] = (head, frozenset(str(r.get("name")) for r in rows if r.get("type") == "tree"
+                                                           and KEY_RE.match(str(r.get("name")))), cut)
+        if got[2]:
+            notes.append(CUT_RUNS % runs_dir)
         return got[1]
 
     def _claim(self, project: str, b: dict[str, Any], seen: set[tuple]) -> dict[str, Any] | None:
@@ -383,12 +442,17 @@ class Deliveries:
             self._branch_mr[k] = rows[-1] if rows else None
         return self._branch_mr[k]
 
-    def _facts_at(self, project: str, key: str, sha: str, runs_dir: str, seen: set[tuple]) -> dict[str, Any]:
+    def _facts_at(self, project: str, key: str, sha: str, runs_dir: str, seen: set[tuple],
+                  cut: set[str]) -> dict[str, Any]:
+        """read_facts at *sha*, once per commit, with the blob ids it read (kept while a commit read uses them) and
+        the folders it could list only in part (added to *cut*)."""
         k = (project, key, sha)
         seen.add(k)
         if k not in self._facts:
-            self._facts[k] = read_facts(GitLabSource(self.gl, project, sha), key, runs_dir)
-        return self._facts[k]
+            src = GitLabSource(self.gl, project, sha, self._blobs.setdefault(project, {}))
+            self._facts[k] = Facts(read_facts(src, key, runs_dir), frozenset(src.used), tuple(src.cut))
+        cut.update(self._facts[k].cut)
+        return self._facts[k].facts
 
     def _mr_info(self, project: str, mr: dict[str, Any], run: Mapping[str, Any], bridge_user: str | None,
                  seen: set[tuple]) -> dict[str, Any]:

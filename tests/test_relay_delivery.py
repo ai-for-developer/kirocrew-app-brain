@@ -229,8 +229,9 @@ def test_a_branchs_records_are_read_once_per_head_and_a_running_pipeline_until_i
     head = sh("git", "-C", world["bob"], "rev-parse", "HEAD").stdout.strip()
     second = len(gl.calls)
     third, _ = build(world)
-    raws = gl.asked("raw", since=second)
-    assert raws and {c[2]["ref"] for c in raws} == {head}
+    trees = gl.asked("tree", since=second)
+    assert trees and {c[2]["ref"] for c in trees} == {head}
+    assert gl.asked("raw", since=second) == []          # the same files as before: their blobs are not read again
     assert by_key(third)["PAY-7"]["updated_at"] >= by_key(again)["PAY-7"]["updated_at"]
     # the pipeline is over: read once more, then kept
     gl.pipes[(P, 5)][0]["status"] = "success"
