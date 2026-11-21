@@ -324,8 +324,8 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
   const team = !!status && (status.app.team || status.team.enabled)
   // the team view (全队卡点, 按人) is the team server's; a person's is in 团队运行机 (全队交付)
   const teamView = status?.app.role === 'team_server'
-  // a person's 交付总览 lists what is theirs: where the app cannot tell who they are, nothing there is
-  const whoUnknown = !teamView && scope.some((r) => r.me && !r.me.name)
+  // a person's 交付总览 lists what is theirs: a repo where the app cannot tell who they are lists everything, and says so
+  const unknownIn = teamView ? [] : scope.filter((r) => r.me && !r.me.name)
   const newReq = () => go({ kind: 'new', ...(repo !== 'all' ? { repo } : {}) })
 
   if (noRepos) {
@@ -363,6 +363,11 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
         <PendingRepo key={r.id} repo={r} banner onOpen={() => go({ kind: 'import', path: r.path })} onDone={reloadStatus} />
       ))}
       <LoadState loading={ov.loading} error={ov.error} has={!!data} />
+      {data && !noKit && unknownIn.length > 0 && (
+        <div className="br-banner" role="status" data-testid="ov-who">
+          <span><b className="br-strong">还不知道你是谁：</b>{unknownIn.map((r) => r.name).join('、')} 里看不出哪些需求是你的，下面先列出那里所有的需求。在最上面填上你的名字（GitLab 用户名），就只列你自己的；全队的需求在「团队运行机」里看。</span>
+        </div>
+      )}
       {!noKit && data?.errors.filter((e) => !(unreadable && e.repo === repo)).map((e) => {
         const r = repos.find((x) => x.id === e.repo)
         // the backend's words when it said them; an error it passed on as it came (a scan that threw) is folded. Its
@@ -425,11 +430,7 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
       {data && unreadable && !picked?.pending && (
         <Unreadable repo={picked} error={data.errors.find((e) => e.repo === repo)} onImport={(path) => go({ kind: 'import', ...(path ? { path } : {}) })} onAll={() => pickRepo('all')} />
       )}
-      {empty && !noKit && !unreadable && whoUnknown && (
-        <EmptyHero testid="ov-who" title="还不知道你是谁" text={['这里只列你自己的需求，可这台机器还不知道你在这些仓库里叫什么，看不出哪些需求是你的。在最上面填上你的名字（GitLab 用户名），你的需求就列出来了。']}
-          punch="全队的需求在「团队运行机」里看。" />
-      )}
-      {empty && !noKit && !unreadable && !whoUnknown && (
+      {empty && !noKit && !unreadable && (
         <EmptyHero title="还没有需求" text={[`${where}还没有需求。认领一个需求，写一段话或导入文档（选填），开工：它会在这里一路走到合并——在哪一步、等谁、花了多少。`]}
           punch="人只在判断点上出手：批准、回答、验收。"
           flow={localOnly
@@ -538,7 +539,7 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
             <li>每周合并：合并进默认分支的那一周（周一起）；交付方式同上，没评估过的合并算「还没评」。</li>
             <li>轮到你、等别人：按每个需求此刻等谁；「已等」从它开始这样等的那一刻算起。</li>
             {!teamView && (
-              <li data-testid="notes-mine">这里只有你自己的需求（和你的大需求拆出的小需求）。卡片上的红标：「超时」是人关（批准、回答、验收）等了 {data.roster.limits.wait_timeout_h} 个工作小时以上；「verify 失败」是同一项检查 verify 连续 {data.roster.limits.verify_fail_limit} 次没过，AI 该停下来问人。全队的需求、卡点、每人在做几个，在「团队运行机」的全队交付里看。工作小时只算周一到周五 9 点到 18 点。这些数在设置里改。</li>
+              <li data-testid="notes-mine">这里是你自己的需求、还没人认领的需求（谁开工就归谁），和你的大需求拆出的小需求。卡片上的红标：「超时」是人关（批准、回答、验收）等了 {data.roster.limits.wait_timeout_h} 个工作小时以上；「verify 失败」是同一项检查 verify 连续 {data.roster.limits.verify_fail_limit} 次没过，AI 该停下来问人。全队的需求、卡点、每人在做几个，在「团队运行机」的全队交付里看。工作小时只算周一到周五 9 点到 18 点。这些数在设置里改。</li>
             )}
             {teamView && <li data-testid="notes-team">全队卡点、按人看：「超时」是人关（批准、回答、验收）等了 {data.roster.limits.wait_timeout_h} 个工作小时以上；「很久没动」是别人在自己机器上做的需求，{data.roster.limits.stale_after_h} 个工作小时没有推上新进度；「目录撞车」是两个在做的需求要改的目录可能有同一个文件；「verify 失败」是同一项检查 verify 连续 {data.roster.limits.verify_fail_limit} 次没过，AI 该停下来问人。「在做」是一个人手上没做完的需求（待认领的不算，交给运行机的算在负责人名下，拆成小需求的大需求在等小需求时不算，它的小需求算），到了 {data.roster.limits.wip_limit} 个标红；只看一个仓库时只数这个仓库的。工作小时只算周一到周五 9 点到 18 点。这些数在设置里改。</li>}
             <li>没交付就结束：交给运行机以后，运行机没能开始，或 MR 关了没合并。它不算无人值守，也不算进分母。</li>

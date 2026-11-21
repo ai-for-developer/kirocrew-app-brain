@@ -2,7 +2,9 @@
 merged; overlaps; the approval line is shown, never sent."""
 
 import json
+import subprocess
 
+from appkit import mod
 from brainfix import (filled_notes, install_brain_dev, lean, make_project, make_service, needs_brainkit, request_requirements, run,
                       sh, start_in_worktree, brain)
 
@@ -359,10 +361,23 @@ def test_a_repo_that_cannot_be_read_is_said_in_words_with_the_original_under_det
     assert (e["name"], e["path"]) == (repo.name, str(repo.resolve()))
 
 
+def filed_for_anyone(repo, key, title):
+    """A claim filed for others by alice (owner null, as brain split files a small requirement), pushed: claim.json in
+    a commit of its own, as brain-kit's claims write one."""
+    doc = {"schema": 1, "key": key, "owner": None, "title": title, "created_at": "2026-11-20T08:00:00Z", "filed_by": "alice"}
+    blob = subprocess.run(["git", "-C", str(repo), "hash-object", "-w", "--stdin"], input=json.dumps(doc) + "\n",
+                          text=True, capture_output=True, check=True).stdout.strip()
+    tree = subprocess.run(["git", "-C", str(repo), "mktree"], input="100644 blob %s\tclaim.json\n" % blob, text=True,
+                          capture_output=True, check=True).stdout.strip()
+    c = sh("git", "-C", repo, "commit-tree", tree, "-m", "file %s by alice (unclaimed)" % key).stdout.strip()
+    sh("git", "-C", repo, "push", "-q", "origin", "%s:refs/heads/claim/%s" % (c, key))
+
+
 def test_a_persons_overview_lists_their_own_requirements_and_the_team_servers_everyones(tmp_path, home):
-    """交付总览 on alice's machine: her requirement only. bob's run, which her app fetched from origin, is the team's
-    (团队运行机's 全队交付), not hers; that it may change her paths is still said on hers. 按人 has her alone. On the
-    team server's 交付总览 every requirement is listed, as before."""
+    """交付总览 on alice's machine: her requirement, and PAY-3 that alice filed for anyone (nobody's yet: whoever starts
+    it has it). bob's run, which her app fetched from origin, is the team's (团队运行机's 全队交付), not hers; that it
+    may change her paths is still said on hers. 按人 has her alone. On the team server's 交付总览 every requirement is
+    listed, as before."""
     from brainfix import person
     repo = make_project(tmp_path, origin=True)
     start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款", "--paths", "src/pay")
@@ -370,6 +385,7 @@ def test_a_persons_overview_lists_their_own_requirements_and_the_team_servers_ev
     bob = person(tmp_path, tmp_path / "pay-origin.git", "bob")
     brain(bob, "start", "report", "--title", "报表", "--paths", "src/pay/report")
     sh("git", "-C", bob, "push", "-q", "origin", "refs/heads/claim/PAY-2", "refs/heads/ai/bob/PAY-2-report")
+    filed_for_anyone(repo, "PAY-3", "对账单导出")
     sh("git", "-C", repo, "fetch", "-q", "origin")
 
     def overview(svc):
@@ -383,9 +399,30 @@ def test_a_persons_overview_lists_their_own_requirements_and_the_team_servers_ev
 
     mine = overview(make_service(tmp_path / "alice", [repo]))
     team = overview(make_service(tmp_path / "server", [repo], role="team_server"))
-    assert sorted(rows_by_key(team)) == ["PAY-1", "PAY-2"] and rows_by_key(team)["PAY-2"]["owner"] == "bob"
-    assert list(rows_by_key(mine)) == ["PAY-1"] and sum(mine["counts"].values()) == 1
+    assert sorted(rows_by_key(team)) == ["PAY-1", "PAY-2", "PAY-3"] and rows_by_key(team)["PAY-2"]["owner"] == "bob"
+    assert sorted(rows_by_key(mine)) == ["PAY-1", "PAY-3"] and sum(mine["counts"].values()) == 2
+    assert (rows_by_key(mine)["PAY-3"]["owner"], rows_by_key(mine)["PAY-3"]["waits"]["text"]) == (None, "待认领：谁开工就归谁")
     assert mine["overlaps"] == team["overlaps"] == [{"keys": ["PAY-1", "PAY-2"], "paths": ["src/pay"]}]
     assert rows_by_key(mine)["PAY-1"]["overlap"] == ["PAY-2"]
     assert [p["owner"] for p in mine["roster"]["people"]] == ["alice"]
     assert sorted(p["owner"] for p in team["roster"]["people"]) == ["alice", "bob"]
+
+
+def test_a_persons_own_rows_are_theirs_the_ones_nobody_has_and_the_parts_of_their_big_ones():
+    """The reviewer's own_rows run: alice keeps hers, the claim filed for anyone, the small one nobody took (of bob's big
+    one), and carol's small one of alice's big one; bob's are the team's. A repo where she is not known keeps all."""
+    d = mod("deliveries")
+    rows = [
+        {"repo": "r1", "key": "PAY-1", "owner": "alice", "family": None},
+        {"repo": "r1", "key": "PAY-6", "owner": None, "family": None},
+        {"repo": "r1", "key": "PAY-8", "owner": None, "family": {"role": "child", "parent": "PAY-5"}},
+        {"repo": "r1", "key": "PAY-5", "owner": "bob", "family": {"role": "parent", "parent": "PAY-5"}},
+        {"repo": "r1", "key": "PAY-9", "owner": "bob", "family": {"role": "child", "parent": "PAY-5"}},
+        {"repo": "r1", "key": "PAY-11", "owner": "alice", "family": {"role": "parent", "parent": "PAY-11"}},
+        {"repo": "r1", "key": "PAY-12", "owner": "carol", "family": {"role": "child", "parent": "PAY-11"}},
+        {"repo": "r2", "key": "WEB-1", "owner": "bob", "family": None},
+    ]
+    keys = lambda got: [r["key"] for r in got]  # noqa: E731
+    assert keys(d.own_rows(rows, {"r1": "alice", "r2": "alice"})) == ["PAY-1", "PAY-6", "PAY-8", "PAY-11", "PAY-12"]
+    assert keys(d.own_rows(rows, {"r1": "alice", "r2": None})) == ["PAY-1", "PAY-6", "PAY-8", "PAY-11", "PAY-12", "WEB-1"]
+    assert keys(d.own_rows(rows, {"r1": None, "r2": None})) == keys(rows)

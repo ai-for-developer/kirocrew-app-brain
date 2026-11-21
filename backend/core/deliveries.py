@@ -550,14 +550,16 @@ def overlap_pairs(rows: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict
 
 
 def own_rows(rows: list[dict[str, Any]], me: dict[str, str | None]) -> list[dict[str, Any]]:
-    """A person's 交付总览 (a personal install): their own requirements (*me*: repo id -> who they are there; none
-    known, nothing there is theirs), and the small requirements of their big ones, whoever builds them (its parts). The
-    team, everyone's requirements, is the 团队运行机 tab's (状态中转)."""
+    """A person's 交付总览 (a personal install): their own requirements (*me*: repo id -> who they are there), the ones
+    nobody owns yet (a claim filed for anyone, a small requirement nobody took: whoever starts one has it), and the
+    small requirements of their big ones, whoever builds them (its parts). A repo where the app cannot tell who they are
+    keeps every row: the page says it cannot tell. Everyone's requirements are the 团队运行机 tab's (状态中转)."""
     def mine(r: dict[str, Any]) -> bool:
-        return bool(me.get(r["repo"])) and r.get("owner") == me.get(r["repo"])
-    big = {(r["repo"], r["key"]) for r in rows if mine(r) and (r.get("family") or {}).get("role") == "parent"}
-    return [r for r in rows if mine(r) or ((r.get("family") or {}).get("role") == "child"
-                                           and (r["repo"], (r.get("family") or {}).get("parent")) in big)]
+        return r.get("owner") == me.get(r["repo"])
+    big = {(r["repo"], r["key"]) for r in rows
+           if me.get(r["repo"]) and mine(r) and (r.get("family") or {}).get("role") == "parent"}
+    return [r for r in rows if not me.get(r["repo"]) or not r.get("owner") or mine(r)
+            or ((r.get("family") or {}).get("role") == "child" and (r["repo"], (r.get("family") or {}).get("parent")) in big)]
 
 
 def overlaps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

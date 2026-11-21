@@ -1219,7 +1219,7 @@ describe('交付总览 on a person’s machine: their own deliveries, the team i
     expect(within(flow).queryByTestId('flow-by')).toBeNull()
     expect(within(flow).queryByRole('button', { name: '按人' })).toBeNull()
     expect(screen.queryByTestId('notes-team')).toBeNull()
-    expect(screen.getByTestId('notes-mine')).toHaveTextContent('这里只有你自己的需求（和你的大需求拆出的小需求）')
+    expect(screen.getByTestId('notes-mine')).toHaveTextContent('这里是你自己的需求、还没人认领的需求（谁开工就归谁），和你的大需求拆出的小需求')
     expect(screen.getByTestId('notes-mine')).toHaveTextContent('全队的需求、卡点、每人在做几个，在「团队运行机」的全队交付里看')
     // the red mark on one's own card stays: an approval of theirs waiting past its timeout
     expect(cardOf(flow, 'PAY-6')).toHaveTextContent('超时')
@@ -1227,15 +1227,17 @@ describe('交付总览 on a person’s machine: their own deliveries, the team i
     expect(p.go).toHaveBeenCalledWith({ kind: 'team' })
   })
 
-  test('where the app cannot tell who the person is, nothing is theirs: the empty page says so, not 还没有需求', async () => {
+  test('where the app cannot tell who the person is, the page lists everything there and says so', async () => {
     const ov = fx.overview()
-    ov.rows = []
     const status = fx.status()
     status.repos = status.repos.map((r) => (r.me ? { ...r, me: { ...r.me, name: null, ask: true } } : r))
     installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
     render(<OverviewView entry={{}} {...props({ status })} />)
-    expect(await screen.findByTestId('ov-who')).toHaveTextContent('还不知道你是谁')
-    expect(screen.getByTestId('ov-who')).toHaveTextContent('在最上面填上你的名字（GitLab 用户名），你的需求就列出来了')
+    const who = await screen.findByTestId('ov-who')
+    const unknown = status.repos.filter((r) => r.ok && r.me && !r.me.name).map((r) => r.name)
+    expect(who).toHaveTextContent(`还不知道你是谁：${unknown.join('、')} 里看不出哪些需求是你的，下面先列出那里所有的需求`)
+    expect(who).toHaveTextContent('在最上面填上你的名字（GitLab 用户名），就只列你自己的')
+    expect(within(screen.getByTestId('ledger')).getAllByRole('row').length).toBeGreaterThan(1)
     expect(screen.queryByText('还没有需求')).toBeNull()
   })
 })

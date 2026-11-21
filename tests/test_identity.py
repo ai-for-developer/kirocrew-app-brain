@@ -498,6 +498,8 @@ def test_a_token_only_person_reads_a_teammates_board_as_his_and_her_own_as_hers(
 
 
 def test_with_no_token_and_no_name_a_teammates_requirement_is_not_yours_and_settings_asks(teammates):
+    """Nobody known: 交付总览 lists every requirement of the repo (the page says it cannot tell whose), none of bob's
+    waits on her, and 设置 asks who she is."""
     w = teammates
     gl = WhoAmI("no-token-here")
     svc = make_service(w.app, [w.repo], transport=gl)
@@ -507,7 +509,7 @@ def test_with_no_token_and_no_name_a_teammates_requirement_is_not_yours_and_sett
                 [(await svc.requirement("r1", k))["row"] for k in (w.theirs, w.claimed)])
 
     st, rows, todo, (theirs, claimed) = started(svc, go)
-    assert rows == {}, "nobody known: nothing on 交付总览 is hers, and the page asks who she is"
+    assert sorted(rows) == sorted([w.mine, w.theirs, w.claimed])
     assert (theirs["waits"]["who"], theirs["waits"]["text"]) == ("people", "bob 在自己的机器上做")
     assert (claimed["waits"]["who"], claimed["waits"]["text"]) == ("people", "等 bob 开工")
     assert not [i for i in todo["items"] if i["key"] in (w.theirs, w.claimed)], todo["items"]
