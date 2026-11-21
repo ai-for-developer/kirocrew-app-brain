@@ -18,6 +18,7 @@ const LONG = '退款成功以后给用户发短信通知，旧订单没有手机
 const VIEWS = [
   ['交付总览', 'view=overview'],
   ['交付总览 r1', 'view=overview&repo=r1'],
+  ['交付总览 r3', 'view=overview&repo=r3'],
   ['需求现状 PAY-9', 'view=item&repo=r1&key=PAY-9'],
   ['需求现状 PAY-11', 'view=item&repo=r1&key=PAY-11'],
   ['需求现状 PAY-17', 'view=item&repo=r1&key=PAY-17'],
