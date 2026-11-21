@@ -11,7 +11,8 @@ judged against the risk paths as brain-ci judges them).
 Optional ones, added while this app was written, are guarded: trace, evaluate, golden, intents, mrdesc, split
 (0d52e97: brain split, claim, start --key, sync; without it the 大需求 features are off), proof (证据: which evidence
 `lean verify` sealed and whether it is of the code under review; without it the 证据 row says the brain-kit is too old
-and the 产出 drawer lists no evidence). A missing or broken optional module turns its feature off (``has()``), with the
+and the 产出 drawer lists no evidence), deploys (what a merged change's deploys did: 需求现状's 上线 and the eval's 部署
+numbers; without it both are off). A missing or broken optional module turns its feature off (``has()``), with the
 import error kept for the page.
 The public interfaces of brain-kit 72b278e are required too (NEEDS: the spool signer, the answer verifier bound to
 the recorded question note, the question's first line, the hand-over commit rule, run reservations (``signing``) and
@@ -38,7 +39,7 @@ PKG = "_brainapp_brainkit"
 REQUIRED = ("common", "config", "claims", "runrec", "lean", "entries", "brainlint", "usage", "reflect", "sign", "cli",
             "rest", "intake.package", "bridge.handoff", "bridge.decisions", "bridge.runnerd", "bridge.ledger", "flows",
             "riskpaths", "ci")
-OPTIONAL = ("trace", "evaluate", "golden", "intents", "mrdesc", "split", "proof")   # split: brain-kit 0d52e97
+OPTIONAL = ("trace", "evaluate", "golden", "intents", "mrdesc", "split", "proof", "deploys")   # split: brain-kit 0d52e97
 CANDIDATES = ("~/brain-kit", "~/warren_ws/brain-kit", "~/workplace/brain-kit", "/opt/brain-kit")
 # The brain-kit a release ships inside the app (scripts/release.sh puts it there; a dev checkout has none).
 BUNDLED = Path(__file__).resolve().parents[2] / "vendor" / "brain-kit"

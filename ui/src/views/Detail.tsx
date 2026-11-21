@@ -25,15 +25,15 @@ import { isReview, REVIEW_SENDS } from '../board/next'
 import { RoleIcon } from '../board/RoleIcon'
 import { Hit, Mini } from '../cto/charts'
 import { FlowCard, can, flowNow, flowOf, stepLook } from '../flows'
-import { ago, fmtCredits, fmtIso, fmtSpan, fmtTime } from '../format'
+import { ago, fmtCredits, fmtIso, fmtSpan, fmtTime, spaced } from '../format'
 import { VIEW_NAME, type BoardEntry, type ItemEntry, type OutAt } from '../nav'
 import type {
-  CheckCell, Credits, Decision, Evidence, FastTime, LeanPhase, OpenSessionBody, OpenSessionResult, ReqBoard, RequirementDetail,
-  SessionRow, Stage, WaitDo, WaitWho, Waits,
+  CheckCell, Credits, Decision, DeployAttempt, DeployValue, DeployView, Evidence, FastTime, LeanPhase, OpenSessionBody,
+  OpenSessionResult, ReqBoard, RequirementDetail, SessionRow, Stage, WaitDo, WaitWho, Waits,
 } from '../types'
-import { APPROVAL_META, Icon, LoadState, MrLink, STAGE_META, StateChip, TYPE_IT_YOURSELF, isOpenQuestion } from '../ui'
+import { APPROVAL_META, ExtLink, Icon, LoadState, MrLink, STAGE_META, StateChip, TYPE_IT_YOURSELF, isOpenQuestion } from '../ui'
 import {
-  ACT, CHECK_GROUP_NAME, CHILD_STATE_NAME, DECIDED_BY, DO_NAME, FAMILY_ACT, WHERE_NAME, approvalName, leanNow,
+  ACT, CHECK_GROUP_NAME, CHILD_STATE_NAME, DECIDED_BY, DEPLOY_NAME, DO_NAME, FAMILY_ACT, WHERE_NAME, approvalName, leanNow,
   sourceName, waitsOn,
 } from '../vocab'
 import { Inline, Paths, pathPieces } from './Markdown'
@@ -122,11 +122,14 @@ export const DETAIL_CSS = `
 .br-detail .br-stage-units { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; min-width: 0; }
 .br-detail .br-stage-units .br-chip { display: block; font-size: .7em; padding: 0 6px; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .br-detail .br-lean-sub { margin: 14px 0 6px; }
-.br-detail .br-approvals { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.br-detail .br-approval { display: grid; gap: 6px; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--kt-glass); }
+.br-detail :is(.br-approvals, .br-deploys) { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.br-detail :is(.br-approval, .br-deploy) { display: grid; gap: 6px; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--kt-glass); }
 .br-detail .br-approval[data-state="pending"] { border-color: var(--kit-wait); background: color-mix(in srgb, var(--kt-approve) 6%, var(--card)); }
 .br-detail .br-approval[data-state="approved"] { border-color: var(--kit-ok); }
-.br-detail .br-approval .br-raw { margin-left: auto; }
+.br-detail :is(.br-approval, .br-deploy) .br-raw { margin-left: auto; }
+.br-detail .br-deploy[data-result="promoted"] { border-color: var(--kit-ok); }
+.br-detail .br-deploy[data-result="aborted"] { border-color: var(--kit-bad); }
+.br-detail .br-deploys { margin-top: 8px; }
 .br-detail .cto-table td { vertical-align: top; }
 .br-detail .br-dec td:last-child { white-space: nowrap; text-align: right; }
 @container br-detail (max-width: 1100px) {
@@ -374,6 +377,7 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
       </section>
       <Cards x={x} board={board} at={at} localOnly={localOnly} replying={now.do === 'reply'} onBoard={toBoard} onSessions={() => scrollTo('会话')} />
       {familyPanel}
+      {x.deploy && <DeployCard d={x.deploy} />}
       <div className="br-row">
         <button type="button" className="kt-btn" onClick={() => toBoard()}>看运行过程 →</button>
         <span className="cto-dim">AI 一步步怎么做的、每一步的产出、回放</span>
@@ -920,6 +924,85 @@ function SplitBar({ split }: { split: { p: Part; s: number }[] }) {
         })
       }}
     </Mini>
+  )
+}
+
+// ------------------------------------------------------------------ 上线
+
+const DEPLOY_TONE: Record<DeployValue, string> = { promoted: 'ok', aborted: 'bad', running: 'run', not_deployed: 'idle', unknown: 'warn' }
+
+/** sha256:168d16c5a244, the whole digest on hover */
+function Digest({ d }: { d: string }) {
+  return <code className="br-nowrap" title={d}>{d.slice(0, 19)}</code>
+}
+
+/** What the merged requirement's deploys did: went live (its digest, when, how long after the merge), the canary
+ * aborted (the smoke checks that failed, what the environment kept running), still deploying, not deployed yet, or
+ * not readable, which is never drawn as live. Then each deploy that shipped it, oldest first, with its pipeline. */
+function DeployCard({ d }: { d: DeployView }) {
+  const last: DeployAttempt | undefined = d.attempts[d.attempts.length - 1]
+  const failed = d.value === 'aborted' && last ? [...new Set(last.failed.map((c) => c.check))] : []
+  return (
+    <section className={`cto-card${d.value === 'promoted' ? ' is-ok' : d.value === 'aborted' ? ' is-bad' : ''}`} aria-label="上线" data-testid="deploy" data-value={d.value}>
+      <div className="cto-chart-head">
+        <h3>上线</h3>
+        <span className="cto-dim">{spaced('部署到 ', d.environment)} · 合并以后的每一次部署</span>
+      </div>
+      <div className="br-row" data-testid="deploy-say">
+        <span className={`br-chip tone-${DEPLOY_TONE[d.value]}`}>{DEPLOY_NAME[d.value]}</span>
+        {d.value === 'promoted' && (
+          <>
+            {d.digest && <Digest d={d.digest} />}
+            {d.at !== null && <span>{fmtTime(d.at)}</span>}
+            {d.lead_s !== null && <span className="br-dim">合并后 {fmtSpan(d.lead_s)}上线</span>}
+          </>
+        )}
+        {d.value === 'aborted' && (
+          <>
+            {failed.length > 0 && <b className="br-strong">冒烟没过 {failed.join('、')}</b>}
+            {last?.kept && <span className="br-dim">{spaced(d.environment, ' 还在跑原来的')} <Digest d={last.kept} /></span>}
+          </>
+        )}
+        {d.value === 'running' && last?.at != null && <span className="br-dim">{fmtTime(last.at)} 开始，还没走完</span>}
+        {d.value === 'not_deployed' && <span className="br-dim">{spaced('合并以后还没有部署过 ', d.environment)}</span>}
+        {d.value === 'unknown' && <span>{d.why}</span>}
+        {d.raw.length > 0 && !d.attempts.length && (
+          <details className="br-raw"><summary>细节</summary><pre>{d.raw.join('\n')}</pre></details>
+        )}
+      </div>
+      {d.attempts.length > 0 && (
+        <ul className="br-deploys" aria-label="部署">
+          {d.attempts.map((a, i) => <DeployRow key={a.deployment ?? i} a={a} />)}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function DeployRow({ a }: { a: DeployAttempt }) {
+  const raw = [a.deployment !== null ? `部署 ${a.deployment}` : '', a.sha ? `提交 ${a.sha}` : '', a.digest ?? '', ...a.raw].filter(Boolean)
+  return (
+    <li className="br-deploy" data-testid="deploy-attempt" data-result={a.result}>
+      <div className="br-row">
+        <RoleIcon role="deploy" size={16} />
+        <b>{a.pipeline !== null ? `流水线 #${a.pipeline}` : '部署'}</b>
+        <span className={`br-chip tone-${DEPLOY_TONE[a.result]}`}>{DEPLOY_NAME[a.result]}</span>
+        {a.at !== null && <span className="br-dim br-small">{fmtTime(a.at)}</span>}
+        {a.url && <ExtLink href={a.url}>看流水线</ExtLink>}
+        {raw.length > 0 && (
+          <details className="br-raw">
+            <summary>细节</summary>
+            <code><Paths text={raw.join(' · ')} /></code>
+          </details>
+        )}
+      </div>
+      {a.failed.length > 0 && (
+        <ul className="br-list br-small" aria-label="没过的冒烟检查">
+          {a.failed.map((c, i) => <li key={i}><code>{c.check}</code>{c.error ? `：${c.error}` : ''}</li>)}
+        </ul>
+      )}
+      {a.why && <p className="br-note">{a.why}</p>}
+    </li>
   )
 }
 

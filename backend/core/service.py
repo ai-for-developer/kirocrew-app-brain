@@ -12,15 +12,16 @@ import json
 import logging
 import os
 import re
+import statistics
 import subprocess
 import threading
 import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import (acts, bk, brainview, crewcheck, deliveries, detail, evidence, family, fastboard, fastrow, flowview,
-               identity, importer, inplace, installer, intake, kitmr, landing, lean_view, mrdesc_view, mrinfo, picker,
-               progress, roster, runner_view)
+from . import (acts, bk, brainview, crewcheck, deliveries, deploys_view, detail, evidence, family, fastboard, fastrow,
+               flowview, identity, importer, inplace, installer, intake, kitmr, landing, lean_view, mrdesc_view, mrinfo,
+               picker, progress, roster, runner_view)
 from . import outputs as outputs_mod
 from . import problems, stages
 from . import board as board_mod
@@ -152,6 +153,7 @@ class Service:
         self.store = Store(self.data_dir / "events")
         self.mr = mrinfo.MrCache()
         self.runners = runner_view.Runners()   # 运行机 on a personal install: the team runner as GitLab shows it
+        self.deploys = deploys_view.Clients(transport)   # one GitLab client per GitLab for the deploys after a merge
         self.repos: dict[str, Repo] = {}
         self.repo_errors: dict[str, tuple[str, str]] = {}
         # listed repos whose brain-kit is on its way (the install branch, merged but not pulled): (path, state)
@@ -869,7 +871,9 @@ class Service:
                   "notes": [x for v in views for x in v.get("notes") or []],
                   "note_rows": [x for v in views for x in v.get("note_rows") or []],
                   "families": [x for v in views for x in v.get("families") or []]}
-        for m in views[0]["metrics"]:
+        # every repo's numbers, in the order they come (the 部署 ones only where kit.json turned the deploys on)
+        for mid in dict.fromkeys(x["id"] for v in views for x in v["metrics"]):
+            m = next(x for v in views for x in v["metrics"] if x["id"] == mid)
             vals = [next((x["value"] for x in v["metrics"] if x["id"] == m["id"]), None) for v in views]
             pairs = [x for x in vals if isinstance(x, list)]
             nums = [x for x in vals if isinstance(x, (int, float)) and not isinstance(x, bool)]
@@ -877,6 +881,9 @@ class Service:
                 spent = [p["credits_total"] for _, p in got_parts if p.get("credits_total") is not None]
                 good = sum(p.get("correct") or 0 for _, p in got_parts)
                 value: Any = round(sum(spent) / good, 4) if spent and good else None
+            elif m["id"] == "lead_time":   # a median: over every repo's requirements
+                hours = [h for _, p in got_parts for h in p.get("lead_hours") or []]
+                value = round(statistics.median(hours), 2) if hours else None
             elif pairs:
                 value = [sum(p[0] for p in pairs), sum(p[1] for p in pairs)]
             else:
@@ -896,7 +903,8 @@ class Service:
             repo = self.repos.get(rid)
             if repo is None:
                 return
-            view, funnel = deliveries.evaluate(repo.path, repo.cfg, repo.main_ref(), credits)
+            view, funnel = deliveries.evaluate(repo.path, repo.cfg, repo.main_ref(), credits,
+                                               deploys=self.deploys.source(repo.path, repo.cfg, repo.main_ref()))
             view["families"] = [dict(x, repo=rid) for x in view.get("families") or []]
             self._eval[rid] = (sha, time.monotonic(), view, funnel)
         except Exception as exc:  # noqa: BLE001
@@ -991,6 +999,7 @@ class Service:
             "credits": cost,
             "brain": detail.brain_block(tl.get("brain"), None, f.get("decisions_text")),
             "mr_desc": self._desc_now(self._desc_job(repo, f, cost["total"])),
+            "deploy": deploys_view.requirement(tl.get("trace"), repo.cfg),
         }
 
     def _desc_now(self, job: tuple[tuple, Callable[[], dict]] | None) -> dict[str, Any]:
@@ -1014,7 +1023,8 @@ class Service:
         else:
             tl = detail.timeline(src_repo, repo.cfg, f["key"], ref=ref, events=f.get("events") or [],
                                  credits={"runs": {f["key"]: {"credits": c}}} if c is not None else None,
-                                 vouchers_dir=vouchers, has_run=bool(f.get("run")))
+                                 vouchers_dir=vouchers, has_run=bool(f.get("run")),
+                                 deploys=self.deploys.source(src_repo, repo.cfg) if f.get("run") else None)
             self._trace[scope] = (sig, dict(tl), time.monotonic())
         tl["items"] = sorted(tl["items"] + self.store.events(scope), key=lambda x: (x["at"] or "", x["kind"]))
         return tl
@@ -1041,6 +1051,7 @@ class Service:
         path = f.get("worktree")
         tl = {"source": "app", "items": lean_view.stage_events(f.get("events") or []), "missing": [], "error": "",
               "brain": None, "other_runs": []}
+        deploy = None
         if path:
             try:
                 cfg = bk.m("config").load(path)
@@ -1051,7 +1062,9 @@ class Service:
                                  credits={"runs": {x: {"credits": snap["credits"].get(x)} for x in row["run_ids"]
                                                    if snap["credits"].get(x) is not None}} if c else None,
                                  ledger_path=self.team.cfg.get("ledger"), vouchers_dir=self.team.cfg.get("vouchers_dir"),
-                                 allowed_signers=self.team.allowed_signers or None)
+                                 allowed_signers=self.team.allowed_signers or None,
+                                 deploys=self.deploys.source(path, cfg))
+            deploy = deploys_view.requirement(tl.get("trace"), cfg)
         for rid in row["run_ids"]:
             tl["items"] += self.store.events(rid)
         tl["items"].sort(key=lambda x: (x["at"] or "", x["kind"]))
@@ -1091,6 +1104,7 @@ class Service:
             "brain": detail.brain_block(tl.get("brain"), None, f.get("decisions_text")),
             # no run read yet: the runner has not started on it, nothing is waiting for 开工
             "mr_desc": self._desc_now(self._runner_desc(f, key, row)) if run else mrdesc_view.empty(board_mod.RUNNER_NO_DESC),
+            "deploy": deploy,
         }
 
     @staticmethod

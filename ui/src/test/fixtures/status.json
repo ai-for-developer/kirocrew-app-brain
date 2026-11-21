@@ -17,7 +17,8 @@
       "intents": true,
       "mrdesc": true,
       "split": true,
-      "proof": true
+      "proof": true,
+      "deploys": true
     }
   },
   "repos": [

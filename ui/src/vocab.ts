@@ -4,7 +4,7 @@
  * missing gets added here, not spelled out in a view. Lean's stages are named by the backend's stage table
  * (backend/core/stages.py), which every Stage and LeanSummary carries.
  */
-import type { ChildState, LeanSummary, ReqState, StuckKind, SyncResult, WaitDo, WaitWho, Waits } from './types'
+import type { ChildState, DeployValue, LeanSummary, ReqState, StuckKind, SyncResult, WaitDo, WaitWho, Waits } from './types'
 
 /** Lean's approval kinds → what is approved */
 export const APPROVAL_NAME: Record<string, string> = {
@@ -142,6 +142,11 @@ export const DECIDED_BY: Record<string, string> = {
   unknown: '看不出是谁定的',
 }
 
+/** what a merged requirement's deploys did (DeployView.value, DeployAttempt.result) → the words 上线 says it with */
+export const DEPLOY_NAME: Record<DeployValue, string> = {
+  promoted: '上线了', aborted: '灰度中止', running: '部署中', not_deployed: '还没部署', unknown: '读不到部署记录',
+}
+
 /** what a check of the wall is about (CheckCell.group) */
 export const CHECK_GROUP_NAME: Record<string, string> = {
   gate: 'Lean 审批', verify: '自动检查', ci: 'CI', risk: '风险目录', handover: '交接', brain: 'Brain', after: '合并后观察',
@@ -155,7 +160,7 @@ export const missingSourceName = (raw: string): string => MISSING_SOURCE.find(([
 
 /** brain-kit's optional modules (Status.brainkit.modules) → what they do for a person */
 export const MODULE_NAME: Record<string, string> = {
-  trace: '需求时间线', evaluate: '交付评估', golden: '标准考题', intents: '需求来源', mrdesc: '变更说明', proof: '证据',
+  trace: '需求时间线', evaluate: '交付评估', golden: '标准考题', intents: '需求来源', mrdesc: '变更说明', proof: '证据', deploys: '上线结果',
 }
 
 /** kit.json tracker → one word (设置, 导入仓库) */
