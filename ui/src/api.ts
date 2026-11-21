@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppApi, type AppApi } from '@kirocrew/app-sdk'
-import { BASE } from './types'
+import { BASE, type ActResult } from './types'
 import { useLatest } from './hooks'
 
 export const POLL_MS = 5000
@@ -24,6 +24,8 @@ export const paths = {
   /** 产出: one file at a commit (or pinned in the worktree), its text or its change from base */
   outputsTurns: (repo: string, key: string, node: string, round: number | null) =>
     `${BASE}/outputs/${enc(repo)}/${enc(key)}/turns?node=${enc(node)}${round ? `&round=${round}` : ''}`,
+  /** 产出 of a fast run: the run branch's commits, each with its files, and all of them added up */
+  outputsCommits: (repo: string, key: string) => `${BASE}/outputs/${enc(repo)}/${enc(key)}/commits`,
   outputsFile: (repo: string, key: string, f: { ref: string; base: string | null; path: string; view: 'source' | 'diff' | 'image'; pin: string | null }) =>
     `${BASE}/outputs/${enc(repo)}/${enc(key)}/file?${new URLSearchParams({ ref: f.ref, path: f.path, view: f.view, ...(f.base ? { base: f.base } : {}), ...(f.pin ? { pin: f.pin } : {}) })}`,
   session: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/session`,
@@ -39,6 +41,8 @@ export const paths = {
   /** 同步: `brain sync` in a small requirement's worktree (the big one's branch merged in) */
   sync: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/sync`,
   handoff: (repo: string, key: string) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/handoff`,
+  /** 开 MR / 转完整流程 of a fast run: `brain mr|full --json` in its worktree */
+  act: (repo: string, key: string, action: ActResult['action']) => `${BASE}/requirements/${enc(repo)}/${enc(key)}/act/${enc(action)}`,
   intakeNext: (repo: string) => `${BASE}/intake/next?repo=${enc(repo)}`,
   intakeCheck: () => `${BASE}/intake/check`,
   intakeStart: () => `${BASE}/intake/start`,
@@ -56,6 +60,7 @@ export const paths = {
   teamPatrol: () => `${BASE}/team/patrol`,
   /** 测试环境报错: the errors the runner found in the test environment's log */
   teamStaging: () => `${BASE}/team/staging`,
+  teamIssues: () => `${BASE}/team/issues`,
   /** 一键建运行机: GET the last run's steps, POST to run them (in the background: GET until it is not running) */
   teamSetup: () => `${BASE}/team/setup`,
   /** 运行机 on a personal install: each repo's team runner as GitLab shows it */
@@ -77,6 +82,8 @@ export const paths = {
   repoRemove: () => `${BASE}/repos/remove`,
   /** 按记录重建编号: a damaged repo_ids.json without a good copy, from the ids the records carry */
   repoIdsRebuild: () => `${BASE}/repos/ids/rebuild`,
+  /** 允许快速模式: kit.json fast_mode on branch brain/fast-mode, and its MR into the default branch */
+  fastMode: () => `${BASE}/repos/fast-mode`,
   meName: () => `${BASE}/me/name`,
 }
 

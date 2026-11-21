@@ -5,6 +5,7 @@ import BrainApp from '../main'
 import { colOf, laneOf } from '../cto/Flow'
 import { searchOf } from '../nav'
 import { clone, fx } from '../test/data'
+import world from '../../preview/world.json'
 import { API, installFixtureRoutes } from '../test/routes'
 import { apiCalls, apiError, navigations } from '../test/stubs/app-sdk'
 import type { CtoRun, FamilyChild, FamilyDep, LeanSummary, Overview, ReqFamily, ReqState, Requirement, Status } from '../types'
@@ -665,6 +666,26 @@ describe('交付总览', () => {
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('git fetch 失败：连不上 gitlab.example.com（502）')
     expect(alert).toHaveTextContent('做什么：看看网络、远端地址和你的权限，再点一次')
+  })
+
+  test('brain-kit 的评估 with the deploys read (shop-order): 部署频率 a week, 合并到上线 as a span, 变更失败率 as a rate; none for shop-pay', async () => {
+    const ov = clone((world.overviews.eval as unknown as Record<string, Overview>).r3)
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
+    render(<OverviewView entry={{ repo: 'r3' }} {...props()} />)
+    const batch = await screen.findByTestId('eval-batch')
+    expect(batch.querySelector('[data-metric="deploy_frequency"]')).toHaveTextContent(/^部署频率0\.5每周上线几次（最近 28 天）$/)
+    expect(batch.querySelector('[data-metric="lead_time"]')).toHaveTextContent(/^合并到上线5 分钟合并以后多久上线（取中位）$/)
+    expect(batch.querySelector('[data-metric="change_failure"]')).toHaveTextContent(/^变更失败率0\/7/)
+    expect(batch.querySelector('[data-metric="lead_time"]')).toHaveAttribute('title', '从合并到第一次上线了这个需求的部署（staging），取中位')
+    // 0/7 counts only changes whose 14 days are over: the two known to have failed since are said, as 交付正确率's are
+    expect(within(batch).getAllByTestId('eval-notes').map((n) => n.textContent).join('\n')).toContain('已知变更失败、14 天还没满（满了再算进变更失败率）：ORD-8、ORD-9')
+  })
+
+  test('brain-kit 的评估 of a repo whose kit.json reads no deploys has no 部署 numbers', async () => {
+    installFixtureRoutes()
+    render(<OverviewView entry={{}} {...props()} />)
+    const batch = await screen.findByTestId('eval-batch')
+    for (const id of ['deploy_frequency', 'lead_time', 'change_failure']) expect(batch.querySelector(`[data-metric="${id}"]`)).toBeNull()
   })
 
   test('brain-kit 的评估: each number with what it means, 还没有 for none; its review queue and skipped runs open the requirement', async () => {

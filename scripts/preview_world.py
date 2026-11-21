@@ -22,7 +22,10 @@ The world (times relative to 2026-11-08 14:00 UTC, the fixtures' `at`; the previ
       quiet (the design's Scenario A). PAY-9 on the runner · its release sent back once by the product (D-2), asked
       again after two CI fixes, waits for the product's acceptance (D-3; Scenario B, the mockup's story). Its local
       half's session is on alice's machine (scripts/preview_session.py), so the 产出 drawer's 它的回复 · 接到的任务 ·
-      做了什么 show its turns there, and its runner rounds the card that says where theirs are.
+      做了什么 show its turns there, and its runner rounds the card that says where theirs are. 快速 (fast runs):
+      PAY-17 本机 · committed and checked, waits for alice's 开 MR (its two commits are real ones, so the drawer by
+      commit reads them; its session's time adds up as sessions.Spent adds it); PAY-18 本机 · MR !12 passed CI, waits
+      to be merged; PAY-19 bob's · MR !13 passed CI, waits for review, read from GitLab on alice's machine.
   shop-web (r2): brain-kit not installed yet.
   shop-order (r3, GitLab shop/shop-order): ORD-1 … ORD-9 merged over ten weeks (most unattended; ORD-8 handed over
       twice: its first run stopped once its question was answered), ORD-10 running now.
@@ -42,6 +45,7 @@ import hashlib
 import json
 import os
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -66,6 +70,10 @@ detail = importlib.import_module("_brainapp_backend.core.detail")
 lean_view = importlib.import_module("_brainapp_backend.core.lean_view")
 stage_table = importlib.import_module("_brainapp_backend.core.stages")
 deliveries = importlib.import_module("_brainapp_backend.core.deliveries")
+flowview = importlib.import_module("_brainapp_backend.core.flowview")
+fastrow = importlib.import_module("_brainapp_backend.core.fastrow")
+fastboard = importlib.import_module("_brainapp_backend.core.fastboard")
+deploys_view = importlib.import_module("_brainapp_backend.core.deploys_view")
 identity = importlib.import_module("_brainapp_backend.core.identity")
 family_mod = importlib.import_module("_brainapp_backend.core.family")
 service = importlib.import_module("_brainapp_backend.core.service")
@@ -185,8 +193,11 @@ def gen_text(path: str, n: int, key: str) -> str:
 class Req:
     """One requirement's record, written in the order it happened."""
 
-    def __init__(self, repo: str, key: str, title: str, owner: str, slug: str, intent: str, *, project: str = "") -> None:
+    def __init__(self, repo: str, key: str, title: str, owner: str, slug: str, intent: str | None, *, project: str = "",
+                 mode: str = "lean") -> None:
         self.repo, self.key, self.title, self.owner, self.slug, self.intent, self.project = repo, key, title, owner, slug, intent, project
+        self.mode = mode    # run.json's: "fast" (快速) has no Lean intent
+        self.elsewhere = False  # run on its owner's machine, not this one: read on its branch
         self.branch = "ai/%s/%s-%s" % (owner, key, slug)
         self.events: list[dict] = []
         self.commits: list[dict] = []
@@ -200,6 +211,7 @@ class Req:
         self.merged_at: float | None = None
         self.merge_how = "merge commit"
         self.after14: dict | None = None
+        self.deploy: dict | None = None     # outcome.deploy (brainkit/deploys.py): its deploys after the merge
         self.app: list[dict] = []
         self.proposals = 0
         self.worktree: str | None = None    # its checkout on this machine, if it has one
@@ -333,11 +345,16 @@ class Req:
         self._lean(at, "BLOCKED", gate=gate, path=path, tool="fs_write")
 
     def verify(self, at: float, results: list[tuple[str, int]], sealed: dict[str, str] | None = None) -> None:
-        """`lean verify`: each check's exit, time and output hash, the commit it ran on, the summary it wrote.
-        *sealed*: what an evidence check printed (its set's output.txt), by check: the hash Lean records for it."""
-        self.draft(at, "build-and-test")
+        """`lean verify`: each check's exit, time and output hash, the commit it ran on, the summary it wrote (a fast
+        run has no intent, so no summary). *sealed*: what an evidence check printed (its set's output.txt), by check:
+        the hash Lean records for it."""
         res = [{"cmd": c, "exit": e, "secs": round(3 + int(sha(self.key, c, at)[:2], 16) / 8, 1),
                 "output_sha256": (sealed or {}).get(c) or h64(self.key, c, at)} for c, e in results]
+        if not self.intent:
+            self._lean(at, "VERIFY", ok=all(e == 0 for _, e in results), fingerprint=h64(self.key, "fp", at), results=res,
+                       base_commit=self.head(at), branch=self.branch)
+            return
+        self.draft(at, "build-and-test")
         self._lean(at, "VERIFY", ok=all(e == 0 for _, e in results), fingerprint=h64(self.key, "fp", at), results=res,
                    base_commit=self.head(at), branch=self.branch, summary=self.doc("build-and-test"),
                    summary_sha256=self.hash_at(self.doc("build-and-test"), at) or h64(self.key, "summary", at))
@@ -429,16 +446,19 @@ class Req:
                    "expected_paths": []}
             if self.hand_at is not None:
                 run["handoff"] = {"requested_at": iso(self.hand_at), "by": self.owner, "local_head": sha(self.key, "lh")}
+            if self.mode != "lean":
+                run["mode"] = self.mode
         return {"key": self.key, "claim": {"owner": self.owner, "title": self.title, "created_at": iso(self.claim_at or self.start_at or T0),
                                            "source": "product"},
                 # repo._key_facts: merged, else read in its checkout here when this machine has one, else on its branch
-                "where": "main" if self.merged_at else "worktree" if self.worktree or self.hand_at is None else "branch",
+                "where": "main" if self.merged_at else "branch" if self.elsewhere else
+                         "worktree" if self.worktree or self.hand_at is None else "branch",
                 "branch": self.branch if run else None,
                 "owner": self.owner, "worktree": None if self.merged_at else self.worktree, "run": run, "park": park, "merged": bool(self.merged_at),
                 "merged_at": self.merged_at, "tip_at": self.merged_at or (_epoch(self.commits[-1]["at"]) if self.commits else None),
                 "park_at": _epoch(self.park[-1]["at"]) if self.park else None, "review": None,
                 "decisions_text": "```brain-proposal\n```\n" * self.proposals, "events": evs, "approvals": approvals,
-                "stages": lean_view.stages(evs)}
+                "stages": lean_view.stages(evs), **flowview.read(run)}
 
     def trace(self, brain: dict, family: dict | None = None) -> dict:
         stages = []
@@ -465,6 +485,8 @@ class Req:
                             "merged_at": {"value": iso(self.merged_at) if self.merged_at else None, "how": self.merge_how,
                                           "commit": sha(self.key, "merge") if self.merged_at else None, "src": "git", "note": None},
                             "reverted_or_hotfixed_within_14d": self.after14 or {"value": None, "window_closed": None, "window_end": None, "evidence": []}}}
+        if self.deploy:
+            out["outcome"]["deploy"] = self.deploy
         if family:
             out["family"] = family
         return out
@@ -616,9 +638,11 @@ def brain_views(reqs: dict[str, list[Req]], rows: list[dict], said: dict[str, li
                 (top / "runs" / r.key).mkdir(parents=True, exist_ok=True)
                 (top / "runs" / r.key / "run.json").write_text(json.dumps(
                     {"key": r.key, "owner": r.owner, "branch": r.branch, "intent": r.intent, "brain_commit": brain_commit,
-                     "created_at": iso(r.start_at or T0)}), encoding="utf-8")
-                d = top / "aidlc-docs" / r.intent
-                (d / "inception" / "requirements").mkdir(parents=True, exist_ok=True)
+                     "created_at": iso(r.start_at or T0), **({"mode": r.mode} if r.mode != "lean" else {})}),
+                    encoding="utf-8")
+                d = top / "aidlc-docs" / r.intent if r.intent else top / "runs" / r.key
+                if r.intent:
+                    (d / "inception" / "requirements").mkdir(parents=True, exist_ok=True)
                 rows_ = said.get("%s/%s" % (rid, r.key)) or []
                 # each citation once (brainkit.usage counts where an id is cited): Who as brain-kit writes it
                 table = "".join("| %s | %s | %s | %s | %s | %s |\n" % (
@@ -631,9 +655,10 @@ def brain_views(reqs: dict[str, list[Req]], rows: list[dict], said: dict[str, li
                 (d / "decisions.md").write_text("# Decisions\n\n| ID | Date | Stage | Decision | Why | Who |\n|---|---|---|---|---|---|\n"
                                                 + table + props, encoding="utf-8")
                 cited = {c for x in rows_ for c in x["cites"]}
-                (d / "inception" / "requirements" / "requirements.md").write_text(
-                    "# %s\n\n" % r.title + "".join("- 照 Brain 的 %s\n" % c for c in CITES.get(r.key, []) if c not in cited),
-                    encoding="utf-8")
+                if r.intent:
+                    (d / "inception" / "requirements" / "requirements.md").write_text(
+                        "# %s\n\n" % r.title + "".join("- 照 Brain 的 %s\n" % c for c in CITES.get(r.key, []) if c not in cited),
+                        encoding="utf-8")
 
             write_brain()
             git("add", "-A")
@@ -779,12 +804,91 @@ def merged(r: Req, t: float, h: str, did: str, how: str = "merge commit") -> Non
     r.merge(t + 35 * M, how)
 
 
+# shop-order deploys each merge of main to staging by its image's digest, through a canary (20%, smoke, 50%, smoke,
+# all): brain-kit's deploy records (brainkit/deploys.py) as `brain deploys` read a demo's GitLab on 2026-11-18, moved to
+# the world's merges. ORD-7 went live as the demo's pipeline 4137972 did; ORD-8's canary failed its smoke checks as
+# 4138009's did, staging kept ORD-7's image, and a fix went live as 4138161; ORD-9's canary failed the same checks, so
+# staging still runs that fix.
+CANARY = ("setWeight 20", "analysis smoke", "setWeight 50", "analysis smoke", "complete")
+SMOKE_FAILED = ({"step": 1, "check": "create_order", "error": "expected HTTP 201, got 500: Internal Server Error"},
+                {"step": 1, "check": "read_order", "error": "no order to read because create_order failed"})
+ABORTED = ('RolloutAborted: Rollout aborted update to revision 5: Step-based analysis phase error/failed: Metric "smoke" '
+           'assessed Failed due to failed (1) > failureLimit (0)')
+LIVE_7D4 = "sha256:7d479c543ed89c65139a43a02de40420d902c7787518c27974c0df43cd2f189e"
+LIVE_168 = "sha256:168d16c5a244384d3d434ccd4adc5a8e6ee168b4ce638e7653ed9541f82750e1"
+BAD_412 = "sha256:4120ee577b2a1d036324052bf70364b3abc01461fa13b01558cf9bf403e23c5b"
+ORDER_SRC = "GitLab deployments (project shop/shop-order, environment staging)"
+
+
+def staged(did: int, pipeline: int, job: int, commit: str, start: float, live: bool, digest: str, before: str) -> dict:
+    """One deploy to shop-order's staging (brain-kit's deploy record): *live* went live, else its canary failed the
+    demo's smoke checks and staging kept *before*."""
+    return {"deployment": did, "pipeline": pipeline, "job": job, "web_url": "%s/shop/shop-order/-/jobs/%d" % (GL, job),
+            "ref": "main", "sha": commit, "created_at": iso(start), "finished_at": iso(start + (190 if live else 140)),
+            "status": "success" if live else "failed", "result": "promoted" if live else "aborted", "why": None,
+            "digest": digest, "image": "registry.example.com/shop/shop-order@" + digest, "previous_stable_digest": before,
+            "stable_digest_after": digest if live else before, "reason": "every canary step passed" if live else ABORTED,
+            "steps": [{"index": i, "step": x, "at": iso(start + 70 + 4 * i)} for i, x in enumerate(CANARY if live else CANARY[:2])],
+            "failed_checks": [] if live else [dict(c) for c in SMOKE_FAILED], "build": None,
+            "src": "GitLab deployment %d, job %d deploy-evidence.json" % (did, job)}
+
+
+def order_deploys(order: dict[str, "Req"]) -> dict:
+    """Each merged ORD-n's outcome.deploy, with a canary that aborted in its 14 days counted as the rollback brain-kit
+    counts it; and the eval's ``deploys`` over them (brain-kit evaluate's: the last 28 days before the fixtures' `at`)."""
+    before, tries = "sha256:" + h64("shop-order", "image"), {}
+    for n in range(1, 10):
+        key, r = "ORD-%d" % n, order["ORD-%d" % n]
+        start, merge = r.merged_at + 2 * M, sha("ORD-%d" % n, "merge")
+        if key == "ORD-8":
+            tries[key] = [staged(844613, 4138009, 34417471, merge, start, False, BAD_412, before),
+                          staged(844623, 4138161, 34418480, sha(key, "fix"), start + 25 * M, True, LIVE_168, before)]
+        elif key == "ORD-9":
+            tries[key] = [staged(844640, 4138402, 34419016, merge, start, False, "sha256:" + h64(key, "image"), before)]
+        elif key == "ORD-7":
+            tries[key] = [staged(844608, 4137972, 34416893, merge, start, True, LIVE_7D4, before)]
+        else:
+            tries[key] = [staged(844500 + n, 4130000 + 1000 * n, 34400000 + 1000 * n, merge, start, True,
+                                 "sha256:" + h64(key, "image"), before)]
+        live = next((a for a in tries[key] if a["result"] == "promoted"), None)
+        r.deploy = {"value": "promoted" if live else "aborted", "environment": "staging", "commit": merge,
+                    "at": live["finished_at"] if live else None, "digest": live["digest"] if live else None,
+                    "lead_time_hours": round((_epoch(live["finished_at"]) - r.merged_at) / H, 2) if live else None,
+                    "attempts": tries[key], "missing": [], "src": ORDER_SRC, "rules": None}
+        before = live["digest"] if live else before
+        bad = [a for a in tries[key] if a["result"] == "aborted"]
+        if bad:
+            r.after14 = dict(r.after14, value=True, evidence=[
+                {"deployment": a["deployment"], "sha": a["sha"], "at": a["finished_at"], "src": a["src"],
+                 "rule": "canary aborted on staging: %s kept" % a["stable_digest_after"]} for a in bad])
+    since = T0 - 28 * D
+    recent = [a for t in tries.values() for a in t if since <= _epoch(a["created_at"]) <= T0]
+    went = [a for a in recent if a["result"] == "promoted"]
+    weeks: dict[str, int] = {}
+    for a in went:
+        w = time.strftime("%G-W%V", time.gmtime(_epoch(a["finished_at"])))
+        weeks[w] = weeks.get(w, 0) + 1
+    lead = {k: order[k].deploy["lead_time_hours"] for k in tries if order[k].deploy["lead_time_hours"] is not None}
+    judged = {k: order[k].after14 for k in tries}
+    cf = {"failed": [k for k, a in judged.items() if a["window_closed"] and a["value"]],
+          "ok": [k for k, a in judged.items() if a["window_closed"] and not a["value"]],
+          "failed_open": [k for k, a in judged.items() if not a["window_closed"] and a["value"]],
+          "pending": [k for k, a in judged.items() if not a["window_closed"] and not a["value"]], "unknown": [],
+          "not_deployed": []}
+    return {"environment": "staging", "src": ORDER_SRC,
+            "frequency": {"promoted": len(went), "aborted": len(recent) - len(went), "unknown": 0, "since": iso(since),
+                          "until": iso(T0), "per_week": round(len(went) * 7 / 28, 2), "weeks": weeks},
+            "lead_time_hours": {"median": round(statistics.median(lead.values()), 2), "by_run": lead},
+            "change_failure": dict({"value": [len(cf["failed"]), len(cf["failed"]) + len(cf["ok"])]}, **cf),
+            "missing": [], "rule": None}
+
+
 # the requirement handed over twice: its first run on the team runner stopped once its question was answered (the
 # answer never got into the run's session, so the bridge gave the run up), and its owner handed it over again
 AGAIN = "ORD-8"
 # the 待办 fixture's items, in this order (ui/src/views/todo.test.tsx reads them by place)
 TODO_KINDS = ("lean_approval", "clarify", "question", "acceptance", "handoff_rejected", "handoff_unlabelled", "crew", "start",
-              "reply", "push_failed")
+              "reply", "push_failed", "open_mr")
 
 
 def pushed_over(row: dict) -> dict:
@@ -824,15 +928,26 @@ def classified(r: Req, row: dict, *, park: dict | None = None, mr: dict | None =
     r.worktree = row.get("worktree")     # the row's checkout on this machine is the requirement's
     f = facts or r.facts(park)
     got = deliveries.base_row(r.repo, f, local_only=local_only)
-    deliveries.classify(got, f, mr=mr, slot=slot, cfg=CFG, me=ME, reflected=reflected, now=T0, at_handover=at_handover)
+    deliveries.classify(got, f, mr=mr, slot=slot, cfg=CFG, me=ME, reflected=reflected, now=T0, at_handover=at_handover,
+                        fast=fast_of(r, f))
     row.update({k: got[k] for k in ("state", "state_label", "lean", "stage", "verify_fails", "waits", "local_only", "where",
-                                    "worktree")})
+                                    "worktree", "flow")})
     # the head says where it is, the facts list its checkout: never 「这台机器没检出」 above a 工作目录 on this machine
     assert not (row["where"] == "branch" and row["worktree"]), r.key
     row.setdefault("family", None)     # service._row: family.families' (none for a requirement outside a family)
     row["session_url"] = slot["url"] if slot else None
     row["summary"] = mrdesc_view.plain_line(row.get("summary"))     # what service._row shows of the 变更说明
     return row
+
+
+def fast_of(r: Req, f: dict) -> "fastrow.FastFacts | None":
+    """A fast run's FastFacts as fastrow.fast_facts makes them from its branch: its code commits, its newest verify;
+    the world's fast runs change no risk path and their repo has no MR 巡检."""
+    flow = f.get("flow")
+    if not f.get("run") or flow is None or flow.intent:
+        return None
+    return fastrow.FastFacts(code_commits=sum(1 for c in r.commits if not c["records_only"]),
+                             verify=fastrow.newest_verify(f["events"]), risky=(), patrol=False)
 
 
 LATER: dict[str, tuple] = {}   # each board's makings by "<repo>/<key>", made once every run's Brain block is known
@@ -892,12 +1007,13 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
              decisions: list | None = None, local_only: bool = False, kit_rows: list | None = None, reflect: list | None = None,
              mr: dict | None = None, me: str | None = "alice", mr_desc: dict | None = None, questions: list | None = None,
              credits: dict | None = None, facts: dict | None = None, team_decisions: list | None = None,
-             bid: str | None = None, family: dict | None = None, keep: dict | None = None, counted: list | None = None) -> dict:
+             bid: str | None = None, family: dict | None = None, keep: dict | None = None, counted: list | None = None,
+             stats: list | None = None) -> dict:
     """The board snapshot the backend answers (service._board_sync), built the same way. *facts*: what the board is
     folded from when they are not *r*'s own records as this machine reads them (the team runner's workspace).
     *family*: a big requirement's trace family (brain-kit 0d52e97's roll-up of its small ones). *keep*: gets the
     fold the 产出 drawer reads, as the service keeps it. *counted*: the sessions its 成本 (*credits*) is over, listed on
-    the page; *sessions*: the ones the board's runs are read from."""
+    the page; *sessions*: the ones the board's runs are read from; *stats*: their slot_stats, a fast run's time."""
     f = facts or r.facts(park)
     STAGES[bid or "%s/%s" % (r.repo, r.key)] = f["stages"]
     t = r.trace(brain, family) if f.get("run") else None
@@ -905,11 +1021,16 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
     sessions = sessions or []
     live = live_of(sessions)
     kept = keep if keep is not None else {}
-    g = board.build(f, row, t, mr=mr, sessions=sessions, app_events=r.app, team_decisions=team_decisions or [], subjects=subjects,
-                    changes=changes(r),
-                    reflect_refs=reflect or [], default_branch="main", local_only=local_only,
-                    kit_rows=board.kit_cells(kit_rows or [], "/Users/alice/workplace/%s" % {"r1": "shop-pay", "r3": "shop-order", "r4": "shop-tools"}.get(r.repo, "")),
-                    decisions=decisions or [], brain=brain, me=me, now=T0, fold=kept, live_slot=(live or {}).get("slot"))
+    kits = board.kit_cells(kit_rows or [], "/Users/alice/workplace/%s" % {"r1": "shop-pay", "r3": "shop-order", "r4": "shop-tools"}.get(r.repo, ""))
+    fast = fast_of(r, f)
+    if fast is not None:
+        g = fastboard.board(f, row, t, mr=mr, app_events=r.app, subjects=subjects, changes=changes(r), default_branch="main",
+                            local_only=local_only, kit_rows=kits, decisions=decisions or [], me=me, fast=fast, fold=kept)
+    else:
+        g = board.build(f, row, t, mr=mr, sessions=sessions, app_events=r.app, team_decisions=team_decisions or [], subjects=subjects,
+                        changes=changes(r),
+                        reflect_refs=reflect or [], default_branch="main", local_only=local_only, kit_rows=kits,
+                        decisions=decisions or [], brain=brain, me=me, now=T0, fold=kept, live_slot=(live or {}).get("slot"))
     return {"at": T0, "row": row, "branch": row.get("branch"), "base": "main", "started_at": g["started_at"], "ended_at": g["ended_at"],
             "live": g["live"], "person": g["person"], "phases": g["phases"], "nodes": g["nodes"], "runs": g["runs"], "relays": g["relays"], "other_runs": g["other_runs"],
             "events": g["events"], "lean_steps": g["lean_steps"], "belt": g["belt"], "checks": g["checks"],
@@ -920,7 +1041,9 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
             "proof": proof_of(r, f, kept["nodes"]),
             "sessions": sessions if counted is None else [{k: x.get(k) for k in SESSION_KEYS} for x in counted],
             "live_slot": (live or {}).get("slot"), "credits": credits or cost_of([], None),
-            "source": "trace" if t else "app", "error": "", "missing": g["missing"], "rollup": board.rollup(t)}
+            "source": "trace" if t else "app", "error": "", "missing": g["missing"], "rollup": board.rollup(t),
+            "steps": g.get("steps"),
+            "time": fastboard.time_spent(stats or [], now=T0, until=g["ended_at"]) if fast is not None else None}
 
 
 U = {"api": "services/api/**", "web": "web/order/**", "jobs": "jobs/**"}
@@ -1111,7 +1234,8 @@ def detail_of(r: Req, row: dict, kw: dict, b: dict) -> dict:
                      "items": sorted((detail.trace_timeline(t) if t else []) + r.app, key=lambda x: (x["at"] or "", x["kind"])),
                      "error": "", "missing": board.missing_sources(TRACE_MISSING if t else [], local_only=bool(kw.get("local_only")), handed=handed)},
         "sessions": [{k: x.get(k) for k in SESSION_KEYS} for x in sess], "live_slot": (live_of(sess) or {}).get("slot"),
-        "credits": kw["credits"], "brain": b["brain"], "mr_desc": b["mr_desc"]}
+        "credits": kw["credits"], "brain": b["brain"], "mr_desc": b["mr_desc"],
+        "deploy": deploys_view.requirement(t, {"gitlab": {"base": GL, "project": r.project}})}
 
 
 def outputs_key(path: str, q: dict) -> str:
@@ -1123,7 +1247,8 @@ def drawer_payloads(r: Req, rid: str, keep: dict) -> dict[str, dict]:
     """The 产出 drawer's answers for *r* (GET /outputs/{repo}/{key}?node&round, …/file and …/turns), made by
     backend/core/outputs.py over its real commits from the board's own fold, for every round of every stage with a
     lane and every way the page reads each file (源码, 改动 from each version it offers); and by backend/core/turns.py
-    over its session's transcript (Req.session) for the same rounds. A refusal as the route's error."""
+    over its session's transcript (Req.session) for the same rounds. A fast run's by its commits (…/commits): each
+    commit's files and all of them, each read both ways. A refusal as the route's error."""
     f = outputs.Fold(reader=outputs.GitReader(repo_mod.Git(str(r.scratch.path))), intent=r.intent, branch=r.branch,
                      nodes=tuple(keep["nodes"]), commits=tuple(keep["commits"]), changes=changes(r),
                      runs=tuple(keep["runs"]), turns=tuple(keep["turns"]))
@@ -1153,10 +1278,18 @@ def drawer_payloads(r: Req, rid: str, keep: dict) -> dict[str, dict]:
             slots = [turns_mod.Slot(str(s["slot"]), str(s["url"]), r.session["cwd"], False, r.session["rows"], True,
                                     r.session["sent"]) for s in turns_mod.sessions_to_read(f, nq) if r.session]
             put(base + "/turns", {"node": n.id, "round": str(rnd.n)}, lambda: turns_mod.turn_views(f, nq, slots, r.key, T0, scrub.basic_scrub))
+    if r.mode == "fast":
+        listed = outputs.commits_output(f)
+        put(base + "/commits", {}, lambda: listed)
+        for x in [x for c in listed["commits"] for x in c["files"]] + listed["files"]:
+            for view, b in (("source", None), ("diff", x["base"])) if x["ref"] else ():
+                q = {"ref": x["ref"], "path": x["path"], "view": view, "base": b, "pin": None}
+                put(base + "/file", q, lambda q=q: outputs.file_view(f, outputs.file_query(q)))
     return out
 
 
 def main() -> None:
+    assert bk.load(str(BRAINKIT))["ok"], "brain-kit decides each run's flow (flowview.read): %s" % bk.info()["error"]
     scratch = Path(tempfile.mkdtemp(prefix="brain-preview-drawer-"))
     try:
         world(scratch)
@@ -1230,7 +1363,8 @@ def world(scratch: Path) -> None:
             x["cmd"] for x in verify[-1]["data"]["results"]))) if verify else "还没跑 verify。"
         text = "\n".join([
             "## %s · %s" % (r.key, r.title), "", "**一句话**：%s" % first,
-            "（分支 `%s`；负责人 %s；intent `%s`）" % (r.branch, r.owner, r.intent), "", "### 做了什么 / 没做什么"]
+            "（分支 `%s`；负责人 %s；%s）" % (r.branch, r.owner, "intent `%s`" % r.intent if r.intent else "快速，没有 Lean intent"),
+            "", "### 做了什么 / 没做什么"]
             + ["- %s" % x for x in done[-4:] or ["还没有代码提交"]] + ["", "### 验收标准和证据", checks, "", "### 还没有"]
             + (["- 还没合并"] if not r.merged_at else ["- 合并后 14 天还在观察"] if not (r.after14 or {}).get("window_closed") else [])
             + ["", "---", "由 `brain mr-desc` 从记录生成（run.json、Lean 记录、git），别手改。重新生成：`brain mr-desc %s --write`。" % r.key, ""])
@@ -1315,6 +1449,7 @@ def world(scratch: Path) -> None:
                                   sessions=det["sessions"], decisions=det["decisions"], questions=det["questions"],
                                   mr_desc=det["mr_desc"], credits=row.get("credits"))
     det["credits"] = LATER["r1/PAY-3"][2]["credits"]       # service._local_credits over its sessions
+    det["deploy"] = None        # PAY-3 is not merged: no 上线 yet
     details["r1/PAY-3"] = det
 
     # PAY-4: on the runner, parked on D-2 (a design question for the product)
@@ -1490,6 +1625,82 @@ def world(scratch: Path) -> None:
     board_later(p16, row, sessions=[p16_sess], credits=3.1,
                 mr_desc={"available": True, "text": "", "first": None, "source": None, "path": None, "ref": None,
                          "error": "还没有提交：做完第一步以后才有变更说明"})
+
+    # PAY-17 (快速): a fast run on this machine; the first verify went red, the fix and its tests are committed with a green
+    # one: it waits for alice to say it is done (开 MR)
+    p17 = Req("r1", "PAY-17", "订单优惠码", "alice", "coupon", None, project="shop/shop-pay", mode="fast")
+    p17.scratch = DrawerRepo(scratch / "PAY-17")
+    preview_docs.pay17(p17)
+    p17.claim_at = T0 - 50 * M
+    t = p17.start_at = T0 - 48 * M
+    p17.app += [app_event(t, "在 app 里开工", "工作区 /Users/alice/workplace/brain-app/shop-pay/coupon，分支 %s" % p17.branch),
+                app_event(t + 20, "开了本机会话", store.TRUSTED)]
+    p17.turn(t + 30)
+    p17.turn(t + 20 * M)
+    p17.verify(t + 24 * M, [("pytest -q", 1)])
+    p17.verify(t + 31 * M, [("pytest -q", 0)])
+    p17.commit(t + 32 * M, "person", preview_docs.PAY17_ONE)
+    p17.turn(t + 38 * M)
+    p17.verify(t + 41 * M, [("pytest -q", 0)])
+    p17.commit(t + 42 * M, "person", preview_docs.PAY17_TWO)
+    reqs["r1"].append(p17)
+    # its session's transcript as the app adds it up (sessions.Spent): three turns, alice's two messages between them
+    said17 = [("user", 30), ("assistant", 5 * M), ("tool", 8 * M), ("assistant", 12 * M), ("user", 20 * M),
+              ("tool", 24 * M), ("tool", 31 * M), ("assistant", 33 * M), ("user", 38 * M), ("tool", 41 * M),
+              ("assistant", 44 * M)]
+    p17_stats = dict(sessions_mod.Spent().add([{"role": role, "content": "", "meta": {}, "ts": iso(t + dt)}
+                                               for role, dt in said17]).times(), busy=False, whole=True)
+    p17_sess = dict(det["sessions"][0], slot="brain-PAY-17-5e1a", url="/chat?sid=brain-PAY-17-5e1a", title="PAY-17 订单优惠码",
+                    credits=2.4, turns=3, busy=False, awaiting=False, last_activity=t + 44 * M, opened_at=t + 20)
+    row = copy.deepcopy(rows["PAY-3"])
+    row.update(key="PAY-17", title=p17.title, owner="alice", branch=p17.branch, intent=None, credits=2.4, updated_at=t + 44 * M,
+               summary="订单结算时可以填优惠码：SAVE10 打九折，FULL100 满 100 减 15。", sessions=1,
+               expected_paths=["shop/coupon.py"], overlap=[], open_questions=[], mr=None,
+               worktree="/Users/alice/workplace/brain-app/shop-pay/coupon")
+    extra_rows.append(classified(p17, row, slot=p17_sess))
+    board_later(p17, row, sessions=[p17_sess], stats=[p17_stats], credits=2.4, mr_desc=mrdesc(p17, row["summary"]))
+
+    # PAY-18 (快速): done on this machine this morning, its MR !12 opened from 需求现状; CI passed on its head: it waits for
+    # people to review and merge it
+    p18 = Req("r1", "PAY-18", "退款单导出 CSV", "alice", "refund-csv", None, project="shop/shop-pay", mode="fast")
+    p18.claim_at = T0 - 5 * H
+    t = p18.start_at = T0 - 5 * H + 2 * M
+    p18.app += [app_event(t, "在 app 里开工", "工作区 /Users/alice/workplace/brain-app/shop-pay/refund-csv，分支 %s" % p18.branch),
+                app_event(t + 20, "开了本机会话", store.TRUSTED)]
+    p18.turn(t + 30)
+    p18.verify(t + 50 * M, [("pytest -q", 0), ("ruff check .", 0)])
+    head18 = p18.commit(t + 52 * M, "person", "PAY-18：退款单导出 CSV，带测试", files=3)
+    p18.app.append(app_event(t + 70 * M, "开 MR：推上去了，开了 MR !12"))
+    reqs["r1"].append(p18)
+    mr18 = {"iid": 12, "url": "%s/shop/shop-pay/-/merge_requests/12" % GL, "state": "opened", "sha": head18, "labels": [],
+            "questions": [], "pipelines": [{"id": 1307, "status": "success", "sha": head18, "at": t + 81 * M,
+                                            "url": "%s/shop/shop-pay/-/pipelines/1307" % GL}]}
+    row = copy.deepcopy(rows["PAY-3"])
+    row.update(key="PAY-18", title=p18.title, owner="alice", branch=p18.branch, intent=None, credits=5.6, updated_at=t + 81 * M,
+               summary="退款单列表可以导出 CSV：按时间范围，金额两位小数。", sessions=0, expected_paths=["src/reports/refund_csv.py"],
+               overlap=[], open_questions=[], mr={"iid": 12, "url": mr18["url"], "state": "opened"}, session_url=None,
+               worktree="/Users/alice/workplace/brain-app/shop-pay/refund-csv")
+    extra_rows.append(classified(p18, row, mr=mr18))
+    board_later(p18, row, credits=5.6, mr=mr18, mr_desc=mrdesc(p18, row["summary"]))
+
+    # PAY-19 (快速): bob's, done on his machine; its MR !13 passed CI and waits to be reviewed: alice's machine reads it
+    # from GitLab, as every teammate's does
+    p19 = Req("r1", "PAY-19", "发票抬头记住上次填的", "bob", "invoice-title", None, project="shop/shop-pay", mode="fast")
+    p19.elsewhere = True
+    p19.claim_at = T0 - 6 * H
+    t = p19.start_at = T0 - 6 * H + 3 * M
+    p19.verify(t + 40 * M, [("pytest -q", 0)])
+    head19 = p19.commit(t + 42 * M, "person", "PAY-19：发票抬头记住上次填的，带测试", files=2)
+    reqs["r1"].append(p19)
+    mr19 = {"iid": 13, "url": "%s/shop/shop-pay/-/merge_requests/13" % GL, "state": "opened", "sha": head19, "labels": [],
+            "questions": [], "pipelines": [{"id": 1311, "status": "success", "sha": head19, "at": t + 55 * M,
+                                            "url": "%s/shop/shop-pay/-/pipelines/1311" % GL}]}
+    row = copy.deepcopy(rows["PAY-3"])
+    row.update(key="PAY-19", title=p19.title, owner="bob", branch=p19.branch, intent=None, credits=None, updated_at=t + 55 * M,
+               summary="开发票时记住上次填的抬头和税号。", sessions=0, expected_paths=["shop/invoice.py"], overlap=[],
+               open_questions=[], mr={"iid": 13, "url": mr19["url"], "state": "opened"}, session_url=None, worktree=None)
+    extra_rows.append(classified(p19, row, mr=mr19))
+    board_later(p19, row, mr=mr19, mr_desc=mrdesc(p19, row["summary"]))
 
     # PAY-9 (Scenario B, the mockup's story; 16:15 is now): alice's requirements and design approved on this machine
     # (INCEPTION), split into api and web, handed over at 11:05. Its run on the team runner (RUN-PAY-9-1) checks on
@@ -1669,6 +1880,7 @@ def world(scratch: Path) -> None:
         n_hum = sum(1 for h in r.humans if h["judgment_point"])
         runs.append({"key": key, "repo": "r3", "how": how, "beyond": ["交接后推代码"] if how == "people" and not i % 2 else (["回答问题"] if how == "people" else []),
                      "at_points": n_hum, "outside": 1 if how == "people" and not i % 2 else 0, "credits": cr, "merged_at": r.merged_at})
+    order_eval = order_deploys({r_.key: r_ for r_ in reqs["r3"]})
     # ORD-10: running on the runner right now
     r = Req("r3", "ORD-10", "订单状态推送到企业微信", "erin", "wecom-push", "261106-wecom-push", project="shop/shop-order")
     r.claim_at = T0 - 9 * H
@@ -1839,6 +2051,11 @@ def world(scratch: Path) -> None:
             o["eval"]["metrics"] = [dict(m, value=None) for m in o["eval"]["metrics"]]
             o["eval"]["notes"] = []
             o["funnel"] = dict(deliveries.funnel_app([], {"asked": 0, "answered": 0, "delivered": 0}), source="evaluate")
+        if "r3" in ids:     # shop-order's 部署 numbers and notes: the only repo whose kit.json reads its deploys
+            o["eval"]["metrics"] = o["eval"]["metrics"] + deploys_view.metrics(order_eval)
+            said = deploys_view.notes(order_eval, [])
+            o["eval"]["note_rows"] = o["eval"]["note_rows"] + said
+            o["eval"]["notes"] = o["eval"]["notes"] + [x["text"] for x in said]
         o["eval"]["queue"] = [q for q in o["eval"]["queue"] if q["key"] in keys]
         o["eval"]["families"] = [x for x in fam_eval if x["repo"] in ids]     # brain-kit 0d52e97's, shop-pay's here
         o["eval"]["skipped"] = [x for x in o["eval"]["skipped"] if x["key"] in keys]
@@ -1860,8 +2077,8 @@ def world(scratch: Path) -> None:
     world_ov = overview_of("all", True)
     overviews = {e: {x: overview_of(x, e == "eval") for x in ("all", "r1", "r2", "r3", "r4")} for e in ("eval", "noeval")}
     # 待办 on alice's machine (todo.build over the same rows): what waits for her, with the session to open
-    sessions = {"PAY-3": det["sessions"][0], "PAY-1": p1_sess, "PAY-7": p7_sess, "TOOL-1": tool_sess}
-    facts = {"PAY-3": p3.facts(p3_park), "PAY-1": p1.facts(), "PAY-7": p7.facts()}
+    sessions = {"PAY-3": det["sessions"][0], "PAY-1": p1_sess, "PAY-7": p7_sess, "TOOL-1": tool_sess, "PAY-17": p17_sess}
+    facts = {"PAY-3": p3.facts(p3_park), "PAY-1": p1.facts(), "PAY-7": p7.facts(), "PAY-17": p17.facts()}
     entries = [{"row": r_, "facts": facts.get(r_["key"], {}), "own": r_["owner"] == ME, "has_session": r_["key"] in sessions,
                 "can_post": False, "mr": None,
                 "session": {k: sessions[r_["key"]][k] for k in ("slot", "title", "url")} if r_["key"] in sessions else None,
@@ -1907,7 +2124,8 @@ def world(scratch: Path) -> None:
         path = "/home/runner/brain/runs/%s" % run_id if q is not None else None     # runnerd's workspace, once made
         q = q or Req("r1", key, "", "", "", "")
         f = {"key": key, "claim": None, "where": "runner", "branch": None, "owner": None, "worktree": None, "stages": [],
-             "events": [], "approvals": [], "run": None, "park": None, "decisions_text": None, "state_text": None}
+             "events": [], "approvals": [], "run": None, "park": None, "decisions_text": None, "state_text": None,
+             **flowview.read(None)}
         if path:
             f.update(q.facts(park), where="runner", worktree=path, merged=False)
         row_t = deliveries.base_row("runner", f)
@@ -1961,7 +2179,8 @@ def world(scratch: Path) -> None:
                          "other_runs": []},
             "sessions": [{k: x.get(k) for k in ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting",
                                                  "last_activity", "opened_at", "project", "url", "error")} for x in counted],
-            "credits": cost, "brain": brain_t, "mr_desc": b["mr_desc"]}
+            "credits": cost, "brain": brain_t, "mr_desc": b["mr_desc"],
+            "deploy": deploys_view.requirement(q.trace(brain_t) if path else None, {"gitlab": {"base": GL, "project": q.project}})}
     team_items = todo.build(team_entries, team=True, crew_rows=[])["items"]
     world_todo["team"] = {"items": [i for i in world_todo["ok"]["items"] if (i["repo"], i["key"]) not in taken] + team_items,
                           "team": True}
@@ -1975,12 +2194,15 @@ def world(scratch: Path) -> None:
          "kit": {"tracker": "none", "req_prefix": "ORD", "default_branch": "main", "gitlab_base": GL, "gitlab_project": "shop/shop-order"},
          # 你是谁 without a GitLab token (no brain.user there): the page would ask; the world has one (identity.of below)
          "me": {"name": None, "source": "none", "gitlab": GL, "text": "", "ask": True, "label": identity.LABEL_GITLAB,
-                "why": identity.WHY_GITLAB, "suggest": "alice", "error": ""}},
+                "why": identity.WHY_GITLAB, "suggest": "alice", "error": ""},
+         # the team switched fast mode off; alice's MR !31 to switch it on again waits to be merged
+         "fast": {"on": False, "why": "", "pending": {"on": True, "iid": 31,
+                                                     "url": "%s/shop/shop-order/-/merge_requests/31" % GL}}},
         {"id": "r4", "path": "/Users/alice/workplace/shop-tools", "name": "shop-tools", "ok": True, "error": "", "pending": None,
          "kit": {"tracker": "none", "req_prefix": "TOOL", "default_branch": "main", "gitlab_base": "", "gitlab_project": ""},
          # no GitLab: the login name (brain-kit 91e2fee)
          "me": {"name": "alice", "source": "login", "gitlab": "", "text": "alice（这台机器的登录名：这个仓库不用 GitLab）",
-                "ask": False, "label": "", "why": "", "suggest": "", "error": ""}}]
+                "ask": False, "label": "", "why": "", "suggest": "", "error": ""}, "fast": None}]
     # KiroCrew is fine in the world (the 「KiroCrew 有 FAIL」 switch shows a failing row); shop-tools keeps its ! reminder
     world_status["crew"]["rows"] = [problems.agent_ok(0) if r_["level"] == "FAIL" else r_ for r_ in status["crew"]["rows"]
                                     if r_.get("fix") != "kit"] + tool_kit
@@ -1996,12 +2218,25 @@ def world(scratch: Path) -> None:
     for r_ in world_status["repos"]:
         r_["remote"] = r_["id"] not in local and r_["id"] != "r2"
         r_["sync"] = repo_sync(r_, local) if r_["ok"] else None
+    # 开需求's 「快速」 per repo (IntakeNext.fast), in brain-kit's words for each repo's default branch
+    fl = bk.m("flows")
+    lean_now = bk.m("lean").version_in((BRAINKIT / "vendor" / "aidlc-lean" / "kit" / ".kiro" / "aidlc-lean" /
+                                        "aidlc_lean.py").read_text(encoding="utf-8"))
+
+    def offer(fast_mode: bool, local_only: bool) -> dict:
+        if local_only:
+            return {"ok": False, "why": flowview.LOCAL_ONLY}
+        why = fl.refusals(fl.Flow.FAST, lambda: fl.Policy(fast_mode=fast_mode, regulated=False, lean_version=lean_now,
+                                                          lean=True))
+        return {"ok": not why, "why": why[0].zh if why else ""}
+    intake_fast = {r_["id"]: offer((r_.get("fast") or {}).get("on", True), not r_.get("remote") or r_["id"] in local)
+                   for r_ in world_status["repos"] if r_["ok"]}
     world = {"note": "made by scripts/preview_world.py: do not edit by hand", "at": T0, "status": world_status, "overview": world_ov,
              "overviews": overviews, "overviews_team": overviews_team, "todo": world_todo, "reflects": reflects,
              "crew_missing": crew_fail, "crew_not_ready": crewcheck.not_ready([crew_fail]),
              "me_token": identity.of("", GL, identity.Said(ME)), "boards": boards, "details": details, "stages": STAGES,
              "phases": {k: lean_view.phases(v) for k, v in STAGES.items()},
-             "brains": brains, "intake_gates": intake_gates(), "outputs": drawer}
+             "brains": brains, "intake_gates": intake_gates(), "outputs": drawer, "intake_fast": intake_fast}
     (ROOT / "ui" / "preview" / "world.json").write_text(json.dumps(world, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     # the contract fixtures the UI tests read: the overview's numbers for its own rows, one live board and one merged
     ov["cto"] = deliveries.cto_numbers([("r1", parts[0][1])], list(rows.values()), available=True, now=T0, names=names, repos=1)

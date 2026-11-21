@@ -230,14 +230,20 @@ def test_a_png_or_a_jpeg_shows_as_a_picture_and_nothing_else_does(K, tmp_path):
 
 
 def older_brainkit(tmp_path: Path) -> Path:
-    """brainkit/ as it was before brainkit/proof.py came (the parent of the commit that added it)."""
-    added = sh("git", "-C", BRAINKIT, "log", "--diff-filter=A", "--format=%H", "--", "brainkit/proof.py",
-               check=False).stdout.split()
-    if not added:
-        pytest.skip("this brain-kit's history does not say when brainkit/proof.py came")
+    """brainkit/ as it was before brainkit/proof.py came: the newest commit without it that has every module the app
+    requires (the parent of the commit that added proof.py has no flows.py when fast mode came on another branch)."""
+    def has(names: set, name: str) -> bool:
+        base = "brainkit/" + name.replace(".", "/")
+        return base + ".py" in names or base + "/__init__.py" in names
+    for sha in sh("git", "-C", BRAINKIT, "rev-list", "--max-count=400", "HEAD").stdout.split():
+        names = set(sh("git", "-C", BRAINKIT, "ls-tree", "-r", "--name-only", sha, "brainkit").stdout.split())
+        if "brainkit/proof.py" not in names and all(has(names, n) for n in bk.REQUIRED):
+            break
+    else:
+        pytest.skip("no commit of this brain-kit has the modules the app requires and no brainkit/proof.py")
     old = tmp_path / "older-brain-kit"
     old.mkdir()
-    tar = subprocess.run(["git", "-C", str(BRAINKIT), "archive", added[-1] + "^", "brainkit"], capture_output=True,
+    tar = subprocess.run(["git", "-C", str(BRAINKIT), "archive", sha, "brainkit"], capture_output=True,
                          check=True).stdout
     subprocess.run(["tar", "-x", "-C", str(old)], input=tar, check=True)
     return old

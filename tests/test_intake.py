@@ -49,6 +49,7 @@ def test_the_dry_run_lists_every_finding_verbatim_and_what_would_stop_the_start(
     (tmp_path / "b").mkdir(), (tmp_path / "c").mkdir(), (tmp_path / "d").mkdir()
     nxt, first, fixed, unsure, no_consent = run(go())
     big = nxt.pop("big")     # 「大需求：先拆成小需求」: only with a brain-kit that has brain split (0d52e97)
+    assert nxt.pop("fast") == {"ok": False, "why": mod("flowview").LOCAL_ONLY}, "no remote: no MR to end a fast run"
     assert nxt == {"repo": "r1", "key": "PAY-1", "tracker": "none", "prefix": "PAY", "error": "",
                    "allow_confidential": False, "push": None}
     assert big == ({"ok": True, "why": ""} if (BRAINKIT / "brainkit" / "split.py").is_file() else

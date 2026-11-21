@@ -14,7 +14,7 @@ import re
 import time
 from typing import Any
 
-from . import bk, lean_view
+from . import bk, deploys_view, fastrow, flowview, lean_view
 
 STATE_LABEL = {"claimed": "已认领", "local": "本地开发中", "handed_over": "已交接", "rejected": "接手被拒",
                "running": "运行机在跑", "parked": "停下等回答", "acceptance": "等验收", "merged": "已合并",
@@ -120,6 +120,7 @@ def base_row(repo_id: str, f: dict[str, Any], *, local_only: bool = False) -> di
         "session_url": None,     # its brain-dev session on this machine (KiroCrew's chat URL), filled in by the service
         "family": None,      # a 大需求 or one of its 小需求 (family.families), filled in by the service
         "progress_pushed_at": None,     # when this machine last pushed its run branch at a checkpoint (progress.py)
+        "flow": flowview.wire(f.get("flow")),
     }
 
 
@@ -153,13 +154,15 @@ def owns(me: str | None, owner: str | None) -> bool:
 
 def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | None, slot: dict[str, Any] | None,
              cfg: dict[str, Any], bot_commits: int = 0, at_handover: bool = False, me: str | None = None,
-             reflected: bool = False, now: float | None = None, pushed: bool = True) -> None:
+             reflected: bool = False, now: float | None = None, pushed: bool = True,
+             fast: fastrow.FastFacts | None = None) -> None:
     """Fill in state, state_label and waits (person mode). *at_handover*: the branch tip is the hand-over commit
     `brain handoff` made (its parent is run.json's handoff.local_head). *me*: who this machine's person is (None: not
     known); someone else's requirement waits for them, not for "you".
     *reflected*: its Brain proposals were written back already (a brain/<KEY>-reflect-<n> branch). *pushed*: the
     branch tip is on the remote (False: a hand-over committed here whose push failed, so nothing was handed over; a
-    repo done only on this machine has nothing to push to)."""
+    repo done only on this machine has nothing to push to). *fast*: the run has no Lean intent (a fast run): its
+    own facts, and fastrow says its step."""
     run, park, claim = f.get("run"), f.get("park"), f.get("claim") or {}
     pending = [a for a in f.get("approvals") or [] if a["state"] == "pending" and a.get("line")]
     owner = f.get("owner") or claim.get("owner")
@@ -184,6 +187,8 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
             return put("claimed", "people", "start", "待认领：谁开工就归谁", where="app", since=since)
         return put("claimed", you, "start", "已认领，还没开工" if mine else "等 %s 开工" % owner, where="app",
                    since=since)
+    if f.get("flow_error"):
+        return put("local", you, "none", f["flow_error"], since=f.get("tip_at"))
     if not run.get("handoff"):
         if pending:
             a = pending[0]
@@ -195,11 +200,17 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
             what = question_label(kind, park.get("lean_request"))
             return put("parked", you, "answer", spaced("AI 停下等", them, "回答（%s）" % what),
                        where="app" if here else "session", since=f.get("park_at"))
+        if not mine and fast is not None:
+            return fastrow.theirs(put, f, merged=lambda text: _merged(put, f, now=now, reflected=reflected, text=text,
+                                                                     owner=owner), mr=mr, fast=fast, owner=str(owner))
         if not mine:
             return put("local", "people", "none", "%s 在自己的机器上做" % owner, since=f.get("tip_at"))
         if slot and slot.get("awaiting"):      # KiroCrew counts a session asking for a tool as busy too
             return put("local", "you", "tool", "会话里有一个工具调用等你批准", where="session",
                        since=updated_at(f, slot))
+        if fast is not None:
+            return fastrow.local(put, f, merged=lambda text: _merged(put, f, now=now, reflected=reflected, text=text),
+                                 slot=slot, mr=mr, fast=fast, since=updated_at(f, slot))
         if slot and slot.get("busy"):
             nxt = (row.get("lean") or {}).get("next")
             return put("local", "agent", "none", "AI 在做" + ("「%s」" % nxt["label"] if nxt else ""))
@@ -652,8 +663,10 @@ METRIC_RULE = {
 
 
 def evaluate(repo_path: str, cfg: dict[str, Any], ref: str | None, credits: dict[str, Any] | None,
-             ledger_path: str | None = None, vouchers_dir: str | None = None) -> tuple[dict[str, Any], dict | None]:
-    """(EvalView, the funnel from brainkit.evaluate or None). Without the module: available false."""
+             ledger_path: str | None = None, vouchers_dir: str | None = None,
+             deploys: Any = None) -> tuple[dict[str, Any], dict | None]:
+    """(EvalView, the funnel from brainkit.evaluate or None). Without the module: available false. *deploys*: the
+    brainkit.deploys Source its traces and its 部署 numbers read the deploys from (deploys_view.Clients)."""
     view = {"available": False, "error": "", "raw": "", "ref": ref, "metrics": [], "queue": [], "skipped": [],
             "notes": [], "note_rows": [], "families": []}
     if not bk.has("evaluate"):
@@ -663,7 +676,7 @@ def evaluate(repo_path: str, cfg: dict[str, Any], ref: str | None, credits: dict
     ev = bk.m("evaluate")
     try:
         data = _call(ev.collect, repo_path, cfg, ref=ref, credits=credits, ledger_path=ledger_path,
-                     vouchers_dir=vouchers_dir)
+                     vouchers_dir=vouchers_dir, **({"deploys": deploys} if deploys is not None else {}))
     except Exception as exc:  # noqa: BLE001 - a module still being written must not break the overview
         view["error"], view["raw"] = "交付评估没算成：brain-kit 的原话在细节里", str(exc)[:2000]
         return view, None
@@ -690,7 +703,7 @@ def evaluate(repo_path: str, cfg: dict[str, Any], ref: str | None, credits: dict
         {"id": "credits_per_success", "label": "每个正确交付的 credits",
          "value": cost.get("per_success") if isinstance(cost.get("per_success"), (int, float)) else None,
          "rule": METRIC_RULE["credits_per_success"]},
-    ]
+    ] + deploys_view.metrics(data.get("deploys"))
     queue = []
     for q in data.get("review_queue") or []:
         if isinstance(q, dict) and q.get("key"):
@@ -707,7 +720,8 @@ def evaluate(repo_path: str, cfg: dict[str, Any], ref: str | None, credits: dict
     a = data.get("autonomy") if isinstance(data.get("autonomy"), dict) else {}
     unmerged = sorted({str(r["key"]) for r in a.get("runs") or [] if isinstance(r, dict) and r.get("key")
                        and r.get("correct") == "wrong_open"} - set(wrong_open))
-    rows = eval_notes(cost.get("note"), wrong_open, unmerged)
+    rows = eval_notes(cost.get("note"), wrong_open, unmerged) + deploys_view.notes(data.get("deploys"),
+                                                                                  d.get("unknown_after_merge"))
     view.update(available=True, queue=queue, ref=data.get("ref") or ref, skipped=skipped,
                 notes=[x["text"] for x in rows], note_rows=rows, families=family_rows(data))
     view["_cto"] = cto_part(data)   # the 交付总览's numbers (the service takes it out before the page gets the view)
@@ -996,7 +1010,8 @@ def cto_part(data: dict[str, Any]) -> dict[str, Any]:
             "runs": runs, "ref": data.get("ref"),
             # what 每个正确交付的 credits is made of, so several repos add up (an average does not)
             "credits_total": cost.get("credits_total") if isinstance(cost.get("credits_total"), (int, float)) else None,
-            "correct": cost.get("correct_deliveries") if isinstance(cost.get("correct_deliveries"), int) else None}
+            "correct": cost.get("correct_deliveries") if isinstance(cost.get("correct_deliveries"), int) else None,
+            "lead_hours": deploys_view.lead_hours(data.get("deploys"))}
 
 
 def _week(t: float) -> str:

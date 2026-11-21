@@ -4,7 +4,7 @@
  * missing gets added here, not spelled out in a view. Lean's stages are named by the backend's stage table
  * (backend/core/stages.py), which every Stage and LeanSummary carries.
  */
-import type { ChildState, LeanSummary, ReqState, StuckKind, SyncResult, WaitDo, WaitWho, Waits } from './types'
+import type { ChildState, DeployValue, LeanSummary, ReqState, StuckKind, SyncResult, WaitDo, WaitWho, Waits } from './types'
 
 /** Lean's approval kinds → what is approved */
 export const APPROVAL_NAME: Record<string, string> = {
@@ -24,7 +24,7 @@ export const waitsOn = (who: WaitWho): string => (who === 'nobody' ? '' : `等${
 export const DO_NAME: Record<WaitDo, string> = {
   approve: '去批准', reply: '去回话', tool: '去批准工具调用', start: '去开工', answer: '去回答', accept: '去验收',
   redo_handoff: '改好后重新交接', label_handoff: '补上交接标签', push_handoff: '再交接一次', write_back: '回写 Brain',
-  watch: '观察中', none: '',
+  watch: '观察中', open_mr: '开 MR', merge: '去 MR 上合并', full: '转完整流程', none: '',
 }
 
 /** the actions' names (buttons and the text that points at them use exactly these) */
@@ -44,6 +44,9 @@ export const ACT = {
   onBoard: '在运行过程里看 ↗',
   acceptOnMr: '去 MR 上验收',
   viewMr: '看 MR',
+  /** a fast run's two actions (FlowAction mr, full): `brain mr`, `brain full` */
+  openMr: '开 MR',
+  toFull: '转完整流程',
 } as const
 
 /** 大需求拆成小需求 (brain-kit's split): the family's actions, the same on 运行过程, 需求现状, 待办 and 开需求 */
@@ -113,7 +116,7 @@ export function leanNow(r: { state: ReqState; lean: LeanSummary }, skipped_phase
 export const WAIT_NAME: Record<WaitDo, string> = {
   approve: '等批准', reply: '等回话', tool: '等批准工具调用', start: '等开工', answer: '等回答', accept: '等验收',
   redo_handoff: '要重做交接', label_handoff: '要补交接标签', push_handoff: '要再交接', write_back: '要回写 Brain',
-  watch: '观察中', none: '',
+  watch: '观察中', open_mr: '等开 MR', merge: '等合并', full: '要转完整流程', none: '',
 }
 
 /** Lean's review in a new session (Waits.review) is its own step: the session that wrote the code may not review it,
@@ -139,9 +142,14 @@ export const DECIDED_BY: Record<string, string> = {
   unknown: '看不出是谁定的',
 }
 
+/** what a merged requirement's deploys did (DeployView.value, DeployAttempt.result) → the words 上线 says it with */
+export const DEPLOY_NAME: Record<DeployValue, string> = {
+  promoted: '上线了', aborted: '灰度中止', running: '部署中', not_deployed: '还没部署', unknown: '读不到部署记录',
+}
+
 /** what a check of the wall is about (CheckCell.group) */
 export const CHECK_GROUP_NAME: Record<string, string> = {
-  gate: 'Lean 审批', verify: '自动检查', handover: '交接', brain: 'Brain', after: '合并后观察',
+  gate: 'Lean 审批', verify: '自动检查', ci: 'CI', risk: '风险目录', handover: '交接', brain: 'Brain', after: '合并后观察',
 }
 
 /** a source brain-kit's trace could not read (its English words, ReqBoard.missing) → what it is */
@@ -152,7 +160,7 @@ export const missingSourceName = (raw: string): string => MISSING_SOURCE.find(([
 
 /** brain-kit's optional modules (Status.brainkit.modules) → what they do for a person */
 export const MODULE_NAME: Record<string, string> = {
-  trace: '需求时间线', evaluate: '交付评估', golden: '标准考题', intents: '需求来源', mrdesc: '变更说明', proof: '证据',
+  trace: '需求时间线', evaluate: '交付评估', golden: '标准考题', intents: '需求来源', mrdesc: '变更说明', proof: '证据', deploys: '上线结果',
 }
 
 /** kit.json tracker → one word (设置, 导入仓库) */

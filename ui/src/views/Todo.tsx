@@ -19,6 +19,8 @@
  *   handoff_rejected    the hand-over was refused: why, and what to say to the AI   打开会话 · 看 MR
  *   handoff_unlabelled  pushed, but the MR has no hand-over label                   补上交接标签 · 看 MR
  *   handoff_unpushed    the hand-over commit's push failed: nothing went out        再交接一次 (需求现状, its button)
+ *   open_mr             a fast run's code committed and checked                     需求现状 (开 MR there)
+ *   full                a fast run changed a risk path                              需求现状 (转完整流程 there)
  *   closed_leftover     closed with brain intent close, its run branch or MR left   看 MR (delete it, close it)
  *   push_failed         your progress at a Lean checkpoint, refused by origin       what to do, git's words (细节)
  *   stuck               a run on the runner that no answer can move any more        看 MR
@@ -33,7 +35,7 @@ import { paths, useAction, usePoll } from '../api'
 import { fmtWaited } from '../format'
 import type { ChildStartBody, ChildStartResult, Todo, TodoItem } from '../types'
 import { CheckRows, EmptyHero, ExtLink, Icon, LoadState, RoleIcon, TypeLine, type FlowStep } from '../ui'
-import { ACT, DO_NAME, REVIEW_WAIT, approvalName } from '../vocab'
+import { ACT, DO_NAME, REVIEW_WAIT, WAIT_NAME, approvalName } from '../vocab'
 import { ChildStartOut, FAMILY_CSS } from './Family'
 import { QuestionCard, ReviewButton } from './Question'
 import type { ViewProps } from './props'
@@ -56,6 +58,8 @@ const GROUPS: Group[] = [
   { key: 'child_start', heading: '可以开工的小需求', icon: 'deploy', tone: 'wait', hint: '你认领了，依赖都合进来了' },
   { key: 'parent_release', heading: '等评审、发布的大需求', icon: 'release', tone: 'wait', hint: '小需求都合并了' },
   { key: 'write_back', heading: '等回写 Brain', icon: 'brain', tone: 'wait', hint: '合并了：把学到的写回 Brain' },
+  { key: 'open_mr', heading: WAIT_NAME.open_mr, icon: 'pr', tone: 'wait', hint: `代码写好了，检查也过了：做完了就在${ACT.openDetail}里点「${ACT.openMr}」` },
+  { key: 'full', heading: WAIT_NAME.full, icon: 'req', tone: 'wait', hint: `改到了风险目录：在${ACT.openDetail}里点「${ACT.toFull}」` },
   { key: 'handoff_rejected', heading: '接手被拒', icon: 'handover', tone: 'bad', hint: '改好再交接' },
   { key: 'handoff_unlabelled', heading: '没交出去的交接', icon: 'handover', tone: 'warn', hint: 'MR 上没有交接标签' },
   { key: 'handoff_unpushed', heading: '交接没推上去', icon: 'handover', tone: 'warn', hint: '在需求现状再点「交接给运行机」' },
@@ -65,6 +69,8 @@ const GROUPS: Group[] = [
   { key: 'crew', heading: 'KiroCrew 的问题', icon: 'settings', tone: 'bad', hint: '修好了才能开会话（不开会话也能开工）' },
 ]
 const TONE_WORD: Record<GroupTone, string> = { wait: '等你', bad: '被拒或卡住', warn: '看一眼' }
+/** a fast run's steps, taken on 需求现状 (FastActs): 待办 only goes there */
+const ON_DETAIL: Partial<Record<GroupKey, string>> = { open_mr: ACT.openMr, full: ACT.toFull }
 
 /** A runner question without its question (team mode): the run is left waiting for good (refused, void, not asked);
  * a reply that is Lean's review: a new session's. */
@@ -267,6 +273,12 @@ function Item({ it, group, now, go, onAnswered, started, onStarted }: {
         {group.key === 'handoff_unpushed' && it.key && (
           <button type="button" className="br-btn is-small is-primary" onClick={() => go({ kind: 'item', repo: it.repo, key: it.key, from: 'todo' })}>
             <RoleIcon role="handover" size={14} />{DO_NAME.push_handoff}
+          </button>
+        )}
+        {ON_DETAIL[group.key] && it.key && (
+          <button type="button" className="br-btn is-small is-primary" title={`在${ACT.openDetail}里点「${ON_DETAIL[group.key]}」`}
+            onClick={() => go({ kind: 'item', repo: it.repo, key: it.key, from: 'todo' })}>
+            <RoleIcon role="file" size={14} />{ACT.openDetail}
           </button>
         )}
         {group.key === 'write_back' && it.key && (

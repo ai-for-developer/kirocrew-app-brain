@@ -61,7 +61,16 @@
     "home": null,
     "verify_fails": 0,
     "progress_pushed_at": null,
-    "credits_whole": true
+    "credits_whole": true,
+    "flow": {
+      "id": "lean",
+      "label": "完整流程",
+      "intent": true,
+      "actions": [
+        "handoff",
+        "review"
+      ]
+    }
   },
   "where_label": "本机的工作目录",
   "run": {
@@ -862,5 +871,6 @@
     "path": "runs/PAY-3/MR.md",
     "ref": "7d2c9e4a1b30",
     "error": ""
-  }
+  },
+  "deploy": null
 }

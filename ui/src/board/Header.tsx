@@ -12,6 +12,7 @@
 import { useEffect, useState } from 'react'
 import { useAppApi } from '@kirocrew/app-sdk'
 import { paths, useAction } from '../api'
+import { FlowKpi, FlowWayKpi } from '../flows'
 import type { ReqBoard, ReqFamily, Run, StageNode, StopResult } from '../types'
 import { StateChip } from '../ui'
 import { ACT, DO_NAME, FAMILY_ACT, leanNow, wholeSkips } from '../vocab'
@@ -21,7 +22,7 @@ import { waitCount } from './next'
 import { NOT_LEAN, pickedRun, runLean, type RunFilter } from './picker'
 import { RoleIcon } from './RoleIcon'
 import { RunPicker } from './RunPicker'
-import { verifyCount, wayAt } from './way'
+import { fastVerifyCount, verifyCount, wayAt } from './way'
 
 export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail, onSession, onStart, onParent, onFamily, onOutputs, onStopped, run = 'all', onRun }: {
   board: ReqBoard
@@ -48,7 +49,9 @@ export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail,
   const r = board.row
   // this machine's session, and the latest runner run's when it is readable here (team mode)
   const localRun = board.runs.find((x) => x.kind === 'local')
-  const local = replySession(board, localRun) ?? null
+  // a fast run has no runs: this machine's sessions are the board's own
+  const localSessions = localRun?.sessions ?? (board.steps ? board.sessions.filter((x) => x.kind === 'local') : [])
+  const local = replySession(board, localRun) ?? (board.steps ? localSessions.find((x) => x.slot === board.live_slot) : undefined) ?? null
   const runner = sessionOf([...board.runs].reverse().find((x) => x.kind === 'runner' && x.sessions.length)) ?? null
   const finished = board.ended_at !== null || r.state === 'merged' || r.state === 'closed'
   const [stopped, setStopped] = useState(false)
@@ -86,7 +89,7 @@ export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail,
         {!replaying && local && onSession && (
           <button type="button" className="kt-btn" onClick={() => onSession(local.url)} title="在 Kiro Crew 里打开本机的 brain-dev 会话">{ACT.openSession}</button>
         )}
-        {!replaying && onStopped && localRun?.sessions.some((x) => x.busy) && <StopButton repo={r.repo} reqKey={r.key} onStopped={() => { setStopped(true); onStopped() }} />}
+        {!replaying && onStopped && localSessions.some((x) => x.busy) && <StopButton repo={r.repo} reqKey={r.key} onStopped={() => { setStopped(true); onStopped() }} />}
         {stopped && <span className="br-small br-ok-text" role="status">停下了：会话还在，{ACT.openSession}可以接着做</span>}
         {!replaying && runner && onSession && (
           <button type="button" className="kt-btn" onClick={() => onSession(runner.url)} title="打开运行机上的 brain-run 会话">{ACT.openSession}（运行机）</button>
@@ -94,7 +97,7 @@ export function TopBar({ board, replaying, follow, onReplay, onFollow, onDetail,
         {!replaying && onStart && r.state === 'claimed' && (
           <button type="button" className="kt-btn is-primary" onClick={onStart}>{DO_NAME.start} {r.key}</button>
         )}
-        {onOutputs && <button type="button" className="kt-btn" onClick={onOutputs} title="每一步每一轮交了什么：文档、代码和改动">产出</button>}
+        {onOutputs && <button type="button" className="kt-btn" onClick={onOutputs} title={board.steps ? 'AI 写的代码：每个提交改了什么' : '每一步每一轮交了什么：文档、代码和改动'}>产出</button>}
         <button type="button" className="kt-btn" aria-pressed={follow} onClick={onFollow} title="自动滚到正在动的那一环">跟随</button>
         {onDetail && <button type="button" className="kt-btn" onClick={onDetail}>需求现状 ↗</button>}
       </div>
@@ -161,24 +164,25 @@ function FamilyPills({ f, onParent, onFamily }: { f: ReqFamily; onParent?: (key:
   ) : <span className="kt-pill tone-handoff">{text}</span>
 }
 
-/** *board*: as the picked run saw it (picker.ts inRun), *run* the one picked: every card counts that run only. */
-export function Kpis({ board, reducedMotion, onNode, replaying = false, run = 'all' }: {
-  board: ReqBoard; reducedMotion: boolean; onNode?: (id: string) => void; replaying?: boolean; run?: RunFilter
+/** *board*: as the picked run saw it (picker.ts inRun), *run* the one picked: every card counts that run only. *onCode*:
+ * a fast run's 写代码 opens 产出. */
+export function Kpis({ board, reducedMotion, onNode, onCode, replaying = false, run = 'all' }: {
+  board: ReqBoard; reducedMotion: boolean; onNode?: (id: string) => void; onCode?: () => void; replaying?: boolean; run?: RunFilter
 }) {
   const picked = pickedRun(board, run)
   return (
     <div className="kt-kpis br-kpis" role="group" aria-label="指标">
       <ChecksKpi board={board} reducedMotion={reducedMotion} />
-      {picked ? <RunLeanKpi board={board} run={picked} /> : <LeanKpi board={board} />}
+      {picked ? <RunLeanKpi board={board} run={picked} /> : <FlowKpi board={board}><LeanKpi board={board} /></FlowKpi>}
       <PeopleKpi board={board} />
-      <StepsKpi board={board} onNode={onNode} replaying={replaying} picked={!!picked} />
+      <FlowWayKpi board={board} onCode={onCode}><StepsKpi board={board} onNode={onNode} replaying={replaying} picked={!!picked} /></FlowWayKpi>
       <CreditsKpi board={board} reducedMotion={reducedMotion} replaying={replaying} run={picked} />
     </div>
   )
 }
 
 function ChecksKpi({ board, reducedMotion }: { board: ReqBoard; reducedMotion: boolean }) {
-  const v = verifyCount(board.nodes)
+  const v = board.steps ? fastVerifyCount(board) : verifyCount(board.nodes)
   const shown = Math.round(useTween(v.passed, 900, reducedMotion))
   const pop = useChangeCount(v.passed)
   const green = v.total > 0 && v.passed === v.total

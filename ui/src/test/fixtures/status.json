@@ -17,7 +17,8 @@
       "intents": true,
       "mrdesc": true,
       "split": true,
-      "proof": true
+      "proof": true,
+      "deploys": true
     }
   },
   "repos": [
@@ -57,6 +58,11 @@
           "text": "已经从远端取到最新。",
           "raw": ""
         }
+      },
+      "fast": {
+        "on": true,
+        "why": "",
+        "pending": null
       }
     },
     {
@@ -69,7 +75,8 @@
       "pending": null,
       "me": null,
       "remote": true,
-      "sync": null
+      "sync": null,
+      "fast": null
     }
   ],
   "crew": {
@@ -127,7 +134,7 @@
     "relay": null
   },
   "counts": {
-    "todo": 10
+    "todo": 11
   },
   "repo_ids_problem": ""
 }

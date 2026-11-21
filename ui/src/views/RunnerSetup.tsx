@@ -10,9 +10,10 @@
  * with its own mark, words and link. A run cut off part-way (the app stopped) says where. The tokens go in that one
  * request: this page keeps them in their fields while it is open (for 再跑一次); the backend keeps the two accounts'
  * personal tokens and Jenkins' only. 巡检所有开着的 MR (on unless unticked) adds brain-patrol and switches work source
- * mr-patrol on in the kit.json MRs. Jenkins (address, read-only user, its token; one for the runner, whatever the
- * projects) is for MR 巡检 to read failed builds' logs: sent only with an address; the backend keeps the token, so the
- * last run's address and user come back, not it.
+ * mr-patrol on in the kit.json MRs; 从打了标签的 issue 接活 (off unless ticked) switches work source issue-label on there
+ * and makes its label. Jenkins (address, read-only user, its token; one for the runner, whatever the projects) is for
+ * MR 巡检 to read failed builds' logs: sent only with an address; the backend keeps the token, so the last run's address
+ * and user come back, not it.
  */
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
 import { useAppApi } from '@kirocrew/app-sdk'
@@ -29,6 +30,7 @@ export const ROLES_HINT = '填 GitLab 用户名，几个人用逗号隔开；空
 export const SAME_USER_NOTE = '签名服务、app 和 AI 的会话都用这台机器的同一个系统用户：签名挡不住 app 自己，只适合试用。'
 export const PATROL_HINT = '运行机每一轮看这个项目所有开着的 MR，以前开的也算：流水线没过、评审意见没回、和目标分支有冲突的，派 brain-patrol 去修，同时最多 2 个。交接过来的 MR 还是交接那边管。'
 export const JENKINS_HINT = 'MR 的流水线在 Jenkins 上跑的话填：巡检用这个只读用户（要有 Overall/Read 和 Job/Read）读没过的构建的日志。地址写这台机器连得上的。token 存在这台机器上，再跑一次时空着就用上次存的。不用 Jenkins 就空着。'
+export const ISSUES_HINT = '项目里 Developer 以上的人给 issue 打上标签 brain，运行机就把它认领成需求、开分支和 MR，在 MR 上问问题；MR 合并时 issue 跟着关。issue 的内容要过 Brain 的内容检查：不能有密钥、个人信息和金额。'
 export const TOKEN_FIRST = '先填一次性 token：它只用这一次，不存'
 export const cutOffSaid = (title: string) => `上次跑到「${title}」就停了，没跑完（app 关了或者重启了）：再跑一次，接着把没做的建完`
 export const MODE_HINT: Record<SetupMode, string> = {
@@ -59,7 +61,7 @@ export const STEP_LOOK: Record<SetupStepStatus, { glyph: string; word: string; t
 }
 
 type Push = 'ssh' | 'token'
-interface Form { mode: SetupMode; base: string; project: string; projects: string; product: string; builder: string; patrol: boolean; push: Push; jenkinsBase: string; jenkinsUser: string }
+interface Form { mode: SetupMode; base: string; project: string; projects: string; product: string; builder: string; patrol: boolean; issues: boolean; push: Push; jenkinsBase: string; jenkinsUser: string }
 
 const names = (s: string) => s.split(/[,，、\s]+/).map((x) => x.trim()).filter(Boolean)
 
@@ -76,6 +78,7 @@ function formOf(s: TeamSetup, repos: RepoInfo[]): Form {
     product: s.input.roles.product.join(', '),
     builder: s.input.roles.builder.join(', '),
     patrol: s.input.patrol !== false,
+    issues: s.input.issues === true,
     push: s.input.push === 'token' ? 'token' : 'ssh',
     jenkinsBase: s.input.jenkins.base,
     jenkinsUser: s.input.jenkins.user,
@@ -134,7 +137,7 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
     const jenkins = f.jenkinsBase.trim()
       ? { jenkins: { base: f.jenkinsBase.trim(), user: f.jenkinsUser.trim(), token: jenkinsToken.trim() } }
       : {}
-    const common = { gitlab_base: f.base.trim(), roles: { product: names(f.product), builder: names(f.builder) }, patrol: f.patrol, ...jenkins }
+    const common = { gitlab_base: f.base.trim(), roles: { product: names(f.product), builder: names(f.builder) }, patrol: f.patrol, issues: f.issues, ...jenkins }
     if (f.mode === 'project-token') return { ...common, project: f.project.trim(), admin_token: token.trim() }
     return {
       ...common, mode: 'bot-account', projects: names(f.projects), push: f.push,
@@ -241,6 +244,13 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
                 <b>巡检所有开着的 MR</b>
               </label>
               <p className="br-hint" id="rs-patrol-hint">{PATROL_HINT}</p>
+            </div>
+            <div className="br-field">
+              <label className="br-check">
+                <input type="checkbox" checked={form.issues} aria-describedby="rs-issues-hint" onChange={(e) => edit({ issues: e.target.checked })} />
+                <b>从打了标签的 issue 接活</b>
+              </label>
+              <p className="br-hint" id="rs-issues-hint">{ISSUES_HINT}</p>
             </div>
             <div className="rs-grid">
               <div className="br-field">

@@ -76,6 +76,9 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
         rid, key = _rid(request), _key(request)
         return kit.json(await svc.outputs_file(rid, key, outputs_mod.file_query(request.query)))
 
+    async def outputs_commits(request: Any) -> Any:
+        return kit.json(await svc.outputs_commits(_rid(request), _key(request)))
+
     async def outputs_turns(request: Any) -> Any:
         rid, key = _rid(request), _key(request)
         return kit.json(await svc.outputs_turns(rid, key, outputs_mod.node_query(request.query.get("node"),
@@ -247,6 +250,9 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
     async def team_status(request: Any) -> Any:
         return kit.json(await svc.runner_status())
 
+    async def team_issues(request: Any) -> Any:
+        return kit.json(await svc.team_issues())
+
     # 一键建运行机: the body carries the person's one-time GitLab token; it is used for that run and never answered
     async def team_setup(request: Any) -> Any:
         return kit.json(await svc.team_setup(await kit.body(request)))
@@ -257,8 +263,15 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
     async def handoff(request: Any) -> Any:
         return kit.json(await svc.handoff(_rid(request), _key(request)))
 
+    async def act(request: Any) -> Any:
+        return kit.json(await svc.act(_rid(request), _key(request), str(request.match_info.get("action", ""))))
+
+    async def fast_mode(request: Any) -> Any:
+        return kit.json(await svc.fast_mode(await kit.body(request)))
+
     return [
         AppRoute("POST", "/requirements/{repo}/{key}/handoff", kit.guarded(handoff)),
+        AppRoute("POST", "/requirements/{repo}/{key}/act/{action}", kit.guarded(act)),
         AppRoute("GET", "/health", health),
         AppRoute("GET", "/status", kit.guarded(status)),
         AppRoute("GET", "/settings", kit.guarded(get_settings)),
@@ -269,6 +282,7 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
         AppRoute("GET", "/board/{repo}/{key}", kit.guarded(board)),
         AppRoute("GET", "/outputs/{repo}/{key}", kit.guarded(outputs)),
         AppRoute("GET", "/outputs/{repo}/{key}/file", kit.guarded(outputs_file)),
+        AppRoute("GET", "/outputs/{repo}/{key}/commits", kit.guarded(outputs_commits)),
         AppRoute("GET", "/outputs/{repo}/{key}/turns", kit.guarded(outputs_turns)),
         AppRoute("POST", "/requirements/{repo}/{key}/session", kit.guarded(open_session)),
         AppRoute("POST", "/requirements/{repo}/{key}/stop", kit.guarded(stop_session)),
@@ -292,6 +306,7 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
         AppRoute("GET", "/team/patrol", kit.guarded(team_patrol)),
         AppRoute("GET", "/team/staging", kit.guarded(team_staging)),
         AppRoute("GET", "/team/status", kit.guarded(team_status)),
+        AppRoute("GET", "/team/issues", kit.guarded(team_issues)),
         AppRoute("GET", "/team/setup", kit.guarded(team_setup_view)),
         AppRoute("POST", "/team/setup", kit.guarded(team_setup)),
         AppRoute("GET", "/import/defaults", kit.guarded(import_defaults)),
@@ -309,5 +324,6 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
         AppRoute("POST", "/import/add", kit.guarded(import_add)),
         AppRoute("POST", "/repos/remove", kit.guarded(repo_remove)),
         AppRoute("POST", "/repos/ids/rebuild", kit.guarded(repo_ids_rebuild)),
+        AppRoute("POST", "/repos/fast-mode", kit.guarded(fast_mode)),
         AppRoute("POST", "/me/name", kit.guarded(me_name)),
     ]

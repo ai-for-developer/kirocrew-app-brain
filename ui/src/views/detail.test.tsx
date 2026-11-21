@@ -71,6 +71,7 @@ describe('需求现状', () => {
     const branch = within(facts).getByTitle('ai/alice/PAY-3-refund-export')
     expect([...branch.querySelectorAll(':scope > span > span')].map((x) => x.textContent)).toEqual(['ai', '/alice', '/PAY-3-refund-export'])
     expect(facts).toHaveTextContent('Lean 记录aidlc-docs/261107-refund-export/')
+    expect(screen.getByRole('region', { name: '会话记录' })).toHaveTextContent('Lean 记下的现状和下一步')
     expect(facts).toHaveTextContent('MR还没有：交接时开')
     expect(facts).toHaveTextContent('来自产品需求')
     expect(facts).toHaveTextContent('带进来的文档1 份')
@@ -1222,5 +1223,66 @@ describe('需求现状 · 大需求拆成小需求', () => {
     renderDetail()
     await screen.findByRole('region', { name: '需求' })
     expect(screen.queryByTestId('fam-panel')).toBeNull()
+  })
+})
+
+describe('需求现状 · 上线 (what a merged requirement’s deploys did)', () => {
+  const deployOf = (key: string) => (world.details as unknown as Record<string, RequirementDetail>)[key].deploy!
+  const section = () => screen.findByRole('region', { name: '上线' })
+
+  test('ORD-8 went live: its digest, when, how long after the merge, and the canary that aborted first with the smoke checks that failed', async () => {
+    fromWorld('r3/ORD-8')
+    renderDetail({ repo: 'r3', key: 'ORD-8', from: 'overview' })
+    const s = await section()
+    const live = deployOf('r3/ORD-8')
+    expect(within(s).getByTestId('deploy-say')).toHaveTextContent(`上线了sha256:168d16c5a244${fmtTime(live.at)}合并后 30 分钟上线`)
+    expect(within(s).getByTitle('sha256:168d16c5a244384d3d434ccd4adc5a8e6ee168b4ce638e7653ed9541f82750e1')).toBeInTheDocument()
+    const [bad, good] = within(s).getAllByTestId('deploy-attempt')
+    expect(bad).toHaveTextContent('流水线 #4138009灰度中止')
+    expect(within(bad).getByRole('list', { name: '没过的冒烟检查' })).toHaveTextContent(
+      'create_order：expected HTTP 201, got 500: Internal Server Error' + 'read_order：no order to read because create_order failed')
+    expect(good).toHaveTextContent('流水线 #4138161上线了')
+    expect(within(good).getByRole('link', { name: /看流水线/ })).toHaveAttribute('href', 'https://gitlab.example.com/shop/shop-order/-/pipelines/4138161')
+  })
+
+  test('ORD-9’s canary aborted: 灰度中止, the smoke checks that failed, and what staging still runs; nothing says it went live', async () => {
+    fromWorld('r3/ORD-9')
+    renderDetail({ repo: 'r3', key: 'ORD-9', from: 'overview' })
+    const s = await section()
+    expect(within(s).getByTestId('deploy-say')).toHaveTextContent('灰度中止冒烟没过 create_order、read_orderstaging 还在跑原来的 sha256:168d16c5a244')
+    expect(s).not.toHaveTextContent('上线了')
+    expect(within(s).getByRole('link', { name: /看流水线/ })).toHaveAttribute('href', 'https://gitlab.example.com/shop/shop-order/-/pipelines/4138402')
+  })
+
+  test('deploys it could not read say so in words, brain-kit’s own under 细节, and are never drawn as live', async () => {
+    const live = deployOf('r3/ORD-7')
+    fromWorld('r3/ORD-7', (d) => {
+      d.deploy = { ...live, value: 'unknown', digest: null, at: null, lead_s: null, why: '部署证据不在了：没写，或者过期了', raw: [],
+        attempts: [{ ...live.attempts[0], result: 'unknown', digest: null, why: '部署证据不在了：没写，或者过期了', raw: ['job 34416893 has no deploy-evidence.json (never written, or expired)'] }] }
+    })
+    renderDetail({ repo: 'r3', key: 'ORD-7', from: 'overview' })
+    const s = await section()
+    expect(within(s).getByTestId('deploy-say')).toHaveTextContent('读不到部署记录部署证据不在了：没写，或者过期了')
+    expect(s).not.toHaveTextContent('上线了')
+    expect(s.className).not.toMatch(/is-ok/)
+    expect(within(s).getByTestId('deploy-attempt')).toHaveTextContent('never written, or expired')
+  })
+
+  test('still deploying, and not deployed yet, each in its own words', async () => {
+    const live = deployOf('r3/ORD-7')
+    fromWorld('r3/ORD-7', (d) => { d.deploy = { ...live, value: 'running', digest: null, at: null, lead_s: null, attempts: [{ ...live.attempts[0], result: 'running' }] } })
+    renderDetail({ repo: 'r3', key: 'ORD-7', from: 'overview' })
+    expect(within(await section()).getByTestId('deploy-say')).toHaveTextContent(/^部署中.+开始，还没走完$/)
+    cleanup()
+    fromWorld('r3/ORD-7', (d) => { d.deploy = { ...live, value: 'not_deployed', digest: null, at: null, lead_s: null, attempts: [] } })
+    renderDetail({ repo: 'r3', key: 'ORD-7', from: 'overview' })
+    expect(within(await section()).getByTestId('deploy-say')).toHaveTextContent('还没部署合并以后还没有部署过 staging')
+  })
+
+  test('without deploys in kit.json (PAY-2 merged in shop-pay) there is no 上线 at all', async () => {
+    fromWorld('r1/PAY-2')
+    renderDetail({ repo: 'r1', key: 'PAY-2', from: 'overview' })
+    await screen.findByRole('region', { name: '需求' })
+    expect(screen.queryByRole('region', { name: '上线' })).toBeNull()
   })
 })

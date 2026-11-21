@@ -4,8 +4,8 @@
 when there are two or more.
 
   python3 scripts/runner_setup.py --root DIR --gitlab https://gitlab.example.com --project grp/pay --token-file FILE
-      [--role product=alice,bob] [--role builder=carol] [--push auto|ssh|token] [--no-patrol] [--no-team-mode]
-      [--jenkins https://jenkins.example.com --jenkins-user NAME [--jenkins-token-file FILE]]
+      [--role product=alice,bob] [--role builder=carol] [--push auto|ssh|token] [--no-patrol] [--issues]
+      [--no-team-mode] [--jenkins https://jenkins.example.com --jenkins-user NAME [--jenkins-token-file FILE]]
       [--brainkit DIR] [--work DIR] [--agent-spec FILE]
   python3 scripts/runner_setup.py --root DIR --gitlab https://gitlab.example.com --mode bot-account
       --project grp/pay --project grp/order --bridge-token-file FILE [--bot-token-file FILE] [--token-file FILE] ...
@@ -23,10 +23,11 @@ reads a failed build's log as --jenkins-user, a read-only user; that user's toke
 run after one that had it) is kept in --root, 0600. --work is where the runs and the clone cache go (default
 ~/workplace/brain-team); --agent-spec where brain-run goes (default ~/.kiro/agents/brain-run.json, brain-patrol
 beside it); --brainkit the brain-kit (default: the one the app would load). --no-patrol leaves 巡检所有开着的 MR off: no
-brain-patrol, and the kit.json MRs leave work source mr-patrol out. The last step starts team mode the way the app
-does, here and only to check it (a TeamRuntime starts and stops again): from outside KiroCrew it cannot switch the
-app's own team mode on. --no-team-mode skips that check. The signer it starts keeps running after it exits: its last
-line says the signer's pid and how to stop it.
+brain-patrol, and the kit.json MRs leave work source mr-patrol out. --issues turns 从打了标签的 issue 接活 on: the
+kit.json MRs add work source issue-label, and its label is made. The last step starts team mode the way the app does,
+here and only to check it (a TeamRuntime starts and stops again): from outside KiroCrew it cannot switch the app's own
+team mode on. --no-team-mode skips that check. The signer it starts keeps running after it exits: its last line says
+the signer's pid and how to stop it.
 
 Exit 0: no step failed (one waiting for a person, a kit.json MR, is no failure); 1: a step failed; 2: the arguments,
 brain-kit, or another run holding the root.
@@ -94,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="product, builder, security or data (left out: the one-time token's owner)")
     ap.add_argument("--push", choices=("auto", "ssh", "token"), help="default: token with bot-account and --bot-token-file, else auto")
     ap.add_argument("--no-patrol", action="store_true", help="do not patrol every open MR (no brain-patrol)")
+    ap.add_argument("--issues", action="store_true", help="take issues a Developer labels for Brain (issue-label)")
     ap.add_argument("--no-team-mode", action="store_true", help="skip the last step (starting team mode to check it)")
     ap.add_argument("--jenkins", help="Jenkins' address as this machine reaches it, for MR 巡检's logs")
     ap.add_argument("--jenkins-user", help="a read-only Jenkins user (Overall/Read and Job/Read)")
@@ -129,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         inp = setup.SetupInput.parse(dict(tokens, gitlab_base=a.gitlab, mode=a.mode, projects=a.project, roles=roles,
                                           push=a.push or ("token" if a.mode == "bot-account" and a.bot_token_file else "auto"),
-                                          patrol=not a.no_patrol, jenkins=jenkins))
+                                          patrol=not a.no_patrol, issues=a.issues, jenkins=jenkins))
     except setup.SetupRefused as exc:
         print(exc, file=sys.stderr)
         return 2

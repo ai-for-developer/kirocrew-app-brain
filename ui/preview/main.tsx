@@ -33,7 +33,7 @@ import { API, fixtureRoutes } from '../src/test/routes'
 import { StubApiError, setApiRoutes, setNavigateHook } from '../src/test/stubs/app-sdk'
 import { simulated } from './simulate'
 import type {
-  BrainView, CheckRow, CrewFixBody, ImportInspect, ImportJob, InstallResult, IntakeBody, IntakeCheck, IntakeNext, KitForm, OpenSessionBody, Overview, PickKind, PickResult, ReflectApplyBody, ReflectApplyResult, ReflectPreview, RepoInfo, ReqBoard, RequirementDetail, Settings, SplitResult, StartBody, Status, TeamView, Todo,
+  ActResult, BrainView, CheckRow, CrewFixBody, FastModeBody, FastModeResult, ImportInspect, ImportJob, InstallResult, IntakeBody, IntakeCheck, IntakeNext, KitForm, OpenSessionBody, Overview, PickKind, PickResult, ReflectApplyBody, ReflectApplyResult, ReflectPreview, RepoInfo, ReqBoard, RequirementDetail, Settings, SplitResult, StartBody, Status, TeamView, Todo,
 } from '../src/types'
 
 const FLAGS = ['team', 'nokit', 'crewfail', 'noeval', 'norepos', 'race', 'bots', 'light'] as const
@@ -74,7 +74,7 @@ function outputsFor(path: string): unknown {
   const [route, query = ''] = path.slice(API.length).split('?')
   const q = [...new URLSearchParams(query)].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join('&')
   const got = W.outputs?.[`${route}?${q}`] as { __error?: { status: number; code: string; error: string } } | undefined
-  if (!got) throw new StubApiError(404, { error: '预览里只有 PAY-9 和 PAY-2 的产出：别的需求要在真的 app 里看', code: 'not_in_preview' })
+  if (!got) throw new StubApiError(404, { error: '预览里只有 PAY-9、PAY-2 和 PAY-17 的产出：别的需求要在真的 app 里看', code: 'not_in_preview' })
   if (got.__error) throw new StubApiError(got.__error.status, { error: got.__error.error, code: got.__error.code })
   return route.endsWith('/turns') ? shift(got) : clone(got)
 }
@@ -102,9 +102,12 @@ const W = world as unknown as {
   /** 先检查's stop lines: brain-kit's own (its dry run: the picks 机密 / 不确定 / 绝密, the partner guide marked 机密,
    * gate 3) and the page's words for each, by "<pick>|<line>" (intake.gate_text) */
   intake_gates?: { raw: Record<'confidential' | 'unsure' | 'secret' | 'partner' | 'business', string>; said: Record<string, string> }
-  /** the 产出 drawer's answers (backend/core/outputs.py over PAY-9's and PAY-2's real commits), by the route's path and
-   * its query sorted (preview_world.outputs_key); a refusal as __error */
+  /** the 产出 drawer's answers (backend/core/outputs.py over PAY-9's, PAY-2's and PAY-17's real commits), by the route's
+   * path and its query sorted (preview_world.outputs_key); a refusal as __error */
   outputs?: Record<string, unknown>
+  /** 「快速：直接写代码」 as GET /intake/next says it for each repo (brain-kit's refusal, or the app's for a repo without a
+   * remote) */
+  intake_fast?: Record<string, NonNullable<IntakeNext['fast']>>
 }
 let repos: RepoInfo[] = flags.has('norepos') ? [] : clone(W.status.repos)
 
@@ -313,7 +316,8 @@ function intakeNext(path: string): IntakeNext {
   const tracker = r.kit?.tracker ?? 'none'
   const big = tracker !== 'none' ? { ok: false, why: '这个仓库用 Jira：大需求只在不用 Jira 的仓库里拆' }
     : flags.has('nokit') ? { ok: false, why: '这个 brain-kit 还不会拆小需求：在设置里换新一点的 brain-kit' } : { ok: true, why: '' }
-  return { repo, key: `${prefix}-${n + 1}`, tracker, prefix, error: '', allow_confidential: false, push: unpushed.get(r.path) ?? null, big }
+  const fast = W.intake_fast?.[world ?? ''] ?? (r.remote === false ? { ok: false, why: '这个仓库只在本机做（没有远端）：快速需求做完要开 MR，这里开不了' } : { ok: true, why: '' })
+  return { repo, key: `${prefix}-${n + 1}`, tracker, prefix, error: '', allow_confidential: false, push: unpushed.get(r.path) ?? null, big, fast }
 }
 
 /** What 导入仓库 did to a path in the preview, read by the routes that answer about it afterwards. */
@@ -359,6 +363,15 @@ setApiRoutes({
     settings = { ...settings, ...b, ...(b.role === 'personal' ? { team: { ...settings.team, enabled: false } } : {}) }
     return { ok: true, settings: clone(settings), status: status() }
   },
+  // 允许快速模式: the kit.json MR, shown, not opened; the repo's switch waits for it from then on
+  [`POST ${API}/repos/fast-mode`]: (body): FastModeResult => {
+    const b = body as FastModeBody
+    const r = repos.find((x) => x.id === b.repo)
+    const url = `${r?.kit?.gitlab_base || 'https://gitlab.example.com'}/${r?.kit?.gitlab_project || `shop/${r?.name ?? b.repo}`}/-/merge_requests/31`
+    const fast = { on: r?.fast?.on ?? true, why: '', pending: { on: b.on, iid: 31, url } }
+    repos = repos.map((x) => (x.id === b.repo ? { ...x, fast } : x))
+    return { ok: true, text: `预览：没有真的开。开了 MR !31：合并以后${b.on ? '允许' : '不允许'}快速模式`, mr: { iid: 31, url, existing: false }, commands: [], new_mr_url: null, fast }
+  },
   ...importRoutes(),
   [`POST ${API}/refresh`]: (body) => ({ ok: true, text: `预览：没有真的跑 git fetch（${(body as { repo: string }).repo}）` }),
   [`POST ${API}/requirements/*`]: (body, path) => {
@@ -369,6 +382,9 @@ setApiRoutes({
       const slot = (body as OpenSessionBody | undefined)?.review ? `brain-${key}-review-${Math.random().toString(16).slice(2, 6)}` : `brain-${key}-7f3a`
       return { ok: true, slot, url: `/chat?sid=${slot}` }
     }
+    // 开 MR / 转完整流程 of a fast run: shown, not done
+    const fast = /\/act\/(mr|full)$/.exec(path)
+    if (fast) return actAnswer(reqOf(path.slice(0, fast.index)), fast[1] as ActResult['action'])
     // 大需求拆成小需求: shown, not done (a small one's unit from its family, the world's)
     const fam = /\/(split|claim|start|sync)$/.exec(path)
     if (fam) {
@@ -464,6 +480,20 @@ setApiRoutes({
   [`POST ${API}/team/setup`]: () => shift(lastSetup()),
 })
 
+/** 开 MR and 转完整流程 as `brain mr|full --json` answers them (backend acts.py), in the preview's words: nothing is pushed
+ * or written. */
+function actAnswer({ repo, key, id }: ReturnType<typeof reqOf>, action: ActResult['action']): ActResult {
+  const r = repos.find((x) => x.id === repo)
+  const project = `${r?.kit?.gitlab_base || 'https://gitlab.example.com'}/${r?.kit?.gitlab_project || `shop/${r?.name ?? repo}`}`
+  const none = { pushed: false, mr: null, commands: [], new_mr_url: null, intent: null, told: false, warnings: [], output: '' }
+  if (action === 'mr') {
+    return { ...none, ok: true, action, pushed: true, text: '预览：没有真的推。推上去了，开了 MR !12（没有交接标签：人来审、合并）',
+      mr: { iid: 12, url: `${project}/-/merge_requests/12`, existing: false } }
+  }
+  const slug = W.boards[id]?.row.branch?.split(`${key}-`)[1] ?? 'work'
+  const intent = `261120-${key.toLowerCase()}-${slug}`
+  return { ...none, ok: true, action, intent, told: true, text: `预览：没有真的转。转成完整流程：Lean intent ${intent}` }
+}
 /** 一键建运行机's last run: one project with project tokens, or (机器人账号) three as the runner's own GitLab users. */
 const lastSetup = () => (flags.has('bots') ? fx.teamSetupBot() : fx.teamSetup())
 

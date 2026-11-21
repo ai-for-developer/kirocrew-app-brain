@@ -568,7 +568,7 @@ def test_a_claim_is_keyed_by_its_requirement_else_by_kind_project_and_ref(bk):
           "author": {"username": "alice"}, "title": "折扣"}
     assert sources.mr_claim("mr-patrol", P, mr, "ai") == {
         "key": "OMS-5", "kind": "mr-patrol", "project": P, "link": BASE + "/grp/repo/-/merge_requests/12",
-        "asked_by": "alice", "title": "折扣", "ref": {"type": "mr", "iid": 12}}
+        "asked_by": "alice", "role": "", "title": "折扣", "ref": {"type": "mr", "iid": 12}}
     assert sources.mr_claim("mr-patrol", P, dict(mr, source_branch="fix/discount"), "ai")["key"] == "mr-patrol:grp/repo:mr!12"
     assert sources.mr_claim("mr-patrol", P, mr, "feat")["key"] == "mr-patrol:grp/repo:mr!12"   # not this kit's prefix
     assert sources.claim_key("issue-x", P, {"type": "issue", "iid": 3}) == "issue-x:grp/repo:issue!3"

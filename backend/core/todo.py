@@ -12,7 +12,8 @@ the step it takes:
   but carries no label on its MR (nothing was handed over: `brain handoff` exits 1 then) says so, and so does a
   hand-over commit whose push failed (on this machine only: 交接给运行机 again, on 需求现状);
 - an idle local session (reply: open it, the text says what to tell it), a requirement claimed and not started
-  (start: 开工), a merge whose Brain proposals are not written back yet (write_back);
+  (start: 开工), a merge whose Brain proposals are not written back yet (write_back); a fast run's code committed and
+  checked (open_mr: 开 MR) or changing a risk path (full: 转完整流程), both on 需求现状;
 - a requirement of the person's closed with `brain intent close` whose run branch or MR is still there: delete the
   branch, close the MR (eval counts it closed either way: the user's decision, 2026-11-10);
 - 大需求拆成小需求 (brain-kit 0d52e97): a small requirement the person claimed whose dependencies have all merged
@@ -33,7 +34,7 @@ from .detail import ledger_questions, mr_questions, park_question
 # the step a row waits on (Waits.do) -> the 待办 kind, when nothing more specific was listed for it
 DO_KIND = {"reply": "reply", "tool": "reply", "start": "start", "write_back": "write_back", "approve": "lean_approval",
            "answer": "question", "accept": "acceptance", "redo_handoff": "handoff_rejected",
-           "label_handoff": "handoff_unlabelled", "push_handoff": "handoff_unpushed"}
+           "label_handoff": "handoff_unlabelled", "push_handoff": "handoff_unpushed", "open_mr": "open_mr", "full": "full"}
 
 
 def closed_leftover(row: dict[str, Any], f: dict[str, Any], mr: dict[str, Any] | None) -> str:

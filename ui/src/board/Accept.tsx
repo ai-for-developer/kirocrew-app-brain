@@ -58,12 +58,14 @@ export function Accept({ board, onDetail, onOutputs, quiet = false }: { board: R
   const signed = ac.state === 'merged' || ac.state === 'accepted'
   const say = checksSay(board.checks, board)
   const sessions = board.sessions.length
+  // verify seals evidence under a Lean intent, which a fast run (board.steps) never has
+  const withProof = !board.steps
   return (
     <section id="br-accept" className={`kt-sign${signed ? ' is-signed' : ''}${ac.state === 'not_yet' ? ' is-idle' : ''}`} aria-label={title} data-testid="br-accept">
       <header className="kt-sign-head">
         <h2>{title}</h2>
         <span className={`kt-pill tone-${TONE[ac.state]}`}>{label}</span>
-        <p className="kt-dim">合并前由人确认：变更、证据、决定、检查</p>
+        <p className="kt-dim">合并前由人确认：变更、{withProof && '证据、'}决定、检查</p>
       </header>
       <dl className="kt-sign-grid">
         <div>
@@ -87,10 +89,12 @@ export function Accept({ board, onDetail, onOutputs, quiet = false }: { board: R
           <dt>检查</dt>
           <dd><b className={`tone-${say.tone}`} data-testid="accept-checks">{say.text}</b></dd>
         </div>
-        <div className="br-accept-proof">
-          <dt>证据</dt>
-          <dd>{quiet ? '回放时不列：证据按现在的提交核对' : <EvidenceRow proof={board.proof} onOpen={onOutputs} />}</dd>
-        </div>
+        {withProof && (
+          <div className="br-accept-proof">
+            <dt>证据</dt>
+            <dd>{quiet ? '回放时不列：证据按现在的提交核对' : <EvidenceRow proof={board.proof} onOpen={onOutputs} />}</dd>
+          </div>
+        )}
         <div>
           <dt>决定 · 谁定的</dt>
           <dd>

@@ -62,7 +62,16 @@
     "home": null,
     "verify_fails": 0,
     "progress_pushed_at": null,
-    "credits_whole": false
+    "credits_whole": false,
+    "flow": {
+      "id": "lean",
+      "label": "完整流程",
+      "intent": true,
+      "actions": [
+        "handoff",
+        "review"
+      ]
+    }
   },
   "branch": "ai/alice/PAY-2-refund-id",
   "base": "main",
@@ -3947,5 +3956,7 @@
     "推送记录：git 不记推送，交接以后人的提交当作推送",
     "CI 流水线：在 GitLab 上，这里读不到"
   ],
-  "rollup": null
+  "rollup": null,
+  "steps": null,
+  "time": null
 }

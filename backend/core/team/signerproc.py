@@ -1,6 +1,7 @@
 """The signer as a child process of this app, for the team runner 一键建运行机 built (setup.py): signer/brain_signer.py
 with the signer.json beside team mode's bridge.json, started when team mode starts (and by a round of it when its
-process is gone), started again when what it read at its start has changed, and stopped when team mode stops.
+process is gone), started again when what it read at its start has changed (its config and the files it names, and its
+own code: after an app update the old process would go on checking by the old rules), and stopped when team mode stops.
 
 Same-user mode only (settings team.dev_same_user): the signer runs as this app's OS user, so it is no boundary
 (MIGRATE.md 第三部分 runs it as another user). A pid file beside signer.json lets a later app process find a signer an
@@ -74,9 +75,10 @@ def digest(files: Iterable[Any]) -> str:
     return h.hexdigest()
 
 
-def inputs(signer_json: Path) -> list[Path]:
+def inputs(signer_json: Path, app_dir: Path | None = None) -> list[Path]:
     """What the signer reads when it starts: signer.json and the files it names (its GitLab token, the identities, the
-    signing key)."""
+    signing key); with *app_dir*, its code too: the app's signer script and the Python files of the brain-kit
+    signer.json names."""
     try:
         doc = json.loads(signer_json.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -84,7 +86,13 @@ def inputs(signer_json: Path) -> list[Path]:
     doc = doc if isinstance(doc, dict) else {}
     gitlab = doc.get("gitlab") if isinstance(doc.get("gitlab"), dict) else {}
     named = (gitlab.get("token_file"), doc.get("identities"), doc.get("signing_key"))
-    return [signer_json] + [Path(os.path.expanduser(p)) for p in named if isinstance(p, str) and p]
+    out = [signer_json] + [Path(os.path.expanduser(p)) for p in named if isinstance(p, str) and p]
+    if app_dir is not None:
+        out.append(Path(app_dir) / SCRIPT)
+        kit = doc.get("brainkit")
+        if isinstance(kit, str) and kit:
+            out += sorted((Path(os.path.expanduser(kit)) / "brainkit").rglob("*.py"))
+    return out
 
 
 def running(signer_json: Path) -> int | None:
@@ -110,11 +118,11 @@ def running(signer_json: Path) -> int | None:
 
 def ensure(signer_json: Path, app_dir: Path, python: str) -> tuple[int, bool]:
     """(pid, started now): the signer for *signer_json* runs with what it reads at its start (inputs) as it is now.
-    One that started with an older one (signer.json, its token after a rotation, …) is stopped first; a new one is
-    tried with one pass (``once``) before ``loop`` starts."""
+    One that started with an older one (signer.json, its token after a rotation, the app's signer or its brain-kit
+    after an update, …) is stopped first; a new one is tried with one pass (``once``) before ``loop`` starts."""
     signer_json = Path(signer_json)
     with _lock:
-        sha = digest(inputs(signer_json))
+        sha = digest(inputs(signer_json, app_dir))
         pid = running(signer_json)
         if pid and _record(signer_json).get("inputs_sha256") == sha:
             return pid, False

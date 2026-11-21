@@ -18,7 +18,7 @@ def basic_scrub(text: str) -> str:
 SCRUB_KEYS = ("text", "why", "question", "label", "detail", "status", "next", "open_questions", "output", "reasons",
               "findings", "review", "blocking", "error", "session_error", "notes", "warnings", "problems", "summary",
               "first", "todo", "raw", "doing", "facts", "title", "name", "checks", "note", "subject", "sub", "push_why",
-              "push_cmd", "reply", "task", "ticker", "why_not", "also", "cause", "missing", "here", "do")
+              "push_cmd", "reply", "task", "ticker", "why_not", "also", "cause", "missing", "here", "do", "commands")
 
 
 def scrub_tree(obj: Any, scrub: Callable[[str], str], key: str = "") -> Any:

@@ -24,7 +24,8 @@ import { POLL_MS, paths, useAction, usePoll } from '../api'
 import { RoleIcon } from '../board/RoleIcon'
 import { HOW, HOW_LABEL, HOW_VAR, MiniCredits, MiniPeople, MiniUnattended, MiniWho, WHO_VAR, WeeklyChart, fmt, slash } from '../cto/charts'
 import { COL_NAME, Flow, LANE_NAME, StepButton, blockText, blockersOf, colOf, familyProgress, homeOf, lateMarks, laneOf, stepOf, waitedText, type Col, type Lane } from '../cto/Flow'
-import { ago, fmtCredits, spaced } from '../format'
+import { FlowProgress } from '../flows'
+import { ago, fmtCredits, fmtSpan, spaced } from '../format'
 import type { OverviewEntry, View } from '../nav'
 import type { CtoNumbers, CtoRun, EvalFamily, EvalMetric, EvalView, Funnel, Overview, RefreshResult, ReqFamily, ReqState, RepoInfo, Requirement, Roster, Stuck, StuckKind } from '../types'
 import { STATE_LABEL } from '../types'
@@ -1028,7 +1029,7 @@ function Row({ r, at, run, ev, repoName, tree, fold, late, verifyLimit, onOpen, 
         <StateChip state={r.state} label={r.state_label} who={r.waits.who} />
         {r.updated_at !== null && <div className="cto-was">{ago(r.updated_at, at)}更新</div>}
       </td>
-      <td><LeanProgress r={r} /></td>
+      <td><FlowProgress r={r}><LeanProgress r={r} /></FlowProgress></td>
       <td className="br-col-wait" data-label="在等">
         <div className={r.waits.who === 'you' ? 'br-strong' : undefined}>{r.waits.text}</div>
         {waited && <div className={r.waits.who === 'you' ? 'br-waited' : 'cto-was'}>{waited}</div>}
@@ -1059,6 +1060,9 @@ const METRIC_SHORT: Record<string, string> = {
   useful: 'Brain 条目里被引用过的（只看默认分支）',
   staleness: '过时的引用、同名术语、覆盖或撤回的',
   credits_per_success: '每交付对一个需求花的 credits',
+  deploy_frequency: '每周上线几次（最近 28 天）',
+  lead_time: '合并以后多久上线（取中位）',
+  change_failure: '上线前灰度中止、或合并后 14 天出问题的',
 }
 
 /** Each eval number's whole rule, in the app's words (brain-kit's own has Lean's approval kinds and its field names). */
@@ -1072,10 +1076,16 @@ const METRIC_RULE: Record<string, string> = {
   credits_per_success: '做完的运行花的 credits 合计 ÷ 交付正确的需求数；只用来看钱花在哪，不设上限',
 }
 
-function metricValue(v: EvalMetric['value']): string | null {
+/** a number as its tile says it, by what it counts: 合并到上线 is hours, 部署频率 a number a week */
+const METRIC_FMT: Record<string, (n: number) => string> = {
+  lead_time: (h) => fmtSpan(h * 3600),
+  deploy_frequency: (n) => String(Math.round(n * 10) / 10),
+}
+
+function metricValue({ id, value: v }: EvalMetric): string | null {
   if (v === null) return null
   if (Array.isArray(v)) return v[1] > 0 ? `${v[0]}/${v[1]}` : null
-  return String(v)
+  return METRIC_FMT[id]?.(v) ?? String(v)
 }
 
 /** brain-kit's eval batch: its numbers with what each means, the runs to look at again, the runs it skipped and its
@@ -1110,7 +1120,7 @@ function EvalCard({ ev, noModule, onBoard, onItem, onSettings, onFamily }: {
         <>
           <div className="br-metrics">
             {ev.metrics.map((m) => {
-              const v = metricValue(m.value)
+              const v = metricValue(m)
               return (
                 <div key={m.id} className="br-metric" data-metric={m.id} title={METRIC_RULE[m.id] ?? m.rule}>
                   <span>{m.label}</span>

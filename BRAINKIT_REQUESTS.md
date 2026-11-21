@@ -204,6 +204,16 @@ Lean timeline follow them when trace is missing), `decisions.USER` (the MR reade
     `families` counts the children that have a run (`total`), so `ready_to_release` can show while a unit was never
     started. The app shows both (the row's 已合并 n/m, the eval row's), each said where it comes from. Wanted: one
     meaning, or a field that says which.
+47. **A run started from an issue, through the gates and the hook** (new, the app's `team/issues.py`). The runner's
+    bot writes claim/<KEY> for the person who labelled the issue, and the run's first commit (runs/<KEY>/run.json with
+    `origin: "remote"`, runs/<KEY>/intent.md, the Lean intent), under a hand-over contract with `route: "issue"` that
+    the signer checks (signer/brain_signer.py). Nothing in brain-kit reads `route`, so runnerd and check-run take the
+    contract as they take a hand-over's. A project with brain-push-rules, brain-run-check or the pre-receive hook on
+    still refuses that start. Wanted: push-rules lets the contracted start commit change run.json (`ci.py`, the
+    run.json rule; a test that fails without the voucher); pre-receive takes that commit and a bot's claim that names
+    the issue and nothing more (`pre_receive.py`, the bot and run.json rules; a test that refuses every neighbouring
+    shape); `run_owner` finds the owner of a bot-made start in brain-authz (`ci.py`), so people can commit on the
+    branch. Until then the app's issue source is for projects with those checks off.
 
 ### Nice-to-have
 
@@ -242,6 +252,12 @@ Lean timeline follow them when trace is missing), `decisions.USER` (the MR reade
     doctor still prints `WARN no origin remote: Brain freshness not checked`; the app shows doctor's rows verbatim
     after an install, so the person reads that the repo has no origin. Wanted: `WARN offline: Brain freshness not
     checked` (and the origin check apart from the fetch).
+48. **`mrdesc.build` reads the deploys** (new, cicd-deploy-evidence). Its trace (`T.build` without `deploys`) reads
+    GitLab's deployments of a merged requirement through a client it makes itself, though the 变更说明 uses none
+    of outcome.deploy; behind single sign-on that client signs in again for every 变更说明 the app makes rather than
+    reads from MR.md (a requirement merged without a hand-over). Wanted: `mrdesc.build` reads no deploys (a
+    `trace.build(deploys=…)` value that means off), or takes `deploys` and passes it on, as `evaluate.collect`
+    does; the app hands every other trace its own Source (`deploys_view.Clients`).
 
 ## Note for the next brain-kit
 

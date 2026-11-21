@@ -24,19 +24,21 @@ import { EvidenceRow } from '../board/Evidence'
 import { isReview, REVIEW_SENDS } from '../board/next'
 import { RoleIcon } from '../board/RoleIcon'
 import { Hit, Mini } from '../cto/charts'
-import { ago, fmtCredits, fmtIso, fmtSpan, fmtTime } from '../format'
+import { FlowCard, can, flowNow, flowOf, stepLook } from '../flows'
+import { ago, fmtCredits, fmtIso, fmtSpan, fmtTime, spaced } from '../format'
 import { VIEW_NAME, type BoardEntry, type ItemEntry, type OutAt } from '../nav'
 import type {
-  CheckCell, Credits, Decision, Evidence, LeanPhase, OpenSessionBody, OpenSessionResult, ReqBoard, RequirementDetail, SessionRow,
-  Stage, WaitDo, WaitWho, Waits,
+  CheckCell, Credits, Decision, DeployAttempt, DeployValue, DeployView, Evidence, FastTime, LeanPhase, OpenSessionBody,
+  OpenSessionResult, ReqBoard, RequirementDetail, SessionRow, Stage, WaitDo, WaitWho, Waits,
 } from '../types'
-import { APPROVAL_META, Icon, LoadState, MrLink, STAGE_META, StateChip, TYPE_IT_YOURSELF, isOpenQuestion } from '../ui'
+import { APPROVAL_META, ExtLink, Icon, LoadState, MrLink, STAGE_META, StateChip, TYPE_IT_YOURSELF, isOpenQuestion } from '../ui'
 import {
-  ACT, CHECK_GROUP_NAME, CHILD_STATE_NAME, DECIDED_BY, DO_NAME, FAMILY_ACT, WHERE_NAME, approvalName, leanNow,
+  ACT, CHECK_GROUP_NAME, CHILD_STATE_NAME, DECIDED_BY, DEPLOY_NAME, DO_NAME, FAMILY_ACT, WHERE_NAME, approvalName, leanNow,
   sourceName, waitsOn,
 } from '../vocab'
 import { Inline, Paths, pathPieces } from './Markdown'
 import { FamilyPanel, useFamily, type FamilyCtl } from './Family'
+import { FastActs } from './FastActs'
 import { Handover } from './Handover'
 import type { ViewProps } from './props'
 import { EntryChip, MrComment, MrDescCard, QuestionCard, ReviewButton, ReviewSay, useCopy } from './Question'
@@ -111,16 +113,23 @@ export const DETAIL_CSS = `
 .br-detail .br-stagecell.is-started { box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-run) 25%, transparent), 0 0 18px -6px var(--kt-run); }
 .br-detail .br-stage-n { font-size: .74em; font-weight: 800; color: var(--muted); }
 .br-detail .br-stage-label { font-size: .86em; font-weight: 750; color: var(--text-strong); line-height: 1.25; }
+.br-detail .br-stage-go { justify-self: start; appearance: none; border: 0; background: none; padding: 0; margin-top: 2px; font: inherit; font-size: .78em; font-weight: 800;
+  color: var(--accent); cursor: pointer; }
+.br-detail .br-stage-go:hover { text-decoration: underline; }
+.br-detail .br-stagecell.is-done .br-stage-go { color: #fff; text-decoration: underline; }
 /* a unit's chip stays inside its tile (its state as a glyph, the words in its title) */
 .br-detail .br-stagecell { grid-template-columns: minmax(0, 1fr); min-width: 0; }
 .br-detail .br-stage-units { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; min-width: 0; }
 .br-detail .br-stage-units .br-chip { display: block; font-size: .7em; padding: 0 6px; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .br-detail .br-lean-sub { margin: 14px 0 6px; }
-.br-detail .br-approvals { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.br-detail .br-approval { display: grid; gap: 6px; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--kt-glass); }
+.br-detail :is(.br-approvals, .br-deploys) { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.br-detail :is(.br-approval, .br-deploy) { display: grid; gap: 6px; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--kt-glass); }
 .br-detail .br-approval[data-state="pending"] { border-color: var(--kit-wait); background: color-mix(in srgb, var(--kt-approve) 6%, var(--card)); }
 .br-detail .br-approval[data-state="approved"] { border-color: var(--kit-ok); }
-.br-detail .br-approval .br-raw { margin-left: auto; }
+.br-detail :is(.br-approval, .br-deploy) .br-raw { margin-left: auto; }
+.br-detail .br-deploy[data-result="promoted"] { border-color: var(--kit-ok); }
+.br-detail .br-deploy[data-result="aborted"] { border-color: var(--kit-bad); }
+.br-detail .br-deploys { margin-top: 8px; }
 .br-detail .cto-table td { vertical-align: top; }
 .br-detail .br-dec td:last-child { white-space: nowrap; text-align: right; }
 @container br-detail (max-width: 1100px) {
@@ -215,7 +224,7 @@ function nowOf(x: RequirementDetail, board: ReqBoard | null, live: SessionRow | 
     : step === 'start' || step === 'write_back' ? 'app' : step === 'none' || step === 'watch' ? null : onMr ? 'mr' : 'session'
   const open = x.questions.find((q) => isOpenQuestion(q) && q.source !== 'park')
   return {
-    who: w.who, whoSay: whoWord(w.who, x.row.owner, board?.person.me ?? false), do: step, where, text: w.text, line: w.line,
+    who: w.who, whoSay: whoWord(w.who, x.row.owner, board?.person.me ?? false, step), do: step, where, text: w.text, line: w.line,
     since: w.since ?? (step === 'start' ? isoSec(x.claim?.created_at) : step === 'reply' ? live?.last_activity ?? null : null),
     sessionUrl: live?.url ?? null,
     mrUrl: board?.accept.step.mr_url ?? open?.mr_url ?? x.row.mr?.url ?? null,
@@ -223,7 +232,7 @@ function nowOf(x: RequirementDetail, board: ReqBoard | null, live: SessionRow | 
     choices: open?.options.length ? `选 ${open.options.map((o) => o.id).join(' / ')}` : 'approve / reject',
     comment: board?.accept.step.comment ?? null,
     how: step === 'redo_handoff' && board?.row.waits.do === 'redo_handoff' ? board.accept.step.text.split('\n').filter((l) => l && !l.startsWith('接手被拒')).join(' ') || null : null,
-    review: step === 'reply' ? reviewOf(x, board) : null,
+    review: step === 'reply' && can(x.row, 'review') ? reviewOf(x, board) : null,
   }
 }
 
@@ -363,15 +372,19 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
         {(canOpen || opened) && <OpenSession repo={entry.repo} reqKey={entry.key} opened={opened} onOpened={onOpened} />}
         {live && sessionsHere && x.row.worktree && <ReopenSession repo={entry.repo} reqKey={entry.key} live={live} onOpened={after} />}
         <Handover x={x} repo={entry.repo} reqKey={entry.key} localOnly={localOnly} onDone={after} />
+        <FastActs x={x} repo={entry.repo} reqKey={entry.key} localOnly={localOnly} onDone={after} />
         <Facts x={x} start={startOf(x, board)} localOnly={localOnly} />
       </section>
       <Cards x={x} board={board} at={at} localOnly={localOnly} replying={now.do === 'reply'} onBoard={toBoard} onSessions={() => scrollTo('会话')} />
       {familyPanel}
+      {x.deploy && <DeployCard d={x.deploy} />}
       <div className="br-row">
         <button type="button" className="kt-btn" onClick={() => toBoard()}>看运行过程 →</button>
         <span className="cto-dim">AI 一步步怎么做的、每一步的产出、回放</span>
       </div>
-      <LeanCard x={x} sessionUrl={now.sessionUrl} mrUrl={now.mrUrl} waiter={waiter} />
+      <FlowCard r={x.row} steps={board?.steps ?? null} onCode={() => toBoard({ out: { node: 'code' } })}>
+        <LeanCard x={x} sessionUrl={now.sessionUrl} mrUrl={now.mrUrl} waiter={waiter} />
+      </FlowCard>
       <DecisionsCard decisions={x.decisions} stages={x.lean.stages} repo={entry.repo} owner={x.row.owner} me={board?.person.me ?? false} go={props.go} onAt={toAt}
         picked={entry.decision ?? null} />
       <div className="br-twocol">
@@ -380,7 +393,7 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
           <MrDescCard m={x.mr_desc} />
         </div>
         <div className="br-col">
-          <NotesCard x={x} />
+          {flowOf(x.row).intent && <NotesCard x={x} />}
           <SessionsCard sessions={x.sessions} credits={x.credits} replying={now.do === 'reply'} at={at} />
           <BrainUseCard x={x} board={board} repo={entry.repo} reqKey={entry.key} go={props.go} />
         </div>
@@ -426,7 +439,7 @@ function Facts({ x, start, localOnly }: { x: RequirementDetail; start: number | 
       {r.worktree && <div><dt>工作目录</dt><dd><PathText path={r.worktree} /></dd></div>}
       {r.intent && <div><dt>Lean 记录</dt><dd><PathText path={`aidlc-docs/${r.intent}/`} /></dd></div>}
       {r.where !== 'claim' && (
-        <div><dt>MR</dt><dd>{r.mr ? <MrLink mr={r.mr} /> : localOnly ? '这个仓库只在本机做，没有 MR' : '还没有：交接时开'}</dd></div>
+        <div><dt>MR</dt><dd>{r.mr ? <MrLink mr={r.mr} /> : localOnly ? '这个仓库只在本机做，没有 MR' : can(r, 'mr') ? `还没有：做完了点「${ACT.openMr}」` : '还没有：交接时开'}</dd></div>
       )}
       {x.claim && (
         <div>
@@ -616,6 +629,11 @@ function NowBar({ x, now, at, live, canOpen, repo, reqKey, onStart, onAnswer, on
     case 'write_back':
       acts = mine ? <button type="button" className="kt-btn is-primary" onClick={onBrain}>{ACT.writeBack} ↗</button> : null
       break
+    case 'merge':
+      acts = now.mrUrl && /^https?:\/\//i.test(now.mrUrl)
+        ? <a className={`kt-btn${mine ? ' is-primary' : ''}`} href={now.mrUrl} target="_blank" rel="noopener noreferrer">{mine ? DO_NAME.merge : ACT.viewMr} <Icon name="ExternalLink" size={12} /></a>
+        : null
+      break
     default:
   }
   return (
@@ -701,6 +719,7 @@ function Cards({ x, board, at, localOnly, replying, onBoard, onSessions }: {
   const start = startOf(x, board)
   const end = board?.ended_at ?? null
   const lean = x.row.lean
+  const flow = flowOf(x.row)
   const segs = board ? valueStream(board, at) : []
   const split = splitOf(segs)
   const busy = split.filter((s) => s.p !== 'person').reduce((a, s) => a + s.s, 0)
@@ -714,15 +733,18 @@ function Cards({ x, board, at, localOnly, replying, onBoard, onSessions }: {
         <div className="cto-eyebrow">周期</div>
         <div className="cto-value" data-testid="item-cycle">{start ? fmtSpan((end ?? at) - start) : '—'}</div>
         <div className="cto-desc">{start ? `${fmtTime(start)} 开工` : '开工时间没记下'}{end ? ` → ${fmtTime(end)} 合并` : ' → 进行中'}</div>
-        <div className="kt-segs cto-segs" role="img" aria-label={`Lean：${leanNow(x.row)}`}>
-          {onWay(x).map((s) => (
+        <div className="kt-segs cto-segs" role="img" aria-label={flow.intent ? `Lean：${leanNow(x.row)}` : `${flow.label}：${flowNow(x.row)}`}>
+          {flow.intent ? onWay(x).map((s) => (
             <i key={s.id} title={`${s.n} ${s.label} · ${lean.next?.id === s.id && s.state === 'todo' ? '下一步' : STAGE_META[s.state]?.label ?? s.state}`}
               className={s.state === 'done' ? 'is-pass' : s.state === 'skipped' ? 'is-skip' : s.state === 'started' ? 'is-run' : lean.next?.id === s.id ? 'is-next' : 'is-todo'} />
-          ))}
+          )) : (board?.steps ?? []).map((s) => {
+            const look = stepLook(s, x.row.waits)
+            return <i key={s.id} title={`${s.label} · ${s.text || look.word}`} className={look.seg || 'is-todo'} />
+          })}
         </div>
-        <div className="cto-legend"><span data-testid="lean-progress">Lean {leanNow(x.row)}</span></div>
+        <div className="cto-legend"><span data-testid="lean-progress">{flow.intent ? `Lean ${leanNow(x.row)}` : `${flow.label} · ${flowNow(x.row)}`}</span></div>
       </article>
-      <article className="cto-card" aria-label="时间花在哪">
+      {board?.steps ? <FastTimeCard time={board.time ?? null} onBoard={() => onBoard()} /> : <article className="cto-card" aria-label="时间花在哪">
         <div className="cto-eyebrow">时间花在哪</div>
         <div className="cto-value">{board ? fmtSpan(busy) : '—'}</div>
         <div className="cto-desc">{board ? `AI 在做 · 等人 ${fmtSpan(split.find((s) => s.p === 'person')!.s)}${waits.length ? `（${waits.length} 段）` : ''}` : '运行过程的数据还没来'}</div>
@@ -736,10 +758,41 @@ function Cards({ x, board, at, localOnly, replying, onBoard, onSessions }: {
             ))}
           </div>
         )}
-      </article>
+      </article>}
       <CostCard x={x} replying={replying} me={board?.person.me ?? false} onSessions={onSessions} />
       <ChecksCard board={board} localOnly={localOnly} sent={sent} blocked={blocked} onBoard={onBoard} />
     </section>
+  )
+}
+
+/** 时间花在哪 of a fast run, which has no stage lanes: from its sessions' turns on this machine (board.time), the AI at
+ * work and the waits for a person; 至少 before the numbers when not all of it could be read. */
+function FastTimeCard({ time, onBoard }: { time: FastTime | null; onBoard: () => void }) {
+  const least = time && !time.whole ? '至少 ' : ''
+  const split: { p: Part; s: number }[] = time ? [{ p: 'agent', s: time.agent }, { p: 'person', s: time.person }] : []
+  return (
+    <article className="cto-card" aria-label="时间花在哪">
+      <div className="cto-eyebrow">时间花在哪</div>
+      {!time ? (
+        <>
+          <div className="cto-value"><span className="cto-of" style={{ marginLeft: 0 }}>还没有</span></div>
+          <div className="cto-desc">时间从它在这台机器上的会话里算：这里还没读到它的会话</div>
+        </>
+      ) : (
+        <>
+          <div className="cto-value">{least && <span className="cto-of" style={{ marginLeft: 0, marginRight: 4 }}>至少</span>}{fmtSpan(time.agent)}</div>
+          <div className="cto-desc">AI 在本机做 · 等人{least ? '至少' : ''} {fmtSpan(time.person)}{time.waits ? `（${time.waits} 段）` : ''}</div>
+          <SplitBar split={split} />
+          <div className="cto-legend">
+            {split.filter((x) => x.s > 0).map(({ p, s }) => (
+              <button type="button" key={p} onClick={onBoard} title="在运行过程里看">
+                <i className="cto-sw" style={{ background: PART_VAR[p] }} />{PART_LABEL[p]}<b>{least}{fmtSpan(s)}</b>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </article>
   )
 }
 
@@ -871,6 +924,85 @@ function SplitBar({ split }: { split: { p: Part; s: number }[] }) {
         })
       }}
     </Mini>
+  )
+}
+
+// ------------------------------------------------------------------ 上线
+
+const DEPLOY_TONE: Record<DeployValue, string> = { promoted: 'ok', aborted: 'bad', running: 'run', not_deployed: 'idle', unknown: 'warn' }
+
+/** sha256:168d16c5a244, the whole digest on hover */
+function Digest({ d }: { d: string }) {
+  return <code className="br-nowrap" title={d}>{d.slice(0, 19)}</code>
+}
+
+/** What the merged requirement's deploys did: went live (its digest, when, how long after the merge), the canary
+ * aborted (the smoke checks that failed, what the environment kept running), still deploying, not deployed yet, or
+ * not readable, which is never drawn as live. Then each deploy that shipped it, oldest first, with its pipeline. */
+function DeployCard({ d }: { d: DeployView }) {
+  const last: DeployAttempt | undefined = d.attempts[d.attempts.length - 1]
+  const failed = d.value === 'aborted' && last ? [...new Set(last.failed.map((c) => c.check))] : []
+  return (
+    <section className={`cto-card${d.value === 'promoted' ? ' is-ok' : d.value === 'aborted' ? ' is-bad' : ''}`} aria-label="上线" data-testid="deploy" data-value={d.value}>
+      <div className="cto-chart-head">
+        <h3>上线</h3>
+        <span className="cto-dim">{spaced('部署到 ', d.environment)} · 合并以后的每一次部署</span>
+      </div>
+      <div className="br-row" data-testid="deploy-say">
+        <span className={`br-chip tone-${DEPLOY_TONE[d.value]}`}>{DEPLOY_NAME[d.value]}</span>
+        {d.value === 'promoted' && (
+          <>
+            {d.digest && <Digest d={d.digest} />}
+            {d.at !== null && <span>{fmtTime(d.at)}</span>}
+            {d.lead_s !== null && <span className="br-dim">合并后 {fmtSpan(d.lead_s)}上线</span>}
+          </>
+        )}
+        {d.value === 'aborted' && (
+          <>
+            {failed.length > 0 && <b className="br-strong">冒烟没过 {failed.join('、')}</b>}
+            {last?.kept && <span className="br-dim">{spaced(d.environment, ' 还在跑原来的')} <Digest d={last.kept} /></span>}
+          </>
+        )}
+        {d.value === 'running' && last?.at != null && <span className="br-dim">{fmtTime(last.at)} 开始，还没走完</span>}
+        {d.value === 'not_deployed' && <span className="br-dim">{spaced('合并以后还没有部署过 ', d.environment)}</span>}
+        {d.value === 'unknown' && <span>{d.why}</span>}
+        {d.raw.length > 0 && !d.attempts.length && (
+          <details className="br-raw"><summary>细节</summary><pre>{d.raw.join('\n')}</pre></details>
+        )}
+      </div>
+      {d.attempts.length > 0 && (
+        <ul className="br-deploys" aria-label="部署">
+          {d.attempts.map((a, i) => <DeployRow key={a.deployment ?? i} a={a} />)}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function DeployRow({ a }: { a: DeployAttempt }) {
+  const raw = [a.deployment !== null ? `部署 ${a.deployment}` : '', a.sha ? `提交 ${a.sha}` : '', a.digest ?? '', ...a.raw].filter(Boolean)
+  return (
+    <li className="br-deploy" data-testid="deploy-attempt" data-result={a.result}>
+      <div className="br-row">
+        <RoleIcon role="deploy" size={16} />
+        <b>{a.pipeline !== null ? `流水线 #${a.pipeline}` : '部署'}</b>
+        <span className={`br-chip tone-${DEPLOY_TONE[a.result]}`}>{DEPLOY_NAME[a.result]}</span>
+        {a.at !== null && <span className="br-dim br-small">{fmtTime(a.at)}</span>}
+        {a.url && <ExtLink href={a.url}>看流水线</ExtLink>}
+        {raw.length > 0 && (
+          <details className="br-raw">
+            <summary>细节</summary>
+            <code><Paths text={raw.join(' · ')} /></code>
+          </details>
+        )}
+      </div>
+      {a.failed.length > 0 && (
+        <ul className="br-list br-small" aria-label="没过的冒烟检查">
+          {a.failed.map((c, i) => <li key={i}><code>{c.check}</code>{c.error ? `：${c.error}` : ''}</li>)}
+        </ul>
+      )}
+      {a.why && <p className="br-note">{a.why}</p>}
+    </li>
   )
 }
 

@@ -2,7 +2,8 @@
  * The conveyor (the sample team board's 合并传送带): every commit of the run branch in order, each named by the run that
  * made it (本机, 运行机, a small requirement), the hand-over commit, and the merge into the default branch at the head.
  * Its head line counts them by run. A commit that is new since the previous poll slides in; a click looks at the stage
- * it was made in. A person's commit after the hand-over is marked: it is a step outside the judgment points.
+ * it was made in. A person's commit after the hand-over is marked: it is a step outside the judgment points. A fast
+ * run's commits are on no stage: a click opens 产出 on that commit (*onCommit*).
  */
 import { useEffect, useRef, useState } from 'react'
 import type { ReqBoard } from '../types'
@@ -40,7 +41,9 @@ export function newestEnd(starts: number[], clientWidth: number, scrollWidth: nu
 /** How many chips are left of the view, whole or in part. */
 const hiddenLeft = (el: HTMLElement) => [...el.querySelectorAll<HTMLElement>('.kt-belt-chip')].filter((c) => c.offsetLeft < el.scrollLeft).length
 
-export function Conveyor({ board, fresh, focus, onNode }: { board: ReqBoard; fresh: ReadonlySet<string>; focus: string | null; onNode: (id: string) => void }) {
+export function Conveyor({ board, fresh, focus, onNode, onCommit }: {
+  board: ReqBoard; fresh: ReadonlySet<string>; focus: string | null; onNode: (id: string) => void; onCommit?: (sha: string) => void
+}) {
   const belt = useRef<HTMLOListElement | null>(null)
   const [older, setOlder] = useState(0)
   // at the newest end as it opened: a resize opens it there again (a scroll the resize makes is not the person's); once
@@ -112,6 +115,10 @@ export function Conveyor({ board, fresh, focus, onNode }: { board: ReqBoard; fre
               <li key={k} className={`kt-belt-chip${cls}${fresh.has(k) ? ' is-new' : ''}${focus && focus !== x.node ? ' is-dim' : ''}`} data-run={x.run ?? undefined}>
                 {node ? (
                   <button type="button" className="kt-belt-role" onClick={() => onNode(node.id)} title={`${x.text}（在「${where}」这一步：点一下只看它）`}>
+                    <RoleIcon role={icon} size={14} /> {who}
+                  </button>
+                ) : x.kind === 'commit' && onCommit ? (
+                  <button type="button" className="kt-belt-role" onClick={() => onCommit(x.sha)} title={`${x.text}（点一下看它改了什么）`}>
                     <RoleIcon role={icon} size={14} /> {who}
                   </button>
                 ) : (

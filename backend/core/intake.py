@@ -23,7 +23,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from . import bk, lean_view, problems
+from . import bk, flowview, lean_view, problems
 from .constants import KEY_RE, PYTHON_BIN, SLUG_RE
 from .repo import Repo, parse_branch
 
@@ -57,25 +57,30 @@ class IntakeError(Exception):
     pass
 
 
-def next_key(repo: Repo) -> dict[str, Any]:
+def next_key(repo: Repo, *, local_only: bool = False) -> dict[str, Any]:
     """What 开需求 needs to know about *repo* before a start: the key a start would claim (tracker none), whether gate 2
     takes confidential material here (kit.json intake.allow_confidential), and *push*: the default branch has
     brain-kit in this checkout only, not on origin, where `brain start` makes the requirement's branch from (an in-place
-    install not pushed yet): {branch, remote_url} for 「推送」, None when nothing waits."""
+    install not pushed yet): {branch, remote_url} for 「推送」, None when nothing waits. *fast*: whether a fast run
+    (快速) may start here (flowview.offer; *local_only*: no remote or GitLab project to open its MR in)."""
     cfg = repo.cfg
     from .family import JIRA_REPO, NO_SPLIT
     big = {"ok": False, "why": JIRA_REPO} if cfg["tracker"] != "none" else \
         {"ok": True, "why": ""} if bk.has("split") else {"ok": False, "why": NO_SPLIT}
-    out = {"repo": repo.id, "key": None, "tracker": cfg["tracker"], "prefix": cfg["req_prefix"], "error": "",
-           "allow_confidential": bool((cfg.get("intake") or {}).get("allow_confidential")), "push": unpushed(repo),
-           "big": big}
-    if cfg["tracker"] != "none":
-        return out
-    rx = re.compile(r"^refs/(?:heads|remotes/origin)/claim/%s-([1-9][0-9]*)$" % re.escape(cfg["req_prefix"]))
+    return {"repo": repo.id, "key": free_key(repo) if cfg["tracker"] == "none" else None, "tracker": cfg["tracker"],
+            "prefix": cfg["req_prefix"], "error": "",
+            "allow_confidential": bool((cfg.get("intake") or {}).get("allow_confidential")), "push": unpushed(repo),
+            "big": big, "fast": flowview.offer(repo.path, repo.main_ref(), local_only=local_only)}
+
+
+def free_key(repo: Repo) -> str:
+    """The key a start claims in a repo whose tracker is none: one past the highest claim/<PREFIX>-<n> here or on
+    origin."""
+    prefix = repo.cfg["req_prefix"]
+    rx = re.compile(r"^refs/(?:heads|remotes/origin)/claim/%s-([1-9][0-9]*)$" % re.escape(prefix))
     taken = {int(m.group(1)) for m in (rx.match(r) for r in repo.git.refs("refs/heads/claim/",
                                                                           "refs/remotes/origin/claim/")) if m}
-    out["key"] = "%s-%d" % (cfg["req_prefix"], max(taken or {0}) + 1)
-    return out
+    return "%s-%d" % (prefix, max(taken or {0}) + 1)
 
 
 def unpushed(repo: Repo) -> dict[str, str] | None:
@@ -167,6 +172,8 @@ def clean_body(repo: Repo, body: dict[str, Any], *, start: bool) -> dict[str, An
         raise IntakeError("第 3 关：金额、公司名、合同号选「原样保留」或「换成占位符」")
     if material and body.get("consent") is not True:
         raise IntakeError("第 1 关：勾上「我是作者，或已取得作者同意」")
+    if body.get("fast") is True and body.get("big") is True:
+        raise IntakeError("「快速」和「大需求」只能选一个")
     exclude = _lines(body.get("exclude"), 30)
     paths = expected_paths(body.get("paths"))
     for p in paths:
@@ -174,7 +181,7 @@ def clean_body(repo: Repo, body: dict[str, Any], *, start: bool) -> dict[str, An
             raise IntakeError("预计改动的路径要是仓库里的相对路径（列表，或用逗号、空格分开的一串）：%s" % p)
     return {"slug": slug, "title": title, "key": key, "docs": [os.path.expanduser(d) for d in docs], "text": text,
             "classification": cls, "business": business, "consent": body.get("consent") is True,
-            "exclude": exclude, "paths": paths}
+            "exclude": exclude, "paths": paths, "fast": body.get("fast") is True}
 
 
 @contextlib.contextmanager
@@ -409,25 +416,15 @@ def brain_cmd() -> list[str]:
     return [PYTHON_BIN, "-I", str(bk.root() / "bin" / "brain")]
 
 
-def start(repo: Repo, body: dict[str, Any], work_root: str) -> dict[str, Any]:
-    """``brain start`` in a new worktree (blocking: call it in a thread)."""
-    out = {"ok": False, "key": None, "branch": None, "intent": None, "worktree": None, "output": "", "slot": None,
-           "url": None, "session_error": "", "problem": None, "me": None}
-    b = clean_body(repo, body, start=True)
-    wt = _worktree_for(repo, work_root, b["slug"])
-    wt.parent.mkdir(parents=True, exist_ok=True)
-    d = repo.cfg["default_branch"]
-    base = next((r for r in ("refs/remotes/origin/" + d, "refs/heads/" + d, "HEAD")
-                 if repo.git.ok("rev-parse", "-q", "--verify", r + "^{commit}")), "HEAD")
-    p = repo.git.run("worktree", "add", "-q", "--detach", str(wt), base, timeout=120)
-    if p.returncode != 0:
-        raise IntakeError("建工作区失败：%s" % (p.stderr or p.stdout).strip()[:300])
+def _brain_start(repo: Repo, b: dict[str, Any], wt: Path) -> tuple[int, str]:
+    """``brain start`` in the new worktree *wt* with the cleaned body *b*: its exit status and what it said."""
     args = ["start", b["slug"], "--title", b["title"]]
-    preview = next_key(repo)["key"]
-    if b["key"] and not (repo.cfg["tracker"] == "none" and b["key"] == preview):
+    if b["key"] and not (repo.cfg["tracker"] == "none" and b["key"] == free_key(repo)):
         args += ["--key", b["key"]]  # the next free key is taken by brain-kit itself (it asks GitLab, this did not)
     if b["paths"]:
         args += ["--paths", ",".join(b["paths"])]
+    if b["fast"]:
+        args.append("--fast")
     env = dict(os.environ)
     env.update({"GIT_TERMINAL_PROMPT": "0", "PYTHONIOENCODING": "utf-8"})
     with documents(b) as docs:
@@ -441,12 +438,36 @@ def start(repo: Repo, body: dict[str, Any], work_root: str) -> dict[str, Any]:
         try:
             r = subprocess.run(brain_cmd() + args, cwd=str(wt), capture_output=True, text=True,
                                timeout=START_TIMEOUT_S, env=env)
-            text = ((r.stdout or "") + (("\n" + r.stderr) if r.stderr else "")).strip()
-            code = r.returncode
+            return r.returncode, ((r.stdout or "") + (("\n" + r.stderr) if r.stderr else "")).strip()
         except subprocess.TimeoutExpired:
-            text, code = "brain start 超过 %d 秒没结束" % START_TIMEOUT_S, 124
+            return 124, "brain start 超过 %d 秒没结束" % START_TIMEOUT_S
         except OSError as exc:
-            text, code = "跑不了 brain：%s" % exc, 127
+            return 127, "跑不了 brain：%s" % exc
+
+
+def start(repo: Repo, body: dict[str, Any], work_root: str, *, local_only: bool = False) -> dict[str, Any]:
+    """``brain start`` in a new worktree (blocking: call it in a thread); ``--fast`` for a fast run, refused first,
+    before anything is made, when this repo does not offer it (next_key's *fast*)."""
+    out = {"ok": False, "key": None, "branch": None, "intent": None, "worktree": None, "output": "", "slot": None,
+           "url": None, "session_error": "", "problem": None, "me": None}
+    b = clean_body(repo, body, start=True)
+    if b["fast"]:
+        offer = flowview.offer(repo.path, repo.main_ref(), local_only=local_only)
+        if not offer["ok"]:
+            raise IntakeError(offer["why"])
+    wt = _worktree_for(repo, work_root, b["slug"])
+    wt.parent.mkdir(parents=True, exist_ok=True)
+    d = repo.cfg["default_branch"]
+    base = next((r for r in ("refs/remotes/origin/" + d, "refs/heads/" + d, "HEAD")
+                 if repo.git.ok("rev-parse", "-q", "--verify", r + "^{commit}")), "HEAD")
+    p = repo.git.run("worktree", "add", "-q", "--detach", str(wt), base, timeout=120)
+    if p.returncode != 0:
+        raise IntakeError("建工作区失败：%s" % (p.stderr or p.stdout).strip()[:300])
+    try:
+        code, text = _brain_start(repo, b, wt)
+    except BaseException:
+        repo.git.run("worktree", "remove", "--force", str(wt))
+        raise
     out["output"] = text[-MAX_OUT:]
     branch = repo.git.run("rev-parse", "--abbrev-ref", "HEAD", cwd=str(wt)).stdout.strip()
     parsed = parse_branch(branch, repo.cfg["branch_prefix"])
@@ -472,17 +493,23 @@ def start(repo: Repo, body: dict[str, Any], work_root: str) -> dict[str, Any]:
 INTENT_RE = lean_view.INTENT_RE
 PKG_RE = re.compile(r"^PKG-[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}-[1-9][0-9]{0,4}$")
 APPROVAL_LINE_RE = re.compile(r"(?im)^[ \t>*-]*(approve|approved|reject|批准|同意|驳回|拒绝)\b")
+FAST_LINE = "快速模式：这次不开 Lean intent（不跑 lean new / lean use），不走阶段和审批，直接按我的要求写代码。"
+# what a flow adds to the first message (brain-kit's flows.Flow values): to its first sentence, and the lines after it
+KICKOFF_WORDS: dict[str, tuple[str, tuple[str, ...]]] = {"lean": ("", ()), "fast": ("，快速模式", (FAST_LINE,))}
 
 
-def kickoff(key: str, branch: str, intent: str | None, materials: list[str]) -> str:
+def kickoff(key: str, branch: str, intent: str | None, materials: list[str], flow: str = "lean") -> str:
     """The first message to a requirement's brain-dev session: ids only, each checked against its format (run.json is
     agent-writable: an "intent" with a line break must not smuggle an approval line in), no requirement text, nothing a
-    person typed; a line that reads like an approval is dropped whatever happens."""
+    person typed; a line that reads like an approval is dropped whatever happens. *flow*: the run's (a fast run is
+    told it has no Lean intent to open)."""
+    mode, said = KICKOFF_WORDS[flow]
     key = key if KEY_RE.match(key or "") else "?"
     branch = branch if parse_branch(branch or "", branch.split("/", 1)[0] if branch else "ai") else "?"
     intent = intent if isinstance(intent, str) and INTENT_RE.match(intent) else None
     pkgs = [p for p in materials if isinstance(p, str) and PKG_RE.match(p)]
-    lines = ["这是需求 %s 的本地开发会话。分支 %s%s。" % (key, branch, "，Lean intent %s" % intent if intent else ""),
+    lines = ["这是需求 %s 的本地开发会话%s。分支 %s%s。" % (key, mode, branch, "，Lean intent %s" % intent if intent else ""),
+             *said,
              "按 brain-dev 的步骤开始：先读 AGENTS.md 和 brain/ 下的四个文件，再读 runs/%s/run.json" % key
              + ("" if not pkgs else "，然后读材料包 .brain-materials/%s/toc.md" % pkgs[0]) + "。",
              "有问题一次问完，每题带推荐答案。"]
@@ -491,6 +518,26 @@ def kickoff(key: str, branch: str, intent: str | None, materials: list[str]) -> 
 
 # the first message's last line in a session opened by 重开一个会话 (service.reopen_session): where the last one stopped
 RESUME_KICKOFF = "这是重开的会话：上一个会话停下了。先读 Lean 的 aidlc-state.md 里的 Session notes，从那里接着做。"
+# per flow; a fast run keeps no Lean note: its commits and its decisions.md say how far it got
+RESUME: dict[str, str] = {
+    "lean": RESUME_KICKOFF,
+    "fast": "这是重开的会话：上一个会话停下了。先看 git log 和 git status{decisions}，看上次做到哪，从那里接着做。",
+}
+DECISIONS_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*/decisions\.md$")
+# the one turn an idle session gets after 转完整流程 (`brain full`): the run is a Lean run now
+SWITCHED_LINE = "这个需求转成了完整流程：Lean intent {intent}。按 brain-dev 和 Lean 的步骤接着做：先写需求，写好请我批准。"
+
+
+def resume_line(flow: str, decisions: str | None) -> str:
+    """RESUME of *flow*; *decisions*: the run's decisions.md (flowview.decisions_path), named only when it is a plain
+    repo path."""
+    plain = isinstance(decisions, str) and DECISIONS_RE.match(decisions)
+    return RESUME[flow].format(decisions="，再读 %s（有的话）" % decisions if plain else "")
+
+
+def switched_line(intent: Any) -> str:
+    """SWITCHED_LINE for *intent*; '' when it is not a Lean intent name (run.json is agent-writable)."""
+    return SWITCHED_LINE.format(intent=intent) if isinstance(intent, str) and INTENT_RE.match(intent) else ""
 
 
 def review_task(key: str, branch: str, intent: str | None) -> str:

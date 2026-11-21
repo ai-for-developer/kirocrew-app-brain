@@ -17,6 +17,8 @@
  *     &out=<node>&round=<n>&file=<path>           …its 产出 drawer open on that stage (code-generation/api), that
  *                                                 round (default its latest) and that file (default its first)
  *       &tab=reply|task|calls                     …on its tab 它的回复 / 接到的任务 / 做了什么 (default 产出文件)
+ *     &out=code&commit=<hex>&file=<path>          …a fast run's 产出 (its 写代码, by commit): that commit (7 to 40
+ *                                                 hex of its sha; default 全部改动) and that file
  *   ?view=new&repo=<id>                           开需求
  *     &key=<KEY>&title=<title>                    …开工 of a requirement claimed already: its key fixed, its title filled
  *   ?view=brain&repo=<id>&file=<FILE>&id=<entry>&reflect=<KEY>   Brain: that file, that entry picked out, that
@@ -53,7 +55,10 @@ export type BoardEntry = { repo: string; key: string; replay?: boolean; focus?: 
 /** the drawer's tabs past 产出文件 (the default): 它的回复 · 接到的任务 · 做了什么 */
 export type OutTab = 'reply' | 'task' | 'calls'
 export const OUT_TABS: readonly OutTab[] = ['reply', 'task', 'calls']
-export type OutAt = { node: string; round?: number; file?: string; tab?: OutTab }
+export type OutAt = { node: string; round?: number; file?: string; tab?: OutTab
+  /** a fast run's 写代码 (node code) goes by commit, not by round: one of its commits, by the start of its sha (none:
+   * 全部改动) */
+  commit?: string }
 /** 开需求; with key (and title): 开工 of a requirement claimed already, its key fixed (?view=new&repo=&key=&title=) */
 export type NewEntry = { repo?: string; key?: string; title?: string }
 export type BrainEntryRef = { repo?: string; file?: BrainFile; id?: string; reflect?: string }
@@ -80,6 +85,8 @@ export const PATH_RE = /^(?:\/|~\/)[^\u0000-\u001f\u007f]{0,1023}$/
 export const RUN_RE = /^(?:local|runner-[1-9][0-9]{0,3}|(?:child|parent)-[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6})$/
 /** a stage's node: requirements, code-generation/api */
 export const NODE_RE = /^[a-z][a-z-]{0,39}(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$/
+/** a commit by the start of its sha */
+export const COMMIT_RE = /^[0-9a-f]{7,40}$/
 /** a repo-relative file path as the backend accepts one (outputs.safe_path) */
 export const isRelPath = (p: string): boolean => p.length > 0 && p.length <= 400 && !p.startsWith('/') && !/[\\\u0000-\u001f\u007f]/.test(p)
   && p.split('/').every((x) => x !== '' && x !== '.' && x !== '..')
@@ -132,6 +139,8 @@ export function parseView(search: string): View {
       if (isRelPath(file)) v.out.file = file
       const tab = q.get('tab') ?? ''
       if ((OUT_TABS as readonly string[]).includes(tab)) v.out.tab = tab as OutTab
+      const commit = q.get('commit') ?? ''
+      if (COMMIT_RE.test(commit)) v.out.commit = commit
     }
     return v
   }
@@ -196,6 +205,7 @@ export function searchOf(v: View): string {
         if (v.out.round) q.set('round', String(v.out.round))
         put('file', v.out.file && isRelPath(v.out.file) ? v.out.file : undefined)
         put('tab', v.out.tab && OUT_TABS.includes(v.out.tab) ? v.out.tab : undefined)
+        put('commit', v.out.commit && COMMIT_RE.test(v.out.commit) ? v.out.commit : undefined)
       }
       break
     case 'new':

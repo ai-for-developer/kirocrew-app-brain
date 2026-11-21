@@ -24,7 +24,7 @@ ROOT="$(pwd -P)"
 PY3=/usr/bin/python3
 [ -x "$PY3" ] || PY3="$(command -v python3)"
 BRAINKIT_REPO="${BRAINKIT_REPO:-$HOME/warren_ws/brain-kit}"
-BRAINKIT_COMMIT="${BRAINKIT_COMMIT:-f122e2d51693d36a1149c2f53c2bdeae23a194e9}"
+BRAINKIT_COMMIT="${BRAINKIT_COMMIT:-179273100861f9484cc9bc08dbece7421bc68589}"
 LEAN_REPO="${LEAN_REPO:-$HOME/warren_ws/aidlc/aidlc-lean}"
 BRANCH=release
 TEST=1
@@ -54,6 +54,9 @@ export PATH="$NODE_BIN:$PATH"
 APP_COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
 BK="$(git -C "$BRAINKIT_REPO" rev-parse --verify "$BRAINKIT_COMMIT^{commit}")" || die "no brain-kit commit $BRAINKIT_COMMIT in $BRAINKIT_REPO"
 [ -n "$(git -C "$BRAINKIT_REPO" branch -r --contains "$BK" 2>/dev/null)" ] || die "brain-kit $BK is on no remote branch: push it (public) first"
+NEEDED="$(git -C "$ROOT" show HEAD:backend/core/bk.py | sed -n 's/^VERSION_NEEDED = "\([0-9a-f]*\)"$/\1/p')"
+git -C "$BRAINKIT_REPO" merge-base --is-ancestor "$NEEDED" "$BK" 2>/dev/null \
+  || die "brain-kit $BK is not $NEEDED or newer, which the app needs (bk.VERSION_NEEDED): set BRAINKIT_COMMIT"
 LEAN="$(git -C "$BRAINKIT_REPO" rev-parse "$BK:vendor/aidlc-lean")" || die "brain-kit $BK records no vendor/aidlc-lean"
 git -C "$LEAN_REPO" rev-parse --verify -q "$LEAN^{commit}" >/dev/null || die "no Lean commit $LEAN in $LEAN_REPO"
 [ -n "$(git -C "$LEAN_REPO" branch -r --contains "$LEAN" 2>/dev/null)" ] || die "Lean $LEAN is on no remote branch"

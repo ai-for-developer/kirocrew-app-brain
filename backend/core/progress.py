@@ -34,7 +34,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Optional, Union
 
-from . import importer, lean_view
+from . import flowview, importer, lean_view
 from .constants import GIT_BIN
 from .repo import Repo, Source, parse_branch
 
@@ -332,18 +332,22 @@ class Sync:
         self.marks = Marks(Path(data_dir) / "pushes.json")
         self.fetches = Fetches(log, clock=clock, now=now)
         self._ticking = threading.Lock()      # the marks' one writer: one push tick at a time
-        self._checkpoints: dict[tuple, Optional[str]] = {}   # a commit never changes: kept by (repo, sha, intent)
+        self._checkpoints: dict[tuple, Optional[str]] = {}   # a commit never changes: kept by (repo, sha, run's own)
         self._behind: dict[tuple, bool] = {}
 
-    def _checkpoint(self, repo: Repo, sha: Optional[str], intent: Any) -> Optional[str]:
-        if not sha or not isinstance(intent, str):
+    def _checkpoint(self, repo: Repo, sha: Optional[str], run: dict[str, Any], flow: Any) -> Optional[str]:
+        """The newest checkpoint of the run's own ledger records at commit *sha* (flowview.belongs: a Lean run's by its
+        intent, a fast run's by its branch, whose VERIFY is its checkpoint)."""
+        own = run.get("intent") if flow.intent else run.get("branch")
+        if not sha or not isinstance(own, str):
             return None
-        k = (repo.path, sha, intent)
+        k = (repo.path, sha, flow.value, own)
         if k not in self._checkpoints:
             if len(self._checkpoints) > 2048:
                 self._checkpoints.clear()
             src = Source(repo.git, ref=sha)
-            evs = [e for e in lean_view.events(src.read, src.ls, intent) if e.get("event") in CHECKPOINT_KINDS]
+            evs = [e for e in lean_view.events_where(src.read, src.ls, flowview.belongs(flow, run))
+                   if e.get("event") in CHECKPOINT_KINDS]
             self._checkpoints[k] = checkpoint_id(evs[-1]) if evs else None
         return self._checkpoints[k]
 
@@ -365,7 +369,7 @@ class Sync:
         return Branch(name=name, owner=f.get("owner"), worktree=f.get("worktree"), local_sha=local, origin_sha=origin,
                       merged=bool(f.get("merged")), closed=bool((f.get("claim") or {}).get("closed")),
                       handed_over=bool(run.get("handoff")),
-                      checkpoint=lambda: self._checkpoint(repo, local, run.get("intent")),
+                      checkpoint=lambda: self._checkpoint(repo, local, run, f["flow"]),
                       behind=lambda: self._is_behind(repo, local, origin))
 
     def push_tick(self, repos: list[tuple[Repo, Ctx]], now: float, listed: set[str]) -> None:
