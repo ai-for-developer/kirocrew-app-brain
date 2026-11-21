@@ -429,6 +429,19 @@ def test_a_persons_own_rows_are_theirs_the_ones_nobody_has_and_the_parts_of_thei
     assert keys(d.own_rows(rows, {"r1": None, "r2": None})) == keys(rows)
 
 
+
+def test_the_team_server_lists_a_requirement_once_as_the_runners_while_the_runner_has_its_run():
+    """runner_takes, on the team server, over its own facts of a requirement the runner's ledger has a run of: the
+    runner's row wins for a run handed over and for one started on the runner (从 issue 接活: origin remote, no
+    hand-over), the repo's own for a run never handed over (taken back), and the repo's once both say the run ended."""
+    d = mod("deliveries")
+    running = {"state": "running"}
+    assert d.runner_takes(None, None, running)
+    assert d.runner_takes({"run": {"origin": "local", "handoff": {"local_head": "a" * 40}}}, {"state": "local"}, running)
+    assert d.runner_takes({"run": {"origin": "remote", "handoff": None}}, {"state": "local"}, running)
+    assert not d.runner_takes({"run": {"origin": "local", "handoff": None}}, {"state": "local"}, running)
+    assert not d.runner_takes({"run": {"origin": "remote", "handoff": None}}, {"state": "merged"}, {"state": "closed"})
+
 def read_overview(svc, *, mrs=False):
     """GET /overview once the service has started; *mrs*: after a read of the MRs its rows asked for (refresh_mrs)."""
     async def go():
