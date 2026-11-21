@@ -41,7 +41,7 @@ class RepoGitLab:
         self.status_files: dict[str, dict[str, str]] = {}     # branch -> path -> text
         self.status_commits: list[dict] = []
         self.fail_writes = 0                                    # the next n commits answer 500
-        self.down: set[str] = set()                            # projects GitLab answers 502 for
+        self.down: set[str] = set()                            # projects GitLab answers 502 for (the status one too)
         self.calls: list[tuple] = []
         self.who = {"bridge-tok": "brain-bridge", "alice-tok": "alice", "bob-tok": "bob", "status-tok": "status-bot"}
         self.ids = itertools.count(9000)
@@ -167,7 +167,7 @@ class RepoGitLab:
         if sub == "/merge_requests":
             since = q.get("updated_after")
             rows = [m for (pp, _), m in sorted(self.mrs.items()) if pp == name and q.get("state", "all") in ("all", m["state"])
-                    and (not since or m["updated_at"] >= since)]
+                    and (not since or m["updated_at"] >= since) and (not q.get("labels") or q["labels"] in m["labels"])]
             return ok(self.page(rows, q))
         parts = sub.split("/")
         if len(parts) >= 3 and parts[1] == "merge_requests" and parts[2].isdigit():
@@ -186,6 +186,8 @@ class RepoGitLab:
         return {"name": name, "commit": {"id": sha, "parent_ids": parents.split(), "committed_date": when}}
 
     def status_call(self, method, sub, q, data, ok):
+        if self.status_path in self.down:
+            return 502, b"Bad Gateway"
         if sub == "" and method == "GET":
             return ok({"id": 99, "path_with_namespace": self.status_path, "default_branch": "main"})
         if sub.startswith("/repository/files/") and sub.endswith("/raw") and method == "GET":

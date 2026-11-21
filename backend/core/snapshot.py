@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from typing import Any
 
 SCHEMA = 1
+FILE, BRANCH = "snapshot.json", "main"      # where it is in the status project (kit.json team_status.project)
+STALE_S = 40 * 60       # one this old says the team server may have stopped: it writes one at least every 30 minutes
 
 
 class Bad(ValueError):

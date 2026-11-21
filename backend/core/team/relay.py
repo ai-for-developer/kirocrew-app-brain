@@ -4,10 +4,10 @@
 Writing (Relay): snapshot.json on branch main of the status project (bridge.json team_status.project; 一键建运行机's
 状态中转 makes it), through the commits API with the bridge's token (or team_status.token_file's). A round of the bridge
 builds a snapshot at most every FLOOR_S, and writes it only when it differs from the one there apart from when it was
-made and when the bridge last went round (content_key), or, the same, once the one there is HEARTBEAT_S old: so a reader
-tells a server at work from a stopped one (STALE_S). The one there is read once, when the relay starts, so a restart
-writes nothing new. A file there or not is created or updated, whichever GitLab takes. What went wrong is kept for the
-server's own 运行机 page; it never stops the round.
+made and when the bridge last went round (content_key), or, the same, once the one there is HEARTBEAT_S old: so a
+reader tells a server at work from a stopped one (snapshot.STALE_S). The one there is read once, when the relay starts,
+so a restart writes nothing new. A file there or not is created or updated, whichever GitLab takes. What went wrong is
+kept for the server's own 运行机 page; it never stops the round.
 
 The team view's rows come from GitLab only, read with the bridge's token: per project its claim/ and <prefix>/ branches
 (and brain/<KEY>-reflect-<n>, the write-backs made), its default branch's runs_dir (the requirements merged there), its
@@ -32,11 +32,10 @@ from .. import bk, deliveries, lean_view, mrinfo, snapshot
 from ..constants import KEY_RE
 from ..repo import MAX_FILE, REFLECT_RE, Source, empty_facts, parse_branch, read_facts
 
-FILE, BRANCH = "snapshot.json", "main"
+FILE, BRANCH = snapshot.FILE, snapshot.BRANCH
 NO_TOKEN_ENV = "BRAIN_STATUS_NO_TOKEN_ENV"   # nobody sets it: team_status.token_file is read, never the environment
 FLOOR_S = 5 * 60                # a snapshot is built, and written when it changed, at most this often
 HEARTBEAT_S = 30 * 60           # an unchanged one is written again this old, to say the server is alive
-STALE_S = 40 * 60               # a reader says the server may have stopped once the one there is this old
 MERGED_S = 14 * 86400           # a merged requirement stays this long after its merge
 FINAL_CI = ("success", "failed", "canceled", "skipped")
 # the steps (waits.do) its owner takes: a row waiting on one waits on them

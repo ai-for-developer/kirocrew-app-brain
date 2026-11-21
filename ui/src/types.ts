@@ -1653,12 +1653,105 @@ export interface RunnerRepo {
   name: string
   /** null: its kit.json names no bridge_user, so it has no team runner */
   runner: TeamRunner | null
+  /** the status project its kit.json names (team_status.project): its runner is shown from that snapshot; null: none,
+   * the runner as GitLab shows it (runner) alone */
+  relay: string | null
 }
-/** GET /team/status: every listed repo, in the app's order. */
+/** GET /team/status: every listed repo, in the app's order, and the status projects they name. */
 export interface RunnerStatus {
   /** what 「最近」 means for MR 巡检's notes, in hours */
   recent_h: number
+  /** now, on this machine (epoch s) */
+  at: number
+  /** a snapshot older than this (s) says the team server may have stopped (its relay writes one every 30 minutes) */
+  stale_after_s: number
   repos: RunnerRepo[]
+  relays: RelayRead[]
+}
+
+/** One status project as this person's token last read it (backend/core/runner_view.py Runners._relay). */
+export interface RelayRead {
+  /** the GitLab project, group/name */
+  project: string
+  /** the listed repos whose kit.json names it */
+  repos: string[]
+  /** the person's GitLab name there (null: the app cannot tell): what waits on them comes first */
+  me: string | null
+  /** the listed repos of its GitLab, by their project (a row of one opens its 运行过程 here) */
+  repo_of: Record<string, string>
+  /** when the last read that worked was (epoch s); null: none yet */
+  read_at: number | null
+  /** the last snapshot read; null: none yet */
+  snapshot: TeamSnapshot | null
+  /** older than stale_after_s: the team server may have stopped */
+  stale: boolean
+  /** why the last read did not work (the last snapshot is kept); null when it did */
+  problem: { text: string; todo: string; raw: string } | null
+}
+
+// ---------------------------------------------------------------- 状态中转: the team server's snapshot (schema 1)
+
+/** What a row waits on, as the app says it (deliveries.waits), and who takes that step now (GitLab usernames; []: no
+ * one in particular, or no person). */
+export interface SnapshotWaits {
+  who: WaitWho
+  do: string
+  text: string
+  since: number | null
+  on: string[]
+}
+/** TeamSnapshot (backend/core/snapshot.py): what the team server writes into GitLab every few minutes. */
+export interface TeamSnapshot {
+  schema: number
+  /** when it was made (the team server's clock, epoch s) */
+  generated_at: number
+  server: {
+    version: string
+    team_mode: boolean
+    last_round_at: number | null
+    /** on: the runner takes its hand-overs; sources: the work its kit.json switches on; error: what went wrong with it
+     * last round, in words ('' none) */
+    projects: { project: string; on: boolean; sources: string[]; error: string }[]
+  }
+  runner: {
+    /** the ledger's latest run of each requirement, still open */
+    handovers: SnapshotHandover[]
+    patrol: PatrolMr[]
+    staging: StagingError[]
+    /** brain-patrol sessions at once, MR 巡检's and 测试环境报错's together, and how many work now */
+    cap: number
+    working: number
+  }
+  /** every requirement of its projects, open or merged in the last 14 days */
+  delivery: SnapshotDelivery[]
+}
+export interface SnapshotHandover {
+  project: string
+  iid: number
+  mr_url: string | null
+  key: string
+  title: string
+  run_id: string
+  /** brain-kit's run state */
+  state: RunState
+  owner: string | null
+  waits: SnapshotWaits
+}
+export interface SnapshotDelivery {
+  project: string
+  key: string
+  title: string
+  owner: string | null
+  /** 交付总览's column, in its words: 需求 · 设计 · 构建 · 交给运行机 · 发布 · 验收 · 已合并 */
+  stage: string
+  state: ReqState
+  branch: string | null
+  /** ci: the status of the pipeline at its head (GitLab's word), null: none read */
+  mr: { iid: number; url: string | null; state: string; ci: string | null } | null
+  /** whether the staging VERSION holds its merge; null: not merged, or no staging read for its project */
+  deployed: boolean | null
+  waits: SnapshotWaits
+  updated_at: number | null
 }
 
 // ---------------------------------------------------------------- 一键建运行机: GET/POST /team/setup

@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, test, vi } from 'vitest'
-import { fx } from '../test/data'
+import { FIXTURE_AT, fx } from '../test/data'
 import { API, installFixtureRoutes } from '../test/routes'
 import { apiCalls } from '../test/stubs/app-sdk'
 import type { RunnerStatus } from '../types'
@@ -83,7 +83,8 @@ describe('运行机 on a personal install', () => {
   })
 
   test('no repo with a team runner yet: each in one line, and how one gets here', async () => {
-    const st: RunnerStatus = { recent_h: 24, repos: [{ repo: 'r1', name: 'shop-pay', runner: null }, { repo: 'r4', name: 'shop-tools', runner: null }] }
+    const st: RunnerStatus = { recent_h: 24, at: FIXTURE_AT, stale_after_s: 2400, relays: [],
+      repos: [{ repo: 'r1', name: 'shop-pay', runner: null, relay: null }, { repo: 'r4', name: 'shop-tools', runner: null, relay: null }] }
     installFixtureRoutes({ [`GET ${API}/team/status`]: () => st })
     render(<RunnerStatusPage {...props()} />)
     expect(await screen.findByText(NO_RUNNER_YET)).toBeInTheDocument()
