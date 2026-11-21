@@ -31,6 +31,10 @@ Under one root (default ~/.brain/team-setup; files 0600, folders 0700):
                          brain-bot, or the bot user's personal token
   jenkins-token          the token of the Jenkins read-only user typed (SetupInput.jenkins): MR 巡检 reads logs with it
   identities.json, keys/, bridge.json, runnerd.json, signer.json, the spools, vouchers and ledgers, signer.pid / .log
+  status.git             a bare repo of its own, where the team server makes a project's brain/status the first time
+状态中转 (step status): the team server writes each project's status into the project itself, on its branch brain/status
+(team/relay.py), so GitLab lets whoever can read the project read its status, and nobody else; the bridge's account
+pushes it, and the step checks that no protected branch rule keeps it from that.
 Under ~/workplace/brain-team (KiroCrew lets agents work only under ~/workplace): runs/ and cache/, and MR 巡检's clones
 in patrol/. The agents: ~/.kiro/agents/brain-run.json, and brain-patrol.json beside it when 巡检所有开着的 MR is on (the
 kit.json MRs then also switch work source mr-patrol on). 从打了标签的 issue 接活 switches work source issue-label on in
@@ -55,7 +59,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from .. import bk, kitmr
+from .. import bk, kitmr, snapshot
 from ..constants import APP_ROOT, PYTHON_BIN
 from . import issues as issues_mod
 from . import patrol as patrol_mod
@@ -98,6 +102,7 @@ ACCOUNT_NEEDS = {"bridge": "没有 api 权限：桥要用它在 MR 上贴问题�
 SSH_BOT = ("brain-bot", "brain-bot@noreply.invalid")    # git_name, git_email of a runner pushing over this machine's SSH
 REACH_WAIT_S = 20
 BRANCH = "brain/runner-setup"
+STATUS_BRANCH = snapshot.BRANCH     # where the team server writes each project's status (状态中转, team/relay.py)
 MR_TITLE = "运行机：更新 .brain/kit.json"
 MR_TEXT = ("一键建运行机开的 MR：运行机要 kit.json 写上 bridge_user（桥的账号）、bot_users 和 bot_emails（运行机推送用的账号和邮箱）、"
            "gitlab 和 default_branch。合并以前，签名服务不签交接。")
@@ -1141,7 +1146,63 @@ def step_identities(ctx: Ctx) -> StepResult:
     return replace(said, projects=tuple(per))
 
 
-# ---- 6 kit.json, through an MR per project ----------------------------------------------------------------------- #
+# ---- 6 状态中转 ------------------------------------------------------------------------------------------------- #
+
+def step_status(ctx: Ctx) -> StepResult:
+    """状态中转 (team/relay.py): the team server writes each project's status into the project itself, on its branch
+    brain/status, so GitLab lets whoever can read the project read its status, and nobody else. The bridge's account
+    pushes it (it is a Developer or more in every project); here each project's protected branches are checked for a
+    rule that keeps it from pushing brain/status, which waits for a person to lift. Nothing is made: the team server's
+    first write makes the branch."""
+    ctx.state.pop("status_project", None)       # an earlier run's status project of its own: left as it is, unused
+    rows = each(ctx, of_found(ctx), lambda p: project_status(ctx, p))
+    return summed(rows, "%d 个项目的 brain/status 桥的账号都能推" % len(rows),
+                  "有的项目的 brain/status 受保护，桥的账号推不了：看每个项目那一行")
+
+
+def project_status(ctx: Ctx, p: Proj) -> StepResult:
+    name, uid, level = bridge_in(ctx, p)
+    try:
+        rules = ctx.gl.call("GET", "/projects/%d/protected_branches" % p.id, {"per_page": 100}) or []
+    except Exception as exc:  # noqa: BLE001 - a token that may not read the rules: said; anything else as every step says it
+        if _gitlab_status(exc) not in (401, 403):
+            raise
+        return done("看不了 %s 的受保护分支（这个 token 不够）：团队服务器第一次写 %s 时就知道能不能推，推不了会在它的运行机页上说"
+                    % (p.path, STATUS_BRANCH))
+    held = [r for r in rules if isinstance(r, dict) and branch_matches(str(r.get("name") or ""), STATUS_BRANCH)]
+    if held and not any(may_push(a, uid, level) for r in held for a in r.get("push_access_levels") or []
+                        if isinstance(a, dict)):
+        return waiting("受保护分支 %s 管着 %s，%s 推不了：在 GitLab 上放开它（Developer 能推），团队服务器才写得了这个项目的状态"
+                       % ("、".join(str(r["name"]) for r in held), STATUS_BRANCH, name))
+    there = kitmr.branch_exists(ctx.gl, p.id, STATUS_BRANCH)
+    return done("%s %s，%s 能推" % (STATUS_BRANCH, "已经在了" if there else "还没有：团队服务器第一次写的时候建", name))
+
+
+def bridge_in(ctx: Ctx, p: Proj) -> tuple[str, int | None, int]:
+    """(the bridge's GitLab user, its id, its level in *p*): a project token's is Developer."""
+    if ctx.inp.mode == PROJECT_TOKEN:
+        rec = tokens_of(ctx, ctx.found[0]).get("bridge") or {}
+        return ctx.state["bridge_user"], rec.get("user_id"), DEVELOPER
+    _tok, me = account(ctx, "bridge")
+    return ctx.state["bridge_user"], me.get("id"), member_level(ctx.gl, p.id, int(me["id"]))
+
+
+def branch_matches(rule: str, branch: str) -> bool:
+    """GitLab's protected branch rule *rule* (a name, or one with * for any run of characters) covers *branch*."""
+    return re.fullmatch(re.escape(rule).replace(r"\*", ".*"), branch) is not None
+
+
+def may_push(entry: Mapping[str, Any], uid: int | None, level: int) -> bool:
+    """One push_access_levels entry of a protected branch lets the user *uid* at *level* push: it names that user, or
+    (naming no user or group) a level it reaches; No one (0) lets nobody."""
+    if entry.get("user_id") is not None:
+        return uid is not None and int(entry["user_id"]) == int(uid)
+    if entry.get("group_id") is not None or entry.get("deploy_key_id") is not None:
+        return False
+    return 0 < int(entry.get("access_level") or 0) <= level
+
+
+# ---- 7 kit.json, through an MR per project ----------------------------------------------------------------------- #
 
 def step_kit_mr(ctx: Ctx) -> StepResult:
     """Each project's kit.json on its default branch names the bridge's account, the bot's, GitLab and the default
@@ -1215,7 +1276,7 @@ def wanted_kit(ctx: Ctx, p: Proj) -> dict[str, Any]:
     return want
 
 
-# ---- 7 folders ---------------------------------------------------------------------------------------------------- #
+# ---- 8 folders ---------------------------------------------------------------------------------------------------- #
 
 def step_dirs(ctx: Ctx) -> StepResult:
     """The spools (runnerd's requests, ready, failed; the signer's requests, signed, refused), the vouchers, the keys'
@@ -1233,7 +1294,7 @@ def step_dirs(ctx: Ctx) -> StepResult:
     return done("建了 %d 个目录" % len(made) if made else "目录都在")
 
 
-# ---- 8 the signing key ------------------------------------------------------------------------------------------- #
+# ---- 9 the signing key ------------------------------------------------------------------------------------------- #
 
 def step_signing_key(ctx: Ctx) -> StepResult:
     """The signer's ed25519 key, made once, and allowed_signers from it: the line MIGRATE 第三部分 5 builds."""
@@ -1252,7 +1313,7 @@ def step_signing_key(ctx: Ctx) -> StepResult:
     return done("生成了签名密钥" if made else "签名密钥已经有了" if not wrote else "签名密钥已经有了，重写了公钥名单")
 
 
-# ---- 9 the three configs ----------------------------------------------------------------------------------------- #
+# ---- 10 the three configs ---------------------------------------------------------------------------------------- #
 
 def step_configs(ctx: Ctx) -> StepResult:
     """bridge.json, runnerd.json and signer.json in the shapes of MIGRATE 第三部分 7, for one OS user and every project:
@@ -1383,7 +1444,7 @@ def signer_doc(ctx: Ctx, salt: str) -> dict[str, Any]:
     }
 
 
-# ---- 10 the brain-run agent ------------------------------------------------------------------------------------- #
+# ---- 11 the brain-run agent ------------------------------------------------------------------------------------- #
 
 def step_agent(ctx: Ctx) -> StepResult:
     """The runner's agent, written by brain-kit itself: `brain-runnerd --config runnerd.json setup`."""
@@ -1402,7 +1463,7 @@ def step_agent(ctx: Ctx) -> StepResult:
                 detail=out)
 
 
-# ---- 11 the brain-patrol agent ---------------------------------------------------------------------------------- #
+# ---- 12 the brain-patrol agent ---------------------------------------------------------------------------------- #
 
 def step_patrol_agent(ctx: Ctx) -> StepResult:
     """brain-patrol, the agent of MR 巡检's sessions (team/patrol.py agent_spec): brain-run's spec, its own short prompt,
@@ -1414,7 +1475,7 @@ def step_patrol_agent(ctx: Ctx) -> StepResult:
     return done("%s brain-patrol 的设置：%s" % ("写好了" if wrote else "已经是新的", tilde(ps.patrol_spec)))
 
 
-# ---- 12 the signer ------------------------------------------------------------------------------------------------ #
+# ---- 13 the signer ------------------------------------------------------------------------------------------------ #
 
 def step_signer(ctx: Ctx) -> StepResult:
     """The signer, run by the app itself in same-user mode (signerproc): started when it is not running, or when it
@@ -1427,7 +1488,7 @@ def step_signer(ctx: Ctx) -> StepResult:
     return done("签名服务%s（进程 %d）" % ("开起来了" if started else "在跑", pid))
 
 
-# ---- 13 team mode ------------------------------------------------------------------------------------------------- #
+# ---- 14 team mode ------------------------------------------------------------------------------------------------- #
 
 def step_team_mode(ctx: Ctx) -> StepResult:
     """Team mode on with the two configs and the same-user trial, through the app's settings (its TeamRuntime starts,
@@ -1469,6 +1530,7 @@ STEPS: tuple[Step, ...] = (
     Step("push", "运行机怎么推送", step_push),
     Step("labels", "MR 标签", step_labels),
     Step("identities", "身份表", step_identities),
+    Step("status", "状态中转", step_status),
     Step("kit_mr", "kit.json 的 MR", step_kit_mr),
     Step("dirs", "目录", step_dirs),
     Step("signing_key", "签名密钥", step_signing_key),

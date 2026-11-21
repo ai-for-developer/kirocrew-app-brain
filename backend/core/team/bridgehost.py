@@ -25,7 +25,9 @@ patched or subclassed. What the app changes:
   one: runnerd, dispatch and the questions in the same round;
 - patrol: a round ends with MR 巡检 (team/patrol.py, work source mr-patrol), on the same worker thread, then
   测试环境报错 (team/staging.py, work source staging-errors). MR 巡检 reads the logs of Jenkins builds with
-  bridge.json's optional "jenkins" (team/jenkins.py), a block brain-kit leaves alone.
+  bridge.json's optional "jenkins" (team/jenkins.py), a block brain-kit leaves alone;
+- 状态中转: after every step, each project's TeamSnapshot on its own branch brain/status (team/relay.py), for
+  relay.BUDGET_S a round at most; an MR from or into that branch is never a hand-over.
 
 The ledger is brain-kit's ``Ledger``: one sqlite connection any thread may use, ``ledger.lock`` around several
 statements. Rounds run one at a time on the runtime's own worker thread (a round may wait on GitLab, KiroCrew and the
@@ -47,18 +49,24 @@ import threading
 import time
 from collections import deque
 from datetime import timedelta
-from typing import Any
+from typing import Any, Mapping
 
-from .. import bk, problems
-from ..constants import APP_ROOT, PYTHON_BIN
+from .. import bk, deliveries, flowview, lean_view, problems, snapshot
+from ..constants import APP_ROOT, PYTHON_BIN, VERSION
+from ..repo import Git, Source, read_claim, read_facts
+from ..scrub import scrub_tree
 from . import issues as issues_mod
 from . import patrol as patrol_mod
+from . import relay as relay_mod
 from . import signerproc, sources
 from . import staging as staging_mod
 from .crewadapter import KiroCrewAdapter
 from .jenkins import Jenkins
 
 REQ_RE = re.compile(r"^[a-z]+-[A-Za-z0-9-]{1,80}-[0-9a-f]{12}\.json$")
+NO_PUSH = ("这台机器不推代码（没有 runnerd.json）：在 GitLab 上先建好 brain/status，一个没有父提交的分支（git push 一个孤立提交），"
+           "团队服务器就往里写")
+OUT_OF_TIME = "全队交付这一轮没读完（%d 秒到了），下一轮接着读：下面是上次读完的" % relay_mod.BUDGET_S
 MAX_SPOOL_FILE = 64 * 1024
 PENDING_WINDOW_S = 3600   # brain-kit's Ledger.pending_voucher(newer_than=3600): older ones are not asked for again
 LEDGER_TABLES = ("runs", "decisions", "handoffs", "outbox", "notices")
@@ -140,6 +148,9 @@ class TeamRuntime:
         self.last_summary: dict[str, int] = {}
         self.last_handovers: list[dict[str, Any]] = []   # what Bridge.process said for each labelled MR, last round
         self.poll_checks: list[dict[str, Any]] = []      # CheckRows: the projects the last poll did not read or poll
+        self.poll_projects: list[dict[str, Any]] = []    # each project as the last poll left it (relay.project_state)
+        self.relay: relay_mod.Relay | None = None        # 状态中转: each project's brain/status
+        self.deliveries: relay_mod.Deliveries | None = None
         self.lines: deque = deque(maxlen=200)
         self.same_user = False
         self.inputs = ""            # signerproc.digest of start_inputs, taken as start() read them
@@ -224,13 +235,29 @@ class TeamRuntime:
                 ledger_path=os.path.join(os.path.dirname(config), "issues.sqlite"),
                 clones=issues_mod.Clones.of(rcfg) if rcfg and rcfg.get("runs_root") and rcfg.get("clone_url") else None,
                 claims=lambda: sources.held(self), out=self._out)
+            self.relay, self.deliveries = self._relay(cfg, gl, rcfg, config)
             self.cfg, self.runnerd_cfg, self.spool, self.allowed_signers = cfg, rcfg, spool, allowed
             self.error = ""
             return True
         except Exception as exc:  # noqa: BLE001
             self.error = str(exc).split("\n", 1)[0][:400]
-            self.host = self.patrol = self.staging = self.issues = None
+            self.host = self.patrol = self.staging = self.issues = self.relay = self.deliveries = None
             return False
+
+    def _relay(self, cfg: dict[str, Any], gl: Any, rcfg: dict[str, Any] | None,
+               config: str) -> tuple[relay_mod.Relay, relay_mod.Deliveries]:
+        """状态中转 in every project of bridge.json, written with the bridge's token; a project's brain/status pushed
+        once, when it has none, through runnerd's clone address with its name (relay.push_orphan), from status.git
+        beside bridge.json."""
+        work = os.path.join(os.path.dirname(config), "status.git")
+
+        def make_branch(project: str) -> None:
+            if not rcfg or not rcfg.get("clone_url"):
+                raise bk.m("common").BrainError(NO_PUSH)
+            relay_mod.push_orphan(str(rcfg["clone_url"]).replace("{project}", project), work,
+                                  str(rcfg.get("git_name") or "brain-bot"),
+                                  str(rcfg.get("git_email") or "brain-bot@noreply.invalid"))
+        return relay_mod.Relay(gl, make_branch), relay_mod.Deliveries(gl, str(cfg["gitlab"]["base"]), self.host.kit)
 
     def stop(self) -> None:
         """Close the ledger after the round in progress (it runs on the executor), then let the executor go."""
@@ -261,8 +288,8 @@ class TeamRuntime:
     # ---- one round ------------------------------------------------------------------------------------ #
 
     def loop_once(self) -> dict[str, int]:
-        """poll, issues, runnerd, dispatch, watch, collect, reconcile, patrol, staging; one bad step does not stop the
-        others."""
+        """poll, issues, runnerd, dispatch, watch, collect, reconcile, patrol, staging, then 状态中转; one bad step does
+        not stop the others."""
         host = self.host
         if host is None:
             raise RuntimeError(self.error or "运行机模式没有启动")
@@ -299,8 +326,72 @@ class TeamRuntime:
                     self._out("%s failed this round: %s" % (step, exc))
             self.last_loop_at = time.time()
             self.loop_error = "；".join(errors)
+            if self.relay is not None:      # 状态中转, after the hand-over steps and bounded: what goes wrong is its own
+                summary["relay"] = self._relay_round()
             self.last_summary = summary
         return summary
+
+    def _relay_round(self) -> int:
+        """状态中转's part of the round (relay.Relay.round): each project's TeamSnapshot as snapshot_of makes it, what
+        every project shares made once, when the first one is due. -> how many projects it wrote."""
+        projects = [p["project"] if isinstance(p, dict) else str(p) for p in self.host.cfg["projects"]]
+        shared: dict[str, Any] = {}
+
+        def build(project: str, now: float, deadline: float, there: dict[str, Any] | None) -> dict[str, Any]:
+            if not shared:
+                shared.update(self._shared())
+            return self.snapshot_of(project, now, deadline, there, shared)
+        got = self.relay.round(projects, build)
+        self.deliveries.forget(projects)
+        return sum(1 for x in got.values() if x in ("wrote", "heartbeat"))
+
+    def _shared(self) -> dict[str, Any]:
+        """What every project's snapshot is made from this round: MR 巡检's and 测试环境报错's views, identities.json's
+        roles, each project's deployed commit, the runner's open runs (runner_rows) and the server."""
+        patrol, staging = self.patrol_view(), self.staging_view()
+        return {"patrol": patrol, "staging": staging, "roles": relay_mod.identity_roles(self.cfg.get("identities")),
+                "deployed": {p["project"]: str(p.get("deployed_sha") or "") for p in staging.get("projects") or []
+                             if p.get("on")},
+                "runs": [(row, run) for row, _facts, _decs, run in self.runner_rows()
+                         if run["state"] not in ("merged", "closed")],
+                "server": {"version": VERSION, "team_mode": True, "last_round_at": self.last_loop_at,
+                           "cap": int(patrol["cap"]), "working": int(patrol["working"]) + int(staging["working"])}}
+
+    def snapshot_of(self, project: str, now: float, deadline: float, there: dict[str, Any] | None,
+                    shared: Mapping[str, Any]) -> dict[str, Any]:
+        """The TeamSnapshot of *project* this round relays (snapshot.py): the server as every project's says it; the
+        project as the round left it; the runner's runs, MR 巡检's and 测试环境报错's items of the project, as 运行机
+        shows them; its 全队交付 from GitLab (relay.Deliveries), or the last rows read, with when, when they could not
+        be read whole by *deadline* (*there*: the one on its brain/status, for a project not read since the start).
+        Scrubbed as the pages are."""
+        try:
+            got = self.deliveries.read(project, deployed=shared["deployed"].get(project, ""), roles=shared["roles"],
+                                       deadline=deadline)
+            rows, at, said = got.rows, got.at, "全队交付：%s" % "；".join(got.notes) if got.notes else ""
+        except Exception as exc:  # noqa: BLE001 - GitLab, what it holds, the time: the last rows, with why
+            last = self.deliveries.last.get(project)
+            rows, at = (last.rows, last.at) if last else ((there or {}).get("delivery") or [], (there or {}).get("delivery_at"))
+            said = OUT_OF_TIME if isinstance(exc, relay_mod.OutOfTime) else "全队交付没读成：%s" % relay_mod.said_of(exc)
+        asked = {r["key"]: r["waits"] for r in rows}
+        handovers = []
+        for row, run in shared["runs"]:
+            if str(run["project"]) != project:
+                continue
+            seen = asked.get(row["key"])
+            gate = row["waits"]["do"] in deliveries.GATES
+            on = seen["on"] if seen and gate and seen["do"] in deliveries.GATES else \
+                relay_mod.on_names(row, None, shared["roles"])
+            handovers.append({"project": project, "iid": int(run["iid"]), "mr_url": self.mr_url(project, run["iid"]),
+                              "key": row["key"], "title": row["title"], "run_id": str(run["run_id"]),
+                              "state": str(run["state"]), "owner": run.get("owner") or None,
+                              "waits": relay_mod.waits_of(row, on)})
+        snap = {"schema": snapshot.SCHEMA, "generated_at": now, "project": project, "server": dict(shared["server"]),
+                "state": relay_mod.project_state(project, self.poll_projects, shared["patrol"], shared["staging"], said),
+                "runner": {"handovers": handovers,
+                           "patrol": [i for i in shared["patrol"]["items"] if i["project"] == project],
+                           "staging": [i for i in shared["staging"]["items"] if i["project"] == project]},
+                "delivery": rows, "delivery_at": at}
+        return scrub_tree(snap, self.scrub)
 
     def _poll(self, host: Any) -> int:
         """brain-kit's Bridge.poll, MR by MR, keeping each MR's result (Bridge.process) for the page. A project whose
@@ -311,11 +402,15 @@ class TeamRuntime:
         seen: list[dict[str, Any]] = []
         checks: list[dict[str, Any]] = []
         errors: list[str] = []
+        polled: list[dict[str, Any]] = []
         try:
             for proj in host.cfg["projects"]:
                 project = proj["project"] if isinstance(proj, dict) else proj
+                state = {"project": str(project), "on": False, "sources": [], "error": ""}
+                polled.append(state)
                 try:
                     kit = host.kit(project)
+                    state["sources"] = list(sources.enabled(kit))
                     if sources.HANDOFF not in sources.enabled(kit):
                         checks.append(problems.mk(
                             "WARN", "%s 的 kit.json 里 work_sources 没写 %s：运行机不接这个项目的交接" % (project, sources.HANDOFF),
@@ -326,12 +421,16 @@ class TeamRuntime:
                 except (common.BrainError, OSError, ValueError) as exc:     # read again next round
                     said = self.scrub(" ".join(str(exc).split())[:300])
                     errors.append("%s: %s" % (project, said))
+                    state["error"] = "这一轮没读成，它的交接没看：%s" % said
                     checks.append(problems.mk(
                         "FAIL", "%s 上一轮没读成：它的交接没看，别的项目照常" % project,
                         "下一轮会自动再试；一直这样就看细节：多半是这个项目默认分支上的 .brain/kit.json 读不了，或者桥的账号看不到这个项目",
                         raw=said))
                     continue
+                state["on"] = True
                 for mr in mrs:
+                    if snapshot.BRANCH in (mr.get("source_branch"), mr.get("target_branch")):
+                        continue        # 状态中转's own branch: never a hand-over
                     row = {"project": str(project), "iid": int(mr.get("iid") or 0), "sha": str(mr.get("sha") or "")[:40],
                            "result": "error", "error": "", "at": time.time()}
                     try:
@@ -341,7 +440,7 @@ class TeamRuntime:
                         row["error"] = self.scrub(str(e).split("\n", 1)[0][:300])
                     seen.append(row)
         finally:
-            self.last_handovers, self.poll_checks = seen, checks
+            self.last_handovers, self.poll_checks, self.poll_projects = seen, checks, polled
         if errors:
             raise common.BrainError("not done this round: " + "; ".join(errors))
         return len(seen)
@@ -366,6 +465,42 @@ class TeamRuntime:
         out = []
         for r in list(self.last_handovers):
             out.append(dict(r, mr_url=self.mr_url(r["project"], r["iid"])))
+        return out
+
+    def runner_rows(self) -> list[tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], dict[str, Any]]]:
+        """(row, facts, decisions, run) per requirement the bridge has a run of, its latest run: the row as 交付总览 and
+        需求现状 say it (deliveries.team_classify over the ledger and the records in the run's workspace, its run ids,
+        MR and last update). Its credits and the first line of its 变更说明 are the service's."""
+        if self.host is None:
+            return []
+        led = self.ledger()
+        latest: dict[str, dict[str, Any]] = {}
+        all_ids: dict[str, list[str]] = {}
+        for r in led["runs"]:
+            all_ids.setdefault(r["req"], []).append(r["run_id"])
+            latest[r["req"]] = r
+        notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [])
+        out = []
+        for key, r in sorted(latest.items()):
+            facts = {"key": key, "claim": None, "where": "runner", "branch": None, "owner": r.get("owner"),
+                     "worktree": None, "stages": [], "events": [], "approvals": [], "run": None, "park": None,
+                     "project": r.get("project"), **flowview.read(None)}
+            path = r.get("path")
+            if path and os.path.isdir(path):
+                g = Git(path)
+                got = read_facts(Source(g, path=path), key, "runs")
+                # runnerd's clone fetches every branch: the claim says the requirement's title, as a person's row does
+                facts.update(got, worktree=path, stages=lean_view.stages(got["events"]),
+                             claim=read_claim(g, "refs/remotes/origin/claim/" + key, "refs/heads/claim/" + key))
+                facts["branch"] = (got["run"] or {}).get("branch")
+            row = deliveries.base_row("runner", facts)
+            row["where"] = "runner"
+            decs = [d for d in led["decisions"] if d["run_id"] in all_ids[key]]
+            deliveries.team_classify(row, r, decs, facts.get("park"), notes=notes.get(r["run_id"], []))
+            row["run_ids"] = all_ids[key]
+            row["mr"] = {"iid": int(r["iid"]), "url": self.mr_url(r["project"], r["iid"]), "state": None}
+            row["updated_at"] = lean_view.epoch(r.get("updated"))
+            out.append((row, facts, decs, r))
         return out
 
     # ---- what the page reads -------------------------------------------------------------------------- #
@@ -494,7 +629,8 @@ class TeamRuntime:
                 "error": why["text"], "error_todo": why["todo"], "error_raw": why["raw"],
                 "last_loop_at": self.last_loop_at, "loop_error": self.loop_error, "checks": list(self.poll_checks),
                 "same_user": self.same_user,
-                "signer": {"pending": len(sig["pending"]), "refused": len(sig["refused"])}}
+                "signer": {"pending": len(sig["pending"]), "refused": len(sig["refused"])},
+                "relay": self.relay.view() if self.relay is not None else None}
 
     def signer_view(self) -> dict[str, Any]:
         return spool_view(self.spool) if self.host is not None and self.spool else {"pending": [], "refused": []}

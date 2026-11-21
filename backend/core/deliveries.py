@@ -20,6 +20,9 @@ STATE_LABEL = {"claimed": "已认领", "local": "本地开发中", "handed_over"
                "running": "运行机在跑", "parked": "停下等回答", "acceptance": "等验收", "merged": "已合并",
                "closed": "已关闭", "unclaimed": "待认领", "merged_into_parent": "已合进大需求"}
 OPEN_STATES = ("claimed", "local", "handed_over", "running", "parked", "acceptance", "rejected", "unclaimed")
+# the columns of 需求流动 (ui/src/cto/Flow.tsx COLS), as 交付总览 names them: a requirement's stage on its way
+FLOW_STAGES = ("需求", "设计", "构建", "交给运行机", "发布 · 验收", "已合并")
+RUNNER_STATES = ("handed_over", "running", "rejected")
 KIND_LABEL = {"clarify": "澄清", "design": "设计", "plan": "计划", "acceptance": "验收", "action": "危险动作",
               "other": "其他", "requirements": "需求批准"}
 ASK_WHO = {"product": "product", "builder": "builder", "owner": "you", "security": "people", "data": "people"}
@@ -149,6 +152,13 @@ def owns(me: str | None, owner: str | None) -> bool:
     return not owner or owner == me
 
 
+def on_runner(run: dict[str, Any] | None) -> bool:
+    """The team runner has the run: a person handed it over (run.json's handoff), or it started there (origin remote:
+    从 issue 接活's start commit). No person's machine has a session of it; its MR says where it is."""
+    run = run or {}
+    return bool(run.get("handoff")) or run.get("origin") == "remote"
+
+
 def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | None, slot: dict[str, Any] | None,
              cfg: dict[str, Any], bot_commits: int = 0, at_handover: bool = False, me: str | None = None,
              reflected: bool = False, now: float | None = None, pushed: bool = True,
@@ -186,7 +196,7 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
                    since=since)
     if f.get("flow_error"):
         return put("local", you, "none", f["flow_error"], since=f.get("tip_at"))
-    if not run.get("handoff"):
+    if not on_runner(run):
         if pending:
             a = pending[0]
             return put("local", you, "approve", approve_text(a, them), where="session", since=a.get("at"),
@@ -398,6 +408,30 @@ def outbox_note(o: dict[str, Any]) -> dict[str, Any] | None:
     return {"kind": "outbox_" + st, "text": text, "at": lean_view.epoch(o.get("updated") or o.get("created"))}
 
 
+def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """{run id: [TeamNote]}: what brain-kit's bridge (0d52e97) holds about a run in its ledger, said plainly
+    (team_note): the notices it told the MR or counts (CI holding the acceptance question, runnerd silent, sends that
+    keep failing, queued …) and the messages into its session that are not known to have landed."""
+    out: dict[str, list[dict[str, Any]]] = {}
+    sent = {str(o.get("send_id")) for o in outbox if o.get("state") == "sent"}
+    holding = {str(n.get("key") or "").split(":")[1] for n in notices
+               if str(n.get("key") or "").startswith("ciheld:") and n.get("state") == "counting"}
+    for n in notices:
+        key = str(n.get("key") or "")
+        if key.startswith("gaveup:") and key[len("gaveup:"):] in sent:
+            continue        # it landed in the end
+        if key.startswith(("ciheld-wait:", "ciheld-person:", "ciheld-red:")) and str(n.get("run_id")) not in holding:
+            continue        # the pipeline it was about is green, or another push started another wait
+        got = team_note(n)
+        if got and n.get("run_id"):
+            out.setdefault(str(n["run_id"]), []).append(got)
+    for o in outbox:
+        got = outbox_note(o)
+        if got and o.get("run_id"):
+            out.setdefault(str(o["run_id"]), []).append(got)
+    return out
+
+
 def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[dict[str, Any]],
                   park: Any, notes: list[dict[str, Any]] | None = None) -> None:
     """Team mode: the ledger's run state and its decisions (brain-kit's states). A run id reserved while the signer
@@ -479,13 +513,13 @@ def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[
 
 def runner_takes(f: dict[str, Any] | None, row: dict[str, Any] | None, runner_row: dict[str, Any]) -> bool:
     """Team mode lists each requirement once. One the runner's ledger has a run of is the runner's (its facts win:
-    this machine's row is what it saw last), unless this machine's run of it was never handed over (taken back), or
-    its run is over by both counts (merged or closed): then its repo's row reads the merge, the 14 days after it and
-    the write-back into the Brain, which the ledger does not."""
+    this machine's row is what it saw last), unless this machine's run of it is not the runner's (on_runner: never
+    handed over, or taken back), or its run is over by both counts (merged or closed): then its repo's row reads the
+    merge, the 14 days after it and the write-back into the Brain, which the ledger does not."""
     if f is None or row is None:
         return True
     run = f.get("run") or {}
-    if run and not run.get("handoff"):
+    if run and not on_runner(run):
         return False
     ended = ("merged", "closed")
     return not (runner_row["state"] in ended and row["state"] in ended)
@@ -533,6 +567,19 @@ def overlap_pairs(rows: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict
     return out
 
 
+def own_rows(rows: list[dict[str, Any]], me: dict[str, str | None]) -> list[dict[str, Any]]:
+    """A person's 交付总览 (a personal install): their own requirements (*me*: repo id -> who they are there), the ones
+    nobody owns yet (a claim filed for anyone, a small requirement nobody took: whoever starts one has it), and the
+    small requirements of their big ones, whoever builds them (its parts). A repo where the app cannot tell who they are
+    keeps every row: the page says it cannot tell. Everyone's requirements are the 团队运行机 tab's (状态中转)."""
+    def mine(r: dict[str, Any]) -> bool:
+        return r.get("owner") == me.get(r["repo"])
+    big = {(r["repo"], r["key"]) for r in rows
+           if me.get(r["repo"]) and mine(r) and (r.get("family") or {}).get("role") == "parent"}
+    return [r for r in rows if not me.get(r["repo"]) or not r.get("owner") or mine(r)
+            or ((r.get("family") or {}).get("role") == "child" and (r["repo"], (r.get("family") or {}).get("parent")) in big)]
+
+
 def overlaps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The overlapping pairs as 交付总览 lists them, each row told the keys it shares a path with (its ``overlap``)."""
     out = []
@@ -548,10 +595,10 @@ ANSWERED = ("answered", "delivered", "delivery_unknown", "refused")   # brain-ki
 
 def questions_asked(f: dict[str, Any], mr: dict[str, Any] | None) -> dict[str, int]:
     """Person mode: the questions a requirement stopped and asked a person, {asked, answered, delivered}: the bridge's
-    D-n on its MR once handed over (one not posted, or that could not be asked, is not counted), else its local
-    park.json."""
+    D-n on its MR once the runner has it (on_runner; one not posted, or that could not be asked, is not counted), else
+    its local park.json."""
     out = {"asked": 0, "answered": 0, "delivered": 0}
-    if (f.get("run") or {}).get("handoff"):
+    if on_runner(f.get("run")):
         for q in (mr or {}).get("questions") or []:
             if q.get("state") in ("invalid",) + NOT_POSTED:
                 continue
@@ -697,6 +744,44 @@ def evaluate(repo_path: str, cfg: dict[str, Any], ref: str | None, credits: dict
                                     "src": str(x.get("src") or "")}
                                    for x in f.get("unclassified") or [] if isinstance(x, dict)][:100]}
     return view, funnel
+
+
+def flow_stage(row: dict[str, Any]) -> str | None:
+    """The column of 需求流动 a requirement is in, in 交付总览's words (FLOW_STAGES; ui/src/cto/Flow.tsx colOf, held to
+    the same cases by ui/src/test/stage-cases.json): its state first (a hand-over, refused or not, is 交给运行机 whatever
+    Lean's stage), else Lean's stage by its AI-DLC number: 需求 before 2.6 应用设计, 设计 before 3.5 代码生成, 构建 before
+    ✓ 发布, then 发布 · 验收. A small requirement is in 构建 until it is handed over, a split big one in 构建 while its
+    small ones are built. A fast run (its flow has no Lean intent) is in 构建 until its MR is open, then in 发布 · 验收,
+    where people review and merge it. None for one closed or merged into its big one."""
+    st = row["state"]
+    if st in ("closed", "merged_into_parent"):
+        return None
+    if st == "merged":
+        return "已合并"
+    if row.get("flow") and not row["flow"]["intent"]:
+        return "发布 · 验收" if row.get("mr") else "构建"
+    if st == "acceptance":
+        return "发布 · 验收"
+    if st == "unclaimed":
+        return "构建"
+    n = str((row.get("lean") or {}).get("stage_n") or "")
+    fam = row.get("family") or {}
+    runner = st in RUNNER_STATES or (st == "parked" and (row.get("mr") is not None or bool(row.get("run_ids"))))
+    if fam.get("role") == "child" and not runner:
+        return "构建"
+    if runner and not row.get("local_only"):
+        return "交给运行机"
+    if n == "✓" or n.startswith("4."):
+        return "发布 · 验收"
+    if fam.get("role") == "parent":
+        return "发布 · 验收" if fam.get("family_state") == "ready_to_release" else "构建"
+    try:
+        at = float(n) if n else 0.0
+    except ValueError:      # a number Lean's table does not have: past every bound, as Number() makes it NaN
+        at = float("nan")
+    if st == "claimed" or at < 2.6:
+        return "需求"
+    return "设计" if at < 3.5 else "构建"
 
 
 def counts(rows: list[dict[str, Any]]) -> dict[str, int]:
