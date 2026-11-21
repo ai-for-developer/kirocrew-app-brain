@@ -744,12 +744,15 @@ def flow_stage(row: dict[str, Any]) -> str | None:
     the same cases by ui/src/test/stage-cases.json): its state first (a hand-over, refused or not, is 交给运行机 whatever
     Lean's stage), else Lean's stage by its AI-DLC number: 需求 before 2.6 应用设计, 设计 before 3.5 代码生成, 构建 before
     ✓ 发布, then 发布 · 验收. A small requirement is in 构建 until it is handed over, a split big one in 构建 while its
-    small ones are built. None for one closed or merged into its big one."""
+    small ones are built. A fast run (its flow has no Lean intent) is in 构建 until its MR is open, then in 发布 · 验收,
+    where people review and merge it. None for one closed or merged into its big one."""
     st = row["state"]
     if st in ("closed", "merged_into_parent"):
         return None
     if st == "merged":
         return "已合并"
+    if row.get("flow") and not row["flow"]["intent"]:
+        return "发布 · 验收" if row.get("mr") else "构建"
     if st == "acceptance":
         return "发布 · 验收"
     if st == "unclaimed":
