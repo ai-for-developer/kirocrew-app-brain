@@ -108,7 +108,7 @@ const BACK = 1793635080
 const ASKED_2 = 1793636580
 
 const file = (over: Partial<OutFile>): OutFile => ({ path: DESIGN, output: true, status: 'M', added: 7, removed: 1, ref: FIXED, pin: null, base: DRAFT,
-  base_round: 1, vs: [{ round: 1, ref: DRAFT }], why: null, ...over })
+  base_round: 1, vs: [{ round: 1, ref: DRAFT }], why: null, proof: null, ...over })
 
 /** application-design's rounds as GET /outputs lists them: 第 1 轮 the draft, 第 2 轮 the fix (compared with 第 1 轮). */
 const designFiles = (round: number): NodeOutput => ({

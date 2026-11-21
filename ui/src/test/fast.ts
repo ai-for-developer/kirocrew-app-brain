@@ -66,7 +66,7 @@ export function fastDetail(row: Partial<Requirement> = {}): RequirementDetail {
 /** PAY-17's commits (40 hex each), oldest first, and the commit its branch left main at. */
 export const [C1, C2, C3, C4, FORK] = ['c1', 'c2', 'c3', 'c4', 'b0'].map((x) => x.repeat(20))
 const changed = (path: string, status: OutFile['status'], added: number, removed: number, ref: string, base: string | null): OutFile =>
-  ({ path, output: false, status, added, removed, ref, pin: null, base, base_round: null, vs: [], why: null })
+  ({ path, output: false, status, added, removed, ref, pin: null, base, base_round: null, vs: [], why: null, proof: null })
 const commit = (sha: string, at: number, subject: string, files: OutFile[], records = false): CommitOut =>
   ({ sha, at, subject, by: 'person', records_only: records, files, more: 0 })
 

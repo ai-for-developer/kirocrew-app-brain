@@ -20,15 +20,16 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { useAppApi, useNavigate } from '@kirocrew/app-sdk'
 import { POLL_MS, paths, usePoll, useAction } from '../api'
 import { PERSON, boardWho, todoLeft, whoThen, whoWord } from '../board/format'
+import { EvidenceRow } from '../board/Evidence'
 import { isReview, REVIEW_SENDS } from '../board/next'
 import { RoleIcon } from '../board/RoleIcon'
 import { Hit, Mini } from '../cto/charts'
 import { FlowCard, can, flowNow, flowOf, stepLook } from '../flows'
 import { ago, fmtCredits, fmtIso, fmtSpan, fmtTime } from '../format'
-import { VIEW_NAME, type BoardEntry, type ItemEntry } from '../nav'
+import { VIEW_NAME, type BoardEntry, type ItemEntry, type OutAt } from '../nav'
 import type {
-  CheckCell, Credits, Decision, FastTime, LeanPhase, OpenSessionBody, OpenSessionResult, ReqBoard, RequirementDetail, SessionRow, Stage,
-  WaitDo, WaitWho, Waits,
+  CheckCell, Credits, Decision, Evidence, FastTime, LeanPhase, OpenSessionBody, OpenSessionResult, ReqBoard, RequirementDetail,
+  SessionRow, Stage, WaitDo, WaitWho, Waits,
 } from '../types'
 import { APPROVAL_META, Icon, LoadState, MrLink, STAGE_META, StateChip, TYPE_IT_YOURSELF, isOpenQuestion } from '../ui'
 import {
@@ -63,6 +64,7 @@ export const DETAIL_CSS = `
 .br-detail .br-now-say code { font-weight: 700; color: var(--text-strong); user-select: all; overflow-wrap: anywhere; flex: 1 1 260px; }
 .br-detail .br-now-act { gap: 8px; }
 .br-detail .br-now-act a.kt-btn { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+.br-detail .br-now-proof { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; align-items: baseline; padding-top: 8px; border-top: 1px dashed var(--border); }
 .br-detail .br-claimed-text { font-size: 1.7em; font-weight: 800; color: var(--text-strong); line-height: 1.25; margin: 4px 0 0; }
 .br-detail .cto-item-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .br-detail .cto-item-cards > .cto-card { container-type: inline-size; }
@@ -362,7 +364,8 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
       <section className="br-detail-head" aria-label="需求">
         <Header x={x} localOnly={localOnly} />
         <NowBar x={x} now={now} at={at} live={live} canOpen={canOpen} repo={entry.repo} reqKey={entry.key}
-          onStart={onStart} onAnswer={() => scrollTo('问题和回答')} onBrain={() => props.go({ kind: 'brain', repo: entry.repo, reflect: entry.key })} />
+          onStart={onStart} onAnswer={() => scrollTo('问题和回答')} onBrain={() => props.go({ kind: 'brain', repo: entry.repo, reflect: entry.key })}
+          proof={board?.accept.state === 'waiting' ? board.proof : null} onProof={(out) => toBoard({ out })} />
         {(canOpen || opened) && <OpenSession repo={entry.repo} reqKey={entry.key} opened={opened} onOpened={onOpened} />}
         {live && sessionsHere && x.row.worktree && <ReopenSession repo={entry.repo} reqKey={entry.key} live={live} onOpened={after} />}
         <Handover x={x} repo={entry.repo} reqKey={entry.key} localOnly={localOnly} onDone={after} />
@@ -519,7 +522,7 @@ function Claimed({ x, now, at, onStart }: { x: RequirementDetail; now: Now; at: 
  * 此刻: who it waits on, since when, what to do and where — with the step's button right there. A local run's
  * approval is a line the person types themselves (复制那一行, 打开会话); once handed over, it is an answer on the MR.
  */
-function NowBar({ x, now, at, live, canOpen, repo, reqKey, onStart, onAnswer, onBrain }: {
+function NowBar({ x, now, at, live, canOpen, repo, reqKey, onStart, onAnswer, onBrain, proof, onProof }: {
   x: RequirementDetail
   now: Now
   at: number
@@ -530,6 +533,10 @@ function NowBar({ x, now, at, live, canOpen, repo, reqKey, onStart, onAnswer, on
   onStart: () => void
   onAnswer: () => void
   onBrain: () => void
+  /** 证据 while the board says it waits for its acceptance (or the release approval): what to accept it by */
+  proof: Evidence | null
+  /** a chip: 运行过程 with its 产出 drawer at that round and file */
+  onProof: (at: OutAt) => void
 }) {
   const navigate = useNavigate()
   const line = useCopy(now.line ?? '')
@@ -634,6 +641,12 @@ function NowBar({ x, now, at, live, canOpen, repo, reqKey, onStart, onAnswer, on
         {waited && <span className="br-dim">已等 {waited}</span>}
       </div>
       {body}
+      {proof && (
+        <div className="br-now-proof" data-testid="now-proof">
+          <span className="cto-eyebrow">证据</span>
+          <EvidenceRow proof={proof} onOpen={onProof} />
+        </div>
+      )}
       {acts && <div className="br-row br-now-act">{acts}</div>}
     </section>
   )

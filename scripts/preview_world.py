@@ -82,6 +82,7 @@ crewcheck = importlib.import_module("_brainapp_backend.core.crewcheck")
 repo_mod = importlib.import_module("_brainapp_backend.core.repo")
 progress = importlib.import_module("_brainapp_backend.core.progress")
 outputs = importlib.import_module("_brainapp_backend.core.outputs")
+evidence = importlib.import_module("_brainapp_backend.core.evidence")
 turns_mod = importlib.import_module("_brainapp_backend.core.turns")
 sessions_mod = importlib.import_module("_brainapp_backend.core.sessions")
 mrinfo = importlib.import_module("_brainapp_backend.core.mrinfo")
@@ -142,25 +143,29 @@ class DrawerRepo:
     commits with the backend's own code. Every commit has fixed names and dates and no global config: its sha is the
     same on every run."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, files: dict[str, str] | None = None) -> None:
+        """*files*: what the default branch holds besides its README (the project's lean.json)."""
         self.path = path
         path.mkdir(parents=True)
         self.git("init", "-q", "-b", "main")
-        self.commit(T0 - 30 * D, "shop-pay", {"README.md": "# shop-pay\n"})
+        self.commit(T0 - 30 * D, "shop-pay", {"README.md": "# shop-pay\n", **(files or {})})
 
     def git(self, *a: str, env: dict | None = None) -> str:
         e = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", **(env or {}))
         return subprocess.run(["git", "-C", str(self.path), "-c", "commit.gpgsign=false", "-c", "core.hooksPath=" + os.devnull, *a],
                               check=True, capture_output=True, text=True, env=e).stdout.strip()
 
-    def commit(self, at: float, subject: str, files: dict[str, str | None]) -> str:
+    def commit(self, at: float, subject: str, files: dict[str, str | bytes | None]) -> str:
         for rel, text in files.items():
             f = self.path / rel
             if text is None:
                 f.unlink()
                 continue
             f.parent.mkdir(parents=True, exist_ok=True)
-            f.write_text(text, encoding="utf-8")
+            if isinstance(text, bytes):
+                f.write_bytes(text)
+            else:
+                f.write_text(text, encoding="utf-8")
         self.git("add", "-A")
         date = "@%d +0000" % int(at)
         who = {"NAME": "alice", "EMAIL": "alice@example.com", "DATE": date}
@@ -209,7 +214,8 @@ class Req:
         self.team: str | None = None        # a small requirement's Lean team (its unit), on each of its records
         self.release_sha: str | None = None
         self.scratch: DrawerRepo | None = None  # the 产出 drawer's: its commits are made for real
-        self.texts: dict[str, list[tuple[float, str]]] = {}    # each document's versions, as the story writes them
+        # each document's versions, as the story writes them (bytes: a file verify's evidence check left)
+        self.texts: dict[str, list[tuple[float, str | bytes]]] = {}
         self.code: dict[str, dict[str, str | None]] = {}       # a commit's files by its subject, when the story says them
         self.committed: dict[str, str] = {}                     # each document as its last real commit holds it
         # (stage, unit) -> the versions its document goes through, each a text or made from the Req when written
@@ -225,7 +231,7 @@ class Req:
     def doc(self, sid: str, unit: str | None = None) -> str:
         return "aidlc-docs/%s/%s" % (self.intent, stage_table.BY_ID[sid].doc.format(unit=unit or ""))
 
-    def write(self, at: float, path: str, text: str) -> None:
+    def write(self, at: float, path: str, text: str | bytes) -> None:
         """A document as it stands from *at* (its sha256 is what Lean records for it from then)."""
         self.texts.setdefault(path, []).append((at, text))
 
@@ -238,7 +244,7 @@ class Req:
 
     def hash_at(self, path: str | None, at: float) -> str | None:
         got = [x for t, x in self.texts.get(path or "", []) if t <= at]
-        return hashlib.sha256(got[-1].encode()).hexdigest() if got else None
+        return hashlib.sha256(got[-1] if isinstance(got[-1], bytes) else got[-1].encode()).hexdigest() if got else None
 
     def head(self, at: float) -> str | None:
         """The newest commit of the run branch at *at*."""
@@ -334,11 +340,12 @@ class Req:
     def blocked(self, at: float, gate: str, path: str) -> None:
         self._lean(at, "BLOCKED", gate=gate, path=path, tool="fs_write")
 
-    def verify(self, at: float, results: list[tuple[str, int]]) -> None:
+    def verify(self, at: float, results: list[tuple[str, int]], sealed: dict[str, str] | None = None) -> None:
         """`lean verify`: each check's exit, time and output hash, the commit it ran on, the summary it wrote (a fast
-        run has no intent, so no summary)."""
+        run has no intent, so no summary). *sealed*: what an evidence check printed (its set's output.txt), by check:
+        the hash Lean records for it."""
         res = [{"cmd": c, "exit": e, "secs": round(3 + int(sha(self.key, c, at)[:2], 16) / 8, 1),
-                "output_sha256": h64(self.key, c, at)} for c, e in results]
+                "output_sha256": (sealed or {}).get(c) or h64(self.key, c, at)} for c, e in results]
         if not self.intent:
             self._lean(at, "VERIFY", ok=all(e == 0 for _, e in results), fingerprint=h64(self.key, "fp", at), results=res,
                        base_commit=self.head(at), branch=self.branch)
@@ -894,6 +901,23 @@ def board_later(r: Req, row: dict, **kw) -> None:
     LATER["%s/%s" % (r.repo, r.key)] = (r, row, dict(kw, credits=cost, counted=counted))
 
 
+NO_COMMITS: list[DrawerRepo] = []      # world(): a repository none of the requirements' commits are in
+
+
+def proof_of(r: Req, f: dict, nodes: list) -> dict:
+    """The 证据 row as service._evidence makes it, at the run's newest commit: bind() reads the requirement's scratch
+    repository, and for one without, a repository that has none of its commits (so its records alone say whether its
+    verify keeps evidence)."""
+    intent = (f.get("run") or {}).get("intent")
+    if not bk.has("proof"):
+        return evidence.empty(evidence.NO_MODULE)
+    if not intent or not r.commits:
+        return evidence.empty(evidence.NO_RUN)
+    events, clone, units = evidence.scope(f)
+    tip = r.commits[-1]["sha"]
+    return evidence.row(evidence.read(str((r.scratch or NO_COMMITS[0]).path), tip, intent, events, clone, units), nodes, tip)
+
+
 def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessions: list | None = None,
              decisions: list | None = None, local_only: bool = False, kit_rows: list | None = None, reflect: list | None = None,
              mr: dict | None = None, me: str | None = "alice", mr_desc: dict | None = None, questions: list | None = None,
@@ -911,16 +935,17 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
     subjects = {c["sha"]: c["subject"] for c in r.commits}
     sessions = sessions or []
     live = live_of(sessions)
+    kept = keep if keep is not None else {}
     kits = board.kit_cells(kit_rows or [], "/Users/alice/workplace/%s" % {"r1": "shop-pay", "r3": "shop-order", "r4": "shop-tools"}.get(r.repo, ""))
     fast = fast_of(r, f)
     if fast is not None:
         g = fastboard.board(f, row, t, mr=mr, app_events=r.app, subjects=subjects, changes=changes(r), default_branch="main",
-                            local_only=local_only, kit_rows=kits, decisions=decisions or [], me=me, fast=fast, fold=keep)
+                            local_only=local_only, kit_rows=kits, decisions=decisions or [], me=me, fast=fast, fold=kept)
     else:
         g = board.build(f, row, t, mr=mr, sessions=sessions, app_events=r.app, team_decisions=team_decisions or [], subjects=subjects,
                         changes=changes(r),
                         reflect_refs=reflect or [], default_branch="main", local_only=local_only, kit_rows=kits,
-                        decisions=decisions or [], brain=brain, me=me, now=T0, fold=keep, live_slot=(live or {}).get("slot"))
+                        decisions=decisions or [], brain=brain, me=me, now=T0, fold=kept, live_slot=(live or {}).get("slot"))
     return {"at": T0, "row": row, "branch": row.get("branch"), "base": "main", "started_at": g["started_at"], "ended_at": g["ended_at"],
             "live": g["live"], "person": g["person"], "phases": g["phases"], "nodes": g["nodes"], "runs": g["runs"], "relays": g["relays"], "other_runs": g["other_runs"],
             "events": g["events"], "lean_steps": g["lean_steps"], "belt": g["belt"], "checks": g["checks"],
@@ -928,6 +953,7 @@ def snapshot(r: Req, row: dict, *, brain: dict, park: dict | None = None, sessio
             "decisions": decisions or [], "questions": questions or [],
             "mr_desc": mr_desc or {"available": True, "text": "", "first": None, "source": None, "path": None, "ref": None,
                                    "error": "还没开工：开工以后才有变更说明"},
+            "proof": proof_of(r, f, kept["nodes"]),
             "sessions": sessions if counted is None else [{k: x.get(k) for k in SESSION_KEYS} for x in counted],
             "live_slot": (live or {}).get("slot"), "credits": credits or cost_of([], None),
             "source": "trace" if t else "app", "error": "", "missing": g["missing"], "rollup": board.rollup(t),
@@ -1157,7 +1183,8 @@ def drawer_payloads(r: Req, rid: str, keep: dict) -> dict[str, dict]:
             listed = outputs.node_output(f, outputs.node_query(n.id, str(rnd.n)))
             put(base, {"node": n.id, "round": str(rnd.n)}, lambda: listed)
             for x in listed["files"]:
-                ways = [("source", None)] + [("diff", b) for b in dict.fromkeys([x["base"]] + [v["ref"] for v in x["vs"]])]
+                ways = [("source", None)] + [("diff", b) for b in dict.fromkeys([x["base"]] + [v["ref"] for v in x["vs"]])] + (
+                    [("image", None)] if x["path"].lower().endswith((".png", ".jpg", ".jpeg")) else [])
                 for view, b in ways if x["ref"] else []:
                     q = {"ref": x["ref"], "path": x["path"], "view": view, "base": b, "pin": x["pin"]}
                     put(base + "/file", q, lambda q=q: outputs.file_view(f, outputs.file_query(q)))
@@ -1186,6 +1213,9 @@ def main() -> None:
 
 def world(scratch: Path) -> None:
     """The world and the fixtures; *scratch* holds the 产出 drawer's git repositories while they are made."""
+    if (BRAINKIT / "brainkit" / "__init__.py").is_file():
+        bk.load(str(BRAINKIT))
+    NO_COMMITS.append(DrawerRepo(scratch / "no-commits"))
     ov = json.loads((FIX / "overview.json").read_text(encoding="utf-8"))
     ov["eval"]["raw"] = ""                                             # deliveries.evaluate: brain-kit's own words
     for r_ in ov["funnel"]["rows"]:                                    # who settled them, in vocab.ts's words
@@ -1194,6 +1224,7 @@ def world(scratch: Path) -> None:
     status = json.loads((FIX / "status.json").read_text(encoding="utf-8"))
     status["crew"]["rows"] = crew_rows()
     status["crew"]["fix"] = {"agent": True, "engine": False}
+    status["brainkit"]["modules"]["proof"] = True
     for r_ in ov["rows"] + [det["row"]]:
         r_.setdefault("home", None)                                     # deliveries.base_row: a runner row's only
         r_.setdefault("progress_pushed_at", None)                       # service._row: this machine's last push
@@ -1594,7 +1625,7 @@ def world(scratch: Path) -> None:
         return T0 - ((16 * 60 + 15) - (int(h_) * 60 + int(m_))) * M
     p9 = Req("r1", "PAY-9", "退款通知短信", "alice", "refund-sms", "261108-refund-sms", project="shop/shop-pay")
     wt9 = "/Users/alice/workplace/brain-app/shop-pay/refund-sms"
-    p9.scratch = DrawerRepo(scratch / "PAY-9")
+    p9.scratch = DrawerRepo(scratch / "PAY-9", {"aidlc-docs/lean.json": json.dumps(preview_docs.PAY9_LEAN, indent=2) + "\n"})
     preview_docs.pay9(p9)
     p9.claim_at, p9.start_at = at9("09:40"), at9("10:05")
     p9.app += [app_event(p9.start_at, "在 app 里开工", "工作区 %s，分支 %s" % (wt9, p9.branch)),
@@ -1623,13 +1654,19 @@ def world(scratch: Path) -> None:
     p9.draft(at9("10:52") + 30, "units")
     p9.commit(at9("10:53"), "person", "PAY-9：拆成 api 和 web", records=True, short="6d20f4b", paths=(p9.doc("units"),))
     p9.stage(at9("10:54"), "units", "done", note="拆成 api 和 web 两个单元")
+    plan9 = "aidlc-docs/%s/construction/web/proof-plan.md" % p9.intent
+    p9.write(at9("11:00"), plan9, preview_docs.PAY9_PROOF_PLAN)
     p9.commit(at9("11:01"), "person", "PAY-9：交接说明", files=1, records=True)
     p9.handoff(at9("11:05"), short="e7d2b11")
     p9.accepted(at9("11:07"), 53, "RUN-PAY-9-1")
     p9.clone("teamrunner", 1)
-    pass_all = [("pytest -q", 0), ("ruff check .", 0), ("python -m mypy src", 0)]
-    pass_note = "verify PASS: 3 checks on code fingerprint %s"
-    p9.verify(at9("11:10"), pass_all)
+    pass_all = [(c, 0) for c, _ in preview_docs.PAY9_PASS]
+    pass_note = "verify PASS: 4 checks on code fingerprint %s"
+    kit = bk.m("proof").kit() if bk.has("proof") else None
+
+    def verify9(at: float) -> None:
+        p9.verify(at, pass_all, preview_docs.pay9_proof(p9, at, kit) if kit else None)
+    verify9(at9("11:10"))
     p9.stage(at9("11:10") + 1, "build-and-test", "done", note=pass_note % sha("PAY-9", "fp", 1)[:8])
     for k, u in enumerate(("api", "web")):
         for j, sid in enumerate(("functional-design", "nfr-design", "infrastructure-design")):
@@ -1645,7 +1682,7 @@ def world(scratch: Path) -> None:
     p9.draft(at9("12:19") + 30, "code-generation", "web")
     p9.commit(at9("13:03"), "bot", "web 的退款短信入口", files=5, short="c41b7d9")
     p9.stage(at9("13:04"), "code-generation", "done", unit="web", note="web：退款详情页能看到短信发了没有")
-    p9.verify(at9("13:08"), pass_all)
+    verify9(at9("13:08"))
     p9.stage(at9("13:08") + 1, "build-and-test", "done", note=pass_note % sha("PAY-9", "fp", 2)[:8])
     p9.draft(at9("13:19"), "review")
     p9.commit(at9("13:20"), "bot", "审查（review.md）", records=True, paths=(p9.doc("review"),))
@@ -1663,15 +1700,16 @@ def world(scratch: Path) -> None:
     p9.commit(at9("15:02"), "bot", "按 D-2 改：旧订单不发短信", files=2, short="4a7b9c1")
     for verified, released, fixed, subject, short in (("15:05", "15:06", "15:30", "修好 CI：api 的 lint", "2e8d1f6"),
                                                        ("15:33", "15:34", "16:08", "修好 CI：web 的类型检查", "9f3c2a8")):
-        p9.verify(at9(verified), pass_all)
+        verify9(at9(verified))
         p9.stage(at9(verified) + 1, "build-and-test", "done", note=pass_note % sha("PAY-9", "fp", verified)[:8])
         p9.draft(at9(released), "release")
         p9.stage(at9(released), "release", "started")
         asked9.append(p9.commit(at9(released) + 50, "bot", "请批发布", records=True, paths=rel_files))
         p9.request(at9(released) + 70, "RELEASE")
         p9.commit(at9(fixed), "bot", subject, files=1 if "api" in subject else 2, short=short)
-    p9.verify(at9("16:10"), pass_all)
+    verify9(at9("16:10"))
     p9.stage(at9("16:10") + 1, "build-and-test", "done", note=pass_note % sha("PAY-9", "fp", 5)[:8])
+    p9.write(at9("16:11"), plan9, preview_docs.PAY9_PROOF_PLAN_P4)
     p9.draft(at9("16:11"), "release")
     p9.stage(at9("16:11"), "release", "started")
     asked9.append(p9.commit(at9("16:12"), "bot", "请批发布", records=True, paths=rel_files))
@@ -2114,6 +2152,7 @@ def world(scratch: Path) -> None:
     (FIX / "todo.json").write_text(json.dumps(tj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     st = json.loads((FIX / "status.json").read_text(encoding="utf-8"))   # as read: the world changed its crew rows
     st["crew"]["rows"] = crew_rows()                                        # … but in the backend's words
+    st["brainkit"]["modules"]["proof"] = True
     for r_ in st["repos"]:
         r_["error"] = NO_KIT if "还没装 brain-kit" in r_["error"] else r_["error"]
     st["counts"]["todo"] = len(tj["items"])                             # /status counts the very list /todo answers

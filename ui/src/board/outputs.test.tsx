@@ -18,7 +18,7 @@ const [R1, R3, R4] = ['a', 'c', 'd'].map((x) => x.repeat(40))
 
 const file = (over: Partial<OutFile>): OutFile => ({
   path: RELEASE, output: true, status: 'M', added: 6, removed: 4, ref: R4, pin: null, base: R3, base_round: 3,
-  vs: [{ round: 3, ref: R3 }, { round: 1, ref: R1 }], why: null, ...over,
+  vs: [{ round: 3, ref: R3 }, { round: 1, ref: R1 }], why: null, proof: null, ...over,
 })
 
 const listed: NodeOutput = {

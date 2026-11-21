@@ -65,13 +65,13 @@ describe('the AI-DLC Lean card and the graph say the same next step', () => {
 })
 
 describe('检查通过 counts the latest verify, not the whole wall', () => {
-  test('PAY-9: 3/3 of its fifth verify, the ring the same; the wall still counts its gates and the hand-over', () => {
+  test('PAY-9: 4/4 of its fifth verify (its evidence checks among them), the ring the same; the wall still counts its gates and the hand-over', () => {
     const b = worldBoard('r1/PAY-9')
-    expect(b.checks.total).toBeGreaterThan(3)
+    expect(b.checks.total).toBeGreaterThan(4)
     page(b)
-    expect(screen.getByTestId('br-checks-counter')).toHaveAccessibleName('检查通过 3/3')
+    expect(screen.getByTestId('br-checks-counter')).toHaveAccessibleName('检查通过 4/4')
     expect(screen.getByTestId('br-checks-say')).toHaveTextContent('第 5 轮 · 5 轮都过')
-    expect(screen.getByTestId('kt-station')).toHaveAccessibleName('检查 3/3')
+    expect(screen.getByTestId('kt-station')).toHaveAccessibleName('检查 4/4')
   })
 
   test('PAY-2: its second verify passed after the first failed', () => {

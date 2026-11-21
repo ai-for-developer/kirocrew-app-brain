@@ -51,6 +51,14 @@ describe('运行过程 of a fast run (快速)', () => {
     expect(screen.getByTestId('kt-conveyor')).toBeInTheDocument()
   })
 
+  test('merged, its 验收 card names no 证据: verify seals evidence under a Lean intent, which a fast run never has', async () => {
+    const b = merging()
+    renderBoard({ ...b, accept: { ...b.accept, state: 'merged' } })
+    const card = await screen.findByTestId('br-accept')
+    expect(within(card).queryByText('证据')).toBeNull()
+    expect(within(card).getByText('合并前由人确认：变更、决定、检查')).toBeInTheDocument()
+  })
+
   test('写代码 opens its 产出 (a click or Enter), 自动检查 goes to the check wall', async () => {
     const user = userEvent.setup()
     const p = renderBoard()

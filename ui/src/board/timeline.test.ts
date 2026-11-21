@@ -398,7 +398,7 @@ describe('decisionStops: where the replay holds', () => {
 
 describe('the 产出 drawer at a moment', () => {
   const file = (over: Partial<OutFile>): OutFile => ({ path: 'x.md', output: false, status: 'M', added: 1, removed: 0, ref: null, pin: null, base: null,
-    base_round: null, vs: [], why: null, ...over })
+    base_round: null, vs: [], why: null, proof: null, ...over })
   const sha = (s12: string) => s12 + '0'.repeat(28)
   const DESIGN_DRAFT = '8bde8a1833b8' // committed at 1793633700
   const FIXED = 'f843e8d2a8f6' // committed at 1793636460

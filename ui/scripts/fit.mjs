@@ -28,6 +28,7 @@ const VIEWS = [
   ['运行过程 PAY-17 产出', 'view=board&repo=r1&key=PAY-17&out=code&commit=cc204952eaa7&file=shop/coupon.py'],
   ['运行过程 PAY-18', 'view=board&repo=r1&key=PAY-18'],
   ['运行过程 PAY-9 产出', 'view=board&repo=r1&key=PAY-9&out=release&round=3'],
+  ['运行过程 PAY-9 证据', `view=board&repo=r1&key=PAY-9&out=build-and-test&round=5&file=${encodeURIComponent('aidlc-docs/261108-refund-sms/construction/build-and-test/proof/teamrunner-35faab/ui/web-P-3.png')}`],
   ['开需求', 'view=new&repo=r1'],
   ['开需求 r3', 'view=new&repo=r3'],
   ['Brain', 'view=brain&repo=r1'],

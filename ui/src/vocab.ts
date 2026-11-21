@@ -155,7 +155,7 @@ export const missingSourceName = (raw: string): string => MISSING_SOURCE.find(([
 
 /** brain-kit's optional modules (Status.brainkit.modules) → what they do for a person */
 export const MODULE_NAME: Record<string, string> = {
-  trace: '需求时间线', evaluate: '交付评估', golden: '标准考题', intents: '需求来源', mrdesc: '变更说明',
+  trace: '需求时间线', evaluate: '交付评估', golden: '标准考题', intents: '需求来源', mrdesc: '变更说明', proof: '证据',
 }
 
 /** kit.json tracker → one word (设置, 导入仓库) */

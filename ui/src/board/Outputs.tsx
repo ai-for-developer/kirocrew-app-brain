@@ -34,7 +34,7 @@ import { RoleIcon } from './RoleIcon'
 import { filesAt, turnsAt, type Moment } from './timeline'
 import { SessionPane } from './Turns'
 
-type Mode = 'content' | 'source' | 'diff'
+type Mode = 'content' | 'source' | 'diff' | 'image'
 
 const TURNS_LIVE_MS = 4000
 
@@ -78,6 +78,12 @@ function fileGroups(codeFirst: boolean, files: OutFile[]): [string, OutFile[]][]
   return [['代码改动', others.filter((f) => !isRecord(f.path)).sort(biggestFirst)], ['约定它交的', declared],
     ['其他改动', others.filter((f) => isRecord(f.path))]]
 }
+
+/** a name that may be a picture: the backend shows it as one only when its first bytes are a PNG's or a JPEG's */
+const isPicture = (p: string): boolean => /\.(png|jpe?g)$/i.test(p)
+
+/** the only pictures the page draws: the backend's data: URL of a PNG or a JPEG */
+const PICTURE_RE = /^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/]+=*$/
 
 /** What the round was about, above its files: sent back (who, the D-n, never their words), asked for, changed after
  * the request, its checks red, approved. */
@@ -139,19 +145,30 @@ function CauseBanner({ r, board }: { r: Round; board: ReqBoard }) {
   )
 }
 
+/** how a piece of evidence went, in its tone: ✓, or the backend's mark (没看到, 没拍成) */
+function ProofMark({ proof }: { proof: NonNullable<OutFile['proof']> }) {
+  if (!proof.result) return null
+  const ok = proof.result === 'ok'
+  return <span className={`kt-frow-mark tone-${ok ? 'ok' : proof.result === 'failed' ? 'bad' : 'idle'}`}>{ok ? '✓' : proof.mark}</span>
+}
+
 function FileRow({ f, on, onPick }: { f: OutFile; on: boolean; onPick: () => void }) {
   const p = shortPath(f.path)
   const cut = p.lastIndexOf('/') + 1
   return (
     <li>
-      <button type="button" className={`kt-frow${on ? ' is-on' : ''}${f.ref ? '' : ' is-missing'}`} onClick={onPick} title={f.path} aria-pressed={on} data-testid="out-file">
+      <button type="button" className={`kt-frow${on ? ' is-on' : ''}${f.ref ? '' : ' is-missing'}`} onClick={onPick} title={f.proof ? `${f.proof.label}\n${f.path}` : f.path}
+        aria-pressed={on} data-testid="out-file">
         <span className={`kt-file-st is-${f.status}`}>{f.status}</span>
-        {/* a long path cuts its folders, never the file's own name */}
-        <span className="kt-frow-path kt-file-path is-split"><span className="kt-file-dir">{p.slice(0, cut)}</span><span className="kt-file-base">{p.slice(cut)}</span></span>
-        <span className="kt-frow-num">
-          {f.added !== null && <span className="kt-add">+{f.added}</span>}
-          {!!f.removed && <span className="kt-del"> −{f.removed}</span>}
-        </span>
+        {f.proof ? <span className="kt-frow-path">{f.proof.label}</span>
+          // a long path cuts its folders, never the file's own name
+          : <span className="kt-frow-path kt-file-path is-split"><span className="kt-file-dir">{p.slice(0, cut)}</span><span className="kt-file-base">{p.slice(cut)}</span></span>}
+        {f.proof ? <ProofMark proof={f.proof} /> : (
+          <span className="kt-frow-num">
+            {f.added !== null && <span className="kt-add">+{f.added}</span>}
+            {!!f.removed && <span className="kt-del"> −{f.removed}</span>}
+          </span>
+        )}
       </button>
     </li>
   )
@@ -177,23 +194,27 @@ function FileList({ groups, pick, onPick, more, children }: {
  * its body (keyed by the file and its version: another one starts in its own default mode). */
 function FilePane({ repo, reqKey, f, version, asked }: { repo: string; reqKey: string; f: OutFile; version: string; asked: boolean }) {
   const doc = isDoc(f.path)
-  const [mode, setMode] = useState<Mode>(doc ? 'content' : 'diff')
+  const pic = isPicture(f.path)
+  // evidence opens whole (a command's output as it printed it), any other file at its change
+  const [mode, setMode] = useState<Mode>(pic ? 'image' : doc ? 'content' : f.proof ? 'source' : 'diff')
   const [vs, setVs] = useState<string | null>(f.base)
   const diff = mode === 'diff'
-  const fv = usePoll<FileView>(f.ref ? paths.outputsFile(repo, reqKey, { ref: f.ref, base: diff ? vs : null, path: f.path, view: diff ? 'diff' : 'source', pin: f.pin }) : null, 0)
+  const view = diff ? 'diff' : mode === 'image' ? 'image' : 'source'
+  const fv = usePoll<FileView>(f.ref ? paths.outputsFile(repo, reqKey, { ref: f.ref, base: diff ? vs : null, path: f.path, view, pin: f.pin }) : null, 0)
   const vsRound = f.vs.find((v) => v.ref === vs)?.round ?? null
   const v = fv.data
   return (
     <div className="kt-fview" data-testid="out-view">
       <div className="kt-fview-bar">
         <span className="kt-fview-path">{f.path}</span>
-        {f.added !== null && <span className="kt-add">+{f.added}</span>}
-        {f.removed !== null && <span className="kt-del">−{f.removed}</span>}
+        {f.added !== null && !f.proof && <span className="kt-add">+{f.added}</span>}
+        {f.removed !== null && !f.proof && <span className="kt-del">−{f.removed}</span>}
         {f.ref && <span className="kt-fview-at" data-testid="out-at">{version}</span>}
         {asked && v?.asked && <span className="kt-asked" data-testid="out-asked" title={`请批${gateWhat(v.asked.kind)}时 Lean 记下的指纹 ${v.asked.sha8}`}>✋ 就是请批的那一版 · {v.asked.sha8}</span>}
         {f.ref && (
           <span className="kt-seg" role="group" aria-label="怎么看">
-            <button type="button" className={`kt-btn is-small${mode === 'source' ? ' is-on' : ''}`} aria-pressed={mode === 'source'} onClick={() => setMode('source')}>源码</button>
+            {pic ? <button type="button" className={`kt-btn is-small${mode === 'image' ? ' is-on' : ''}`} aria-pressed={mode === 'image'} onClick={() => setMode('image')}>图片</button>
+              : <button type="button" className={`kt-btn is-small${mode === 'source' ? ' is-on' : ''}`} aria-pressed={mode === 'source'} onClick={() => setMode('source')}>源码</button>}
             {doc && <button type="button" className={`kt-btn is-small${mode === 'content' ? ' is-on' : ''}`} aria-pressed={mode === 'content'} onClick={() => setMode('content')}>内容</button>}
             <button type="button" className={`kt-btn is-small${diff ? ' is-on' : ''}`} aria-pressed={diff} onClick={() => setMode('diff')}>
               改动{vsRound ? `（和第 ${vsRound} 轮比）` : ''}
@@ -209,10 +230,16 @@ function FilePane({ repo, reqKey, f, version, asked }: { repo: string; reqKey: s
           ))}
         </div>
       )}
+      {f.proof && (
+        <p className="kt-fview-proof" data-testid="out-proof">
+          {f.proof.label}{f.proof.result && <> <ProofMark proof={f.proof} /></>}{f.proof.note && <span className="kt-dim"> · {f.proof.note}</span>}
+        </p>
+      )}
       <div className="kt-fview-body">
         {!f.ref ? <p className="kt-pad kt-dim" data-testid="out-why">{f.why}</p>
           : fv.error ? <p className="kt-pad" role="alert" data-testid="out-error">{fv.error}</p>
           : !v ? <p className="kt-pad kt-dim">读取中…</p>
+          : v.image && PICTURE_RE.test(v.image) ? <figure className="kt-fview-img"><img src={v.image} alt={f.proof?.label ?? f.path} data-testid="out-image" /></figure>
           : v.binary ? <p className="kt-pad kt-dim">二进制文件：这里不显示</p>
           : <FileBody v={v} mode={mode} />}
       </div>

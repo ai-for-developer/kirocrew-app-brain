@@ -9,8 +9,10 @@ reflect, sign, cli, intake.package, bridge.handoff, bridge.decisions, bridge.run
 fast, and every rule that differs by flow: the app keeps no copy of one), riskpaths and ci (a fast run's changes are
 judged against the risk paths as brain-ci judges them).
 Optional ones, added while this app was written, are guarded: trace, evaluate, golden, intents, mrdesc, split
-(0d52e97: brain split, claim, start --key, sync; without it the 大需求 features are off). A missing or
-broken optional module turns its feature off (``has()``), with the import error kept for the page.
+(0d52e97: brain split, claim, start --key, sync; without it the 大需求 features are off), proof (证据: which evidence
+`lean verify` sealed and whether it is of the code under review; without it the 证据 row says the brain-kit is too old
+and the 产出 drawer lists no evidence). A missing or broken optional module turns its feature off (``has()``), with the
+import error kept for the page.
 The public interfaces of brain-kit 72b278e are required too (NEEDS: the spool signer, the answer verifier bound to
 the recorded question note, the question's first line, the hand-over commit rule, run reservations (``signing``) and
 pending vouchers, the agent-spec hook functions, GitLab's MR versions and commits; 72b278e: the edit signal, i.e.
@@ -36,7 +38,7 @@ PKG = "_brainapp_brainkit"
 REQUIRED = ("common", "config", "claims", "runrec", "lean", "entries", "brainlint", "usage", "reflect", "sign", "cli",
             "rest", "intake.package", "bridge.handoff", "bridge.decisions", "bridge.runnerd", "bridge.ledger", "flows",
             "riskpaths", "ci")
-OPTIONAL = ("trace", "evaluate", "golden", "intents", "mrdesc", "split")   # split: brain-kit 0d52e97
+OPTIONAL = ("trace", "evaluate", "golden", "intents", "mrdesc", "split", "proof")   # split: brain-kit 0d52e97
 CANDIDATES = ("~/brain-kit", "~/warren_ws/brain-kit", "~/workplace/brain-kit", "/opt/brain-kit")
 # The brain-kit a release ships inside the app (scripts/release.sh puts it there; a dev checkout has none).
 BUNDLED = Path(__file__).resolve().parents[2] / "vendor" / "brain-kit"
@@ -50,7 +52,7 @@ NEEDS = (("sign", "SpoolSigner"), ("sign", "SignerRefused"), ("sign", "signer_fr
          ("rest", "GitLab.note_edits"), ("flows", "of"), ("flows", "refusals"), ("flows", "policy_at"),
          ("flows", "belongs"), ("flows", "decisions_path"), ("flows", "prepare_clone"), ("flows", "action_problem"),
          ("flows", "Refusal.zh"), ("riskpaths", "hits"), ("ci", "changed_paths"), ("ci", "gitlinks"))
-VERSION_NEEDED = "f5cb2d1"
+VERSION_NEEDED = "b572303"
 
 _lock = threading.RLock()
 _state: dict[str, Any] = {"path": None, "mods": {}, "errors": {}, "error": "", "version": None}

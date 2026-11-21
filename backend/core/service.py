@@ -18,9 +18,9 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import (acts, bk, brainview, crewcheck, deliveries, detail, family, fastboard, fastrow, flowview, identity,
-               importer, inplace, installer, intake, kitmr, landing, lean_view, mrdesc_view, mrinfo, picker, progress,
-               roster)
+from . import (acts, bk, brainview, crewcheck, deliveries, detail, evidence, family, fastboard, fastrow, flowview,
+               identity, importer, inplace, installer, intake, kitmr, landing, lean_view, mrdesc_view, mrinfo, picker,
+               progress, roster)
 from . import outputs as outputs_mod
 from . import problems, stages
 from . import board as board_mod
@@ -172,6 +172,7 @@ class Service:
         self._units: dict[tuple, list] = {}     # the units unit-of-work.md plans, by the commit it is read at
         self._reflects: dict[tuple, tuple] = {}  # (repo, key, default branch) -> (git_stamp, _reflect_refs)
         self._folds: dict[tuple, tuple] = {}    # (repo, key) -> (when, outputs.Fold): the board's last fold, for 产出
+        self._proofs: dict[tuple, Any] = {}     # 证据: bind()'s JSON by what it was read from (_evidence), None: unreadable
         self.who = identity.Who(transport, log=self.log)
         self.families = family.Families()      # brain-kit's listing per repo (大需求 and their 小需求), made in the background
         self.sync = progress.Sync(self.data_dir, self.log)     # pushes at Lean's checkpoints, fetches every few minutes
@@ -1259,13 +1260,42 @@ class Service:
                 "relays": g["relays"], "other_runs": g["other_runs"],
                 "events": g["events"], "lean_steps": g["lean_steps"], "belt": g["belt"], "checks": g["checks"],
                 "accept": g["accept"], "brain": d["brain"], "decisions": d["decisions"], "questions": d["questions"],
-                "mr_desc": d["mr_desc"],
+                "mr_desc": d["mr_desc"], "proof": self._evidence(parts, f, kept["nodes"]),
                 "sessions": d["sessions"], "live_slot": live_slot, "credits": d["credits"], "source": d["timeline"]["source"],
                 "missing": g["missing"], "error": d["timeline"]["error"], "rollup": board_mod.rollup(t),
                 "steps": g.get("steps"),
                 "time": fastboard.time_spent([self.sessions.slot_stats(s["slot"]) for s in d["sessions"]
                                               if s["kind"] == "local"], now=self.now(), until=g["ended_at"])
                 if fast is not None else None}
+
+    def _evidence(self, parts: dict[str, Any], f: dict[str, Any], nodes: list[stages.Node]) -> dict[str, Any]:
+        """证据 (evidence.row): bind()'s JSON at the commit under review (evidence.py says which), read again only when
+        that commit, the requirement's verifies (the only records bind() reads) or the brain-kit changed."""
+        if not bk.has("proof"):
+            return evidence.empty(evidence.NO_MODULE)
+        path, repo, intent = parts.get("path"), parts.get("repo"), (f.get("run") or {}).get("intent")
+        if repo is not None:
+            sha = f.get("tip") or (repo.main_sha() if f.get("where") == "main" else None)
+        else:
+            sha = mrdesc_view.target(Git(path), "HEAD") if path else None
+        if not (path and sha and isinstance(intent, str) and lean_view.INTENT_RE.match(intent)):
+            return evidence.empty(evidence.NO_RUN)
+        events, clone, units = evidence.scope(f)
+        verifies = [e for e in events if e.get("event") == "VERIFY"]
+        last = verifies[-1] if verifies else {}
+        sig = (path, sha, intent, clone, len(verifies), last.get("_file"), last.get("seq"), last.get("ts"),
+               bk.info()["path"])
+        if sig not in self._proofs:
+            try:
+                got = evidence.read(path, sha, intent, events, clone, units)
+            except Exception as exc:  # noqa: BLE001 - a brain-kit that cannot read them: said on the card, not raised
+                self.log.info("brain proof %s at %s: %s", f.get("key"), sha[:12], str(exc).split("\n", 1)[0][:300])
+                got = None
+            if len(self._proofs) > 200:
+                self._proofs.clear()
+            self._proofs[sig] = got
+        got = self._proofs[sig]
+        return evidence.row(got, nodes, sha) if got is not None else evidence.empty(evidence.NOT_READ)
 
     async def board(self, rid: str, key: str) -> dict[str, Any]:
         """运行过程: polled every 2 s; the trace, the facts and the 变更说明 come from their caches."""

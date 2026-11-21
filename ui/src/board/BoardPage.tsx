@@ -354,7 +354,7 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, pus
               <>
                 {!quiet && <NextStep board={board} repo={entry.repo} reqKey={entry.key} onDetail={toDetail} onActed={() => { live.reload(); reloadStatus() }} />}
                 <Kpis key={`${rp.on ? 'replay' : 'live'}`} board={view} run={picked} reducedMotion={reducedMotion} onNode={onNode} onCode={() => toCode()} replaying={rp.on} />
-                {acceptTop && <Accept board={board} onDetail={toDetail} quiet={quiet} />}
+                {acceptTop && <Accept board={board} onDetail={toDetail} onOutputs={toOutputs} quiet={quiet} />}
                 {fam?.role === 'big' && famCard}
                 <div className="kt-body">
                   <div className="kt-col">
@@ -369,7 +369,7 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, pus
                     <Conveyor board={view} fresh={fx.belt} focus={focus} onNode={onNode} onCommit={board.steps ? toCode : undefined} />
                     {(fam?.role === 'parent' || fam?.role === 'child') && famCard}
                     {!board.steps && <Lanes board={view} focus={focus} bumps={fx.bumps} onNode={onNode} quiet={quiet} onOutputs={onOutputs} />}
-                    {!acceptTop && !board.steps && <Accept board={board} onDetail={toDetail} quiet={quiet} />}
+                    {!acceptTop && !board.steps && <Accept board={board} onDetail={toDetail} onOutputs={toOutputs} quiet={quiet} />}
                   </div>
                   <aside className="kt-side" aria-label="检查、问题和事件">
                     <CheckWall board={view} focus={focus} onNode={onNode} flips={fx.flips} onSettings={() => go({ kind: 'settings' })} />

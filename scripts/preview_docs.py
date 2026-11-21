@@ -4,26 +4,44 @@ Each document is a list of versions in the order the story writes them (Req.draf
 requirement when it is written, so release.md and the build-and-test summary name the commit they are for); each
 code commit's files by its subject (Req.code). The emails in release.md's approval table are what Lean writes: the
 drawer shows their pseudonyms.
+
+PAY-9's verifies keep evidence (证据, brain-kit's proof kit): its lean.json wraps the tests in `proof.py run` and adds
+`proof.py shots`, so each verify leaves the tests' whole output and a screenshot of each row of web's evidence plan,
+in the kit's own format, sealed by the output_sha256 the VERIFY records (pay9_proof). The screenshots are real ones
+of a mock of the refund page (preview_shots/, shoot.sh makes them).
 """
 
 from __future__ import annotations
 
 import hashlib
 import time
+from pathlib import Path
 from typing import Any, Callable
 
 PASS = [("pytest -q", "41 秒"), ("ruff check .", "2 秒"), ("python -m mypy src", "9 秒")]
+PAY9_TESTS = "python3 .kiro/brain/proof.py run tests -- pytest -q"
+PAY9_SHOTS = "python3 .kiro/brain/proof.py shots"
+PAY9_PASS = [(PAY9_TESTS, "43 秒"), ("ruff check .", "2 秒"), ("python -m mypy src", "9 秒"), (PAY9_SHOTS, "8 秒")]
+# its lean.json: the checks, and what brain install leaves out of Lean's code fingerprint (the run's own records)
+PAY9_LEAN = {"checks": [c for c, _ in PAY9_PASS], "fingerprint_exclude": ["aidlc-docs/**", ".kiro/**", "runs/**"]}
+SHOTS = Path(__file__).resolve().parent / "preview_shots"
 
 
 def _day(at: float) -> str:
     return time.strftime("%Y-%m-%d", time.gmtime(at))
 
 
-def summary(r: Any, at: float) -> str:
-    n = sum(1 for e in r.events if e["event"] == "VERIFY") + 1
-    rows = "".join("| `%s` | 通过 | %s |\n" % c for c in PASS)
-    return ("# 构建测试（第 %d 次）\n\n- 提交：`%s`\n- 结果：PASS，%d 项检查都过了\n\n| 检查 | 结果 | 用时 |\n|---|---|---|\n%s"
-            % (n, (r.head(at) or "")[:12], len(PASS), rows))
+def summary_of(checks: list[tuple[str, str]]) -> Callable[[Any, float], str]:
+    """build-and-test-summary.md as `lean verify` writes it at *at*, its *checks* all passed."""
+    def make(r: Any, at: float) -> str:
+        n = sum(1 for e in r.events if e["event"] == "VERIFY") + 1
+        rows = "".join("| `%s` | 通过 | %s |\n" % c for c in checks)
+        return ("# 构建测试（第 %d 次）\n\n- 提交：`%s`\n- 结果：PASS，%d 项检查都过了\n\n| 检查 | 结果 | 用时 |\n|---|---|---|\n%s"
+                % (n, (r.head(at) or "")[:12], len(checks), rows))
+    return make
+
+
+summary = summary_of(PASS)
 
 
 def release(units: str, approvals: list[tuple[str, str]], since: list[str], open_items: list[str]) -> Callable[[Any, float], str]:
@@ -124,6 +142,62 @@ PAY9_PLAN_WEB = """# 代码生成计划：web
 - [x] `SmsStatus`：发了、没发成、在发（`SmsStatus.tsx`）
 - [x] 测试：三种状态各一个（`SmsStatus.test.tsx`）
 """
+
+PAY9_PROOF_PLAN = """# 证据计划：web
+
+| ID | AC | 看什么 | 步骤 |
+|---|---|---|---|
+| P-1 | AC-4 | 退款详情页显示「短信已发送」 | open /refunds/R-1001 · wait 短信已发送 |
+| P-2 | AC-2 | 短信内容里有退款金额和预计到账时间 | open /refunds/R-1001 · click 短信内容 · wait 预计 |
+| P-3 | AC-4 | 发送失败的退款显示「短信没发出去」 | open /refunds/R-1002 · wait 短信没发出去 |
+"""
+# added after the last verify: in the plan, not shot yet
+PAY9_PROOF_PLAN_P4 = PAY9_PROOF_PLAN + "| P-4 | AC-5 | 同一笔退款只发一条短信 | open /refunds/R-1001 · wait 已发 1 条 |\n"
+# what each row shows from the given verify on: the page before web's code (its texts are not there yet), then after
+PAY9_SHOWN = [(1, {"P-1": ("before.png", "没等到「短信已发送」（10 秒）"), "P-2": ("before.png", "没找到「短信内容」（10 秒）"),
+                   "P-3": ("before.png", "没等到「短信没发出去」（10 秒）")}),
+              (2, {"P-1": ("sent.png", ""), "P-2": ("preview.png", ""), "P-3": ("sending.png", "没等到「短信没发出去」（10 秒）")})]
+PAY9_PASSED = [(1, 4), (2, 9), (3, 11)]    # tests passed from that verify on (the third has D-2's test)
+
+
+def pay9_proof(r: Any, at: float, K: Any) -> dict[str, str]:
+    """The evidence PAY-9's verify at *at* leaves on the runner (K: brainkit.proof.kit(), the kit's own format): the
+    tests' whole output, and a screenshot of each row of web's plan, in the clone's set folders, as Lean's checks
+    print them; written into the run's files (committed with its next commit, as verify's records are). Returns
+    {check: sha256 of what it printed}, which the VERIFY records."""
+    n = sum(1 for e in r.events if e["event"] == "VERIFY") + 1
+    clone = r.file.rsplit("/", 1)[-1][:-len(".jsonl")]
+    code = K.CodeState(r.head(at), ())
+    plan_path = K.plan_path(r.intent, "web")
+    plan_text = next(x for t, x in reversed(r.texts[plan_path]) if t <= at)
+    plan = K.parse_plan(plan_text.encode("utf-8"), "web", plan_path)
+    shown = next(v for k, v in reversed(PAY9_SHOWN) if n >= k)
+    passed = next(v for k, v in reversed(PAY9_PASSED) if n >= k)
+    sealed = {}
+    tests = K.ProofSet(K.SCHEMA, "tests", K.Kind.RUN, r.intent, clone, 0, code, (), (), "", ())
+    body = ("============================= test session starts ==============================\ncollected %d items\n\n"
+            "services/api/tests/test_notify.py %s [100%%]\n\n============================== %d passed in %.2fs "
+            "==============================\n" % (passed, "." * passed, passed, 3.1 + 0.07 * n))
+    out = K.render_set(body, tests).encode("utf-8")
+    r.write(at, K.set_path(r.intent, clone, "tests") + "/" + K.OUTPUT, out)
+    sealed[PAY9_TESTS] = hashlib.sha256(out).hexdigest()
+    items, lines = [], []
+    for row in plan.rows:
+        name, note = shown[row.id]
+        data = (SHOTS / name).read_bytes()
+        file = "web-%s.png" % row.id
+        r.write(at, K.set_path(r.intent, clone, "ui") + "/" + file, data)
+        items.append(K.Item("web", row.id, row.ac, row.what, tuple(x.text() for x in row.steps), file,
+                            hashlib.sha256(data).hexdigest(), len(data), K.Result.FAILED if note else K.Result.OK, note,
+                            1.8, K.Page("/refunds/R-1001" if row.id != "P-3" else "/refunds/R-1002", "商城后台")))
+        lines.append("%-6s %s %s %s" % ("没看到" if note else "ok", row.id, ",".join(row.ac), note or row.what))
+    ui = K.ProofSet(K.SCHEMA, "ui", K.Kind.SHOTS, r.intent, clone, 0, code, tuple(items),
+                    ((plan.unit, plan.path, plan.sha256),), "Chrome 142.0.0.0 · 800×420", ())
+    out = K.render_set("\n".join(lines), ui).encode("utf-8")
+    r.write(at, K.set_path(r.intent, clone, "ui") + "/" + K.OUTPUT, out)
+    sealed[PAY9_SHOTS] = hashlib.sha256(out).hexdigest()
+    return sealed
+
 
 PAY9_REVIEW = """# 审查：退款通知短信
 
@@ -275,7 +349,7 @@ def pay9(r: Any) -> None:
     r.drafts.update({
         ("requirements", None): [PAY9_REQUIREMENTS], ("application-design", None): [PAY9_DESIGN], ("units", None): [PAY9_UNITS],
         ("code-generation", "api"): [PAY9_PLAN_API], ("code-generation", "web"): [PAY9_PLAN_WEB],
-        ("build-and-test", None): [summary] * 5, ("review", None): [PAY9_REVIEW],
+        ("build-and-test", None): [summary_of(PAY9_PASS)] * 5, ("review", None): [PAY9_REVIEW],
         ("release", None): [release(units, inc, [], opens), release(units, inc, ["旧订单不发短信（D-2 退回了第 1 轮；见 decisions.md 的 D-5）"], opens),
                             release(units, inc, ["旧订单不发短信（D-5）", "修好 CI：api 的 lint"], opens),
                             release(units, inc, ["旧订单不发短信（D-5）", "修好 CI：api 的 lint", "修好 CI：web 的类型检查"], opens)],

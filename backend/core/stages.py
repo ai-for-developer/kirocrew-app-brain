@@ -127,8 +127,18 @@ def label(sid: object) -> str:
     return s.label if s else "一个阶段"
 
 
+# brain-kit's evidence kit as a check: `.kiro/brain/proof.py run <set> -- <command>` keeps a command's whole output,
+# `.kiro/brain/proof.py shots` takes the screenshots (the kit's PROOF_CHECK_RE; tests/test_proof.py keeps them equal)
+PROOF_CHECK_RE = re.compile(r"(?:^|[\s'\"])(?:\./)?\.kiro/brain/proof\.py\s+(run|shots)(?=\s|$)")
+
+
 def check_name(cmd: Any) -> str:
-    """A check's short name: its program (pytest, ruff, npm test; python -m pytest is pytest)."""
+    """A check's short name: its program (pytest, ruff, npm test; python -m pytest is pytest). An evidence check is
+    named by the command it wraps, the screenshots 截图 (brain-kit's word)."""
+    m = PROOF_CHECK_RE.search(str(cmd or ""))
+    if m:
+        wrapped = str(cmd)[m.end():].split(" -- ", 1)
+        return "截图" if m.group(1) == "shots" else check_name(wrapped[1]) if len(wrapped) == 2 else "检查"
     words = [w for w in re.split(r"\s+", str(cmd or "").strip()) if w and not re.match(r"^[A-Z_]+=", w)]
     if not words:
         return "检查"
@@ -216,6 +226,8 @@ class CheckResult:
     cmd: str                 # as Lean ran it; check_name says it short
     ok: bool
     secs: Optional[float]
+    # Lean's sha256 of the check's whole output: an evidence check's set is the one whose output.txt hashes to it
+    output_sha256: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -617,7 +629,8 @@ def _verify_rounds(stage: StageDef, unit: Optional[str], rec: Records) -> List[R
     out: List[Round] = []
     for i, e in enumerate(verifies):
         d, at, run = _data(e), float(e["_at"]), rec.run_of(e)
-        checks = tuple(CheckResult(str(x.get("cmd") or ""), x.get("exit") in (0, None), _secs(x.get("secs")))
+        checks = tuple(CheckResult(str(x.get("cmd") or ""), x.get("exit") in (0, None), _secs(x.get("secs")),
+                                   x["output_sha256"] if SHA256_RE.match(str(x.get("output_sha256") or "")) else None)
                        for x in d.get("results") or [] if isinstance(x, dict))
         prev = out[-1] if out else None
         after_red = prev is not None and prev.end.outcome is Outcome.FAILED
