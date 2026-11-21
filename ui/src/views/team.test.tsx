@@ -509,3 +509,28 @@ describe('运行机', () => {
     expect(apiCalls.filter((c) => c.path === `${API}/team` || c.path === `${API}/team/patrol`)).toHaveLength(0)
   })
 })
+
+describe('运行机: 状态中转', () => {
+  test('one line says where the team’s state goes and when it was written; a write that failed says why and what to do; without it, how to get it', async () => {
+    const tv = fx.team()
+    const t = Math.floor(Date.now() / 1000)
+    tv.status.relay = { project: 'shop/brain-status', written_at: t - 180, heartbeat: true, checked_at: t - 60, error: '', todo: '', raw: '' }
+    installFixtureRoutes({ [`GET ${API}/team`]: () => tv })
+    const { unmount } = render(<TeamPage {...props()} />)
+    expect(await screen.findByTestId('relay-line')).toHaveTextContent('状态中转 shop/brain-status · 3 分钟前写的（没有变化，心跳）')
+    expect(screen.queryByTestId('relay-error')).toBeNull()
+    unmount()
+    tv.status.relay = { project: 'shop/brain-status', written_at: null, heartbeat: false, checked_at: t - 60, error: 'GitLab 不让这个账号写状态项目',
+      todo: '在 GitLab 上把桥的账号加成状态项目的 Maintainer，或者再跑一次一键建运行机', raw: 'POST /projects/shop%2Fbrain-status/repository/commits -> HTTP 403' }
+    const again = render(<TeamPage {...props()} />)
+    expect(await screen.findByTestId('relay-line')).toHaveTextContent('状态中转 shop/brain-status · 还没写过（每 5 分钟最多写一次）')
+    const err = screen.getByTestId('relay-error')
+    expect(err).toHaveTextContent('状态中转没写成：GitLab 不让这个账号写状态项目')
+    expect(err).toHaveTextContent('做什么在 GitLab 上把桥的账号加成状态项目的 Maintainer，或者再跑一次一键建运行机')
+    expect(within(err).getByText(/HTTP 403/).closest('details')).not.toHaveAttribute('open')
+    again.unmount()
+    tv.status.relay = null
+    render(<TeamPage {...props()} />)
+    expect(await screen.findByTestId('relay-line')).toHaveTextContent('状态中转 没配：再跑一次一键建运行机就有')
+  })
+})

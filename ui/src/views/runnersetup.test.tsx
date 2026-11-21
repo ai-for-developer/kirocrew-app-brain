@@ -7,7 +7,7 @@ import { apiCalls } from '../test/stubs/app-sdk'
 import type { Settings, TeamSetup } from '../types'
 import type { ViewProps } from './props'
 import { BOT_FIRST, BOT_HINT, BRIDGE_FIRST, BRIDGE_HINT, JENKINS_HINT, keptSaid, MODE_HINT, OPTIONAL_TOKEN_HINT, PATROL_HINT,
-  ROLES_HINT_NO_TOKEN, RunnerSetupCard, TOKEN_FIRST, TOKEN_HINT } from './RunnerSetup'
+  ROLES_HINT_NO_TOKEN, RunnerSetupCard, STATUS_HINT, TOKEN_FIRST, TOKEN_HINT } from './RunnerSetup'
 import { SETUP_POINTER, SettingsView } from './Settings'
 
 /** The setup before any run: every step todo, nothing typed yet. */
@@ -117,6 +117,33 @@ describe('一键建运行机', () => {
     await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
     expect(apiCalls.find((c) => c.method === 'POST')?.body).toMatchObject({
       jenkins: { base: 'https://jenkins.example.com', user: 'brain-reader', token: JENKINS_TOKEN } })
+  })
+
+  test('状态中转的项目: empty, it says the default (brain-status in the project’s group) and goes in no post; typed, it is posted', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes({ [`GET ${API}/team/setup`]: () => never(), [`POST ${API}/team/setup`]: () => going() })
+    const first = render(<RunnerSetupCard repos={fx.status().repos} pollMs={60_000} />)
+    const card = await screen.findByRole('region', { name: '一键建运行机' })
+    const status = await within(card).findByLabelText('状态中转的项目')
+    expect(status).toHaveValue('')
+    expect(status).toHaveAttribute('placeholder', '空着：shop/brain-status')
+    expect(status).toHaveAccessibleDescription(STATUS_HINT)
+    await user.type(within(card).getByLabelText('一次性 token'), TOKEN)
+    await user.click(within(card).getByRole('button', { name: '开始建' }))
+    await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).not.toHaveProperty('status_project')
+    first.unmount()
+    const last = never()
+    last.input.status_project = 'ops/team-state'
+    installFixtureRoutes({ [`GET ${API}/team/setup`]: () => last, [`POST ${API}/team/setup`]: () => going() })
+    apiCalls.length = 0
+    render(<RunnerSetupCard repos={fx.status().repos} pollMs={60_000} />)
+    const again = await screen.findByRole('region', { name: '一键建运行机' })
+    await waitFor(() => expect(within(again).getByLabelText('状态中转的项目')).toHaveValue('ops/team-state'))
+    await user.type(within(again).getByLabelText('一次性 token'), TOKEN)
+    await user.click(within(again).getByRole('button', { name: '开始建' }))
+    await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).toMatchObject({ status_project: 'ops/team-state' })
   })
 
   test('while a run goes on, its step in progress is said and the form waits', async () => {

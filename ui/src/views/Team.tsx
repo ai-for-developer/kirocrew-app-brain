@@ -219,6 +219,7 @@ export function TeamPage({ status, go, reloadStatus, pollMs }: ViewProps) {
               <div className="tm-facts">
                 <span>上一轮 <b>{st.last_loop_at ? ago(st.last_loop_at) : '还没跑过'}</b></span>
                 <span>签名 <b>等签名 {st.signer.pending} · 拒签 {st.signer.refused}</b></span>
+                <RelayFact relay={st.relay} />
               </div>
             </div>
             <span className="br-grow" />
@@ -227,6 +228,13 @@ export function TeamPage({ status, go, reloadStatus, pollMs }: ViewProps) {
             </button>
           </div>
           {st.error && <StartError st={st} />}
+          {st.relay?.error && (
+            <div className="tm-loop-error" data-testid="relay-error">
+              <p className="br-bad-text"><b>状态中转没写成：</b>{st.relay.error}</p>
+              <span className="tm-do"><b>做什么</b>{st.relay.todo}</span>
+              {st.relay.raw && <details className="br-raw"><summary>细节</summary><pre>{st.relay.raw}</pre></details>}
+            </div>
+          )}
           {st.loop_error && (
             <div className="tm-loop-error" data-testid="loop-error">
               <p className="br-bad-text"><b>上一轮有一步没成：</b>{failedSteps(st.loop_error).join('、')}</p>
@@ -309,6 +317,14 @@ export function TeamPage({ status, go, reloadStatus, pollMs }: ViewProps) {
       )}
     </main>
   )
+}
+
+/** 状态中转 in one line: where the bridge's rounds write the team's state for every person's app, and when they last
+ * did; without a status project in bridge.json, how one gets there. */
+function RelayFact({ relay }: { relay: TeamStatus['relay'] }) {
+  if (!relay) return <span data-testid="relay-line" title="团队的状态写进 GitLab，每个人的 app 用自己的令牌读">状态中转 <b className="br-dim">没配：再跑一次一键建运行机就有</b></span>
+  const when = relay.written_at ? `${ago(relay.written_at)}写的${relay.heartbeat ? '（没有变化，心跳）' : ''}` : '还没写过（每 5 分钟最多写一次）'
+  return <span data-testid="relay-line" title={`团队的状态写在 GitLab 的 ${relay.project}，每个人的 app 用自己的令牌读`}>状态中转 <b>{relay.project}</b> · <b>{when}</b></span>
 }
 
 /** Why the bridge did not start: what is wrong and what to do in the backend's words (problems.team_start), the error
@@ -462,8 +478,9 @@ function Handovers({ rows, at }: { rows: TeamHandover[]; at: number | null }) {
 }
 
 /** MR 巡检: every open MR its last round looked at, the ones at work first: what it has to fix, its state in words with
- * why it waits or is left alone, and its session. */
-function Patrol({ view, openSession }: { view: TeamPatrol; openSession: (slot: string) => void }) {
+ * why it waits or is left alone, and its session (on the team server only: a person's 团队运行机 shows the team
+ * server's snapshot of it, without sessions). */
+export function Patrol({ view, openSession }: { view: TeamPatrol; openSession?: (slot: string) => void }) {
   const rows = [...view.items].sort((a, b) => patrolRank(a.state) - patrolRank(b.state))
   const on = view.projects.filter((p) => p.on).map((p) => p.project)
   return (
@@ -482,7 +499,7 @@ function Patrol({ view, openSession }: { view: TeamPatrol; openSession: (slot: s
       ) : (
         <div className="br-scroll">
           <table className="cto-table tm-runs">
-            <thead><tr><th>MR</th><th>要修的</th><th>状态</th><th>会话</th></tr></thead>
+            <thead><tr><th>MR</th><th>要修的</th><th>状态</th>{openSession && <th>会话</th>}</tr></thead>
             <tbody>
               {rows.map((i) => {
                 const m = patrolMeta(i.state)
@@ -506,13 +523,15 @@ function Patrol({ view, openSession }: { view: TeamPatrol; openSession: (slot: s
                         {why && <span className="tm-state-hint">{why}</span>}
                       </span>
                     </td>
-                    <td>
-                      {i.slot ? (
-                        <button type="button" className="br-btn is-small" onClick={() => openSession(i.slot as string)}>
-                          <Icon name="MessageSquare" size={13} />{ACT.openSession}
-                        </button>
-                      ) : <span className="br-dim">—</span>}
-                    </td>
+                    {openSession && (
+                      <td>
+                        {i.slot ? (
+                          <button type="button" className="br-btn is-small" onClick={() => openSession(i.slot as string)}>
+                            <Icon name="MessageSquare" size={13} />{ACT.openSession}
+                          </button>
+                        ) : <span className="br-dim">—</span>}
+                      </td>
+                    )}
                   </tr>
                 )
               })}

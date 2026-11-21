@@ -27,6 +27,13 @@ export const SETUP_POLL_MS = 1000
 export const TOKEN_HINT = '只用这一次：建令牌、标签和 MR，用完就丢，不存到任何地方。要有 api 权限，你在项目里要是 Maintainer 或 Owner。'
 export const ROLES_HINT = '填 GitLab 用户名，几个人用逗号隔开；空着就是 token 的主人。安全和数据两个角色也是 token 的主人。'
 export const SAME_USER_NOTE = '签名服务、app 和 AI 的会话都用这台机器的同一个系统用户：签名挡不住 app 自己，只适合试用。'
+export const STATUS_HINT = '团队服务器每几分钟把运行机和全队交付的状态写进这个 GitLab 项目（私有），每个人的 app 用自己的 GitLab 令牌读，不用连服务器。空着就用第一个项目的组下面的 brain-status；没有就用一次性 token 建，桥的账号能写，项目的人都能读。'
+/** 状态中转's project when none is typed: brain-status in the first project's group (backend/core/team/setup.py) */
+export const statusDefault = (f: { mode: SetupMode; project: string; projects: string }): string => {
+  const first = (f.mode === 'bot-account' ? names(f.projects)[0] : f.project.trim()) ?? ''
+  const group = first.includes('/') ? first.slice(0, first.lastIndexOf('/')) : ''
+  return group ? `空着：${group}/brain-status` : '空着：第一个项目的组下面的 brain-status'
+}
 export const PATROL_HINT = '运行机每一轮看这个项目所有开着的 MR，以前开的也算：流水线没过、评审意见没回、和目标分支有冲突的，派 brain-patrol 去修，同时最多 2 个。交接过来的 MR 还是交接那边管。'
 export const JENKINS_HINT = 'MR 的流水线在 Jenkins 上跑的话填：巡检用这个只读用户（要有 Overall/Read 和 Job/Read）读没过的构建的日志。地址写这台机器连得上的。token 存在这台机器上，再跑一次时空着就用上次存的。不用 Jenkins 就空着。'
 export const TOKEN_FIRST = '先填一次性 token：它只用这一次，不存'
@@ -59,7 +66,7 @@ export const STEP_LOOK: Record<SetupStepStatus, { glyph: string; word: string; t
 }
 
 type Push = 'ssh' | 'token'
-interface Form { mode: SetupMode; base: string; project: string; projects: string; product: string; builder: string; patrol: boolean; push: Push; jenkinsBase: string; jenkinsUser: string }
+interface Form { mode: SetupMode; base: string; project: string; projects: string; product: string; builder: string; patrol: boolean; push: Push; jenkinsBase: string; jenkinsUser: string; statusProject: string }
 
 const names = (s: string) => s.split(/[,，、\s]+/).map((x) => x.trim()).filter(Boolean)
 
@@ -79,6 +86,7 @@ function formOf(s: TeamSetup, repos: RepoInfo[]): Form {
     push: s.input.push === 'token' ? 'token' : 'ssh',
     jenkinsBase: s.input.jenkins.base,
     jenkinsUser: s.input.jenkins.user,
+    statusProject: s.input.status_project,
   }
 }
 
@@ -134,7 +142,8 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
     const jenkins = f.jenkinsBase.trim()
       ? { jenkins: { base: f.jenkinsBase.trim(), user: f.jenkinsUser.trim(), token: jenkinsToken.trim() } }
       : {}
-    const common = { gitlab_base: f.base.trim(), roles: { product: names(f.product), builder: names(f.builder) }, patrol: f.patrol, ...jenkins }
+    const common = { gitlab_base: f.base.trim(), roles: { product: names(f.product), builder: names(f.builder) }, patrol: f.patrol, ...jenkins,
+      ...(f.statusProject.trim() ? { status_project: f.statusProject.trim() } : {}) }
     if (f.mode === 'project-token') return { ...common, project: f.project.trim(), admin_token: token.trim() }
     return {
       ...common, mode: 'bot-account', projects: names(f.projects), push: f.push,
@@ -257,6 +266,12 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
               <input id="rs-jenkins-token" type="password" className="br-mono" autoComplete="off" spellCheck={false} value={jenkinsToken}
                 aria-describedby="rs-jenkins-hint" onChange={(e) => setJenkinsToken(e.target.value)} />
               <p className="br-hint" id="rs-jenkins-hint">{JENKINS_HINT}</p>
+            </div>
+            <div className="br-field">
+              <label htmlFor="rs-status">状态中转的项目</label>
+              <input id="rs-status" type="text" className="br-mono" value={form.statusProject} spellCheck={false} aria-describedby="rs-status-hint"
+                placeholder={statusDefault(form)} onChange={(e) => edit({ statusProject: e.target.value })} />
+              <p className="br-hint" id="rs-status-hint">{STATUS_HINT}</p>
             </div>
           </fieldset>
           {!ran && (

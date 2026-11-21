@@ -1,7 +1,8 @@
 /**
  * 测试环境报错 on 运行机 (GET /team/staging): the errors the runner found in the test environment's log, a short list
  * with the ones at work first: each one's signature, how many times it was seen, its state in words with why it waits
- * or was left to people, its Issue, the MR that brought it in and the fix's MR, and its session.
+ * or was left to people, its Issue, the MR that brought it in and the fix's MR, and its session (on the team server
+ * only: a person's 团队运行机 shows the team server's snapshot of it, without sessions).
  */
 import { ago } from '../format'
 import type { StagingLink, StagingState, TeamStaging } from '../types'
@@ -29,7 +30,7 @@ function MrOf({ what, link }: { what: string; link: StagingLink }) {
   return <span title={link.title || undefined}>{what} <ExtLink href={link.url} className="tm-mr">!{link.iid}</ExtLink></span>
 }
 
-export function StagingErrors({ view, openSession }: { view: TeamStaging; openSession: (slot: string) => void }) {
+export function StagingErrors({ view, openSession }: { view: TeamStaging; openSession?: (slot: string) => void }) {
   const rows = [...view.items].sort((a, b) => rank(a.state) - rank(b.state) || b.last_seen - a.last_seen)
   const shown = rows.slice(0, STAGING_ROWS)
   const on = view.projects.filter((p) => p.on).map((p) => p.project)
@@ -50,7 +51,7 @@ export function StagingErrors({ view, openSession }: { view: TeamStaging; openSe
       ) : (
         <div className="br-scroll">
           <table className="cto-table tm-runs">
-            <thead><tr><th>报错</th><th>次数</th><th>状态</th><th>Issue</th><th>MR</th><th>会话</th></tr></thead>
+            <thead><tr><th>报错</th><th>次数</th><th>状态</th><th>Issue</th><th>MR</th>{openSession && <th>会话</th>}</tr></thead>
             <tbody>
               {shown.map((i) => {
                 const m = stagingMeta(i.state)
@@ -78,13 +79,15 @@ export function StagingErrors({ view, openSession }: { view: TeamStaging; openSe
                         </span>
                       ) : <span className="br-dim">—</span>}
                     </td>
-                    <td>
-                      {i.slot ? (
-                        <button type="button" className="br-btn is-small" onClick={() => openSession(i.slot as string)}>
-                          <Icon name="MessageSquare" size={13} />{ACT.openSession}
-                        </button>
-                      ) : <span className="br-dim">—</span>}
-                    </td>
+                    {openSession && (
+                      <td>
+                        {i.slot ? (
+                          <button type="button" className="br-btn is-small" onClick={() => openSession(i.slot as string)}>
+                            <Icon name="MessageSquare" size={13} />{ACT.openSession}
+                          </button>
+                        ) : <span className="br-dim">—</span>}
+                      </td>
+                    )}
                   </tr>
                 )
               })}
