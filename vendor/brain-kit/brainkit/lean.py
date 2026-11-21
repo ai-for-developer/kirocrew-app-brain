@@ -47,10 +47,27 @@ def version(repo) -> str:
     """VERSION of the AI-DLC Lean installed in `repo` ('' when there is none or it cannot be read)."""
     try:
         with open(os.path.join(repo, SCRIPT), encoding="utf-8", errors="replace") as f:
-            m = re.search(r'^VERSION = "([^"\n]+)"', f.read(), re.M)
+            return version_in(f.read())
     except OSError:
         return ""
+
+
+def version_in(text) -> str:
+    """VERSION of an aidlc_lean.py text ('' when it has none)."""
+    m = re.search(r'^VERSION = "([^"\n]+)"', text or "", re.M)
     return m.group(1) if m else ""
+
+
+def _release(version_text) -> tuple:
+    return tuple(int(n) for n in re.findall(r"[0-9]+", version_text or "")[:3])
+
+
+NO_INTENT_SINCE = (0, 3, 2)     # the Lean that has `lean use --none`
+
+
+def holds_no_intent(version_text) -> bool:
+    """Has this Lean version `lean use --none`?"""
+    return _release(version_text) >= NO_INTENT_SINCE
 
 
 def version_matches(have, pin) -> bool:
@@ -62,6 +79,14 @@ def call(repo, *args, check=True):
     if not installed(repo):
         raise BrainError("AI-DLC Lean is not installed here (run `brain install --lean <path>`)")
     return run([sys.executable, SCRIPT] + list(args), cwd=repo, check=check)
+
+
+def use_none(repo) -> None:
+    """`lean use --none` in this clone: no active intent, not even the only intent folder. BrainError in Lean's words
+    when it refuses (regulated mode; a Lean older than 0.3.2 reads --none as an intent name)."""
+    p = call(repo, "use", "--none", check=False)
+    if p.returncode != 0:
+        raise BrainError("AI-DLC Lean refused `use --none`: %s" % (p.stdout + p.stderr).strip())
 
 
 # Run by open_requests with the project's own Lean on sys.path: Lean's rules, executed, never copied.
@@ -221,8 +246,7 @@ def team_key(name) -> str:
 def same_team(repo, a, b) -> bool:
     """Would the Lean installed in `repo` read a and b as one team? 0.3.1 on compares team names through team_key
     (`web-ui` is `web_ui`); 0.3.0 compared the Owner team cell as written."""
-    have = tuple(int(n) for n in re.findall(r"[0-9]+", version(repo))[:3])
-    return team_key(a) == team_key(b) if have >= (0, 3, 1) else a == b
+    return team_key(a) == team_key(b) if _release(version(repo)) >= (0, 3, 1) else a == b
 
 
 def team_next_steps(text: str, team: str) -> list:

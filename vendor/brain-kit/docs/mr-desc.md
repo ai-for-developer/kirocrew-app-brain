@@ -40,6 +40,19 @@ brain mr-desc KEY --json       # 结构化数据（给 KiroCrew app 用）
 - MR.md 不算在它自己描述的改动里，所以写入、提交、再生成，内容不变。
 - 拆出来的小需求（`brain split`）：decisions.md 和 requirements.md 是整个 intent 共用的。小需求的说明只列它自己的提交写的那些行（git blame，和 `brain trace` 一样）：决定、假设、提案和缺口；「用到的条目」只算它这个单元的页面（和 `brain usage` 一样）。大需求和兄弟需求写的不算它的。
 
+## 快速需求（run.json 的 `mode: fast`）
+
+快速需求没有 Lean intent，说明换一种写法（`mrdesc._build_fast`、`_render_fast`）。数据还是 `schema: 1`，Lean 才有的部分是空的，另有 `"flow": "fast"` 和 `commits`。
+
+- 开头：快速模式，没走 Lean 的需求、设计和审批，改动由提交前的 verify、CI 和审 MR 的人把关。
+- 改了什么：和完整流程一样。改到风险目录时写明快速需求不能合并它，要转完整流程（`brain full`）。
+- 提交：这个需求自己的提交（不含合并提交），最多 20 条。
+- 证据：这个分支最近一次 `lean verify`（VERIFY 记录不带 intent，按 `data.branch` 认，`flows.belongs`）；CI 看 MR 的流水线。
+- 关键决定、Brain：读 `runs/<KEY>/decisions.md`（`flows.decisions_path`；`brain reflect` 也从这里读）。
+- 怎么审、还没有：和完整流程一样；只会缺「还没跑 verify」和「还没有提交的改动」。
+
+`brain mr` 每次推送都用它设 MR 的描述，不写 `runs/<KEY>/MR.md`。`brain mr-desc` 照样能打出来。
+
 ## 前提：`runs/` 不能算进 Lean 的代码指纹
 
 Lean 把 `fingerprint_exclude`（默认只有 `aidlc-docs/**`、`.kiro/**`）以外的文件都当代码。`runs/<KEY>/MR.md` 和 `park.json` 默认都算。verify 之后写它们，Lean 就认为代码改了：提交被拦，`lean release` 要重来。

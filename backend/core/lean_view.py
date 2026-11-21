@@ -106,6 +106,11 @@ def epoch(ts: Any) -> float | None:
 
 def events(read: Reader, ls: Lister, intent: str) -> list[dict[str, Any]]:
     """The intent's ledger records of every clone, oldest first (a torn or foreign line is skipped)."""
+    return events_where(read, ls, lambda rec: rec.get("intent") == intent)
+
+
+def events_where(read: Reader, ls: Lister, keep: Callable[[dict[str, Any]], bool]) -> list[dict[str, Any]]:
+    """The ledger records of every clone that *keep* takes, oldest first: a run's own (flowview.belongs)."""
     out = []
     for path in sorted(p for p in ls(DOCS + "/audit") if p.endswith(".jsonl")):
         raw = read(path)
@@ -116,7 +121,7 @@ def events(read: Reader, ls: Lister, intent: str) -> list[dict[str, Any]]:
                 rec = json.loads(line)
             except ValueError:
                 continue
-            if isinstance(rec, dict) and rec.get("intent") == intent:
+            if isinstance(rec, dict) and keep(rec):
                 rec["_at"] = epoch(rec.get("ts"))
                 rec["_file"] = path
                 out.append(rec)

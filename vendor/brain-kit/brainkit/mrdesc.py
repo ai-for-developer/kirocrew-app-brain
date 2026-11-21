@@ -41,9 +41,9 @@ import sys
 import types
 import urllib.parse
 
-from . import ci, lean, proof, reflect, runrec, usage
+from . import ci, claims, flows, lean, proof, reflect, runrec, usage
 from . import trace as T
-from .common import JIRA_RE, USER_RE, BrainError, git, plain
+from .common import JIRA_RE, USER_RE, BrainError, git, parse_branch, plain
 from .intake import checks
 
 SCHEMA = 1
@@ -78,7 +78,7 @@ KIND_LABEL = {"clarify": "澄清", "design": "设计", "plan": "计划", "accept
 APPROVER = {"IDEATION": "产品", "REQUIREMENTS": "产品", "DESIGN": "Builder", "PLAN": "Builder", "RELEASE": "产品"}
 MISSING_DOC = {"IDEATION": "还没写构想文档（initiative-brief.md）", "REQUIREMENTS": "还没有 requirements.md", "DESIGN": "还没写 application-design.md",
                "PLAN": "还没有代码生成计划", "RELEASE": "还没跑 lean release"}
-LIMIT = {"ac": 12, "decisions": 10, "assumptions": 8, "open_items": 5, "groups": 8, "code": 8, "risky": 5,
+LIMIT = {"commits": 20, "ac": 12, "decisions": 10, "assumptions": 8, "open_items": 5, "groups": 8, "code": 8, "risky": 5,
          "proposals": 5, "gaps": 3, "not_doing": 5, "approvals": 6, "findings": 3, "evidence": 5}
 # evidence gaps the 证据 line, the AC table or 「怎么审」 already say; the rest go into 「还没有」
 EVIDENCE_SAID = ("no_proof_check", "missed", "old", "unknown")
@@ -1086,6 +1086,9 @@ def build(repo, cfg, key, base=None, ref=None, credits=None, vouchers_dir=None, 
         raise BrainError("%s is not valid JSON" % rp)
     if not isinstance(rec, dict):
         raise BrainError("%s is not an object" % rp)
+    flow = flows.of(rec)
+    if not flow.intent:
+        return _build_fast(repo, cfg, key, tree, rec, flow, base)
     intent, child, clone = _scope(rec)
     owner = rec.get("owner") if isinstance(rec.get("owner"), str) and USER_RE.match(rec["owner"]) else None
     branch = rec.get("branch") if plain(rec.get("branch")) else None
@@ -1265,6 +1268,76 @@ def build(repo, cfg, key, base=None, ref=None, credits=None, vouchers_dir=None, 
         "missing": missing,
         "src": {"run": "%s (%s)" % (rp, tree.label), "lean": "%s/audit/*.jsonl" % lean.DOCS,
                 "records": docs, "trace": "brainkit.trace.build" if tr else None},
+    }
+    data["pointers"] = _pointers(data)
+    return data
+
+
+FAST_RISK_NOTE = {"state": "fast", "text": "快速需求不能改风险目录，CI 会拦下这个 MR：转完整流程（`brain full`，或 Brain 应用里的「转完整流程」），"
+                                       "设计阶段和桥签的 DESIGN 批准会跟着来；别为了过检查把改动撤掉",
+             "short": "快速需求不能合并它，CI 会拦：转完整流程"}
+
+
+def _fast_commits(repo, ch) -> list:
+    """The run's own commits in the diff, oldest first (merges left out)."""
+    if not ch:
+        return []
+    log = git(repo, "log", "--reverse", "--no-merges", "--format=%H%x00%s", "%s..%s" % (ch["base"], ch["tip"])).stdout
+    return [{"sha": sha[:10], "subject": _one(subject, 100)}
+            for sha, _, subject in (line.partition("\0") for line in log.splitlines())]
+
+
+def _build_fast(repo, cfg, key, tree, rec, flow, base) -> dict:
+    """build()'s data for a run without a Lean intent: SCHEMA's keys with the Lean-only parts empty, plus "flow" and
+    the run's own "commits". The evidence is the newest VERIFY of the run's branch (flows.belongs); decisions.md is
+    where flows.decisions_path says (runs/<KEY>/decisions.md)."""
+    owner = rec.get("owner") if isinstance(rec.get("owner"), str) and USER_RE.match(rec["owner"]) else None
+    branch = rec.get("branch") if plain(rec.get("branch")) else None
+    vs = [e for e in _events(tree, None) if e.get("event") == "VERIFY" and flows.belongs(flow, rec, e)]
+    v = _verify(vs, tree, None) if vs else None
+    current, why = _verify_state(repo, tree, v, _lean_cfg(tree), cfg["runs_dir"]) if v else (None, None)
+    missing = [] if v else ["还没跑 verify"]
+    ch, why_no_changes = _changes(repo, cfg, key, tree, base, rec=rec)
+    if why_no_changes:
+        missing.append(why_no_changes)
+    elif not ch["files"]:
+        missing.append("和 %s 比，还没有提交的改动" % ch["base_label"])
+    if ch and ch["risk"]:
+        ch["risk"]["design"] = dict(FAST_RISK_NOTE)
+    dec_path = flows.decisions_path(flow, rec, cfg["runs_dir"])
+    dec_text = tree.read(dec_path)
+    proposals, pprobs = reflect.parse(dec_text or "")
+    gaps, gprobs = reflect.parse_gaps(dec_text or "")
+    claim = claims.read(repo, key)
+    title = claim.get("title") if isinstance(claim, dict) and plain(claim.get("title")) else None
+    data = {
+        "schema": SCHEMA, "flow": flow.value, "key": key, "ref": tree.label, "intent": None, "owner": owner,
+        "branch": branch, "family": None,
+        "title": _one(title or (parse_branch(branch or "", cfg["branch_prefix"]) or {}).get("slug", "").replace(
+            "-", " "), 80) or None,
+        "where": {"stage": None, "handed_over": False, "merged": (ch or {}).get("merged"), "handoff_at": None,
+                  "waiting": None, "released": False},
+        "size": None, "goal": None, "goal_first": None, "not_doing": [], "plans": [], "acceptance": [],
+        "verify": dict(v, current=current, why=why) if v else None,
+        "proof": None,
+        "changes": ch,
+        "commits": _fast_commits(repo, ch),
+        "decisions": _decisions(dec_text, cfg.get("bot_users") or [], set()),
+        "assumptions": [], "open_items": [], "release_written": False, "park": None,
+        "approvals": {"recorded": [], "missing": [], "design_skipped": False, "released": False},
+        "review": None,
+        "brain": {"cited": sorted(set(usage.CITE_RE.findall(usage.strip_proposals(dec_text or "")))),
+                  "stale": [], "unknown": [],
+                  "proposals": [{"file": _one(p.fields.get("file"), 20), "type": _one(p.fields.get("type"), 20),
+                                 "rel": _one(p.rel + (" " + p.target if p.target else ""), 40),
+                                 "text": _one(p.body, 80), "src": [_one(s, 40) for s in p.src]} for p in proposals],
+                  "gaps": [{"title": _one(g.title, 80), "kind": _one(g.kind, 20)} for g in gaps],
+                  "problems": len(pprobs) + len(gprobs)},
+        "cost": None,
+        "audit_broken": [],
+        "missing": missing,
+        "src": {"run": "%s/%s/run.json (%s)" % (cfg["runs_dir"], key, tree.label), "lean": "%s/audit/*.jsonl" % lean.DOCS,
+                "records": dec_path, "trace": None},
     }
     data["pointers"] = _pointers(data)
     return data
@@ -1458,9 +1531,138 @@ def _more(n, where) -> str:
     return "- 另有 %d 条，见 %s。" % (n, where)
 
 
+def _verify_md(v) -> list:
+    """The newest verify in one line (and a protected-test change), or that there is none."""
+    out = []
+    if v:
+        checks = ""
+        if v["checks"] is not None:
+            checks = "，%d 条检查%s" % (v["checks"], "全过" if not v["failed"] else "，没过：" + "、".join(
+                "`%s`（exit %s）" % (f["cmd"].replace("`", "'"), f["exit"]) for f in v["failed"][:3]))
+        state = {True: "，之后代码没变", False:"；**verify 之后又改了代码**（%s）" % (v["why"] or "指纹对不上"),
+                 None: "；%s" % (v["why"] or "没法核对现在的代码")}[v["current"]] if v["fingerprint"] else ""
+        rounds = "；共跑过 %d 次，没过 %d 次" % (v["rounds"], v["failed_rounds"]) if v["rounds"] and \
+            v["failed_rounds"] else ""
+        out.append("最近一次 verify：%s · %s · 代码指纹 %s%s%s%s。" % (
+            "通过" if v["ok"] else "没过", _when(v["at"]), (v["fingerprint"] or "?")[:8], checks, state, rounds))
+        if v["protected_drift"]:
+            out.append("")
+            out.append("验收测试被改过 %d 处，没经过人允许（Lean 判 verify 没过）。" % v["protected_drift"])
+    else:
+        out.append("还没跑 verify。")
+    return out
+
+
+def _changes_md(d, gate="设计批准") -> list:
+    """改了什么: the diff by folder, the code files, the risk paths and what `gate` says of them (a Lean run: its
+    DESIGN approval)."""
+    out = []
+    ch = d["changes"]
+    if ch and ch["files"] and not ch["code_files"]:
+        out += ["", "### 改了什么", "- 还没改代码；和 %s 比，只有记录：%s。" % (ch["base_label"], "、".join(
+            "%s %d 个" % (_one(g["dir"], 40), g["files"]) for g in ch["groups"]))]
+    elif ch and ch["files"]:
+        out += ["", "### 改了什么",
+                "和 %s 比：%d 个文件，+%d −%d（不含 MR.md 本身）。" % (ch["base_label"], ch["files"], ch["added"],
+                                                          ch["deleted"]),
+                "", "| 目录 | 文件 | 增 | 删 |", "|---|---|---|---|"]
+        for g in ch["groups"][:LIMIT["groups"]]:
+            out.append("| %s%s | %d | +%d | −%d%s |" % (
+                _cell(g["dir"], 40), "（%s）" % g["kind"] if g["kind"] else "", g["files"], g["added"], g["deleted"],
+                "（另有 %d 个二进制）" % g["binary"] if g["binary"] else ""))
+        out.append("")
+        if len(ch["groups"]) > LIMIT["groups"]:
+            out.append(_more(len(ch["groups"]) - LIMIT["groups"], "MR 的 Changes"))
+        if 0 < ch["code_files"] <= LIMIT["code"]:
+            out.append("- 代码文件：%s。" % "、".join("`%s`（%s）" % (
+                c["path"].replace("`", "'"), "二进制" if c["added"] is None else "+%d −%d" % (c["added"], c["deleted"]))
+                for c in ch["code"]))
+        if ch["risk"]:
+            r = ch["risk"]
+            out += ["- 改到 risk path（%s）：%s%s。" % (
+                _one(r["src"], 80), "、".join("`%s`" % _one(f, 80).replace("`", "'")
+                                             for f in r["files"][:LIMIT["risky"]]),
+                "等 %d 个" % len(r["files"]) if len(r["files"]) > LIMIT["risky"] else "")]
+            out.append("- %s：%s。" % (gate, (r.get("design") or {}).get("text", "没查")))
+        if ch["uncommitted"]:
+            out.append("- 另有 %d 个改动没提交（不在 MR 里）。" % ch["uncommitted"])
+    return out
+
+
+def _decisions_md(d) -> list:
+    """关键决定: decisions.md's table, the agent's own decisions first."""
+    out = []
+    if d["decisions"]:
+        decs = d["decisions"]
+        shown = [x for x in decs if x["by"] == "agent"][:LIMIT["decisions"]]
+        shown += [x for x in decs if x not in shown][:max(0, LIMIT["decisions"] - len(shown))]
+        shown.sort(key=lambda x: decs.index(x))
+        out += ["", "### 关键决定", "| ID | 决定 | 为什么 | 谁定的 | Brain |", "|---|---|---|---|---|"]
+        for x in shown:
+            out.append("| %s | %s | %s | %s | %s |" % (x["id"], _cell(x["decision"], 80), _cell(x["why"], 60),
+                                                      _who_text(x), "、".join(x["cites"]) or "—"))
+        out.append("")
+        if len(decs) > len(shown):
+            out.append(_more(len(decs) - len(shown), DECISIONS_DOC))
+    return out
+
+
+def _brain_md(d) -> list:
+    """Brain: the entries the run cites, its stale or unknown citations, its proposals and gaps."""
+    out = []
+    b = d["brain"]
+    bl = []
+    if b["cited"]:
+        bl.append("- 用到的条目：%s" % _ids(b["cited"], 10))
+    if b["stale"]:
+        bl.append("- 引用了已归档的条目（过时知识）：%s" % _ids(b["stale"]))
+    if b["unknown"]:
+        bl.append("- 引用了 Brain 里没有的条目号：%s" % _ids(b["unknown"]))
+    if b["proposals"]:
+        bl.append("- 等 `brain reflect` 的提案 %d 条：" % len(b["proposals"]))
+        bl += ["  - %s %s（%s）：%s" % (x["file"], x["type"], x["rel"], x["text"] or "（没有正文）")
+               for x in b["proposals"][:LIMIT["proposals"]]]
+        if len(b["proposals"]) > LIMIT["proposals"]:
+            bl.append("  " + _more(len(b["proposals"]) - LIMIT["proposals"], DECISIONS_DOC))
+    if b["gaps"]:
+        bl.append("- 缺口（reflect 后成为新需求）：%s" % "；".join("%s（%s）" % (g["title"], g["kind"] or "?")
+                                                       for g in b["gaps"][:LIMIT["gaps"]]))
+    if b["problems"]:
+        bl.append("- %d 个提案或缺口块格式不对（`brain reflect` 会报出来）" % b["problems"])
+    if bl:
+        out += ["", "### Brain"] + bl
+    return out
+
+
+def _end_md(d) -> list:
+    """怎么审, 花费, 还没有 (with the evidence gaps no other part says)."""
+    out = []
+    if d["pointers"]:
+        out += ["", "### 怎么审"] + ["%d. %s" % (i, x) for i, x in enumerate(d["pointers"], 1)]
+
+    if d["cost"]:
+        out += ["", "### 花费", "- credits %s%s（KiroCrew 给的；Kiro 不给 token 数）" % (
+            ("%.4f" % d["cost"]["credits"]).rstrip("0").rstrip("."),
+            "，%d 个回合" % d["cost"]["turns"] if d["cost"]["turns"] else "")]
+
+    gone = list(d["missing"])
+    pr = d.get("proof")
+    said = [g["text"] for g in (pr or {}).get("gaps") or [] if g["kind"] not in EVIDENCE_SAID]
+    gone += [_one(x, 200) for x in said[:LIMIT["evidence"]]]
+    if len(said) > LIMIT["evidence"]:
+        gone.append("另有 %d 条证据的问题（`brain mr-desc --json` 的 proof.gaps）" % (len(said) - LIMIT["evidence"]))
+    if d["audit_broken"]:
+        gone.append("Lean 日志链断了：%s" % "、".join(d["audit_broken"][:3]))
+    if gone:
+        out += ["", "### 还没有"] + ["- %s" % x for x in gone]
+    return out
+
+
 def render(d) -> str:
     """The description in Markdown (Chinese, short plain sentences). Deterministic: the same records give the same
     text; nothing about the time it was made."""
+    if d.get("flow") and not flows.Flow(d["flow"]).intent:
+        return _render_fast(d)
     title = d["title"] or "（没有标题）"
     if title.startswith(d["key"] + " "):
         title = title[len(d["key"]) + 1:]
@@ -1508,22 +1710,7 @@ def render(d) -> str:
     v = d["verify"]
     if d["acceptance"] or v:
         out += ["", "### 验收标准和证据"]
-        if v:
-            checks = ""
-            if v["checks"] is not None:
-                checks = "，%d 条检查%s" % (v["checks"], "全过" if not v["failed"] else "，没过：" + "、".join(
-                    "`%s`（exit %s）" % (f["cmd"].replace("`", "'"), f["exit"]) for f in v["failed"][:3]))
-            state = {True: "，之后代码没变", False:"；**verify 之后又改了代码**（%s）" % (v["why"] or "指纹对不上"),
-                     None: "；%s" % (v["why"] or "没法核对现在的代码")}[v["current"]] if v["fingerprint"] else ""
-            rounds = "；共跑过 %d 次，没过 %d 次" % (v["rounds"], v["failed_rounds"]) if v["rounds"] and \
-                v["failed_rounds"] else ""
-            out.append("最近一次 verify：%s · %s · 代码指纹 %s%s%s%s。" % (
-                "通过" if v["ok"] else "没过", _when(v["at"]), (v["fingerprint"] or "?")[:8], checks, state, rounds))
-            if v["protected_drift"]:
-                out.append("")
-                out.append("验收测试被改过 %d 处，没经过人允许（Lean 判 verify 没过）。" % v["protected_drift"])
-        else:
-            out.append("还没跑 verify。")
+        out += _verify_md(v)
         pr = d.get("proof")
         if pr:
             out += _evidence_lines(pr)
@@ -1552,50 +1739,9 @@ def render(d) -> str:
                 out += ["", line]
                 thumbs = len(out) - 1
 
-    # 改了什么
-    ch = d["changes"]
-    if ch and ch["files"] and not ch["code_files"]:
-        out += ["", "### 改了什么", "- 还没改代码；和 %s 比，只有记录：%s。" % (ch["base_label"], "、".join(
-            "%s %d 个" % (_one(g["dir"], 40), g["files"]) for g in ch["groups"]))]
-    elif ch and ch["files"]:
-        out += ["", "### 改了什么",
-                "和 %s 比：%d 个文件，+%d −%d（不含 MR.md 本身）。" % (ch["base_label"], ch["files"], ch["added"],
-                                                          ch["deleted"]),
-                "", "| 目录 | 文件 | 增 | 删 |", "|---|---|---|---|"]
-        for g in ch["groups"][:LIMIT["groups"]]:
-            out.append("| %s%s | %d | +%d | −%d%s |" % (
-                _cell(g["dir"], 40), "（%s）" % g["kind"] if g["kind"] else "", g["files"], g["added"], g["deleted"],
-                "（另有 %d 个二进制）" % g["binary"] if g["binary"] else ""))
-        out.append("")
-        if len(ch["groups"]) > LIMIT["groups"]:
-            out.append(_more(len(ch["groups"]) - LIMIT["groups"], "MR 的 Changes"))
-        if 0 < ch["code_files"] <= LIMIT["code"]:
-            out.append("- 代码文件：%s。" % "、".join("`%s`（%s）" % (
-                c["path"].replace("`", "'"), "二进制" if c["added"] is None else "+%d −%d" % (c["added"], c["deleted"]))
-                for c in ch["code"]))
-        if ch["risk"]:
-            r = ch["risk"]
-            out += ["- 改到 risk path（%s）：%s%s。" % (
-                _one(r["src"], 80), "、".join("`%s`" % _one(f, 80).replace("`", "'")
-                                             for f in r["files"][:LIMIT["risky"]]),
-                "等 %d 个" % len(r["files"]) if len(r["files"]) > LIMIT["risky"] else "")]
-            out.append("- 设计批准：%s。" % (r.get("design") or {}).get("text", "没查"))
-        if ch["uncommitted"]:
-            out.append("- 另有 %d 个改动没提交（不在 MR 里）。" % ch["uncommitted"])
+    out += _changes_md(d)
 
-    # 关键决定
-    if d["decisions"]:
-        decs = d["decisions"]
-        shown = [x for x in decs if x["by"] == "agent"][:LIMIT["decisions"]]
-        shown += [x for x in decs if x not in shown][:max(0, LIMIT["decisions"] - len(shown))]
-        shown.sort(key=lambda x: decs.index(x))
-        out += ["", "### 关键决定", "| ID | 决定 | 为什么 | 谁定的 | Brain |", "|---|---|---|---|---|"]
-        for x in shown:
-            out.append("| %s | %s | %s | %s | %s |" % (x["id"], _cell(x["decision"], 80), _cell(x["why"], 60),
-                                                      _who_text(x), "、".join(x["cites"]) or "—"))
-        out.append("")
-        if len(decs) > len(shown):
-            out.append(_more(len(decs) - len(shown), DECISIONS_DOC))
+    out += _decisions_md(d)
 
     # 假设和待确认
     pend = ["- %s：%s" % (a["id"], a["text"]) for a in d["assumptions"][:LIMIT["assumptions"]]]
@@ -1652,52 +1798,38 @@ def render(d) -> str:
                 for t in rv["top"]]
         out += ["- %s" % s for s in rv["summary"]]
 
-    # Brain
-    b = d["brain"]
-    bl = []
-    if b["cited"]:
-        bl.append("- 用到的条目：%s" % _ids(b["cited"], 10))
-    if b["stale"]:
-        bl.append("- 引用了已归档的条目（过时知识）：%s" % _ids(b["stale"]))
-    if b["unknown"]:
-        bl.append("- 引用了 Brain 里没有的条目号：%s" % _ids(b["unknown"]))
-    if b["proposals"]:
-        bl.append("- 等 `brain reflect` 的提案 %d 条：" % len(b["proposals"]))
-        bl += ["  - %s %s（%s）：%s" % (x["file"], x["type"], x["rel"], x["text"] or "（没有正文）")
-               for x in b["proposals"][:LIMIT["proposals"]]]
-        if len(b["proposals"]) > LIMIT["proposals"]:
-            bl.append("  " + _more(len(b["proposals"]) - LIMIT["proposals"], DECISIONS_DOC))
-    if b["gaps"]:
-        bl.append("- 缺口（reflect 后成为新需求）：%s" % "；".join("%s（%s）" % (g["title"], g["kind"] or "?")
-                                                       for g in b["gaps"][:LIMIT["gaps"]]))
-    if b["problems"]:
-        bl.append("- %d 个提案或缺口块格式不对（`brain reflect` 会报出来）" % b["problems"])
-    if bl:
-        out += ["", "### Brain"] + bl
+    out += _brain_md(d)
 
-    if d["pointers"]:
-        out += ["", "### 怎么审"] + ["%d. %s" % (i, x) for i, x in enumerate(d["pointers"], 1)]
-
-    if d["cost"]:
-        out += ["", "### 花费", "- credits %s%s（KiroCrew 给的；Kiro 不给 token 数）" % (
-            ("%.4f" % d["cost"]["credits"]).rstrip("0").rstrip("."),
-            "，%d 个回合" % d["cost"]["turns"] if d["cost"]["turns"] else "")]
-
-    gone = list(d["missing"])
-    pr = d.get("proof")
-    said = [g["text"] for g in (pr or {}).get("gaps") or [] if g["kind"] not in EVIDENCE_SAID]
-    gone += [_one(x, 200) for x in said[:LIMIT["evidence"]]]
-    if len(said) > LIMIT["evidence"]:
-        gone.append("另有 %d 条证据的问题（`brain mr-desc --json` 的 proof.gaps）" % (len(said) - LIMIT["evidence"]))
-    if d["audit_broken"]:
-        gone.append("Lean 日志链断了：%s" % "、".join(d["audit_broken"][:3]))
-    if gone:
-        out += ["", "### 还没有"] + ["- %s" % x for x in gone]
+    out += _end_md(d)
     out += ["", "---", "由 `brain mr-desc` 从记录生成（run.json、Lean 记录、git），别手改。重新生成：`brain mr-desc %s --write`。"
             % d["key"]]
     # every line but the line of screenshots made above: a string of the data shaped like it shows no image, even
     # one with blank lines around it
     return "\n".join(x if n == thumbs else inert(x) for n, x in enumerate(out)) + "\n"
+
+
+def _render_fast(d) -> str:
+    """The description of a run without a Lean intent: what changed and its commits, the evidence (the newest verify;
+    CI is the MR's own), the decisions, how to review. Deterministic and inert, as render()."""
+    title = d["title"] or "（没有标题）"
+    if title.startswith(d["key"] + " "):
+        title = title[len(d["key"]) + 1:]
+    out = ["## %s · %s" % (d["key"], title), ""]
+    m = d["where"].get("merged")
+    now = "已合进 `%s`（%s %s）" % (_one(m["into"], 100), m["how"], m["commit"][:12]) if m else "在本地开发，人审过再合并"
+    out.append("**快速模式**：没走 Lean 的需求、设计和审批；改动由提交前的 verify、CI 和审这个 MR 的人把关。现在：%s。" % now)
+    meta = ["分支 `%s`" % _one(d["branch"], 100) if d["branch"] else None, "负责人 %s" % d["owner"] if d["owner"] else None]
+    out.append("（%s）" % "；".join(x for x in meta if x))
+    out += _changes_md(d, gate="快速模式")
+    shown = d["commits"][:LIMIT["commits"]]
+    if shown:
+        out += ["", "### 提交"] + ["- `%s` %s" % (c["sha"], c["subject"]) for c in shown]
+        if len(d["commits"]) > len(shown):
+            out.append(_more(len(d["commits"]) - len(shown), "MR 的 Commits"))
+    out += ["", "### 证据"] + _verify_md(d["verify"]) + ["CI 的结果在这个 MR 的流水线上。"]
+    out += _decisions_md(d) + _brain_md(d) + _end_md(d)
+    out += ["", "---", "由 `brain mr-desc` 从记录生成（run.json、Lean 记录、git），别手改；`brain mr` 推送时会更新它。"]
+    return inert("\n".join(out) + "\n")
 
 
 def write(repo, cfg, key, text) -> str:

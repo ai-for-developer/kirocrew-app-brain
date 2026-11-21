@@ -5,8 +5,9 @@ description: Use when a person corrected you or rejected something, when a decis
 # Write Brain proposals
 
 The Brain (`brain/*.md`) is the team's memory. You never edit it. You write proposals into the Lean intent's
-`decisions.md`, under `## Brain proposals`; after the run `brain reflect` checks them, gives them ids and opens a
-Brain MR that the file owners review. Proposals that fail the checks are not written at all.
+`decisions.md` (a fast run's `runs/<KEY>/decisions.md`), under `## Brain proposals`; after the run `brain reflect`
+checks them, gives them ids and opens a Brain MR that the file owners review. Proposals that fail the checks are not
+written at all.
 
 ## One block per entry
 

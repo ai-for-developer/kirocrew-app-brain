@@ -40,6 +40,9 @@ DEFAULTS = {
     "tracker": "none",
     "req_prefix": "REQ",
     "risk_paths_file": "gates/risk-paths",
+    # the team's 允许快速模式: false makes `brain start --fast` refuse and brain-ci fail every fast run's MR (read from
+    # the target branch, as every rule here is)
+    "fast_mode": True,
     # GitLab users (security / data owners) who may approve a Brain purge; empty: purges are refused
     "purge_approvers": [],
     # who may answer each kind of decision (owner = the run's owner; other names are roles in brain-authz)
@@ -105,4 +108,6 @@ def validate(cfg: dict) -> list:
         p.append("req_prefix must be like OMS (capital letters/digits, max 10)")
     if cfg.get("tracker") == "jira" and not cfg.get("jira", {}).get("base"):
         p.append("tracker is jira but jira.base is empty")
+    if not isinstance(cfg.get("fast_mode"), bool):
+        p.append("fast_mode must be true or false")
     return p

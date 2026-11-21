@@ -18,8 +18,9 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import (bk, brainview, crewcheck, deliveries, detail, evidence, family, identity, importer, inplace, installer,
-               intake, landing, lean_view, mrdesc_view, mrinfo, picker, progress, roster)
+from . import (acts, bk, brainview, crewcheck, deliveries, detail, evidence, family, fastboard, fastrow, flowview,
+               identity, importer, inplace, installer, intake, kitmr, landing, lean_view, mrdesc_view, mrinfo, picker,
+               progress, roster)
 from . import outputs as outputs_mod
 from . import problems, stages
 from . import board as board_mod
@@ -75,7 +76,7 @@ RECORD_SCOPE_RE = re.compile(r"^(r[1-9][0-9]{0,2})-([A-Z][A-Z0-9]{0,9}-[1-9][0-9
 SCRUB_KEYS = ("text", "why", "question", "label", "detail", "status", "next", "open_questions", "output", "reasons",
               "findings", "review", "blocking", "error", "session_error", "notes", "warnings", "problems", "summary",
               "first", "todo", "raw", "doing", "facts", "title", "name", "checks", "note", "subject", "sub", "push_why",
-              "push_cmd", "reply", "task", "ticker", "why_not", "also", "cause", "missing", "here", "do")
+              "push_cmd", "reply", "task", "ticker", "why_not", "also", "cause", "missing", "here", "do", "commands")
 
 
 def scrub_tree(obj: Any, scrub: Callable[[str], str], key: str = "") -> Any:
@@ -161,6 +162,8 @@ class Service:
         self._tasks: list[asyncio.Task] = []
         self._mr_wanted: dict[tuple, tuple[str, str]] = {}   # (base, project, branch) -> (scope, kit bridge_user)
         self._mr_seen: set[tuple] = set()      # (project, branch, hand-over commit) whose MR was read at first sight
+        self._fast_git: dict[tuple, tuple[int, tuple[str, ...]]] = {}   # fastrow.fast_facts' git half
+        self._fast_views: dict[tuple, tuple[bool, str, bool | None]] = {}   # _fast_view's git half
         self._eval: dict[str, tuple] = {}
         self._eval_running: set[str] = set()
         self._trace: dict[str, tuple] = {}      # scope -> (what it was made from, detail.timeline, when)
@@ -175,6 +178,7 @@ class Service:
         self.sync = progress.Sync(self.data_dir, self.log)     # pushes at Lean's checkpoints, fetches every few minutes
         self._opening: dict[str, asyncio.Lock] = {}     # 开会话 and 重开, one at a time per requirement
         self._handing: dict[str, asyncio.Future] = {}   # 交接给运行机, one at a time per requirement
+        self._acting: dict[str, asyncio.Future] = {}    # 开 MR / 转完整流程, the same
         self._big_file = self.data_dir / "big.json"
         self._big = self._load_big()           # scopes opened here as 「大需求：先拆成小需求」
         self.folders_stuck: list[dict[str, Any]] = []   # 设置 rows: the folders KiroCrew would not move (sessions.regroup)
@@ -353,8 +357,9 @@ class Service:
         return ""
 
     async def refresh_mrs(self) -> None:
-        """The MRs of handed-over runs (person mode), each at most every mrinfo.TTL_S. Only the notes of the account
-        the repo's kit.json names as bridge_user are the bridge's (when it names one)."""
+        """The MRs of handed-over runs and of fast runs until their MR is merged (fastrow.polls_mr; person mode), each
+        at most every mrinfo.TTL_S. Only the notes of the account the repo's kit.json names as bridge_user are the
+        bridge's (when it names one)."""
         for (base, project, branch), (_, bridge_user) in list(self._mr_wanted.items()):
             if self.mr.due(project, branch):
                 await asyncio.to_thread(self.mr.refresh, base, project, branch, transport=self.transport,
@@ -585,24 +590,34 @@ class Service:
         live = self._live(sess)
         base, project = self._gitlab_of(repo)
         run = f.get("run") or {}
+        flow = f["flow"]
+        own_mr = bool(run) and not f.get("flow_error") and flowview.reads_own_mr(flow)
+        mine = deliveries.owns(self.me_in(repo), f.get("owner") or (f.get("claim") or {}).get("owner"))
         mr = None
-        if run.get("handoff") and f.get("branch") and base and project:
-            self._mr_wanted[(base, project, f["branch"])] = (scope, str(repo.cfg.get("bridge_user") or ""))
+        if (run.get("handoff") or own_mr) and f.get("branch") and base and project:
+            wanted = (base, project, f["branch"])
             mr = self.mr.get(project, f["branch"])
+            if run.get("handoff") or fastrow.polls_mr(f, mr):
+                self._mr_wanted[wanted] = (scope, str(repo.cfg.get("bridge_user") or ""))
+            else:
+                self._mr_wanted.pop(wanted, None)
             seen = (project, f["branch"], f.get("tip"))
             if (mr or {}).get("sha") != f.get("tip") and seen not in self._mr_seen and repo.is_handover_tip(f):
                 # a hand-over just made: read its MR now, so a label that did not go on is said at once
                 self._mr_seen.add(seen)
                 mr = self.mr.refresh(base, project, f["branch"], transport=self.transport,
                                      bridge_user=str(repo.cfg.get("bridge_user") or "") or None)
+        elif f.get("branch") and base and project:     # a fast run switched to the full flow reads no MR of its own
+            self._mr_wanted.pop((base, project, f["branch"]), None)
         bot = 0
         if run.get("handoff") and not mr:
             bot = repo.bot_commits_since((run.get("handoff") or {}).get("local_head"), f.get("origin_sha"))
         merged = bool(f.get("merged") or (mr or {}).get("state") == "merged")
+        fast = self._fast_of(repo, f, git=mine and not merged and (mr or {}).get("state") != "closed")
         deliveries.classify(row, f, mr=mr, slot=live, cfg=repo.cfg, bot_commits=bot,
                             at_handover=bool(mr) and repo.is_handover_tip(f), me=self.me_in(repo),
                             reflected=merged and f["key"] in repo.reflected(), now=self.now(),
-                            pushed=not run.get("handoff") or row["local_only"] or repo.on_remote(f))
+                            pushed=not run.get("handoff") or row["local_only"] or repo.on_remote(f), fast=fast)
         fams = self._families_of(repo) if fams is None else fams
         row["family"] = fams.get(f["key"])
         family.classify(row, row["family"], f, self.me_in(repo) if row["family"] else None)
@@ -619,6 +634,22 @@ class Service:
             row["open_questions"] = [q["id"] for q in mr.get("questions") or [] if q.get("state") == "open"]
             row["run_ids"] = sorted({q["run_id"] for q in mr.get("questions") or [] if q.get("run_id")})
         return row
+
+    def _fast_of(self, repo: Repo, f: dict[str, Any], *, git: bool = True) -> fastrow.FastFacts | None:
+        """The FastFacts of a run without a Lean intent (a fast run): its row and its board read them; *git*: its
+        commits and risk paths too (a row that never reads them skips that git work). Blocking."""
+        flow = f.get("flow")
+        if not f.get("run") or f.get("flow_error") or flow is None or flow.intent:
+            return None
+        base, project = self._gitlab_of(repo)
+        branch = str(f.get("branch") or "")
+        mr = self.mr.get(project, branch) if base and project and branch else None
+        read_at = self.mr.stale_since(project, branch) if mr else None
+        pushed = bool(f.get("origin_sha")) and f.get("origin_sha") == f.get("local_sha")
+        by_hand = not mr and pushed and not self._token_present() and any(
+            e["label"] == acts.BY_HAND for e in self.store.events(scope_of(repo.id, f["key"])))
+        return fastrow.fast_facts(repo, f, self._fast_git, git=git, by_hand=by_hand,
+                                  stale_s=max(0.0, time.time() - read_at) if read_at else None)
 
     # ---- 变更说明 (brain mr-desc) ------------------------------------------------------------------------- #
 
@@ -667,7 +698,7 @@ class Service:
         for key, r in sorted(latest.items()):
             facts = {"key": key, "claim": None, "where": "runner", "branch": None, "owner": r.get("owner"),
                      "worktree": None, "stages": [], "events": [], "approvals": [], "run": None, "park": None,
-                     "project": r.get("project")}
+                     "project": r.get("project"), **flowview.read(None)}
             path = r.get("path")
             if path and os.path.isdir(path):
                 g = Git(path)
@@ -941,7 +972,9 @@ class Service:
                      "approvals": [{k: a[k] for k in ("kind", "state", "sha8", "at", "line", "path")}
                                    for a in f.get("approvals") or []],
                      **lean_view.notes(f.get("state_text"))},
-            "decisions": detail.decisions(f.get("decisions_text"), "aidlc-docs/%s/decisions.md" % run.get("intent"),
+            "decisions": detail.decisions(f.get("decisions_text"),
+                                          flowview.decisions_path(f["flow"], run, repo.cfg["runs_dir"])
+                                          or "aidlc-docs/%s/decisions.md" % run.get("intent"),
                                           repo.cfg.get("bot_users") or []),
             "questions": questions,
             "timeline": {"source": tl["source"], "items": tl["items"], "error": tl["error"],
@@ -1195,15 +1228,24 @@ class Service:
         units = self._planned_units(git, f) if git is not None else []
         kept: dict[str, Any] = {}
         live_slot = (self._live(sessions) or {}).get("slot")
-        g = board_mod.build(
-            f, d["row"], t, mr=parts.get("mr"), sessions=sessions, app_events=app_events,
-            team_decisions=parts.get("decisions") or [], subjects=subjects, changes=changes,
-            docs=self._docs(git, (f.get("run") or {}).get("intent"), changes) if git is not None else {},
-            reflect_refs=self._reflects_of(git, key, str(cfg.get("default_branch") or "main")) if git is not None else [],
-            default_branch=str(cfg.get("default_branch") or "main"), local_only=bool(parts.get("local_only")),
-            kit_rows=board_mod.kit_cells(self.crew.get("rows") or [], parts.get("path") or ""),
-            decisions=d["decisions"], brain=d["brain"], me=parts.get("me"), now=self.now(), units=units, fold=kept,
-            live_slot=live_slot)
+        fast = self._fast_of(repo, f) if repo is not None else None
+        if fast is not None:
+            g = fastboard.board(
+                f, d["row"], t, mr=parts.get("mr"), app_events=app_events, subjects=subjects, changes=changes,
+                default_branch=str(cfg.get("default_branch") or "main"), local_only=bool(parts.get("local_only")),
+                kit_rows=board_mod.kit_cells(self.crew.get("rows") or [], parts.get("path") or ""),
+                decisions=d["decisions"], me=parts.get("me"), fast=fast, fold=kept)
+        else:
+            g = board_mod.build(
+                f, d["row"], t, mr=parts.get("mr"), sessions=sessions, app_events=app_events,
+                team_decisions=parts.get("decisions") or [], subjects=subjects, changes=changes,
+                docs=self._docs(git, (f.get("run") or {}).get("intent"), changes) if git is not None else {},
+                reflect_refs=self._reflects_of(git, key, str(cfg.get("default_branch") or "main"))
+                if git is not None else [],
+                default_branch=str(cfg.get("default_branch") or "main"), local_only=bool(parts.get("local_only")),
+                kit_rows=board_mod.kit_cells(self.crew.get("rows") or [], parts.get("path") or ""),
+                decisions=d["decisions"], brain=d["brain"], me=parts.get("me"), now=self.now(), units=units, fold=kept,
+                live_slot=live_slot)
         if len(self._folds) > 50:
             self._folds.clear()
         self._folds[(rid, key)] = (time.monotonic(), outputs_mod.Fold(
@@ -1220,7 +1262,11 @@ class Service:
                 "accept": g["accept"], "brain": d["brain"], "decisions": d["decisions"], "questions": d["questions"],
                 "mr_desc": d["mr_desc"], "proof": self._evidence(parts, f, kept["nodes"]),
                 "sessions": d["sessions"], "live_slot": live_slot, "credits": d["credits"], "source": d["timeline"]["source"],
-                "missing": g["missing"], "error": d["timeline"]["error"], "rollup": board_mod.rollup(t)}
+                "missing": g["missing"], "error": d["timeline"]["error"], "rollup": board_mod.rollup(t),
+                "steps": g.get("steps"),
+                "time": fastboard.time_spent([self.sessions.slot_stats(s["slot"]) for s in d["sessions"]
+                                              if s["kind"] == "local"], now=self.now(), until=g["ended_at"])
+                if fast is not None else None}
 
     def _evidence(self, parts: dict[str, Any], f: dict[str, Any], nodes: list[stages.Node]) -> dict[str, Any]:
         """证据 (evidence.row): bind()'s JSON at the commit under review (evidence.py says which), read again only when
@@ -1269,6 +1315,13 @@ class Service:
         """产出: one round of one node, its files (outputs.node_output)."""
         snap = self._sessions_snapshot()
         return scrub_tree(await asyncio.to_thread(lambda: outputs_mod.node_output(self._fold(rid, key, snap), q)),
+                          self.scrub)
+
+    async def outputs_commits(self, rid: str, key: str) -> dict[str, Any]:
+        """产出 of a fast run: the run branch's commits, each with its files, and all of them added up
+        (outputs.commits_output)."""
+        snap = self._sessions_snapshot()
+        return scrub_tree(await asyncio.to_thread(lambda: outputs_mod.commits_output(self._fold(rid, key, snap))),
                           self.scrub)
 
     async def outputs_file(self, rid: str, key: str, q: outputs_mod.FileQuery) -> dict[str, Any]:
@@ -1347,6 +1400,11 @@ class Service:
     async def _open_local(self, repo: Repo, key: str, branch: str, wt: str, run: dict[str, Any], *, trust: bool,
                           kickoff: bool, review: bool = False, task: str | None = None, fresh: bool = False
                           ) -> dict[str, Any]:
+        got = flowview.read(run)
+        flow, broken = got["flow"], got["flow_error"]
+        why = (broken or flowview.action_problem(flow, "review")) if review else ""
+        if why:
+            raise AppError(why, "not_this_flow", 409)
         self.crew = await asyncio.to_thread(self.crew_sync)
         why = await asyncio.to_thread(crewcheck.session_problem, self.crew["rows"], wt)
         if why:
@@ -1359,18 +1417,25 @@ class Service:
             title, said, cause = key + REVIEW_TITLE, "开了审查会话", "审查会话的开工消息，只有编号"
         else:
             live = self._live_of(scope)
-            if live and not fresh:
+            if live and not fresh:     # also with a mode brain-kit does not know: its row says to fix it there
                 return {"ok": True, "slot": live["slot"], "url": live["url"], "said": live_said(live)}
+            if broken:                 # a new session's first message and its clone's Lean setup follow the flow
+                raise AppError(broken, "not_this_flow", 409)
             if task is None:     # a small requirement's start brings its own first message (family.kickoff)
                 task = intake.kickoff(key, branch, run.get("intent"),
-                                      [str(m.get("package")) for m in run.get("materials") or [] if isinstance(m, dict)]) \
-                    if kickoff else ""
+                                      [str(m.get("package")) for m in run.get("materials") or [] if isinstance(m, dict)],
+                                      flow.value) if kickoff else ""
                 if kickoff and scope_of(repo.id, key) in self._big:
                     task += "\n" + family.BIG_KICKOFF
             title, said, cause = "%s · 本地开发" % key, "开了本机会话", "开工消息，只有编号"
             if fresh:
-                task += "\n" + intake.RESUME_KICKOFF
+                task += "\n" + intake.resume_line(flow.value, flowview.decisions_path(flow, run, repo.cfg["runs_dir"]))
                 title, said = "%s · 本地开发（重开）" % key, "重开了本机会话"
+            try:
+                await asyncio.to_thread(bk.m("flows").prepare_clone, flow, wt)
+            except bk.brain_error() as exc:
+                raise AppError("这个工作区里选不了「不开 Lean intent」（%s）：先更新 kit 文件" % str(exc)[:200],
+                               "lean_none", 409)
         slug = branch.rsplit("/", 1)[-1][len(key) + 1:] or key.lower()
         info = await self.sessions.open_session(
             task, parent_session_key="%s:%s" % (self.name, scope), cwd=wt, title=title,
@@ -1470,7 +1535,8 @@ class Service:
     # ---- 开需求 --------------------------------------------------------------------------------------- #
 
     async def intake_next(self, rid: str) -> dict[str, Any]:
-        return await asyncio.to_thread(intake.next_key, self._repo(rid))
+        repo = self._repo(rid)
+        return await asyncio.to_thread(lambda: intake.next_key(repo, local_only=self._local_only(repo)))
 
     async def intake_check(self, body: dict[str, Any]) -> dict[str, Any]:
         repo = self._repo(str(body.get("repo") or ""))
@@ -1484,7 +1550,8 @@ class Service:
     async def intake_start(self, body: dict[str, Any]) -> dict[str, Any]:
         repo = self._repo(str(body.get("repo") or ""))
         try:
-            out = await asyncio.to_thread(intake.start, repo, body, self.settings["work_root"])
+            out = await asyncio.to_thread(lambda: intake.start(repo, body, self.settings["work_root"],
+                                                               local_only=self._local_only(repo)))
         except intake.IntakeError as exc:
             raise AppError(str(exc), "invalid_intake")
         out = scrub_tree(out, self.scrub)
@@ -1654,6 +1721,9 @@ class Service:
 
                 if (f.get("run") or {}).get("handoff") and branch and base and project and self.mr.due(project, branch):
                     await asyncio.to_thread(mr_now)
+                why = f.get("flow_error") or flowview.action_problem(f["flow"], "handoff")
+                if why:
+                    raise AppError(why, "not_this_flow", 409)
                 snap = self._sessions_snapshot()
                 row = await asyncio.to_thread(self._row, repo, f, snap)
                 pushed = await asyncio.to_thread(repo.on_remote, f)
@@ -1682,6 +1752,51 @@ class Service:
 
             running = self._handing[scope] = asyncio.ensure_future(go())
             running.add_done_callback(lambda _t: self._handing.pop(scope, None))
+        return await asyncio.shield(running)
+
+    async def act(self, rid: str, key: str, action: str) -> dict[str, Any]:
+        """开 MR (mr) and 转完整流程 (full) of a fast run: `brain mr|full --json` in its worktree on this machine
+        (acts.run), refused in words first when the app can tell (acts.why_not). One at a time per requirement: a
+        second click while it runs gets the same answer. After 转完整流程 an idle live session is told, in one line
+        with the intent's name only, to go on under Lean (told); a busy one is left alone."""
+        if action not in acts.COMMAND:
+            raise AppError("没有这个动作", "unknown_action", 404)
+        repo = self._repo(rid)
+        scope = scope_of(rid, key)
+        running = self._acting.get(scope)
+        if running is None:
+            async def go() -> dict[str, Any]:
+                f = await asyncio.to_thread(self._facts, repo, key)
+                snap = self._sessions_snapshot()
+                row = await asyncio.to_thread(self._row, repo, f, snap)
+                busy = any(s["busy"] for s in snap["by"].get(scope, []) if s["kind"] == "local" and not s["missing"])
+                why = acts.why_not(f, row, action, me=await asyncio.to_thread(self.me_in, repo), busy=busy)
+                if why:
+                    raise AppError(*why)
+                out = await asyncio.to_thread(acts.run, f["worktree"], action)
+                await asyncio.to_thread(repo.invalidate)
+                base, project = self._gitlab_of(repo)
+                if out["ok"] and base and project and f.get("branch"):
+                    self._mr_wanted[(base, project, f["branch"])] = (scope, str(repo.cfg.get("bridge_user") or ""))
+                    try:
+                        await asyncio.to_thread(self.mr.refresh, base, project, f["branch"], transport=self.transport)
+                    except Exception as exc:  # noqa: BLE001 - a token file others can read: brain-kit says so itself
+                        self.log.info("brain: reading the MR of %s: %s", f["branch"], exc)
+                told = False
+                live = self._live_of(scope)
+                line = intake.switched_line(out["intent"]) if action == "full" and out["ok"] else ""
+                if line and live and not live.get("busy"):
+                    turn = await self.sessions.continue_conversation_async(
+                        live["id"], line, shown={"by": "app", "cause": "转完整流程", "text": line},
+                        parent_session_key=self.sessions.get(live["id"]).parent_session_key)
+                    told = not turn.error
+                by_hand = action == "mr" and out["ok"] and out["pushed"] and not out["mr"]
+                await asyncio.to_thread(self.store.append, scope, "app", acts.BY_HAND if by_hand else "%s：%s" % (
+                    acts.NAME[action], out["text"] or ("做好了" if out["ok"] else "没做成")), out["text"] if by_hand else None)
+                return scrub_tree(dict(out, told=told), self.scrub)
+
+            running = self._acting[scope] = asyncio.ensure_future(go())
+            running.add_done_callback(lambda _t: self._acting.pop(scope, None))
         return await asyncio.shield(running)
 
     # ---- KiroCrew checks ------------------------------------------------------------------------------ #
@@ -1809,11 +1924,13 @@ class Service:
         token = await asyncio.to_thread(self._token_present)
         loaded = {x["id"]: self.repos[x["id"]] for x in repos if x["ok"] and x["id"] in self.repos}
         mes = await asyncio.to_thread(lambda: {rid: self._me_view(r) for rid, r in loaded.items()})
+        fasts = await asyncio.to_thread(lambda: {rid: self._fast_view(r) for rid, r in loaded.items()})
         syncs = await asyncio.to_thread(lambda: {rid: scrub_tree(self.sync.repo_view(r, self._push_ctx(r)), self.scrub)
                                                  for rid, r in loaded.items()})
         for x in repos:
             x["me"] = mes.get(x["id"])
             x["sync"] = syncs.get(x["id"])
+            x["fast"] = fasts.get(x["id"])
         return {"app": {"name": self.name, "version": VERSION, "team": self.team is not None},
                 "brainkit": {"path": info["path"], "ok": info["ok"], "version": info["version"], "error": info["error"],
                              "modules": info["modules"]},
@@ -1821,6 +1938,61 @@ class Service:
                 "me": me_line(repos, token, os.environ.get("BRAIN_USER", "").strip().lower()),
                 "team": self._team_status(), "counts": {"todo": len(todo["items"])},
                 "repo_ids_problem": self.repo_ids.problem}
+
+    def _fast_view(self, repo: Repo) -> dict[str, Any] | None:
+        """设置's 「允许快速模式」 of a repo with a remote (RepoInfo.fast; None without one): the default branch's
+        fast_mode as this machine last fetched it, why brain-kit offers no fast run there whatever it says, and the
+        switch's change not merged yet, read at its open MR's head (else at brain/fast-mode as last fetched). The git
+        half is kept while the default branch and that head stay put. Blocking."""
+        if not repo.has_origin():
+            return None
+        bsha = repo.git.out("rev-parse", "-q", "--verify", "refs/remotes/origin/" + kitmr.FAST_BRANCH) or None
+        base, project = self._gitlab_of(repo)
+        mr = None
+        if base and project and (bsha or (base, project, kitmr.FAST_BRANCH) in self._mr_wanted):
+            self._mr_wanted[(base, project, kitmr.FAST_BRANCH)] = ("", "")
+            mr = self.mr.get(project, kitmr.FAST_BRANCH)
+        # an open MR's head as GitLab says it, newer than the last fetch right after a flip; not here yet: unknown
+        head = bsha
+        if (mr or {}).get("state") == "opened":
+            head = mr["sha"] if mrinfo.SHA40_RE.match(str(mr.get("sha") or "")) else None
+        k = (repo.path, repo.main_sha(), head)
+        got = self._fast_views.get(k)
+        if got is None:
+            if len(self._fast_views) > 256:
+                self._fast_views.clear()
+            on, why = kitmr.fast_policy(repo.path, repo.main_ref())
+            got = (on, why, kitmr.branch_fast(repo.git, head) if head else None)
+            if got[2] is not None or not head:
+                self._fast_views[k] = got
+        on, why, branch_on = got
+        return {"on": on, "why": why, "pending": kitmr.fast_pending(on, branch_on, mr)}
+
+    async def fast_mode(self, body: Any) -> dict[str, Any]:
+        """「允许快速模式」 flipped, once the person confirmed: the default branch's kit.json fast_mode through an MR
+        (kitmr.fast_mr), and the switch as it is now."""
+        body = body if isinstance(body, dict) else {}
+        on = body.get("on")
+        if not isinstance(on, bool):
+            raise AppError("「允许快速模式」只能开或关", "invalid_fast_mode")
+        repo = self._repo(str(body.get("repo") or ""))
+        view = await asyncio.to_thread(self._fast_view, repo)
+        if view is None:
+            raise AppError("这个仓库没有远端：团队规则在默认分支上，这里改不了", "no_remote", 409)
+        if view["why"]:
+            raise AppError(view["why"], "fast_refused", 409)
+        base, project = self._gitlab_of(repo)
+        try:
+            out = await asyncio.to_thread(kitmr.fast_mr, repo.path, str(repo.cfg["default_branch"]), on, base, project,
+                                          transport=self.transport)
+        except Exception as exc:  # noqa: BLE001 - GitLab down, no rights, a sign-in page: said in words
+            raise AppError("GitLab 没开成这个 MR（%s）：看看网络和你的 GitLab 令牌，再点一次" % str(exc).split("\n", 1)[0][:200],
+                           "gitlab_failed", 502)
+        if out["mr"]:
+            self._mr_wanted[(base, project, kitmr.FAST_BRANCH)] = ("", "")
+            await asyncio.to_thread(self.mr.refresh, base, project, kitmr.FAST_BRANCH, transport=self.transport)
+        out["fast"] = await asyncio.to_thread(self._fast_view, repo)
+        return scrub_tree(out, self.scrub)
 
     def settings_view(self) -> dict[str, Any]:
         return {**self.settings, "team": dict(self.settings["team"]), "auto_push": dict(self.settings["auto_push"])}

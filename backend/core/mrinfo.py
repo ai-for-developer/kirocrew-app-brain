@@ -215,8 +215,8 @@ def parse_pipelines(rows: Any, base: str, project: str) -> list[dict[str, Any]]:
 
 
 class MrCache:
-    """Per (project, branch): {at, mr: {iid, url, state, labels, questions, rejected_reason, rejected_raw, pipelines}}
-    or an error."""
+    """Per (project, branch): {at, read_at (when a read last worked), mr: {iid, url, state, labels, questions,
+    rejected_reason, rejected_raw, pipelines}}, with an error when the last read failed (mr is then the copy before)."""
 
     def __init__(self) -> None:
         self._rows: dict[tuple, dict[str, Any]] = {}
@@ -229,6 +229,12 @@ class MrCache:
     def due(self, project: str, branch: str) -> bool:
         row = self._rows.get((project, branch))
         return row is None or time.monotonic() - row["at"] > TTL_S
+
+    def stale_since(self, project: str, branch: str) -> float | None:
+        """When the MR get() gives was read, if every read since failed (GitLab down, the token refused); None when the
+        last read worked."""
+        row = self._rows.get((project, branch)) or {}
+        return row.get("read_at") if row.get("error") and row.get("mr") is not None else None
 
     def refresh(self, base: str, project: str, branch: str, *, transport: Any = None,
                 bridge_user: str | None = None) -> dict[str, Any] | None:
@@ -253,11 +259,12 @@ class MrCache:
                         "labels": list(mr.get("labels") or []), "sha": mr.get("sha"), **parsed,
                         "pipelines": self._pipelines(gl, base, project, int(mr["iid"]), old.get("mr"))}
             with self._lock:
-                self._rows[(project, branch)] = {"at": time.monotonic(), "mr": info}
+                self._rows[(project, branch)] = {"at": time.monotonic(), "mr": info, "read_at": time.time()}
             return info
         except Exception as exc:  # noqa: BLE001 - GitLab down or SSO expired: keep the last copy
             with self._lock:
                 self._rows[(project, branch)] = {"at": time.monotonic(), "mr": old.get("mr"),
+                                                 "read_at": old.get("read_at"),
                                                  "error": str(exc).split("\n", 1)[0][:200]}
             return old.get("mr")
 

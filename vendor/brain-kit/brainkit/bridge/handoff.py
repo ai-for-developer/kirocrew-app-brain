@@ -35,7 +35,7 @@ import threading
 import time
 from datetime import timedelta
 
-from .. import claims, config as kitconfig, lean, runrec, sign
+from .. import claims, config as kitconfig, flows, lean, runrec, sign
 from ..intake import package as intake
 from ..common import (BrainError, NetworkError, git, git_net, iso, later, load_json, parse_branch, parse_iso,
                       paths_overlap, plain, utcnow, write_json)
@@ -338,6 +338,10 @@ class Bridge(DecisionLoop):
         rp = runrec.validate(rec, branch=branch, prefix=kit["branch_prefix"])
         p += ["run.json: " + x for x in rp]
         if rp:
+            return p, f
+        why = flows.action_problem(flows.of(rec), flows.Action.HANDOFF)
+        if why:     # a fast run: named before the hand-over record or a Lean note is looked for
+            p.append("run.json: " + why)
             return p, f
         if not rec.get("handoff"):
             p.append("run.json has no hand-over (run `brain handoff`)")

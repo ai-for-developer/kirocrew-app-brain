@@ -28,7 +28,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from . import lean_view
+from . import flowview, lean_view
 from .constants import GIT_BIN, KEY_RE
 
 GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0", "LC_ALL": "C"}
@@ -256,7 +256,7 @@ class Source:
 
 def empty_facts() -> dict[str, Any]:
     return {"run": None, "park": None, "park_sha": None, "park_at": None, "state_text": None, "decisions_text": None,
-            "events": [], "approvals": [], "review": None}
+            "events": [], "approvals": [], "review": None, **flowview.read(None)}
 
 
 def read_claim(git: Git, *refs: str | None) -> dict[str, Any] | None:
@@ -273,10 +273,13 @@ def read_claim(git: Git, *refs: str | None) -> dict[str, Any] | None:
 
 
 def read_facts(src: Source, key: str, runs_dir: str) -> dict[str, Any]:
-    """run.json, park.json, the Lean note, decisions.md and ledger of one requirement in one place."""
+    """run.json and its flow, park.json, the Lean note, decisions.md and ledger of one requirement in one place. A run
+    without a Lean intent (a fast run) has its decisions.md where brain-kit says and the ledger records of its branch,
+    and no Lean note, approvals or review."""
     out = empty_facts()
     run = src.json("%s/%s/run.json" % (runs_dir, key))
     out["run"] = run if isinstance(run, dict) else None
+    out.update(flowview.read(out["run"]))
     raw_park = src.read("%s/%s/park.json" % (runs_dir, key))
     if raw_park is not None:
         out["park_sha"] = hashlib.sha256(raw_park).hexdigest()
@@ -286,8 +289,13 @@ def read_facts(src: Source, key: str, runs_dir: str) -> dict[str, Any]:
             park = None
         out["park"] = park if isinstance(park, dict) else {"invalid": True}
         out["park_at"] = src.changed_at("%s/%s/park.json" % (runs_dir, key))
+    flow = out["flow"]
     intent = out["run"].get("intent") if out["run"] and isinstance(out["run"].get("intent"), str) else None
-    if intent and re.match(r"^[0-9]{6}-[a-z0-9][a-z0-9-]{0,80}$", intent):
+    if out["run"] and not flow.intent:
+        rel = flowview.decisions_path(flow, out["run"], runs_dir)
+        out["decisions_text"] = src.text(rel) if rel else None
+        out["events"] = lean_view.events_where(src.read, src.ls, flowview.belongs(flow, out["run"]))
+    elif intent and re.match(r"^[0-9]{6}-[a-z0-9][a-z0-9-]{0,80}$", intent):
         out["state_text"] = src.text("%s/%s/aidlc-state.md" % (lean_view.DOCS, intent))
         out["decisions_text"] = src.text("%s/%s/decisions.md" % (lean_view.DOCS, intent))
         out["events"] = lean_view.events(src.read, src.ls, intent)
@@ -475,7 +483,7 @@ class Repo:
             "merged": where == "main", "merged_at": None, "run": run, "park": park, "park_sha": park_sha,
             "park_at": got["park_at"], "review": got["review"],
             "state_text": state_text, "decisions_text": decisions_text, "events": evs, "approvals": approvals,
-            "stages": lean_view.stages(evs),
+            "stages": lean_view.stages(evs), "flow": got["flow"], "flow_error": got["flow_error"],
         }
         if main and run:   # the merge: the last commit on the default branch's first-parent line that brought run.json
             at = self.git.out("log", "-1", "--first-parent", "--format=%ct", main, "--", "%s/%s/run.json" % (runs, key))

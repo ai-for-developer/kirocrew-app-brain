@@ -32,7 +32,7 @@ import json
 import os
 import re
 
-from . import brainlint, claims, intents, lean, runrec
+from . import brainlint, claims, flows, intents, lean, runrec
 from . import mrdesc as M
 from .common import (BrainError, SLUG_RE, branch_name, git, git_out, iso, parse_branch, paths_overlap, utcnow,
                      write_json)
@@ -503,6 +503,10 @@ def _current_parent(repo, cfg, me, key=None):
     if key and b["key"] != key:
         raise BrainError("this branch (%s) is the run of %s, not %s: run `brain split %s` on %s's run branch"
                          % (br, b["key"], key, key, key))
+    flow = flows.of(rec)
+    if not flow.intent:
+        raise BrainError("%s is a %s run (no Lean intent): only a full-flow run is split. Switch it first: `brain full`"
+                         % (b["key"], flow.value))
     if rec["owner"] != me:
         raise BrainError("%s's run belongs to %s; only its owner splits it" % (b["key"], rec["owner"]))
     if rec.get("parent"):
@@ -1249,7 +1253,10 @@ def sync(repo, cfg, src=None, me=None) -> int:
 
 def _refresh_state(repo, intent, state_doc, msg):
     """`lean status` writes the progress region of the active intent again (after `lean use` when another intent is
-    active in this clone); the page and Lean's ledger are staged. With msg, what changed is committed."""
+    active in this clone); the page and Lean's ledger are staged. With msg, what changed is committed. A run without
+    an intent (a fast run) has no progress page: nothing to do."""
+    if not intent:
+        return
     try:
         with open(os.path.join(repo, ".aidlc-lean", "active.json"), encoding="utf-8") as f:
             active = json.load(f).get("intent")

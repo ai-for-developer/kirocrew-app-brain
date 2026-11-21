@@ -4,6 +4,9 @@ status the bot cannot write; see the main plan §6).
   brain-ci check-run      run.json valid and matches the branch; Lean intent present; Brain commit in history;
                           no material packages committed; risk paths changed only with an approved design
                           (risk paths read from the target branch); bot commits need a hand-over voucher.
+                          A fast run (run.json mode fast, flows.py): no intent to check; the target branch must allow
+                          fast runs (flows.refusals); any changed risk path fails (FAST_RISK); MR 巡检's bot commits
+                          need no voucher: the commit that created run.json marks the owner's (owner_commit).
   brain-ci push-rules     the pre-receive rules, run in the MR pipeline instead (GitLab Free / no server hooks):
                           a person's pipeline (GITLAB_USER_LOGIN) judges the MR's new commits as their one push, and
                           the bot's commits in it by the bot's rules (bot_commit_rules); a bot's pipeline judges each
@@ -27,7 +30,7 @@ import subprocess
 import sys
 import unicodedata
 
-from . import config, lean, riskpaths, runrec, sign
+from . import config, flows, lean, riskpaths, runrec, sign
 from .common import BrainError, git, git_out, load_json, parse_branch, parse_iso, utcnow
 
 
@@ -342,6 +345,20 @@ def latest_design_answers(repo, vouchers) -> list:
     return [v for _, v in best.values()]
 
 
+def risk_paths(repo, rec, cfg, tgt, base) -> tuple:
+    """(problems, risky) of this MR: the target branch's gates/risk-paths (the run's Brain commit in an untrusted local
+    check) against the files and submodules changed since `base` (riskpaths.hits). A pattern riskpaths cannot read is
+    a problem of every run MR, whatever it changes."""
+    text = tgt.file(cfg["risk_paths_file"])
+    if text is None and not tgt.trusted:
+        p = git(repo, "show", "%s:%s" % (rec["brain_commit"], cfg["risk_paths_file"]), check=False)
+        text = p.stdout if p.returncode == 0 else None
+    if not text:
+        return [], []
+    bad, risky = riskpaths.hits(text, changed_paths(repo, base, "HEAD"), gitlinks(repo, base, "HEAD"))
+    return ["%s: %s: brain-ci fails every run MR until it is fixed" % (cfg["risk_paths_file"], why) for why in bad], risky
+
+
 def check_route(repo, rec, cfg, tgt, base, vouchers) -> list:
     """The skip floor: changes to risk paths need the design stage and a design approval signed by the bridge.
 
@@ -359,19 +376,7 @@ def check_route(repo, rec, cfg, tgt, base, vouchers) -> list:
       b. no risk path that this MR changes was changed after the voucher's commit: the risky code was all there when
          the approver looked, whatever the design says now.
     Otherwise the design and the risky code both moved on after the approval: the run asks for a fresh one."""
-    text = tgt.file(cfg["risk_paths_file"])
-    if text is None and not tgt.trusted:
-        p = git(repo, "show", "%s:%s" % (rec["brain_commit"], cfg["risk_paths_file"]), check=False)
-        text = p.stdout if p.returncode == 0 else None
-    if not text:
-        return []
-    pats = [l.split("#", 1)[0].strip() for l in text.splitlines()]
-    pats = [x for x in pats if x]
-    bad = ["%s: %s: brain-ci fails every run MR until it is fixed" % (cfg["risk_paths_file"], why)
-           for why in (riskpaths.problem(x) for x in pats) if why]
-    pats = [x for x in pats if not riskpaths.problem(x)]
-    changed, links = changed_paths(repo, base, "HEAD"), gitlinks(repo, base, "HEAD")
-    risky = sorted({f for f in changed if any(glob_match(f, x, f in links) for x in pats)})
+    bad, risky = risk_paths(repo, rec, cfg, tgt, base)
     if not risky:
         return bad
     shown = ", ".join(risky[:5])
@@ -402,6 +407,18 @@ def check_route(repo, rec, cfg, tgt, base, vouchers) -> list:
     return bad
 
 
+FAST_RISK = ("risk paths changed (%s): a fast run (run.json mode fast) may not change them. Switch it to the full "
+             "flow on this branch (`brain full`, or 转完整流程 in the Brain app): the design stage and a DESIGN approval "
+             "signed by the bridge come with it. Do not revert the change only to make this check pass")
+
+
+def refuse_route(repo, rec, cfg, tgt, base) -> list:
+    """The risk-path floor of a run without an intent: no DESIGN approval can exist for it, so any changed risk path
+    fails, with the way out (the full flow)."""
+    bad, risky = risk_paths(repo, rec, cfg, tgt, base)
+    return bad + ([FAST_RISK % ", ".join(risky[:5])] if risky else [])
+
+
 def _claimed_child(repo, rec) -> bool:
     """Does claim/<KEY> (origin's, fetched) say this run is the child of rec["parent"] for rec["unit"]?"""
     from . import claims
@@ -423,7 +440,9 @@ def check_run(repo, branch, env) -> list:
     probs += ["run.json: " + p for p in runrec.validate(rec, branch=branch, prefix=cfg["branch_prefix"])]
     if probs:
         return probs
-    if not os.path.isdir(os.path.join(repo, lean.DOCS, rec["intent"])):
+    flow = flows.of(rec)
+    probs += ["%s run: %s" % (flow.value, r.en) for r in flows.refusals(flow, lambda: flows.policy_at(repo, tgt.ref))]
+    if flow.intent and not os.path.isdir(os.path.join(repo, lean.DOCS, rec["intent"])):
         probs.append("Lean intent %s/%s is missing" % (lean.DOCS, rec["intent"]))
     if git(repo, "merge-base", "--is-ancestor", rec["brain_commit"], "HEAD", check=False).returncode != 0:
         probs.append("brain_commit %s is not in this branch's history (use GIT_DEPTH: 0)" % rec["brain_commit"][:12])
@@ -453,11 +472,15 @@ def check_run(repo, branch, env) -> list:
         pv, pbad = signed_vouchers(vdir, signers, rec["parent"], repo, upstream=base, runs_dir=cfg["runs_dir"])
         design += [v for v in pv if v.get("kind") == "answer"]
         probs += pbad
-    probs += check_route(repo, rec, cfg, tgt, base, design)
+    probs += check_route(repo, rec, cfg, tgt, base, design) if flow.intent else refuse_route(repo, rec, cfg, tgt, base)
     bot_emails = {e.lower() for e in cfg.get("bot_emails", [])}
     people = set(git_out(repo, "log", "--format=%ce%n%ae", "%s..HEAD" % base).lower().split())
     if bot_emails & people:
-        if not vdir or not signers:
+        if flows.Action.HANDOFF not in flow.actions:
+            anchor, why = fast_anchor(repo, b["key"], cfg, base)
+            if not anchor:
+                probs.append("the bot committed here, but %s" % why)
+        elif not vdir or not signers:
             probs.append("the bot committed here, but BRAIN_VOUCHERS_DIR / BRAIN_ALLOWED_SIGNERS are not set")
         elif not [v for v in vouchers if v.get("kind") == "handoff" and v.get("branch") == branch]:
             probs.append("the bot committed here without a valid hand-over voucher for %s" % branch)
@@ -522,6 +545,76 @@ def handover_commit(repo, branch, key, env, upstream, runs_dir="runs"):
     return hand, signed[hand], ""
 
 
+def _not_fast_at(repo, rel, upstream) -> str:
+    """The newest commit since `upstream` whose `rel` is not a fast run's record ('' when there is none). Every commit
+    is read, not the path's simplified history, which follows one parent of a merge."""
+    commits = git_out(repo, "rev-list", "--topo-order", "%s..HEAD" % upstream).split()
+    found = _git_bytes(repo, "cat-file", "--batch-check=%(objectname) %(objecttype)",
+                       stdin="".join("%s:%s\n" % (c, rel) for c in commits).encode("utf-8"))
+    fast = {}
+    for c, line in zip(commits, found.decode("utf-8", "replace").splitlines()):
+        oid, _, kind = line.partition(" ")
+        if kind != "blob":
+            continue
+        if oid not in fast:
+            try:
+                doc = json.loads(_git_bytes(repo, "cat-file", "blob", oid))
+                fast[oid] = flows.Action.HANDOFF not in flows.of(doc).actions
+            except (ValueError, BrainError):
+                fast[oid] = False
+        if not fast[oid]:
+            return c
+    return ""
+
+
+def fast_anchor(repo, key, cfg, upstream) -> tuple:
+    """(commit, why not): the commit that created runs/<KEY>/run.json since `upstream` (the MR's diff base). On a run
+    that is never handed over (a fast run, which MR 巡检 may work) it stands where the signed hand-over commit stands on
+    a Lean run: the bot may never write run.json (pre_receive.bot_path_problems) and never force-pushes, so that commit
+    and its author are the owner's. Only on a run that was fast all along: a run goes from fast to the full flow, never
+    back, and a merge can bring an older run.json back without changing it against every parent (the hook refuses the
+    bot that push; CI sees commits, not pushes)."""
+    rel = runrec.path(cfg["runs_dir"], key).replace(os.sep, "/")
+    made = git_out(repo, "log", "--reverse", "--diff-filter=A", "--format=%H", "%s..HEAD" % upstream, "--", rel).split()
+    if not made:
+        return None, "no commit since %s created %s" % (upstream[:12], rel)
+    bots = {e.lower() for e in cfg.get("bot_emails") or []}
+    if set(_who(repo, made[:1])[made[0]]) & bots:
+        return None, "the bot made %s, which created %s" % (made[0][:12], rel)
+    back = _not_fast_at(repo, rel, upstream)
+    if back:
+        return None, "%s at %s is not a fast run's record (a run goes from fast to the full flow, never back)" % (
+            rel, back[:12])
+    return made[0], ""
+
+
+def _never_handed_over(repo, branch, key, cfg) -> bool:
+    """Is the run.json checked out here a valid record whose flow the bridge never takes (a fast run)? Anything else
+    keeps a Lean run's rule, the stricter one."""
+    try:
+        rec = load_json(os.path.join(repo, runrec.path(cfg["runs_dir"], key)))
+    except (OSError, ValueError):
+        return False
+    return not runrec.validate(rec, branch=branch, prefix=cfg["branch_prefix"]) and \
+        flows.Action.HANDOFF not in flows.of(rec).actions
+
+
+HANDED = "the hand-over"
+STARTED = "the commit that created run.json"
+
+
+def owner_commit(repo, branch, key, env, upstream, cfg, bots) -> tuple:
+    """(commit, the owner's emails, why not, which): where the owner's own commits end on this branch and the bot's may
+    begin. A Lean run: its newest signed hand-over (handover_commit; which is HANDED), the owner as run_owner names
+    them. A run that is never handed over: the commit that created its run.json (fast_anchor; which is STARTED), the
+    owner its author (a rebase keeps the author; whoever rebases commits the copy)."""
+    if _never_handed_over(repo, branch, key, cfg):
+        hand, why = fast_anchor(repo, key, cfg, upstream)
+        return hand, {_who(repo, [hand])[hand][0]} - bots - {""} if hand else set(), why, STARTED
+    hand, signed, why = handover_commit(repo, branch, key, env, upstream, cfg["runs_dir"])
+    return hand, run_owner(repo, signed, bots) if hand else set(), why, HANDED
+
+
 def _who(repo, commits) -> dict:
     """{commit: (author email, committer email)}, lowercased."""
     who = {}
@@ -577,9 +670,8 @@ def bot_commit_rules(repo, branch, env, tgt, cfg, hook_cfg, head) -> list:
             "; ".join("%s authored by %s but committed by the bot" % (c[:12], who[c][0] or "-") for c in forged[:3])))
     odd = [c for c in mine if who[c][1] not in bots]
     if odd:
-        hand, signed, why = handover_commit(repo, branch, b["key"], env, tgt.base, cfg["runs_dir"]) if b else (
-            None, None, "%s is not a run branch" % branch)
-        owner = run_owner(repo, signed, bots) if hand else set()
+        hand, owner, why, _ = owner_commit(repo, branch, b["key"], env, tgt.base, cfg, bots) if b else (
+            None, set(), "%s is not a run branch" % branch, None)
         bad = [c for c in odd if who[c][1] not in owner]
         if bad:
             probs.append("%s: commits the bot authored are committed by the bot (%s) or the run's owner (%s)%s: %s" % (
@@ -604,8 +696,9 @@ def bot_push_rules(repo, branch, user, env, tgt, cfg, hook_cfg, head) -> list:
       - the commits before it are the owner's, judged when they pushed them.
     The run's owner is the author and committer of the commit the bridge signed (run_owner), not of its copy after a
     rebase: someone else's Rebase does not make them the owner. Without a hand-over voucher nothing tells the owner's
-    commits from the bot's: the pipeline fails and says why. Weaker than the hook: it sees commits, not pushes (an
-    author line can be forged; the hook refuses that)."""
+    commits from the bot's: the pipeline fails and says why. A fast run is never handed over: the commit that created
+    its run.json stands for the hand-over commit, and its author for the owner (owner_commit). Weaker than the hook: it
+    sees commits, not pushes (an author line can be forged; the hook refuses that)."""
     from . import pre_receive
     probs = pre_receive.decide([(head, head, "refs/heads/" + branch)], user, hook_cfg, cwd=repo)
     if probs:
@@ -618,14 +711,18 @@ def bot_push_rules(repo, branch, user, env, tgt, cfg, hook_cfg, head) -> list:
     if mine:
         probs += pre_receive.bot_path_problems(branch, mine, hook_cfg, cwd=repo)
     b = parse_branch(branch, hook_cfg["branch_prefix"])
-    hand, signed, why = handover_commit(repo, branch, b["key"], env, tgt.base, cfg["runs_dir"])
+    hand, owner, why, which = owner_commit(repo, branch, b["key"], env, tgt.base, cfg, bots)
+    if not hand and which == STARTED:
+        probs.append("%s: this pipeline was started by the bot (%s), but %s: on a fast run the commit that created "
+                     "run.json is the owner's, and without it push-rules cannot tell the owner's commits from the bot's"
+                     % (branch, user, why))
+        return probs
     if not hand:
         probs.append("%s: this pipeline was started by the bot (%s), but %s: without the hand-over commit push-rules "
                      "cannot tell the owner's commits from the bot's. A run branch gets bot commits only after a "
                      "hand-over the bridge signed; check the job's vouchers (brain-intake) and the bridge's hand-over "
                      "comment on the MR" % (branch, user, why))
         return probs
-    owner = run_owner(repo, signed, bots)
     after = set(pre_receive.new_commits(hand, head, default, cwd=repo))
     alien = []
     for c in commits:
@@ -638,9 +735,9 @@ def bot_push_rules(repo, branch, user, env, tgt, cfg, hook_cfg, head) -> list:
         elif c in after and ce not in owner:
             alien.append("%s committed by %s" % (c[:12], ce or "-"))
     if alien:
-        probs.append("%s: after the hand-over (%s) only the bot (%s) and the run's owner (%s) commit on this branch, "
-                     "and bot commits are authored as the bot: %s" % (
-                         branch, hand[:12], ", ".join(sorted(bots)) or "-", ", ".join(sorted(owner)) or "-",
+        probs.append("%s: after %s (%s) only the bot (%s) and the run's owner (%s) commit on this branch, and bot "
+                     "commits are authored as the bot: %s" % (
+                         branch, which, hand[:12], ", ".join(sorted(bots)) or "-", ", ".join(sorted(owner)) or "-",
                          "; ".join(alien[:3])))
     return probs
 

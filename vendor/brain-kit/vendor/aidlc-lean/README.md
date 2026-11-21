@@ -1,6 +1,6 @@
 # AI-DLC Lean
 
-AI-DLC 的轻量版，给 **Kiro CLI（v3 引擎）** 用。版本 0.3.1（只修问题，见设计说明 §10）。
+AI-DLC 的轻量版，给 **Kiro CLI（v3 引擎）** 用。版本 0.3.2（在 0.3.1 上加了 `lean use --none`，见"命令"；0.3.1 只修问题，见设计说明 §10）。
 
 它保留 AI-DLC 的样子：
 
@@ -297,12 +297,15 @@ Status: released (RELEASE approved)
 
 小改动（改错别字、改一个配置值、一个文件里的小修）不用开 intent，直接改；当前 intent 已经发布时也一样。受监管模式除外。
 
+一个 clone 没选过 intent 时，`aidlc-docs/` 下只有一个 intent 就自动用它（比如主分支上留着一个还没发布的 intent），写代码要等它的审批。要让这个 clone 不用 intent（比如 Brain 的快速模式），跑 `lean use --none`：写代码不等阶段审批，配了 checks 时提交前照样要 verify 通过；`lean use <intent>` 或 `lean new` 结束它。受监管模式不能用。
+
 ## 命令
 
 ```
 lean init [--regulated] [--multi-team] [--team NAME]  在项目里建 aidlc-docs/（install.sh 会调用它）
 lean new <slug> [--title T] [--ideation]             开一个 intent，并设为当前 intent（--ideation：先走构想）
 lean use <intent>                                    切换当前 intent（记进日志）
+lean use --none                                      这个 clone 不用 intent，只有一个时也不自动用它（记进日志；受监管模式不能用）
 lean status                                          当前进度和下一步（顺手更新 aidlc-state.md 里生成的那段）
 lean stage start <id> [--unit U]                     按模板生成这个阶段的文档，标成进行中
 lean stage done <id> [--unit U] --note "<内容>"      记下这个阶段做了什么
@@ -438,7 +441,7 @@ python3 tools/vendor_pstack.py <pstack 目录>   # 或者指定一个 pstack 目
 
 ## 测过什么
 
-- **单元测试**：`python3 -W error::ResourceWarning -m unittest discover -s tests`，共 294 个。2026-11-10 在 Python 3.9.6 和 3.12.15 上各跑一遍，290 个全部通过，没有跳过（机器负载很高，各约 53 和 44 分钟）；之后加的 1 个（`fingerprint_exclude` 的默认值）单独跑过。2026-11-16 在 3.12.15 上把 294 个全部跑了一遍，全部通过，没有跳过（约 11 分钟）。又让依赖 Lean 的 brain-kit 用这份代码跑了它用到 Lean 的 13 个测试文件：py3.12 上 384 个全部通过；py3.9 上 381 个里有 1 个失败（brain-kit 读 `DEFAULT_CONFIG` 里 `fingerprint_exclude` 的默认值，0.3.1 一度把它清空了），改回以后那一组通过。
+- **单元测试**：`python3 -W error::ResourceWarning -m unittest discover -s tests`，共 302 个。2026-11-10 在 Python 3.9.6 和 3.12.15 上各跑一遍，290 个全部通过，没有跳过（机器负载很高，各约 53 和 44 分钟）；之后加的 1 个（`fingerprint_exclude` 的默认值）单独跑过。2026-11-16 在 3.12.15 上把 294 个全部跑了一遍，全部通过，没有跳过（约 11 分钟）。又让依赖 Lean 的 brain-kit 用这份代码跑了它用到 Lean 的 13 个测试文件：py3.12 上 384 个全部通过；py3.9 上 381 个里有 1 个失败（brain-kit 读 `DEFAULT_CONFIG` 里 `fingerprint_exclude` 的默认值，0.3.1 一度把它清空了），改回以后那一组通过。2026-11-20（0.3.2）在 3.12.15 上把 302 个全部跑了一遍，全部通过，没有跳过（约 12 分钟）；Python 3.9 没跑。
 
   | 文件 | 个数 |
   |---|---|
@@ -452,6 +455,7 @@ python3 tools/vendor_pstack.py <pstack 目录>   # 或者指定一个 pstack 目
   | `test_v03_qa_fixes.py`（v0.3 四轮 QA 找到的逻辑问题，包括契约算代码） | 46 |
   | `test_v03_install_fixes.py`（重装时留下人改过和团队加的模板，`.kit-new` 只给一次，清单或模板读不了时） | 18 |
   | `test_v031_fixes.py`（v0.3.1：review 第 1 轮 R1-106..120、只读 shell 不再误拦、v0.3 实测后的修复、提问前先查 decisions.md） | 43 |
+  | `test_v032_use_none.py`（v0.3.2：`lean use --none`，主分支上只有一个没发布的 intent 时，新 clone 不再被它挡住） | 8 |
 
   覆盖：每道关卡（包括 v0.3 的 ideation）、审批规则（包括 IDEATION 的哈希、过期、驳回、白名单）、阶段命令和阶段记录、整段跳过构想和运维、发布后的运维阶段、每个单元的 PLAN、篡改可检测、多团队的单元和 CR、契约和代码一样等审批、发布流程、pstack 质量包、安装和从 v0.1 升级、重装时留下团队改过和自己加的模板、并行 hook、子目录安装、打码。还查了说明文字本身：常驻说明、技能卡和模板里提到的每条命令、每个关卡名都真的存在，字数没超（常驻说明不超过 1,000 词，8 张核心技能卡每张不超过 600 词；pstack 包的卡不设上限）。本机没有 pstack 0.15.32 源码时，其中 7 个 vendor_pstack 测试会跳过（这次没跳过）。Python 3.8 没有真跑过（本机没有 3.8），只按 3.8 的语法检查过。
 - **v0.2 的模拟跑**（2026-11-08）：没开 kiro-cli，也没有真的 AI。脚本按 Kiro v3 hook 的格式，把"AI"的每次写文件、跑命令和"人"发的每条消息都喂给 hook，走完了 4 个场景：普通模式、普通模式加 pstack、受监管（两个单元、每个单元批 PLAN、有一次驳回）、多团队（两个 clone、一个 CR、一次合并冲突）。上面 aidlc-state.md 的例子就是这样跑出来的。
@@ -507,7 +511,8 @@ python3 tools/vendor_pstack.py <pstack 目录>   # 或者指定一个 pstack 目
   - 大部分关卡在真机上被触发的情况（见上面"说清楚"）；
   - 11-08 实测之后这一轮的修复，包括派单写进文件后两个评审是不是真的同时开始；
   - v0.3 的构想、CI 流水线和运维段；
-  - v0.3.1 的修复。
+  - v0.3.1 的修复；
+  - v0.3.2 的 `lean use --none`。
 - **大仓库**：算代码指纹时借用 git 的索引缓存，只重读改过的文件；没进 git 的文件，第一次要整个读一遍。2026-11-08 在 5 万个文件的仓库上测 v0.2（Apple M3 Pro，机器同时在跑别的任务）：有当前 intent 时会话开始约 0.6 秒，提交检查约 0.3 秒；删掉 `.aidlc-lean/` 里的指纹缓存后，第一次会话开始约 0.8 秒。
 
 ## 目录
@@ -517,9 +522,9 @@ install.sh                                安装到项目
 kit/.kiro/steering/aidlc-lean.md          常驻规则（999 词）
 kit/.kiro/skills/aidlc-lean-*/            8 张按需加载的技能卡：ideation、inception、construction、release、operations、resume、multi-team、regulated（共 4,784 词）
 kit/.kiro/hooks/aidlc-lean-*.json         3 个 v3 hook
-kit/.kiro/aidlc-lean/aidlc_lean.py        唯一的脚本（4,434 行）
+kit/.kiro/aidlc-lean/aidlc_lean.py        唯一的脚本（4,466 行）
 kit/.kiro/aidlc-lean/templates/           28 个模板（共 5,502 词）：24 个阶段文档（v0.2 的 9 个，加 v0.3 构想 7 个、CI 流水线 1 个、运维 7 个），加 aidlc-state.md、decisions.md、cr.md、lean.json
-tests/                                    单元测试（10 个文件，294 个）
+tests/                                    单元测试（11 个文件，302 个）
 docs/design-v0.2.md                       v0.2 的设计说明（§9 是 v0.3 的构想、CI 流水线和运维段，§10 是 v0.3.1 的修复）
 docs/e2e-2026-11-07.md                    v0.1 的真机测试记录（摘要）
 docs/e2e-2026-11-08-v0.2.md               v0.2 的真机测试：普通模式

@@ -35,7 +35,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from .. import bk
+from .. import bk, kitmr
 from ..constants import APP_ROOT, PYTHON_BIN
 from . import patrol as patrol_mod
 from . import signerproc, sources
@@ -64,7 +64,6 @@ BRIDGE_SCOPES = ("api",)
 BOT_SCOPES = ("read_repository", "write_repository", "read_api")
 SSH_BOT = ("brain-bot", "brain-bot@noreply.invalid")    # git_name, git_email of a runner pushing over this machine's SSH
 REACH_WAIT_S = 20
-KIT = ".brain/kit.json"
 BRANCH = "brain/runner-setup"
 MR_TITLE = "运行机：更新 .brain/kit.json"
 MR_TEXT = ("一键建运行机开的 MR：运行机要 kit.json 写上 bridge_user（桥的账号）、bot_users 和 bot_emails（运行机推送用的账号和邮箱）、"
@@ -527,7 +526,7 @@ def step_project(ctx: Ctx) -> StepResult:
                       % (owner, path, LEVEL_NAME.get(level, "没有权限的人")))
     if not branch:
         return failed("%s 还没有默认分支：先推一个分支上去" % path)
-    raw = gl.file_raw(p["id"], KIT, branch)
+    raw = gl.file_raw(p["id"], kitmr.KIT, branch)
     if raw is None:
         return failed("%s 的默认分支 %s 上没有 .brain/kit.json：先在个人电脑上导入这个仓库" % (path, branch))
     try:
@@ -787,32 +786,18 @@ def step_identities(ctx: Ctx) -> StepResult:
 
 def step_kit_mr(ctx: Ctx) -> StepResult:
     """kit.json on the default branch names the bridge's account, the bot's, GitLab and the default branch (MIGRATE
-    第二部分 4). When it does not: the change on branch brain/runner-setup (the file's own formatting kept) and an MR to
-    the default branch, which a person merges: waiting until then."""
+    第二部分 4). When it does not: the change on branch brain/runner-setup and an MR to the default branch
+    (kitmr.kit_mr), which a person merges: waiting until then."""
     want = wanted_kit(ctx)
     if want == ctx.kit:
         ctx.state.pop("kit_mr", None)
         return done("默认分支上的 .brain/kit.json 已经写好了运行机要的几项")
-    gl, pid, default = ctx.gl, ctx.pid, ctx.state["project"]["default_branch"]
-    if not branch_exists(gl, pid, BRANCH):
-        gl.call("POST", "/projects/%d/repository/branches" % pid, body={"branch": BRANCH, "ref": default})
-    raw = gl.file_raw(pid, KIT, BRANCH)
-    there = raw.decode("utf-8-sig") if raw is not None else ""
     changed = kit_changes(ctx, want)
-    if parse_json(there) != want:
-        gl.call("POST", "/projects/%d/repository/commits" % pid, body={
-            "branch": BRANCH, "commit_message": "运行机：kit.json 写上 %s" % "、".join(changed),
-            "actions": [{"action": "update" if raw is not None else "create", "file_path": KIT,
-                         "content": kit_text(want, there or ctx.kit_text)}]})
-    mr = gl.mr_for_branch(pid, BRANCH)
-    opened = mr is None
-    if opened:
-        patrol = MR_PATROL[sources.PATROL in sources.enabled(want)]
-        text = ("一键建运行机开的 MR：" + patrol if patrol_only(ctx, want) else
-                MR_TEXT + ("\n\n" + patrol if "work_sources" in changed else ""))
-        mr = gl.call("POST", "/projects/%d/merge_requests" % pid, body={
-            "source_branch": BRANCH, "target_branch": default, "title": MR_TITLE, "description": text,
-            "remove_source_branch": True}) or {}
+    patrol = MR_PATROL[sources.PATROL in sources.enabled(want)]
+    text = ("一键建运行机开的 MR：" + patrol if patrol_only(ctx, want) else
+            MR_TEXT + ("\n\n" + patrol if "work_sources" in changed else ""))
+    mr, opened = kitmr.kit_mr(ctx.gl, ctx.pid, ctx.state["project"]["default_branch"], BRANCH, want, ctx.kit_text,
+                              title=MR_TITLE, text=text, message="运行机：kit.json 写上 %s" % "、".join(changed))
     ctx.state["kit_mr"] = {"iid": mr.get("iid"), "web_url": mr.get("web_url")}
     return waiting("%s MR !%s：请在 GitLab 上合并这个 MR" % ("开了" if opened else "还没合并", mr.get("iid")),
                    link=mr.get("web_url") or None)
@@ -847,28 +832,6 @@ def wanted_kit(ctx: Ctx) -> dict[str, Any]:
     elif sources.PATROL in kinds:
         want["work_sources"] = [k for k in kinds if k != sources.PATROL]
     return want
-
-
-def kit_text(doc: Any, like: str) -> str:
-    """*doc* as JSON written the way *like*, the text it replaces, is: its indent, its key order (sorted when its keys
-    were), whether it escaped non-ASCII, its final newline. So the MR shows only the keys that changed."""
-    m = re.search(r"\n([ \t]+)\S", like)
-    indent: Any = (m.group(1) if "\t" in m.group(1) else len(m.group(1))) if m else None
-    old = parse_json(like)
-    keys = list(old) if isinstance(old, dict) else []
-    escaped = bool(re.search(r"\\u[0-9a-fA-F]{4}", like)) and not re.search(r"[^\x00-\x7f]", like)
-    text = json.dumps(doc, indent=indent, sort_keys=len(keys) > 1 and keys == sorted(keys), ensure_ascii=escaped)
-    return text + ("\n" if like.endswith("\n") or not like else "")
-
-
-def branch_exists(gl: Any, pid: int, name: str) -> bool:
-    try:
-        gl.call("GET", "/projects/%d/repository/branches/%s" % (pid, urllib.parse.quote(name, safe="")))
-    except Exception as exc:  # noqa: BLE001
-        if _gitlab_status(exc) == 404:
-            return False
-        raise
-    return True
 
 
 # ---- 7 folders ---------------------------------------------------------------------------------------------------- #

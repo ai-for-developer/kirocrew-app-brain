@@ -9,8 +9,10 @@
                                                   or give yours back
   brain intake PATH... --key KEY --classification C --consent [--business keep|mask] [--dry-run]
                                                   check and mask requirement documents into a material package
-  brain start <slug> [--key KEY] [--title T] [--doc PATH ...] [--package PKG] [--paths a,b]
-                                                  claim (or check the claim), branch, Lean intent, run.json
+  brain start <slug> [--key KEY] [--title T] [--doc PATH ...] [--package PKG] [--paths a,b] [--fast]
+                                                  claim (or check the claim), branch, Lean intent, run.json;
+                                                  --fast: a fast run, no Lean intent (`lean use --none`), ends with
+                                                  `brain mr` (brainkit/flows.py)
   brain start [slug] --key CHILD [--on DEP] [--worktree PATH]
                                                   a split child: its own branch from the parent's, in its own
                                                   worktree, continuing the parent's Lean intent for its unit
@@ -19,6 +21,9 @@
   brain handoff [--no-push] [--no-label]          publish materials, commit the hand-over (with runs/<KEY>/MR.md),
                                                   set the MR description, label the MR
                                                   (exit 1: pushed but NOT labelled, nothing handed over)
+  brain mr [--no-push] [--json]                   a fast run is done: push it and open its MR (no hand-over label;
+                                                  a person merges it); without a token, the commands (commands/)
+  brain full [--no-push] [--json]                 a fast run becomes a Lean run on the same branch (commands/)
   brain crew-agent [--force | --reset]            install KiroCrew's agent brain-dev-crew (~/.kiro/agents/brain-dev-crew.json)
                                                   KiroCrew does not read .kiro/hooks/: Lean's hooks ride on this spec;
                                                   --force adds what is missing (Lean's hooks, absent fields) and keeps
@@ -46,7 +51,7 @@ import stat
 import sys
 import time
 
-from . import __version__, brainlint, claims, config, entries, lean, mrdesc, proof, reflect, review, runrec, usage
+from . import __version__, brainlint, claims, config, entries, flows, lean, mrdesc, proof, reflect, review, runrec, usage
 from .common import (BrainError, JIRA_RE, SLUG_RE, USER_RE, branch_name, git, git_net, git_out, iso, load_json,
                      parse_branch, repo_root, run, utcnow, write_json)
 from .intake import package as intake
@@ -810,6 +815,13 @@ def doctor_checks(repo, cfg, fetch=True) -> list:
                          "Lean through it" % CREW_HOOK))
     else:
         add(("FAIL", "AI-DLC Lean not installed"))
+    ref = "origin/" + cfg["default_branch"] if _has_origin(repo) else "HEAD"     # where `brain start` branches from
+    try:
+        why = flows.refusals(flows.Flow.FAST, lambda: flows.policy_at(repo, ref))
+        state = "not offered on %s (%s)" % (ref, "; ".join(r.en for r in why)) if why else "offered on %s" % ref
+        add(("OK", "fast runs (brain start --fast): " + state))
+    except BrainError as e:
+        add(("WARN", "fast runs (brain start --fast): not checked on %s (%s)" % (ref, e)))
     agent = os.path.join(repo, ".kiro", "agents", "brain-dev.md")
     if os.path.exists(agent):
         fm = _frontmatter(agent)
@@ -1407,6 +1419,8 @@ def cmd_start(a):
         intents.key_problem(a.key, cfg["req_prefix"])
         child = claims.read(repo, a.key)
         if isinstance(child, dict) and child.get("parent"):
+            if a.fast:
+                _refuse_fast(repo, cfg, child=True)
             bad = intents.doc_problems(child, content=False)
             if bad:
                 raise BrainError("claim/%s: %s" % (a.key, "; ".join(bad)))
@@ -1443,6 +1457,9 @@ def cmd_start(a):
         _checked_package(_store(repo, a.store), a.package)     # not there or damaged: refused before the claim
     if a.doc and (not a.consent or not a.classification):
         raise BrainError("--doc needs --consent and --classification (see `brain intake --help`)")
+    flow = flows.Flow.FAST if a.fast else flows.DEFAULT
+    if a.fast:
+        _refuse_fast(repo, cfg)
     from . import intents
     doc = None
     if cfg["tracker"] == "jira":
@@ -1506,9 +1523,10 @@ def cmd_start(a):
         switched = before
         if a.package:
             materials.append(attach_package(repo, store, a.package))
-        intent = lean.new_intent(repo, "%s-%s" % (key.lower(), slug), "%s %s" % (key, title))
+        intent = lean.new_intent(repo, "%s-%s" % (key.lower(), slug), "%s %s" % (key, title)) if flow.intent else None
+        flows.prepare_clone(flow, repo)
         rec = runrec.new(key, me, br, intent, brain_commit, __version__, paths, iso(utcnow()), checked,
-                         tracker=cfg["tracker"], materials=materials)
+                         tracker=cfg["tracker"], materials=materials, flow=flow)
         probs = runrec.validate(rec, branch=br, prefix=cfg["branch_prefix"])
         if probs:                   # never write a run.json that status, handoff and the bridge refuse
             raise BrainError("run.json would not be valid: %s" % "; ".join(probs))
@@ -1518,7 +1536,7 @@ def cmd_start(a):
             intent_md.append(os.path.join(cfg["runs_dir"], key, intents.INTENT_MD))
             with open(os.path.join(repo, intent_md[0]), "w", encoding="utf-8") as f:
                 f.write(intents.render_md(doc))
-        git(repo, "add", "--", rec_path, os.path.join(lean.DOCS, intent), *intent_md)
+        git(repo, "add", "--", rec_path, *([os.path.join(lean.DOCS, intent)] if intent else []), *intent_md)
         if os.path.isdir(os.path.join(repo, lean.DOCS, "audit")):
             git(repo, "add", "--", os.path.join(lean.DOCS, "audit"))
         git(repo, "commit", "-q", "-m", "%s: start run (brain %s)" % (key, brain_commit[:10]))
@@ -1529,15 +1547,29 @@ def cmd_start(a):
     if _has_origin(repo) and not a.no_push:
         git(repo, "push", "-q", "-u", "origin", br)
         pushed = True
-    print("Started %s on %s (Lean intent %s, Brain %s)%s." % (key, br, intent, brain_commit[:10],
-                                                                ", pushed" if pushed else ""))
+    print("Started %s on %s (%s, Brain %s)%s." % (key, br, "Lean intent %s" % intent if intent else
+                                                    "fast run, no Lean intent", brain_commit[:10],
+                                                    ", pushed" if pushed else ""))
     if materials:
         print("Materials: %s/%s/ (read-only; start from toc.md)" % (MATERIALS_DIR, materials[0]["package"]))
     if intent_md:
         print("Intent: %s (source %s; the agent reads it first)" % (intent_md[0], doc.get("source", "product")))
-    print("Next: open this folder in KiroCrew with agent %s (in Kiro CLI: brain-dev); keep %s/%s/aidlc-state.md "
-          "current; `brain handoff` when the runner should take over." % (CREW_AGENT, lean.DOCS, intent))
+    if intent:
+        print("Next: open this folder in KiroCrew with agent %s (in Kiro CLI: brain-dev); keep %s/%s/aidlc-state.md "
+              "current; `brain handoff` when the runner should take over." % (CREW_AGENT, lean.DOCS, intent))
+    else:
+        print("Next: open this folder in KiroCrew with agent %s (in Kiro CLI: brain-dev). Fast run: no Lean intent; "
+              "`brain mr` pushes and opens the MR when the work is done; `brain full` switches to the full flow."
+              % CREW_AGENT)
     return 0
+
+
+def _refuse_fast(repo, cfg, child=False):
+    """BrainError with every reason the branch this run starts from (origin's default branch, fetched) refuses a fast
+    run; before anything is claimed or written."""
+    why = flows.refusals(flows.Flow.FAST, lambda: flows.policy_at(repo, _brain_base(repo, cfg)[0]), child=child)
+    if why:
+        raise BrainError("--fast: %s" % "; ".join(r.en for r in why))
 
 
 # ---------- handoff ----------
@@ -1785,6 +1817,9 @@ def cmd_handoff(a):
     repo = repo_root()
     cfg = config.load(repo)
     br, b, rp, rec = _current(repo, cfg)
+    why = flows.action_problem(flows.of(rec), flows.Action.HANDOFF)
+    if why:
+        raise BrainError(why)
     me = _me(repo, cfg)
     if me != rec["owner"]:
         raise BrainError("this run belongs to %s; only the owner hands it off" % rec["owner"])
@@ -1963,8 +1998,9 @@ def cmd_status(a):
     repo = repo_root()
     cfg = config.load(repo)
     br, b, rp, rec = _current(repo, cfg)
-    print(json.dumps({k: rec.get(k) for k in ("key", "owner", "branch", "intent", "brain_commit", "origin",
-                                              "materials", "handoff")}, indent=2, ensure_ascii=False))
+    out = {k: rec.get(k) for k in ("key", "owner", "branch", "intent", "brain_commit", "origin", "materials",
+                                   "handoff")}
+    print(json.dumps(dict(out, mode=flows.of(rec).value), indent=2, ensure_ascii=False))
     print(lean.call(repo, "status", check=False).stdout.strip())
     return 0
 
@@ -2320,6 +2356,8 @@ def main(argv=None):
     s.add_argument("--paths", help="modules you expect to change, comma separated")
     s.add_argument("--no-jira", action="store_true", help="tracker jira only: skip the claim check (dry run)")
     s.add_argument("--no-push", action="store_true")
+    s.add_argument("--fast", action="store_true", help="a fast run: no Lean intent, no stages or approvals; verify "
+                                                       "before each commit, end with `brain mr`")
     _intake_args(s, False)
     s.set_defaults(fn=cmd_start)
     s = sub.add_parser("handoff")

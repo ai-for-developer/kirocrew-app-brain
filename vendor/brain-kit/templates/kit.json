@@ -36,7 +36,8 @@
     "base": "",
     "project": ""
   },
-  "_help": "People edit this file; the bot may not (pre-receive). tracker: none (keys <req_prefix>-<n>, claimed as git branches claim/<KEY>) or jira (keys are Jira issues; set jira.base). gitlab.base / gitlab.project (group/repo): for MR labels and the evidence links in MR descriptions. bot_users / bot_emails: the team runner's GitLab account. pins: exact versions every machine must run. intake.allow_confidential: set false to refuse confidential material (gate 2). proof (optional): url (this machine only), launch (serves this checkout's code), ready, size, ui_paths: how `lean verify` starts the app for its screenshots (.kiro/brain/proof.py shots, docs/proof.md).",
+  "fast_mode": true,
+  "_help": "People edit this file; the bot may not (pre-receive). tracker: none (keys <req_prefix>-<n>, claimed as git branches claim/<KEY>) or jira (keys are Jira issues; set jira.base). gitlab.base / gitlab.project (group/repo): for MR labels and the evidence links in MR descriptions. bot_users / bot_emails: the team runner's GitLab account. pins: exact versions every machine must run. intake.allow_confidential: set false to refuse confidential material (gate 2). fast_mode: false switches fast runs (`brain start --fast`, the Brain app's 快速) off for the team. proof (optional): url (this machine only), launch (serves this checkout's code), ready, size, ui_paths: how `lean verify` starts the app for its screenshots (.kiro/brain/proof.py shots, docs/proof.md).",
   "intake": {
     "allow_confidential": true,
     "bulk_pii_limit": 30

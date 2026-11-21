@@ -38,7 +38,7 @@ import hashlib
 import os
 import re
 
-from . import brainlint, config, entries as E, intents
+from . import brainlint, config, entries as E, flows, intents
 from .common import BrainError, git, git_out, load_json, parse_branch
 
 FENCE_OPEN_RE = re.compile(r"^\s*(`{3,})\s*brain-proposal\s*$")
@@ -526,8 +526,7 @@ def source_text(repo, cfg, key, ref=None, from_file=None) -> tuple:
         p = git(repo, "show", "%s:%s" % (ref, rel_run), check=False)
         if p.returncode != 0:
             raise BrainError("%s has no %s" % (ref, rel_run))
-        intent = _intent(p.stdout, "%s:%s" % (ref, rel_run))
-        rel = "aidlc-docs/%s/decisions.md" % intent
+        rel = _decisions_rel(p.stdout, "%s:%s" % (ref, rel_run), cfg["runs_dir"])
         p = git(repo, "show", "%s:%s" % (ref, rel), check=False)
         if p.returncode != 0:
             raise BrainError("%s has no %s" % (ref, rel))
@@ -537,12 +536,28 @@ def source_text(repo, cfg, key, ref=None, from_file=None) -> tuple:
         raise BrainError("%s not found here; pass --ref origin/%s after the run merged, or --from FILE"
                          % (rel_run, cfg["default_branch"]))
     with open(path, encoding="utf-8") as f:
-        intent = _intent(f.read(), rel_run)
-    rel = os.path.join("aidlc-docs", intent, "decisions.md")
+        rel = _decisions_rel(f.read(), rel_run, cfg["runs_dir"])
     if not os.path.exists(os.path.join(repo, rel)):
         raise BrainError("%s not found" % rel)
     with open(os.path.join(repo, rel), encoding="utf-8") as f:
         return f.read(), rel
+
+
+def _decisions_rel(raw, where, runs_dir) -> str:
+    """The repo path of decisions.md for the run.json text `raw` (flows.decisions_path): a Lean run's intent folder, a
+    fast run's runs/<KEY>/. A Lean run.json without a valid intent is refused in _intent's words."""
+    import json
+    try:
+        rec = json.loads(raw)
+    except ValueError:
+        rec = None
+    if not isinstance(rec, dict):
+        _intent(raw, where)
+    try:
+        flow = flows.of(rec)
+    except BrainError as e:
+        raise BrainError("%s: %s" % (where, e))
+    return flows.decisions_path(flow, {"intent": _intent(raw, where)} if flow.intent else rec, runs_dir)
 
 
 def _intent(raw, where) -> str:

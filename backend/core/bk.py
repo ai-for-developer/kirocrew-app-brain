@@ -5,7 +5,9 @@ modules are: nothing goes on ``sys.path``, and nothing else in the gateway proce
 imports its siblings relatively, so the package works under any name.
 
 Required modules (the app does nothing without them): common, config, claims, runrec, lean, entries, brainlint, usage,
-reflect, sign, cli, intake.package, bridge.handoff, bridge.decisions, bridge.runnerd, rest.
+reflect, sign, cli, intake.package, bridge.handoff, bridge.decisions, bridge.runnerd, rest, flows (a run's flow, lean or
+fast, and every rule that differs by flow: the app keeps no copy of one), riskpaths and ci (a fast run's changes are
+judged against the risk paths as brain-ci judges them).
 Optional ones, added while this app was written, are guarded: trace, evaluate, golden, intents, mrdesc, split
 (0d52e97: brain split, claim, start --key, sync; without it the 大需求 features are off), proof (证据: which evidence
 `lean verify` sealed and whether it is of the code under review; without it the 证据 row says the brain-kit is too old
@@ -34,7 +36,8 @@ from typing import Any
 
 PKG = "_brainapp_brainkit"
 REQUIRED = ("common", "config", "claims", "runrec", "lean", "entries", "brainlint", "usage", "reflect", "sign", "cli",
-            "rest", "intake.package", "bridge.handoff", "bridge.decisions", "bridge.runnerd", "bridge.ledger")
+            "rest", "intake.package", "bridge.handoff", "bridge.decisions", "bridge.runnerd", "bridge.ledger", "flows",
+            "riskpaths", "ci")
 OPTIONAL = ("trace", "evaluate", "golden", "intents", "mrdesc", "split", "proof")   # split: brain-kit 0d52e97
 CANDIDATES = ("~/brain-kit", "~/warren_ws/brain-kit", "~/workplace/brain-kit", "/opt/brain-kit")
 # The brain-kit a release ships inside the app (scripts/release.sh puts it there; a dev checkout has none).
@@ -46,8 +49,10 @@ NEEDS = (("sign", "SpoolSigner"), ("sign", "SignerRefused"), ("sign", "signer_fr
          ("bridge.handoff", "Bridge.handoff_commit_problems"), ("cli", "missing_lean_hooks"), ("cli", "add_lean_hooks"),
          ("cli", "runner_kit_problems"), ("rest", "head_pushed_at"), ("rest", "GitLab.commit"),
          ("bridge.decisions", "edit_state"), ("bridge.decisions", "DecisionLoop.reply_states"),
-         ("rest", "GitLab.note_edits"))
-VERSION_NEEDED = "72b278e"
+         ("rest", "GitLab.note_edits"), ("flows", "of"), ("flows", "refusals"), ("flows", "policy_at"),
+         ("flows", "belongs"), ("flows", "decisions_path"), ("flows", "prepare_clone"), ("flows", "action_problem"),
+         ("flows", "Refusal.zh"), ("riskpaths", "hits"), ("ci", "changed_paths"), ("ci", "gitlinks"))
+VERSION_NEEDED = "b572303"
 
 _lock = threading.RLock()
 _state: dict[str, Any] = {"path": None, "mods": {}, "errors": {}, "error": "", "version": None}
@@ -86,6 +91,10 @@ def load(path: str) -> dict[str, Any]:
         if not os.path.isfile(os.path.join(pkg_dir, "__init__.py")):
             _state["error"] = "这里没有 brain-kit（找不到 %s/__init__.py）" % pkg_dir
             return info()
+        gone = [n for n in REQUIRED if not _has_source(pkg_dir, n)]
+        if gone:
+            _state["error"] = "brain-kit 太旧（没有 %s）：要 %s 或更新的版本" % ("、".join(gone), VERSION_NEEDED)
+            return info()
         try:
             spec = importlib.util.spec_from_file_location(PKG, os.path.join(pkg_dir, "__init__.py"),
                                                           submodule_search_locations=[pkg_dir])
@@ -114,6 +123,12 @@ def load(path: str) -> dict[str, Any]:
                 _state["errors"][name] = "%s: %s" % (type(exc).__name__, str(exc)[:200])
         _state["mods"] = mods
         return info()
+
+
+def _has_source(pkg_dir: str, name: str) -> bool:
+    """The checkout has module *name* (``bridge.handoff``) as a file or a package."""
+    base = os.path.join(pkg_dir, *name.split("."))
+    return os.path.isfile(base + ".py") or os.path.isfile(os.path.join(base, "__init__.py"))
 
 
 def _attr(obj: Any, dotted: str) -> Any:

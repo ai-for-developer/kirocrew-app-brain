@@ -12,13 +12,17 @@ A split child's run (split.start_child) continues its parent's Lean intent and a
   built_on       a dependency whose branch it started from, before that one merged (`brain start --on`)
   mr             {requested_at, by, local_head}: `brain handoff` asked to merge it into target_branch. The child
                  counts as merged once this record and its branch tip are on the parent's branch (intents.child_merged)
+
+A fast run (flows.FAST) has "mode": "fast" and "intent": null: no Lean intent, never handed over, never a split child.
+A Lean run's record has no "mode" key, as every run before fast mode had.
 """
 from __future__ import annotations
 
 import os
 import re
 
-from .common import JIRA_RE, SHA_RE, USER_RE, parse_branch
+from . import flows
+from .common import JIRA_RE, SHA_RE, USER_RE, BrainError, parse_branch
 
 SCHEMA = 1
 ORIGINS = ("local", "remote")
@@ -29,6 +33,7 @@ PATH_RE = re.compile(r"^[A-Za-z0-9_./*-][A-Za-z0-9_./* -]{0,199}$")
 UNIT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")      # Lean's UNIT_NAME_RE
 TEAM_RE = re.compile(r"^[A-Za-z0-9_]{1,64}$")                     # a team as `lean init --team` stores it
 CLONE_RE = re.compile(r"^[0-9a-f]{6}$")
+CHILD_KEYS = ("parent", "unit", "target_branch", "lean_team", "lean_clone", "built_on", "mr")   # a split child's
 
 
 MAX_PATHS = 50
@@ -53,8 +58,10 @@ def package_key(pkg) -> str:
 
 
 def new(key, owner, branch, intent, brain_commit, kit_version, expected_paths, created_at, claim_checked,
-        tracker="none", materials=()):
-    return {
+        tracker="none", materials=(), flow=flows.DEFAULT):
+    """A new run record. "mode" is written only for a flow other than flows.DEFAULT, so a Lean run.json is what it
+    was before fast mode."""
+    rec = {
         "schema": SCHEMA,
         "key": key,
         "tracker": tracker,
@@ -70,6 +77,9 @@ def new(key, owner, branch, intent, brain_commit, kit_version, expected_paths, c
         "claim_checked": bool(claim_checked),
         "handoff": None,
     }
+    if flow is not flows.DEFAULT:
+        rec["mode"] = flow.value
+    return rec
 
 
 def validate(rec, branch=None, prefix="ai") -> list:
@@ -85,8 +95,7 @@ def validate(rec, branch=None, prefix="ai") -> list:
         p.append("owner is not a username")
     if not SHA_RE.match(str(rec.get("brain_commit", ""))):
         p.append("brain_commit is not a full commit sha")
-    if not INTENT_RE.match(str(rec.get("intent", ""))):
-        p.append("intent must be a Lean intent folder name (yymmdd-slug)")
+    p += flow_problems(rec)
     if rec.get("origin") not in ORIGINS:
         p.append("origin must be one of %s" % (ORIGINS,))
     eps = rec.get("expected_paths", [])
@@ -117,11 +126,32 @@ def validate(rec, branch=None, prefix="ai") -> list:
     return p
 
 
+def flow_problems(rec) -> list:
+    """The record's flow rules. A Lean run names its intent folder (INTENT_RE: the intent is copied into the runner's
+    message and the app's kickoff, so nothing looser gets in). A run without an intent has intent null, is no split
+    child (a child continues its parent's intent), and has no hand-over when its flow has none."""
+    try:
+        flow = flows.of(rec)
+    except BrainError as e:
+        return [str(e)]
+    if flow.intent:
+        return [] if INTENT_RE.match(str(rec.get("intent", ""))) else [
+            "intent must be a Lean intent folder name (yymmdd-slug)"]
+    p = []
+    if rec.get("intent", "") is not None:
+        p.append("a %s run has no Lean intent: intent must be null" % flow.value)
+    if any(k in rec for k in CHILD_KEYS):
+        p.append("a %s run is not part of a split: it has no %s" % (flow.value, ", ".join(
+            k for k in CHILD_KEYS if k in rec)))
+    if flows.Action.HANDOFF not in flow.actions and rec.get("handoff") is not None:
+        p.append("a %s run is not handed over to the team runner: handoff must be null" % flow.value)
+    return p
+
+
 def child_problems(rec) -> list:
     """The split-child fields of a run record (none of them: not a child, nothing to check)."""
     p = []
-    keys = ("parent", "unit", "target_branch", "lean_team", "lean_clone", "built_on", "mr")
-    if not any(k in rec for k in keys):
+    if not any(k in rec for k in CHILD_KEYS):
         return p
     if not JIRA_RE.match(str(rec.get("parent", ""))) or rec.get("parent") == rec.get("key"):
         p.append("parent must be another requirement key")

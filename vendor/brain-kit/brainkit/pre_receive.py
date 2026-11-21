@@ -132,6 +132,11 @@ def committer_emails(commits, cwd=None) -> set:
     return out
 
 
+def _blob_id(rev, path, cwd=None) -> str:
+    """The object id of `path` at `rev`, or '' when it has none."""
+    return _git("rev-parse", "-q", "--verify", "%s:%s" % (rev, path), cwd=cwd).stdout.strip()
+
+
 def is_ff(old, new, cwd=None) -> bool:
     return _git("merge-base", "--is-ancestor", old, new, cwd=cwd).returncode == 0
 
@@ -262,17 +267,19 @@ def claim_rules(old, new, branch, user, is_bot, cwd) -> list:
     return []
 
 
-def bot_path_problems(branch, commits, cfg, cwd=None) -> list:
+def bot_path_problems(branch, commits, cfg, cwd=None, moved=()) -> list:
     """The bot's path rules for these commits (what they change, not who made them): no bot_forbidden_paths and no
     KIT_PATHS (in any letter case: a checkout on a case-insensitive disk writes .KIRO/brain/x over .kiro/brain/x), no
-    <runs_dir>/<KEY>/run.json. brain-ci push-rules applies them to the bot's commits of an MR too."""
+    <runs_dir>/<KEY>/run.json, and none in `moved` (the run.json a push leaves other than the branch had it: decide).
+    brain-ci push-rules applies them to the bot's commits of an MR too."""
     reasons = []
     paths = changed_paths(commits, cfg["default_branch"], cwd)
     rules = [r.casefold() for r in list(cfg.get("bot_forbidden_paths") or []) + list(KIT_PATHS)]
     bad = sorted(p for p in paths if _forbidden(p.casefold(), rules))
     if bad:
         reasons.append("%s: bot accounts may not change %s" % (branch, ", ".join(bad[:5])))
-    recs = sorted(p for p in own_changes(commits, cwd) if run_record_path(p, cfg.get("runs_dir", "runs")))
+    recs = sorted({p for p in own_changes(commits, cwd) if run_record_path(p, cfg.get("runs_dir", "runs"))} |
+                  set(moved))
     if recs:
         reasons.append("%s: bot accounts may not change %s (run.json is written by `brain start` and "
                        "`brain handoff` only)" % (branch, ", ".join(recs[:5])))
@@ -311,7 +318,11 @@ def decide(updates, user, cfg, cwd=None) -> list:
                 reasons.append("%s: bot accounts may not force-push" % branch)
                 continue
             commits = new_commits(old, new, cfg["default_branch"], cwd)
-            reasons += bot_path_problems(branch, commits, cfg, cwd)
+            # a merge whose run.json is one parent's changes nothing against every parent, in either parent order, yet
+            # can put back a run.json the owner replaced: compare the branch before and after the push
+            rec = "%s/%s/run.json" % (str(cfg.get("runs_dir") or "runs").strip("/"), b["key"])
+            moved = [rec] if old != ZERO_SHA and _blob_id(old, rec, cwd) != _blob_id(new, rec, cwd) else []
+            reasons += bot_path_problems(branch, commits, cfg, cwd, moved=moved)
             emails = {e.lower() for e in cfg.get("bot_emails", [])}
             alien = sorted(committer_emails(commits, cwd) - emails)
             if alien:

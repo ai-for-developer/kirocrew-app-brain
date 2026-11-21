@@ -1,6 +1,7 @@
 """Risk-path patterns (gates/risk-paths): one set of rules, the way .gitignore reads a pattern, for brain-ci
-check-run, the MR description, `brain handoff` and the bridge's hand-over hint. matches() is for a file git names;
-meets() for a run's expected path (a file, a folder or a glob that names everything below it).
+check-run, `brain mr`, the MR description, `brain handoff` and the bridge's hand-over hint. matches() is for a file git
+names; hits() for a change (the files and submodules it touches) against the whole file; meets() for a run's expected
+path (a file, a folder or a glob that names everything below it).
 
 One pattern per line (the kit cuts a line at '#'):
   src/pay      the file or folder src/pay and everything below it. A '/' at the start or in the middle anchors a
@@ -137,6 +138,17 @@ def problem(text) -> str:
     except BrainError as e:
         return str(e)
     return ""
+
+
+def hits(text, changed, folders=frozenset()) -> tuple:
+    """(problems, risky) of the files `changed` (as git names them; `folders`: those that are submodules, folders to
+    git) against the gates/risk-paths `text` (None or '': no risk paths). problems: why each line these rules cannot
+    read is refused, in file order; risky: the changed files a readable pattern covers, sorted. brain-ci's two routes
+    (check_route, refuse_route), `brain mr` and the Brain app judge a change with it."""
+    pats = [x for x in (line.split("#", 1)[0].strip() for line in (text or "").splitlines()) if x]
+    bad = [why for why in (problem(x) for x in pats) if why]
+    pats = [x for x in pats if not problem(x)]
+    return bad, sorted({f for f in changed if any(matches(f, x, f in folders) for x in pats)})
 
 
 def matches(path, pattern, folder=False) -> bool:

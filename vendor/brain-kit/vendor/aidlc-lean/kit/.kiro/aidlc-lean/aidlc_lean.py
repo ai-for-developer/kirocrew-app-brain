@@ -9,6 +9,8 @@ Commands (people and the agent; `lean` = python3 .kiro/aidlc-lean/aidlc_lean.py)
                               starts with inception/requirements/requirements.md. --ideation: it starts with
                               ideation/intent-capture/intent-statement.md
   use <intent>                switch the active intent (logged as INTENT_SWITCHED)
+  use --none                  no active intent in this clone, not even the only intent folder, until `use <intent>`
+                              or `new` (logged as INTENT_SWITCHED; refused in regulated mode)
   status                      where the active intent stands: stage progress and the next step (it also brings
                               the generated part of aidlc-state.md up to date)
   stage start <id> [--unit U]                   create the stage's document from its template; in progress
@@ -101,7 +103,7 @@ try:
 except ImportError:  # Windows: no advisory locks; parallel hooks then run unlocked
     fcntl = None
 
-VERSION = "0.3.1"
+VERSION = "0.3.2"
 KIT_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES = os.path.join(KIT_DIR, "templates")
 TOOL = "python3 .kiro/aidlc-lean/aidlc_lean.py"
@@ -886,11 +888,17 @@ class Project:
         return sorted(x for x in os.listdir(self.docs)
                       if x not in skip and not x.startswith(".") and os.path.isdir(os.path.join(self.docs, x)))
 
+    def chose_none(self):
+        """`use --none` was this clone's last choice: no intent is active, not even the only intent folder."""
+        return self.local_dict("active.json").get("none") is True
+
     def active(self):
         items = self.list_intents()
         a = self.local_dict("active.json").get("intent")
         if a in items:
             return a
+        if self.chose_none():
+            return None
         return items[0] if len(items) == 1 else None
 
     def doc(self, intent, relpath=""):
@@ -2711,6 +2719,13 @@ def status_lines(pj, brief=False):
                 out.append(title + ", ".join(shown) + more)
     intent = pj.active()
     if not intent:
+        # the hooks inject these lines into the session: after `use --none` they must not nudge it to pick an intent,
+        # except in regulated mode, where code needs one
+        if pj.chose_none() and not pj.cfg.get("regulated"):
+            verify = "; commits need `%s verify` green on the current code" % TOOL if pj.cfg.get("checks") else ""
+            out.append("No active intent: this clone is set to work without one. Code changes need no stage "
+                       "approvals%s." % verify)
+            return out
         items = pj.list_intents()
         out.append("No active intent. %s" % (("Intents: " + ", ".join(items[-5:]) + ". Use `%s use <intent>`." % TOOL)
                                               if items else "Start one with `%s new <slug>`." % TOOL))
@@ -3656,6 +3671,16 @@ def resolve_intent(pj, name):
 
 
 def cmd_use(pj, args):
+    if args[:1] == ["--none"]:
+        if pj.cfg.get("regulated"):
+            print("regulated mode: every code change needs an intent, so `use --none` is not available.")
+            return 1
+        before = pj.active()
+        if before or not pj.chose_none():  # already none: nothing to record, so callers may run it every time
+            pj.local_put("active.json", {"intent": None, "none": True})
+            pj.append("INTENT_SWITCHED", {"from": before, "to": None})
+        print("No active intent in this clone until `%s use <intent>` or `%s new <slug>`." % (TOOL, TOOL))
+        return 0
     hit = resolve_intent(pj, args[0] if args else None)
     if not hit:
         print("Pick one of: " + ", ".join(pj.list_intents()))
@@ -4243,7 +4268,7 @@ def audit_desc(pj, e):
                                              " (sha256 %s)" % dd["evidence_sha256"][:12] if dd.get("evidence_sha256")
                                              else "", base)
     if e["event"] == "INTENT_SWITCHED":
-        return "from %s to %s" % (dd.get("from") or "(none)", dd.get("to"))
+        return "from %s to %s" % (dd.get("from") or "(none)", dd.get("to") or "(none)")
     if e["event"] == "BLOCKED":
         return "%s: %s" % (dd.get("gate"), dd.get("path") or dd.get("command"))
     if e["event"] in ("SESSION_START", "SUBAGENT_START"):
