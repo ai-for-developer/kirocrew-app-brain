@@ -62,8 +62,9 @@ def deliveries(bk, gl):
     return mod("team.relay").Deliveries(bk.m("rest").GitLab(BASE, "bridge-tok", gl), BASE, lambda p: kit)
 
 
-def blob_reads(gl, since):
-    return [c for c in gl.calls[since:] if "/repository/blobs/" in c[1]]
+def file_reads(gl, since):
+    """The files GitLab served since call *since*, by path or by blob id."""
+    return [c for c in gl.calls[since:] if c[1].endswith("/raw")]
 
 
 def test_a_new_head_reads_only_the_files_that_changed_however_many_audit_files_it_holds(tmp_path, bk):
@@ -71,14 +72,15 @@ def test_a_new_head_reads_only_the_files_that_changed_however_many_audit_files_i
     d = deliveries(bk, gl)
     first = d.read(P, deployed="", roles={})
     assert [r["key"] for r in first.rows] == [KEY] and first.notes == []
-    assert len(blob_reads(gl, 0)) == 202                  # run.json, aidlc-state.md and the 200 audit files, once each
     write(work, {"aidlc-docs/audit/host-000007.jsonl": json.dumps(
         {"intent": INTENT, "event": "STAGE_STARTED", "ts": "2026-11-02T00:00:00Z"}) + "\n"})
     since = len(gl.calls)
     again = d.read(P, deployed="", roles={})
-    changed = blob_reads(gl, since)
-    assert len(changed) == 1, changed                      # the one audit file that changed
-    assert len(gl.calls) - since < 15                      # the folders listed again at the new head, not 200 files
+    assert len(gl.calls) - since < 15, len(gl.calls) - since       # its folders listed again, not 200 files read
+    changed, = file_reads(gl, since)                                # the one audit file that changed, by its blob id
+    assert changed[1].endswith("/repository/blobs/%s/raw" % sh(
+        "git", "-C", work, "rev-parse", "HEAD:aidlc-docs/audit/host-000007.jsonl").stdout.strip())
+    assert len(file_reads(gl, 0)) == 202 + 1               # run.json, aidlc-state.md, the 200 audit files: each once
     assert again.rows[0]["updated_at"] >= first.rows[0]["updated_at"]
 
 
