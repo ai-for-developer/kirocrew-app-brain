@@ -185,6 +185,9 @@ def test_a_quiet_team_whose_dismissed_error_keeps_coming_back_writes_the_heartbe
     snap = busy(clock.t, 1)
     snap["runner"]["staging"][0]["state"] = "issued"
     assert relay.content_key(snap) != relay.content_key(busy(clock.t, 1))                       # a real change is one
+    elsewhere = busy(clock.t, 1)
+    elsewhere["server"]["working"] = 2          # a session started for another project: no news of this one
+    assert relay.content_key(elsewhere) == relay.content_key(busy(clock.t, 1))
 
 
 def test_a_round_builds_for_twenty_seconds_the_longest_waiting_first_and_the_rest_wait(status):

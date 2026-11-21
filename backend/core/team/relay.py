@@ -507,12 +507,12 @@ class Deliveries:
 # ---- writing ----------------------------------------------------------------------------------------------------- #
 
 def content_key(snap: Mapping[str, Any]) -> str:
-    """What decides whether a snapshot is new: all of it but what moves without news, round after round: when it was
-    made, the bridge's last round, when its rows were read, each staging error's count and when the log last showed it,
-    each patrol MR's updated_at (any note or label on it). Those are written along with a real change, or with the
-    heartbeat."""
+    """What decides whether a snapshot is new: all of it but what moves without news of its project, round after round:
+    when it was made, the bridge's last round, how many brain-patrol sessions work now (the server's, in every project's
+    snapshot), when its rows were read, each staging error's count and when the log last showed it, each patrol MR's
+    updated_at (any note or label on it). Those are written along with a real change, or with the heartbeat."""
     runner = snap["runner"]
-    body = dict(snap, generated_at=0, delivery_at=None, server=dict(snap["server"], last_round_at=None),
+    body = dict(snap, generated_at=0, delivery_at=None, server=dict(snap["server"], last_round_at=None, working=0),
                 runner=dict(runner, staging=[dict(e, count=0, last_seen=0.0) for e in runner["staging"]],
                             patrol=[dict(m, updated_at=None) for m in runner["patrol"]]))
     return hashlib.sha256(snapshot.dump(body).encode("utf-8")).hexdigest()
