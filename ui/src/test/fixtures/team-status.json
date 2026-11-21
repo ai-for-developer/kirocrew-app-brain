@@ -1,0 +1,89 @@
+{
+  "recent_h": 24,
+  "repos": [
+    {
+      "repo": "r1",
+      "name": "shop-pay",
+      "runner": {
+        "bridge_user": "brain-bridge",
+        "project": "shop/shop-pay",
+        "me": "alice",
+        "seen": {
+          "at": 1794146390,
+          "last_at": 1794146220,
+          "at_work": [
+            {
+              "iid": 41,
+              "title": "退款审核",
+              "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/41",
+              "why": "running",
+              "at": 1794146220
+            },
+            {
+              "iid": 44,
+              "title": "退款通知短信",
+              "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/44",
+              "why": "running",
+              "at": 1794142800
+            },
+            {
+              "iid": 52,
+              "title": "折扣按百分比算",
+              "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/52",
+              "why": "patrol",
+              "at": 1794139200
+            }
+          ],
+          "waiting": [
+            {
+              "id": "D-7",
+              "iid": 41,
+              "title": "退款审核",
+              "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/41#note_7101",
+              "kind": "clarify",
+              "kind_label": "澄清",
+              "question": "退款超过 500 元要不要人工审核？",
+              "options": [
+                {
+                  "id": "A",
+                  "text": "要，客服审核以后再退"
+                },
+                {
+                  "id": "B",
+                  "text": "不要，直接退"
+                }
+              ],
+              "at": 1794135600
+            }
+          ]
+        },
+        "problem": null
+      }
+    },
+    {
+      "repo": "r3",
+      "name": "shop-order",
+      "runner": {
+        "bridge_user": "brain-bridge",
+        "project": "shop/shop-order",
+        "me": "alice",
+        "seen": {
+          "at": 1794145800,
+          "last_at": 1794128400,
+          "at_work": [],
+          "waiting": []
+        },
+        "problem": {
+          "text": "这次没读到 GitLab",
+          "todo": "过一会儿会再读；一直这样就看看网络，GitLab 要单点登录的先登录",
+          "raw": "GET /projects/shop%2Fshop-order/merge_requests -> HTTP 502: Bad Gateway"
+        }
+      }
+    },
+    {
+      "repo": "r4",
+      "name": "shop-tools",
+      "runner": null
+    }
+  ]
+}

@@ -24,7 +24,8 @@
  *   ?view=brain&repo=<id>&file=<FILE>&id=<entry>&reflect=<KEY>   Brain: that file, that entry picked out, that
  *                                                 requirement picked in the reflect card
  *   ?view=todo                                    待办
- *   ?view=team                                    运行机 (team mode only)
+ *   ?view=team                                    运行机 (the team server's bridge; on a personal install the team
+ *                                                 runner as GitLab shows it)
  *   ?view=settings                                设置
  *   ?view=import&path=<absolute path>             导入仓库 (the path only fills the box: nothing runs until 检查)
  *

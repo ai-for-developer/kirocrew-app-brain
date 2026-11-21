@@ -529,8 +529,14 @@ export interface MeNameResult {
   raw?: string
 }
 
+/** What this install is (settings.role): personal (the default, a person's own machine: 运行机 shows the team runner
+ * as GitLab shows it), or team_server (the team's one runner: 设置 has 团队模式 and 一键建运行机, 运行机 is its own
+ * bridge). Settings of 0.4.2 and before name none: a machine in team mode then is the team server. */
+export type InstallRole = 'personal' | 'team_server'
+
 export interface Status {
-  app: { name: string; version: string; team: boolean }
+  /** team: team mode runs here (only ever on a team server) */
+  app: { name: string; version: string; team: boolean; role: InstallRole }
   brainkit: {
     path: string
     ok: boolean
@@ -561,6 +567,10 @@ export interface TeamStatus {
   error_raw?: string
   last_loop_at: number | null
   loop_error: string
+  /** the projects the last round's hand-over poll did not read (FAIL: their hand-overs not looked at, the other
+   * projects' were) or does not poll (WARN: kit.json work_sources leaves mr-handoff out); [] when none. The backend
+   * always sends it */
+  checks?: CheckRow[]
   /** the signer runs as this app's OS user (the local trial, or its signed/ and refused/ are writable here): it would
    * sign whatever the app asks, so it is no boundary (never on a real team runner) */
   same_user: boolean
@@ -840,6 +850,9 @@ export interface Settings extends TeamLimits {
   fetch_every_min: number
   /** {repo path: false} for a repo whose run branches are not pushed at Lean's checkpoints (on when left out) */
   auto_push: Record<string, boolean>
+  /** set by 设置's own switch only (the form never sends it); back to personal turns team mode off */
+  role: InstallRole
+  /** team mode, only on a team server (a personal install never has it on) */
   team: {
     enabled: boolean
     /** brain-kit's bridge.json, with "signer": {"type": "spool", "spool_dir", "allowed_signers"} and no signing_key */
@@ -1585,12 +1598,135 @@ export interface TeamPatrol {
   items: PatrolMr[]
 }
 
+// ---------------------------------------------------------------- 测试环境报错: GET /team/staging
+
+/** Where an error of the test environment is (backend/core/team/staging.py): new (seen, its Issue not open yet, or
+ * seen again on a newer deploy and to be opened again; note says why one waits: three a round, twenty open at most),
+ * issued (its Issue open, waiting for a fix session: note says why), fixing (a brain-patrol session is on it), fix_mr
+ * (its fix's MR is open, waiting for people), stopped (two fix attempts failed, or a person closed the fix's MR: the
+ * Issue says so), dismissed (people closed its Issue, not its fix, or labelled it wontfix: never opened again or
+ * fixed, a recurrence on a newer deploy told on the Issue once), closed (its Issue closed by its fix, or deleted).
+ * Another value is shown as it is. */
+export type StagingState = 'new' | 'issued' | 'fixing' | 'fix_mr' | 'stopped' | 'dismissed' | 'closed'
+export interface StagingLink {
+  iid: number
+  url: string | null
+  title: string
+}
+export interface StagingError {
+  project: string
+  /** what keys the error: a traceback's exception type and innermost project frame, else its message without its
+   * numbers and ids, or the request a 5xx answered */
+  signature: string
+  /** times the runner saw it in the log */
+  count: number
+  state: StagingState
+  issue: StagingLink | null
+  /** the MR that merged the commit deployed when its Issue was opened; null: GitLab knows none */
+  origin: StagingLink | null
+  fix_mr: StagingLink | null
+  /** epoch seconds */
+  first_seen: number
+  last_seen: number
+  /** the commit deployed when it was last seen */
+  deployed_sha: string
+  /** failed fix attempts since its Issue was opened */
+  attempts: number
+  slot: string | null
+  /** why it waits, how its last attempt went, or what went wrong this round, in words ('' when nothing) */
+  note: string
+}
+export interface TeamStaging {
+  /** some project's kit.json switches work source staging-errors on */
+  on: boolean
+  cap: number
+  working: number
+  /** epoch seconds of the last round; null before the first */
+  last_at: number | null
+  projects: { project: string; on: boolean; error: string; deployed_sha: string }[]
+  items: StagingError[]
+}
+
+// ---------------------------------------------------------------- 团队运行机 as GitLab shows it: GET /team/status
+
+/** An open MR the team runner works on: running, its hand-over label says so (kit.json running_label); patrol, MR 巡检
+ * replied on it or summed it up within the last recent_h hours. */
+export interface RunnerMr {
+  iid: number
+  title: string
+  url: string | null
+  why: 'running' | 'patrol'
+  /** the newest note the bridge's account wrote on it (epoch s); null: none */
+  at: number | null
+}
+/** A question the bridge asked on an MR that names the person among who may answer, with no answer after it yet. */
+export interface RunnerQuestion {
+  /** D-n */
+  id: string
+  iid: number
+  /** its MR's title */
+  title: string
+  /** the question's note on the MR */
+  url: string | null
+  kind: string
+  kind_label: string
+  question: string
+  options: { id: string; text: string }[]
+  /** when it was asked (epoch s) */
+  at: number | null
+}
+export interface RunnerSeen {
+  /** when GitLab was read (epoch s) */
+  at: number
+  /** the runner's newest act on the MRs read: a note of its account, a label it changed (null: none in recent_h) */
+  last_at: number | null
+  at_work: RunnerMr[]
+  /** oldest first */
+  waiting: RunnerQuestion[]
+}
+/** A repo's team runner, read with the person's own GitLab token: the last read that worked (seen), and why the last
+ * one did not (problem, in words; raw: GitLab's own, for 细节). */
+export interface TeamRunner {
+  /** the bridge's GitLab account (kit.json bridge_user) */
+  bridge_user: string
+  project: string
+  /** whom the questions are read for: the person's name in this repo; null: the app cannot tell */
+  me: string | null
+  seen: RunnerSeen | null
+  problem: { text: string; todo: string; raw: string } | null
+}
+export interface RunnerRepo {
+  repo: string
+  name: string
+  /** null: its kit.json names no bridge_user, so it has no team runner */
+  runner: TeamRunner | null
+}
+/** GET /team/status: every listed repo, in the app's order. */
+export interface RunnerStatus {
+  /** what 「最近」 means for MR 巡检's notes, in hours */
+  recent_h: number
+  repos: RunnerRepo[]
+}
+
 // ---------------------------------------------------------------- 一键建运行机: GET/POST /team/setup
 
 /** A step's state: done, waiting (for a person: the kit.json MR to merge), failed (the run stopped there), skipped;
  * running (the one in progress), todo (not reached by the last run). */
 export type SetupStepStatus = 'done' | 'waiting' | 'failed' | 'skipped' | 'running' | 'todo'
 export type SetupRole = 'product' | 'builder' | 'security' | 'data'
+/** Where the runner's GitLab accounts come from: project-token (one project; the one-time token makes project access
+ * tokens) or bot-account (several projects; the personal tokens of two GitLab users of the runner's own). */
+export type SetupMode = 'project-token' | 'bot-account'
+export type SetupPush = 'auto' | 'ssh' | 'token'
+/** One project's part of a step about the projects (finding them, the labels, the members, the kit.json MR). */
+export interface SetupProjectRow {
+  project: string
+  status: SetupStepStatus
+  message: string
+  /** its page on GitLab, its MR to merge */
+  link: string | null
+  detail: string
+}
 export interface SetupStep {
   id: string
   title: string
@@ -1601,6 +1737,8 @@ export interface SetupStep {
   link: string | null
   /** what GitLab or a command said, for 细节 */
   detail: string
+  /** a step about two projects or more: each one's own result; [] otherwise (the step's words say it) */
+  projects: SetupProjectRow[]
 }
 /** The same-user team runner the app builds itself (backend/core/team/setup.py), as the last run left it. */
 export interface TeamSetup {
@@ -1610,22 +1748,42 @@ export interface TeamSetup {
   ended_at: number | null
   /** the step a run cut off part-way had not finished (the app or the command stopped while it ran); null otherwise */
   cut_off: string | null
-  /** that run's input; never the token. patrol: 巡检所有开着的 MR */
-  input: { gitlab_base: string; project: string; roles: Record<SetupRole, string[]>; push: 'auto' | 'ssh' | 'token'; patrol: boolean }
+  /** that run's input; never a token. projects: one in project-token mode. patrol: 巡检所有开着的 MR; jenkins: where
+   * MR 巡检 reads failed builds' logs and as whom ('' and '': no Jenkins) */
+  input: { gitlab_base: string; mode: SetupMode; projects: string[]; roles: Record<SetupRole, string[]>; push: SetupPush; patrol: boolean; jenkins: { base: string; user: string } }
+  /** bot-account: the GitLab users whose personal tokens an earlier run kept on this machine ('' none); a run may
+   * leave such a token out */
+  accounts: { bridge: string; bot: string }
   /** every step of the table, in order */
   steps: SetupStep[]
   /** where its configs, tokens and keys are */
   root: string
 }
-/** POST /team/setup (answers TeamSetup, running). admin_token: a one-time personal token with api, used for this run
- * only; roles: GitLab usernames, a role left out is the token's owner; patrol: 巡检所有开着的 MR (left out: on). */
-export interface TeamSetupBody {
+/** POST /team/setup (answers TeamSetup, running). roles: GitLab usernames, a role left out is the one-time token's
+ * owner; patrol: 巡检所有开着的 MR (left out: on); jenkins: a read-only user's, its token kept on the team server ('':
+ * the one kept before; left out: no Jenkins). */
+export type TeamSetupBody = ProjectTokenSetupBody | BotAccountSetupBody
+interface SetupBodyBase {
   gitlab_base: string
+  roles: Partial<Record<SetupRole, string[]>>
+  push?: SetupPush
+  patrol?: boolean
+  jenkins?: { base: string; user: string; token: string }
+}
+/** One project; admin_token: a one-time personal token with api (Maintainer), used for this run only. */
+export interface ProjectTokenSetupBody extends SetupBodyBase {
+  mode?: 'project-token'
   project: string
   admin_token: string
-  roles: Partial<Record<SetupRole, string[]>>
-  push?: 'auto' | 'ssh' | 'token'
-  patrol?: boolean
+}
+/** Every project in projects; bridge_token, bot_token: the two accounts' personal tokens (left out: the ones kept);
+ * admin_token optional (left out: product and builder named, the labels and MRs made as the bridge's account). */
+export interface BotAccountSetupBody extends SetupBodyBase {
+  mode: 'bot-account'
+  projects: string[]
+  admin_token?: string
+  bridge_token?: string
+  bot_token?: string
 }
 
 // ---------------------------------------------------------------- POST /refresh {repo}

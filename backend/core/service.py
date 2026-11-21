@@ -20,7 +20,7 @@ from typing import Any, Callable
 
 from . import (acts, bk, brainview, crewcheck, deliveries, detail, evidence, family, fastboard, fastrow, flowview,
                identity, importer, inplace, installer, intake, kitmr, landing, lean_view, mrdesc_view, mrinfo, picker,
-               progress, roster)
+               progress, roster, runner_view)
 from . import outputs as outputs_mod
 from . import problems, stages
 from . import board as board_mod
@@ -39,6 +39,7 @@ from .store import Store
 from .team import patrol as patrol_mod
 from .team import setup as setup_mod
 from .team import signerproc
+from .team import staging as staging_mod
 
 _REGISTRY: dict[str, "Service"] = {}
 _SECRETS = re.compile(r"(?i)((?:password|passwd|secret|token|api[_-]?key|authorization)\s*[=:]\s*|bearer\s+)\S+"
@@ -149,6 +150,7 @@ class Service:
                                                    scrub=self.scrub)
         self.store = Store(self.data_dir / "events")
         self.mr = mrinfo.MrCache()
+        self.runners = runner_view.Runners()   # 运行机 on a personal install: the team runner as GitLab shows it
         self.repos: dict[str, Repo] = {}
         self.repo_errors: dict[str, tuple[str, str]] = {}
         # listed repos whose brain-kit is on its way (the install branch, merged but not pulled): (path, state)
@@ -1897,7 +1899,8 @@ class Service:
             on = bool(self.settings["team"].get("enabled"))
             why = problems.team_start("brain-kit 没装载" if on else "")
             return {"enabled": on, "ok": False, "error": why["text"], "error_todo": why["todo"], "error_raw": why["raw"],
-                    "last_loop_at": None, "loop_error": "", "same_user": False, "signer": {"pending": 0, "refused": 0}}
+                    "last_loop_at": None, "loop_error": "", "checks": [], "same_user": False,
+                    "signer": {"pending": 0, "refused": 0}}
         return self.team.status()
 
     async def status(self) -> dict[str, Any]:
@@ -1931,7 +1934,8 @@ class Service:
             x["me"] = mes.get(x["id"])
             x["sync"] = syncs.get(x["id"])
             x["fast"] = fasts.get(x["id"])
-        return {"app": {"name": self.name, "version": VERSION, "team": self.team is not None},
+        return {"app": {"name": self.name, "version": VERSION, "team": self.team is not None,
+                        "role": self.settings["role"]},
                 "brainkit": {"path": info["path"], "ok": info["ok"], "version": info["version"], "error": info["error"],
                              "modules": info["modules"]},
                 "repos": repos, "crew": dict(self.crew, rows=list(self.crew["rows"]) + self.folders_stuck),
@@ -1998,10 +2002,14 @@ class Service:
         return {**self.settings, "team": dict(self.settings["team"]), "auto_push": dict(self.settings["auto_push"])}
 
     async def save_settings(self, body: Any) -> dict[str, Any]:
-        """Check, save atomically, reload. A key the body leaves out keeps its value (the 设置 form sends no repos: the
-        list is changed by 导入仓库 and 移出列表 only)."""
+        """Check, save atomically, reload. A key the body leaves out keeps its value (the 设置 form sends no repos and no
+        role: the list is changed by 导入仓库 and 移出列表 only, the role by its own switch). A team server made
+        personal again stops being the team runner: its team mode goes off."""
         if isinstance(body, dict):
             body = {**self.settings_view(), **body}
+            if body.get("role") == settings_mod.PERSONAL and self.settings["role"] != settings_mod.PERSONAL \
+                    and isinstance(body.get("team"), dict):
+                body["team"] = dict(body["team"], enabled=False)
         clean, probs = settings_mod.check(body)
         if probs:
             raise AppError("；".join(probs), "invalid_settings")
@@ -2395,11 +2403,27 @@ class Service:
                 "handovers": handovers, "signer": signer, "config": self.team.config_view(),
                 "hooks": await asyncio.to_thread(self.team.hook_rows)}
 
+    async def runner_status(self) -> dict[str, Any]:
+        """GET /team/status: each listed repo's team runner as GitLab shows it (runner_view.py), read with this person's
+        own token: 运行机 on a personal install."""
+        repos = list(self.repos.values())
+
+        def view() -> dict[str, Any]:
+            rows = [runner_view.Listed(r.id, r.name, r.cfg, *self._gitlab_of(r), self.me_in(r)) for r in repos]
+            return self.runners.view(rows, now=self.now(), transport=self.transport)
+        return scrub_tree(await asyncio.to_thread(view), self.scrub)
+
     async def team_patrol(self) -> dict[str, Any]:
         """GET /team/patrol: MR 巡检's last round, every open MR it looked at (team/patrol.py)."""
         if self.team is None:
             return patrol_mod.view_of([], [], None)
         return scrub_tree(self.team.patrol_view(), self.scrub)
+
+    async def team_staging(self) -> dict[str, Any]:
+        """GET /team/staging: 测试环境报错's last round, every error signature it holds (team/staging.py)."""
+        if self.team is None:
+            return staging_mod.view_of([], [], {}, None)
+        return scrub_tree(self.team.staging_view(), self.scrub)
 
     async def team_loop(self) -> dict[str, Any]:
         rt = self.team
@@ -2418,7 +2442,11 @@ class Service:
 
     async def team_setup(self, body: Any) -> dict[str, Any]:
         """POST /team/setup: team/setup.py's steps on a worker thread (they wait on GitLab, git and brain-kit for longer
-        than a request may take); the page polls GET /team/setup. The person's token stays in this run's memory."""
+        than a request may take); the page polls GET /team/setup. The person's token stays in this run's memory. Only
+        on the team server: a personal install never becomes the team runner by itself."""
+        if self.settings["role"] != settings_mod.TEAM_SERVER:
+            raise AppError("这台机器是个人电脑，不建运行机：团队运行机装在团队的服务器上。这台就是那台服务器的话，先在设置最下面勾上"
+                           "「%s」" % settings_mod.ROLE_SWITCH, "not_team_server", 409)
         try:
             inp = setup_mod.SetupInput.parse(body)
         except setup_mod.SetupRefused as exc:

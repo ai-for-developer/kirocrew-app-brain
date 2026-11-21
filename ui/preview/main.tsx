@@ -4,8 +4,10 @@
  * src/test/fixtures (writes answer something plausible and change nothing). Built by `npm run preview:build` into
  * preview-dist/index.html (one file, opens from file:// too).
  *
- * The bar above the app switches the world: 团队模式, 找不到 brain-kit, KiroCrew 有 FAIL, 没有 evaluate, 没有仓库, 认领晚一步 (a
- * claim of a small requirement loses the race to carol's), light/dark. 拆成小需求, 认领, 开工 and 同步 answer as brain-kit
+ * The bar above the app switches the world: 团队模式 (this machine the team server, in team mode; without it a personal
+ * install, whose 运行机 is the team runner as GitLab shows it), 找不到 brain-kit, KiroCrew 有 FAIL, 没有 evaluate, 没有仓库,
+ * 认领晚一步 (a claim of a small requirement loses the race to carol's), 机器人账号 (一键建运行机's last run served three projects
+ * as GitLab users of the runner's own), light/dark. 拆成小需求, 认领, 开工 and 同步 answer as brain-kit
  * would, and change nothing.
  * 导入仓库 is played through: a path ending in /ready is installed already; any other is not, and its install (or a clone)
  * runs as a job whose steps advance over a few seconds; 加入列表 and 移出列表 change the preview's list.
@@ -34,9 +36,9 @@ import type {
   ActResult, BrainView, CheckRow, CrewFixBody, FastModeBody, FastModeResult, ImportInspect, ImportJob, InstallResult, IntakeBody, IntakeCheck, IntakeNext, KitForm, OpenSessionBody, Overview, PickKind, PickResult, ReflectApplyBody, ReflectApplyResult, ReflectPreview, RepoInfo, ReqBoard, RequirementDetail, Settings, SplitResult, StartBody, Status, TeamView, Todo,
 } from '../src/types'
 
-const FLAGS = ['team', 'nokit', 'crewfail', 'noeval', 'norepos', 'race', 'light'] as const
+const FLAGS = ['team', 'nokit', 'crewfail', 'noeval', 'norepos', 'race', 'bots', 'light'] as const
 type Flag = (typeof FLAGS)[number]
-const FLAG_NAME: Record<Flag, string> = { team: '团队模式', nokit: '找不到 brain-kit', crewfail: 'KiroCrew 有 FAIL', noeval: '没有 evaluate', norepos: '没有仓库', race: '认领晚一步', light: '亮色' }
+const FLAG_NAME: Record<Flag, string> = { team: '团队模式', nokit: '找不到 brain-kit', crewfail: 'KiroCrew 有 FAIL', noeval: '没有 evaluate', norepos: '没有仓库', race: '认领晚一步', bots: '机器人账号', light: '亮色' }
 const KEY = 'brain-preview-flags'
 
 function readFlags(): Set<Flag> {
@@ -77,7 +79,7 @@ function outputsFor(path: string): unknown {
   return route.endsWith('/turns') ? shift(got) : clone(got)
 }
 
-let settings: Settings = fx.settings()
+let settings: Settings = { ...fx.settings(), role: flags.has('team') ? 'team_server' : 'personal' }
 let crewFixed = false
 /** The world the preview shows (scripts/preview_world.py made it with the backend's own code: the rows' states and
  * waits by deliveries.classify, the boards by board.py, 待办 by todo.build, 交付总览 for 全部 and each repo, with and
@@ -125,7 +127,8 @@ const listedRepos = (): RepoInfo[] => (flags.has('nokit') ? repos.map((r) => (r.
 function status(): Status {
   const s = clone(W.status)
   s.repos = clone(listedRepos())
-  if (flags.has('team')) {
+  s.app.role = settings.role
+  if (flags.has('team') && settings.role === 'team_server') {
     s.app.team = true
     s.team = fx.team().status
   }
@@ -355,7 +358,9 @@ setApiRoutes({
   [`GET ${API}/intake/next*`]: (_b, path) => intakeNext(path),
   [`GET ${API}/import/defaults`]: () => ({ ...fx.importDefaults(), brainkit_ok: !flags.has('nokit') }),
   [`POST ${API}/settings`]: (body) => {
-    settings = { ...settings, ...clone(body as Partial<Settings>) }
+    const b = clone(body as Partial<Settings>)
+    // as the backend: a team server made personal again has its team mode off
+    settings = { ...settings, ...b, ...(b.role === 'personal' ? { team: { ...settings.team, enabled: false } } : {}) }
     return { ok: true, settings: clone(settings), status: status() }
   },
   // 允许快速模式: the kit.json MR, shown, not opened; the repo's switch waits for it from then on
@@ -470,9 +475,9 @@ setApiRoutes({
     }
   },
   [`POST ${API}/team/loop`]: () => ({ ok: true, summary: { poll: 3, prepared: 0, dispatch: 1, watch: 2, collect: 1, reconcile: 0 }, error: '' }),
-  // 一键建运行机: the last run (the kit.json MR waits to be merged); 再跑一次 answers that run again, nothing is made
-  [`GET ${API}/team/setup`]: () => shift(fx.teamSetup()),
-  [`POST ${API}/team/setup`]: () => shift(fx.teamSetup()),
+  // 一键建运行机: the last run (its kit.json MRs wait to be merged); 再跑一次 answers that run again, nothing is made
+  [`GET ${API}/team/setup`]: () => shift(lastSetup()),
+  [`POST ${API}/team/setup`]: () => shift(lastSetup()),
 })
 
 /** 开 MR and 转完整流程 as `brain mr|full --json` answers them (backend acts.py), in the preview's words: nothing is pushed
@@ -489,6 +494,8 @@ function actAnswer({ repo, key, id }: ReturnType<typeof reqOf>, action: ActResul
   const intent = `261120-${key.toLowerCase()}-${slug}`
   return { ...none, ok: true, action, intent, told: true, text: `预览：没有真的转。转成完整流程：Lean intent ${intent}` }
 }
+/** 一键建运行机's last run: one project with project tokens, or (机器人账号) three as the runner's own GitLab users. */
+const lastSetup = () => (flags.has('bots') ? fx.teamSetupBot() : fx.teamSetup())
 
 /** 运行机 in the preview: the fixture with what brain-kit 0d52e97's bridge also keeps (the outbox, the notices on a run,
  * bridge.json and runnerd.json, the runner's hooks). */

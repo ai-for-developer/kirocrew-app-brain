@@ -1,0 +1,243 @@
+{
+  "running": false,
+  "started_at": 1794145980,
+  "ended_at": 1794146004,
+  "cut_off": null,
+  "input": {
+    "gitlab_base": "https://gitlab.example.com",
+    "mode": "bot-account",
+    "projects": [
+      "shop/shop-pay",
+      "shop/shop-order",
+      "shop/shop-stock"
+    ],
+    "roles": {
+      "product": [
+        "carol"
+      ],
+      "builder": [
+        "dave"
+      ],
+      "security": [],
+      "data": []
+    },
+    "push": "token",
+    "patrol": true,
+    "jenkins": {
+      "base": "",
+      "user": ""
+    }
+  },
+  "accounts": {
+    "bridge": "brain-bridge",
+    "bot": "brain-bot"
+  },
+  "steps": [
+    {
+      "id": "project",
+      "title": "找到项目",
+      "status": "done",
+      "message": "3 个项目都找到了",
+      "link": null,
+      "detail": "",
+      "projects": [
+        {
+          "project": "shop/shop-pay",
+          "status": "done",
+          "message": "默认分支 main；你（alice）是 Maintainer",
+          "link": "https://gitlab.example.com/shop/shop-pay",
+          "detail": ""
+        },
+        {
+          "project": "shop/shop-order",
+          "status": "done",
+          "message": "默认分支 main；你（alice）是 Maintainer",
+          "link": "https://gitlab.example.com/shop/shop-order",
+          "detail": ""
+        },
+        {
+          "project": "shop/shop-stock",
+          "status": "done",
+          "message": "默认分支 main；你（alice）是 Developer",
+          "link": "https://gitlab.example.com/shop/shop-stock",
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "id": "bridge_token",
+      "title": "桥的令牌",
+      "status": "done",
+      "message": "桥的账号是 brain-bridge：用你填的个人令牌，2027-06-30 到期",
+      "link": null,
+      "detail": "",
+      "projects": []
+    },
+    {
+      "id": "push",
+      "title": "运行机怎么推送",
+      "status": "done",
+      "message": "运行机用机器人账号的个人令牌拉取和推送。推送的账号是 brain-bot：用你填的个人令牌，2027-06-30 到期",
+      "link": null,
+      "detail": "",
+      "projects": []
+    },
+    {
+      "id": "labels",
+      "title": "MR 标签",
+      "status": "done",
+      "message": "3 个项目的标签都好了",
+      "link": null,
+      "detail": "",
+      "projects": [
+        {
+          "project": "shop/shop-pay",
+          "status": "done",
+          "message": "建了 3 个标签：ai-running、ai-handoff-rejected、brain-reflect",
+          "link": null,
+          "detail": ""
+        },
+        {
+          "project": "shop/shop-order",
+          "status": "done",
+          "message": "建了 4 个标签：ai-handoff、ai-running、ai-handoff-rejected、brain-reflect",
+          "link": null,
+          "detail": ""
+        },
+        {
+          "project": "shop/shop-stock",
+          "status": "done",
+          "message": "标签都在：ai-handoff、ai-running、ai-handoff-rejected、brain-reflect",
+          "link": null,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "id": "identities",
+      "title": "身份表",
+      "status": "done",
+      "message": "写好了身份表：7 个 Developer 以上的人能交接；产品 carol；开发 dave；安全 alice；数据 alice",
+      "link": null,
+      "detail": "",
+      "projects": [
+        {
+          "project": "shop/shop-pay",
+          "status": "done",
+          "message": "5 个 Developer 以上的人",
+          "link": null,
+          "detail": ""
+        },
+        {
+          "project": "shop/shop-order",
+          "status": "done",
+          "message": "4 个 Developer 以上的人",
+          "link": null,
+          "detail": ""
+        },
+        {
+          "project": "shop/shop-stock",
+          "status": "done",
+          "message": "3 个 Developer 以上的人；carol 不是这个项目的成员，答不了这里的问题",
+          "link": null,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "id": "kit_mr",
+      "title": "kit.json 的 MR",
+      "status": "waiting",
+      "message": "2 个项目的 kit.json MR 等你在 GitLab 上合并",
+      "link": null,
+      "detail": "",
+      "projects": [
+        {
+          "project": "shop/shop-pay",
+          "status": "waiting",
+          "message": "开了 MR !48：请在 GitLab 上合并这个 MR",
+          "link": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/48",
+          "detail": ""
+        },
+        {
+          "project": "shop/shop-order",
+          "status": "waiting",
+          "message": "开了 MR !31：请在 GitLab 上合并这个 MR",
+          "link": "https://gitlab.example.com/shop/shop-order/-/merge_requests/31",
+          "detail": ""
+        },
+        {
+          "project": "shop/shop-stock",
+          "status": "done",
+          "message": "默认分支上的 .brain/kit.json 已经写好了运行机要的几项",
+          "link": null,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "id": "dirs",
+      "title": "目录",
+      "status": "done",
+      "message": "建了 11 个目录",
+      "link": null,
+      "detail": "",
+      "projects": []
+    },
+    {
+      "id": "signing_key",
+      "title": "签名密钥",
+      "status": "done",
+      "message": "生成了签名密钥",
+      "link": null,
+      "detail": "",
+      "projects": []
+    },
+    {
+      "id": "configs",
+      "title": "三份配置",
+      "status": "done",
+      "message": "写了 bridge.json、runnerd.json、signer.json",
+      "link": null,
+      "detail": "",
+      "projects": []
+    },
+    {
+      "id": "agent",
+      "title": "brain-run agent",
+      "status": "done",
+      "message": "写好了 brain-run 的设置：~/.kiro/agents/brain-run.json",
+      "link": null,
+      "detail": "wrote /Users/alice/.kiro/agents/brain-run.json: brain-run's hooks run /Users/alice/.kiro/crew/apps/brain/vendor/brain-kit with /Users/alice/.brain/team-setup/runnerd.json\nworkspaces commit as Brain Bot <brain-bot@example.com> (runnerd.json git_name / git_email): it must be one of each project's kit.json bot_emails",
+      "projects": []
+    },
+    {
+      "id": "patrol_agent",
+      "title": "brain-patrol agent",
+      "status": "done",
+      "message": "写好了 brain-patrol 的设置：~/.kiro/agents/brain-patrol.json",
+      "link": null,
+      "detail": "",
+      "projects": []
+    },
+    {
+      "id": "signer",
+      "title": "签名服务",
+      "status": "done",
+      "message": "签名服务开起来了（进程 48213）",
+      "link": null,
+      "detail": "",
+      "projects": []
+    },
+    {
+      "id": "team_mode",
+      "title": "打开团队模式",
+      "status": "done",
+      "message": "团队模式开了；可是 shop/shop-pay、shop/shop-order 的 kit.json MR 合并以前，这些项目的交接都会被拒",
+      "link": null,
+      "detail": "",
+      "projects": []
+    }
+  ],
+  "root": "/Users/alice/.brain/team-setup"
+}

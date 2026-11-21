@@ -6,14 +6,16 @@ import { API, installFixtureRoutes } from '../test/routes'
 import { apiCalls } from '../test/stubs/app-sdk'
 import type { Settings, TeamSetup } from '../types'
 import type { ViewProps } from './props'
-import { PATROL_HINT, RunnerSetupCard, TOKEN_FIRST, TOKEN_HINT } from './RunnerSetup'
+import { BOT_FIRST, BOT_HINT, BRIDGE_FIRST, BRIDGE_HINT, JENKINS_HINT, keptSaid, MODE_HINT, OPTIONAL_TOKEN_HINT, PATROL_HINT,
+  ROLES_HINT_NO_TOKEN, RunnerSetupCard, TOKEN_FIRST, TOKEN_HINT } from './RunnerSetup'
 import { SETUP_POINTER, SettingsView } from './Settings'
 
 /** The setup before any run: every step todo, nothing typed yet. */
 function never(): TeamSetup {
   const s = fx.teamSetup()
   s.started_at = s.ended_at = null
-  s.input = { gitlab_base: '', project: '', roles: { product: [], builder: [], security: [], data: [] }, push: 'auto', patrol: true }
+  s.input = { gitlab_base: '', mode: 'project-token', projects: [], roles: { product: [], builder: [], security: [], data: [] }, push: 'auto', patrol: true,
+    jenkins: { base: '', user: '' } }
   s.steps = s.steps.map((x) => ({ ...x, status: 'todo', message: '', link: null, detail: '' }))
   return s
 }
@@ -28,6 +30,7 @@ function going(): TeamSetup {
 }
 
 const TOKEN = 'fake-' + Math.random().toString(16).slice(2)   // made at run time: no token-looking text in the source
+const JENKINS_TOKEN = 'fake-' + Math.random().toString(16).slice(2)
 
 describe('一键建运行机', () => {
   test('GitLab, the project (from a repo on GitLab), a one-time token and the roles; 开始建 posts them once, then the steps are read until the run ends', async () => {
@@ -92,6 +95,30 @@ describe('一键建运行机', () => {
     expect(apiCalls.find((c) => c.method === 'POST')?.body).toMatchObject({ patrol: false })
   })
 
+  test('Jenkins: the last run’s address and read-only user are in the form again, its token is not; typed, all three go in the post', async () => {
+    const user = userEvent.setup()
+    const last = never()
+    last.input.jenkins = { base: 'http://127.0.0.1:8080', user: 'brain-reader' }
+    installFixtureRoutes({ [`GET ${API}/team/setup`]: () => last, [`POST ${API}/team/setup`]: () => going() })
+    render(<RunnerSetupCard repos={fx.status().repos} pollMs={60_000} />)
+    const card = await screen.findByRole('region', { name: '一键建运行机' })
+    const base = await within(card).findByLabelText('Jenkins 地址')
+    expect(base).toHaveValue('http://127.0.0.1:8080')
+    expect(base).toHaveAccessibleDescription(JENKINS_HINT)
+    expect(within(card).getByLabelText('Jenkins 只读用户')).toHaveValue('brain-reader')
+    const secret = within(card).getByLabelText('Jenkins token')
+    expect(secret).toHaveAttribute('type', 'password')
+    expect(secret).toHaveValue('')
+    await user.clear(base)
+    await user.type(base, 'https://jenkins.example.com')
+    await user.type(secret, JENKINS_TOKEN)
+    await user.type(within(card).getByLabelText('一次性 token'), TOKEN)
+    await user.click(within(card).getByRole('button', { name: '开始建' }))
+    await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).toMatchObject({
+      jenkins: { base: 'https://jenkins.example.com', user: 'brain-reader', token: JENKINS_TOKEN } })
+  })
+
   test('while a run goes on, its step in progress is said and the form waits', async () => {
     installFixtureRoutes({ [`GET ${API}/team/setup`]: () => going() })
     render(<RunnerSetupCard repos={[]} pollMs={60_000} />)
@@ -152,6 +179,117 @@ describe('一键建运行机', () => {
     expect(apiCalls.some((c) => c.method === 'POST')).toBe(false)
   })
 
+  test('账号 机器人账号 turns 项目 into a list, one per line (the repos on GitLab to start with), asks for the bridge’s and the bot’s personal tokens before it posts, the one-time token optional; 项目令牌 gives the one project back', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes({ [`GET ${API}/team/setup`]: () => never(), [`POST ${API}/team/setup`]: () => going() })
+    render(<RunnerSetupCard repos={fx.status().repos} pollMs={60_000} />)
+    const card = await screen.findByRole('region', { name: '一键建运行机' })
+    const accounts = await within(card).findByRole('radiogroup', { name: '账号' })
+    expect(within(accounts).getByRole('radio', { name: '项目令牌：一个项目' })).toBeChecked()
+    expect(accounts).toHaveAccessibleDescription(MODE_HINT['project-token'])
+    await user.click(within(accounts).getByRole('radio', { name: '机器人账号：几个项目' }))
+    expect(accounts).toHaveAccessibleDescription(MODE_HINT['bot-account'])
+    expect(within(card).queryByLabelText('项目')).toBeNull()
+    const list = within(card).getByLabelText('项目（一行一个）')
+    expect(list.tagName).toBe('TEXTAREA')
+    expect(list).toHaveValue('shop/shop-pay')
+    await user.type(list, '\nshop/shop-order\n\nshop/shop-stock')
+    expect(within(card).getByLabelText('一次性 token（可以不填）')).toHaveAccessibleDescription(OPTIONAL_TOKEN_HINT)
+    expect(within(card).getByText(ROLES_HINT_NO_TOKEN)).toBeInTheDocument()
+    await user.type(within(card).getByLabelText(/^产品/), 'carol')
+    await user.type(within(card).getByLabelText(/^开发/), 'dave')
+    const start = within(card).getByRole('button', { name: '开始建' })
+    await user.click(start)
+    expect(within(card).getByRole('alert')).toHaveTextContent(BRIDGE_FIRST)
+    const bridge = within(card).getByLabelText('桥的账号的个人令牌')
+    expect(bridge).toHaveFocus()
+    expect(bridge).toHaveAttribute('type', 'password')
+    await user.type(bridge, TOKEN + '-bridge')
+    const push = within(card).getByRole('radiogroup', { name: '运行机怎么推送' })
+    expect(within(push).getByRole('radio', { name: '这台机器的 SSH' })).toBeChecked()
+    expect(within(card).queryByLabelText('机器人账号的个人令牌')).toBeNull()
+    await user.click(within(push).getByRole('radio', { name: '机器人账号' }))
+    await user.click(start)
+    expect(within(card).getByRole('alert')).toHaveTextContent(BOT_FIRST)
+    expect(within(card).getByLabelText('机器人账号的个人令牌')).toHaveFocus()
+    await user.type(within(card).getByLabelText('机器人账号的个人令牌'), TOKEN + '-bot')
+    expect(apiCalls.some((c) => c.method === 'POST')).toBe(false)
+    await user.click(start)
+    await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).toEqual({
+      mode: 'bot-account', gitlab_base: 'https://gitlab.example.com', projects: ['shop/shop-pay', 'shop/shop-order', 'shop/shop-stock'],
+      roles: { product: ['carol'], builder: ['dave'] }, patrol: true, push: 'token', bridge_token: TOKEN + '-bridge', bot_token: TOKEN + '-bot' })
+  })
+
+  test('项目令牌 again after 机器人账号: the one project field is back, the post is the one-project one', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes({ [`GET ${API}/team/setup`]: () => never(), [`POST ${API}/team/setup`]: () => going() })
+    render(<RunnerSetupCard repos={fx.status().repos} pollMs={60_000} />)
+    const card = await screen.findByRole('region', { name: '一键建运行机' })
+    await user.click(await within(card).findByRole('radio', { name: '机器人账号：几个项目' }))
+    await user.click(within(card).getByRole('radio', { name: '项目令牌：一个项目' }))
+    expect(within(card).queryByLabelText('项目（一行一个）')).toBeNull()
+    expect(within(card).queryByLabelText('桥的账号的个人令牌')).toBeNull()
+    expect(within(card).getByLabelText('项目')).toHaveValue('shop/shop-pay')
+    await user.type(within(card).getByLabelText('一次性 token'), TOKEN)
+    await user.click(within(card).getByRole('button', { name: '开始建' }))
+    await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).toEqual({ gitlab_base: 'https://gitlab.example.com', project: 'shop/shop-pay',
+      admin_token: TOKEN, roles: { product: [], builder: [] }, patrol: true })
+  })
+
+  test('a step about several projects lists each one under it with its own mark, words and link; 再跑一次 leaves out the tokens this machine kept', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes({ [`GET ${API}/team/setup`]: () => fx.teamSetupBot(), [`POST ${API}/team/setup`]: () => going() })
+    render(<RunnerSetupCard repos={[]} pollMs={60_000} />)
+    const card = await screen.findByRole('region', { name: '一键建运行机' })
+    const mr = (await within(card).findByRole('list', { name: '建运行机的每一步' })).querySelector('[data-step="kit_mr"]') as HTMLElement
+    expect(mr).toHaveAttribute('data-status', 'waiting')
+    expect(mr).toHaveTextContent('kit.json 的 MR等人2 个项目的 kit.json MR 等你在 GitLab 上合并')
+    const each = within(mr).getByRole('list', { name: 'kit.json 的 MR：每个项目' })
+    const [pay, order, stock] = within(each).getAllByRole('listitem')
+    expect(pay).toHaveTextContent('shop/shop-pay开了 MR !48：请在 GitLab 上合并这个 MR')
+    expect(within(pay).getByRole('img', { name: '等人' })).toHaveTextContent('!')
+    expect(within(pay).getByRole('link', { name: /去 GitLab 合并/ })).toHaveAttribute('href', 'https://gitlab.example.com/shop/shop-pay/-/merge_requests/48')
+    expect(within(order).getByRole('link', { name: /去 GitLab 合并/ })).toHaveAttribute('href', 'https://gitlab.example.com/shop/shop-order/-/merge_requests/31')
+    expect(within(stock).getByRole('img', { name: '好了' })).toHaveTextContent('✓')
+    expect(within(stock).queryByRole('link')).toBeNull()
+    const found = card.querySelector('[data-step="project"]') as HTMLElement
+    expect(within(found).getAllByRole('link', { name: /在 GitLab 上看/ }).map((a) => a.getAttribute('href'))).toEqual(
+      ['https://gitlab.example.com/shop/shop-pay', 'https://gitlab.example.com/shop/shop-order', 'https://gitlab.example.com/shop/shop-stock'])
+    expect(within(card.querySelector('[data-step="bridge_token"]') as HTMLElement).queryByRole('list')).toBeNull()
+    // the last run's input is in the form again, and the tokens it kept are said to be used when left empty
+    expect(within(card).getByRole('radio', { name: '机器人账号：几个项目' })).toBeChecked()
+    expect(within(card).getByLabelText('项目（一行一个）')).toHaveValue('shop/shop-pay\nshop/shop-order\nshop/shop-stock')
+    expect(within(card).getByRole('radio', { name: '机器人账号' })).toBeChecked()
+    expect(within(card).getByLabelText('桥的账号的个人令牌')).toHaveAccessibleDescription(expect.stringContaining(BRIDGE_HINT))
+    expect(within(card).getByLabelText('机器人账号的个人令牌')).toHaveAccessibleDescription(expect.stringContaining(BOT_HINT))
+    expect(within(card).getByLabelText('桥的账号的个人令牌')).toHaveAccessibleDescription(expect.stringContaining(keptSaid('brain-bridge')))
+    expect(within(card).getByLabelText('机器人账号的个人令牌')).toHaveAccessibleDescription(expect.stringContaining(keptSaid('brain-bot')))
+    await user.click(within(card).getByRole('button', { name: '再跑一次' }))
+    await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).toEqual({
+      mode: 'bot-account', gitlab_base: 'https://gitlab.example.com', projects: ['shop/shop-pay', 'shop/shop-order', 'shop/shop-stock'],
+      roles: { product: ['carol'], builder: ['dave'] }, patrol: true, push: 'token' })
+  })
+
+  test('机器人账号 with Jenkins: one Jenkins for the runner, its address and user posted again on 再跑一次 with the token left empty (the one kept)', async () => {
+    const user = userEvent.setup()
+    const last = fx.teamSetupBot()
+    last.input.jenkins = { base: 'https://jenkins.example.com', user: 'brain-reader' }
+    installFixtureRoutes({ [`GET ${API}/team/setup`]: () => last, [`POST ${API}/team/setup`]: () => going() })
+    render(<RunnerSetupCard repos={[]} pollMs={60_000} />)
+    const card = await screen.findByRole('region', { name: '一键建运行机' })
+    expect(await within(card).findByLabelText('Jenkins 地址')).toHaveValue('https://jenkins.example.com')
+    expect(within(card).getAllByLabelText('Jenkins token')).toHaveLength(1)
+    await user.click(within(card).getByRole('button', { name: '再跑一次' }))
+    await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).toEqual({
+      mode: 'bot-account', gitlab_base: 'https://gitlab.example.com', projects: ['shop/shop-pay', 'shop/shop-order', 'shop/shop-stock'],
+      roles: { product: ['carol'], builder: ['dave'] }, patrol: true, push: 'token',
+      jenkins: { base: 'https://jenkins.example.com', user: 'brain-reader', token: '' } })
+  })
+
   test('on 设置, below 团队模式: the pointer to it, and after a run the form shows the team settings it saved', async () => {
     const user = userEvent.setup()
     const on: Settings = { ...fx.settings(), team: { enabled: true, bridge_config: '/Users/alice/.brain/team-setup/bridge.json',
@@ -160,7 +298,9 @@ describe('一键建运行机', () => {
       [`GET ${API}/settings`]: () => (apiCalls.some((c) => c.method === 'POST') ? on : fx.settings()),
       [`POST ${API}/team/setup`]: () => fx.teamSetup(),     // a run that ended before the answer
     })
-    const p: ViewProps = { status: fx.status(), go: vi.fn(), replace: vi.fn(), reloadStatus: vi.fn(), setStatus: vi.fn(), pollMs: 60_000 }
+    const status = fx.status()
+    status.app.role = 'team_server'
+    const p: ViewProps = { status, go: vi.fn(), replace: vi.fn(), reloadStatus: vi.fn(), setStatus: vi.fn(), pollMs: 60_000 }
     render(<SettingsView {...p} />)
     expect(await screen.findByTestId('setup-pointer')).toHaveTextContent(SETUP_POINTER)
     const card = screen.getByRole('region', { name: '一键建运行机' })

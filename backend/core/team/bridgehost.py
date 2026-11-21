@@ -18,8 +18,11 @@ patched or subclassed. What the app changes:
   label event were checked before), and brain-kit 72b278e's unlabelled (the newest event on the label takes it off:
   `brain handoff` re-adding it right now) and waiting (this very hand-over is being signed elsewhere: looked at again
   next round). brain-kit's poll returns nothing (BRAINKIT_REQUESTS 27). A project whose kit.json work_sources leaves
-  mr-handoff out (sources.py) is not polled;
-- patrol: a round ends with MR 巡检 (team/patrol.py, work source mr-patrol), on the same worker thread.
+  mr-handoff out (sources.py) is not polled, and one that cannot be read holds up none after it: the status' checks
+  say which;
+- patrol: a round ends with MR 巡检 (team/patrol.py, work source mr-patrol), on the same worker thread, then
+  测试环境报错 (team/staging.py, work source staging-errors). MR 巡检 reads the logs of Jenkins builds with
+  bridge.json's optional "jenkins" (team/jenkins.py), a block brain-kit leaves alone.
 
 The ledger is brain-kit's ``Ledger``: one sqlite connection any thread may use, ``ledger.lock`` around several
 statements. Rounds run one at a time on the runtime's own worker thread (a round may wait on GitLab, KiroCrew and the
@@ -47,7 +50,9 @@ from .. import bk, problems
 from ..constants import APP_ROOT, PYTHON_BIN
 from . import patrol as patrol_mod
 from . import signerproc, sources
+from . import staging as staging_mod
 from .crewadapter import KiroCrewAdapter
+from .jenkins import Jenkins
 
 REQ_RE = re.compile(r"^[a-z]+-[A-Za-z0-9-]{1,80}-[0-9a-f]{12}\.json$")
 MAX_SPOOL_FILE = 64 * 1024
@@ -91,7 +96,8 @@ def load_config(path: str) -> dict[str, Any]:
 
 def start_inputs(team: dict[str, Any]) -> list[str]:
     """What a TeamRuntime reads when it starts: bridge.json, runnerd.json, and the files bridge.json names (its GitLab
-    token, the identities, the allowed signers); with it the signer.json 一键建运行机 wrote beside bridge.json."""
+    token, the identities, the allowed signers, Jenkins' token); with it the signer.json 一键建运行机 wrote beside
+    bridge.json."""
     try:
         with open(team["bridge_config"], encoding="utf-8") as fh:
             cfg = json.load(fh)
@@ -100,8 +106,9 @@ def start_inputs(team: dict[str, Any]) -> list[str]:
     cfg = cfg if isinstance(cfg, dict) else {}
     gitlab = cfg.get("gitlab") if isinstance(cfg.get("gitlab"), dict) else {}
     signer = cfg.get("signer") if isinstance(cfg.get("signer"), dict) else {}
+    jenkins = cfg.get("jenkins") if isinstance(cfg.get("jenkins"), dict) else {}
     named = [team.get("bridge_config"), team.get("runnerd_config"), gitlab.get("token_file"), cfg.get("identities"),
-             signer.get("allowed_signers"), signerproc.config_for(team)]
+             signer.get("allowed_signers"), signerproc.config_for(team), jenkins.get("token_file")]
     return [os.path.expanduser(str(p)) for p in named if p]
 
 
@@ -117,6 +124,7 @@ class TeamRuntime:
         self.transport, self.kick, self.sign_timeout = transport, kick, sign_timeout
         self.host: Any = None
         self.patrol: patrol_mod.Patrol | None = None
+        self.staging: staging_mod.StagingWatch | None = None
         self.cfg: dict[str, Any] = {}
         self.runnerd_cfg: dict[str, Any] | None = None
         self.spool = ""
@@ -126,6 +134,7 @@ class TeamRuntime:
         self.last_loop_at: float | None = None
         self.last_summary: dict[str, int] = {}
         self.last_handovers: list[dict[str, Any]] = []   # what Bridge.process said for each labelled MR, last round
+        self.poll_checks: list[dict[str, Any]] = []      # CheckRows: the projects the last poll did not read or poll
         self.lines: deque = deque(maxlen=200)
         self.same_user = False
         self.inputs = ""            # signerproc.digest of start_inputs, taken as start() read them
@@ -198,13 +207,19 @@ class TeamRuntime:
                 else None,
                 helper=patrol_mod.Helper(PYTHON_BIN, str(APP_ROOT / "backend" / "core" / "team" / "patrol_reply.py"),
                                          config, str(bk.root())),
-                claims=lambda: sources.held(self))
+                claims=lambda: sources.held(self), jenkins=Jenkins.of(cfg.get("jenkins"), self.transport),
+                shared=lambda: sources.at_work(self, but=sources.PATROL))
+            self.staging = staging_mod.StagingWatch(
+                gl=gl, sessions=kc, kit=self.host.kit, out=self._out, projects=cfg["projects"],
+                ledger_path=os.path.join(os.path.dirname(config), "staging.sqlite"),
+                workspaces=staging_mod.beside(self.patrol.workspaces), helper=self.patrol.helper,
+                claims=lambda: sources.held(self), shared=lambda: sources.at_work(self, but=sources.STAGING))
             self.cfg, self.runnerd_cfg, self.spool, self.allowed_signers = cfg, rcfg, spool, allowed
             self.error = ""
             return True
         except Exception as exc:  # noqa: BLE001
             self.error = str(exc).split("\n", 1)[0][:400]
-            self.host = self.patrol = None
+            self.host = self.patrol = self.staging = None
             return False
 
     def stop(self) -> None:
@@ -218,7 +233,8 @@ class TeamRuntime:
     def _close(self) -> None:
         host, self.host = self.host, None
         patrol, self.patrol = self.patrol, None
-        for held in (host.ledger if host is not None else None, patrol):
+        staging, self.staging = self.staging, None
+        for held in (host.ledger if host is not None else None, patrol, staging):
             try:
                 if held is not None:
                     held.close()
@@ -234,7 +250,7 @@ class TeamRuntime:
     # ---- one round ------------------------------------------------------------------------------------ #
 
     def loop_once(self) -> dict[str, int]:
-        """poll, runnerd, dispatch, watch, collect, reconcile, patrol; one bad step does not stop the others."""
+        """poll, runnerd, dispatch, watch, collect, reconcile, patrol, staging; one bad step does not stop the others."""
         host = self.host
         if host is None:
             raise RuntimeError(self.error or "运行机模式没有启动")
@@ -242,7 +258,7 @@ class TeamRuntime:
         summary: dict[str, int] = {}
         errors = []
         with self._lock:
-            for step in ("poll", "runnerd", "dispatch", "watch", "collect", "reconcile", "patrol"):
+            for step in ("poll", "runnerd", "dispatch", "watch", "collect", "reconcile", "patrol", "staging"):
                 try:
                     if step == "runnerd":
                         if self.runnerd_cfg:
@@ -254,6 +270,10 @@ class TeamRuntime:
                     if step == "patrol":
                         if self.patrol is not None:
                             summary["patrol"] = self.patrol.round()
+                        continue
+                    if step == "staging":
+                        if self.staging is not None:
+                            summary["staging"] = self.staging.round()
                         continue
                     n = getattr(host, step)()
                     if isinstance(n, int):
@@ -267,17 +287,35 @@ class TeamRuntime:
         return summary
 
     def _poll(self, host: Any) -> int:
-        """brain-kit's Bridge.poll, MR by MR, keeping each MR's result (Bridge.process) for the page. One MR that fails
-        does not stop the others, as in brain-kit (its error is logged the same way). -> how many MRs were looked at."""
+        """brain-kit's Bridge.poll, MR by MR, keeping each MR's result (Bridge.process) for the page. A project whose
+        kit.json or labelled MRs cannot be read, or one MR that fails, does not stop the others, as in brain-kit: a
+        project's error is raised at the end, an MR's is logged the same way. The projects not read and those whose
+        kit.json leaves mr-handoff out are the status' checks. -> how many MRs were looked at."""
         common = bk.m("common")
         seen: list[dict[str, Any]] = []
+        checks: list[dict[str, Any]] = []
+        errors: list[str] = []
         try:
             for proj in host.cfg["projects"]:
                 project = proj["project"] if isinstance(proj, dict) else proj
-                kit = host.kit(project)
-                if sources.HANDOFF not in sources.enabled(kit):
+                try:
+                    kit = host.kit(project)
+                    if sources.HANDOFF not in sources.enabled(kit):
+                        checks.append(problems.mk(
+                            "WARN", "%s 的 kit.json 里 work_sources 没写 %s：运行机不接这个项目的交接" % (project, sources.HANDOFF),
+                            "要接交接，在 work_sources 里写回 %s（写全，比如 %s），合并到默认分支" % (
+                                sources.HANDOFF, json.dumps(list(sources.SOURCES)))))
+                        continue
+                    mrs = host.gl.mrs_with_label(project, kit["handoff_label"])
+                except (common.BrainError, OSError, ValueError) as exc:     # read again next round
+                    said = self.scrub(" ".join(str(exc).split())[:300])
+                    errors.append("%s: %s" % (project, said))
+                    checks.append(problems.mk(
+                        "FAIL", "%s 上一轮没读成：它的交接没看，别的项目照常" % project,
+                        "下一轮会自动再试；一直这样就看细节：多半是这个项目默认分支上的 .brain/kit.json 读不了，或者桥的账号看不到这个项目",
+                        raw=said))
                     continue
-                for mr in host.gl.mrs_with_label(project, kit["handoff_label"]):
+                for mr in mrs:
                     row = {"project": str(project), "iid": int(mr.get("iid") or 0), "sha": str(mr.get("sha") or "")[:40],
                            "result": "error", "error": "", "at": time.time()}
                     try:
@@ -287,13 +325,20 @@ class TeamRuntime:
                         row["error"] = self.scrub(str(e).split("\n", 1)[0][:300])
                     seen.append(row)
         finally:
-            self.last_handovers = seen
+            self.last_handovers, self.poll_checks = seen, checks
+        if errors:
+            raise common.BrainError("not done this round: " + "; ".join(errors))
         return len(seen)
 
     def patrol_view(self) -> dict[str, Any]:
         """GET /team/patrol: what MR 巡检's last round saw (patrol.view_of)."""
         p = self.patrol
         return p.view() if p is not None else patrol_mod.view_of([], [], None)
+
+    def staging_view(self) -> dict[str, Any]:
+        """GET /team/staging: what 测试环境报错's last round saw (staging.view_of)."""
+        s = self.staging
+        return s.view() if s is not None else staging_mod.view_of([], [], {}, None)
 
     def handovers(self) -> list[dict[str, Any]]:
         """The labelled MRs of the last round and what brain-kit's bridge said about each (see _poll)."""
@@ -426,7 +471,7 @@ class TeamRuntime:
         why = problems.team_start(self.error)   # the start error in words; as it was (file names, keys) for 细节
         return {"enabled": bool(self.team.get("enabled")), "ok": self.host is not None and not self.error,
                 "error": why["text"], "error_todo": why["todo"], "error_raw": why["raw"],
-                "last_loop_at": self.last_loop_at, "loop_error": self.loop_error,
+                "last_loop_at": self.last_loop_at, "loop_error": self.loop_error, "checks": list(self.poll_checks),
                 "same_user": self.same_user,
                 "signer": {"pending": len(sig["pending"]), "refused": len(sig["refused"])}}
 

@@ -9,9 +9,11 @@ import type { CheckRow, TeamConfigRow, TeamNote } from '../types'
 import type { ViewProps } from './props'
 import { HANDOVER_RESULT, OUTBOX_STATE, PATROL_OFF, PATROL_STATE, RUN_STATE, TeamPage, handoverMeta, noteTone, outboxMeta, patrolMeta, runStateMeta } from './Team'
 
+/** The team server in team mode (运行机's own page is the team server's only: main.tsx opens RunnerStatus elsewhere). */
 function teamStatus() {
   const s = fx.status()
   s.app.team = true
+  s.app.role = 'team_server'
   s.team = fx.team().status
   return s
 }
@@ -467,9 +469,30 @@ describe('运行机', () => {
     expect(within(err).getByText(tv.status.loop_error).closest('details')).not.toHaveAttribute('open')
   })
 
-  test('not in team mode: it says so, how a runner works, the way to 设置, and asks for nothing', async () => {
+  test('the status says which project the last poll did not read and which one leaves the hand-over out of its kit.json, with 做什么', async () => {
+    const tv = fx.team()
+    tv.status.checks = [
+      { level: 'FAIL', text: 'shop/shop-a 上一轮没读成：它的交接没看，别的项目照常', todo: '下一轮会自动再试', fix: null, repo: null, raw: "shop/shop-a: kit config: default_branch 'main' but GitLab says 'trunk'" },
+      ...(tv.status.checks ?? []),
+    ]
+    installFixtureRoutes({ [`GET ${API}/team`]: () => tv })
+    render(<TeamPage {...props()} />)
+    await screen.findByRole('region', { name: '运行' })
+    const rows = within(screen.getByRole('region', { name: '运行机状态' })).getByTestId('check-rows')
+    const [bad, off] = within(rows).getAllByRole('listitem')
+    expect(bad).toHaveAttribute('data-level', 'FAIL')
+    expect(bad).toHaveTextContent('shop/shop-a 上一轮没读成：它的交接没看，别的项目照常')
+    expect(within(bad).getByText(/default_branch 'main' but GitLab says 'trunk'/).closest('details')).not.toHaveAttribute('open')
+    expect(off).toHaveAttribute('data-level', 'WARN')
+    expect(off).toHaveTextContent('shop/shop-web 的 kit.json 里 work_sources 没写 mr-handoff：运行机不接这个项目的交接')
+    expect(off).toHaveTextContent('["mr-handoff", "mr-patrol", "staging-errors"]')
+  })
+
+  test('a team server not in team mode: it says so, how a runner works, the way to 设置, and asks for nothing', async () => {
     installFixtureRoutes()
-    const p = props({ status: fx.status() })
+    const off = fx.status()
+    off.app.role = 'team_server'
+    const p = props({ status: off })
     render(<TeamPage {...p} />)
     const hero = screen.getByTestId('team-off')
     expect(within(hero).getByText(/这台机器没开团队模式/)).toBeInTheDocument()

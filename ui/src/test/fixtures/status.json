@@ -2,7 +2,8 @@
   "app": {
     "name": "brain",
     "version": "0.1.0",
-    "team": false
+    "team": false,
+    "role": "personal"
   },
   "brainkit": {
     "path": "/Users/alice/src/brain-kit",
@@ -123,6 +124,7 @@
     "error_raw": "",
     "last_loop_at": null,
     "loop_error": "",
+    "checks": [],
     "same_user": false,
     "signer": {
       "pending": 0,

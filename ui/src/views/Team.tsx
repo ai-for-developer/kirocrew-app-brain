@@ -8,18 +8,19 @@
  * Lean hooks as brain-runnerd checks them; the signer's pending and refused requests and the vouchers it has not
  * answered yet (asked for again next round) as cards; the bridge.json and runnerd.json settings brain-kit reads, by
  * file; MR 巡检 (GET /team/patrol): every open MR its last round looked at, what it has to fix, where it is and why one
- * is left alone. Every state, step and kind is said in words (a round's steps, the vouchers' kinds); brain-kit's own
- * words are folded under 细节.
+ * is left alone; 测试环境报错 (GET /team/staging, StagingErrors.tsx). Every state, step and kind is said in words (a
+ * round's steps, the vouchers' kinds); brain-kit's own words are folded under 细节.
  */
 import { Fragment } from 'react'
 import { useAppApi, useNavigate } from '@kirocrew/app-sdk'
 import { paths, useAction, usePoll } from '../api'
 import { ago, fmtIso } from '../format'
-import type { CheckRow, HandoverResult, PatrolState, RunState, TeamConfigRow, TeamHandover, TeamLoopResult, TeamNote, TeamPatrol, TeamStatus, TeamView } from '../types'
+import type { CheckRow, HandoverResult, PatrolState, RunState, TeamConfigRow, TeamHandover, TeamLoopResult, TeamNote, TeamPatrol, TeamStaging, TeamStatus, TeamView } from '../types'
 import { CheckRows, EmptyHero, ExtLink, Icon, LEVEL_LABEL, LoadState, RoleIcon, questionMeta, type FlowStep } from '../ui'
 import type { Tone } from '../styles'
 import { ACT } from '../vocab'
 import type { ViewProps } from './props'
+import { StagingErrors } from './StagingErrors'
 
 export const TEAM_POLL_MS = 10_000
 export const SIGNER_SAME_USER = '签名服务和 app 是同一个系统用户：它签不签都由 app 说了算，只适合本机试用'
@@ -35,6 +36,7 @@ export const LOOP_STEP: Record<string, { name: string; did: string }> = {
   collect: { name: '收结果', did: '收回结果' },
   reconcile: { name: '对账', did: '对了账' },
   patrol: { name: '巡检 MR', did: '巡检了 MR' },
+  staging: { name: '看测试环境', did: '看了测试环境' },
 }
 /** what a signature is for (the signer spool's request kinds) */
 export const SIGN_KIND: Record<string, string> = { answer: '回答的凭证', handoff: '交接的合同' }
@@ -112,7 +114,7 @@ export const PATROL_STATE: Record<PatrolState, { label: string; tone: Tone }> = 
 }
 export const patrolMeta = (state: string) => PATROL_STATE[state as PatrolState] ?? { label: state, tone: 'idle' as Tone }
 const patrolRank = (state: string) => { const i = Object.keys(PATROL_STATE).indexOf(state); return i < 0 ? 99 : i }
-export const PATROL_OFF = '还没有项目打开巡检：项目的 .brain/kit.json 里 work_sources 写上 mr-patrol 就开始。一键建运行机勾上「巡检所有开着的 MR」，它开的 kit.json MR 会写好。'
+export const PATROL_OFF = '还没有项目打开巡检：项目的 .brain/kit.json 里 work_sources 写全，比如 ["mr-handoff", "mr-patrol"]（只写 mr-patrol 会把交接关掉）就开始。一键建运行机勾上「巡检所有开着的 MR」，它开的 kit.json MR 会写好。'
 
 /** The config files brain-kit reads on a team runner, in this order, and what each is for. */
 const CONFIG_FILES: { file: string; what: string }[] = [
@@ -156,12 +158,14 @@ export function TeamPage({ status, go, reloadStatus, pollMs }: ViewProps) {
   const team = !!status?.app.team
   const tv = usePoll<TeamView>(team ? paths.team() : null, pollMs ?? TEAM_POLL_MS)
   const pv = usePoll<TeamPatrol>(team ? paths.teamPatrol() : null, pollMs ?? TEAM_POLL_MS)
+  const sv = usePoll<TeamStaging>(team ? paths.teamStaging() : null, pollMs ?? TEAM_POLL_MS)
   const loop = useAction(() => api.post<TeamLoopResult>(paths.teamLoop(), {}))
   const runLoop = async () => {
     const r = await loop.run()
     if (r) {
       tv.reload()
       pv.reload()
+      sv.reload()
       reloadStatus()
     }
   }
@@ -230,6 +234,7 @@ export function TeamPage({ status, go, reloadStatus, pollMs }: ViewProps) {
               <details className="br-raw"><summary>细节</summary><pre>{st.loop_error}</pre></details>
             </div>
           )}
+          <CheckRows rows={st.checks ?? []} />
           {loop.result && <LoopResult r={loop.result} />}
           {loop.error && <p className="br-error" role="alert">{loop.error}</p>}
         </section>
@@ -245,6 +250,7 @@ export function TeamPage({ status, go, reloadStatus, pollMs }: ViewProps) {
           </section>
           <Handovers rows={data.handovers} at={st?.last_loop_at ?? null} />
           {pv.data && <Patrol view={pv.data} openSession={(slot) => navigate(`/chat?sid=${encodeURIComponent(slot)}`)} />}
+          {sv.data && <StagingErrors view={sv.data} openSession={(slot) => navigate(`/chat?sid=${encodeURIComponent(slot)}`)} />}
           <section className="br-card" aria-label="运行">
             <header>
               <RoleIcon role="runner" size={18} />
@@ -664,7 +670,7 @@ function Config({ rows }: { rows: TeamConfigRow[] }) {
   )
 }
 
-const TM_CSS = `
+export const TM_CSS = `
 /* a step's words break only between phrases (回答、| 验收; 每一轮看 MR，| 检查交接), never inside a word */
 .tm-root .br-flow > li { word-break: keep-all; overflow-wrap: anywhere; }
 .tm-top { display: flex; align-items: center; gap: .6em 1em; flex-wrap: wrap; }
