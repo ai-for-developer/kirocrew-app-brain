@@ -155,7 +155,8 @@ def owns(me: str | None, owner: str | None) -> bool:
 def on_runner(run: dict[str, Any] | None) -> bool:
     """The team runner has the run: a person handed it over (run.json's handoff), or it started there (origin remote:
     从 issue 接活's start commit). No person's machine has a session of it; its MR says where it is."""
-    return bool((run or {}).get("handoff")) or (run or {}).get("origin") == "remote"
+    run = run or {}
+    return bool(run.get("handoff")) or run.get("origin") == "remote"
 
 
 def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | None, slot: dict[str, Any] | None,
@@ -513,8 +514,8 @@ def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[
 def runner_takes(f: dict[str, Any] | None, row: dict[str, Any] | None, runner_row: dict[str, Any]) -> bool:
     """Team mode lists each requirement once. One the runner's ledger has a run of is the runner's (its facts win:
     this machine's row is what it saw last), unless this machine's run of it is not the runner's (on_runner: never
-    handed over, or taken back), or its run is over by both counts (merged or closed): then its repo's row reads the merge, the 14 days after it and
-    the write-back into the Brain, which the ledger does not."""
+    handed over, or taken back), or its run is over by both counts (merged or closed): then its repo's row reads the
+    merge, the 14 days after it and the write-back into the Brain, which the ledger does not."""
     if f is None or row is None:
         return True
     run = f.get("run") or {}
