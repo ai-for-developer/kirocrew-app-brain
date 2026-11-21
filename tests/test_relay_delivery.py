@@ -3,8 +3,8 @@ records, brain handoff, merges) pushed to a bare origin that a fake GitLab serve
 bridge's token as the team server reads them: from GitLab only.
 
 Every requirement open, or merged or closed within 14 days, is one row in 交付总览's words: its stage, what it waits on
-and who takes that step, its MR with the CI at its head, and whether the staging VERSION holds its merge. A merge older
-than that, and a closed claim, are not rows. A small requirement merged into its big one's branch is said as 交付总览
+and who takes that step, its MR with the CI at its head, and whether the staging VERSION holds its merge; a fast run's
+from its MR, as a teammate's app says it. A merge older than that, and a closed claim, are not rows. A small requirement merged into its big one's branch is said as 交付总览
 says it, and an MR merged into any other branch is never merged or deployed. A claim branch whose claim.json is not an
 object is left out and said. A branch's records are read once per head, an MR's notes once per change, a pipeline
 until it is over, a deploy's merge base once; a project GitLab does not answer keeps its last read."""
@@ -336,3 +336,45 @@ def test_an_mr_merged_into_another_branch_is_never_merged_or_deployed_and_says_w
     seven = by_key(build(scratch)[0])["PAY-7"]
     assert (seven["stage"], seven["state"], seven["deployed"]) == ("需求", "local", None)
     assert (seven["waits"]["who"], seven["waits"]["text"], seven["waits"]["on"]) == ("nobody", "合进了 ai/alice/PAY-1-refund", [])
+
+
+def started_branch(world, tmp_path, key, owner, branch, run, files, bot=False):
+    """*key*'s claim for *owner* (brain-kit's claim_doc) and *branch* on top of main with its run.json (*run*) and
+    *files*, pushed to origin from a clone of its own. -> the branch's head."""
+    bk = mod("bk")
+    bare = world["gl"].repos[P]["bare"]
+    doc = bk.m("claims").claim_doc(key, owner, run["key"] + " 的需求", {})
+    orphan(bare, "claim/" + key, {"claim.json": json.dumps(doc, ensure_ascii=False, indent=2) + "\n"})
+    work = tmp_path / ("work-" + key)
+    sh("git", "clone", "-q", str(bare), work)
+    sh("git", "-C", work, "checkout", "-q", "-b", branch, "origin/main")
+    tip = commit(work, {"runs/%s/run.json" % key: run, **files}, "%s: start" % key, bot=bot)
+    sh("git", "-C", work, "push", "-q", "origin", branch)
+    return tip
+
+
+def test_a_teammates_fast_run_says_its_mr_as_a_persons_app_reads_it(scratch, tmp_path):
+    """PAY-9, bob's fast run (快速: no Lean intent, run.json as runrec.new writes it): 构建 while he writes its code on
+    his machine; once its MR is open, 发布 · 验收 and what that MR waits on, as a teammate's app says it
+    (fastrow.theirs): the CI at its head, then the people who review and merge it; its MR closed, 已关闭."""
+    bk, gl = mod("bk"), scratch["gl"]
+    branch = "ai/bob/PAY-9-coupon"
+    run = bk.m("runrec").new("PAY-9", "bob", branch, None, gl.head(P, "main"), "test", ["src/coupon/"],
+                             relayfix_iso(scratch["now"]), True, flow=bk.m("flows").Flow.FAST)
+    tip = started_branch(scratch, tmp_path, "PAY-9", "bob", branch, run, {"src/coupon/code.py": "x = 1\n"})
+    nine = by_key(build(scratch)[0])["PAY-9"]
+    assert (nine["stage"], nine["state"], nine["owner"], nine["mr"]) == ("构建", "local", "bob", None)
+    assert (nine["waits"]["who"], nine["waits"]["text"], nine["waits"]["on"]) == ("people", "bob 在自己的机器上做", [])
+    try:
+        gl.mr(P, 14, branch, sha=tip)
+        gl.pipeline(P, 14, "success", sha=tip)
+        nine = by_key(build(scratch)[0])["PAY-9"]
+        assert (nine["stage"], nine["state"]) == ("发布 · 验收", "local")
+        assert nine["mr"] == {"iid": 14, "url": "%s/%s/-/merge_requests/14" % (BASE, P), "state": "opened", "ci": "success"}
+        assert {k: nine["waits"][k] for k in ("who", "do", "text", "on")} == {
+            "who": "people", "do": "merge", "text": "MR !14：CI 过了，等人审、合并", "on": []}
+        gl.mr(P, 14, branch, state="closed", sha=tip, closed_at=relayfix_iso(time.time()))
+        nine = by_key(build(scratch)[0])["PAY-9"]
+        assert (nine["stage"], nine["state"], nine["waits"]["text"]) == ("已关闭", "closed", "MR 已关闭")
+    finally:
+        gl.pipes.pop((P, 14), None)

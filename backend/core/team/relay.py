@@ -25,7 +25,8 @@ aidlc-state.md, decisions.md and the Lean ledger, read_facts as a person's app r
 branch's head (GitLabSource), once per head: a head that did not move is not read again, and a new head reads only the
 files that changed (each file by its blob id, once). A folder listed past MAX_PAGES of 100 files, and a default branch
 with more merged requirements than that, are read as far as that and said. A merged one is read at its merge. The row is then what 交付总览 says of a teammate's requirement (deliveries.classify with no one
-as "you", then family.classify for a big requirement and its small ones): its stage in 交付总览's words
+as "you", then family.classify for a big requirement and its small ones; a fast run's from its own MR as a teammate's
+app reads it, fastrow.theirs: the CI at its head, MR 巡检 where the project's kit.json has it): its stage in 交付总览's words
 (deliveries.flow_stage; a closed one and a small one merged into its big one's branch, in no column there, by their
 state's words), its MR and the CI of its head (kept once the pipeline is over), whether the staging VERSION holds its
 merge (GitLab's merge base; kept per merge and deploy), what it waits on and who takes that step (Waits.on). Only an MR
@@ -44,9 +45,10 @@ import subprocess
 import time
 from typing import Any, Callable, Mapping, NamedTuple
 
-from .. import bk, deliveries, family, lean_view, mrinfo, snapshot
+from .. import bk, deliveries, family, fastrow, lean_view, mrinfo, snapshot
 from ..constants import KEY_RE
 from ..repo import MAX_FILE, REFLECT_RE, Source, empty_facts, parse_branch, read_facts
+from . import sources
 
 FILE, BRANCH = snapshot.FILE, snapshot.BRANCH
 FLOOR_S, HEARTBEAT_S = snapshot.FLOOR_S, snapshot.HEARTBEAT_S
@@ -216,6 +218,17 @@ def merge_of(mr: Mapping[str, Any] | None, default: str) -> tuple[float | None, 
                                            mr.get("sha") or ""), ""
 
 
+def fast_of(f: Mapping[str, Any], kit: Mapping[str, Any]) -> fastrow.FastFacts | None:
+    """A fast run's FastFacts as a teammate's app has them (fastrow.fast_facts without its git half: no commits counted,
+    its risk paths not known); None for any other run. fastrow.theirs reads its MR and whether MR 巡检 works the
+    project."""
+    flow = f.get("flow")
+    if not f.get("run") or f.get("flow_error") or flow is None or flow.intent:
+        return None
+    return fastrow.FastFacts(code_commits=0, verify=fastrow.newest_verify(f.get("events") or []), risky=None,
+                             patrol=sources.PATROL in sources.enabled(kit))
+
+
 class Deliveries:
     """The delivery part of the snapshot: read() for each project the relay builds one for (on the bridge's worker
     thread)."""
@@ -227,7 +240,7 @@ class Deliveries:
         self._blobs: dict[str, dict[str, bytes]] = {}       # project -> blob id -> the file (GitLabSource)
         self._claims: dict[tuple, Any] = {}                 # (project, sha) -> its claim.json, an object or None
         self._notes: dict[tuple, tuple] = {}                # (project, iid) -> ((updated_at, head), parse_notes)
-        self._ci: dict[tuple, str | None] = {}              # (project, iid, head) -> its head pipeline's status
+        self._ci: dict[tuple, dict | None] = {}             # (project, iid, head) -> its head pipeline (mrinfo's)
         self._deployed: dict[tuple, bool] = {}              # (project, merge, deployed) -> the deploy holds the merge
         self._branch_mr: dict[tuple, dict | None] = {}      # (project, branch, head) -> that branch's newest MR
         self._merged: dict[str, tuple[str, frozenset[str], bool]] = {}   # project -> (default head, keys merged, cut)
@@ -365,12 +378,14 @@ class Deliveries:
         of 需求流动: their state's words stand for the stage. An MR merged into a branch that is not the default one,
         outside a family, is not merged: it says where it went."""
         f, mr, run = g.f, g.mr, g.run
-        info = self._mr_info(project, mr, run, bridge_user, seen) if mr else None
+        head = self._head_pipeline(project, mr, seen) if mr else None
+        info = self._mr_info(project, mr, run, bridge_user, seen, head) if mr else None
         row = deliveries.base_row(project, f)
         handover = ((run.get("handoff") or {}).get("local_head")) if isinstance(run.get("handoff"), dict) else None
         parent = ((g.run_b or {}).get("commit") or {}).get("parent_ids") or []
         deliveries.classify(row, f, mr=info, slot=None, cfg=dict(kit), at_handover=bool(info) and bool(handover)
-                            and list(parent) == [handover], me=None, reflected=reflected, now=now, pushed=True)
+                            and list(parent) == [handover], me=None, reflected=reflected, now=now, pushed=True,
+                            fast=fast_of(f, kit))
         row["family"] = fam
         family.classify(row, fam, f, None)
         row["mr"] = info and {"iid": info["iid"], "url": info["url"], "state": info["state"]}
@@ -385,7 +400,7 @@ class Deliveries:
         return {"project": project, "key": f["key"], "title": row["title"], "owner": row["owner"] or None,
                 "stage": deliveries.flow_stage(row) or row["state_label"], "state": row["state"], "branch": f["branch"],
                 "mr": info and {"iid": info["iid"], "url": info["url"], "state": str(info["state"] or ""),
-                                "ci": self._ci_of(project, mr, seen)},
+                                "ci": head["status"] if head else None},
                 "deployed": self._deployed_of(project, g.sha, deployed, seen) if f["where"] == "main" else None,
                 "waits": waits_of(row, on_names(row, info, roles)),
                 "updated_at": g.merged_at if f["where"] == "main" else closed_at or deliveries.updated_at(f, None)}
@@ -458,30 +473,32 @@ class Deliveries:
         return self._facts[k].facts
 
     def _mr_info(self, project: str, mr: dict[str, Any], run: Mapping[str, Any], bridge_user: str | None,
-                 seen: set[tuple]) -> dict[str, Any]:
-        """The MR as the overview reads it (mrinfo's shape): its notes parsed only for a hand-over's open MR."""
-        iid, head = int(mr["iid"]), str(mr.get("sha") or "")
+                 seen: set[tuple], head: dict[str, Any] | None) -> dict[str, Any]:
+        """The MR as the overview reads it (mrinfo's shape, its pipelines the one at its head): its notes parsed only
+        for a hand-over's open MR."""
+        iid, sha = int(mr["iid"]), str(mr.get("sha") or "")
         parsed: dict[str, Any] = {"questions": [], "rejected_reason": None, "rejected_todo": None, "rejected_raw": None,
                                   "rejected_at": None, "runner": None}
         if mr.get("state") == "opened" and run.get("handoff"):
             k = (project, iid)
             seen.add(k)
-            stamp = (str(mr.get("updated_at") or ""), head)
+            stamp = (str(mr.get("updated_at") or ""), sha)
             got = self._notes.get(k)
             if got is None or got[0] != stamp:
                 got = self._notes[k] = (stamp, mrinfo.parse_notes(self.gl.mr_notes(project, iid), bridge_user))
             parsed = got[1]
         return {"iid": iid, "url": mr.get("web_url") or mrinfo.mr_url(self.base, project, iid),
-                "state": mr.get("state"), "labels": list(mr.get("labels") or []), "sha": head or None, **parsed}
+                "state": mr.get("state"), "labels": list(mr.get("labels") or []), "sha": sha or None,
+                "pipelines": [head] if head else [], **parsed}
 
-    def _ci_of(self, project: str, mr: dict[str, Any], seen: set[tuple]) -> str | None:
-        """The status of the pipeline at the MR's head, kept once it is over (GitLab does not move the MR when a
+    def _head_pipeline(self, project: str, mr: dict[str, Any], seen: set[tuple]) -> dict[str, Any] | None:
+        """The pipeline at the MR's head (mrinfo's shape), kept once it is over (GitLab does not move the MR when a
         pipeline ends, so a running one is read again)."""
         k = (project, int(mr["iid"]), str(mr.get("sha") or ""))
         seen.add(k)
-        if k not in self._ci or self._ci[k] not in FINAL_CI:
+        if (self._ci.get(k) or {}).get("status") not in FINAL_CI:
             rows = mrinfo.pipelines(self.gl, self.base, project, int(mr["iid"]), None) or []
-            self._ci[k] = next((p["status"] for p in rows if p["sha"] == k[2]), None)
+            self._ci[k] = next((p for p in rows if p["sha"] == k[2]), None)
         return self._ci[k]
 
     def _deployed_of(self, project: str, merge: str, deployed: str, seen: set[tuple]) -> bool | None:
