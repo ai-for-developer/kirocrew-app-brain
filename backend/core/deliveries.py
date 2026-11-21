@@ -20,6 +20,9 @@ STATE_LABEL = {"claimed": "已认领", "local": "本地开发中", "handed_over"
                "running": "运行机在跑", "parked": "停下等回答", "acceptance": "等验收", "merged": "已合并",
                "closed": "已关闭", "unclaimed": "待认领", "merged_into_parent": "已合进大需求"}
 OPEN_STATES = ("claimed", "local", "handed_over", "running", "parked", "acceptance", "rejected", "unclaimed")
+# the columns of 需求流动 (ui/src/cto/Flow.tsx COLS), as 交付总览 names them: a requirement's stage on its way
+FLOW_STAGES = ("需求", "设计", "构建", "交给运行机", "发布 · 验收", "已合并")
+RUNNER_STATES = ("handed_over", "running", "rejected")
 KIND_LABEL = {"clarify": "澄清", "design": "设计", "plan": "计划", "acceptance": "验收", "action": "危险动作",
               "other": "其他", "requirements": "需求批准"}
 ASK_WHO = {"product": "product", "builder": "builder", "owner": "you", "security": "people", "data": "people"}
@@ -707,6 +710,41 @@ def evaluate(repo_path: str, cfg: dict[str, Any], ref: str | None, credits: dict
                                     "src": str(x.get("src") or "")}
                                    for x in f.get("unclassified") or [] if isinstance(x, dict)][:100]}
     return view, funnel
+
+
+def flow_stage(row: dict[str, Any]) -> str | None:
+    """The column of 需求流动 a requirement is in, in 交付总览's words (FLOW_STAGES; ui/src/cto/Flow.tsx colOf, held to
+    the same cases by ui/src/test/stage-cases.json): its state first (a hand-over, refused or not, is 交给运行机 whatever
+    Lean's stage), else Lean's stage by its AI-DLC number: 需求 before 2.6 应用设计, 设计 before 3.5 代码生成, 构建 before
+    ✓ 发布, then 发布 · 验收. A small requirement is in 构建 until it is handed over, a split big one in 构建 while its
+    small ones are built. None for one closed or merged into its big one."""
+    st = row["state"]
+    if st in ("closed", "merged_into_parent"):
+        return None
+    if st == "merged":
+        return "已合并"
+    if st == "acceptance":
+        return "发布 · 验收"
+    if st == "unclaimed":
+        return "构建"
+    n = str((row.get("lean") or {}).get("stage_n") or "")
+    fam = row.get("family") or {}
+    runner = st in RUNNER_STATES or (st == "parked" and (row.get("mr") is not None or bool(row.get("run_ids"))))
+    if fam.get("role") == "child" and not runner:
+        return "构建"
+    if runner and not row.get("local_only"):
+        return "交给运行机"
+    if n == "✓" or n.startswith("4."):
+        return "发布 · 验收"
+    if fam.get("role") == "parent":
+        return "发布 · 验收" if fam.get("family_state") == "ready_to_release" else "构建"
+    try:
+        at = float(n) if n else 0.0
+    except ValueError:      # a number Lean's table does not have: past every bound, as Number() makes it NaN
+        at = float("nan")
+    if st == "claimed" or at < 2.6:
+        return "需求"
+    return "设计" if at < 3.5 else "构建"
 
 
 def counts(rows: list[dict[str, Any]]) -> dict[str, int]:

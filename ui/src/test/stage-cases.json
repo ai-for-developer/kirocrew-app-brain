@@ -1,0 +1,29 @@
+{
+  "about": "Where 需求流动 puts a requirement, in 交付总览's words: ui/src/cto/Flow.tsx colOf (COL_NAME) and backend/core/deliveries.py flow_stage must both answer stage for each row (src/cto/stagecases.test.ts, tests/test_relay_snapshot.py). null: no column (closed, merged into its big one).",
+  "cases": [
+    { "why": "closed", "stage": null, "row": { "state": "closed", "lean": { "stage_n": "3.5" }, "family": null, "local_only": false, "mr": null, "run_ids": [] } },
+    { "why": "merged into its big one", "stage": null, "row": { "state": "merged_into_parent", "lean": { "stage_n": "3.5" }, "family": { "role": "child", "family_state": "in_progress" }, "local_only": false, "mr": null, "run_ids": [] } },
+    { "why": "merged", "stage": "已合并", "row": { "state": "merged", "lean": { "stage_n": "✓" }, "family": null, "local_only": false, "mr": { "iid": 5 }, "run_ids": [] } },
+    { "why": "waits for its acceptance", "stage": "发布 · 验收", "row": { "state": "acceptance", "lean": { "stage_n": "✓" }, "family": null, "local_only": false, "mr": { "iid": 5 }, "run_ids": ["RUN-PAY-1-1"] } },
+    { "why": "a small one nobody has", "stage": "构建", "row": { "state": "unclaimed", "lean": { "stage_n": null }, "family": null, "local_only": false, "mr": null, "run_ids": [] } },
+    { "why": "claimed, not started", "stage": "需求", "row": { "state": "claimed", "lean": { "stage_n": null }, "family": null, "local_only": false, "mr": null, "run_ids": [] } },
+    { "why": "Lean not started", "stage": "需求", "row": { "state": "local", "lean": { "stage_n": null }, "family": null, "local_only": false, "mr": null, "run_ids": [] } },
+    { "why": "requirements analysis", "stage": "需求", "row": { "state": "local", "lean": { "stage_n": "2.3" }, "family": null, "local_only": false, "mr": null, "run_ids": [] } },
+    { "why": "application design", "stage": "设计", "row": { "state": "local", "lean": { "stage_n": "2.6" }, "family": null, "local_only": false, "mr": null, "run_ids": [] } },
+    { "why": "functional design of a unit", "stage": "设计", "row": { "state": "local", "lean": { "stage_n": "3.1" }, "family": null, "local_only": false, "mr": null, "run_ids": [] } },
+    { "why": "code generation", "stage": "构建", "row": { "state": "local", "lean": { "stage_n": "3.5" }, "family": null, "local_only": false, "mr": null, "run_ids": [] } },
+    { "why": "release", "stage": "发布 · 验收", "row": { "state": "local", "lean": { "stage_n": "✓" }, "family": null, "local_only": false, "mr": null, "run_ids": [] } },
+    { "why": "operations", "stage": "发布 · 验收", "row": { "state": "local", "lean": { "stage_n": "4.1" }, "family": null, "local_only": false, "mr": null, "run_ids": [] } },
+    { "why": "handed over, whatever Lean's stage", "stage": "交给运行机", "row": { "state": "handed_over", "lean": { "stage_n": "2.3" }, "family": null, "local_only": false, "mr": { "iid": 5 }, "run_ids": [] } },
+    { "why": "running on the runner", "stage": "交给运行机", "row": { "state": "running", "lean": { "stage_n": "3.5" }, "family": null, "local_only": false, "mr": { "iid": 5 }, "run_ids": [] } },
+    { "why": "its hand-over refused", "stage": "交给运行机", "row": { "state": "rejected", "lean": { "stage_n": "3.5" }, "family": null, "local_only": false, "mr": { "iid": 5 }, "run_ids": [] } },
+    { "why": "parked on the runner, its MR known", "stage": "交给运行机", "row": { "state": "parked", "lean": { "stage_n": "3.5" }, "family": null, "local_only": false, "mr": { "iid": 5 }, "run_ids": [] } },
+    { "why": "parked on the runner, its run known", "stage": "交给运行机", "row": { "state": "parked", "lean": { "stage_n": "3.5" }, "family": null, "local_only": false, "mr": null, "run_ids": ["RUN-PAY-1-1"] } },
+    { "why": "parked on this machine", "stage": "需求", "row": { "state": "parked", "lean": { "stage_n": "2.3" }, "family": null, "local_only": false, "mr": null, "run_ids": [] } },
+    { "why": "a repo done only on this machine never hands over", "stage": "构建", "row": { "state": "running", "lean": { "stage_n": "3.5" }, "family": null, "local_only": true, "mr": null, "run_ids": [] } },
+    { "why": "a small one is its big one's construction", "stage": "构建", "row": { "state": "local", "lean": { "stage_n": "2.3" }, "family": { "role": "child", "family_state": "in_progress" }, "local_only": false, "mr": null, "run_ids": [] } },
+    { "why": "a small one handed over", "stage": "交给运行机", "row": { "state": "running", "lean": { "stage_n": "3.5" }, "family": { "role": "child", "family_state": "in_progress" }, "local_only": false, "mr": { "iid": 6 }, "run_ids": [] } },
+    { "why": "a big one while its small ones are built", "stage": "构建", "row": { "state": "local", "lean": { "stage_n": "2.7" }, "family": { "role": "parent", "family_state": "in_progress" }, "local_only": false, "mr": null, "run_ids": [] } },
+    { "why": "a big one whose small ones all merged", "stage": "发布 · 验收", "row": { "state": "local", "lean": { "stage_n": "3.6" }, "family": { "role": "parent", "family_state": "ready_to_release" }, "local_only": false, "mr": null, "run_ids": [] } }
+  ]
+}
