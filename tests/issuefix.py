@@ -15,7 +15,7 @@ import re
 import subprocess
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from appkit import sh
+from appkit import mod, sh
 from brainfix import make_project
 from teamfix import keypair, load_signer
 
@@ -338,3 +338,22 @@ def commit_as_runner(path, msg, amend=False):
     sh("git", "-C", path, "add", "-A")
     sh("git", "-C", path, "commit", "-q", "--allow-empty", "-m", msg, *(["--amend"] if amend else []), env=RUNNER)
     return sh("git", "-C", path, "rev-parse", "HEAD").stdout.strip()
+
+
+def started_from_issue(origin, work, project, labeler, *, base=BASE, iid=IID, title=TITLE, body=BODY):
+    """What 从 issue 接活 leaves on *origin* (a bare repo) once issue #*iid* that *labeler* labelled has started, made by
+    its own code in a clone of its own that commits as runnerd's bot (issues.Clones): claim/<KEY> filed for them
+    (intents.add, as IssueSource._claim files it) and the start commit pushed as ai/<labeler>/<KEY>-issue-<iid>
+    (issues.make_start_commit: a new Lean intent, run.json with origin remote and no hand-over). -> (key, branch, the
+    start commit)."""
+    bk, issues = mod("bk"), mod("team.issues")
+    ident = (("user.name", RUNNER["GIT_AUTHOR_NAME"]), ("user.email", RUNNER["GIT_AUTHOR_EMAIL"]))
+    path = issues.Clones(str(work), str(origin), ident).prepare(project, PID, "main")
+    kit = bk.m("config").load(path)
+    url = "%s/%s/-/issues/%d" % (base, project, iid)
+    key = bk.m("intents").add(path, kit, "product", title, body, refs=[url], owner=labeler)["key"]
+    branch = bk.m("common").branch_name(kit["branch_prefix"], labeler, key, "issue-%d" % iid)
+    row = issues.IssueRow(project=project, iid=iid, labeler=labeler, title=title, key=key)
+    sha = issues.make_start_commit(path, kit, row, branch, kit["default_branch"])
+    sh("git", "-C", path, "push", "-q", "origin", "%s:refs/heads/%s" % (sha, branch))
+    return key, branch, sha

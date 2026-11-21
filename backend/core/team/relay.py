@@ -19,7 +19,8 @@ own 运行机 page; it never stops the round.
 The team view's rows come from GitLab only, read with the bridge's token: per project its claim/ and <prefix>/ branches
 (and brain/<KEY>-reflect-<n>, the write-backs made), its default branch's runs_dir (the requirements merged there), its
 open MRs and those merged or closed in the last MERGED_S, each requirement's newest one whatever its state, as a person's
-app takes a branch's (a hand-over's branch none of them is of asks GitLab for its own, once per head). A claim branch
+app takes a branch's (the branch of a run the runner has, handed over or started from an issue, that none of them is
+of asks GitLab for its own, once per head). A claim branch
 whose claim.json is not a JSON object is left out, and said. A requirement's records (run.json, park.json,
 aidlc-state.md, decisions.md and the Lean ledger, read_facts as a person's app reads a teammate's branch) are read at its
 branch's head (GitLabSource), once per head: a head that did not move is not read again, and a new head reads only the
@@ -31,8 +32,8 @@ app reads it, fastrow.theirs: the CI at its head, MR 巡检 where the project's 
 state's words), its MR and the CI of its head (kept once the pipeline is over), whether the staging VERSION holds its
 merge (GitLab's merge base; kept per merge and deploy), what it waits on and who takes that step (Waits.on). Only an MR
 merged into the default branch counts as merged: one merged into any other branch, outside a family, says where it went
-and is never deployed. An MR's notes are read only for a hand-over's open MR, again only when GitLab moved its
-updated_at or head. A project GitLab does not answer for raises, its last read kept (Deliveries.last).
+and is never deployed. An MR's notes are read only for the open MR of a run the runner has, again only when GitLab
+moved its updated_at or head. A project GitLab does not answer for raises, its last read kept (Deliveries.last).
 """
 
 from __future__ import annotations
@@ -339,8 +340,8 @@ class Deliveries:
                 run_b: dict | None, mrs: Mapping[str, dict[str, Any]], on_main: bool, now: float,
                 seen: set[tuple], cut: set[str]) -> Gathered | None:
         """Where *key* is and its records there, read once per commit; None when it is not a row: its claim closed,
-        merged before the last MERGED_S (or not through an MR GitLab lists), its hand-over's MR merged or closed
-        before them."""
+        merged before the last MERGED_S (or not through an MR GitLab lists), the MR of a run the runner has merged or
+        closed before them."""
         claim_b, claim = claimed if claimed else (None, None)
         if claim and claim.get("closed"):
             return None
@@ -358,7 +359,7 @@ class Deliveries:
             sha, where, tip_at = "", "claim", None
         got = self._facts_at(project, key, sha, runs_dir, seen, cut) if sha else empty_facts()
         run = got["run"] or {}
-        if where == "branch" and mr is None and run.get("handoff"):
+        if where == "branch" and mr is None and deliveries.on_runner(run):
             mr = self._mr_of_branch(project, str(run_b["name"]), sha, seen)
             if mr and mr.get("state") in ("merged", "closed"):
                 return None                     # not in the window: it ended before the last MERGED_S
@@ -475,11 +476,11 @@ class Deliveries:
     def _mr_info(self, project: str, mr: dict[str, Any], run: Mapping[str, Any], bridge_user: str | None,
                  seen: set[tuple], head: dict[str, Any] | None) -> dict[str, Any]:
         """The MR as the overview reads it (mrinfo's shape, its pipelines the one at its head): its notes parsed only
-        for a hand-over's open MR."""
+        for the open MR of a run the runner has (deliveries.on_runner)."""
         iid, sha = int(mr["iid"]), str(mr.get("sha") or "")
         parsed: dict[str, Any] = {"questions": [], "rejected_reason": None, "rejected_todo": None, "rejected_raw": None,
                                   "rejected_at": None, "runner": None}
-        if mr.get("state") == "opened" and run.get("handoff"):
+        if mr.get("state") == "opened" and deliveries.on_runner(run):
             k = (project, iid)
             seen.add(k)
             stamp = (str(mr.get("updated_at") or ""), sha)

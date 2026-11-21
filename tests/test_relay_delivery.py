@@ -18,6 +18,7 @@ import pytest
 
 from appkit import BRAINKIT, mod, sh
 from brainfix import brain, filled_notes, make_project, needs_brainkit, person, request_requirements, start_in_worktree
+from issuefix import started_from_issue
 from relayfix import BASE, RepoGitLab
 from relayfix import iso as relayfix_iso
 from teamfix import BOT_ENV
@@ -378,3 +379,23 @@ def test_a_teammates_fast_run_says_its_mr_as_a_persons_app_reads_it(scratch, tmp
         assert (nine["stage"], nine["state"], nine["waits"]["text"]) == ("已关闭", "closed", "MR 已关闭")
     finally:
         gl.pipes.pop((P, 14), None)
+
+
+def test_a_run_started_from_an_issue_is_the_runners_from_its_first_commit(scratch, tmp_path):
+    """A requirement 从 issue 接活 started for alice's label on issue #7, made by its own code (the claim filed for her,
+    the start commit by the runner's bot: run.json with origin remote and no hand-over): 交给运行机 from its start, as a
+    handed-over one is. While its start contract is signed it waits on the bridge; once its MR has the running label,
+    运行机在跑. It is never alice's work on her own machine."""
+    gl = scratch["gl"]
+    key, branch, sha = started_from_issue(gl.repos[P]["bare"], tmp_path / "issues", P, "alice", base=BASE, iid=7)
+    try:
+        gl.mr(P, 15, branch, sha=sha)
+        row = by_key(build(scratch)[0])[key]
+        assert (row["stage"], row["state"], row["owner"], row["branch"]) == ("交给运行机", "handed_over", "alice", branch)
+        assert (row["waits"]["who"], row["waits"]["text"], row["waits"]["on"]) == ("bridge", "等桥核对交接", [])
+        gl.mr(P, 15, branch, sha=sha, labels=["ai-running"])
+        row = by_key(build(scratch)[0])[key]
+        assert (row["stage"], row["state"], row["mr"]["state"]) == ("交给运行机", "running", "opened")
+        assert (row["waits"]["who"], row["waits"]["text"], row["waits"]["on"]) == ("runner", "运行机在跑", [])
+    finally:
+        gl.pipes.pop((P, 15), None)

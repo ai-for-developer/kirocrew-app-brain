@@ -4,7 +4,7 @@ merged; overlaps; the approval line is shown, never sent."""
 import json
 import subprocess
 
-from appkit import mod
+from appkit import BRAINKIT, mod
 from brainfix import (filled_notes, install_brain_dev, lean, make_project, make_service, needs_brainkit, request_requirements, run,
                       sh, start_in_worktree, brain)
 
@@ -426,3 +426,77 @@ def test_a_persons_own_rows_are_theirs_the_ones_nobody_has_and_the_parts_of_thei
     assert keys(d.own_rows(rows, {"r1": "alice", "r2": "alice"})) == ["PAY-1", "PAY-6", "PAY-8", "PAY-11", "PAY-12"]
     assert keys(d.own_rows(rows, {"r1": "alice", "r2": None})) == ["PAY-1", "PAY-6", "PAY-8", "PAY-11", "PAY-12", "WEB-1"]
     assert keys(d.own_rows(rows, {"r1": None, "r2": None})) == keys(rows)
+
+
+def read_overview(svc, *, mrs=False):
+    """GET /overview once the service has started; *mrs*: after a read of the MRs its rows asked for (refresh_mrs)."""
+    async def go():
+        await svc.start()
+        try:
+            if mrs:
+                await svc.overview("all")
+                await svc.refresh_mrs()
+                for r in svc.repos.values():
+                    r.invalidate()
+            return await svc.overview("all")
+        finally:
+            await svc.stop()
+    return run(go())
+
+
+def test_a_persons_overview_has_their_own_fast_run_and_not_a_teammates(tmp_path, home):
+    """alice's fast run (`brain start --fast`) is on her 交付总览 as a fast run: its row says its flow, it waits on her
+    to open its session, and 需求流动 has it in 构建 until its MR is open. bob's fast run, fetched from origin, is the
+    team's: on the team server's 交付总览, waiting on him on his machine, and not on hers."""
+    from brainfix import person
+    repo = make_project(tmp_path, origin=True)
+    start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "coupon", "coupon", "优惠码", "--fast")
+    sh("git", "-C", repo, "push", "-q", "origin", "refs/heads/claim/*:refs/heads/claim/*", "refs/heads/ai/*:refs/heads/ai/*")
+    bob = person(tmp_path, tmp_path / "pay-origin.git", "bob")
+    brain(bob, "start", "report", "--title", "报表", "--fast")
+    sh("git", "-C", bob, "push", "-q", "origin", "refs/heads/claim/PAY-2", "refs/heads/ai/bob/PAY-2-report")
+    sh("git", "-C", repo, "fetch", "-q", "origin")
+    deliveries = mod("deliveries")
+    mine = rows_by_key(read_overview(make_service(tmp_path / "alice", [repo])))
+    team = rows_by_key(read_overview(make_service(tmp_path / "server", [repo], role="team_server")))
+    assert sorted(mine) == ["PAY-1"] and sorted(team) == ["PAY-1", "PAY-2"]
+    one = mine["PAY-1"]
+    assert (one["owner"], one["flow"]["id"], one["state"]) == ("alice", "fast", "local")
+    assert (one["waits"]["who"], one["waits"]["do"], one["waits"]["text"]) == ("you", "reply", "没有开着的会话：打开会话，跟 AI 说要做什么")
+    assert deliveries.flow_stage(one) == "构建"
+    two = team["PAY-2"]
+    assert (two["owner"], two["flow"]["id"], two["waits"]["text"]) == ("bob", "fast", "bob 在自己的机器上做")
+
+
+def test_a_run_started_from_an_issue_is_its_labelers_on_the_runner(tmp_path, home, monkeypatch):
+    """A requirement 从 issue 接活 started on the runner for alice's label (the issue source's own code pushed its claim
+    and start commit to origin), fetched by alice's app and bob's. alice's 交付总览 lists it as hers and the runner's:
+    its MR, read with her token, has the running label, so 运行机在跑 in 交给运行机, not a run waiting on her machine.
+    bob's leaves it out: it is alice's (团队运行机's 全队交付 has the team's)."""
+    from brainfix import person
+    from issuefix import started_from_issue
+    from test_kitswitch import BASE, GITLAB, TOKEN, GitLab
+    repo = make_project(tmp_path, origin=True, kit=GITLAB)
+    sh("git", "-C", repo, "push", "-q", "origin", "main")
+    origin = tmp_path / "pay-origin.git"
+    bk = mod("bk")
+    assert bk.load(str(BRAINKIT))["ok"]         # the issue source's code runs here, outside any app
+    try:
+        key, branch, sha = started_from_issue(origin, tmp_path / "issues", GITLAB["gitlab"]["project"], "alice",
+                                              base=BASE, iid=7)
+    finally:
+        bk.unload()
+    gl = GitLab((repo / ".brain" / "kit.json").read_text(encoding="utf-8"))
+    gl.mrs.append({"iid": 31, "source_branch": branch, "target_branch": "main", "state": "opened", "sha": sha,
+                   "labels": ["ai-running"], "web_url": "%s/grp/pay/-/merge_requests/31" % BASE})
+    bob = person(tmp_path, origin, "bob")
+    sh("git", "-C", repo, "fetch", "-q", "origin")
+    monkeypatch.setenv("GITLAB_TOKEN", TOKEN)
+    monkeypatch.setattr(mod("mrinfo"), "TTL_S", 0.0)
+    mine = rows_by_key(read_overview(make_service(tmp_path / "alice", [repo], transport=gl), mrs=True))
+    theirs = rows_by_key(read_overview(make_service(tmp_path / "bob", [bob], transport=gl), mrs=True))
+    assert key in mine and key not in theirs
+    row = mine[key]
+    assert (row["owner"], row["state"], row["waits"]["who"], row["waits"]["text"]) == ("alice", "running", "runner", "运行机在跑")
+    assert (row["mr"]["iid"], row["mr"]["state"]) == (31, "opened")
+    assert mod("deliveries").flow_stage(row) == "交给运行机"

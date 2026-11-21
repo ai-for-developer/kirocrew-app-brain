@@ -576,10 +576,11 @@ class Service:
         own_mr = bool(run) and not f.get("flow_error") and flowview.reads_own_mr(flow)
         mine = deliveries.owns(self.me_in(repo), f.get("owner") or (f.get("claim") or {}).get("owner"))
         mr = None
-        if (run.get("handoff") or own_mr) and f.get("branch") and base and project:
+        runner = deliveries.on_runner(run)
+        if (runner or own_mr) and f.get("branch") and base and project:
             wanted = (base, project, f["branch"])
             mr = self.mr.get(project, f["branch"])
-            if run.get("handoff") or fastrow.polls_mr(f, mr):
+            if runner or fastrow.polls_mr(f, mr):
                 self._mr_wanted[wanted] = (scope, str(repo.cfg.get("bridge_user") or ""))
             else:
                 self._mr_wanted.pop(wanted, None)

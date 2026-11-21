@@ -152,6 +152,12 @@ def owns(me: str | None, owner: str | None) -> bool:
     return not owner or owner == me
 
 
+def on_runner(run: dict[str, Any] | None) -> bool:
+    """The team runner has the run: a person handed it over (run.json's handoff), or it started there (origin remote:
+    从 issue 接活's start commit). No person's machine has a session of it; its MR says where it is."""
+    return bool((run or {}).get("handoff")) or (run or {}).get("origin") == "remote"
+
+
 def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | None, slot: dict[str, Any] | None,
              cfg: dict[str, Any], bot_commits: int = 0, at_handover: bool = False, me: str | None = None,
              reflected: bool = False, now: float | None = None, pushed: bool = True,
@@ -189,7 +195,7 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
                    since=since)
     if f.get("flow_error"):
         return put("local", you, "none", f["flow_error"], since=f.get("tip_at"))
-    if not run.get("handoff"):
+    if not on_runner(run):
         if pending:
             a = pending[0]
             return put("local", you, "approve", approve_text(a, them), where="session", since=a.get("at"),
@@ -506,13 +512,13 @@ def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[
 
 def runner_takes(f: dict[str, Any] | None, row: dict[str, Any] | None, runner_row: dict[str, Any]) -> bool:
     """Team mode lists each requirement once. One the runner's ledger has a run of is the runner's (its facts win:
-    this machine's row is what it saw last), unless this machine's run of it was never handed over (taken back), or
-    its run is over by both counts (merged or closed): then its repo's row reads the merge, the 14 days after it and
+    this machine's row is what it saw last), unless this machine's run of it is not the runner's (on_runner: never
+    handed over, or taken back), or its run is over by both counts (merged or closed): then its repo's row reads the merge, the 14 days after it and
     the write-back into the Brain, which the ledger does not."""
     if f is None or row is None:
         return True
     run = f.get("run") or {}
-    if run and not run.get("handoff"):
+    if run and not on_runner(run):
         return False
     ended = ("merged", "closed")
     return not (runner_row["state"] in ended and row["state"] in ended)
@@ -588,10 +594,10 @@ ANSWERED = ("answered", "delivered", "delivery_unknown", "refused")   # brain-ki
 
 def questions_asked(f: dict[str, Any], mr: dict[str, Any] | None) -> dict[str, int]:
     """Person mode: the questions a requirement stopped and asked a person, {asked, answered, delivered}: the bridge's
-    D-n on its MR once handed over (one not posted, or that could not be asked, is not counted), else its local
-    park.json."""
+    D-n on its MR once the runner has it (on_runner; one not posted, or that could not be asked, is not counted), else
+    its local park.json."""
     out = {"asked": 0, "answered": 0, "delivered": 0}
-    if (f.get("run") or {}).get("handoff"):
+    if on_runner(f.get("run")):
         for q in (mr or {}).get("questions") or []:
             if q.get("state") in ("invalid",) + NOT_POSTED:
                 continue
