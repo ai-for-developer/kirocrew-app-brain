@@ -671,7 +671,9 @@ describe('交付总览', () => {
   test('brain-kit 的评估 with the deploys read (shop-order): 部署频率 a week, 合并到上线 as a span, 变更失败率 as a rate; none for shop-pay', async () => {
     const ov = clone((world.overviews.eval as unknown as Record<string, Overview>).r3)
     installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
-    render(<OverviewView entry={{ repo: 'r3' }} {...props()} />)
+    // alice's machine, where shop-order is listed and every requirement in it is a teammate's
+    render(<OverviewView entry={{ repo: 'r3' }} {...props({ status: clone(world.status as unknown as Status) })} />)
+    expect(await screen.findByTestId('ov-theirs')).toHaveTextContent(`这个仓库的 ${ov.others} 个需求都是队友的`)
     const batch = await screen.findByTestId('eval-batch')
     expect(batch.querySelector('[data-metric="deploy_frequency"]')).toHaveTextContent(/^部署频率0\.5每周上线几次（最近 28 天）$/)
     expect(batch.querySelector('[data-metric="lead_time"]')).toHaveTextContent(/^合并到上线5 分钟合并以后多久上线（取中位）$/)
@@ -811,6 +813,27 @@ describe('交付总览', () => {
     expect(screen.queryByRole('region', { name: '每周合并' })).toBeNull()
     await user.click(within(hero).getByRole('button', { name: '开需求' }))
     expect(p.go).toHaveBeenCalledWith({ kind: 'new' })
+  })
+
+  test('a person’s repo whose requirements are all teammates’ says so, leads to 全队交付 and keeps brain-kit 的评估', async () => {
+    const user = userEvent.setup()
+    const ov = fx.overview()
+    ov.rows = []
+    ov.overlaps = []
+    ov.others = 3
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
+    const p = props()
+    render(<OverviewView entry={{ repo: 'r1' }} {...p} />)
+    const hero = await screen.findByTestId('ov-theirs')
+    expect(hero).toHaveTextContent('这里没有你的需求')
+    expect(hero).toHaveTextContent('这个仓库的 3 个需求都是队友的')
+    expect(screen.queryByRole('region', { name: '还没有需求' })).toBeNull()
+    for (const id of ['ov-hero', 'ov-cards', 'flow', 'req-table']) expect(screen.queryByTestId(id)).toBeNull()
+    expect(screen.getByTestId('eval-batch')).toBeInTheDocument()
+    await user.click(within(hero).getByRole('button', { name: '去看全队交付' }))
+    expect(p.go).toHaveBeenCalledWith({ kind: 'team' })
+    await user.click(within(hero).getByRole('button', { name: '开需求' }))
+    expect(p.go).toHaveBeenCalledWith({ kind: 'new', repo: 'r1' })
   })
 
   test('with no repo at all: 导入仓库 is the way in, and nothing is asked of the backend', async () => {

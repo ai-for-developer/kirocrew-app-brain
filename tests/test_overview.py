@@ -375,9 +375,9 @@ def filed_for_anyone(repo, key, title):
 
 def test_a_persons_overview_lists_their_own_requirements_and_the_team_servers_everyones(tmp_path, home):
     """交付总览 on alice's machine: her requirement, and PAY-3 that alice filed for anyone (nobody's yet: whoever starts
-    it has it). bob's run, which her app fetched from origin, is the team's (团队运行机's 全队交付), not hers; that it
-    may change her paths is still said on hers. 按人 has her alone. On the team server's 交付总览 every requirement is
-    listed, as before."""
+    it has it). bob's run, which her app fetched from origin, is the team's (团队运行机's 全队交付), not hers, and her
+    page counts it as a teammate's (others); that it may change her paths is still said on hers. 按人 has her alone.
+    On the team server's 交付总览 every requirement is listed, as before."""
     from brainfix import person
     repo = make_project(tmp_path, origin=True)
     start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款", "--paths", "src/pay")
@@ -401,6 +401,7 @@ def test_a_persons_overview_lists_their_own_requirements_and_the_team_servers_ev
     team = overview(make_service(tmp_path / "server", [repo], role="team_server"))
     assert sorted(rows_by_key(team)) == ["PAY-1", "PAY-2", "PAY-3"] and rows_by_key(team)["PAY-2"]["owner"] == "bob"
     assert sorted(rows_by_key(mine)) == ["PAY-1", "PAY-3"] and sum(mine["counts"].values()) == 2
+    assert (mine["others"], team["others"]) == (1, 0)
     assert (rows_by_key(mine)["PAY-3"]["owner"], rows_by_key(mine)["PAY-3"]["waits"]["text"]) == (None, "待认领：谁开工就归谁")
     assert mine["overlaps"] == team["overlaps"] == [{"keys": ["PAY-1", "PAY-2"], "paths": ["src/pay"]}]
     assert rows_by_key(mine)["PAY-1"]["overlap"] == ["PAY-2"]

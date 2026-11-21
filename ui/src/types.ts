@@ -1023,6 +1023,9 @@ export interface Funnel {
 export interface Overview {
   at: number
   rows: Requirement[]
+  /** the requirements here that are teammates', left out of rows: a person's 交付总览 lists their own and the ones
+   * nobody has (deliveries.own_rows), and 团队运行机's 全队交付 has the team's. 0 on the team server */
+  others: number
   overlaps: Overlap[]
   funnel: Funnel
   eval: EvalView

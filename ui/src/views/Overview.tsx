@@ -339,6 +339,8 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
   const c = data?.cto
   const computing = !!data && !data.cto.available && !!data.eval.computing
   const empty = !!data && data.rows.length === 0
+  // a person's 交付总览 where every requirement is a teammate's: they are 全队交付's, and brain-kit 的评估 is the repo's
+  const theirs = empty && data.others > 0 && !noKit && !unreadable
   const credits = (data?.rows ?? []).filter((r) => r.credits !== null && r.credits > 0).map((r) => ({ key: r.key, credits: r.credits as number }))
   const yours = (data?.rows ?? []).filter((r) => r.waits.who === 'you' && r.state !== 'closed')
     .sort((a, b) => (a.waits.since ?? Infinity) - (b.waits.since ?? Infinity) || (b.updated_at ?? 0) - (a.updated_at ?? 0))
@@ -431,7 +433,13 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
       {data && unreadable && !picked?.pending && (
         <Unreadable repo={picked} error={data.errors.find((e) => e.repo === repo)} onImport={(path) => go({ kind: 'import', ...(path ? { path } : {}) })} onAll={() => pickRepo('all')} />
       )}
-      {empty && !noKit && !unreadable && (
+      {theirs && (
+        <EmptyHero title="这里没有你的需求" testid="ov-theirs" text={[`${where}的 ${data.others} 个需求都是队友的：全队的需求、谁在做什么，在「团队运行机」的全队交付里看。你开工或认领的需求会列在这里。`]}>
+          <button type="button" className="br-btn is-big" onClick={() => go({ kind: 'team' })}>去看全队交付</button>
+          <button type="button" className="br-btn is-primary is-big" onClick={newReq}><RoleIcon role="new" size={17} />开需求</button>
+        </EmptyHero>
+      )}
+      {empty && !theirs && !noKit && !unreadable && (
         <EmptyHero title="还没有需求" text={[`${where}还没有需求。认领一个需求，写一段话或导入文档（选填），开工：它会在这里一路走到合并——在哪一步、等谁、花了多少。`]}
           punch="人只在判断点上出手：批准、回答、验收。"
           flow={localOnly
@@ -523,10 +531,11 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
             </div>
             {listed > shownN && <button type="button" className="kt-btn is-small" style={{ marginTop: 10 }} onClick={() => setLimit((n) => n + 30)}>显示更多（还有 {listed - shownN} 个）</button>}
           </section>
-
-          <EvalCard ev={data.eval} noModule={status?.brainkit.modules.evaluate === false} onBoard={(k) => openKey(k)} onItem={(k) => openKey(k, true)} onSettings={() => go({ kind: 'settings' })}
-            onFamily={(f) => (f.repo ? toBoard(f) : openKey(f.key))} />
         </>
+      )}
+      {data && (!empty || theirs) && (
+        <EvalCard ev={data.eval} noModule={status?.brainkit.modules.evaluate === false} onBoard={(k) => openKey(k)} onItem={(k) => openKey(k, true)} onSettings={() => go({ kind: 'settings' })}
+          onFamily={(f) => (f.repo ? toBoard(f) : openKey(f.key))} />
       )}
 
       {data && !empty && (

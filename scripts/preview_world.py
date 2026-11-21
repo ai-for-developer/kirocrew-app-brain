@@ -2036,11 +2036,13 @@ def world(scratch: Path) -> None:
         o["rows"] = copy.deepcopy([r_ for r_ in all_rows if r_["repo"] in ids and not (team and (r_["repo"], r_["key"]) in taken)]
                                   + ([r_ for r_ in runner_rows if repo in ("all", "runner", r_["home"])] if team else []))
         o["overlaps"], o["roster"] = team_view(o["rows"])
+        listed = len(o["rows"])
         if not team:
             o["rows"] = deliveries.own_rows(o["rows"], {x: ME for x in ids})
             keys_ = {r_["key"] for r_ in o["rows"]}
             o["overlaps"] = [x for x in o["overlaps"] if keys_ & set(x["keys"])]
             o["roster"] = roster_mod.roster(o["rows"], me=ME, now=T0, settings=LIMITS)
+        o["others"] = listed - len(o["rows"])
         o["counts"] = deliveries.counts(o["rows"])
         o["errors"] = [e for e in ov["errors"] if repo in ("all", e["repo"])]
         mine = [p_ for p_ in parts if p_[0] in ids] if evaluated else []

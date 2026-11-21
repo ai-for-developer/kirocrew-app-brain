@@ -764,6 +764,7 @@ class Service:
                     q_counts["answered"] += d.get("state") in ("answered", "delivered", "delivery_unknown", "refused")
                     q_counts["delivered"] += d.get("state") == "delivered"
         overlaps = deliveries.overlaps(rows)     # over every row: a teammate's may share a path with one of mine
+        listed = len(rows)
         if self.settings["role"] == settings_mod.PERSONAL:
             rows = deliveries.own_rows(rows, {rid: self.me_in(r) for rid, r in self.repos.items()})
             keys = {r["key"] for r in rows}
@@ -778,8 +779,8 @@ class Service:
         cto = deliveries.cto_numbers(parts, rows, available=bool(view.get("available")), now=self.now(),
                                      names={rid: r.name for rid, r in self.repos.items()}, repos=len(scope),
                                      local_repos=sum(1 for r in scope if self._local_only(r)))
-        return {"at": self.now(), "rows": rows, "overlaps": overlaps, "funnel": funnel, "eval": view, "cto": cto,
-                "counts": deliveries.counts(rows), "errors": errors,
+        return {"at": self.now(), "rows": rows, "others": listed - len(rows), "overlaps": overlaps, "funnel": funnel,
+                "eval": view, "cto": cto, "counts": deliveries.counts(rows), "errors": errors,
                 "roster": roster.roster(rows, me=self.me(which), now=self.now(), settings=self.settings)}
 
     def _eval_view(self, which: str, snap: dict[str, Any],
