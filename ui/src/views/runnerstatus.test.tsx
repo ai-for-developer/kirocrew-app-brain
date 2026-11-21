@@ -89,7 +89,7 @@ describe('运行机 on a personal install, its runner as GitLab shows it (no 状
   })
 
   test('no repo with a team runner yet: each in one line, and how one gets here', async () => {
-    const st: RunnerStatus = { recent_h: 24, at: FIXTURE_AT, stale_after_s: 2400, relays: [],
+    const st: RunnerStatus = { recent_h: 24, at: FIXTURE_AT, stale_after_s: 4500, relays: [],
       repos: [{ repo: 'r1', name: 'shop-pay', runner: null, relay: null }, { repo: 'r4', name: 'shop-tools', runner: null, relay: null }] }
     installFixtureRoutes({ [`GET ${API}/team/status`]: () => st })
     render(<RunnerStatusPage {...props()} />)
@@ -175,15 +175,15 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     expect(keys(table())).toEqual(['PAY-6'])
   })
 
-  test('a snapshot older than forty minutes: the team server may have stopped, and what it last wrote is still shown', async () => {
+  test('a snapshot two heartbeats old: the team server may have stopped, and what it last wrote is still shown', async () => {
     const st = fx.teamStatus()
     const r = st.relays[0]
     r.stale = true
-    st.at = r.snapshot!.generated_at + 45 * 60
+    st.at = r.snapshot!.generated_at + 80 * 60
     installFixtureRoutes({ [`GET ${API}/team/status`]: () => st })
     render(<RunnerStatusPage {...props()} />)
     const stale = await screen.findByTestId('relay-stale')
-    expect(stale).toHaveTextContent('团队服务器可能停了：上次写状态是 45 分钟前')
+    expect(stale).toHaveTextContent('团队服务器可能停了：上次写状态是 1 小时前')
     expect(stale).toHaveTextContent('做什么请管团队服务器的人看一下')
     expect(screen.getByTestId('relay-strip')).toHaveClass('is-bad')
     expect(screen.getByTestId('team-delivery')).toBeInTheDocument()

@@ -2,8 +2,8 @@
 in memory (relayfix.RepoGitLab), read with the person's own token.
 
 A repo whose kit.json names team_status.project has its snapshot (snapshot.json on main) read, parsed, at most once a
-minute for each project however many repos name it; one older than 40 minutes is said to be stale, the team server may
-have stopped. A file not there yet, one of another schema or not a snapshot, and a GitLab that does not answer are said
+minute for each project however many repos name it; one older than 75 minutes (two heartbeats missed) is said to be
+stale, the team server may have stopped. A file not there yet, one of another schema or not a snapshot, and a GitLab that does not answer are said
 in words, the last good one kept. A repo whose kit.json names none keeps the runner as GitLab shows it, alone."""
 
 import json
@@ -84,7 +84,7 @@ def test_a_fresh_snapshot_is_read_with_my_token_for_the_repos_that_name_it(tmp_p
     snap = written(gl, snapshot, T0 - 5 * MIN)
     got, = statuses(svc, routes, lambda: None)
     body = got.body
-    assert (body["at"], body["stale_after_s"]) == (T0, 40 * MIN)
+    assert (body["at"], body["stale_after_s"]) == (T0, 75 * MIN)
     assert [(r["repo"], r["relay"]) for r in body["repos"]] == [("r1", STATUS), ("r2", None)]
     assert body["repos"][1]["runner"]["project"] == "grp/web"                  # the runner as GitLab shows it, as before
     relay, = body["relays"]
@@ -100,12 +100,12 @@ def test_a_fresh_snapshot_is_read_with_my_token_for_the_repos_that_name_it(tmp_p
     assert snapshot.parse(fix["relays"][0]["snapshot"]) == fix["relays"][0]["snapshot"]     # the page's is one, whole
 
 
-def test_a_snapshot_older_than_forty_minutes_says_the_server_may_have_stopped(tmp_path, home, monkeypatch):
+def test_a_snapshot_two_heartbeats_old_says_the_server_may_have_stopped(tmp_path, home, monkeypatch):
     gl, svc, routes, clock, tick, snapshot = app(tmp_path, monkeypatch)
-    written(gl, snapshot, T0 - 39 * MIN)
+    written(gl, snapshot, T0 - 70 * MIN)            # a heartbeat missed, the next one late: the server still at work
 
     def later():
-        clock.t = T0 + 2 * MIN                     # the same snapshot, 41 minutes old now (read again, the cache over)
+        clock.t = T0 + 6 * MIN                     # the same snapshot, 76 minutes old now (read again, the cache over)
         tick.t += 61
 
     fresh, old = statuses(svc, routes, lambda: None, later)

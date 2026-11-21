@@ -40,8 +40,7 @@ from ..repo import MAX_FILE, REFLECT_RE, Source, empty_facts, parse_branch, read
 
 FILE, BRANCH = snapshot.FILE, snapshot.BRANCH
 NO_TOKEN_ENV = "BRAIN_STATUS_NO_TOKEN_ENV"   # nobody sets it: team_status.token_file is read, never the environment
-FLOOR_S = 5 * 60                # a snapshot is built, and written when it changed, at most this often
-HEARTBEAT_S = 30 * 60           # an unchanged one is written again this old, to say the server is alive
+FLOOR_S, HEARTBEAT_S = snapshot.FLOOR_S, snapshot.HEARTBEAT_S
 MERGED_S = 14 * 86400           # a merged requirement stays this long after its merge
 FINAL_CI = ("success", "failed", "canceled", "skipped")
 MAX_PAGES = 20                  # a folder of a commit is listed this many pages of 100 at most: past them, what fits
@@ -504,9 +503,13 @@ class Deliveries:
 # ---- writing ----------------------------------------------------------------------------------------------------- #
 
 def content_key(snap: Mapping[str, Any]) -> str:
-    """What decides whether a snapshot is new: all of it but when it was made and the bridge's last round (that one
-    moves every round, and the heartbeat says the server is alive)."""
-    body = dict(snap, generated_at=0, server=dict(snap["server"], last_round_at=None))
+    """What decides whether a snapshot is new: all of it but what moves without news, round after round: when it was
+    made, the bridge's last round, each staging error's count and when the log last showed it, each patrol MR's
+    updated_at (any note or label on it). Those are written along with a real change, or with the heartbeat."""
+    runner = snap["runner"]
+    body = dict(snap, generated_at=0, server=dict(snap["server"], last_round_at=None),
+                runner=dict(runner, staging=[dict(e, count=0, last_seen=0.0) for e in runner["staging"]],
+                            patrol=[dict(m, updated_at=None) for m in runner["patrol"]]))
     return hashlib.sha256(snapshot.dump(body).encode("utf-8")).hexdigest()
 
 

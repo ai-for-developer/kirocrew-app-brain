@@ -10,6 +10,7 @@ round, which goes on with the hand-overs as before."""
 import asyncio
 import json
 import subprocess
+import time
 from urllib.parse import unquote, urlsplit
 
 import pytest
@@ -106,6 +107,37 @@ def test_the_bridges_last_round_alone_is_no_change_and_half_an_hour_later_the_sa
     assert rl.round(lambda now: a_snapshot(now)) == "same"
     assert relay.content_key(a_snapshot(1.0)) == relay.content_key(a_snapshot(2.0, round_at=9.0))
     assert relay.content_key(a_snapshot(1.0)) != relay.content_key(a_snapshot(1.0, title="别的"))
+
+
+def busy(now, n):
+    """A quiet team's snapshot at round *n*: a dismissed staging error the log shows again every round (its count and
+    when it was last seen move, as staging.seen does) and an open MR patrol keeps seeing touched (its updated_at)."""
+    snap = a_snapshot(now)
+    snap["runner"]["staging"] = [{
+        "project": "shop/pay", "signature": "TimeoutError: upstream <n> ms", "count": 10 + n, "state": "dismissed",
+        "issue": None, "origin": None, "fix_mr": None, "first_seen": 1_799_000_000.0, "last_seen": now,
+        "deployed_sha": "a" * 40, "attempts": 0, "slot": None, "note": "人关了这个 Issue，或者打了 wontfix 标签：不会再打开，也不修"}]
+    snap["runner"]["patrol"] = [{
+        "project": "shop/pay", "iid": 52, "title": "折扣", "url": None, "author": "bob", "state": "ok", "problems": [],
+        "skip": "", "skip_code": "", "note": "", "attempts": 0, "slot": None,
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))}]
+    return snap
+
+
+def test_a_quiet_team_whose_dismissed_error_keeps_coming_back_writes_the_heartbeat_only(status):
+    """The reviewer's churn run: 3 hours of 60 s rounds. What moves every round without news (a staging error's count
+    and last_seen, a patrol MR's updated_at) is written with a real change or the heartbeat only."""
+    gl, clock, rl = status
+    for n in range(180):
+        rl.round(lambda now: busy(now, n))
+        clock.t += 60
+    said = [c["commit_message"] for c in gl.status_commits]
+    assert said == ["团队状态：更新"] + ["团队状态：没有变化（心跳）"] * 5, said
+    staging, = there(gl)["runner"]["staging"]
+    assert staging["count"] == 10 + 150 and staging["last_seen"] == there(gl)["generated_at"]     # the last heartbeat's
+    snap = busy(clock.t, 1)
+    snap["runner"]["staging"][0]["state"] = "issued"
+    assert relay.content_key(snap) != relay.content_key(busy(clock.t, 1))                       # a real change is one
 
 
 def test_a_relay_that_starts_again_reads_the_one_there_and_writes_nothing_new(status):

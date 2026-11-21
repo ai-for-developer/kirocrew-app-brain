@@ -1663,7 +1663,7 @@ export interface RunnerStatus {
   recent_h: number
   /** now, on this machine (epoch s) */
   at: number
-  /** a snapshot older than this (s) says the team server may have stopped (its relay writes one every 30 minutes) */
+  /** a snapshot older than this (s) says the team server may have stopped: two of its 30-minute heartbeats missed */
   stale_after_s: number
   repos: RunnerRepo[]
   relays: RelayRead[]

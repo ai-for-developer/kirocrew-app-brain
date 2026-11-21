@@ -25,7 +25,11 @@ from typing import Any
 
 SCHEMA = 1
 FILE, BRANCH = "snapshot.json", "main"      # where it is in the status project (kit.json team_status.project)
-STALE_S = 40 * 60       # one this old says the team server may have stopped: it writes one at least every 30 minutes
+FLOOR_S = 5 * 60        # the team server builds one, and writes it when it changed, at most this often
+HEARTBEAT_S = 30 * 60   # and writes an unchanged one again this old, to say it is alive
+# one this old says the team server may have stopped: two heartbeats missed, each found up to a floor late (it is only
+# looked at when a snapshot is built), and a floor more for the round, the read and the clocks of two machines
+STALE_S = 2 * (HEARTBEAT_S + FLOOR_S) + FLOOR_S
 
 
 class Bad(ValueError):
