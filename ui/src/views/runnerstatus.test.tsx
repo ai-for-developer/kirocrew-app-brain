@@ -130,9 +130,9 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     expect(screen.queryByRole('button', { name: /打开会话/ })).toBeNull()
     // 全队交付: every requirement, what waits on me first, then the open ones newest first, then the merged
     const delivery = screen.getByTestId('team-delivery')
-    expect(within(delivery).getByTestId('delivery-count')).toHaveTextContent('9 个需求 · 等你的 1 个 · 在做的和近 14 天合并、关掉的')
+    expect(within(delivery).getByTestId('delivery-count')).toHaveTextContent('11 个需求 · 等你的 1 个 · 在做的和近 14 天合并、关掉的')
     const table = within(delivery).getByTestId('delivery-table')
-    expect(keys(table)).toEqual(['ORD-3', 'PAY-9', 'PAY-11', 'PAY-4', 'PAY-12', 'ORD-5', 'PAY-6', 'ORD-1', 'PAY-2'])
+    expect(keys(table)).toEqual(['ORD-3', 'PAY-9', 'PAY-11', 'PAY-4', 'PAY-12', 'ORD-5', 'PAY-6', 'ORD-6', 'ORD-1', 'PAY-10', 'PAY-2'])
     expect(rowOf(table, 'ORD-3')).toHaveAttribute('data-mine', 'true')
     expect(rowOf(table, 'ORD-3')).toHaveTextContent('ORD-3 订单导出carol · shop/shop-order交给运行机!14CI 通过等你等开发的人在 MR 上回答 D-2（设计）已等 2 小时')
     expect(rowOf(table, 'PAY-4')).toHaveTextContent('你（alice） · shop/shop-pay发布 · 验收!41CI 通过等产品在 MR 上验收 D-7')
@@ -143,7 +143,14 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     expect(within(rowOf(table, 'ORD-1')).getByTestId('deployed')).toHaveTextContent('还没部署到测试环境')
     expect(within(rowOf(table, 'PAY-11')).queryByTestId('deployed')).toBeNull()
     expect(Array.from(table.querySelectorAll('[data-testid="stage"]')).map((x) => x.textContent))
-      .toEqual(['交给运行机', '交给运行机', '设计', '发布 · 验收', '交给运行机', '构建', '构建', '已合并', '已合并'])
+      .toEqual(['交给运行机', '交给运行机', '设计', '发布 · 验收', '交给运行机', '构建', '构建', '已合进大需求', '已合并', '已关闭', '已合并'])
+    // a small requirement merged into its big one's branch, and a hand-over whose MR was closed: done, waiting on nobody
+    expect(rowOf(table, 'ORD-6')).toHaveTextContent('ORD-6 导出接口carol · shop/shop-order已合进大需求!15CI 通过已合进大需求 ORD-3 的分支：等它评审、发布')
+    expect(rowOf(table, 'PAY-10')).toHaveTextContent('PAY-10 退款对账你（alice） · shop/shop-pay已关闭!45CI 没过MR 已关闭')
+    for (const k of ['ORD-6', 'PAY-10']) {
+      expect(within(rowOf(table, k)).queryByTestId('waits-me')).toBeNull()
+      expect(within(rowOf(table, k)).queryByTestId('deployed')).toBeNull()
+    }
     // a key of a project listed here opens its 需求现状, and 返回 comes back here
     await user.click(within(rowOf(table, 'PAY-11')).getByRole('button', { name: 'PAY-11' }))
     expect(p.go).toHaveBeenCalledWith({ kind: 'item', repo: 'r1', key: 'PAY-11', from: 'team' })
@@ -170,7 +177,7 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     await user.selectOptions(screen.getByTestId('filter-project'), 'shop/shop-order')
     expect(keys(table())).toEqual(['ORD-1'])
     await user.selectOptions(person, '')
-    expect(keys(table())).toEqual(['ORD-3', 'ORD-5', 'ORD-1'])
+    expect(keys(table())).toEqual(['ORD-3', 'ORD-5', 'ORD-6', 'ORD-1'])
     await user.selectOptions(person, (person as HTMLSelectElement).options[5].value)
     expect(screen.getByTestId('team-delivery')).toHaveTextContent('这个筛选下没有需求。')
     await user.selectOptions(screen.getByTestId('filter-project'), '')

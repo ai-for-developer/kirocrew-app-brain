@@ -471,6 +471,30 @@
             "updated_at": 1794128400.0
           },
           {
+            "project": "shop/shop-pay",
+            "key": "PAY-10",
+            "title": "退款对账",
+            "owner": "alice",
+            "stage": "已关闭",
+            "state": "closed",
+            "branch": "ai/alice/PAY-10-refund-recon",
+            "mr": {
+              "iid": 45,
+              "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/45",
+              "state": "closed",
+              "ci": "failed"
+            },
+            "deployed": null,
+            "waits": {
+              "who": "nobody",
+              "do": "none",
+              "text": "MR 已关闭",
+              "since": null,
+              "on": []
+            },
+            "updated_at": 1794016800.0
+          },
+          {
             "project": "shop/shop-order",
             "key": "ORD-1",
             "title": "订单列表分页",
@@ -539,6 +563,30 @@
               "on": []
             },
             "updated_at": 1794121200.0
+          },
+          {
+            "project": "shop/shop-order",
+            "key": "ORD-6",
+            "title": "导出接口",
+            "owner": "carol",
+            "stage": "已合进大需求",
+            "state": "merged_into_parent",
+            "branch": "ai/carol/ORD-6-export-api",
+            "mr": {
+              "iid": 15,
+              "url": "https://gitlab.example.com/shop/shop-order/-/merge_requests/15",
+              "state": "merged",
+              "ci": "success"
+            },
+            "deployed": null,
+            "waits": {
+              "who": "nobody",
+              "do": "none",
+              "text": "已合进大需求 ORD-3 的分支：等它评审、发布",
+              "since": 1794117600.0,
+              "on": []
+            },
+            "updated_at": 1794117600.0
           }
         ]
       }

@@ -77,7 +77,7 @@ export function RunnerStatusPage({ pollMs, go }: ViewProps) {
         <RoleIcon role="runner" size={26} className="tm-top-icon" />
         <div className="br-view-head">
           <h2>团队运行机</h2>
-          <p>团队服务器每几分钟把运行机和全队的状态写进 GitLab，这里用你自己的 GitLab 令牌读，只看；问你的问题直接从 GitLab 读</p>
+          <p>团队服务器每几分钟把每个项目的状态写进它的 brain/status 分支，这里用你的 GitLab 令牌读你能看的项目，只看</p>
         </div>
       </header>
       <LoadState loading={got.loading} error={got.error} has={!!data} />
