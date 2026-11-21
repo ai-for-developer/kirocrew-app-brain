@@ -11,14 +11,19 @@ kept for the server's own 运行机 page; it never stops the round.
 
 The team view's rows come from GitLab only, read with the bridge's token: per project its claim/ and <prefix>/ branches
 (and brain/<KEY>-reflect-<n>, the write-backs made), its default branch's runs_dir (the requirements merged there), its
-open MRs and those merged in the last MERGED_S. A requirement's records (run.json, park.json, aidlc-state.md,
-decisions.md and the Lean ledger, read_facts as a person's app reads a teammate's branch) are read at its branch's head
-through the files API (GitLabSource), once per head: a head that did not move is not read again. A merged one is read at
-its merge. The row is then what 交付总览 says of a teammate's requirement (deliveries.classify with no one as "you"): its
-stage in 交付总览's words (deliveries.flow_stage), its MR and the CI of its head (kept once the pipeline is over), whether
-the staging VERSION holds its merge (GitLab's merge base; kept per merge and deploy), what it waits on and who takes
-that step (Waits.on). An MR's notes are read only for a hand-over's open MR, again only when GitLab moved its
-updated_at or head. A project GitLab does not answer for keeps its last rows, with why.
+open MRs and those merged or closed in the last MERGED_S, each requirement's newest one whatever its state, as a person's
+app takes a branch's (a hand-over's branch none of them is of asks GitLab for its own, once per head). A claim branch
+whose claim.json is not a JSON object is left out, and said. A requirement's records (run.json, park.json,
+aidlc-state.md, decisions.md and the Lean ledger, read_facts as a person's app reads a teammate's branch) are read at its
+branch's head through the files API (GitLabSource), once per head: a head that did not move is not read again. A merged
+one is read at its merge. The row is then what 交付总览 says of a teammate's requirement (deliveries.classify with no one
+as "you", then family.classify for a big requirement and its small ones): its stage in 交付总览's words
+(deliveries.flow_stage; a closed one and a small one merged into its big one's branch, in no column there, by their
+state's words), its MR and the CI of its head (kept once the pipeline is over), whether the staging VERSION holds its
+merge (GitLab's merge base; kept per merge and deploy), what it waits on and who takes that step (Waits.on). Only an MR
+merged into the default branch counts as merged: one merged into any other branch, outside a family, says where it went
+and is never deployed. An MR's notes are read only for a hand-over's open MR, again only when GitLab moved its
+updated_at or head. A project GitLab does not answer for raises, its last read kept (Deliveries.last).
 """
 
 from __future__ import annotations
@@ -26,9 +31,9 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, NamedTuple
 
-from .. import bk, deliveries, lean_view, mrinfo, snapshot
+from .. import bk, deliveries, family, lean_view, mrinfo, snapshot
 from ..constants import KEY_RE
 from ..repo import MAX_FILE, REFLECT_RE, Source, empty_facts, parse_branch, read_facts
 
@@ -111,53 +116,119 @@ def _said(exc: BaseException) -> str:
     return " ".join(str(exc).split())[:300] or type(exc).__name__
 
 
+class Read(NamedTuple):
+    """One project's 全队交付 as GitLab showed it: its rows, and what was left out, in words (a claim branch whose
+    claim.json is not an object)."""
+    rows: list[dict[str, Any]]
+    notes: list[str]
+
+
+class Gathered(NamedTuple):
+    """What GitLab says of one requirement before it is worded: its records where they are read (facts, as read_facts
+    and repo.scan give them), its newest MR, its claim and where it is (main, its branch, or only claimed)."""
+    f: dict[str, Any]
+    mr: dict[str, Any] | None
+    run: dict[str, Any]
+    run_b: dict[str, Any] | None
+    claim: dict[str, Any] | None
+    sha: str
+    merged_at: float | None
+
+
+NOT_A_CLAIM = "%s 上的 claim.json 读不出一个 JSON 对象：跳过了这个分支"
+
+
+def merge_of(mr: Mapping[str, Any] | None, default: str) -> tuple[float | None, str, str]:
+    """(when *mr* merged into *default*, its merge commit, ''); (None, '', the branch it merged into) for one merged
+    into another branch (a small requirement into its big one's); (None, '', '') when it is not merged."""
+    if not mr or mr.get("state") != "merged":
+        return None, "", ""
+    target = str(mr.get("target_branch") or default)
+    if target != default:
+        return None, "", target
+    return epoch(mr.get("merged_at")), str(mr.get("merge_commit_sha") or mr.get("squash_commit_sha") or
+                                           mr.get("sha") or ""), ""
+
+
 class Deliveries:
-    """The delivery part of the snapshot: build() each time the relay builds one (on the bridge's worker thread)."""
+    """The delivery part of the snapshot: read() for each project the relay builds one for (on the bridge's worker
+    thread)."""
 
     def __init__(self, gl: Any, base: str, kit: Callable[[str], Mapping[str, Any]],
                  now: Callable[[], float] = time.time) -> None:
         self.gl, self.base, self.kit, self.now = gl, base.rstrip("/"), kit, now
         self._facts: dict[tuple, dict[str, Any]] = {}       # (project, key, sha) -> read_facts at that commit
-        self._claims: dict[tuple, Any] = {}                 # (project, sha) -> its claim.json
+        self._claims: dict[tuple, Any] = {}                 # (project, sha) -> its claim.json, an object or None
         self._notes: dict[tuple, tuple] = {}                # (project, iid) -> ((updated_at, head), parse_notes)
         self._ci: dict[tuple, str | None] = {}              # (project, iid, head) -> its head pipeline's status
         self._deployed: dict[tuple, bool] = {}              # (project, merge, deployed) -> the deploy holds the merge
+        self._branch_mr: dict[tuple, dict | None] = {}      # (project, branch, head) -> that branch's newest MR
         self._merged: dict[str, tuple[str, frozenset[str]]] = {}   # project -> (default branch head, keys merged)
-        self.last: dict[str, list[dict[str, Any]]] = {}     # project -> its rows of the last build that read it
+        self.last: dict[str, Read] = {}                     # project -> its last read that worked
+
+    def read(self, project: str, *, deployed: str, roles: Mapping[str, Any]) -> Read:
+        """*project*'s rows as GitLab shows them now, read again only where something moved; what GitLab raised, else
+        (last keeps it). *deployed*: the commit its staging VERSION names ('': no staging read); *roles*:
+        identities.json's roles. What was read before is kept for the next try when it fails."""
+        caches = (self._facts, self._claims, self._notes, self._ci, self._deployed, self._branch_mr)
+        seen: set[tuple] = set()
+        try:
+            got = self._project(project, deployed, roles, seen)
+        except BaseException:
+            seen |= {k for c in caches for k in c if k[0] == project}
+            raise
+        finally:
+            for c in caches:
+                for k in [k for k in c if k[0] == project and k not in seen]:
+                    del c[k]
+        self.last[project] = got
+        return got
+
+    def forget(self, keep: list[str]) -> None:
+        """Let go of the projects not in *keep* (the bridge no longer has them)."""
+        for p in [p for p in list(self.last) + list(self._merged) if p not in keep]:
+            self.last.pop(p, None)
+            self._merged.pop(p, None)
+        for c in (self._facts, self._claims, self._notes, self._ci, self._deployed, self._branch_mr):
+            for k in [k for k in c if k[0] not in keep]:
+                del c[k]
 
     def build(self, projects: list[str], *, deployed: Mapping[str, str], roles: Mapping[str, Any]
               ) -> tuple[list[dict[str, Any]], dict[str, str]]:
-        """(the rows of every project, the projects that could not be read this time with why): one of those keeps
-        the rows of its last read. *deployed*: project -> the commit its staging VERSION names ('' or none: no
-        staging read); *roles*: identities.json's roles."""
+        """(the rows of every project, what to say of a project: why it was not read this time, its last rows kept,
+        or what its rows left out)."""
         rows: list[dict[str, Any]] = []
-        errors: dict[str, str] = {}
-        seen: set[tuple] = set()
-        caches = (self._facts, self._claims, self._notes, self._ci, self._deployed)
+        said: dict[str, str] = {}
         for project in projects:
             try:
-                got = self._project(project, deployed.get(project) or "", roles, seen)
-            except (bk.m("common").BrainError, OSError, ValueError) as exc:
-                errors[project] = _said(exc)
-                got = self.last.get(project, [])
-                seen |= {k for c in caches for k in c if k[0] == project}     # kept for the next try
+                got = self.read(project, deployed=deployed.get(project) or "", roles=roles)
+            except Exception as exc:  # noqa: BLE001 - GitLab, or what it holds: this project's, said; the others go on
+                said[project] = "全队交付没读成：%s" % _said(exc)
+                got = self.last.get(project) or Read([], [])
             else:
-                self.last[project] = got
-            rows += got
-        for c in caches:
-            for k in [k for k in c if k not in seen]:
-                del c[k]
-        for p in [p for p in list(self.last) + list(self._merged) if p not in projects]:
-            self.last.pop(p, None)
-            self._merged.pop(p, None)
-        return rows, errors
+                if got.notes:
+                    said[project] = "全队交付：%s" % "；".join(got.notes)
+            rows += got.rows
+        self.forget(projects)
+        return rows, said
 
-    def _project(self, project: str, deployed: str, roles: Mapping[str, Any], seen: set[tuple]) -> list[dict[str, Any]]:
+    def _project(self, project: str, deployed: str, roles: Mapping[str, Any], seen: set[tuple]) -> Read:
         kit = self.kit(project)
         pre, runs_dir, now = str(kit.get("branch_prefix") or "ai"), str(kit.get("runs_dir") or "runs"), self.now()
+        default = str(kit.get("default_branch") or "main")
         bridge_user = str(kit.get("bridge_user") or "") or None
-        claims = {b["name"][len("claim/"):]: b for b in self._branches(project, "claim/")
-                  if KEY_RE.match(b["name"][len("claim/"):])}
+        claims: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
+        bad: list[str] = []
+        for b in self._branches(project, "claim/"):
+            key = b["name"][len("claim/"):]
+            if not KEY_RE.match(key):
+                continue
+            doc = self._claim(project, b, seen)
+            if doc is None:
+                bad.append(key)
+            else:
+                claims[key] = (b, doc)
+        notes = [NOT_A_CLAIM % ("claim/" + key) for key in sorted(bad, key=key_order)]
         runs: dict[str, dict[str, Any]] = {}
         for b in self._branches(project, pre + "/"):
             got = parse_branch(b["name"], pre)
@@ -165,65 +236,100 @@ class Deliveries:
                 runs.setdefault(got["key"], dict(b, owner=got["owner"]))
         reflected = {m.group("key") for m in (REFLECT_RE.match("refs/heads/" + b["name"])
                                                for b in self._branches(project, "brain/")) if m}
-        merged_keys = self._merged_keys(project, str(kit.get("default_branch") or "main"), runs_dir)
-        mrs: dict[str, dict[str, Any]] = {}
+        merged_keys = self._merged_keys(project, default, runs_dir)
+        mrs = self._mrs(project, pre, now)
+        got: dict[str, Gathered] = {}
+        for key in sorted(set(claims) | set(runs) | set(mrs), key=key_order):
+            g = self._gather(project, key, runs_dir, default, claims.get(key), runs.get(key), mrs, key in merged_keys,
+                             now, seen)
+            if g is not None:
+                got[key] = g
+        fams = family.families([g.f for g in got.values()], None, me=None, cfg=dict(kit), can_split=False, big=set(),
+                               at=None)
+        rows = [self._row(project, g, fams.get(key), kit, key in reflected, bridge_user, deployed, roles, now, seen)
+                for key, g in got.items()]
+        return Read(rows, notes)
+
+    def _mrs(self, project: str, pre: str, now: float) -> dict[str, dict[str, Any]]:
+        """The newest MR of each requirement among those open and those merged or closed in the last MERGED_S, as the
+        person's app takes a branch's newest MR whatever its state (mrinfo.MrCache)."""
         since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - MERGED_S))
-        for query in ({"state": "opened"}, {"state": "merged", "updated_after": since}):
+        mrs: dict[str, dict[str, Any]] = {}
+        for query in ({"state": "opened"}, {"state": "merged", "updated_after": since},
+                      {"state": "closed", "updated_after": since}):
             for m in self.gl.pages("/projects/%s/merge_requests" % bk.m("rest").q(project), query, 100, 20, "MRs"):
                 got = parse_branch(str(m.get("source_branch") or ""), pre) if isinstance(m, dict) else None
                 if got and (got["key"] not in mrs or int(m["iid"]) > int(mrs[got["key"]]["iid"])):
                     mrs[got["key"]] = m
-        out = []
-        for key in sorted(set(claims) | set(runs) | set(mrs), key=key_order):
-            row = self._row(project, key, kit, claims.get(key), runs.get(key), mrs.get(key), key in merged_keys,
-                            key in reflected, bridge_user, deployed, roles, now, seen)
-            if row is not None:
-                out.append(row)
-        return out
+        return mrs
 
-    def _row(self, project: str, key: str, kit: Mapping[str, Any], claim_b: dict | None, run_b: dict | None,
-             mr: dict | None, on_main: bool, reflected: bool, bridge_user: str | None, deployed: str,
-             roles: Mapping[str, Any], now: float, seen: set[tuple]) -> dict[str, Any] | None:
-        merged_at = epoch(mr.get("merged_at")) if mr and mr.get("state") == "merged" else None
+    def _gather(self, project: str, key: str, runs_dir: str, default: str, claimed: tuple | None,
+                run_b: dict | None, mrs: Mapping[str, dict[str, Any]], on_main: bool, now: float,
+                seen: set[tuple]) -> Gathered | None:
+        """Where *key* is and its records there, read once per commit; None when it is not a row: its claim closed,
+        merged before the last MERGED_S (or not through an MR GitLab lists), its hand-over's MR merged or closed
+        before them."""
+        claim_b, claim = claimed if claimed else (None, None)
+        if claim and claim.get("closed"):
+            return None
+        mr = mrs.get(key)
+        merged_at, sha, into = merge_of(mr, default)
+        if on_main and merged_at is None and claim and claim.get("parent"):
+            merged_at, sha, _ = merge_of(mrs.get(str(claim["parent"])), default)   # in its big one's merge
         if on_main or merged_at is not None:
             if merged_at is None or now - merged_at > MERGED_S:
-                return None                     # merged before the last 14 days, or not through an MR GitLab lists
-            sha = str(mr.get("merge_commit_sha") or mr.get("squash_commit_sha") or mr.get("sha") or "")
+                return None
             where, tip_at = "main", merged_at
         elif run_b is not None:
             sha, where, tip_at = run_b["commit"]["id"], "branch", epoch(run_b["commit"].get("committed_date"))
         else:
             sha, where, tip_at = "", "claim", None
-        claim = self._claim(project, claim_b, seen) if claim_b else None
-        if isinstance(claim, dict) and claim.get("closed"):
-            return None
-        got = self._facts_at(project, key, sha, str(kit.get("runs_dir") or "runs"), seen) if sha else empty_facts()
+        got = self._facts_at(project, key, sha, runs_dir, seen) if sha else empty_facts()
         run = got["run"] or {}
+        if where == "branch" and mr is None and run.get("handoff"):
+            mr = self._mr_of_branch(project, str(run_b["name"]), sha, seen)
+            if mr and mr.get("state") in ("merged", "closed"):
+                return None                     # not in the window: it ended before the last MERGED_S
         branch = (run_b or {}).get("name") or (mr or {}).get("source_branch") or run.get("branch")
         f = dict(got, key=key, claim=claim, claim_ref="claim/" + key if claim_b else None, where=where, ref=sha or None,
                  worktree=None, branch=branch, owner=(run_b or {}).get("owner") or run.get("owner") or
                  (claim or {}).get("owner"), local=None, origin=branch, local_sha=None, origin_sha=sha or None,
-                 tip=sha or None, tip_at=tip_at, merged=where == "main", merged_at=merged_at,
+                 tip=sha or None, tip_at=tip_at, merged=where == "main", merged_at=merged_at, merged_into=into or None,
                  stages=lean_view.stages(got["events"]))
+        return Gathered(f, mr, run, run_b, claim, sha, merged_at)
+
+    def _row(self, project: str, g: Gathered, fam: dict[str, Any] | None, kit: Mapping[str, Any], reflected: bool,
+             bridge_user: str | None, deployed: str, roles: Mapping[str, Any], now: float,
+             seen: set[tuple]) -> dict[str, Any]:
+        """The row in 交付总览's words: deliveries.classify with no one as "you", then family.classify for a big
+        requirement or one of its small ones. A closed one, and a small one merged into its big one, are in no column
+        of 需求流动: their state's words stand for the stage. An MR merged into a branch that is not the default one,
+        outside a family, is not merged: it says where it went."""
+        f, mr, run = g.f, g.mr, g.run
         info = self._mr_info(project, mr, run, bridge_user, seen) if mr else None
         row = deliveries.base_row(project, f)
         handover = ((run.get("handoff") or {}).get("local_head")) if isinstance(run.get("handoff"), dict) else None
-        parent = ((run_b or {}).get("commit") or {}).get("parent_ids") or []
+        parent = ((g.run_b or {}).get("commit") or {}).get("parent_ids") or []
         deliveries.classify(row, f, mr=info, slot=None, cfg=dict(kit), at_handover=bool(info) and bool(handover)
                             and list(parent) == [handover], me=None, reflected=reflected, now=now, pushed=True)
-        if bk.m("claims").unowned(claim) and row["state"] == "claimed":     # filed for others: anyone may take it
-            row["state"], row["state_label"] = "unclaimed", deliveries.STATE_LABEL["unclaimed"]
+        row["family"] = fam
+        family.classify(row, fam, f, None)
         row["mr"] = info and {"iid": info["iid"], "url": info["url"], "state": info["state"]}
-        stage = deliveries.flow_stage(row)
-        if stage is None or row["state"] == "closed":
-            return None
-        return {"project": project, "key": key, "title": row["title"], "owner": row["owner"] or None, "stage": stage,
-                "state": row["state"], "branch": branch,
+        if bk.m("claims").unowned(g.claim) and row["state"] == "claimed":    # filed for others: anyone may take it
+            row["state"], row["state_label"] = "unclaimed", deliveries.STATE_LABEL["unclaimed"]
+        into = f.get("merged_into")
+        if into and fam is None and row["state"] != "closed":
+            if row["state"] == "merged":
+                row["state"], row["state_label"] = "local", deliveries.STATE_LABEL["local"]
+            row["waits"] = deliveries.waits("nobody", "none", "合进了 %s" % into, since=epoch((mr or {}).get("merged_at")))
+        closed_at = epoch((mr or {}).get("closed_at") or (mr or {}).get("updated_at")) if row["state"] == "closed" else None
+        return {"project": project, "key": f["key"], "title": row["title"], "owner": row["owner"] or None,
+                "stage": deliveries.flow_stage(row) or row["state_label"], "state": row["state"], "branch": f["branch"],
                 "mr": info and {"iid": info["iid"], "url": info["url"], "state": str(info["state"] or ""),
                                 "ci": self._ci_of(project, mr, seen)},
-                "deployed": self._deployed_of(project, sha, deployed, seen) if where == "main" else None,
+                "deployed": self._deployed_of(project, g.sha, deployed, seen) if f["where"] == "main" else None,
                 "waits": waits_of(row, on_names(row, info, roles)),
-                "updated_at": deliveries.updated_at(f, None) if where != "main" else merged_at}
+                "updated_at": g.merged_at if f["where"] == "main" else closed_at or deliveries.updated_at(f, None)}
 
     # ---- GitLab, read again only where something moved ------------------------------------------------------------ #
 
@@ -251,16 +357,31 @@ class Deliveries:
                                                            and r.get("type") == "tree" and KEY_RE.match(str(r.get("name")))))
         return got[1]
 
-    def _claim(self, project: str, b: dict[str, Any], seen: set[tuple]) -> Any:
+    def _claim(self, project: str, b: dict[str, Any], seen: set[tuple]) -> dict[str, Any] | None:
+        """The claim.json of claim branch *b*, read once per commit; None when that is not a JSON object (a person's
+        app reads it as no claim: repo.read_claim)."""
         k = (project, b["commit"]["id"])
         seen.add(k)
         if k not in self._claims:
             raw = self.gl.file_raw(project, "claim.json", b["commit"]["id"])
             try:
-                self._claims[k] = json.loads(raw.decode("utf-8")) if raw else None
+                doc = json.loads(raw.decode("utf-8")) if raw else None
             except (ValueError, UnicodeDecodeError):
-                self._claims[k] = None
+                doc = None
+            self._claims[k] = doc if isinstance(doc, dict) else None
         return self._claims[k]
+
+    def _mr_of_branch(self, project: str, branch: str, head: str, seen: set[tuple]) -> dict[str, Any] | None:
+        """*branch*'s newest MR whatever its state, asked once per head (for a hand-over none of the MRs listed is
+        of: its MR ended before the last MERGED_S, or there is none)."""
+        k = (project, branch, head)
+        seen.add(k)
+        if k not in self._branch_mr:
+            rows = self.gl.call("GET", "/projects/%s/merge_requests" % bk.m("rest").q(project),
+                                {"source_branch": branch, "state": "all", "per_page": 5}) or []
+            rows = sorted((r for r in rows if isinstance(r, dict) and r.get("iid")), key=lambda r: int(r["iid"]))
+            self._branch_mr[k] = rows[-1] if rows else None
+        return self._branch_mr[k]
 
     def _facts_at(self, project: str, key: str, sha: str, runs_dir: str, seen: set[tuple]) -> dict[str, Any]:
         k = (project, key, sha)
@@ -414,15 +535,16 @@ class Relay:
 # ---- what the snapshot says of the server ------------------------------------------------------------------------- #
 
 def project_states(polled: list[Mapping[str, Any]], patrol: Mapping[str, Any], staging: Mapping[str, Any],
-                   unread: Mapping[str, str]) -> list[dict[str, Any]]:
+                   delivery: Mapping[str, str]) -> list[dict[str, Any]]:
     """Each project as the round left it (the snapshot's server.projects): whether the runner takes its hand-overs, the
-    work sources its kit.json switches on, and what went wrong with it this round, each part in words."""
+    work sources its kit.json switches on, and what went wrong with it this round, each part in words (*delivery*:
+    what Deliveries.build said of it)."""
     pat = {p["project"]: p.get("error") or "" for p in patrol.get("projects") or []}
     sta = {p["project"]: p.get("error") or "" for p in staging.get("projects") or []}
     out = []
     for p in polled:
         name = p["project"]
-        said = [p.get("error") or "", "全队交付没读成：%s" % unread[name] if unread.get(name) else "",
+        said = [p.get("error") or "", delivery.get(name) or "",
                 "MR 巡检：%s" % pat[name] if pat.get(name) else "", "测试环境报错：%s" % sta[name] if sta.get(name) else ""]
         out.append({"project": name, "on": bool(p.get("on")), "sources": list(p.get("sources") or []),
                     "error": "；".join(x for x in said if x)})

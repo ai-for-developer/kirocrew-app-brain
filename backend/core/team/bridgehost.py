@@ -320,7 +320,7 @@ class TeamRuntime:
         patrol, staging = self.patrol_view(), self.staging_view()
         roles = relay_mod.identity_roles(self.cfg.get("identities"))
         deployed = {p["project"]: str(p.get("deployed_sha") or "") for p in staging.get("projects") or [] if p.get("on")}
-        rows, unread = self.deliveries.build(projects, deployed=deployed, roles=roles)
+        rows, said = self.deliveries.build(projects, deployed=deployed, roles=roles)
         asked = {(r["project"], r["key"]): r["waits"] for r in rows}
         handovers = []
         for row, _facts, _decs, run in self.runner_rows():
@@ -335,7 +335,7 @@ class TeamRuntime:
                               "waits": relay_mod.waits_of(row, on)})
         snap = {"schema": snapshot.SCHEMA, "generated_at": now,
                 "server": {"version": VERSION, "team_mode": True, "last_round_at": self.last_loop_at,
-                           "projects": relay_mod.project_states(self.poll_projects, patrol, staging, unread)},
+                           "projects": relay_mod.project_states(self.poll_projects, patrol, staging, said)},
                 "runner": {"handovers": handovers, "patrol": patrol["items"], "staging": staging["items"],
                            "cap": int(patrol["cap"]), "working": int(patrol["working"]) + int(staging["working"])},
                 "delivery": rows}

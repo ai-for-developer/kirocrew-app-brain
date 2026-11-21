@@ -4,7 +4,7 @@ the status project it writes its snapshot into.
 A code project's branches (search ^prefix, one by name, each with its head's id, parent_ids and committed_date), files
 at any ref (raw), trees (recursive or not; 404 for a folder not there), the newest commit touching a path, and merge
 bases come from its bare repo with git. Its MRs, their notes and pipelines are in memory, the MR list paged and filtered
-by state and updated_after as GitLab does. The status project (status()) keeps its files per branch in memory, takes the
+by state, updated_after and source_branch as GitLab does. The status project (status()) keeps its files per branch in memory, takes the
 commits API's create and update actions (400 for a create of a file there or an update of one that is not, as GitLab
 answers), and can be made to fail (fail_writes). Every request is kept in calls: (method, path, query, the token's user).
 """
@@ -167,7 +167,8 @@ class RepoGitLab:
         if sub == "/merge_requests":
             since = q.get("updated_after")
             rows = [m for (pp, _), m in sorted(self.mrs.items()) if pp == name and q.get("state", "all") in ("all", m["state"])
-                    and (not since or m["updated_at"] >= since) and (not q.get("labels") or q["labels"] in m["labels"])]
+                    and (not since or m["updated_at"] >= since) and (not q.get("labels") or q["labels"] in m["labels"])
+                    and q.get("source_branch") in (None, m["source_branch"])]
             return ok(self.page(rows, q))
         parts = sub.split("/")
         if len(parts) >= 3 and parts[1] == "merge_requests" and parts[2].isdigit():

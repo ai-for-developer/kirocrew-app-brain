@@ -36,8 +36,11 @@ export const WHY: Record<RunnerMr['why'], { label: string; tone: Tone; hint: (h:
 }
 /** the work sources a project's kit.json switches on, in words */
 export const SOURCE_NAME: Record<string, string> = { 'mr-handoff': '交接', 'mr-patrol': '巡检', 'staging-errors': '测试环境报错' }
-/** 交付总览's stages (deliveries.FLOW_STAGES), each with its tone */
-export const STAGE_TONE: Record<string, Tone> = { 需求: 'idle', 设计: 'info', 构建: 'run', 交给运行机: 'hand', '发布 · 验收': 'wait', 已合并: 'ok' }
+/** 交付总览's stages (deliveries.FLOW_STAGES), each with its tone; a closed one and a small one merged into its big one
+ * are in no column there, their state's words stand for the stage */
+export const STAGE_TONE: Record<string, Tone> = { 需求: 'idle', 设计: 'info', 构建: 'run', 交给运行机: 'hand', '发布 · 验收': 'wait', 已合并: 'ok', 已合进大需求: 'ok', 已关闭: 'idle' }
+/** done: listed after the ones in progress */
+const DONE: ReadonlySet<string> = new Set(['merged', 'merged_into_parent', 'closed'])
 /** GitLab's pipeline statuses, in words */
 export const CI_WORD: Record<string, { label: string; tone: Tone }> = {
   success: { label: '通过', tone: 'ok' }, failed: { label: '没过', tone: 'bad' }, running: { label: '在跑', tone: 'run' },
@@ -226,14 +229,14 @@ function TeamDelivery({ snap, me, repoOf, at, go }: { snap: TeamSnapshot; me: st
   const rows = useMemo(() => snap.delivery
     .filter((r) => (!who || (r.owner ?? NOBODY) === who) && (!project || r.project === project))
     .sort((a, b) => Number(waitsOn(b.waits, me)) - Number(waitsOn(a.waits, me))
-      || Number(a.state === 'merged') - Number(b.state === 'merged') || (b.updated_at ?? 0) - (a.updated_at ?? 0)), [snap, who, project, me])
+      || Number(DONE.has(a.state)) - Number(DONE.has(b.state)) || (b.updated_at ?? 0) - (a.updated_at ?? 0)), [snap, who, project, me])
   const mine = snap.delivery.filter((r) => waitsOn(r.waits, me)).length
   return (
     <section className="br-card" aria-label="全队交付" data-testid="team-delivery">
       <header>
         <RoleIcon role="team" size={18} />
         <h3>全队交付</h3>
-        <span className="br-dim br-small" data-testid="delivery-count">{snap.delivery.length} 个需求{me ? ` · 等你的 ${mine} 个` : ''} · 在做的和近 14 天合并的</span>
+        <span className="br-dim br-small" data-testid="delivery-count">{snap.delivery.length} 个需求{me ? ` · 等你的 ${mine} 个` : ''} · 在做的和近 14 天合并、关掉的</span>
         <span className="br-grow" />
         <label className="rv-filter">人
           <select value={who} onChange={(e) => setWho(e.target.value)} data-testid="filter-person">

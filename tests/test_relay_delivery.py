@@ -2,10 +2,12 @@
 records, brain handoff, merges) pushed to a bare origin that a fake GitLab serves (relayfix.RepoGitLab), read with the
 bridge's token as the team server reads them: from GitLab only.
 
-Every requirement open, or merged within 14 days, is one row in 交付总览's words: its stage, what it waits on and who
-takes that step, its MR with the CI at its head, and whether the staging VERSION holds its merge. A merge older than
-that, and a closed claim, are not rows. A branch's records are read once per head, an MR's notes once per change, a
-pipeline until it is over, a deploy's merge base once; a project GitLab does not answer keeps its last rows."""
+Every requirement open, or merged or closed within 14 days, is one row in 交付总览's words: its stage, what it waits on
+and who takes that step, its MR with the CI at its head, and whether the staging VERSION holds its merge. A merge older
+than that, and a closed claim, are not rows. A small requirement merged into its big one's branch is said as 交付总览
+says it, and an MR merged into any other branch is never merged or deployed. A claim branch whose claim.json is not an
+object is left out and said. A branch's records are read once per head, an MR's notes once per change, a pipeline
+until it is over, a deploy's merge base once; a project GitLab does not answer keeps its last read."""
 
 import hashlib
 import json
@@ -17,6 +19,7 @@ import pytest
 from appkit import BRAINKIT, mod, sh
 from brainfix import brain, filled_notes, make_project, needs_brainkit, person, request_requirements, start_in_worktree
 from relayfix import BASE, RepoGitLab
+from relayfix import iso as relayfix_iso
 from teamfix import BOT_ENV
 
 pytestmark = needs_brainkit
@@ -141,7 +144,36 @@ def made(tmp_path, home):
 
 
 def build(world):
-    return world["d"].build([P], deployed=world["deployed"], roles=ROLES)
+    """(rows, notes) of shop/pay as the team server reads it now."""
+    got = world["d"].read(P, deployed=world["deployed"].get(P) or "", roles=ROLES)
+    return got.rows, got.notes
+
+
+@pytest.fixture
+def scratch(world):
+    """The module's world, the branches and MRs a test adds to it gone again after it."""
+    gl = world["gl"]
+    bare = gl.repos[P]["bare"]
+    refs = set(sh("git", "-C", bare, "for-each-ref", "--format=%(refname)").stdout.split())
+    mrs = {k: dict(m) for k, m in gl.mrs.items()}
+    yield world
+    for ref in set(sh("git", "-C", bare, "for-each-ref", "--format=%(refname)").stdout.split()) - refs:
+        sh("git", "-C", bare, "update-ref", "-d", ref)
+    for k in set(gl.mrs) - set(mrs):
+        del gl.mrs[k]
+    gl.mrs.update(mrs)
+
+
+def orphan(bare, branch, files, msg="x"):
+    """A branch of its own in GitLab's bare repo holding *files* (path -> text), as brain-kit's claims are."""
+    lines = "".join("100644 blob %s\t%s\n" % (subprocess.run(["git", "-C", str(bare), "hash-object", "-w", "--stdin"],
+                                                              input=text, text=True, capture_output=True, check=True)
+                                               .stdout.strip(), name) for name, text in files.items())
+    tree = subprocess.run(["git", "-C", str(bare), "mktree"], input=lines, text=True, capture_output=True,
+                          check=True).stdout.strip()
+    c = sh("git", "-C", bare, "commit-tree", tree, "-m", msg).stdout.strip()
+    sh("git", "-C", bare, "update-ref", "refs/heads/" + branch, c)
+    return c
 
 
 def by_key(rows):
@@ -149,8 +181,8 @@ def by_key(rows):
 
 
 def test_every_open_or_lately_merged_requirement_is_a_row_in_the_overviews_words(world):
-    rows, errors = build(world)
-    assert errors == {}
+    rows, notes = build(world)
+    assert notes == []
     got = by_key(rows)
     assert list(got) == ["PAY-1", "PAY-2", "PAY-3", "PAY-4", "PAY-6", "PAY-7"]      # PAY-5 merged 30 days ago
     mr = lambda iid, state, ci: {"iid": iid, "url": "%s/%s/-/merge_requests/%d" % (BASE, P, iid), "state": state, "ci": ci}  # noqa: E731
@@ -227,17 +259,79 @@ def test_a_merge_older_than_14_days_is_no_row_however_lately_its_mr_moved(world)
     assert any(c[2].get("state") == "merged" for c in gl.asked("mrs")) and "PAY-5" not in by_key(rows)
 
 
-def test_a_project_gitlab_does_not_answer_keeps_its_last_rows_and_says_why(world):
+def test_a_project_gitlab_does_not_answer_is_said_and_its_last_read_kept(world):
     rows, _ = build(world)
     world["gl"].down.add(P)
-    kept, errors = build(world)
-    assert kept == rows and "502" in errors[P]
+    with pytest.raises(mod("bk").m("rest").HttpError, match="502"):
+        build(world)
+    assert world["d"].last[P].rows == rows
     world["gl"].down.clear()
-    back, errors = build(world)
-    assert errors == {} and back == rows
+    back, notes = build(world)
+    assert notes == [] and back == rows
 
 
 def test_without_a_staging_version_nothing_is_said_deployed(world):
     world["deployed"] = {}
     rows, _ = build(world)
     assert {r["key"]: r["deployed"] for r in rows if r["state"] == "merged"} == {"PAY-3": None, "PAY-4": None}
+
+
+def test_a_claim_json_that_is_not_an_object_leaves_its_branch_out_and_says_so(scratch):
+    orphan(scratch["gl"].repos[P]["bare"], "claim/PAY-9", {"claim.json": '"not an object"\n'})
+    orphan(scratch["gl"].repos[P]["bare"], "claim/PAY-10", {"claim.json": "[1, 2]\n"})
+    rows, notes = build(scratch)
+    assert list(by_key(rows)) == ["PAY-1", "PAY-2", "PAY-3", "PAY-4", "PAY-6", "PAY-7"]
+    assert notes == ["claim/PAY-9 上的 claim.json 读不出一个 JSON 对象：跳过了这个分支",
+                     "claim/PAY-10 上的 claim.json 读不出一个 JSON 对象：跳过了这个分支"]
+
+
+def test_a_hand_over_whose_mr_was_closed_says_so_as_the_overview_does_and_waits_on_nobody(scratch):
+    gl = scratch["gl"]
+    gl.mrs[(P, 5)].update(state="closed", closed_at=gl.mrs[(P, 5)]["updated_at"])    # people closed it, the branch stays
+    two = by_key(build(scratch)[0])["PAY-2"]
+    assert (two["stage"], two["state"], two["mr"]["state"]) == ("已关闭", "closed", "closed")
+    assert {k: two["waits"][k] for k in ("who", "do", "text", "on")} == {"who": "nobody", "do": "none", "text": "MR 已关闭",
+                                                                         "on": []}
+    # closed 20 days ago: GitLab's list of the last 14 days has it no more, the branch still asks for its MR
+    old = mod("team.relay").epoch(gl.mrs[(P, 5)]["updated_at"]) - 20 * DAY
+    gl.mrs[(P, 5)].update(updated_at=relayfix_iso(old), closed_at=relayfix_iso(old))
+    assert "PAY-2" not in by_key(build(scratch)[0])
+
+
+def test_a_small_requirement_merged_into_its_big_ones_branch_is_said_as_the_overview_says_it(scratch):
+    """PAY-8, unit api of alice's big PAY-1 (brain split's claim, bob took it), merged through its MR into PAY-1's
+    branch: 已合进大需求, never deployed; PAY-1 waits for no more small ones."""
+    gl, bare = scratch["gl"], scratch["gl"].repos[P]["bare"]
+    big = "ai/alice/PAY-1-refund"
+    doc = mod("bk").m("claims").claim_doc("PAY-8", "bob", "退款接口", {
+        "source": "split", "filed_by": "alice", "parent": "PAY-1", "unit": "api", "depends_on": [],
+        "expected_paths": ["src/api/"], "split": {"branch": big, "intent": "x", "commit": gl.head(P, big)}})
+    orphan(bare, "claim/PAY-8", {"claim.json": json.dumps(doc, ensure_ascii=False, indent=2) + "\n"})
+    work = scratch["bob"]
+    was = sh("git", "-C", work, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    sh("git", "-C", work, "fetch", "-q", "origin")
+    sh("git", "-C", work, "checkout", "-q", "-b", "ai/bob/PAY-8-api", "origin/" + big)
+    try:
+        tip = commit(work, {"runs/PAY-8/run.json": {"key": "PAY-8", "owner": "bob", "branch": "ai/bob/PAY-8-api",
+                                                    "parent": "PAY-1", "unit": "api"}, "src/api/refund.py": "x = 1\n"},
+                     "api")
+        sh("git", "-C", work, "push", "-q", "origin", "ai/bob/PAY-8-api")
+    finally:
+        sh("git", "-C", work, "checkout", "-q", was)
+    gl.mr(P, 12, "ai/bob/PAY-8-api", state="merged", sha=tip, merge_commit_sha=tip, target_branch=big)
+    rows = by_key(build(scratch)[0])
+    eight = rows["PAY-8"]
+    assert (eight["stage"], eight["state"], eight["deployed"], eight["owner"]) == ("已合进大需求", "merged_into_parent", None, "bob")
+    assert (eight["waits"]["text"], eight["waits"]["on"]) == ("已合进大需求 PAY-1 的分支：等它评审、发布", [])
+    one = rows["PAY-1"]
+    assert one["stage"] == "发布 · 验收" and one["waits"]["text"].startswith("小需求都合进来了")
+
+
+def test_an_mr_merged_into_another_branch_is_never_merged_or_deployed_and_says_where_it_went(scratch):
+    """PAY-7, bob's own requirement (no big one), its MR merged into alice's branch: not 已合并, not deployed."""
+    gl = scratch["gl"]
+    head = gl.head(P, "ai/bob/PAY-7-report")
+    gl.mr(P, 12, "ai/bob/PAY-7-report", state="merged", sha=head, merge_commit_sha=head, target_branch="ai/alice/PAY-1-refund")
+    seven = by_key(build(scratch)[0])["PAY-7"]
+    assert (seven["stage"], seven["state"], seven["deployed"]) == ("需求", "local", None)
+    assert (seven["waits"]["who"], seven["waits"]["text"], seven["waits"]["on"]) == ("nobody", "合进了 ai/alice/PAY-1-refund", [])

@@ -128,7 +128,7 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     expect(screen.queryByRole('button', { name: /打开会话/ })).toBeNull()
     // 全队交付: every requirement, what waits on me first, then the open ones newest first, then the merged
     const delivery = screen.getByTestId('team-delivery')
-    expect(within(delivery).getByTestId('delivery-count')).toHaveTextContent('9 个需求 · 等你的 1 个 · 在做的和近 14 天合并的')
+    expect(within(delivery).getByTestId('delivery-count')).toHaveTextContent('9 个需求 · 等你的 1 个 · 在做的和近 14 天合并、关掉的')
     const table = within(delivery).getByTestId('delivery-table')
     expect(keys(table)).toEqual(['ORD-3', 'PAY-9', 'PAY-11', 'PAY-4', 'PAY-12', 'ORD-5', 'PAY-6', 'ORD-1', 'PAY-2'])
     expect(rowOf(table, 'ORD-3')).toHaveAttribute('data-mine', 'true')

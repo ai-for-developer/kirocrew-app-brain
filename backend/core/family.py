@@ -325,10 +325,11 @@ def state_label(state: Any, owner: Any) -> str:
 
 def _local_state(doc: dict[str, Any], f: dict[str, Any] | None) -> str:
     """A child's state from this machine's refs only (before brain-kit's listing answered): closed, merged (its
-    run.json is on the default branch), in_progress (its owner's run branch), unclaimed, claimed."""
+    run.json is on the default branch, or, as the team server reads GitLab, its MR merged into another branch: its big
+    one's), in_progress (its owner's run branch), unclaimed, claimed."""
     if doc.get("closed"):
         return "closed"
-    if f and f.get("merged"):
+    if f and (f.get("merged") or f.get("merged_into")):
         return "merged"
     if f and f.get("branch") and doc.get("owner") and f.get("owner") == doc.get("owner"):
         return "in_progress"
