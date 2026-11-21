@@ -1,0 +1,26 @@
+{
+  "on": true,
+  "last_at": 1762610400,
+  "projects": [
+    { "project": "shop/shop-pay", "on": true, "label": "brain", "error": "" },
+    { "project": "shop/shop-web", "on": false, "label": "", "error": "" }
+  ],
+  "items": [
+    {
+      "project": "shop/shop-pay", "iid": 12, "title": "订单列表：按状态筛选", "url": "https://gitlab.example.com/shop/shop-pay/-/issues/12",
+      "labeler": "dave", "role": "Developer", "state": "started", "key": "PAY-14", "mr_iid": 61,
+      "mr_url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/61", "run_id": "RUN-PAY-14-1", "reason": "", "note": ""
+    },
+    {
+      "project": "shop/shop-pay", "iid": 13, "title": "退款单导出", "url": "https://gitlab.example.com/shop/shop-pay/-/issues/13",
+      "labeler": "erin", "role": "Maintainer", "state": "opened", "key": "PAY-15", "mr_iid": 62,
+      "mr_url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/62", "run_id": null, "reason": "",
+      "note": "这一轮没做完：signer did not answer within 30s"
+    },
+    {
+      "project": "shop/shop-pay", "iid": 9, "title": "对账报表加导出", "url": "https://gitlab.example.com/shop/shop-pay/-/issues/9",
+      "labeler": "rita", "role": "", "state": "refused", "key": null, "mr_iid": null, "mr_url": null, "run_id": null,
+      "reason": "- @rita 在项目里是 Reporter：要 Developer 以上才能让 Brain 接 issue", "note": ""
+    }
+  ]
+}

@@ -53,6 +53,6 @@ def test_a_project_that_cannot_be_read_does_not_stop_the_hand_overs_of_the_other
     assert (a["level"], a["text"]) == ("FAIL", "grp/a 上一轮没读成：它的交接没看，别的项目照常")
     assert "default_branch 'main' but GitLab says 'trunk'" in a["raw"] and a["todo"].startswith("下一轮会自动再试")
     assert (c["level"], c["text"]) == ("WARN", "grp/c 的 kit.json 里 work_sources 没写 mr-handoff：运行机不接这个项目的交接")
-    assert '["mr-handoff", "mr-patrol", "staging-errors"]' in c["todo"]
+    assert '["mr-handoff", "mr-patrol", "staging-errors", "issue-label"]' in c["todo"]
     assert processed[len(polled):] == [("grp/a", 7), ("grp/b", 7)] and fixed["loop_error"] == ""
     assert [x["text"] for x in fixed["checks"]] == [c["text"]]

@@ -7,15 +7,17 @@
  * table with their MRs, sessions and what the bridge holds about each (its notes, a line under the run); the runner's
  * Lean hooks as brain-runnerd checks them; the signer's pending and refused requests and the vouchers it has not
  * answered yet (asked for again next round) as cards; the bridge.json and runnerd.json settings brain-kit reads, by
- * file; MR 巡检 (GET /team/patrol): every open MR its last round looked at, what it has to fix, where it is and why one
- * is left alone; 测试环境报错 (GET /team/staging, StagingErrors.tsx). Every state, step and kind is said in words (a
- * round's steps, the vouchers' kinds); brain-kit's own words are folded under 细节.
+ * file; 从 issue 接活 (GET /team/issues): every issue labelled for Brain its last round looked at, who labelled it, its
+ * requirement, MR and run, and why one was not taken; MR 巡检 (GET /team/patrol): every open MR its last round looked
+ * at, what it has to fix, where it is and why one is left alone; 测试环境报错 (GET /team/staging, StagingErrors.tsx).
+ * Every state, step and kind is said in words (a round's steps, the vouchers' kinds); brain-kit's own words are folded
+ * under 细节.
  */
 import { Fragment } from 'react'
 import { useAppApi, useNavigate } from '@kirocrew/app-sdk'
 import { paths, useAction, usePoll } from '../api'
 import { ago, fmtIso } from '../format'
-import type { CheckRow, HandoverResult, PatrolState, RunState, TeamConfigRow, TeamHandover, TeamLoopResult, TeamNote, TeamPatrol, TeamStaging, TeamStatus, TeamView } from '../types'
+import type { CheckRow, HandoverResult, IssueState, PatrolState, RunState, TeamConfigRow, TeamHandover, TeamIssues, TeamLoopResult, TeamNote, TeamPatrol, TeamStaging, TeamStatus, TeamView } from '../types'
 import { CheckRows, EmptyHero, ExtLink, Icon, LEVEL_LABEL, LoadState, RoleIcon, questionMeta, type FlowStep } from '../ui'
 import type { Tone } from '../styles'
 import { ACT } from '../vocab'
@@ -29,6 +31,7 @@ export const SIGNER_SAME_USER_DO = '正式给团队用之前，让签名服务�
 /** A round's steps (bridgehost.loop_once's summary keys and loop_error's prefixes), in words. */
 export const LOOP_STEP: Record<string, { name: string; did: string }> = {
   poll: { name: '看 MR', did: '看了 MR' },
+  issues: { name: '看 issue', did: '看了 issue' },
   runnerd: { name: '准备工作区', did: '准备好工作区' },
   prepared: { name: '准备工作区', did: '准备好工作区' },
   dispatch: { name: '派给会话', did: '派给会话' },
@@ -114,6 +117,20 @@ export const PATROL_STATE: Record<PatrolState, { label: string; tone: Tone }> = 
 }
 export const patrolMeta = (state: string) => PATROL_STATE[state as PatrolState] ?? { label: state, tone: 'idle' as Tone }
 const patrolRank = (state: string) => { const i = Object.keys(PATROL_STATE).indexOf(state); return i < 0 ? 99 : i }
+/** Where a labelled issue is on its way to a run (team/issues.py), in words, in the order the list shows them; another
+ * one as it is. */
+export const ISSUE_STATE: Record<IssueState, { label: string; tone: Tone }> = {
+  new: { label: '刚打上标签', tone: 'idle' },
+  claimed: { label: '认领了需求', tone: 'run' },
+  pushed: { label: '开了分支', tone: 'run' },
+  opened: { label: '开了 MR，等开工合同', tone: 'hand' },
+  started: { label: '在做', tone: 'ok' },
+  refused: { label: '没接', tone: 'bad' },
+  dropped: { label: '标签去掉了', tone: 'idle' },
+}
+export const issueMeta = (state: string) => ISSUE_STATE[state as IssueState] ?? { label: state, tone: 'idle' as Tone }
+const issueRank = (state: string) => { const i = Object.keys(ISSUE_STATE).indexOf(state); return i < 0 ? 99 : i }
+export const ISSUES_OFF = '还没有项目从 issue 接活：项目的 .brain/kit.json 里 work_sources 写全，比如 ["mr-handoff", "issue-label"]（只写 issue-label 会把交接关掉）就开始。一键建运行机勾上「从打了标签的 issue 接活」，它开的 kit.json MR 会写好。'
 export const PATROL_OFF = '还没有项目打开巡检：项目的 .brain/kit.json 里 work_sources 写全，比如 ["mr-handoff", "mr-patrol"]（只写 mr-patrol 会把交接关掉）就开始。一键建运行机勾上「巡检所有开着的 MR」，它开的 kit.json MR 会写好。'
 
 /** The config files brain-kit reads on a team runner, in this order, and what each is for. */
@@ -159,6 +176,7 @@ export function TeamPage({ status, go, reloadStatus, pollMs }: ViewProps) {
   const tv = usePoll<TeamView>(team ? paths.team() : null, pollMs ?? TEAM_POLL_MS)
   const pv = usePoll<TeamPatrol>(team ? paths.teamPatrol() : null, pollMs ?? TEAM_POLL_MS)
   const sv = usePoll<TeamStaging>(team ? paths.teamStaging() : null, pollMs ?? TEAM_POLL_MS)
+  const iv = usePoll<TeamIssues>(team ? paths.teamIssues() : null, pollMs ?? TEAM_POLL_MS)
   const loop = useAction(() => api.post<TeamLoopResult>(paths.teamLoop(), {}))
   const runLoop = async () => {
     const r = await loop.run()
@@ -166,6 +184,7 @@ export function TeamPage({ status, go, reloadStatus, pollMs }: ViewProps) {
       tv.reload()
       pv.reload()
       sv.reload()
+      iv.reload()
       reloadStatus()
     }
   }
@@ -249,6 +268,7 @@ export function TeamPage({ status, go, reloadStatus, pollMs }: ViewProps) {
             <SignerKpi signer={data.signer} />
           </section>
           <Handovers rows={data.handovers} at={st?.last_loop_at ?? null} />
+          {iv.data && <Issues view={iv.data} />}
           {pv.data && <Patrol view={pv.data} openSession={(slot) => navigate(`/chat?sid=${encodeURIComponent(slot)}`)} />}
           {sv.data && <StagingErrors view={sv.data} openSession={(slot) => navigate(`/chat?sid=${encodeURIComponent(slot)}`)} />}
           <section className="br-card" aria-label="运行">
@@ -457,6 +477,66 @@ function Handovers({ rows, at }: { rows: TeamHandover[]; at: number | null }) {
           </span>
         </div>
       )}
+    </section>
+  )
+}
+
+/** 从 issue 接活: every issue labelled for Brain its last round looked at, the ones on their way first: who labelled it
+ * (their role), its requirement and MR, its state in words, and why one was not taken (what the issue was told). */
+function Issues({ view }: { view: TeamIssues }) {
+  const rows = [...view.items].sort((a, b) => issueRank(a.state) - issueRank(b.state))
+  const on = view.projects.filter((p) => p.on)
+  const labels = Array.from(new Set(on.map((p) => p.label)))
+  return (
+    <section className="br-card" aria-label="从 issue 接活" data-testid="issues">
+      <header>
+        <RoleIcon role="product" size={18} />
+        <h3>从 issue 接活</h3>
+        <span className="br-dim br-small">
+          {view.on ? `${on.map((p) => p.project).join('、')}：Developer 以上的人给 issue 打上标签 ${labels.join('、')}，运行机就认领成需求、开 MR、开工` : '没打开'}
+        </span>
+      </header>
+      {!view.on ? <p className="br-empty">{ISSUES_OFF}</p> : rows.length === 0 ? (
+        <p className="br-empty">{view.last_at ? `上一轮（${ago(view.last_at)}）没有打了标签的 issue。` : '还没看过：下一轮就看。'}</p>
+      ) : (
+        <div className="br-scroll">
+          <table className="cto-table tm-runs">
+            <thead><tr><th>issue</th><th>谁打的标签</th><th>需求和 MR</th><th>状态</th></tr></thead>
+            <tbody>
+              {rows.map((i) => {
+                const m = issueMeta(i.state)
+                const why = i.reason.split('\n').map((x) => x.replace(/^- /, '').trim()).filter(Boolean)
+                return (
+                  <tr key={`${i.project}#${i.iid}`} data-state={i.state}>
+                    <td>
+                      <span className="tm-pt-mr">
+                        <ExtLink href={i.url} className="tm-mr">{i.project}#{i.iid}</ExtLink>
+                        <span className="tm-pt-title">{i.title}</span>
+                      </span>
+                    </td>
+                    <td>@{i.labeler}{i.role && <span className="br-dim br-small">（{i.role}）</span>}</td>
+                    <td>
+                      {i.key ? <b className="br-mono">{i.key}</b> : <span className="br-dim">—</span>}
+                      {i.mr_iid && <> <ExtLink href={i.mr_url} className="tm-mr">!{i.mr_iid}</ExtLink></>}
+                      {i.run_id && <span className="br-dim br-small" title={i.run_id}> {runWords(i.run_id, false)}</span>}
+                    </td>
+                    <td>
+                      <span className="tm-state">
+                        <span className={`br-chip kt-pill tone-${m.tone}`}>{m.label}</span>
+                        {why.length > 0 && <ul className="tm-pt-probs">{why.map((x, n) => <li key={n}>{x}</li>)}</ul>}
+                        {i.note && <span className="tm-state-hint">{i.note}</span>}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {view.projects.filter((p) => p.error).map((p) => (
+        <p key={p.project} className="br-bad-text br-small" role="alert">{p.project} 这一轮没看成 issue：{p.error}</p>
+      ))}
     </section>
   )
 }

@@ -23,6 +23,7 @@
     },
     "push": "token",
     "patrol": true,
+    "issues": false,
     "jenkins": {
       "base": "",
       "user": ""

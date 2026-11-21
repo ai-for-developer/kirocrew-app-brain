@@ -20,6 +20,9 @@ patched or subclassed. What the app changes:
   next round). brain-kit's poll returns nothing (BRAINKIT_REQUESTS 27). A project whose kit.json work_sources leaves
   mr-handoff out (sources.py) is not polled, and one that cannot be read holds up none after it: the status' checks
   say which;
+- issues: right after poll, the issues labelled for Brain (team/issues.py, work source issue-label) are claimed, given
+  a start commit, an MR and a start contract, which the signer checks like a hand-over's and the bridge then runs as
+  one: runnerd, dispatch and the questions in the same round;
 - patrol: a round ends with MR 巡检 (team/patrol.py, work source mr-patrol), on the same worker thread, then
   测试环境报错 (team/staging.py, work source staging-errors). MR 巡检 reads the logs of Jenkins builds with
   bridge.json's optional "jenkins" (team/jenkins.py), a block brain-kit leaves alone.
@@ -48,6 +51,7 @@ from typing import Any
 
 from .. import bk, problems
 from ..constants import APP_ROOT, PYTHON_BIN
+from . import issues as issues_mod
 from . import patrol as patrol_mod
 from . import signerproc, sources
 from . import staging as staging_mod
@@ -125,6 +129,7 @@ class TeamRuntime:
         self.host: Any = None
         self.patrol: patrol_mod.Patrol | None = None
         self.staging: staging_mod.StagingWatch | None = None
+        self.issues: issues_mod.IssueSource | None = None
         self.cfg: dict[str, Any] = {}
         self.runnerd_cfg: dict[str, Any] | None = None
         self.spool = ""
@@ -214,12 +219,17 @@ class TeamRuntime:
                 ledger_path=os.path.join(os.path.dirname(config), "staging.sqlite"),
                 workspaces=staging_mod.beside(self.patrol.workspaces), helper=self.patrol.helper,
                 claims=lambda: sources.held(self), shared=lambda: sources.at_work(self, but=sources.STAGING))
+            self.issues = issues_mod.IssueSource(
+                host=self.host, projects=[p["project"] if isinstance(p, dict) else p for p in cfg["projects"]],
+                ledger_path=os.path.join(os.path.dirname(config), "issues.sqlite"),
+                clones=issues_mod.Clones.of(rcfg) if rcfg and rcfg.get("runs_root") and rcfg.get("clone_url") else None,
+                claims=lambda: sources.held(self), out=self._out)
             self.cfg, self.runnerd_cfg, self.spool, self.allowed_signers = cfg, rcfg, spool, allowed
             self.error = ""
             return True
         except Exception as exc:  # noqa: BLE001
             self.error = str(exc).split("\n", 1)[0][:400]
-            self.host = self.patrol = self.staging = None
+            self.host = self.patrol = self.staging = self.issues = None
             return False
 
     def stop(self) -> None:
@@ -234,7 +244,8 @@ class TeamRuntime:
         host, self.host = self.host, None
         patrol, self.patrol = self.patrol, None
         staging, self.staging = self.staging, None
-        for held in (host.ledger if host is not None else None, patrol, staging):
+        issues, self.issues = self.issues, None
+        for held in (host.ledger if host is not None else None, patrol, staging, issues):
             try:
                 if held is not None:
                     held.close()
@@ -250,7 +261,8 @@ class TeamRuntime:
     # ---- one round ------------------------------------------------------------------------------------ #
 
     def loop_once(self) -> dict[str, int]:
-        """poll, runnerd, dispatch, watch, collect, reconcile, patrol, staging; one bad step does not stop the others."""
+        """poll, issues, runnerd, dispatch, watch, collect, reconcile, patrol, staging; one bad step does not stop the
+        others."""
         host = self.host
         if host is None:
             raise RuntimeError(self.error or "运行机模式没有启动")
@@ -258,8 +270,12 @@ class TeamRuntime:
         summary: dict[str, int] = {}
         errors = []
         with self._lock:
-            for step in ("poll", "runnerd", "dispatch", "watch", "collect", "reconcile", "patrol", "staging"):
+            for step in ("poll", "issues", "runnerd", "dispatch", "watch", "collect", "reconcile", "patrol", "staging"):
                 try:
+                    if step == "issues":
+                        if self.issues is not None:
+                            summary["issues"] = self.issues.round()
+                        continue
                     if step == "runnerd":
                         if self.runnerd_cfg:
                             summary["prepared"] = int(bk.m("bridge.runnerd").once(self.runnerd_cfg, out=self._out) or 0)
@@ -339,6 +355,11 @@ class TeamRuntime:
         """GET /team/staging: what 测试环境报错's last round saw (staging.view_of)."""
         s = self.staging
         return s.view() if s is not None else staging_mod.view_of([], [], {}, None)
+
+    def issues_view(self) -> dict[str, Any]:
+        """GET /team/issues: what the last round saw of the labelled issues (issues.view_of)."""
+        s = self.issues
+        return s.view() if s is not None else issues_mod.view_of([], [], None)
 
     def handovers(self) -> list[dict[str, Any]]:
         """The labelled MRs of the last round and what brain-kit's bridge said about each (see _poll)."""

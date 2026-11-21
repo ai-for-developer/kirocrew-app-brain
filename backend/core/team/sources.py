@@ -9,7 +9,8 @@ has one (a Brain branch ai/<owner>/<KEY>-<slug>, a hand-over's run), else ``<kin
 does not dispatch work whose key another kind holds, so work is claimed once. What a kind holds is read from its own
 ledger (Source.held) and merged only here. mr-handoff is brain-kit's bridge, which asks no one: it holds the
 requirement keys of its open runs, and every other kind yields to it. staging-errors (team/staging.py) holds the Issues
-it opened for errors in the test environment: ``staging-errors:<project>:issue!<iid>``.
+it opened for errors in the test environment: ``staging-errors:<project>:issue!<iid>``. issue-label (team/issues.py)
+holds an issue from its label until its run starts; from then on the run is the bridge's.
 
 mr-patrol and staging-errors share CAP brain-patrol sessions in a turn at once. Each kind counts its own from its ledger
 (Source.busy), whatever its last round could read; at_work sums them, as held merges the claims.
@@ -22,7 +23,10 @@ from typing import Any, Callable, Iterable, Literal, Mapping, TypedDict
 
 from .. import bk
 
-HANDOFF, PATROL, STAGING = "mr-handoff", "mr-patrol", "staging-errors"
+HANDOFF, PATROL, STAGING, ISSUE = "mr-handoff", "mr-patrol", "staging-errors", "issue-label"
+# GitLab's access levels (a member's role in a project) by number, as Claim.role names them
+LEVEL_NAME = {10: "Guest", 20: "Reporter", 30: "Developer", 40: "Maintainer", 50: "Owner"}
+MAINTAINER, DEVELOPER, OWNER = 40, 30, 50
 
 
 class Ref(TypedDict):
@@ -36,6 +40,7 @@ class Claim(TypedDict):
     project: str
     link: str | None
     asked_by: str
+    role: str               # asked_by's GitLab role in the project, when the kind reads it ("" when it does not)
     title: str
     ref: Ref
 
@@ -45,9 +50,9 @@ def claim_key(kind: str, project: str, ref: Ref, req: str | None = None) -> str:
 
 
 def make_claim(kind: str, project: str, ref: Ref, *, link: str | None, asked_by: str, title: str,
-               req: str | None = None) -> Claim:
+               req: str | None = None, role: str = "") -> Claim:
     return {"key": claim_key(kind, project, ref, req), "kind": kind, "project": project, "link": link,
-            "asked_by": asked_by, "title": title, "ref": ref}
+            "asked_by": asked_by, "role": role, "title": title, "ref": ref}
 
 
 def mr_claim(kind: str, project: str, mr: Mapping[str, Any], branch_prefix: str) -> Claim:
@@ -89,6 +94,11 @@ def _staging_held(rt: Any) -> list[Claim]:
     return s.held() if s is not None else []
 
 
+def _issues_held(rt: Any) -> list[Claim]:
+    s = getattr(rt, "issues", None)
+    return s.held() if s is not None else []
+
+
 def _patrol_busy(rt: Any) -> int:
     p = getattr(rt, "patrol", None)
     return p.busy() if p is not None else 0
@@ -103,6 +113,7 @@ SOURCES: dict[str, Source] = {s.kind: s for s in (
     Source(HANDOFF, "交接过来的 MR", _handoff_held),         # its runs are brain-run sessions, under brain-kit's limits
     Source(PATROL, "巡检开着的 MR", _patrol_held, _patrol_busy),
     Source(STAGING, "测试环境报错", _staging_held, _staging_busy),
+    Source(ISSUE, "打了标签的 issue", _issues_held),         # no session of its own: a started run is the bridge's
 )}
 DEFAULT: tuple[str, ...] = (HANDOFF,)
 

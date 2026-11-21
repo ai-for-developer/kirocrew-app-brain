@@ -250,6 +250,9 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
     async def team_status(request: Any) -> Any:
         return kit.json(await svc.runner_status())
 
+    async def team_issues(request: Any) -> Any:
+        return kit.json(await svc.team_issues())
+
     # 一键建运行机: the body carries the person's one-time GitLab token; it is used for that run and never answered
     async def team_setup(request: Any) -> Any:
         return kit.json(await svc.team_setup(await kit.body(request)))
@@ -303,6 +306,7 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
         AppRoute("GET", "/team/patrol", kit.guarded(team_patrol)),
         AppRoute("GET", "/team/staging", kit.guarded(team_staging)),
         AppRoute("GET", "/team/status", kit.guarded(team_status)),
+        AppRoute("GET", "/team/issues", kit.guarded(team_issues)),
         AppRoute("GET", "/team/setup", kit.guarded(team_setup_view)),
         AppRoute("POST", "/team/setup", kit.guarded(team_setup)),
         AppRoute("GET", "/import/defaults", kit.guarded(import_defaults)),

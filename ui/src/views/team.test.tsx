@@ -7,7 +7,7 @@ import { API, installFixtureRoutes } from '../test/routes'
 import { apiCalls, navigations } from '../test/stubs/app-sdk'
 import type { CheckRow, TeamConfigRow, TeamNote } from '../types'
 import type { ViewProps } from './props'
-import { HANDOVER_RESULT, OUTBOX_STATE, PATROL_OFF, PATROL_STATE, RUN_STATE, TeamPage, handoverMeta, noteTone, outboxMeta, patrolMeta, runStateMeta } from './Team'
+import { HANDOVER_RESULT, ISSUES_OFF, ISSUE_STATE, OUTBOX_STATE, PATROL_OFF, PATROL_STATE, RUN_STATE, TeamPage, handoverMeta, issueMeta, noteTone, outboxMeta, patrolMeta, runStateMeta } from './Team'
 
 /** The team server in team mode (运行机's own page is the team server's only: main.tsx opens RunnerStatus elsewhere). */
 function teamStatus() {
@@ -424,6 +424,45 @@ describe('运行机', () => {
     expect(patrolMeta('later')).toEqual({ label: 'later', tone: 'idle' })
   })
 
+  test('从 issue 接活: every labelled issue of its last round, the ones on their way first, who labelled it, its requirement, MR and run, and why one was not taken', async () => {
+    installFixtureRoutes()
+    render(<TeamPage {...props()} />)
+    const is = await screen.findByRole('region', { name: '从 issue 接活' })
+    const row = (iid: number) => within(is).getByRole('link', { name: `shop/shop-pay#${iid}` }).closest('tr') as HTMLElement
+    expect(is).toHaveTextContent('shop/shop-pay：Developer 以上的人给 issue 打上标签 brain，运行机就认领成需求、开 MR、开工')
+    expect(row(12)).toHaveTextContent('订单列表：按状态筛选')
+    expect(row(12)).toHaveTextContent('@dave（Developer）')
+    expect(within(row(12)).getByRole('link', { name: '!61' })).toHaveAttribute('href', 'https://gitlab.example.com/shop/shop-pay/-/merge_requests/61')
+    expect(row(12)).toHaveTextContent('PAY-14 !61 第 1 次运行')
+    expect(within(row(12)).getByText('在做')).toHaveClass('tone-ok')
+    expect(row(13)).toHaveTextContent('开了 MR，等开工合同这一轮没做完：signer did not answer within 30s')
+    expect(within(row(9)).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['@rita 在项目里是 Reporter：要 Developer 以上才能让 Brain 接 issue'])
+    expect(within(row(9)).getByText('没接')).toHaveClass('tone-bad')
+    expect(Array.from(is.querySelectorAll('tbody tr')).map((tr) => tr.getAttribute('data-state'))).toEqual(['opened', 'started', 'refused'])
+    // every state issues.py answers has words; another one is shown as it is
+    expect(Object.keys(ISSUE_STATE).sort()).toEqual(['claimed', 'dropped', 'new', 'opened', 'pushed', 'refused', 'started'])
+    expect(issueMeta('later')).toEqual({ label: 'later', tone: 'idle' })
+  })
+
+  test('从 issue 接活 off: says how to switch it on; a project it could not read says so', async () => {
+    const iv = fx.teamIssues()
+    iv.on = false
+    iv.items = []
+    iv.projects = [{ project: 'shop/shop-pay', on: false, label: '', error: '' }]
+    installFixtureRoutes({ [`GET ${API}/team/issues`]: () => iv })
+    const { unmount } = render(<TeamPage {...props()} />)
+    const is = await screen.findByRole('region', { name: '从 issue 接活' })
+    expect(is).toHaveTextContent(ISSUES_OFF)
+    expect(within(is).queryByRole('table')).toBeNull()
+    unmount()
+    const bad = fx.teamIssues()
+    bad.projects[0].error = 'GitLab 401 Unauthorized'
+    installFixtureRoutes({ [`GET ${API}/team/issues`]: () => bad })
+    render(<TeamPage {...props()} />)
+    const again = await screen.findByRole('region', { name: '从 issue 接活' })
+    expect(within(again).getByRole('alert')).toHaveTextContent('shop/shop-pay 这一轮没看成 issue：GitLab 401 Unauthorized')
+  })
+
   test('MR 巡检 off: says how to switch it on; a project it could not read says so', async () => {
     const pv = fx.teamPatrol()
     pv.on = false
@@ -506,6 +545,6 @@ describe('运行机', () => {
     expect(document.querySelector('style')?.textContent).toContain('.tm-root .br-flow > li { word-break: keep-all;')
     await userEvent.setup().click(within(hero).getByRole('button', { name: '去设置' }))
     expect(p.go).toHaveBeenCalledWith({ kind: 'settings' })
-    expect(apiCalls.filter((c) => c.path === `${API}/team` || c.path === `${API}/team/patrol`)).toHaveLength(0)
+    expect(apiCalls.filter((c) => [`${API}/team`, `${API}/team/patrol`, `${API}/team/issues`].includes(c.path))).toHaveLength(0)
   })
 })

@@ -19,6 +19,15 @@ hand-over  ``Bridge.verify`` for the MR as GitLab shows it now: branch, the labe
            run.json: what ``brain handoff`` commits; a commit pushed on top of it was not handed over; 72b278e: a head
            a bot authored or committed, kit bot_emails / bot_users, never is), claim, run.json, the Lean note, the
            Brain commit, materials, no other open run.
+start      a hand-over contract with ``route: "issue"`` and ``issue: {iid, label_event}``: the app's work source
+           issue-label (backend/core/team/issues.py) started the run from a GitLab issue, as the runner's bot. Checks
+           1, 3, 4, 6 and 7 of ``Bridge.verify`` stay; 2 and 5 become: the issue is open and has the label (kit.json
+           issue_label, "brain"), its newest event on it is that label event, an add by the branch owner, who is a
+           Developer or more in the project, and no system note edits the issue's title or text after it; claim/<KEY>
+           holds the issue's title and text now (its hash) as a product requirement; the MR head is one commit whose
+           parent is on the default branch and that adds only the start: runs/<KEY>/run.json (origin remote, no
+           hand-over, no materials), runs/<KEY>/intent.md (``intents.render_md`` of the claim), the run's Lean intent
+           and Lean's ledger lines; no other run is open for this issue either.
 answer     ``decisions.check_answer`` on the MR, bound to the question note the voucher names (``question_note``: the
            note id brain-kit's ledger recorded when the bridge posted it; a voucher without one is refused). That note
            is on the MR (deleted: the decision is void), by kit.json ``bridge_user``, the text the bridge posts for
@@ -112,6 +121,10 @@ NEEDS = (("bridge.decisions", "check_answer"), ("bridge.decisions", "VOUCHER_TIM
          ("bridge.decisions", "SCHEMA"), ("bridge.decisions", "DecisionLoop.reply_states"),
          ("bridge.decisions", "edit_state"), ("rest", "GitLab.note_edits"))
 BRAINKIT_NEEDED = "72b278e"
+ROUTES = ("recheck", "issue")       # a hand-over contract's: brain handoff's MR, or a start from a GitLab issue
+ISSUE_LABEL = "brain"               # kit.json issue_label when it names none, as the app's team/issues.py
+DEVELOPER = 30                      # GitLab's access level: who may start a run from an issue
+EDIT_RE = re.compile(r"^changed (?:the description|title\b)")     # GitLab's system notes of an edit to an issue
 
 
 def is_int(x):
@@ -219,6 +232,22 @@ def handoff_voucher(v, mr, facts, principal):
             "sha": mr["sha"], "branch": facts["branch"], "owner": facts["owner"], "key": facts["key"],
             "intent": facts["intent"], "brain_commit": facts["brain_commit"], "materials": facts["materials"],
             "route": "recheck", "issued_at": v["issued_at"], "expires_at": v["expires_at"], "issuer": principal}
+
+
+def label_order(ev, gl_time):
+    """brain-kit's order of label events (handoff._event_order): GitLab's event id (it only grows), then its time."""
+    try:
+        n = int(ev.get("id") or 0)
+    except (TypeError, ValueError):
+        n = 0
+    t = gl_time(ev.get("created_at"))
+    return n, t.timestamp() if t else float("-inf")
+
+
+def issue_voucher(v, mr, facts, principal):
+    """The start contract team/issues.py asks for: the hand-over's, with route issue and the issue it starts from."""
+    return dict(handoff_voucher(v, mr, facts, principal), route="issue",
+                issue={"iid": facts["issue_iid"], "label_event": facts["label_event"]})
 
 
 def answer_voucher(v, run, verdict, answerer, principal):
@@ -463,6 +492,13 @@ class Signer:
         for k in ("key", "expires_at"):
             if not is_str(v.get(k), 200):
                 raise Refuse("%s 要是一行字" % k)
+        route = v.get("route")
+        if route not in ROUTES:
+            raise Refuse("route 只能是 recheck（交接）或 issue（从 issue 开工）")
+        iss = v.get("issue")
+        if route == "issue" and not (isinstance(iss, dict) and set(iss) == {"iid", "label_event"} and
+                                     all(is_int(iss[k]) and iss[k] > 0 for k in iss)):
+            raise Refuse("从 issue 开工的合同要写 issue: {iid, label_event}，都是正整数")
         if not self.common.JIRA_RE.match(v["key"]) or \
                 not re.match(r"^RUN-%s-[1-9][0-9]{0,5}$" % re.escape(v["key"]), v["run_id"]):
             raise Refuse("run id %s 和需求 %s 对不上" % (v["run_id"], v["key"]))
@@ -475,12 +511,13 @@ class Signer:
         led, R = self.ledger, self.RESERVED
         mode, prior = self._reserve(v)
         try:
-            probs, facts = self.br.verify(v["project"], kit, mr)
+            probs, facts = self.br.verify(v["project"], kit, mr) if route == "recheck" else \
+                self.issue_start(v, kit, mr)
             if probs:
                 raise Refuse(*probs)
             if mode == "none":   # verify let another open run pass (a reservation of this hand-over under another id)
                 raise Refuse("%s 在签名服务这边还有一个没结束的 run，不再签第二个" % v["key"])
-            self.same(v, handoff_voucher(v, mr, facts, self.sign.PRINCIPAL))
+            self.same(v, (handoff_voucher if route == "recheck" else issue_voucher)(v, mr, facts, self.sign.PRINCIPAL))
             sig = self.key.sign(v)
             with led.lock:
                 if mode == "again":
@@ -498,6 +535,158 @@ class Signer:
             elif mode == "again":
                 led.set_run(v["run_id"], R, prior)
             raise
+
+    def issue_start(self, v, kit, mr):
+        """(problems, facts) of a start from an issue (route issue), as GitLab shows it now: see "start" above."""
+        from brainkit import claims, intents, lean, runrec
+        common, rest, gl, br = self.common, self.rest, self.gl, self.br
+        project, iid, event = v["project"], v["issue"]["iid"], v["issue"]["label_event"]
+        p, f = [], {}
+        branch = mr.get("source_branch", "")
+        b = common.parse_branch(branch, kit["branch_prefix"])
+        if not b:
+            return ["branch %s is not %s/<owner>/<KEY>-<slug>" % (branch, kit["branch_prefix"])], f
+        f.update(b, branch=branch, issue_iid=iid, label_event=event)
+        key, owner, sha = b["key"], b["owner"], mr.get("sha", "")
+        if mr.get("source_project_id") != mr.get("target_project_id"):
+            p.append("MR comes from a fork")
+        if mr.get("target_branch") != kit["default_branch"]:
+            p.append("MR targets %s, not %s" % (mr.get("target_branch"), kit["default_branch"]))
+        if owner in [str(u).lower() for u in kit["bot_users"]]:
+            p.append("bot branches are not started")
+        try:
+            issue = gl.call("GET", "/projects/%s/issues/%d" % (rest.q(project), iid)) or {}
+        except rest.HttpError as e:
+            if e.status != 404:
+                raise
+            return p + ["issue #%d 不在 %s 里" % (iid, project)], f
+        p += self._issue_label_problems(project, kit, issue, iid, event, owner)
+        if br.ids.get(owner) is None:
+            p.append("%s is not in brain-authz identities" % owner)
+        raw = gl.file_raw(project, claims.CLAIM_FILE, "claim/" + key)
+        doc = None
+        try:
+            doc = json.loads(raw.decode("utf-8")) if raw is not None else None
+        except ValueError:
+            p.append("claim/%s: claim.json is not JSON" % key)
+        if raw is None:
+            p.append("%s has no claim (branch claim/%s)" % (key, key))
+        elif isinstance(doc, dict):
+            p += claims.validate_doc(doc, key, owner)
+            if doc.get("source", "product") != "product" or doc.get("closed"):
+                p.append("claim/%s 不是一条打开的产品需求" % key)
+            if doc.get("hash") != intents.digest("product", str(issue.get("title") or ""),
+                                                 str(issue.get("description") or "")):
+                p.append("claim/%s 的内容不是 issue #%d 现在的标题和内容" % (key, iid))
+        c = gl.commit(project, sha) if common.SHA_RE.match(str(sha)) else None
+        parents = c.get("parent_ids") if isinstance(c, dict) else None
+        if not isinstance(parents, list) or len(parents) != 1 or not common.SHA_RE.match(str(parents[0])):
+            return p + ["MR 的最新提交 %s 不是只有一个父提交的开工提交" % str(sha)[:12]], f
+        base = (gl.call("GET", "/projects/%s/repository/merge_base" % rest.q(project),
+                        {"refs[]": [parents[0], kit["default_branch"]]}) or {}).get("id")
+        if base != parents[0]:
+            p.append("开工提交 %s 的父提交不在 %s 上" % (sha[:12], kit["default_branch"]))
+        raw = gl.file_raw(project, runrec.path(kit["runs_dir"], key), sha)
+        try:
+            rec = json.loads(raw.decode("utf-8")) if raw is not None else None
+        except ValueError:
+            rec = None
+        if not isinstance(rec, dict):
+            return p + ["run.json missing or not JSON at %s" % sha[:12]], f
+        rp = runrec.validate(rec, branch=branch, prefix=kit["branch_prefix"])
+        p += ["run.json: " + x for x in rp]
+        if rp:
+            return p, f
+        if rec.get("origin") != "remote" or rec.get("handoff") is not None or rec.get("materials"):
+            p.append("run.json 不是运行机开工写的（origin remote，没有交接，没有材料包）")
+        f.update(intent=rec["intent"], brain_commit=rec["brain_commit"], materials=[],
+                 expected_paths=rec.get("expected_paths", []))
+        p += self._start_files_problems(project, kit, sha, key, rec["intent"])
+        md = gl.file_raw(project, "%s/%s/%s" % (kit["runs_dir"], key, intents.INTENT_MD), sha)
+        if isinstance(doc, dict) and (md is None or md.decode("utf-8", "replace") != intents.render_md(doc)):
+            p.append("runs/%s/%s 不是 claim/%s 的需求原文" % (key, intents.INTENT_MD, key))
+        state = gl.file_raw(project, "%s/%s/aidlc-state.md" % (lean.DOCS, rec["intent"]), sha)
+        if state is None:
+            p.append("Lean hand-over note %s/%s/aidlc-state.md missing" % (lean.DOCS, rec["intent"]))
+        else:
+            p += ["hand-over note: " + x for x in lean.handover_text_problems(state.decode("utf-8", "replace"))]
+        if not gl.commit_exists(project, rec["brain_commit"]):
+            p.append("brain_commit %s does not exist" % rec["brain_commit"][:12])
+        other = br.ledger.open_run_for(key, stale_after=br.reservation_ttl)
+        if other is not None and not br.ledger.is_reservation_for(other, project, mr["iid"], sha):
+            p.append("%s already has an open run on the team runner" % key)
+        for row in br.ledger.runs_in(*self.open_states):
+            try:
+                rv = json.loads(row["voucher"] or "{}")
+            except ValueError:
+                rv = {}
+            if row["run_id"] != v["run_id"] and isinstance(rv, dict) and rv.get("route") == "issue" and \
+                    rv.get("project") == project and (rv.get("issue") or {}).get("iid") == iid:
+                p.append("issue #%d 已经有一个没结束的 run（%s）" % (iid, row["run_id"]))
+        return p, f
+
+    def _issue_label_problems(self, project, kit, issue, iid, event, owner):
+        """Check 2 of a start from an issue: the label is on, its newest event is *event*, added by *owner*, a
+        Developer or more, and nobody edited the issue's title or text after it."""
+        rest, gl = self.rest, self.gl
+        label = str(kit.get("issue_label") or ISSUE_LABEL)
+        p = []
+        if issue.get("state") != "opened":
+            p.append("issue #%d 不是打开的" % iid)
+        if label not in [x if isinstance(x, str) else str((x or {}).get("name")) for x in issue.get("labels") or []]:
+            p.append("issue #%d 没有标签 %s" % (iid, label))
+        evs = [e for e in gl.pages("/projects/%s/issues/%d/resource_label_events" % (rest.q(project), iid), {}, 100,
+                                   50, "label events on #%d" % iid)
+               if isinstance(e, dict) and (e.get("label") or {}).get("name") == label
+               and e.get("action") in ("add", "remove")]
+        ev = max(evs, key=lambda e: label_order(e, rest.gl_time)) if evs else None
+        if ev is None or ev.get("action") != "add" or str(ev.get("id")) != str(event):
+            return p + ["issue #%d 上标签 %s 最新的一次不是合同里的那次加上（%s）" % (iid, label, event)]
+        user = ev.get("user") if isinstance(ev.get("user"), dict) else {}
+        adder = str(user.get("username") or "").lower()
+        if adder != owner:
+            p.append("label '%s' was added by %s, not by the branch owner %s" % (label, adder or "unknown", owner))
+        try:
+            m = gl.call("GET", "/projects/%s/members/all/%d" % (rest.q(project), int(user.get("id") or 0))) or {}
+        except rest.HttpError as e:
+            if e.status != 404:
+                raise
+            m = {}
+        if int(m.get("access_level") or 0) < DEVELOPER:
+            p.append("%s 在项目里不是 Developer 以上：不能让运行机从 issue 开工" % (adder or "打标签的人"))
+        added = rest.gl_time(ev.get("created_at"))
+        notes = gl.pages("/projects/%s/issues/%d/notes" % (rest.q(project), iid), {"sort": "asc", "order_by":
+                                                                                  "created_at"}, 100, 20, "notes")
+        for n in notes:
+            at = rest.gl_time(n.get("created_at")) if isinstance(n, dict) else None
+            if isinstance(n, dict) and n.get("system") and EDIT_RE.match(str(n.get("body") or "")) and \
+                    (added is None or at is None or at > added):
+                p.append("issue #%d 在打标签以后改过（%s）：要重新打标签" % (iid, str(n.get("body"))[:60]))
+                break
+        return p
+
+    def _start_files_problems(self, project, kit, sha, key, intent):
+        """The start commit adds the start and nothing else: run.json, intent.md, the Lean intent, Lean's ledger."""
+        from brainkit import lean
+        rest = self.rest
+        runs = "%s/%s/" % (kit["runs_dir"], key)
+        need = {runs + "run.json", runs + "intent.md"}
+        diff = self.gl.pages("/projects/%s/repository/commits/%s/diff" % (rest.q(project), sha), {}, 100, 20,
+                             "the start commit's files")
+        bad, seen = [], set()
+        for d in diff:
+            path = str((d or {}).get("new_path") or "") if isinstance(d, dict) else ""
+            seen.add(path)
+            new = d.get("new_file") is True and not d.get("deleted_file") and not d.get("renamed_file") \
+                if isinstance(d, dict) else False
+            ok = path in need or path.startswith("%s/%s/" % (lean.DOCS, intent)) or \
+                re.match(r"^%s/audit/[^/]+\.jsonl$" % re.escape(lean.DOCS), path)
+            if not (new and ok):
+                bad.append(path or "?")
+        p = ["开工提交改了开工以外的文件：%s" % "、".join(bad[:5])] if bad else []
+        if need - seen:
+            p.append("开工提交里没有 %s" % "、".join(sorted(need - seen)))
+        return p
 
     def earlier_reply(self, notes, did, qid, bridge, who):
         """The first reply to `did` by a person allowed to answer it that is older than its question note `qid`, or

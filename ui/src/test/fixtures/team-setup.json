@@ -15,6 +15,7 @@
     },
     "push": "auto",
     "patrol": true,
+    "issues": false,
     "jenkins": { "base": "", "user": "" }
   },
   "accounts": {
