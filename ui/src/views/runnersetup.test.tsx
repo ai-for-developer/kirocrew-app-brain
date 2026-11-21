@@ -15,7 +15,7 @@ function never(): TeamSetup {
   const s = fx.teamSetup()
   s.started_at = s.ended_at = null
   s.input = { gitlab_base: '', mode: 'project-token', projects: [], roles: { product: [], builder: [], security: [], data: [] }, push: 'auto', patrol: true,
-    jenkins: { base: '', user: '' } }
+    jenkins: { base: '', user: '' }, status_project: '' }
   s.steps = s.steps.map((x) => ({ ...x, status: 'todo', message: '', link: null, detail: '' }))
   return s
 }

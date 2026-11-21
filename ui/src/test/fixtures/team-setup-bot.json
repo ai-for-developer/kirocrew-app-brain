@@ -26,7 +26,8 @@
     "jenkins": {
       "base": "",
       "user": ""
-    }
+    },
+    "status_project": ""
   },
   "accounts": {
     "bridge": "brain-bridge",
@@ -143,6 +144,15 @@
           "detail": ""
         }
       ]
+    },
+    {
+      "id": "status",
+      "title": "状态中转",
+      "status": "done",
+      "message": "状态写到 shop/brain-status（新建的私有项目）：brain-bridge 能写（加成了 Maintainer），4 个人能读；新加了 bob、carol、dave",
+      "link": "https://gitlab.example.com/shop/brain-status",
+      "detail": "",
+      "projects": []
     },
     {
       "id": "kit_mr",

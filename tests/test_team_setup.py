@@ -52,21 +52,47 @@ class FakeGitLab:
     GitLab adds it; anyone but alice sees the project as a member only, at their level. users and scopes may be shared
     with other projects' fakes (FakeTeam). GET /user needs api, read_api or read_user, as on GitLab. Every request is
     kept in calls (method, path, query, body, the token's username); fail holds one-shot answers (method, path, status,
-    who): who is None (any token), a token, or a test on the token."""
+    who): who is None (any token), a token, or a test on the token.
+    The GitLab around it (box, shared with the other projects' fakes): the groups of their namespaces (GET
+    /namespaces/:path), every member as a GitLab user (GET /users?username=), and the status project 状态中转 writes
+    into once POST /projects made it (or a test did: status_project): a fake of its own, its calls its own. Members
+    are added (POST, 409 for one there already) and given a level (PUT)."""
 
     def __init__(self, admin, ssh_url, kit, level=40,
                  members=(("alice", 40), ("bob", 30), ("carol", 30), ("rita", 20)), labels=("ai-handoff",),
-                 path=P, pid=PID, users=None, scopes=None):
+                 path=P, pid=PID, users=None, scopes=None, box=None):
         self.path, self.pid = path, pid
         self.users = {} if users is None else users
         self.scopes = {} if scopes is None else scopes
         self.users.setdefault(admin, {"id": 1, "username": "alice", "name": "Alice", "email": "alice@example.com"})
         self.scopes.setdefault(admin, ["api"])
+        self.admin = admin
         self.level, self.members, self.labels = level, list(members), list(labels)
         self.ssh_url = ssh_url
         self.files = {"main": {".brain/kit.json": kit}}
         self.tokens, self.mrs, self.calls, self.fail = [], [], [], []
         self.revoked = set()
+        self.visibility = "private"
+        self.box = {"status": None, "people": {}, "namespaces": {}} if box is None else box
+        for name, _ in self.members:
+            self.box["people"].setdefault(name, 400 + len(self.box["people"]))
+        self.box["namespaces"].setdefault(path.rsplit("/", 1)[0], 5 + len(self.box["namespaces"]))
+
+    def uid(self, name):
+        """A GitLab user's id: a token's user's, else the one the box gave the member."""
+        return next((u["id"] for u in self.users.values() if u["username"] == name), self.box["people"].get(name))
+
+    def name_of(self, uid):
+        return next((u["username"] for u in self.users.values() if u["id"] == uid),
+                    next((n for n, i in self.box["people"].items() if i == uid), None))
+
+    def status_project(self, path="grp/brain-status", members=(("alice", 40),), by=None):
+        """The status project, as POST /projects makes it (*by*: the creator's token, alice's by default)."""
+        st = FakeGitLab(by or self.admin, "", None, members=members, labels=(), path=path, pid=77, users=self.users,
+                        scopes=self.scopes, box=self.box)
+        st.files = {"main": {"README.md": "# brain-status\n"}}
+        self.box["status"] = st
+        return st
 
     def prefix(self, path):
         """The part of *path* that names this project (/api/v4/projects/<path or id>); None: another one's, or none."""
@@ -81,7 +107,7 @@ class FakeGitLab:
         level = self.level_of((self.users.get(tok) or {"username": "alice"})["username"])
         return {"id": self.pid, "path_with_namespace": self.path, "default_branch": "main",
                 "web_url": BASE + "/" + self.path, "ssh_url_to_repo": self.ssh_url,
-                "http_url_to_repo": "%s/%s.git" % (BASE, self.path),
+                "http_url_to_repo": "%s/%s.git" % (BASE, self.path), "visibility": self.visibility,
                 "permissions": {"project_access": {"access_level": level}, "group_access": None}}
 
     def made(self, name):
@@ -139,6 +165,9 @@ class FakeGitLab:
     def __call__(self, method, url, headers, body):
         u = urlsplit(url)
         path, q = unquote(u.path), dict(parse_qsl(u.query))
+        st = self.box["status"]
+        if st is not None and st is not self and st.prefix(path):
+            return st(method, url, headers, body)
         data = json.loads(body.decode()) if body else None
         tok = headers.get("PRIVATE-TOKEN")
         self.calls.append((method, path, q, data, (self.users.get(tok) or {}).get("username")))
@@ -155,6 +184,19 @@ class FakeGitLab:
             if not {"api", "read_api", "read_user"} & set(self.scopes[tok]):
                 return ok({"error": "insufficient_scope"}, 403)
             return ok(self.users[tok])
+        if path.startswith(API + "/namespaces/") and method == "GET":
+            ns = path[len(API + "/namespaces/"):]
+            if ns not in self.box["namespaces"]:
+                return ok({"message": "404 Namespace Not Found"}, 404)
+            return ok({"id": self.box["namespaces"][ns], "full_path": ns, "kind": "group"})
+        if path == API + "/projects" and method == "POST":
+            ns = next(n for n, i in self.box["namespaces"].items() if i == data["namespace_id"])
+            made = self.status_project("%s/%s" % (ns, data["path"]), members=((self.users[tok]["username"], 40),), by=tok)
+            made.visibility, made.created_with = data["visibility"], data
+            return ok(made.project(tok), 201)
+        if path == API + "/users" and method == "GET":
+            uid = self.uid(q.get("username"))
+            return ok([{"id": uid, "username": q["username"]}] if uid else [])
         pre = self.prefix(path)
         if pre is None or not self.level_of(self.users[tok]["username"]):
             return ok({"message": "404 Project Not Found"}, 404)
@@ -199,6 +241,21 @@ class FakeGitLab:
         if rest == "/members/all" and method == "GET":
             return ok(self.page([{"id": i, "username": n, "access_level": lv}
                                  for i, (n, lv) in enumerate(self.members)], q))
+        if rest == "/members" and method == "POST":
+            name = self.name_of(int(data["user_id"]))
+            if name is None:
+                return ok({"message": "404 User Not Found"}, 404)
+            if any(n == name for n, _ in self.members):
+                return ok({"message": "Member already exists"}, 409)
+            self.members.append((name, int(data["access_level"])))
+            return ok({"id": data["user_id"], "username": name, "access_level": data["access_level"]}, 201)
+        m = re.fullmatch(r"/members/(\d+)", rest)
+        if m and method == "PUT":
+            name = self.name_of(int(m.group(1)))
+            if not any(n == name for n, _ in self.members):
+                return ok({"message": "404 Member Not Found"}, 404)
+            self.members = [(n, int(data["access_level"]) if n == name else lv) for n, lv in self.members]
+            return ok({"id": int(m.group(1)), "username": name, "access_level": data["access_level"]})
         m = re.fullmatch(r"/members/all/(\d+)", rest)
         if m and method == "GET":
             user = next((u for u in self.users.values() if u["id"] == int(m.group(1))), None)
@@ -381,7 +438,8 @@ def test_a_first_run_builds_the_runner_and_waits_for_the_kit_mr(world):
     old, new = gl.files["main"][".brain/kit.json"], gl.files["brain/runner-setup"][".brain/kit.json"]
     changed = set(new.splitlines()) - set(old.splitlines())
     assert changed == {'  "bridge_user": "%s",' % bot, '    "base": "%s",' % BASE, '    "project": "%s"' % P,
-                       '  "version": 1,', '  "work_sources": [', '    "mr-handoff",', '    "mr-patrol"', '  ]'}, changed
+                       '  "version": 1,', '  "work_sources": [', '    "mr-handoff",', '    "mr-patrol"', '  ]',
+                       '  "team_status": {', '    "project": "grp/brain-status"'}, changed
     assert json.loads(new)["work_sources"] == ["mr-handoff", "mr-patrol"] and "mr-patrol" in mr["description"]
     assert json.loads(new)["bot_users"] == ["brain-bot"] and json.loads(new)["bot_emails"] == ["brain-bot@noreply.invalid"]
     # team mode: on with the two configs, the same-user trial; hand-overs refused until the MR is merged
@@ -525,7 +583,7 @@ def test_a_run_cut_off_part_way_says_the_step_it_had_not_finished(world):
     view, ps = build(world)
     assert view["cut_off"] is None
     state = json.loads(ps.state.read_text())
-    state.update(running=True, current="kit_mr", ended_at=None, steps=state["steps"][:5])
+    state.update(running=True, current="kit_mr", ended_at=None, steps=state["steps"][:6])
     ps.state.write_text(json.dumps(state))
     cut = setup.view(setup.load_state(ps), ps, running=setup.busy(ps.root))
     assert (cut["running"], cut["cut_off"], cut["ended_at"]) == (False, "kit_mr", None)
@@ -569,6 +627,93 @@ def test_a_rerun_whose_kit_mr_only_switches_patrol_says_patrol_waits_for_it_and_
 def branch_kit(world):
     """kit.json on the setup's branch: what the kit.json MR would merge."""
     return world["gl"].files["brain/runner-setup"][KIT]
+
+
+def test_the_state_relay_gets_a_private_project_its_writer_and_its_readers_and_a_rerun_makes_nothing_new(world):
+    """状态中转 on project tokens: grp/brain-status made private with main by the one-time token, a project token of its
+    own (Maintainer, api) writing it, kept in its own file, everyone identities.json names a Reporter there; kit.json
+    and bridge.json name it. Run again: nothing written, the token kept."""
+    setup, gl = mod("team.setup"), world["gl"]
+    view, ps = build(world)
+    st = gl.box["status"]
+    assert st is not None and st.created_with == {
+        "name": "brain-status", "path": "brain-status", "namespace_id": gl.box["namespaces"]["grp"],
+        "visibility": "private", "initialize_with_readme": True, "default_branch": "main", "description": setup.STATUS_TEXT}
+    tok = st.live("brain-status")
+    assert (tok["access_level"], tok["scopes"]) == (40, ["api"]) and days_left(tok["expires_at"]) in (363, 364)
+    assert ps.token("status").read_text().strip() == tok["token"] and mode(ps.token("status")) == "0o600"
+    writer = st.users[tok["token"]]["username"]
+    assert dict(st.members) == {"alice": 40, writer: 40, "bob": 20, "carol": 20}
+    assert step(view, "status")["message"] == (
+        "状态写到 grp/brain-status（新建的私有项目）：%s 能写（建了项目令牌 brain-status：账号 %s，%s 到期），3 个人能读；新加了 bob、carol"
+        % (writer, writer, tok["expires_at"]))
+    assert step(view, "status")["link"] == BASE + "/grp/brain-status"
+    assert json.loads(branch_kit(world))["team_status"] == {"project": "grp/brain-status"}
+    assert setup.MR_STATUS % "grp/brain-status" in gl.mrs[0]["description"]
+    assert json.loads(ps.bridge_json.read_text())["team_status"] == {"project": "grp/brain-status",
+                                                                       "token_file": str(ps.token("status"))}
+    assert str(ps.token("status")) in mod("team.bridgehost").start_inputs({"bridge_config": str(ps.bridge_json)})
+    seen, seen_st = len(gl.calls), len(st.calls)
+    again, _ = build(world)
+    assert gl.writes(seen) == [] and st.writes(seen_st) == []
+    assert step(again, "status")["message"].startswith(
+        "状态写到 grp/brain-status（私有项目）：%s 能写（用上次建的项目令牌 brain-status：账号 %s" % (writer, writer))
+    assert step(again, "status")["message"].endswith("3 个人能读")
+
+
+def test_on_bot_accounts_the_bridge_writes_the_state_and_everyone_on_the_projects_reads_it(team):
+    """状态中转 on 机器人账号 with the one-time token: grp/brain-status made, brain-bridge added as its Maintainer (no
+    project token: the bridge's own token writes), the people of both projects Reporters; each kit.json MR names it."""
+    view, ps = build_team(team)
+    gl, st = team["gl"], team["gl"].status
+    assert st.created_with["visibility"] == "private" and not [c for c in st.calls if "/access_tokens" in c[1]]
+    assert dict(st.members) == {"alice": 40, "brain-bridge": 40, "bob": 20, "carol": 20}
+    assert step(view, "status")["message"] == "状态写到 grp/brain-status（新建的私有项目）：brain-bridge 能写（加成了 Maintainer），3 个人能读；新加了 bob、carol"
+    assert json.loads(ps.bridge_json.read_text())["team_status"] == {"project": "grp/brain-status"}
+    for path in ("grp/a", "grp/b"):
+        assert json.loads(gl.repos[path].files["brain/runner-setup"][KIT])["team_status"] == {"project": "grp/brain-status"}
+    assert {c[4] for c in st.writes()} == {"alice"}
+
+
+@pytest.mark.parametrize("there, said", [
+    (None, "GitLab 上还没有状态中转的项目 grp/brain-status，或者桥的账号看不到它：在 GitLab 上建一个私有项目 grp/brain-status，"
+           "把 brain-bridge 加成 Maintainer，再跑一次；或者填上一次性 token，app 自己建"),
+    ((("alice", 50), ("brain-bridge", 30)), "brain-bridge 在 grp/brain-status 是 Developer：写状态要 Maintainer。在 GitLab 上把它加成 "
+                                            "Maintainer，再跑一次"),
+])
+def test_without_the_one_time_token_the_status_project_must_be_there_with_the_bridge_its_maintainer(team, there, said):
+    if there is not None:
+        team["gl"].status_project(members=there)
+    view, _ = build_team(team, admin=False, bot=False, push="ssh")
+    assert (step(view, "status")["status"], step(view, "status")["message"]) == ("failed", said)
+    assert step(view, "kit_mr")["status"] == "todo"
+
+
+def test_a_rerun_whose_kit_mr_only_names_the_status_project_holds_up_no_hand_over(world):
+    """A runner set up before 状态中转 (its kit.json merged without team_status): run again, the kit.json MR only adds
+    team_status, says what it is for, and team mode says the personal 团队运行机 waits for it, not the hand-overs."""
+    setup, gl = mod("team.setup"), world["gl"]
+    build(world)
+    gl.merge(gl.mrs[-1]["iid"])
+    old = json.loads(gl.files["main"][KIT])
+    del old["team_status"]
+    gl.files["main"][KIT] = json.dumps(old, indent=2) + "\n"
+    view, _ = build(world)
+    after = json.loads(branch_kit(world))
+    assert [k for k in after if after[k] != old.get(k)] == ["team_status"]
+    assert gl.mrs[-1]["description"] == "一键建运行机开的 MR：" + setup.MR_STATUS % "grp/brain-status"
+    assert step(view, "team_mode")["message"] == "团队模式开了；上面那个 MR 合并以后，个人电脑上的团队运行机才从状态中转读"
+
+
+def test_the_status_project_typed_is_read_at_the_boundary():
+    setup = mod("team.setup")
+    base = {"gitlab_base": BASE, "project": P, "admin_token": "tok-123456"}
+    assert setup.SetupInput.parse(base).status_project == ""
+    assert setup.SetupInput.parse(dict(base, status_project="https://gitlab.example.com/ops/team-state/-/tree/main")
+                                  ).status_project == "ops/team-state"
+    for bad, said in (("state", "状态中转的项目要写成「组/项目」"), ("grp/pay", "状态中转的项目要另外一个"), (7, "状态中转的项目要写成")):
+        with pytest.raises(setup.SetupRefused, match=said):
+            setup.SetupInput.parse(dict(base, status_project=bad))
 
 
 def test_the_kit_mr_waits_until_it_is_merged_then_is_done(world):
@@ -924,11 +1069,12 @@ def test_the_command_line_says_one_line_per_step(world):
         served.stop()
     assert left is not None
     lines = first.stdout.splitlines()
-    assert first.returncode == 0 and len(lines) == 14, first.stdout + first.stderr
-    assert lines[0].startswith("✓ 找到项目  grp/pay") and lines[5].startswith("… kit.json 的 MR  开了 MR !7")
-    assert lines[10].startswith("✓ brain-patrol agent  写好了 brain-patrol 的设置")
-    assert lines[12].startswith("✓ 打开团队模式  团队模式的配置能用") and lines[12].endswith("交接都会被拒")
-    for last in (lines[13], second.stdout.splitlines()[-1]):
+    assert first.returncode == 0 and len(lines) == 15, first.stdout + first.stderr
+    assert lines[0].startswith("✓ 找到项目  grp/pay") and lines[6].startswith("… kit.json 的 MR  开了 MR !7")
+    assert lines[5].startswith("✓ 状态中转  状态写到 grp/brain-status（新建的私有项目）")
+    assert lines[11].startswith("✓ brain-patrol agent  写好了 brain-patrol 的设置")
+    assert lines[13].startswith("✓ 打开团队模式  团队模式的配置能用") and lines[13].endswith("交接都会被拒")
+    for last in (lines[14], second.stdout.splitlines()[-1]):
         assert last.startswith("签名服务还在跑（进程 %d）" % left) and last.endswith("kill %d" % left), last
     assert second.returncode == 0 and world["gl"].writes(seen) == [], second.stdout + second.stderr
     assert "✓ 桥的令牌  用上次建的项目令牌 brain-bridge" in second.stdout
@@ -956,9 +1102,18 @@ class FakeTeam:
 
     def __init__(self, admin, projects):
         self.users, self.scopes, self.pats = {}, {}, {}
+        self.box = {"status": None, "people": {}, "namespaces": {}}
         self.repos = {path: FakeGitLab(admin, ssh, kit, members=members, path=path, pid=pid, users=self.users,
-                                       scopes=self.scopes)
+                                       scopes=self.scopes, box=self.box)
                       for path, (pid, ssh, kit, members) in projects.items()}
+
+    @property
+    def status(self):
+        """The status project's fake, once there."""
+        return self.box["status"]
+
+    def status_project(self, **kw):
+        return next(iter(self.repos.values())).status_project(**kw)
 
     def pat(self, uid, username, scopes, days=200):
         """A new personal token of user *uid* (made at run time): its value."""
@@ -989,6 +1144,9 @@ class FakeTeam:
         repo = next((r for r in self.repos.values() if r.prefix(path)), None)
         if repo is not None:
             return repo(method, url, headers, body)
+        if (self.status and self.status.prefix(path)) or path in (API + "/projects", API + "/users") \
+                or path.startswith(API + "/namespaces/"):
+            return next(iter(self.repos.values()))(method, url, headers, body)
         ok = lambda o, s=200: (s, json.dumps(o).encode())  # noqa: E731
         tok = headers.get("PRIVATE-TOKEN")
         if tok not in self.users:
@@ -1124,10 +1282,13 @@ def test_without_a_one_time_token_brain_bridge_makes_the_labels_and_mrs(team):
     pushes over this machine's SSH, each kit.json keeping its own bot_users. 产品 and 开发 are typed then, and 安全 and
     数据 are the 开发 people."""
     setup = mod("team.setup")
-    view, ps = build_team(team, admin=False, bot=False, push="ssh")
     gl = team["gl"]
+    status = gl.status_project(members=(("alice", 50), ("brain-bridge", 40)))     # made by someone, the bridge in it
+    view, ps = build_team(team, admin=False, bot=False, push="ssh")
     assert everything_done(view), [(s["id"], s["status"], s["message"], s["detail"][:200]) for s in view["steps"]]
-    assert {c[4] for r in gl.repos.values() for c in r.writes()} == {"brain-bridge"} and len(gl.repos["grp/b"].mrs) == 1
+    assert {c[4] for r in list(gl.repos.values()) + [status] for c in r.writes()} == {"brain-bridge"}
+    assert len(gl.repos["grp/b"].mrs) == 1
+    assert dict(status.members) == {"alice": 50, "brain-bridge": 40, "bob": 20, "carol": 20}
     assert step(view, "project")["projects"][0]["message"] == "默认分支 main；桥的账号（brain-bridge）是 Developer"
     assert json.loads(ps.runnerd_json.read_text())["clone_url"] == str(team["tmp"] / "origin") + "/{project}.git"
     assert not ps.token("bot").exists() and view["accounts"] == {"bridge": "brain-bridge", "bot": ""}
@@ -1270,7 +1431,7 @@ def test_the_state_a_run_before_bot_account_mode_left_reads_as_a_project_token_r
     view = setup.view(setup.load_state(paths), paths, running=False)
     assert view["input"] == {"gitlab_base": BASE, "mode": "project-token", "projects": [P], "push": "auto", "patrol": True,
                              "roles": {"product": ["carol"], "builder": [], "security": [], "data": []},
-                             "jenkins": {"base": "", "user": ""}}
+                             "jenkins": {"base": "", "user": ""}, "status_project": ""}
     assert view["accounts"] == {"bridge": "", "bot": ""}
     assert (step(view, "project")["status"], step(view, "project")["projects"]) == ("done", [])
     assert {s["status"] for s in view["steps"][1:]} == {"todo"}
@@ -1304,6 +1465,7 @@ def test_the_command_line_sets_up_several_projects_as_gitlab_users_of_their_own(
     served = Served(team["gl"])
     token_file = team["tmp"] / "bridge-token"
     token_file.write_text(team["bridge"] + "\n")
+    team["gl"].status_project(members=(("alice", 50), ("brain-bridge", 40)))
     root = team["tmp"] / "cli-setup"
     cmd = [sys.executable, "-I", str(ROOT / "scripts" / "runner_setup.py"), "--root", str(root), "--gitlab", served.base,
            "--mode", "bot-account", "--project", "grp/a", "--project", "grp/b", "--role", "product=bob",

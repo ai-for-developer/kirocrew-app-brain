@@ -15,7 +15,8 @@
     },
     "push": "auto",
     "patrol": true,
-    "jenkins": { "base": "", "user": "" }
+    "jenkins": { "base": "", "user": "" },
+    "status_project": ""
   },
   "accounts": {
     "bridge": "",
@@ -64,6 +65,15 @@
       "status": "done",
       "message": "写好了身份表：5 个 Developer 以上的人能交接；产品 carol；开发 dave；安全 alice；数据 alice",
       "link": null,
+      "detail": "",
+      "projects": []
+    },
+    {
+      "id": "status",
+      "title": "状态中转",
+      "status": "done",
+      "message": "状态写到 shop/brain-status（新建的私有项目）：project_42_bot_7d1c 能写（建了项目令牌 brain-status：账号 project_42_bot_7d1c，2027-11-07 到期），4 个人能读；新加了 bob、carol、dave",
+      "link": "https://gitlab.example.com/shop/brain-status",
       "detail": "",
       "projects": []
     },

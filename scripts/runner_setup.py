@@ -98,6 +98,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--jenkins", help="Jenkins' address as this machine reaches it, for MR 巡检's logs")
     ap.add_argument("--jenkins-user", help="a read-only Jenkins user (Overall/Read and Job/Read)")
     ap.add_argument("--jenkins-token-file", help="a file holding that user's API token or password")
+    ap.add_argument("--status-project", help="状态中转's GitLab project, group/name (default: brain-status in the first "
+                                             "project's group)")
     ap.add_argument("--brainkit")
     ap.add_argument("--work")
     ap.add_argument("--agent-spec")
@@ -129,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         inp = setup.SetupInput.parse(dict(tokens, gitlab_base=a.gitlab, mode=a.mode, projects=a.project, roles=roles,
                                           push=a.push or ("token" if a.mode == "bot-account" and a.bot_token_file else "auto"),
-                                          patrol=not a.no_patrol, jenkins=jenkins))
+                                          patrol=not a.no_patrol, jenkins=jenkins, status_project=a.status_project or ""))
     except setup.SetupRefused as exc:
         print(exc, file=sys.stderr)
         return 2
