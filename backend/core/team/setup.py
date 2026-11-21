@@ -30,13 +30,11 @@ Under one root (default ~/.brain/team-setup; files 0600, folders 0700):
   bot-gitlab-token       runnerd's clone and the runs' pushes, when the runner pushes with a token: project access token
                          brain-bot, or the bot user's personal token
   jenkins-token          the token of the Jenkins read-only user typed (SetupInput.jenkins): MR 巡检 reads logs with it
-  status-gitlab-token    project-token mode: the status project's own project token brain-status (Maintainer, api),
-                         that 状态中转 writes snapshot.json with (the bridge's project token sees its own project only)
   identities.json, keys/, bridge.json, runnerd.json, signer.json, the spools, vouchers and ledgers, signer.pid / .log
-状态中转 (step status): the team server writes its TeamSnapshot into a GitLab project of its own (team/relay.py), by
-default brain-status in the first project's namespace, private, made with the one-time token when it is not there; its
-writer is Maintainer there and everyone of identities.json can read it (Reporter), and each kit.json names it
-(team_status) through its kit.json MR, so each person's app finds it.
+  status.git             a bare repo of its own, where the team server makes a project's brain/status the first time
+状态中转 (step status): the team server writes each project's status into the project itself, on its branch brain/status
+(team/relay.py), so GitLab lets whoever can read the project read its status, and nobody else; the bridge's account
+pushes it, and the step checks that no protected branch rule keeps it from that.
 Under ~/workplace/brain-team (KiroCrew lets agents work only under ~/workplace): runs/ and cache/, and MR 巡检's clones
 in patrol/. The agents: ~/.kiro/agents/brain-run.json, and brain-patrol.json beside it when 巡检所有开着的 MR is on (the
 kit.json MRs then also switch work source mr-patrol on). The person's one-time token (SetupInput.admin_token) lives in
@@ -60,7 +58,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from .. import bk
+from .. import bk, snapshot
 from ..constants import APP_ROOT, PYTHON_BIN
 from . import patrol as patrol_mod
 from . import signerproc, sources
@@ -76,7 +74,7 @@ PUSH_MODES = ("auto", "ssh", "token")
 PROJECT_TOKEN, BOT_ACCOUNT = "project-token", "bot-account"
 MODES = (PROJECT_TOKEN, BOT_ACCOUNT)
 LEVEL_NAME = {10: "Guest", 20: "Reporter", 30: "Developer", 40: "Maintainer", 50: "Owner"}
-MAINTAINER, DEVELOPER, OWNER, REPORTER = 40, 30, 50, 20
+MAINTAINER, DEVELOPER, OWNER = 40, 30, 50
 # the role the account that makes the labels and the kit.json MRs needs in each project: a project token is made by a
 # Maintainer
 MAKER_LEVEL = {PROJECT_TOKEN: MAINTAINER, BOT_ACCOUNT: DEVELOPER}
@@ -104,16 +102,13 @@ SSH_BOT = ("brain-bot", "brain-bot@noreply.invalid")    # git_name, git_email of
 REACH_WAIT_S = 20
 KIT = ".brain/kit.json"
 BRANCH = "brain/runner-setup"
+STATUS_BRANCH = snapshot.BRANCH     # where the team server writes each project's status (状态中转, team/relay.py)
 MR_TITLE = "运行机：更新 .brain/kit.json"
 MR_TEXT = ("一键建运行机开的 MR：运行机要 kit.json 写上 bridge_user（桥的账号）、bot_users 和 bot_emails（运行机推送用的账号和邮箱）、"
            "gitlab 和 default_branch。合并以前，签名服务不签交接。")
 MR_PATROL = {True: "work_sources 加上 mr-patrol：合并以后，运行机巡检这个项目所有开着的 MR，流水线没过、评审意见没回、有冲突的，它自己去修。",
              False: "work_sources 去掉 mr-patrol：合并以后，运行机不再巡检这个项目开着的 MR。"}
 PATROL_KINDS = (sources.HANDOFF, sources.PATROL)    # what 巡检所有开着的 MR puts in kit.json work_sources
-MR_STATUS = ("team_status 写上状态中转的项目 %s：合并以后，每个人电脑上的「团队运行机」用自己的 GitLab 令牌从这个项目读团队服务器写的"
-             "状态（运行机在做什么、全队交付），不用连服务器。")
-STATUS_NAME = "brain-status"        # the status project, in the first project's namespace unless typed
-STATUS_TEXT = "团队运行机（一键建运行机）每几分钟在这里写一次团队的状态 snapshot.json：每个人的 app 用自己的 GitLab 令牌读它。"
 # (kit.json key, default name, colour): the labels the bridge moves, and brain reflect's
 LABELS = (("handoff_label", "ai-handoff", "#1f75cb"), ("running_label", "ai-running", "#108548"),
           ("rejected_label", "ai-handoff-rejected", "#dd2b0e"), ("", "brain-reflect", "#6699cc"))
@@ -182,7 +177,6 @@ class SetupInput:
     bridge_token: str = field(default="", repr=False)   # bot-account: brain-bridge's personal token ('': the one kept)
     bot_token: str = field(default="", repr=False)      # bot-account: the bot user's personal token ('': the one kept)
     jenkins: JenkinsInput | None = None
-    status_project: str = ""                      # 状态中转's project ('': brain-status in the first one's namespace)
 
     @classmethod
     def parse(cls, raw: Any) -> "SetupInput":
@@ -247,21 +241,14 @@ class SetupInput:
         patrol = raw.get("patrol", True)
         if not isinstance(patrol, bool):
             raise SetupRefused("「巡检所有开着的 MR」的值不对：刷新页面再试")
-        status = raw.get("status_project") or ""
-        status = project_path(base, status) if isinstance(status, str) else None
-        if status is None or (status and not PROJECT_RE.match(status)):
-            raise SetupRefused("状态中转的项目要写成「组/项目」，比如 grp/brain-status；空着就用第一个项目的组下面的 brain-status")
-        if status.lower() in got:
-            raise SetupRefused("状态中转的项目要另外一个：%s 是运行机要管的项目" % status)
         return cls(base, tuple(got.values()), token, roles, push, patrol, mode, bridge or "", bot or "",
-                   JenkinsInput.parse(raw.get("jenkins")), status)
+                   JenkinsInput.parse(raw.get("jenkins")))
 
     def public(self) -> dict[str, Any]:
         """What setup-state.json keeps of the input: all of it but the tokens."""
         return {"gitlab_base": self.gitlab_base, "mode": self.mode, "projects": list(self.projects), "push": self.push,
                 "roles": {r: list(self.roles.get(r) or ()) for r in ROLES}, "patrol": self.patrol,
-                "jenkins": {"base": self.jenkins.base, "user": self.jenkins.user} if self.jenkins else None,
-                "status_project": self.status_project}
+                "jenkins": {"base": self.jenkins.base, "user": self.jenkins.user} if self.jenkins else None}
 
 
 @dataclass(frozen=True)
@@ -639,8 +626,7 @@ def view(state: Mapping[str, Any], paths: Paths, running: bool | None = None) ->
                       "projects": [str(p) for p in projects],
                       "roles": {r: [str(n) for n in roles.get(r) or []] for r in ROLES},
                       "push": str(inp.get("push") or "auto"), "patrol": inp.get("patrol") is not False,
-                      "jenkins": {"base": str(jenkins.get("base") or ""), "user": str(jenkins.get("user") or "")},
-                      "status_project": str(inp.get("status_project") or "")},
+                      "jenkins": {"base": str(jenkins.get("base") or ""), "user": str(jenkins.get("user") or "")}},
             "accounts": {k: str((kept.get(k) if isinstance(kept.get(k), dict) else {}).get("username") or "")
                          for k in ("bridge", "bot")},
             "steps": steps, "root": str(paths.root)}
@@ -852,18 +838,17 @@ def tokens_of(ctx: Ctx, p: Proj) -> dict:
     return ctx.state.setdefault("tokens", {}).setdefault("%s/projects/%d" % (ctx.inp.gitlab_base, p.id), {})
 
 
-def project_token(ctx: Ctx, p: Proj, key: str, name: str, scopes: tuple[str, ...], level: int = DEVELOPER
-                  ) -> tuple[dict, str]:
+def project_token(ctx: Ctx, p: Proj, key: str, name: str, scopes: tuple[str, ...]) -> tuple[dict, str]:
     """(the token's record, how: a TOKEN_SAID key). The one this setup made on this GitLab for project *p* while GitLab
     has it active: kept while its file signs in as its bot user and it has more than RENEW_DAYS to go, else rotated (a
-    new value for the same bot user, so kit.json stays as it is). A new one (*level*, *scopes*) only when there is
+    new value for the same bot user, so kit.json stays as it is). A new one (Developer, *scopes*) only when there is
     none, or GitLab has it revoked, expired or gone. A token's value goes only into its own file. Nothing is revoked
     here: rotating a token revokes its old value, and a token this setup did not make is never rotated."""
     saved = tokens_of(ctx, p).get(key)
     live = active_token(ctx, p, saved) if isinstance(saved, dict) else None
     if live is None:
         return keep(ctx, p, key, name, ctx.gl.call("POST", "/projects/%d/access_tokens" % p.id, body={
-            "name": name, "scopes": list(scopes), "access_level": level, "expires_at": until()})), "made"
+            "name": name, "scopes": list(scopes), "access_level": DEVELOPER, "expires_at": until()})), "made"
     tok = read_secret(ctx.paths.token(key))
     ctx.remember(tok)
     me = whoami(ctx, tok) if tok else None
@@ -1151,109 +1136,57 @@ def step_identities(ctx: Ctx) -> StepResult:
 # ---- 6 状态中转 ------------------------------------------------------------------------------------------------- #
 
 def step_status(ctx: Ctx) -> StepResult:
-    """The GitLab project the team server writes its snapshot into (team/relay.py) and each person's app reads with
-    their own token: the one typed, else brain-status in the first project's namespace. Made private (with main) by the
-    one-time token when it is not there; without that token it must be there already. Its writer is Maintainer there
-    (main is protected for Maintainers by default): brain-bridge (bot-account), raised or added by the one-time token, or
-    (project-token, the bridge's token seeing its own project only) a project token of its own, brain-status, kept and
-    renewed as the others. Everyone identities.json names can read it: a Reporter where they could not yet. Its path
-    goes into each kit.json (the kit.json MR) and bridge.json (team_status)."""
-    gl = ctx.gl
-    path = ctx.inp.status_project or "%s/%s" % (ctx.found[0].path.rsplit("/", 1)[0], STATUS_NAME)
-    got, made = find_status(ctx, path), False
-    if got is None:
-        if not ctx.inp.admin_token:
-            return failed("GitLab 上还没有状态中转的项目 %s，或者桥的账号看不到它：在 GitLab 上建一个私有项目 %s，把 %s 加成 Maintainer，"
-                          "再跑一次；或者填上一次性 token，app 自己建" % (path, path, ctx.state["bridge_user"]))
-        got, made = make_status(ctx, path), True
-    p = Proj(int(got["id"]), str(got.get("path_with_namespace") or path), str(got.get("default_branch") or "main"),
-             got.get("web_url") or None, "", "", {}, "")
-    if p.default_branch != "main" and not branch_exists(gl, p.id, "main"):
-        return failed("状态中转的项目 %s 的默认分支是 %s，也没有 main：状态写在 main 上，在 GitLab 上建好 main，再跑一次" % (p.path, p.default_branch))
-    writer, how = status_writer(ctx, p)
-    added = status_readers(ctx, p)
-    ctx.state["status_project"] = {"path": p.path, "id": p.id, "web_url": p.web_url, "writer": writer}
-    shown = got.get("visibility")
-    said = "状态写到 %s（%s）：%s 能写%s，%s 个人能读" % (
-        p.path, "新建的私有项目" if made else "%s项目" % {"private": "私有", "internal": "内部", "public": "公开"}.get(
-            str(shown), "已有的"), writer, "（%s）" % how if how else "", len(status_people(ctx)))
-    return done(said + ("；新加了 %s" % "、".join(added) if added else ""), link=p.web_url)
+    """状态中转 (team/relay.py): the team server writes each project's status into the project itself, on its branch
+    brain/status, so GitLab lets whoever can read the project read its status, and nobody else. The bridge's account
+    pushes it (it is a Developer or more in every project); here each project's protected branches are checked for a
+    rule that keeps it from pushing brain/status, which waits for a person to lift. Nothing is made: the team server's
+    first write makes the branch."""
+    ctx.state.pop("status_project", None)       # an earlier run's status project of its own: left as it is, unused
+    rows = each(ctx, of_found(ctx), lambda p: project_status(ctx, p))
+    return summed(rows, "%d 个项目的 brain/status 桥的账号都能推" % len(rows),
+                  "有的项目的 brain/status 受保护，桥的账号推不了：看每个项目那一行")
 
 
-def find_status(ctx: Ctx, path: str) -> dict | None:
+def project_status(ctx: Ctx, p: Proj) -> StepResult:
+    name, uid, level = bridge_in(ctx, p)
     try:
-        return ctx.gl.project(path) or None
-    except Exception as exc:  # noqa: BLE001 - not there (or not seen): None; anything else as every step says it
-        if _gitlab_status(exc) == 404:
-            return None
-        raise
-
-
-def make_status(ctx: Ctx, path: str) -> dict:
-    """The status project, private, with main (initialize_with_readme), in *path*'s namespace."""
-    space, name = path.rsplit("/", 1)
-    try:
-        ns = ctx.gl.call("GET", "/namespaces/%s" % urllib.parse.quote(space, safe="")) or {}
-    except Exception as exc:  # noqa: BLE001
-        if _gitlab_status(exc) == 404:
-            raise StepFailed("GitLab 上没有 %s 这个组，或者你看不到它：状态中转的项目换一个地方写" % space, str(exc)) from None
-        raise
-    return ctx.gl.call("POST", "/projects", body={
-        "name": name, "path": name, "namespace_id": ns["id"], "visibility": "private", "initialize_with_readme": True,
-        "default_branch": "main", "description": STATUS_TEXT}) or {}
-
-
-def status_writer(ctx: Ctx, p: Proj) -> tuple[str, str]:
-    """(who writes snapshot.json, how that was said): Maintainer of the status project."""
-    if ctx.inp.mode == PROJECT_TOKEN:
-        rec, how = project_token(ctx, p, "status", STATUS_NAME, BRIDGE_SCOPES, level=MAINTAINER)
-        return rec["username"], token_said(how, rec)
-    _tok, me = account(ctx, "bridge")
-    name = str(me.get("username") or "").lower()
-    level = member_level(ctx.gl, p.id, int(me["id"]))
-    if level >= MAINTAINER:
-        return name, ""
-    if not ctx.inp.admin_token:
-        raise StepFailed("%s 在 %s 是 %s：写状态要 Maintainer。在 GitLab 上把它加成 Maintainer，再跑一次" % (
-            name, p.path, LEVEL_NAME.get(level, "没有权限的人")))
-    set_member(ctx, p, int(me["id"]), MAINTAINER)
-    return name, "加成了 Maintainer"
-
-
-def status_people(ctx: Ctx) -> list[str]:
-    """Everyone identities.json names (the users who may hand over, and the roles), each once."""
-    doc = parse_json(read_secret(ctx.paths.identities)) or {}
-    roles = doc.get("roles") if isinstance(doc.get("roles"), dict) else {}
-    return list(dict.fromkeys([str(n) for n in doc.get("users") or {}] + [str(n) for r in roles.values() for n in r]))
-
-
-def status_readers(ctx: Ctx, p: Proj) -> list[str]:
-    """The people of identities.json who could not read the status project, made Reporters there."""
-    have: dict[str, int] = {}
-    for m in ctx.gl.pages("/projects/%d/members/all" % p.id, {}, 100, 50, "members"):
-        name = str(m.get("username") or "").lower()
-        have[name] = max(have.get(name, 0), int(m.get("access_level") or 0))
-    added = []
-    for name in status_people(ctx):
-        if have.get(name, 0) >= REPORTER:
-            continue
-        found = [u for u in ctx.gl.call("GET", "/users", {"username": name}) or [] if isinstance(u, dict)
-                 and str(u.get("username") or "").lower() == name]
-        if not found:
-            raise StepFailed("GitLab 上找不到用户 %s：看看身份表里的名字" % name)
-        set_member(ctx, p, int(found[0]["id"]), REPORTER)
-        added.append(name)
-    return added
-
-
-def set_member(ctx: Ctx, p: Proj, uid: int, level: int) -> None:
-    """*uid* a member of *p* at *level*: added, or (a member already) given that level."""
-    try:
-        ctx.gl.call("POST", "/projects/%d/members" % p.id, body={"user_id": uid, "access_level": level})
-    except Exception as exc:  # noqa: BLE001 - a member already: its level raised
-        if _gitlab_status(exc) != 409:
+        rules = ctx.gl.call("GET", "/projects/%d/protected_branches" % p.id, {"per_page": 100}) or []
+    except Exception as exc:  # noqa: BLE001 - a token that may not read the rules: said; anything else as every step says it
+        if _gitlab_status(exc) not in (401, 403):
             raise
-        ctx.gl.call("PUT", "/projects/%d/members/%d" % (p.id, uid), body={"access_level": level})
+        return done("看不了 %s 的受保护分支（这个 token 不够）：团队服务器第一次写 %s 时就知道能不能推，推不了会在它的运行机页上说"
+                    % (p.path, STATUS_BRANCH))
+    held = [r for r in rules if isinstance(r, dict) and branch_matches(str(r.get("name") or ""), STATUS_BRANCH)]
+    if held and not any(may_push(a, uid, level) for r in held for a in r.get("push_access_levels") or []
+                        if isinstance(a, dict)):
+        return waiting("受保护分支 %s 管着 %s，%s 推不了：在 GitLab 上放开它（Developer 能推），团队服务器才写得了这个项目的状态"
+                       % ("、".join(str(r["name"]) for r in held), STATUS_BRANCH, name))
+    there = branch_exists(ctx.gl, p.id, STATUS_BRANCH)
+    return done("%s %s，%s 能推" % (STATUS_BRANCH, "已经在了" if there else "还没有：团队服务器第一次写的时候建", name))
+
+
+def bridge_in(ctx: Ctx, p: Proj) -> tuple[str, int | None, int]:
+    """(the bridge's GitLab user, its id, its level in *p*): a project token's is Developer."""
+    if ctx.inp.mode == PROJECT_TOKEN:
+        rec = tokens_of(ctx, ctx.found[0]).get("bridge") or {}
+        return ctx.state["bridge_user"], rec.get("user_id"), DEVELOPER
+    _tok, me = account(ctx, "bridge")
+    return ctx.state["bridge_user"], me.get("id"), member_level(ctx.gl, p.id, int(me["id"]))
+
+
+def branch_matches(rule: str, branch: str) -> bool:
+    """GitLab's protected branch rule *rule* (a name, or one with * for any run of characters) covers *branch*."""
+    return re.fullmatch(re.escape(rule).replace(r"\*", ".*"), branch) is not None
+
+
+def may_push(entry: Mapping[str, Any], uid: int | None, level: int) -> bool:
+    """One push_access_levels entry of a protected branch lets the user *uid* at *level* push: it names that user, or
+    (naming no user or group) a level it reaches; No one (0) lets nobody."""
+    if entry.get("user_id") is not None:
+        return uid is not None and int(entry["user_id"]) == int(uid)
+    if entry.get("group_id") is not None or entry.get("deploy_key_id") is not None:
+        return False
+    return 0 < int(entry.get("access_level") or 0) <= level
 
 
 # ---- 7 kit.json, through an MR per project ----------------------------------------------------------------------- #
@@ -1262,7 +1195,7 @@ def step_kit_mr(ctx: Ctx) -> StepResult:
     """Each project's kit.json on its default branch names the bridge's account, the bot's, GitLab and the default
     branch (MIGRATE 第二部分 4). Where it does not: the change on branch brain/runner-setup (the file's own formatting
     kept) and an MR to the default branch, which a person merges: waiting until then. The MRs that wait are kept in the
-    state (kit_mr), with what each holds up until it is merged (kit_parts)."""
+    state (kit_mr), with whether each only switches MR 巡检."""
     ctx.state["kit_mr"] = {}
     rows = each(ctx, of_found(ctx), lambda p: project_kit_mr(ctx, p))
     if not ctx.state["kit_mr"]:
@@ -1289,16 +1222,15 @@ def project_kit_mr(ctx: Ctx, p: Proj) -> StepResult:
                          "content": kit_text(want, there or p.kit_text)}]})
     mr = gl.mr_for_branch(pid, BRANCH)
     opened = mr is None
-    parts = kit_parts(p, want)
+    only = patrol_only(p, want)
     if opened:
-        said = ([MR_TEXT] if "handoff" in parts else []) + \
-            ([MR_PATROL[sources.PATROL in sources.enabled(want)]] if "patrol" in parts else []) + \
-            ([MR_STATUS % want["team_status"]["project"]] if "status" in parts else [])
-        text = "\n\n".join(said) if "handoff" in parts else "一键建运行机开的 MR：" + "\n\n".join(said)
+        patrol = MR_PATROL[sources.PATROL in sources.enabled(want)]
+        text = ("一键建运行机开的 MR：" + patrol if only else
+                MR_TEXT + ("\n\n" + patrol if "work_sources" in changed else ""))
         mr = gl.call("POST", "/projects/%d/merge_requests" % pid, body={
             "source_branch": BRANCH, "target_branch": p.default_branch, "title": MR_TITLE, "description": text,
             "remove_source_branch": True}) or {}
-    ctx.state["kit_mr"][p.path] = {"iid": mr.get("iid"), "web_url": mr.get("web_url"), "holds": parts}
+    ctx.state["kit_mr"][p.path] = {"iid": mr.get("iid"), "web_url": mr.get("web_url"), "patrol_only": only}
     return waiting("%s MR !%s：请在 GitLab 上合并这个 MR" % ("开了" if opened else "还没合并", mr.get("iid")),
                    link=mr.get("web_url") or None)
 
@@ -1308,14 +1240,11 @@ def kit_changes(p: Proj, want: dict[str, Any]) -> list[str]:
     return [k for k in want if want[k] != p.kit.get(k)]
 
 
-def kit_parts(p: Proj, want: dict[str, Any]) -> list[str]:
-    """What *p*'s kit.json MR holds up until it is merged: handoff (the hand-over: an account, GitLab, the default
-    branch, mr-handoff), patrol (mr-patrol switched on or off), status (team_status: the personal apps' 团队运行机)."""
+def patrol_only(p: Proj, want: dict[str, Any]) -> bool:
+    """Whether *p*'s kit.json MR only switches mr-patrol on or off: everything the hand-over needs is on the default
+    branch already."""
     kinds = set(sources.enabled(want)) ^ set(sources.enabled(p.kit))
-    changed = kit_changes(p, want)
-    return [part for part, on in (("handoff", sources.HANDOFF in kinds or any(k not in ("work_sources", "team_status")
-                                                                              for k in changed)),
-                                  ("patrol", sources.PATROL in kinds), ("status", "team_status" in changed)) if on]
+    return kit_changes(p, want) == ["work_sources"] and sources.HANDOFF not in kinds
 
 
 def wanted_kit(ctx: Ctx, p: Proj) -> dict[str, Any]:
@@ -1333,10 +1262,6 @@ def wanted_kit(ctx: Ctx, p: Proj) -> dict[str, Any]:
         want["work_sources"] = kinds + [k for k in PATROL_KINDS if k not in kinds]
     elif sources.PATROL in kinds:
         want["work_sources"] = [k for k in kinds if k != sources.PATROL]
-    status = ctx.state.get("status_project")
-    if isinstance(status, dict) and status.get("path"):
-        want["team_status"] = dict(want["team_status"] if isinstance(want.get("team_status"), dict) else {},
-                                   project=status["path"])
     return want
 
 
@@ -1452,20 +1377,7 @@ def bridge_doc(ctx: Ctx, salt: str) -> dict[str, Any]:
         "kirocrew": {"agent": "brain-run", "memory_mode": "incognito"},
         "signer": {"type": "spool", "spool_dir": str(ps.signer_spool), "allowed_signers": str(ps.allowed)},
         **jenkins_doc(ctx),
-        **status_doc(ctx),
     }
-
-
-def status_doc(ctx: Ctx) -> dict[str, Any]:
-    """bridge.json's team_status (team/relay.py): the project 状态中转 writes snapshot.json to, and (project-token) the
-    file of the status project's own token, which the bridge's cannot stand in for."""
-    status = ctx.state.get("status_project")
-    if not isinstance(status, dict) or not status.get("path"):
-        return {}
-    doc = {"project": status["path"]}
-    if ctx.inp.mode == PROJECT_TOKEN:
-        doc["token_file"] = str(ctx.paths.token("status"))
-    return {"team_status": doc}
 
 
 @dataclass(frozen=True)
@@ -1606,20 +1518,18 @@ def step_team_mode(ctx: Ctx) -> StepResult:
 
 
 def mrs_said(ctx: Ctx) -> str:
-    """What the kit.json MRs that wait hold up until they are merged (kit_parts): the hand-overs of their projects,
-    else MR 巡检 starting or stopping there, and each person's 团队运行机 reading 状态中转."""
+    """What the kit.json MRs that wait hold up until they are merged: the hand-overs of their projects, or (an MR that
+    only switches mr-patrol) MR 巡检."""
     wait = ctx.state.get("kit_mr") or {}
+    handoff = [path for path, mr in wait.items() if not mr.get("patrol_only")]
     if not wait:
         return ""
-    one = len(ctx.found) == 1
-    handoff = [path for path, mr in wait.items() if "handoff" in mr.get("holds", ["handoff"])]
+    if len(ctx.found) == 1:
+        return "；可是上面那个 MR 合并以前，交接都会被拒" if handoff else \
+            "；上面那个 MR 合并以后，巡检才" + ("开始" if ctx.inp.patrol else "停")
     if handoff:
-        return "；可是上面那个 MR 合并以前，交接都会被拒" if one else \
-            "；可是 %s 的 kit.json MR 合并以前，这些项目的交接都会被拒" % "、".join(handoff)
-    holds = {x for mr in wait.values() for x in mr.get("holds") or []}
-    later = (["%s巡检才%s" % ("" if one else "那里的", "开始" if ctx.inp.patrol else "停")] if "patrol" in holds else []) + \
-        (["个人电脑上的团队运行机才从状态中转读"] if "status" in holds else [])
-    return "；%s 合并以后，%s" % ("上面那个 MR" if one else "%s 的 kit.json MR" % "、".join(wait), "，".join(later))
+        return "；可是 %s 的 kit.json MR 合并以前，这些项目的交接都会被拒" % "、".join(handoff)
+    return "；%s 的 kit.json MR 合并以后，那里的巡检才%s" % ("、".join(wait), "开始" if ctx.inp.patrol else "停")
 
 
 STEPS: tuple[Step, ...] = (

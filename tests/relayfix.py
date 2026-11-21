@@ -1,12 +1,15 @@
-"""状态中转, offline: GitLab REST v4 over bare git repos (one per project), as the team server's state relay reads it, and
-the status project it writes its snapshot into.
+"""状态中转, offline: GitLab REST v4 over bare git repos (one per project), as the team server's state relay reads and
+writes them, and each person's app reads them.
 
 A code project's branches (search ^prefix, one by name, each with its head's id, parent_ids and committed_date), files
-at any ref (raw) and blobs by id, trees (recursive or not; 404 for a folder not there), the newest commit touching a path, and merge
-bases come from its bare repo with git. Its MRs, their notes and pipelines are in memory, the MR list paged and filtered
-by state, updated_after and source_branch as GitLab does. The status project (status()) keeps its files per branch in memory, takes the
-commits API's create and update actions (400 for a create of a file there or an update of one that is not, as GitLab
-answers), and can be made to fail (fail_writes). Every request is kept in calls: (method, path, query, the token's user).
+at any ref (raw) and blobs by id, trees (recursive or not; 404 for a folder not there), the newest commit touching a
+path, and merge bases come from its bare repo with git. Commits are taken as GitLab's commits API takes them: onto an
+existing branch, or a new one from start_branch or start_sha, a branch not there without either refused (400, "You can
+only create or edit files when you are on a branch") in a project that has commits; a create of a file there or an
+update of one that is not is 400; a protected branch (protect()) is 403. Its MRs, their notes and pipelines are in
+memory, the MR list paged and filtered by state, updated_after and source_branch as GitLab does. access() keeps a
+project to some users: anyone else gets GitLab's 404. Writes can be made to fail (fail_writes), a project to be down.
+Every request is kept in calls: (method, path, query, the token's user); every commit taken in commits.
 """
 
 from __future__ import annotations
@@ -14,7 +17,9 @@ from __future__ import annotations
 import base64
 import itertools
 import json
+import os
 import subprocess
+import tempfile
 import time
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -37,13 +42,13 @@ class RepoGitLab:
         self.mrs: dict[tuple[str, int], dict] = {}
         self.notes: dict[tuple[str, int], list[dict]] = {}
         self.pipes: dict[tuple[str, int], list[dict]] = {}
-        self.status_path: str | None = None
-        self.status_files: dict[str, dict[str, str]] = {}     # branch -> path -> text
-        self.status_commits: list[dict] = []
+        self.commits: list[tuple[str, dict]] = []               # (project, the commits API's body) of each one taken
+        self.readers: dict[str, set[str]] = {}                  # project -> the users who may see it (access())
+        self.protected: set[tuple[str, str]] = set()           # (project, branch) nobody here may push to
         self.fail_writes = 0                                    # the next n commits answer 500
-        self.down: set[str] = set()                            # projects GitLab answers 502 for (the status one too)
+        self.down: set[str] = set()                            # projects GitLab answers 502 for
         self.calls: list[tuple] = []
-        self.who = {"bridge-tok": "brain-bridge", "alice-tok": "alice", "bob-tok": "bob", "status-tok": "status-bot"}
+        self.who = {"bridge-tok": "brain-bridge", "alice-tok": "alice", "bob-tok": "bob", "carol-tok": "carol"}
         self.ids = itertools.count(9000)
 
     # ---- the world -------------------------------------------------------------------------------------------- #
@@ -51,8 +56,32 @@ class RepoGitLab:
     def project(self, path: str, pid: int, bare) -> None:
         self.repos[path] = {"id": pid, "bare": str(bare)}
 
-    def status(self, path: str) -> None:
-        self.status_path = path
+    def access(self, path: str, *users: str) -> None:
+        """Only *users* (and the bridge's account) see *path*: GitLab answers anyone else 404, as for a private project
+        they are no member of."""
+        self.readers[path] = {"brain-bridge", *users}
+
+    def protect(self, path: str, branch: str) -> None:
+        self.protected.add((path, branch))
+
+    def status_commits(self, path: str) -> list[dict]:
+        return [c for p, c in self.commits if p == path and c["branch"] == "brain/status"]
+
+    def put_status(self, path: str, text: str, branch: str = "brain/status") -> str:
+        """snapshot.json on *path*'s *branch* as a team server left it (a commit of its own on top of what is there, the
+        first one with no parent)."""
+        bare = self.repos[path]["bare"]
+        head = git(bare, "rev-parse", "-q", "--verify", "refs/heads/" + branch, check=False).stdout.strip()
+        blob = subprocess.run(["git", "-C", bare, "hash-object", "-w", "--stdin"], input=text, text=True,
+                              capture_output=True, check=True).stdout.strip()
+        tree = subprocess.run(["git", "-C", bare, "mktree"], input="100644 blob %s\tsnapshot.json\n" % blob, text=True,
+                              capture_output=True, check=True).stdout.strip()
+        env = dict(os.environ, GIT_AUTHOR_NAME="brain-bridge", GIT_AUTHOR_EMAIL="b@example.com",
+                   GIT_COMMITTER_NAME="brain-bridge", GIT_COMMITTER_EMAIL="b@example.com")
+        c = subprocess.run(["git", "-C", bare, "commit-tree", tree, *(["-p", head] if head else []), "-m", "团队状态"],
+                           text=True, capture_output=True, check=True, env=env).stdout.strip()
+        git(bare, "update-ref", "refs/heads/" + branch, c)
+        return c
 
     def head(self, path: str, branch: str) -> str:
         return git(self.repos[path]["bare"], "rev-parse", "refs/heads/" + branch).stdout.strip()
@@ -116,10 +145,8 @@ class RepoGitLab:
         if not path.startswith(API + "/projects/"):
             return ok({"message": "404 (fake)"}, 404)
         rest = path[len(API + "/projects/"):]
-        if self.status_path and (rest == self.status_path or rest.startswith(self.status_path + "/")):
-            return self.status_call(method, rest[len(self.status_path):], q, data, ok)
         name = next((p for p in self.repos if rest == p or rest.startswith(p + "/")), None)
-        if name is None:
+        if name is None or (name in self.readers and self.who[tok] not in self.readers[name]):
             return ok({"message": "404 Project Not Found"}, 404)
         if name in self.down:
             return 502, b"Bad Gateway"
@@ -164,6 +191,8 @@ class RepoGitLab:
                 return ok([])
             sha, when = p.stdout.strip().split("\0")
             return ok([{"id": sha, "committed_date": when}])
+        if sub == "/repository/commits" and method == "POST":
+            return self.commit_files(name, bare, data, self.who[tok], ok)
         if sub == "/repository/merge_base":
             a, b = multi.get("refs[]", ["", ""])[:2]
             p = git(bare, "merge-base", a, b, check=False)
@@ -190,25 +219,39 @@ class RepoGitLab:
         sha, parents, when = git(bare, "show", "-s", "--format=%H%x00%P%x00%cI", "refs/heads/" + name).stdout.strip().split("\0")
         return {"name": name, "commit": {"id": sha, "parent_ids": parents.split(), "committed_date": when}}
 
-    def status_call(self, method, sub, q, data, ok):
-        if self.status_path in self.down:
-            return 502, b"Bad Gateway"
-        if sub == "" and method == "GET":
-            return ok({"id": 99, "path_with_namespace": self.status_path, "default_branch": "main"})
-        if sub.startswith("/repository/files/") and sub.endswith("/raw") and method == "GET":
-            text = self.status_files.get(q.get("ref", ""), {}).get(unquote(sub[len("/repository/files/"):-4]))
-            return (200, text.encode()) if text is not None else ok({"message": "404 File Not Found"}, 404)
-        if sub == "/repository/commits" and method == "POST":
-            if self.fail_writes:
-                self.fail_writes -= 1
-                return ok({"message": "500 Internal Server Error"}, 500)
-            files = self.status_files.setdefault(data["branch"], {})
+    def commit_files(self, name, bare, data, who, ok):
+        if self.fail_writes:
+            self.fail_writes -= 1
+            return ok({"message": "500 Internal Server Error"}, 500)
+        branch = data["branch"]
+        if (name, branch) in self.protected:
+            return ok({"message": "You are not allowed to push into this branch"}, 403)
+        head = git(bare, "rev-parse", "-q", "--verify", "refs/heads/" + branch, check=False).stdout.strip()
+        start = data.get("start_sha") or (git(bare, "rev-parse", "-q", "--verify", "refs/heads/" + data["start_branch"],
+                                              check=False).stdout.strip() if data.get("start_branch") else "")
+        if not head and not start and git(bare, "for-each-ref", "refs/heads/").stdout.strip():
+            return ok({"message": "You can only create or edit files when you are on a branch"}, 400)
+        parent = head or start
+        with tempfile.TemporaryDirectory() as d:
+            env = dict(os.environ, GIT_INDEX_FILE=os.path.join(d, "index"), GIT_AUTHOR_NAME=who,
+                       GIT_AUTHOR_EMAIL=who + "@example.com", GIT_COMMITTER_NAME=who,
+                       GIT_COMMITTER_EMAIL=who + "@example.com")
+            run = lambda *a, **kw: subprocess.run(["git", "-C", bare, *a], text=True, capture_output=True, env=env, **kw)  # noqa: E731
+            if parent:
+                run("read-tree", parent, check=True)
             for a in data["actions"]:
-                there = a["file_path"] in files
-                if (a["action"] == "create" and there) or (a["action"] == "update" and not there):
+                there = run("ls-files", "--error-unmatch", a["file_path"]).returncode == 0
+                if (a["action"] == "create" and there) or (a["action"] in ("update", "delete") and not there):
                     return ok({"message": "A file with this name %s" % ("already exists" if there else "doesn't exist")}, 400)
+                if a["action"] == "delete":
+                    run("update-index", "--remove", a["file_path"], check=True)
+                    continue
                 text = a["content"] if a.get("encoding") != "base64" else base64.b64decode(a["content"]).decode()
-                files[a["file_path"]] = text
-            self.status_commits.append(data)
-            return ok({"id": "%040x" % next(self.ids)}, 201)
-        return ok({"message": "404 (fake)"}, 404)
+                blob = run("hash-object", "-w", "--stdin", input=text, check=True).stdout.strip()
+                run("update-index", "--add", "--cacheinfo", "100644,%s,%s" % (blob, a["file_path"]), check=True)
+            tree = run("write-tree", check=True).stdout.strip()
+            c = run("commit-tree", tree, *(["-p", parent] if parent else []), "-m", data["commit_message"],
+                    check=True).stdout.strip()
+            run("update-ref", "refs/heads/" + branch, c, check=True)
+        self.commits.append((name, data))
+        return ok({"id": c}, 201)

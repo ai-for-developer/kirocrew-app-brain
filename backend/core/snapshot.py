@@ -1,17 +1,24 @@
-"""TeamSnapshot: what the team server writes into GitLab every few minutes (team/relay.py) and every person's app reads
-with their own token (runner_view.Relays), one shape for both sides (ui/src/types.ts TeamSnapshot), each side parsing it
-at its boundary: the writer what it built, before it writes; the reader what it read, before it shows it.
+"""TeamSnapshot: what the team server writes into GitLab every few minutes (team/relay.py), one for each of its projects
+in that project itself, on the project's own branch brain/status, and what every person's app reads with their own
+token (runner_view.Runners), one shape for both sides (ui/src/types.ts TeamSnapshot), each side parsing it at its
+boundary: the writer what it built, before it writes; the reader what it read, before it shows it. GitLab decides who
+reads it: whoever can read a project's code reads its status, and nobody else; a person's app puts together the
+projects they can read.
 
 The shape is one table (SNAPSHOT): a field is str, int, float (an int too), bool, Opt(kind) (None too), Many(kind) (a
 list), or a dict of fields. parse() keeps exactly those fields, every one checked, and drops any other (a newer writer's
 addition within the same schema); a field missing or of another kind is Bad, and a schema other than SCHEMA is
 OtherSchema. The parts:
-  server     the app's version, team mode, its last round, and per project whether the runner takes its hand-overs
-             (on), the work sources its kit.json switches on, and what went wrong with it this round, in words
+  project    the project it is the status of (the one it is in)
+  server     the team server, the same in every project's: the app's version, team mode, its last round, and the
+             brain-patrol sessions MR 巡检 and 测试环境报错 share (cap, working)
+  state      the project as the round left it: whether the runner takes its hand-overs (on), the work sources its
+             kit.json switches on, and what went wrong with it, in words
   runner     its hand-over runs (the ledger's latest run of each requirement, as 运行机 lists them, with what each waits
-             on), MR 巡检's and 测试环境报错's items as their views give them, and the brain-patrol sessions: cap, working
-  delivery   every requirement of its projects, open or merged in the last 14 days, from GitLab only: its stage in
-             交付总览's words, its MR with its CI, whether the staging VERSION holds its merge, what it waits on
+             on), and MR 巡检's and 测试环境报错's items of the project as their views give them
+  delivery   every requirement of the project, open or merged or closed in the last 14 days, from GitLab only: its stage
+             in 交付总览's words, its MR with its CI, whether the staging VERSION holds its merge, what it waits on;
+             delivery_at: when those rows were read from GitLab whole (a round that ran out of time carries the last)
 Waits is what the app says a row waits on (deliveries.waits: who, the step, the sentence, since when) with *on*, the
 GitLab users who take that step now ([]: nobody in particular, or no person), so a reader can put first what waits on
 them.
@@ -24,7 +31,8 @@ from dataclasses import dataclass
 from typing import Any
 
 SCHEMA = 1
-FILE, BRANCH = "snapshot.json", "main"      # where it is in the status project (kit.json team_status.project)
+FILE, BRANCH = "snapshot.json", "brain/status"      # where it is in each project: a branch of its own, no parent
+SKIP_CI = "[skip ci] [ci-skip]"     # in every commit on BRANCH: GitLab CI's marker, and Jenkins' gitlab-plugin's
 FLOOR_S = 5 * 60        # the team server builds one, and writes it when it changed, at most this often
 HEARTBEAT_S = 30 * 60   # and writes an unchanged one again this old, to say it is alive
 # one this old says the team server may have stopped: two heartbeats missed, each found up to a floor late (it is only
@@ -55,8 +63,8 @@ class Many:
 
 
 WAITS = {"who": str, "do": str, "text": str, "since": Opt(float), "on": Many(str)}
-PROJECT = {"project": str, "on": bool, "sources": Many(str), "error": str}
-SERVER = {"version": str, "team_mode": bool, "last_round_at": Opt(float), "projects": Many(PROJECT)}
+SERVER = {"version": str, "team_mode": bool, "last_round_at": Opt(float), "cap": int, "working": int}
+STATE = {"on": bool, "sources": Many(str), "error": str}
 HANDOVER = {"project": str, "iid": int, "mr_url": Opt(str), "key": str, "title": str, "run_id": str, "state": str,
             "owner": Opt(str), "waits": WAITS}
 PATROL_MR = {"project": str, "iid": int, "title": str, "url": Opt(str), "author": str, "state": str,
@@ -66,12 +74,12 @@ LINK = {"iid": int, "url": Opt(str), "title": str}
 STAGING_ERROR = {"project": str, "signature": str, "count": int, "state": str, "issue": Opt(LINK), "origin": Opt(LINK),
                  "fix_mr": Opt(LINK), "first_seen": float, "last_seen": float, "deployed_sha": str, "attempts": int,
                  "slot": Opt(str), "note": str}
-RUNNER = {"handovers": Many(HANDOVER), "patrol": Many(PATROL_MR), "staging": Many(STAGING_ERROR), "cap": int,
-          "working": int}
+RUNNER = {"handovers": Many(HANDOVER), "patrol": Many(PATROL_MR), "staging": Many(STAGING_ERROR)}
 MR = {"iid": int, "url": Opt(str), "state": str, "ci": Opt(str)}
 DELIVERY = {"project": str, "key": str, "title": str, "owner": Opt(str), "stage": str, "state": str,
             "branch": Opt(str), "mr": Opt(MR), "deployed": Opt(bool), "waits": WAITS, "updated_at": Opt(float)}
-SNAPSHOT = {"schema": int, "generated_at": float, "server": SERVER, "runner": RUNNER, "delivery": Many(DELIVERY)}
+SNAPSHOT = {"schema": int, "generated_at": float, "project": str, "server": SERVER, "state": STATE, "runner": RUNNER,
+            "delivery": Many(DELIVERY), "delivery_at": Opt(float)}
 
 
 def parse(raw: Any) -> dict[str, Any]:

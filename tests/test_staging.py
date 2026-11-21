@@ -156,6 +156,16 @@ def test_an_issue_whose_answer_was_lost_is_found_again_and_not_opened_twice(bk, 
     assert len(w.gl.opened(P)) == 1 and w.item(ZERO)["issue"]["iid"] == 1 and w.item(ZERO)["count"] == 1
 
 
+def test_an_mr_from_the_state_relays_branch_is_never_an_errors_origin(bk, tmp_path):
+    """Someone merged brain/status's MR into the deployed commit too: the origin is still the code's MR."""
+    w = started(tmp_path)
+    w.gl.merged_by[(P, SHA[1])].insert(0, {"iid": 99, "title": "团队状态", "state": "merged", "source_branch": "brain/status",
+                                           "web_url": "%s/grp/repo/-/merge_requests/99" % BASE})
+    w.write(zero())
+    w.round()
+    assert w.item(ZERO)["origin"]["iid"] == 41
+
+
 def test_the_deployed_commit_maps_to_the_mr_that_merged_it_or_says_none_did(bk, tmp_path):
     w = started(tmp_path)
     w.write(zero())

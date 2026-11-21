@@ -517,14 +517,19 @@ export interface TeamStatus {
    * sign whatever the app asks, so it is no boundary (never on a real team runner) */
   same_user: boolean
   signer: { pending: number; refused: number }
-  /** 状态中转 (bridge.json team_status): the snapshot the bridge's rounds write for every person's app; null when
-   * bridge.json names no status project */
+  /** 状态中转: each project's snapshot the bridge's rounds write into that project for every person's app; null when the
+   * runner is not running */
   relay: TeamRelay | null
 }
 
 /** 状态中转 as the team server's last rounds left it (backend/core/team/relay.py Relay.view). */
 export interface TeamRelay {
-  /** the GitLab project snapshot.json goes to */
+  /** the branch of each project its status is written on (brain/status) */
+  branch: string
+  /** each project a round has built a snapshot for */
+  projects: TeamRelayProject[]
+}
+export interface TeamRelayProject {
   project: string
   /** when the snapshot there was made (epoch s); null: none written or read yet */
   written_at: number | null
@@ -535,7 +540,7 @@ export interface TeamRelay {
   /** why the last try did not write, in words ('' when it did, or found nothing new) */
   error: string
   todo: string
-  /** GitLab's or the app's own words, for 细节 */
+  /** GitLab's, git's or the app's own words, for 细节 */
   raw: string
 }
 
@@ -1519,7 +1524,7 @@ export interface TeamLoopResult { ok: boolean; summary: Record<string, number>; 
  * between: it said so on the MR, note says which), ok (nothing to fix), skipped (skip says why), error (this round
  * could not look at it or dispatch it: note says why). Another value is shown as it is. */
 export type PatrolState = 'working' | 'queued' | 'waiting' | 'done' | 'blocked' | 'ok' | 'skipped' | 'error'
-export type PatrolSkip = '' | 'handoff' | 'opt_out' | 'fork' | 'claimed' | 'bots_only'
+export type PatrolSkip = '' | 'handoff' | 'opt_out' | 'fork' | 'claimed' | 'bots_only' | 'status'
 export interface PatrolMr {
   project: string
   iid: number
@@ -1653,11 +1658,11 @@ export interface RunnerRepo {
   name: string
   /** null: its kit.json names no bridge_user, so it has no team runner */
   runner: TeamRunner | null
-  /** the status project its kit.json names (team_status.project): its runner is shown from that snapshot; null: none,
-   * the runner as GitLab shows it (runner) alone */
-  relay: string | null
+  /** its GitLab project has brain/status: the team server writes the project's state there (状态中转), and this repo
+   * is shown from it; false: the runner as GitLab shows it (runner) alone */
+  relay: boolean
 }
-/** GET /team/status: every listed repo, in the app's order, and the status projects they name. */
+/** GET /team/status: every listed repo, in the app's order, and per GitLab the projects on the relay put together. */
 export interface RunnerStatus {
   /** what 「最近」 means for MR 巡检's notes, in hours */
   recent_h: number
@@ -1669,24 +1674,49 @@ export interface RunnerStatus {
   relays: RelayRead[]
 }
 
-/** One status project as this person's token last read it (backend/core/runner_view.py Runners._relay). */
+/** The listed projects of one GitLab that are on the relay, as this person's token last read each one's brain/status
+ * (backend/core/runner_view.py together): only what GitLab lets this person read. */
 export interface RelayRead {
-  /** the GitLab project, group/name */
-  project: string
-  /** the listed repos whose kit.json names it */
+  /** the listed repos on the relay */
   repos: string[]
   /** the person's GitLab name there (null: the app cannot tell): what waits on them comes first */
   me: string | null
-  /** the listed repos of its GitLab, by their project (a row of one opens its 运行过程 here) */
+  /** the listed repos of its GitLab, by their project (a row of one opens its 需求现状 here) */
   repo_of: Record<string, string>
+  /** each project, in the app's order */
+  projects: RelayProject[]
+  /** the newest snapshot is older than stale_after_s: the team server may have stopped */
+  stale: boolean
+  /** the projects' snapshots put together; null: none read yet */
+  view: RelayView | null
+}
+/** One project on the relay as last read. */
+export interface RelayProject {
+  project: string
+  /** the listed repo it is read for */
+  repo: string
   /** when the last read that worked was (epoch s); null: none yet */
   read_at: number | null
-  /** the last snapshot read; null: none yet */
-  snapshot: TeamSnapshot | null
-  /** older than stale_after_s: the team server may have stopped */
+  /** when its snapshot was made (the team server's clock); null: none read yet */
+  written_at: number | null
+  /** older than stale_after_s */
   stale: boolean
+  /** as its snapshot says: whether the runner takes its hand-overs, the work its kit.json switches on, what went wrong */
+  state: { on: boolean; sources: string[]; error: string } | null
+  /** when its 全队交付 rows were read from GitLab whole */
+  delivery_at: number | null
+  /** the team server's version that wrote it */
+  version: string | null
   /** why the last read did not work (the last snapshot is kept); null when it did */
   problem: { text: string; todo: string; raw: string } | null
+}
+/** The projects' snapshots of one GitLab put together. */
+export interface RelayView {
+  /** the newest snapshot's */
+  generated_at: number
+  server: TeamSnapshot['server']
+  runner: TeamSnapshot['runner']
+  delivery: SnapshotDelivery[]
 }
 
 // ---------------------------------------------------------------- 状态中转: the team server's snapshot (schema 1)
@@ -1700,30 +1730,30 @@ export interface SnapshotWaits {
   since: number | null
   on: string[]
 }
-/** TeamSnapshot (backend/core/snapshot.py): what the team server writes into GitLab every few minutes. */
+/** TeamSnapshot (backend/core/snapshot.py): what the team server writes into each project every few minutes, on its
+ * branch brain/status: that project's state only, with the server's. */
 export interface TeamSnapshot {
   schema: number
   /** when it was made (the team server's clock, epoch s) */
   generated_at: number
-  server: {
-    version: string
-    team_mode: boolean
-    last_round_at: number | null
-    /** on: the runner takes its hand-overs; sources: the work its kit.json switches on; error: what went wrong with it
-     * last round, in words ('' none) */
-    projects: { project: string; on: boolean; sources: string[]; error: string }[]
-  }
+  /** the project it is the state of */
+  project: string
+  /** the team server, the same in every project's: brain-patrol sessions at once, MR 巡检's and 测试环境报错's
+   * together (cap), and how many work now */
+  server: { version: string; team_mode: boolean; last_round_at: number | null; cap: number; working: number }
+  /** on: the runner takes its hand-overs; sources: the work its kit.json switches on; error: what went wrong with it
+   * last round, in words ('' none) */
+  state: { on: boolean; sources: string[]; error: string }
   runner: {
     /** the ledger's latest run of each requirement, still open */
     handovers: SnapshotHandover[]
     patrol: PatrolMr[]
     staging: StagingError[]
-    /** brain-patrol sessions at once, MR 巡检's and 测试环境报错's together, and how many work now */
-    cap: number
-    working: number
   }
-  /** every requirement of its projects, open or merged in the last 14 days */
+  /** every requirement of the project, open, or merged or closed in the last 14 days */
   delivery: SnapshotDelivery[]
+  /** when those rows were read from GitLab whole (a round that ran out of time carries the last ones) */
+  delivery_at: number | null
 }
 export interface SnapshotHandover {
   project: string
@@ -1742,13 +1772,14 @@ export interface SnapshotDelivery {
   key: string
   title: string
   owner: string | null
-  /** 交付总览's column, in its words: 需求 · 设计 · 构建 · 交给运行机 · 发布 · 验收 · 已合并 */
+  /** 交付总览's column, in its words: 需求 · 设计 · 构建 · 交给运行机 · 发布 · 验收 · 已合并; 已关闭 and 已合进大需求 for
+   * those in no column there */
   stage: string
   state: ReqState
   branch: string | null
   /** ci: the status of the pipeline at its head (GitLab's word), null: none read */
   mr: { iid: number; url: string | null; state: string; ci: string | null } | null
-  /** whether the staging VERSION holds its merge; null: not merged, or no staging read for its project */
+  /** whether the staging VERSION holds its merge; null: not merged into the default branch, or no staging read */
   deployed: boolean | null
   waits: SnapshotWaits
   updated_at: number | null
@@ -1795,9 +1826,8 @@ export interface TeamSetup {
   /** the step a run cut off part-way had not finished (the app or the command stopped while it ran); null otherwise */
   cut_off: string | null
   /** that run's input; never a token. projects: one in project-token mode. patrol: 巡检所有开着的 MR; jenkins: where
-   * MR 巡检 reads failed builds' logs and as whom ('' and '': no Jenkins); status_project: 状态中转's project as typed
-   * ('': brain-status in the first project's group) */
-  input: { gitlab_base: string; mode: SetupMode; projects: string[]; roles: Record<SetupRole, string[]>; push: SetupPush; patrol: boolean; jenkins: { base: string; user: string }; status_project: string }
+   * MR 巡检 reads failed builds' logs and as whom ('' and '': no Jenkins) */
+  input: { gitlab_base: string; mode: SetupMode; projects: string[]; roles: Record<SetupRole, string[]>; push: SetupPush; patrol: boolean; jenkins: { base: string; user: string } }
   /** bot-account: the GitLab users whose personal tokens an earlier run kept on this machine ('' none); a run may
    * leave such a token out */
   accounts: { bridge: string; bot: string }
@@ -1808,8 +1838,7 @@ export interface TeamSetup {
 }
 /** POST /team/setup (answers TeamSetup, running). roles: GitLab usernames, a role left out is the one-time token's
  * owner; patrol: 巡检所有开着的 MR (left out: on); jenkins: a read-only user's, its token kept on the team server ('':
- * the one kept before; left out: no Jenkins); status_project: 状态中转's GitLab project (left out or '': brain-status in
- * the first project's group). */
+ * the one kept before; left out: no Jenkins). */
 export type TeamSetupBody = ProjectTokenSetupBody | BotAccountSetupBody
 interface SetupBodyBase {
   gitlab_base: string
@@ -1817,7 +1846,6 @@ interface SetupBodyBase {
   push?: SetupPush
   patrol?: boolean
   jenkins?: { base: string; user: string; token: string }
-  status_project?: string
 }
 /** One project; admin_token: a one-time personal token with api (Maintainer), used for this run only. */
 export interface ProjectTokenSetupBody extends SetupBodyBase {

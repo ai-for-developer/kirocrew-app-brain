@@ -15,8 +15,7 @@
     },
     "push": "auto",
     "patrol": true,
-    "jenkins": { "base": "", "user": "" },
-    "status_project": ""
+    "jenkins": { "base": "", "user": "" }
   },
   "accounts": {
     "bridge": "",
@@ -72,8 +71,8 @@
       "id": "status",
       "title": "状态中转",
       "status": "done",
-      "message": "状态写到 shop/brain-status（新建的私有项目）：project_42_bot_7d1c 能写（建了项目令牌 brain-status：账号 project_42_bot_7d1c，2027-11-07 到期），4 个人能读；新加了 bob、carol、dave",
-      "link": "https://gitlab.example.com/shop/brain-status",
+      "message": "brain/status 还没有：团队服务器第一次写的时候建，project_42_bot_7d1c 能推",
+      "link": null,
       "detail": "",
       "projects": []
     },

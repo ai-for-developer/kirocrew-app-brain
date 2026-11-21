@@ -44,7 +44,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 
-from .. import bk
+from .. import bk, snapshot
 from . import patrol, sources, stagelog
 from .stagelog import ErrorGroup
 
@@ -628,7 +628,7 @@ class StagingWatch:
             if 400 <= exc.status < 500:
                 return None
             raise
-        mrs = [m for m in mrs if isinstance(m, dict) and m.get("iid")]
+        mrs = [m for m in mrs if isinstance(m, dict) and m.get("iid") and m.get("source_branch") != snapshot.BRANCH]
         return Link.of(next((m for m in mrs if m.get("state") == "merged"), mrs[0] if mrs else None))
 
     def _fix_mr(self, row: Row) -> Link | None:

@@ -61,7 +61,7 @@
         },
         "problem": null
       },
-      "relay": "shop/brain-status"
+      "relay": true
     },
     {
       "repo": "r3",
@@ -82,18 +82,17 @@
           "raw": "GET /projects/shop%2Fshop-order/merge_requests -> HTTP 502: Bad Gateway"
         }
       },
-      "relay": "shop/brain-status"
+      "relay": true
     },
     {
       "repo": "r4",
       "name": "shop-tools",
       "runner": null,
-      "relay": null
+      "relay": false
     }
   ],
   "relays": [
     {
-      "project": "shop/brain-status",
       "repos": [
         "r1",
         "r3"
@@ -103,35 +102,54 @@
         "shop/shop-pay": "r1",
         "shop/shop-order": "r3"
       },
-      "read_at": 1794146370,
-      "snapshot": {
-        "schema": 1,
+      "projects": [
+        {
+          "project": "shop/shop-pay",
+          "repo": "r1",
+          "read_at": 1794146370,
+          "written_at": 1794146220.0,
+          "stale": false,
+          "state": {
+            "on": true,
+            "sources": [
+              "mr-handoff",
+              "mr-patrol",
+              "staging-errors"
+            ],
+            "error": ""
+          },
+          "delivery_at": 1794146220.0,
+          "version": "0.4.2",
+          "problem": null
+        },
+        {
+          "project": "shop/shop-order",
+          "repo": "r3",
+          "read_at": 1794146370,
+          "written_at": 1794145980.0,
+          "stale": false,
+          "state": {
+            "on": true,
+            "sources": [
+              "mr-handoff",
+              "mr-patrol"
+            ],
+            "error": ""
+          },
+          "delivery_at": 1794145980.0,
+          "version": "0.4.2",
+          "problem": null
+        }
+      ],
+      "stale": false,
+      "view": {
         "generated_at": 1794146220.0,
         "server": {
           "version": "0.4.2",
           "team_mode": true,
           "last_round_at": 1794146210.0,
-          "projects": [
-            {
-              "project": "shop/shop-pay",
-              "on": true,
-              "sources": [
-                "mr-handoff",
-                "mr-patrol",
-                "staging-errors"
-              ],
-              "error": ""
-            },
-            {
-              "project": "shop/shop-order",
-              "on": true,
-              "sources": [
-                "mr-handoff",
-                "mr-patrol"
-              ],
-              "error": ""
-            }
-          ]
+          "cap": 2,
+          "working": 2
         },
         "runner": {
           "handovers": [
@@ -309,9 +327,7 @@
               "slot": "staging-12-13",
               "note": ""
             }
-          ],
-          "cap": 2,
-          "working": 2
+          ]
         },
         "delivery": [
           {
@@ -525,9 +541,7 @@
             "updated_at": 1794121200.0
           }
         ]
-      },
-      "stale": false,
-      "problem": null
+      }
     }
   ]
 }

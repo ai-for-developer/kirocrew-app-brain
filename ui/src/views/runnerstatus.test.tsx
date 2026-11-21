@@ -5,16 +5,16 @@ import { API, installFixtureRoutes } from '../test/routes'
 import { apiCalls } from '../test/stubs/app-sdk'
 import type { RunnerStatus } from '../types'
 import type { ViewProps } from './props'
-import { NO_RUNNER, NO_RUNNER_YET, RunnerStatusPage, WHO_UNKNOWN } from './RunnerStatus'
+import { NO_RUNNER, NO_RUNNER_YET, READ_FROM, RunnerStatusPage, WHO_UNKNOWN } from './RunnerStatus'
 
 const props = (over: Partial<ViewProps> = {}): ViewProps => ({
   status: fx.status(), go: vi.fn(), replace: vi.fn(), reloadStatus: vi.fn(), setStatus: vi.fn(), pollMs: 60_000, ...over,
 })
 
-/** The fixture as an older team server leaves it: no repo's kit.json names a status project (状态中转), so each repo
- * with a runner is its card as GitLab shows it. */
+/** The fixture as an older team server leaves it: no project has brain/status (状态中转), so each repo with a runner
+ * is its card as GitLab shows it. */
 function gitlabOnly(st: RunnerStatus = fx.teamStatus()): RunnerStatus {
-  return { ...st, relays: [], repos: st.repos.map((r) => ({ ...r, relay: null })) }
+  return { ...st, relays: [], repos: st.repos.map((r) => ({ ...r, relay: false })) }
 }
 
 /** That, its times moved to now: read 10 s ago, the runner's last act 3 minutes ago. */
@@ -90,7 +90,7 @@ describe('运行机 on a personal install, its runner as GitLab shows it (no 状
 
   test('no repo with a team runner yet: each in one line, and how one gets here', async () => {
     const st: RunnerStatus = { recent_h: 24, at: FIXTURE_AT, stale_after_s: 4500, relays: [],
-      repos: [{ repo: 'r1', name: 'shop-pay', runner: null, relay: null }, { repo: 'r4', name: 'shop-tools', runner: null, relay: null }] }
+      repos: [{ repo: 'r1', name: 'shop-pay', runner: null, relay: false }, { repo: 'r4', name: 'shop-tools', runner: null, relay: false }] }
     installFixtureRoutes({ [`GET ${API}/team/status`]: () => st })
     render(<RunnerStatusPage {...props()} />)
     expect(await screen.findByText(NO_RUNNER_YET)).toBeInTheDocument()
@@ -113,7 +113,9 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     expect(within(strip).queryByTestId('relay-stale')).toBeNull()
     const projects = within(strip).getAllByRole('listitem').map((li) => li.textContent)
     expect(projects).toEqual(['shop/shop-pay在接交接交接 · 巡检 · 测试环境报错', 'shop/shop-order在接交接交接 · 巡检'])
-    expect(strip).toHaveTextContent('从 GitLab 的 shop/brain-status 读（30 秒前）')
+    expect(strip).toHaveTextContent(READ_FROM)
+    expect(within(strip).queryByTestId('project-stale')).toBeNull()
+    expect(within(strip).queryByTestId('delivery-lag')).toBeNull()
     // the runner at work: its hand-overs and what each waits on; MR 巡检 and 测试环境报错 without the server's sessions
     const runner = screen.getByTestId('relay-runner')
     expect(runner).toHaveTextContent('交接过来的需求 3 个')
@@ -150,7 +152,7 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     expect(within(waiting).getByTestId('question')).toHaveTextContent('D-7')
     expect(waiting).toHaveTextContent('shop-pay !41 退款审核')
     expect(waiting).toHaveTextContent('shop-order：这次没读到 GitLab（问题没读到）')
-    // the repos that name no status project keep their own lines
+    // the repos whose project has no brain/status keep their own lines
     expect(screen.getByRole('region', { name: 'shop-tools' })).toHaveTextContent(`shop-tools${NO_RUNNER}`)
     expect(screen.queryByRole('region', { name: 'shop-pay' })).toBeNull()
     expect(apiCalls.filter((c) => c.method !== 'GET')).toEqual([])
@@ -179,7 +181,8 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     const st = fx.teamStatus()
     const r = st.relays[0]
     r.stale = true
-    st.at = r.snapshot!.generated_at + 80 * 60
+    r.projects.forEach((x) => { x.stale = true })
+    st.at = r.view!.generated_at + 80 * 60
     installFixtureRoutes({ [`GET ${API}/team/status`]: () => st })
     render(<RunnerStatusPage {...props()} />)
     const stale = await screen.findByTestId('relay-stale')
@@ -189,23 +192,48 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     expect(screen.getByTestId('team-delivery')).toBeInTheDocument()
   })
 
-  test('a read that did not work: why and what to do, the last snapshot kept; before any, only the strip and the questions', async () => {
+  test('a read that did not work: why and what to do, on its project, the last snapshot kept; before any, only the strip and the questions', async () => {
     const st = fx.teamStatus()
-    st.relays[0].problem = { text: '这次没读到 GitLab', todo: '过一会儿会再读；一直这样就看看网络，GitLab 要单点登录的先登录', raw: 'GET … -> HTTP 502' }
+    st.relays[0].projects[1].problem = { text: '这次没读到 GitLab', todo: '过一会儿会再读；一直这样就看看网络，GitLab 要单点登录的先登录', raw: 'GET … -> HTTP 502' }
     installFixtureRoutes({ [`GET ${API}/team/status`]: () => st })
     const { unmount } = render(<RunnerStatusPage {...props()} />)
     const problem = await screen.findByTestId('relay-problem')
+    expect(problem.closest('li')).toHaveAttribute('data-project', 'shop/shop-order')
     expect(problem).toHaveTextContent('这次没读到 GitLab：下面是 30 秒前读到的')
+    expect(screen.getByTestId('relay-strip')).toHaveClass('is-bad')
     expect(screen.getByTestId('team-delivery')).toBeInTheDocument()
     unmount()
     const none = fx.teamStatus()
-    Object.assign(none.relays[0], { snapshot: null, read_at: null, problem: { text: '团队服务器还没在 shop/brain-status 写过状态，或者你看不到这个项目', todo: '等团队服务器跑一轮', raw: '' } })
+    const first = none.relays[0]
+    first.view = null
+    first.projects = first.projects.map((x) => ({ ...x, read_at: null, written_at: null, state: null, delivery_at: null, version: null,
+      problem: { text: '团队服务器还没在这个项目的 brain/status 上写过状态', todo: '等团队服务器跑一轮', raw: '' } }))
     installFixtureRoutes({ [`GET ${API}/team/status`]: () => none })
     render(<RunnerStatusPage {...props()} />)
-    expect(await screen.findByTestId('relay-problem')).toHaveTextContent(/^团队服务器还没在 shop\/brain-status 写过状态，或者你看不到这个项目做什么等团队服务器跑一轮$/)
+    const said = await screen.findAllByTestId('relay-problem')
+    expect(said.map((x) => x.textContent)).toEqual(Array(2).fill('团队服务器还没在这个项目的 brain/status 上写过状态做什么等团队服务器跑一轮'))
     expect(screen.getByTestId('relay-written')).toHaveTextContent('还没读到状态')
+    expect(screen.queryByTestId('relay-version')).toBeNull()
     expect(screen.queryByTestId('relay-runner')).toBeNull()
     expect(screen.queryByTestId('team-delivery')).toBeNull()
     expect(screen.getByTestId('relay-waiting')).toBeInTheDocument()
+  })
+
+  test('one project whose state is old says so on its line, and rows read rounds before say when', async () => {
+    const st = fx.teamStatus()
+    const [pay, order] = st.relays[0].projects
+    order.stale = true
+    order.written_at = st.at - 3 * 3600
+    pay.delivery_at = pay.written_at! - 20 * 60
+    installFixtureRoutes({ [`GET ${API}/team/status`]: () => st })
+    render(<RunnerStatusPage {...props()} />)
+    const strip = await screen.findByTestId('relay-strip')
+    expect(within(strip).queryByTestId('relay-stale')).toBeNull()
+    const old = within(strip).getByTestId('project-stale')
+    expect(old.closest('li')).toHaveAttribute('data-project', 'shop/shop-order')
+    expect(old).toHaveTextContent('这个项目的状态是 3 小时前写的：团队服务器可能没在写它，看它的「运行机」页')
+    const lag = within(strip).getByTestId('delivery-lag')
+    expect(lag.closest('li')).toHaveAttribute('data-project', 'shop/shop-pay')
+    expect(lag).toHaveTextContent('全队交付是 23 分钟前读完的')
   })
 })

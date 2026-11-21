@@ -26,8 +26,7 @@
     "jenkins": {
       "base": "",
       "user": ""
-    },
-    "status_project": ""
+    }
   },
   "accounts": {
     "bridge": "brain-bridge",
@@ -149,10 +148,32 @@
       "id": "status",
       "title": "状态中转",
       "status": "done",
-      "message": "状态写到 shop/brain-status（新建的私有项目）：brain-bridge 能写（加成了 Maintainer），4 个人能读；新加了 bob、carol、dave",
-      "link": "https://gitlab.example.com/shop/brain-status",
+      "message": "3 个项目的 brain/status 桥的账号都能推",
+      "link": null,
       "detail": "",
-      "projects": []
+      "projects": [
+        {
+          "project": "shop/shop-pay",
+          "status": "done",
+          "message": "brain/status 已经在了，brain-bridge 能推",
+          "link": null,
+          "detail": ""
+        },
+        {
+          "project": "shop/shop-order",
+          "status": "done",
+          "message": "brain/status 还没有：团队服务器第一次写的时候建，brain-bridge 能推",
+          "link": null,
+          "detail": ""
+        },
+        {
+          "project": "shop/shop-stock",
+          "status": "done",
+          "message": "看不了 shop/shop-stock 的受保护分支（这个 token 不够）：团队服务器第一次写 brain/status 时就知道能不能推，推不了会在它的运行机页上说",
+          "link": null,
+          "detail": ""
+        }
+      ]
     },
     {
       "id": "kit_mr",

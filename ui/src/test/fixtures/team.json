@@ -23,13 +23,27 @@
       "refused": 1
     },
     "relay": {
-      "project": "shop/brain-status",
-      "written_at": 1794146230,
-      "heartbeat": false,
-      "checked_at": 1794146350,
-      "error": "",
-      "todo": "",
-      "raw": ""
+      "branch": "brain/status",
+      "projects": [
+        {
+          "project": "shop/shop-pay",
+          "written_at": 1794146230,
+          "heartbeat": false,
+          "checked_at": 1794146350,
+          "error": "",
+          "todo": "",
+          "raw": ""
+        },
+        {
+          "project": "shop/shop-order",
+          "written_at": 1794144670,
+          "heartbeat": true,
+          "checked_at": 1794146350,
+          "error": "",
+          "todo": "",
+          "raw": ""
+        }
+      ]
     }
   },
   "ledger": {

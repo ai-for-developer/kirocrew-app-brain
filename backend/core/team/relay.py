@@ -1,13 +1,20 @@
-"""状态中转 on the team server: the TeamSnapshot (snapshot.py) it writes into GitLab for each person's app to read
-(runner_view.Relays), and every requirement of the runner's projects as GitLab shows it, the snapshot's delivery.
+"""状态中转 on the team server: the TeamSnapshot (snapshot.py) of each of its projects, written into that project for the
+people who can read it (runner_view.Runners reads it with each person's own token), and every requirement of the
+project as GitLab shows it, the snapshot's delivery.
 
-Writing (Relay): snapshot.json on branch main of the status project (bridge.json team_status.project; 一键建运行机's
-状态中转 makes it), through the commits API with the bridge's token (or team_status.token_file's). A round of the bridge
-builds a snapshot at most every FLOOR_S, and writes it only when it differs from the one there apart from when it was
-made and when the bridge last went round (content_key), or, the same, once the one there is HEARTBEAT_S old: so a
-reader tells a server at work from a stopped one (snapshot.STALE_S). The one there is read once, when the relay starts,
-so a restart writes nothing new. A file there or not is created or updated, whichever GitLab takes. What went wrong is
-kept for the server's own 运行机 page; it never stops the round.
+Writing (Relay): snapshot.json on the project's own branch brain/status, through the commits API with the bridge's
+token (its account is a Developer in every project; brain/status is not protected). GitLab's API makes a new branch only
+from another one, so the first write of a project pushes brain/status once as a branch of its own, with no parent and
+a README only, through this machine's git the way the runner pushes (runnerd.json's clone address and name:
+push_orphan); a branch made meanwhile is kept. Every commit there says snapshot.SKIP_CI, and the branch holds no CI
+file: GitLab CI and Jenkins' gitlab-plugin build none of it. A round of the bridge, after its hand-over steps, builds
+the snapshot of each project whose last one is FLOOR_S old, the longest-waiting first, for BUDGET_S at most (the rest
+wait for the next round; a project whose delivery was not read whole in time carries its last rows, with when they
+were read), and writes it only when it differs from the one there apart from what moves without news (content_key),
+or, the same, once the one there is HEARTBEAT_S old: so a reader tells a server at work from a stopped one
+(snapshot.STALE_S). The one there is read when the relay first builds the project, so a restart writes nothing new. A
+file there or not is created or updated, whichever GitLab takes. What went wrong is kept per project for the server's
+own 运行机 page; it never stops the round.
 
 The team view's rows come from GitLab only, read with the bridge's token: per project its claim/ and <prefix>/ branches
 (and brain/<KEY>-reflect-<n>, the write-backs made), its default branch's runs_dir (the requirements merged there), its
@@ -31,6 +38,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
+import subprocess
 import time
 from typing import Any, Callable, Mapping, NamedTuple
 
@@ -39,8 +49,12 @@ from ..constants import KEY_RE
 from ..repo import MAX_FILE, REFLECT_RE, Source, empty_facts, parse_branch, read_facts
 
 FILE, BRANCH = snapshot.FILE, snapshot.BRANCH
-NO_TOKEN_ENV = "BRAIN_STATUS_NO_TOKEN_ENV"   # nobody sets it: team_status.token_file is read, never the environment
 FLOOR_S, HEARTBEAT_S = snapshot.FLOOR_S, snapshot.HEARTBEAT_S
+BUDGET_S = 20.0                 # a round builds and writes snapshots this long at most, after its hand-over steps
+PUSH_WAIT_S = 20.0              # the one push that makes a project's brain/status
+README = ("# brain/status\n\n团队服务器（Brain 交付的团队运行机）每几分钟在这个分支上写一次 snapshot.json：这个项目的团队状态，"
+          "能看这个项目的人用自己的 GitLab 令牌读它。\n\n这个分支只放它，没有父提交，也不会合并：别从它开 MR，也别删它"
+          "（删了，团队服务器下次写的时候会再建一个）。\n")
 MERGED_S = 14 * 86400           # a merged requirement stays this long after its merge
 FINAL_CI = ("success", "failed", "canceled", "skipped")
 MAX_PAGES = 20                  # a folder of a commit is listed this many pages of 100 at most: past them, what fits
@@ -152,15 +166,20 @@ def key_order(key: str) -> tuple[str, int]:
     return pre, int(n)
 
 
-def _said(exc: BaseException) -> str:
+def said_of(exc: BaseException) -> str:
     return " ".join(str(exc).split())[:300] or type(exc).__name__
 
 
 class Read(NamedTuple):
-    """One project's 全队交付 as GitLab showed it: its rows, and what was left out, in words (a claim branch whose
-    claim.json is not an object)."""
+    """One project's 全队交付 as GitLab showed it: its rows, what was left out, in words (a claim branch whose
+    claim.json is not an object, a folder read only in part), and when."""
     rows: list[dict[str, Any]]
     notes: list[str]
+    at: float
+
+
+class OutOfTime(Exception):
+    """The round's time ran out before the project's rows were all read: what was read is kept for the next try."""
 
 
 class Facts(NamedTuple):
@@ -202,8 +221,8 @@ class Deliveries:
     thread)."""
 
     def __init__(self, gl: Any, base: str, kit: Callable[[str], Mapping[str, Any]],
-                 now: Callable[[], float] = time.time) -> None:
-        self.gl, self.base, self.kit, self.now = gl, base.rstrip("/"), kit, now
+                 now: Callable[[], float] = time.time, clock: Callable[[], float] = time.monotonic) -> None:
+        self.gl, self.base, self.kit, self.now, self.clock = gl, base.rstrip("/"), kit, now, clock
         self._facts: dict[tuple, Facts] = {}                # (project, key, sha) -> read_facts at that commit
         self._blobs: dict[str, dict[str, bytes]] = {}       # project -> blob id -> the file (GitLabSource)
         self._claims: dict[tuple, Any] = {}                 # (project, sha) -> its claim.json, an object or None
@@ -214,14 +233,15 @@ class Deliveries:
         self._merged: dict[str, tuple[str, frozenset[str], bool]] = {}   # project -> (default head, keys merged, cut)
         self.last: dict[str, Read] = {}                     # project -> its last read that worked
 
-    def read(self, project: str, *, deployed: str, roles: Mapping[str, Any]) -> Read:
-        """*project*'s rows as GitLab shows them now, read again only where something moved; what GitLab raised, else
-        (last keeps it). *deployed*: the commit its staging VERSION names ('': no staging read); *roles*:
-        identities.json's roles. What was read before is kept for the next try when it fails."""
+    def read(self, project: str, *, deployed: str, roles: Mapping[str, Any], deadline: float | None = None) -> Read:
+        """*project*'s rows as GitLab shows them now, read again only where something moved; what GitLab raised, or
+        OutOfTime once *deadline* (on clock) is past, else (last keeps it). *deployed*: the commit its staging VERSION
+        names ('': no staging read); *roles*: identities.json's roles. What was read before is kept for the next try
+        when it fails."""
         caches = (self._facts, self._claims, self._notes, self._ci, self._deployed, self._branch_mr)
         seen: set[tuple] = set()
         try:
-            got = self._project(project, deployed, roles, seen)
+            got = self._project(project, deployed, roles, seen, deadline)
         except BaseException:
             seen |= {k for c in caches for k in c if k[0] == project}
             raise
@@ -246,26 +266,8 @@ class Deliveries:
             for k in [k for k in c if k[0] not in keep]:
                 del c[k]
 
-    def build(self, projects: list[str], *, deployed: Mapping[str, str], roles: Mapping[str, Any]
-              ) -> tuple[list[dict[str, Any]], dict[str, str]]:
-        """(the rows of every project, what to say of a project: why it was not read this time, its last rows kept,
-        or what its rows left out)."""
-        rows: list[dict[str, Any]] = []
-        said: dict[str, str] = {}
-        for project in projects:
-            try:
-                got = self.read(project, deployed=deployed.get(project) or "", roles=roles)
-            except Exception as exc:  # noqa: BLE001 - GitLab, or what it holds: this project's, said; the others go on
-                said[project] = "全队交付没读成：%s" % _said(exc)
-                got = self.last.get(project) or Read([], [])
-            else:
-                if got.notes:
-                    said[project] = "全队交付：%s" % "；".join(got.notes)
-            rows += got.rows
-        self.forget(projects)
-        return rows, said
-
-    def _project(self, project: str, deployed: str, roles: Mapping[str, Any], seen: set[tuple]) -> Read:
+    def _project(self, project: str, deployed: str, roles: Mapping[str, Any], seen: set[tuple],
+                 deadline: float | None) -> Read:
         kit = self.kit(project)
         pre, runs_dir, now = str(kit.get("branch_prefix") or "ai"), str(kit.get("runs_dir") or "runs"), self.now()
         default = str(kit.get("default_branch") or "main")
@@ -294,6 +296,8 @@ class Deliveries:
         got: dict[str, Gathered] = {}
         cut: set[str] = set()
         for key in sorted(set(claims) | set(runs) | set(mrs), key=key_order):
+            if deadline is not None and self.clock() >= deadline:
+                raise OutOfTime(project)
             g = self._gather(project, key, runs_dir, default, claims.get(key), runs.get(key), mrs, key in merged_keys,
                              now, seen, cut)
             if g is not None:
@@ -303,7 +307,7 @@ class Deliveries:
                                at=None)
         rows = [self._row(project, g, fams.get(key), kit, key in reflected, bridge_user, deployed, roles, now, seen)
                 for key, g in got.items()]
-        return Read(rows, notes)
+        return Read(rows, notes, now)
 
     def _mrs(self, project: str, pre: str, now: float) -> dict[str, dict[str, Any]]:
         """The newest MR of each requirement among those open and those merged or closed in the last MERGED_S, as the
@@ -504,91 +508,120 @@ class Deliveries:
 
 def content_key(snap: Mapping[str, Any]) -> str:
     """What decides whether a snapshot is new: all of it but what moves without news, round after round: when it was
-    made, the bridge's last round, each staging error's count and when the log last showed it, each patrol MR's
-    updated_at (any note or label on it). Those are written along with a real change, or with the heartbeat."""
+    made, the bridge's last round, when its rows were read, each staging error's count and when the log last showed it,
+    each patrol MR's updated_at (any note or label on it). Those are written along with a real change, or with the
+    heartbeat."""
     runner = snap["runner"]
-    body = dict(snap, generated_at=0, server=dict(snap["server"], last_round_at=None),
+    body = dict(snap, generated_at=0, delivery_at=None, server=dict(snap["server"], last_round_at=None),
                 runner=dict(runner, staging=[dict(e, count=0, last_seen=0.0) for e in runner["staging"]],
                             patrol=[dict(m, updated_at=None) for m in runner["patrol"]]))
     return hashlib.sha256(snapshot.dump(body).encode("utf-8")).hexdigest()
 
 
-WRITE_SAID = {401: "GitLab 不认写状态用的令牌", 403: "GitLab 不让这个账号写状态项目",
-              404: "GitLab 上找不到状态项目，或者这个账号看不到它"}
-WRITE_TODO = {401: "再跑一次一键建运行机：它会查令牌、换新的", 403: "在 GitLab 上把桥的账号加成状态项目的 Maintainer，或者再跑一次一键建运行机",
-              404: "再跑一次一键建运行机：它会建好状态项目、给好权限"}
+WRITE_SAID = {401: "GitLab 不认桥的令牌，状态没写成", 403: "GitLab 不让桥的账号推 brain/status，状态没写成",
+              404: "GitLab 上找不到这个项目，或者桥的账号看不到它，状态没写成"}
+WRITE_TODO = {401: "再跑一次一键建运行机：它会查令牌、换新的",
+              403: "在 GitLab 上让 Developer 能推 brain/status（这个分支别保护），或者再跑一次一键建运行机：它会查",
+              404: "看看 bridge.json 里的项目写得对不对，桥的账号还是不是这个项目的 Developer"}
+
+
+class Written:
+    """One project's snapshot.json on brain/status, as the relay last saw it."""
+
+    def __init__(self) -> None:
+        self.there: bool | None = None          # snapshot.json is on brain/status (None: not read yet)
+        self.branch = False                     # brain/status is there
+        self.key: str | None = None             # content_key of the one there (None: unknown, or not one)
+        self.written_at: float | None = None    # when the one there was made
+        self.snap: dict[str, Any] | None = None   # the one there, parsed (its rows carried when a build runs out of time)
+        self.heartbeat = False                  # the last write wrote the same snapshot again
+        self.built_at: float | None = None      # when a round last built one (or tried)
+        self.error, self.todo, self.raw = "", "", ""
+
+
+Build = Callable[[str, float, float, "dict[str, Any] | None"], Mapping[str, Any]]
 
 
 class Relay:
-    """snapshot.json on the status project, written by the bridge's rounds (round(), on its worker thread); view() for
-    the server's own 运行机 page, from any thread."""
+    """Each project's snapshot.json on its brain/status, written by the bridge's rounds (round(), on its worker
+    thread); view() for the server's own 运行机 page, from any thread. *make_branch*: brain/status pushed for a project
+    that has none (push_orphan, or why it cannot be)."""
 
-    def __init__(self, connect: Callable[[], Any], project: str, now: Callable[[], float] = time.time) -> None:
-        self.connect, self.project, self.now = connect, project, now
-        self.gl: Any = None                     # connect()'s GitLab client, made in the first round that writes
-        self.there: bool | None = None          # snapshot.json is on main (None: not read yet)
-        self.key: str | None = None             # content_key of the one there (None: unknown, or not one)
-        self.written_at: float | None = None    # when the one there was made
-        self.heartbeat = False                  # the last write wrote the same snapshot again
-        self.built_at: float | None = None      # when the last round built one (or tried)
-        self.error, self.todo, self.raw = "", "", ""
+    def __init__(self, gl: Any, make_branch: Callable[[str], None], now: Callable[[], float] = time.time,
+                 clock: Callable[[], float] = time.monotonic) -> None:
+        self.gl, self.make_branch, self.now, self.clock = gl, make_branch, now, clock
+        self.files: dict[str, Written] = {}
 
-    def round(self, build: Callable[[float], Mapping[str, Any]]) -> str:
-        """One round of the bridge: a snapshot built (build(now)) when FLOOR_S went by since the last, and written when
-        it is new or the one there is HEARTBEAT_S old. -> "wait", "same", "wrote", "heartbeat" or "failed"."""
+    def round(self, projects: list[str], build: Build) -> dict[str, str]:
+        """One round of the bridge: each project whose snapshot was last built FLOOR_S ago or more, the longest-waiting
+        first, built (build(project, now, deadline, the one there)) and written when it is new or the one there is
+        HEARTBEAT_S old, until BUDGET_S is spent. -> {project: "wait" | "later" | "same" | "wrote" | "heartbeat" |
+        "failed"} ("later": its turn came after the budget)."""
         now = self.now()
-        if self.built_at is not None and now - self.built_at < FLOOR_S:
-            return "wait"
-        self.built_at = now
-        try:
-            if self.gl is None:
-                self.gl = self.connect()
-            if self.there is None:
-                self._read()
-            snap = snapshot.parse(dict(build(now)))
-            key = content_key(snap)
-            same = key == self.key
-            if same and self.written_at is not None and now - self.written_at < HEARTBEAT_S:
-                self._ok()
-                return "same"
-            self._write(snap, same)
-            self.key, self.written_at, self.heartbeat = key, snap["generated_at"], same
-            self._ok()
-            return "heartbeat" if same else "wrote"
-        except Exception as exc:  # noqa: BLE001 - GitLab, a bad snapshot: said on the page, the round goes on
-            status = getattr(exc, "status", None)
-            if isinstance(exc, snapshot.Bad):
-                self.error, self.todo = "这一轮做出来的状态不对，没有写", "把细节里的原话发给管运行机的人：这是 app 的问题"
-            else:
-                self.error = WRITE_SAID.get(status, "这一轮没写成状态")
-                self.todo = WRITE_TODO.get(status, "%d 分钟以后会再写；一直这样就看细节里 GitLab 说的" % (FLOOR_S // 60))
-            self.raw = " ".join(str(exc).split())[:500]
-            return "failed"
+        deadline = self.clock() + BUDGET_S
+        for p in [p for p in self.files if p not in projects]:
+            del self.files[p]
+        out = {p: "wait" for p in projects}
+        due = [p for p in projects if p not in self.files or self.files[p].built_at is None
+               or now - self.files[p].built_at >= FLOOR_S]
+        for p in sorted(due, key=lambda p: self.files[p].built_at or 0.0 if p in self.files else -1.0):
+            out[p] = "later" if self.clock() >= deadline else self._one(p, build, now, deadline)
+        return out
 
     def view(self) -> dict[str, Any]:
-        """TeamRelay (ui/src/types.ts): where it writes, when the one there was made, what went wrong last."""
-        return {"project": self.project, "written_at": self.written_at, "heartbeat": self.heartbeat,
-                "checked_at": self.built_at, "error": self.error, "todo": self.todo, "raw": self.raw}
+        """TeamRelay (ui/src/types.ts): the branch it writes in each project, and each project's file: when the one
+        there was made, when a round last built one, what went wrong last."""
+        return {"branch": BRANCH, "projects": [
+            {"project": p, "written_at": w.written_at, "heartbeat": w.heartbeat, "checked_at": w.built_at,
+             "error": w.error, "todo": w.todo, "raw": w.raw} for p, w in list(self.files.items())]}
 
-    def _ok(self) -> None:
-        self.error = self.todo = self.raw = ""
+    def _one(self, project: str, build: Build, now: float, deadline: float) -> str:
+        w = self.files.setdefault(project, Written())
+        w.built_at = now
+        try:
+            if w.there is None:
+                self._read(project, w)
+            snap = snapshot.parse(dict(build(project, now, deadline, w.snap)))
+            key = content_key(snap)
+            same = key == w.key
+            if same and w.written_at is not None and now - w.written_at < HEARTBEAT_S:
+                w.error = w.todo = w.raw = ""
+                return "same"
+            self._write(project, w, snap, same)
+            w.key, w.written_at, w.snap, w.heartbeat = key, snap["generated_at"], snap, same
+            w.error = w.todo = w.raw = ""
+            return "heartbeat" if same else "wrote"
+        except Exception as exc:  # noqa: BLE001 - GitLab, git, a bad snapshot: said on the page, the round goes on
+            w.there = None                      # read again next time: what is there then decides
+            status = getattr(exc, "status", None)
+            if isinstance(exc, snapshot.Bad):
+                w.error, w.todo = "这一轮做出来的状态不对，没有写", "把细节里的原话发给管运行机的人：这是 app 的问题"
+            else:
+                w.error = WRITE_SAID.get(status, "这一轮没写成这个项目的状态")
+                w.todo = WRITE_TODO.get(status, "%d 分钟以后会再写；一直这样就看细节里 GitLab 或 git 说的" % (FLOOR_S // 60))
+            w.raw = said_of(exc)
+            return "failed"
 
-    def _read(self) -> None:
-        """The snapshot there now: whether there is one, what it says and when it was made."""
-        raw = self.gl.file_raw(self.project, FILE, BRANCH)
-        self.there = raw is not None
+    def _read(self, project: str, w: Written) -> None:
+        """The snapshot there now: whether brain/status and snapshot.json are there, what it says, when it was made."""
+        raw = self.gl.file_raw(project, FILE, BRANCH)
+        w.there = raw is not None
+        w.branch = w.there or branch_there(self.gl, project)
         try:
             got = snapshot.parse(raw) if raw is not None else None
         except snapshot.Bad:
             got = None
-        self.key = content_key(got) if got else None
-        self.written_at = got["generated_at"] if got else None
+        w.key, w.snap = (content_key(got), got) if got else (None, None)
+        w.written_at = got["generated_at"] if got else None
 
-    def _write(self, snap: Mapping[str, Any], same: bool) -> None:
-        path = "/projects/%s/repository/commits" % bk.m("rest").q(self.project)
-        action = "update" if self.there else "create"
-        body = {"branch": BRANCH, "commit_message": "团队状态：%s" % ("没有变化（心跳）" if same else "更新"),
-                "actions": [{"action": action, "file_path": FILE, "content": snapshot.dump(snap)}]}
+    def _write(self, project: str, w: Written, snap: Mapping[str, Any], same: bool) -> None:
+        if not w.branch:
+            self.make_branch(project)
+            w.branch = True
+        path = "/projects/%s/repository/commits" % bk.m("rest").q(project)
+        action = "update" if w.there else "create"
+        body = {"branch": BRANCH, "commit_message": "团队状态：%s %s" % ("没有变化（心跳）" if same else "更新", snapshot.SKIP_CI),
+                "actions": [{"action": action, "file_path": FILE, "content": snapshot.dump(dict(snap))}]}
         try:
             self.gl.call("POST", path, body=body)
         except bk.m("rest").HttpError as exc:
@@ -596,26 +629,61 @@ class Relay:
                 raise
             body["actions"][0]["action"] = "create" if action == "update" else "update"    # it is there after all, or not
             self.gl.call("POST", path, body=body)
-        self.there = True
+        w.there = True
 
 
-# ---- what the snapshot says of the server ------------------------------------------------------------------------- #
+def branch_there(gl: Any, project: str) -> bool:
+    try:
+        gl.call("GET", "/projects/%s/repository/branches/%s" % (bk.m("rest").q(project), bk.m("rest").q(BRANCH)))
+    except bk.m("rest").HttpError as exc:
+        if exc.status == 404:
+            return False
+        raise
+    return True
 
-def project_states(polled: list[Mapping[str, Any]], patrol: Mapping[str, Any], staging: Mapping[str, Any],
-                   delivery: Mapping[str, str]) -> list[dict[str, Any]]:
-    """Each project as the round left it (the snapshot's server.projects): whether the runner takes its hand-overs, the
-    work sources its kit.json switches on, and what went wrong with it this round, each part in words (*delivery*:
-    what Deliveries.build said of it)."""
-    pat = {p["project"]: p.get("error") or "" for p in patrol.get("projects") or []}
-    sta = {p["project"]: p.get("error") or "" for p in staging.get("projects") or []}
-    out = []
-    for p in polled:
-        name = p["project"]
-        said = [p.get("error") or "", delivery.get(name) or "",
-                "MR 巡检：%s" % pat[name] if pat.get(name) else "", "测试环境报错：%s" % sta[name] if sta.get(name) else ""]
-        out.append({"project": name, "on": bool(p.get("on")), "sources": list(p.get("sources") or []),
-                    "error": "；".join(x for x in said if x)})
-    return out
+
+def push_orphan(url: str, work: str, name: str, email: str) -> None:
+    """brain/status at *url* as a branch of its own: one commit, no parent, holding README.md, its message
+    snapshot.SKIP_CI; pushed with this machine's git as runnerd pushes (brain-kit's git_net: no prompt, a time limit)
+    from *work*, a bare repo of its own. One there already (made meanwhile) is left as it is."""
+    common = bk.m("common")
+    if not os.path.isdir(os.path.join(work, "objects")):
+        os.makedirs(work, mode=0o700, exist_ok=True)
+        subprocess.run(["git", "init", "-q", "--bare", work], check=True, capture_output=True)
+    env = dict(os.environ, GIT_AUTHOR_NAME=name, GIT_AUTHOR_EMAIL=email, GIT_COMMITTER_NAME=name,
+               GIT_COMMITTER_EMAIL=email)
+
+    def git(*args: str, stdin: str | None = None) -> str:
+        return subprocess.run(["git", "-C", work, *args], input=stdin, text=True, capture_output=True, check=True,
+                              env=env).stdout.strip()
+    blob = git("hash-object", "-w", "--stdin", stdin=README)
+    tree = git("mktree", stdin="100644 blob %s\tREADME.md\n" % blob)
+    commit = git("commit-tree", tree, "-m", "团队状态的分支 %s" % snapshot.SKIP_CI)
+    try:
+        p = common.git_net(work, "push", url, "%s:refs/heads/%s" % (commit, BRANCH), timeout=PUSH_WAIT_S, check=False)
+    except common.NetworkError as exc:
+        raise common.BrainError("brain/status 没推上去：%s" % masked(str(exc))) from None
+    if p.returncode != 0 and not re.search(r"\[rejected\]|already exists|fetch first|non-fast-forward", p.stderr):
+        raise common.BrainError("brain/status 没推上去：%s" % masked((p.stderr or p.stdout).strip()[-600:]))
+
+
+def masked(text: str) -> str:
+    """*text* with the user and password of any address in it left out (runnerd's clone address may hold a token)."""
+    return re.sub(r"(?<=://)[^/@\s]+@", "", text)
+
+
+# ---- what the snapshot says of the server and the project -------------------------------------------------------- #
+
+def project_state(project: str, polled: list[Mapping[str, Any]], patrol: Mapping[str, Any],
+                  staging: Mapping[str, Any], delivery: str) -> dict[str, Any]:
+    """*project* as the round left it (the snapshot's state): whether the runner takes its hand-overs, the work sources
+    its kit.json switches on, and what went wrong with it this round, each part in words (*delivery*: what reading its
+    rows said)."""
+    poll = next((x for x in polled if x["project"] == project), {})
+    pat = next((x.get("error") or "" for x in patrol.get("projects") or [] if x["project"] == project), "")
+    sta = next((x.get("error") or "" for x in staging.get("projects") or [] if x["project"] == project), "")
+    said = [poll.get("error") or "", delivery, "MR 巡检：%s" % pat if pat else "", "测试环境报错：%s" % sta if sta else ""]
+    return {"on": bool(poll.get("on")), "sources": list(poll.get("sources") or []), "error": "；".join(x for x in said if x)}
 
 
 def identity_roles(path: Any) -> dict[str, list[str]]:

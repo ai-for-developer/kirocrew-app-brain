@@ -355,6 +355,18 @@ def test_a_person_s_plain_comment_since_patrol_started_is_worked_and_answered_on
     assert w.item(5)["state"] == "ok" and len(w.sessions.sent) == 1
 
 
+def test_an_mr_from_or_into_the_state_relays_branch_is_never_patrolled(bk, tmp_path):
+    """brain/status holds only the team server's state (状态中转): an MR from it, or into it, is left alone and said."""
+    w = World(tmp_path)
+    w.gl.mr(P, 10, source="brain/status", **conflicted())
+    w.gl.mr(P, 11, target_branch="brain/status", **conflicted())
+    w.round()
+    assert {i["iid"]: (i["state"], i["skip_code"]) for i in w.patrol.view()["items"]} == {
+        10: ("skipped", "status"), 11: ("skipped", "status")}
+    assert w.item(10)["skip"] == "团队状态的分支 brain/status 的 MR：它只放团队服务器写的状态，不巡检，也别合并"
+    assert w.slots() == []
+
+
 def test_mrs_the_hand_over_owns_opted_out_from_a_fork_or_with_only_bots_comments_are_skipped(bk, tmp_path):
     w = World(tmp_path)
     gl = w.gl

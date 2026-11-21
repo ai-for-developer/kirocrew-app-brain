@@ -1,19 +1,20 @@
 /**
- * 团队运行机 on a personal install (GET /team/status); nothing here changes anything. Where a repo's kit.json names the
- * team server's status project (team_status), what the team server last wrote there (状态中转), read with the person's
- * own GitLab token: a strip with the server's version, when it wrote and each project, and 「团队服务器可能停了」 once
- * that is older than stale_after_s; the runner at work (its hand-overs with what each waits on, MR 巡检, 测试环境报错,
- * as the team server's 运行机 shows them, without its sessions); 全队交付, every requirement of the team's projects
- * (who, which project, its stage in 交付总览's words, MR and CI, deployed, what it waits on), filtered by person and
- * project, what waits on the person first; and the questions waiting on the person, read from GitLab by this app.
- * A repo that names no status project is a card of the runner as GitLab shows it, as before an older team server: the
- * MRs it works on, the questions waiting on the person, when it last acted; one whose kit.json names no bridge_user is
- * one line, 这个仓库还没有团队运行机.
+ * 团队运行机 on a personal install (GET /team/status); nothing here changes anything. Where a repo's GitLab project has
+ * brain/status, the team server writes that project's state there (状态中转) and this page reads it with the person's
+ * own GitLab token, the projects of one GitLab put together: GitLab decides what a person sees, every project they
+ * can read and no other. A strip with the server's version, when it last wrote, and each project (what it does, what
+ * went wrong, how old its state is), 「团队服务器可能停了」 once the newest is older than stale_after_s; the runner at
+ * work (its hand-overs with what each waits on, MR 巡检, 测试环境报错, as the team server's 运行机 shows them, without
+ * its sessions); 全队交付, every requirement of those projects (who, which project, its stage in 交付总览's words, MR and
+ * CI, deployed, what it waits on), filtered by person and project, what waits on the person first; and the questions
+ * waiting on the person, read from GitLab by this app. A repo whose project has no brain/status is a card of the
+ * runner as GitLab shows it, as before an older team server: the MRs it works on, the questions waiting on the person,
+ * when it last acted; one whose kit.json names no bridge_user is one line, 这个仓库还没有团队运行机.
  */
 import { useMemo, useState } from 'react'
 import { paths, usePoll } from '../api'
 import { ago, fmtWaited } from '../format'
-import type { Question, RelayRead, RunnerMr, RunnerQuestion, RunnerRepo, RunnerStatus, SnapshotDelivery, SnapshotWaits, TeamPatrol, TeamRunner, TeamSnapshot, TeamStaging } from '../types'
+import type { Question, RelayProject, RelayRead, RunnerMr, RunnerQuestion, RunnerRepo, RunnerStatus, RelayView, SnapshotDelivery, SnapshotWaits, TeamPatrol, TeamRunner, TeamStaging } from '../types'
 import { ExtLink, LoadState, RoleIcon } from '../ui'
 import type { View } from '../nav'
 import type { Tone } from '../styles'
@@ -28,6 +29,10 @@ export const NO_RUNNER_YET = '团队运行机建好、它开的 kit.json MR 合�
 export const WHO_UNKNOWN = '不知道你在这个仓库里是谁，看不出哪些问题在等你：在设置的「仓库」那一行填上你的 GitLab 用户名'
 export const STALE = (since: string) => `团队服务器可能停了：上次写状态是 ${since}前`
 export const STALE_DO = '请管团队服务器的人看一下：它开着没有，团队模式还在不在跑。下面是它上次写的。'
+export const PROJECT_STALE = (since: string) => `这个项目的状态是 ${since}前写的：团队服务器可能没在写它，看它的「运行机」页`
+export const READ_FROM = '每个项目的状态写在它自己的 brain/status 分支上：你能看哪个项目，就读到哪个。团队服务器每 5 分钟最多写一次，没变化的 30 分钟写一次'
+/** a project's 全队交付 read this long before its state was written is said (a round ran out of time) */
+const LAG_S = 5 * 60
 
 /** Why an MR counts as at work, in words. */
 export const WHY: Record<RunnerMr['why'], { label: string; tone: Tone; hint: (h: number) => string }> = {
@@ -79,7 +84,7 @@ export function RunnerStatusPage({ pollMs, go }: ViewProps) {
       {data && data.repos.length === 0 && <p className="br-empty">还没有仓库：先在「导入仓库」里导入一个。</p>}
       {data && data.repos.length > 0 && data.relays.length === 0 && data.repos.every((r) => !r.runner) && <p className="br-note">{NO_RUNNER_YET}</p>}
       {data?.relays.map((r) => (
-        <RelayView key={r.project} relay={r} at={data.at} repos={data.repos.filter((x) => r.repos.includes(x.repo))} go={go} />
+        <RelayGroup key={r.repos.join(' ')} relay={r} at={data.at} repos={data.repos.filter((x) => r.repos.includes(x.repo))} go={go} />
       ))}
       {alone.map((r) => (r.runner
         ? <RunnerCard key={r.repo} repo={r.repo} name={r.name} runner={r.runner} recentH={data?.recent_h ?? 24} />
@@ -96,76 +101,86 @@ export function RunnerStatusPage({ pollMs, go }: ViewProps) {
   )
 }
 
-/** One status project: the strip, the runner at work, 全队交付, and the questions its repos' MRs wait on the person for. */
-function RelayView({ relay, at, repos, go }: { relay: RelayRead; at: number; repos: RunnerRepo[]; go: (v: View) => void }) {
-  const snap = relay.snapshot
+/** The projects of one GitLab on the relay: the strip, the runner at work, 全队交付, and the questions their repos' MRs
+ * wait on the person for. */
+function RelayGroup({ relay, at, repos, go }: { relay: RelayRead; at: number; repos: RunnerRepo[]; go: (v: View) => void }) {
+  const view = relay.view
   return (
     <>
       <RelayStrip relay={relay} at={at} />
-      {snap && <AtWork snap={snap} me={relay.me} at={at} />}
-      {snap && <TeamDelivery snap={snap} me={relay.me} repoOf={relay.repo_of} at={at} go={go} />}
+      {view && <AtWork view={view} projects={relay.projects} me={relay.me} at={at} />}
+      {view && <TeamDelivery view={view} me={relay.me} repoOf={relay.repo_of} at={at} go={go} />}
       <Waiting repos={repos} />
     </>
   )
 }
 
 function RelayStrip({ relay, at }: { relay: RelayRead; at: number }) {
-  const snap = relay.snapshot
-  const bad = relay.stale || !!relay.problem || !!snap?.server.projects.some((p) => p.error)
+  const view = relay.view
+  const versions = Array.from(new Set(relay.projects.map((p) => p.version).filter((v): v is string => !!v)))
+  const bad = relay.stale || relay.projects.some((p) => p.problem || p.stale || p.state?.error)
   return (
     <section className={`br-card rv-strip${bad ? ' is-bad' : ''}`} aria-label="团队服务器" data-testid="relay-strip">
       <header>
         <RoleIcon role="bridge" size={18} />
         <h3>团队服务器</h3>
-        {snap && <span className="br-dim br-small" data-testid="relay-version">版本 {snap.server.version}</span>}
+        {versions.length > 0 && <span className="br-dim br-small" data-testid="relay-version">版本 {versions.join(' · ')}</span>}
         <span className="br-grow" />
-        <span className="br-small" data-testid="relay-written">{snap ? <>状态写于 <b className="rv-strong">{ago(snap.generated_at, at)}</b></> : '还没读到状态'}</span>
+        <span className="br-small" data-testid="relay-written">{view ? <>状态写于 <b className="rv-strong">{ago(view.generated_at, at)}</b></> : '还没读到状态'}</span>
       </header>
-      {relay.stale && snap && (
+      {relay.stale && view && (
         <div className="tm-loop-error" role="alert" data-testid="relay-stale">
-          <p className="br-bad-text"><b>{STALE(fmtWaited(at - snap.generated_at))}</b></p>
+          <p className="br-bad-text"><b>{STALE(fmtWaited(at - view.generated_at))}</b></p>
           <span className="tm-do"><b>做什么</b>{STALE_DO}</span>
         </div>
       )}
-      {relay.problem && (
-        <div className="tm-loop-error" role="alert" data-testid="relay-problem">
-          <p className="br-bad-text"><b>{relay.problem.text}</b>{snap && relay.read_at ? `：下面是 ${ago(relay.read_at, at)}读到的` : ''}</p>
-          <span className="tm-do"><b>做什么</b>{relay.problem.todo}</span>
-          {relay.problem.raw && <details className="br-raw"><summary>细节</summary><pre>{relay.problem.raw}</pre></details>}
-        </div>
-      )}
-      {snap && (
-        <ul className="rv-projects" aria-label="每个项目">
-          {snap.server.projects.map((p) => {
-            const tone: Tone = p.error ? 'bad' : p.on ? 'ok' : 'idle'
-            return (
-              <li key={p.project} data-project={p.project} className={p.error ? 'is-bad' : undefined}>
-                <b>{p.project}</b>
-                <span className={`br-chip kt-pill tone-${tone}`}>{p.error ? '有问题' : p.on ? '在接交接' : '不接交接'}</span>
-                {p.sources.length > 0 && <span className="br-dim br-small">{p.sources.map((s) => SOURCE_NAME[s] ?? s).join(' · ')}</span>}
-                {p.error && <span className="br-bad-text br-small rv-project-error">{p.error}</span>}
-              </li>
-            )
-          })}
-        </ul>
-      )}
-      <p className="br-dim br-small rv-read">从 GitLab 的 {relay.project} 读{relay.read_at ? `（${ago(relay.read_at, at)}）` : ''}：团队服务器每 5 分钟最多写一次，没变化的 30 分钟写一次</p>
+      <ul className="rv-projects" aria-label="每个项目">
+        {relay.projects.map((p) => <ProjectLine key={p.project} p={p} at={at} />)}
+      </ul>
+      <p className="br-dim br-small rv-read">{READ_FROM}</p>
     </section>
+  )
+}
+
+/** One project of the strip: what the runner does there, what went wrong, and how old its state is when that says
+ * something (stale, or its 全队交付 read rounds before). */
+function ProjectLine({ p, at }: { p: RelayProject; at: number }) {
+  const st = p.state
+  const tone: Tone = p.problem || st?.error ? 'bad' : st?.on ? 'ok' : 'idle'
+  const word = !st ? '还没读到' : st.error ? '有问题' : st.on ? '在接交接' : '不接交接'
+  const lagging = p.delivery_at !== null && p.written_at !== null && p.written_at - p.delivery_at > LAG_S
+  return (
+    <li data-project={p.project} className={tone === 'bad' || p.stale ? 'is-bad' : undefined}>
+      <b>{p.project}</b>
+      <span className={`br-chip kt-pill tone-${tone}`}>{word}</span>
+      {st && st.sources.length > 0 && <span className="br-dim br-small">{st.sources.map((s) => SOURCE_NAME[s] ?? s).join(' · ')}</span>}
+      {p.stale && p.written_at !== null && <span className="br-bad-text br-small rv-project-error" data-testid="project-stale">{PROJECT_STALE(fmtWaited(at - p.written_at))}</span>}
+      {st?.error && <span className="br-bad-text br-small rv-project-error">{st.error}</span>}
+      {lagging && p.delivery_at !== null && <span className="br-dim br-small rv-project-error" data-testid="delivery-lag">全队交付是 {ago(p.delivery_at, at)}读完的</span>}
+      {p.problem && (
+        <span className="rv-project-error rv-problem" role="alert" data-testid="relay-problem">
+          <span className="br-bad-text br-small"><b>{p.problem.text}</b>{st && p.read_at ? `：下面是 ${ago(p.read_at, at)}读到的` : ''}</span>
+          <span className="tm-do br-small"><b>做什么</b>{p.problem.todo}</span>
+          {p.problem.raw && <details className="br-raw"><summary>细节</summary><pre>{p.problem.raw}</pre></details>}
+        </span>
+      )}
+    </li>
   )
 }
 
 /** The runner at work, as the team server's 运行机 shows it: its hand-overs (each with what it waits on), then MR 巡检 and
  * 测试环境报错 (their views as they are, without the sessions, which are the team server's). */
-function AtWork({ snap, me, at }: { snap: TeamSnapshot; me: string | null; at: number }) {
-  const { handovers, patrol, staging, cap, working } = snap.runner
-  const on = (kind: string) => snap.server.projects.filter((p) => p.sources.includes(kind)).map((p) => p.project)
+function AtWork({ view, projects, me, at }: { view: RelayView; projects: RelayProject[]; me: string | null; at: number }) {
+  const { handovers, patrol, staging } = view.runner
+  const { cap, working, last_round_at } = view.server
+  const on = (kind: string) => projects.some((p) => !!p.state?.sources.includes(kind))
   const patrolView: TeamPatrol = {
-    on: on('mr-patrol').length > 0, cap, working: patrol.filter((i) => i.state === 'working').length, last_at: snap.server.last_round_at,
-    projects: snap.server.projects.map((p) => ({ project: p.project, on: p.sources.includes('mr-patrol'), error: '' })), items: patrol,
+    on: on('mr-patrol'), cap, working: patrol.filter((i) => i.state === 'working').length, last_at: last_round_at,
+    projects: projects.map((p) => ({ project: p.project, on: !!p.state?.sources.includes('mr-patrol'), error: '' })), items: patrol,
   }
   const stagingView: TeamStaging = {
-    on: on('staging-errors').length > 0, cap, working: staging.filter((i) => i.state === 'fixing').length, last_at: snap.server.last_round_at,
-    projects: snap.server.projects.map((p) => ({ project: p.project, on: p.sources.includes('staging-errors'), error: '', deployed_sha: '' })), items: staging,
+    on: on('staging-errors'), cap, working: staging.filter((i) => i.state === 'fixing').length, last_at: last_round_at,
+    projects: projects.map((p) => ({ project: p.project, on: !!p.state?.sources.includes('staging-errors'), error: '', deployed_sha: '' })), items: staging,
   }
   return (
     <>
@@ -221,22 +236,22 @@ function WaitsCell({ w, mine, at }: { w: SnapshotWaits; mine: boolean; at: numbe
 
 /** 全队交付: every requirement of the team's projects, what waits on the person first, by person and project. A key of a
  * project this machine lists opens its 需求现状 here. */
-function TeamDelivery({ snap, me, repoOf, at, go }: { snap: TeamSnapshot; me: string | null; repoOf: Record<string, string>; at: number; go: (v: View) => void }) {
+function TeamDelivery({ view, me, repoOf, at, go }: { view: RelayView; me: string | null; repoOf: Record<string, string>; at: number; go: (v: View) => void }) {
   const [who, setWho] = useState('')
   const [project, setProject] = useState('')
-  const people = useMemo(() => Array.from(new Set(snap.delivery.map((r) => r.owner ?? NOBODY))).sort((a, b) => (a === me ? -1 : b === me ? 1 : a.localeCompare(b))), [snap, me])
-  const projects = useMemo(() => Array.from(new Set(snap.delivery.map((r) => r.project))).sort(), [snap])
-  const rows = useMemo(() => snap.delivery
+  const people = useMemo(() => Array.from(new Set(view.delivery.map((r) => r.owner ?? NOBODY))).sort((a, b) => (a === me ? -1 : b === me ? 1 : a.localeCompare(b))), [view, me])
+  const projects = useMemo(() => Array.from(new Set(view.delivery.map((r) => r.project))).sort(), [view])
+  const rows = useMemo(() => view.delivery
     .filter((r) => (!who || (r.owner ?? NOBODY) === who) && (!project || r.project === project))
     .sort((a, b) => Number(waitsOn(b.waits, me)) - Number(waitsOn(a.waits, me))
-      || Number(DONE.has(a.state)) - Number(DONE.has(b.state)) || (b.updated_at ?? 0) - (a.updated_at ?? 0)), [snap, who, project, me])
-  const mine = snap.delivery.filter((r) => waitsOn(r.waits, me)).length
+      || Number(DONE.has(a.state)) - Number(DONE.has(b.state)) || (b.updated_at ?? 0) - (a.updated_at ?? 0)), [view, who, project, me])
+  const mine = view.delivery.filter((r) => waitsOn(r.waits, me)).length
   return (
     <section className="br-card" aria-label="全队交付" data-testid="team-delivery">
       <header>
         <RoleIcon role="team" size={18} />
         <h3>全队交付</h3>
-        <span className="br-dim br-small" data-testid="delivery-count">{snap.delivery.length} 个需求{me ? ` · 等你的 ${mine} 个` : ''} · 在做的和近 14 天合并、关掉的</span>
+        <span className="br-dim br-small" data-testid="delivery-count">{view.delivery.length} 个需求{me ? ` · 等你的 ${mine} 个` : ''} · 在做的和近 14 天合并、关掉的</span>
         <span className="br-grow" />
         <label className="rv-filter">人
           <select value={who} onChange={(e) => setWho(e.target.value)} data-testid="filter-person">
@@ -251,7 +266,7 @@ function TeamDelivery({ snap, me, repoOf, at, go }: { snap: TeamSnapshot; me: st
           </select>
         </label>
       </header>
-      {rows.length === 0 ? <p className="br-empty">{snap.delivery.length ? '这个筛选下没有需求。' : '团队的项目里现在没有在做的需求，近 14 天也没有合并的。'}</p> : (
+      {rows.length === 0 ? <p className="br-empty">{view.delivery.length ? '这个筛选下没有需求。' : '这些项目里现在没有在做的需求，近 14 天也没有合并、关掉的。'}</p> : (
         <div className="br-scroll">
           <table className="cto-table tm-runs rv-delivery" data-testid="delivery-table">
             <thead><tr><th>需求</th><th>阶段</th><th>MR · 部署</th><th>在等</th></tr></thead>
@@ -409,6 +424,7 @@ const RV_CSS = `
 .rv-projects li { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .45em; min-width: 0; }
 .rv-projects li b { color: var(--text-strong); font-weight: 650; }
 .rv-project-error { flex-basis: 100%; }
+.rv-problem { display: grid; gap: .2em; }
 .rv-filter { display: inline-flex; align-items: center; gap: .35em; font-size: .88em; color: var(--muted); }
 .rv-filter select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; max-width: 12em; }
 .rv-delivery td { vertical-align: top; }

@@ -12,11 +12,14 @@ when the bridge's account last wrote on one of the MRs read (a system note, a la
 Read: the open MRs with the running label and every MR changed within RECENT_S (at most MAX_MRS, the newest first),
 each with its notes; each repo at most every TTL_S. A read that fails keeps the last one it got, with why (Problem).
 
-状态中转 (Relays): a repo whose kit.json names team_status.project reads the team server's TeamSnapshot (snapshot.py,
-team/relay.py writes it) from that GitLab project, snapshot.json on main, with the same token, at most every TTL_S for
-each project however many repos name it: the server, the runner at work, 全队交付. One older than snapshot.STALE_S says
-the server may have stopped (stale). A read that fails, or a file that is not a snapshot of this schema, keeps the last
-good one, with why. A repo whose kit.json names none keeps the read above alone, so an older server still shows.
+状态中转 (Runners.view's relays): a listed repo is on the relay when its GitLab project has the branch brain/status,
+where the team server writes the project's own TeamSnapshot (snapshot.py; team/relay.py writes it): snapshot.json there
+is read with the same token, at most every TTL_S per project however many repos list it, and the projects of one GitLab
+are put together, the server, the runner at work and 全队交付 of each. GitLab decides what a person sees: whoever can
+read a project's code reads its status, and nobody else. A project's one older than snapshot.STALE_S says the server may
+have stopped writing there (stale). A read that fails, or a file that is not a snapshot of this schema or of this
+project, keeps the last good one, with why. A repo whose project has no brain/status keeps the read above alone, so an
+older server still shows.
 """
 
 from __future__ import annotations
@@ -108,10 +111,10 @@ class Note(NamedTuple):
     system: bool
 
 
-NOT_WRITTEN = ("团队服务器还没在 %s 写过状态，或者你看不到这个项目",
-               "等团队服务器跑一轮（它每 5 分钟最多写一次）；一直这样，就请管运行机的人把你加进 %s（Reporter 就够）")
+NOT_WRITTEN = Problem("团队服务器还没在这个项目的 brain/status 上写过状态",
+                      "等团队服务器跑一轮（它每 5 分钟最多写一次）；一直这样，就请管运行机的人看看它的「运行机」页")
 OTHER_SCHEMA = ("团队服务器写的状态是第 %s 版，这个 app 读不了", "把这个 app 升级到团队服务器的版本")
-NOT_SNAPSHOT = ("团队服务器写的状态读不懂", "请管运行机的人看一下团队服务器：%s 里的 snapshot.json 坏了")
+NOT_SNAPSHOT = ("团队服务器写的状态读不懂", "请管运行机的人看一下团队服务器：%s 的 brain/status 上的 snapshot.json 不对")
 NO_PROJECT = Problem("这个仓库的 kit.json 没写 GitLab 项目，读不了团队运行机", "在 .brain/kit.json 里写上 gitlab.base 和 gitlab.project")
 NO_TOKEN = Problem("这台机器上没有你的 GitLab 令牌，读不了团队运行机",
                    "把你的 GitLab 令牌放在 ~/.brain/gitlab-token（chmod 600，只有你能读）或环境变量 GITLAB_TOKEN 里，要有 read_api 权限")
@@ -206,24 +209,18 @@ def asked_of(mr: Mr, raw: list[Any], ns: list[Note], bridge_user: str, me: str) 
     return out
 
 
-def relay_of(kit: Mapping[str, Any]) -> str | None:
-    """The status project kit.json's team_status names (group/name), None when it names none."""
-    ts = kit.get("team_status")
-    path = str(ts.get("project") or "").strip().strip("/") if isinstance(ts, dict) else ""
-    return path if "/" in path else None
-
-
 @dataclass(frozen=True)
 class Relayed:
-    """One status project's snapshot as the person's token last read it."""
+    """One project's snapshot as the person's token last read it."""
+    on: bool | None                     # its brain/status is there (None: not known yet)
     read_at: float | None               # when the last read that worked was (the person's clock)
-    snapshot: dict[str, Any] | None     # TeamSnapshot, parsed (snapshot.parse)
+    snapshot: dict[str, Any] | None     # TeamSnapshot, parsed (snapshot.parse), only the project's own parts
     problem: Problem | None             # why the last read did not work
 
 
 class Runners:
     """Each listed repo's runner as GitLab last showed it, read again at most every TTL_S (blocking: call it in a
-    thread), and each status project's snapshot (状态中转) the same way. The person's token never leaves brain-kit's
+    thread), and each repo's project's snapshot (状态中转) the same way. The person's token never leaves brain-kit's
     GitLab client."""
 
     def __init__(self, clock: Any = time.monotonic) -> None:
@@ -233,44 +230,37 @@ class Runners:
         self._lock = threading.Lock()
 
     def view(self, listed: list[Listed], *, now: float, transport: Any = None) -> dict[str, Any]:
-        """GET /team/status (RunnerStatus in ui/src/types.ts): the repos in the order the app lists them, and the
-        status projects they name, in the order of the first repo that names each."""
+        """GET /team/status (RunnerStatus in ui/src/types.ts): the repos in the order the app lists them, and for each
+        GitLab whose projects are on the relay, those projects put together (RelayRead)."""
         with self._lock:
-            groups: dict[tuple[str, str], list[Listed]] = {}
+            reads = {x.repo: self._relay(x, now, transport) for x in listed}
+            groups: dict[str, list[Listed]] = {}
             for x in listed:
-                path = relay_of(x.kit)
-                if path:
-                    groups.setdefault((x.base, path), []).append(x)
+                if reads[x.repo].on:
+                    groups.setdefault(x.base, []).append(x)
             return {"recent_h": RECENT_S // 3600, "at": now, "stale_after_s": snapshot.STALE_S,
-                    "repos": [self._repo(x, now, transport) for x in listed],
-                    "relays": [self._relay(base, path, xs, listed, now, transport) for (base, path), xs in groups.items()]}
+                    "repos": [self._repo(x, now, transport, bool(reads[x.repo].on)) for x in listed],
+                    "relays": [together(base, xs, listed, reads, now) for base, xs in groups.items()]}
 
-    def _repo(self, x: Listed, now: float, transport: Any) -> dict[str, Any]:
+    def _repo(self, x: Listed, now: float, transport: Any, on: bool) -> dict[str, Any]:
         bridge = str(x.kit.get("bridge_user") or "").strip()
         if not bridge:
-            return {"repo": x.repo, "name": x.name, "runner": None, "relay": relay_of(x.kit)}
+            return {"repo": x.repo, "name": x.name, "runner": None, "relay": on}
         key = (x.repo, x.base, x.project, bridge.lower(), x.me)
         got = self._got.get(key)
         if got is None or self.clock() - got[0] > TTL_S:
             got = self._got[key] = (self.clock(), self._read(x, bridge, now, transport, got[1].seen if got else None))
-        return {"repo": x.repo, "name": x.name, "runner": asdict(got[1]), "relay": relay_of(x.kit)}
+        return {"repo": x.repo, "name": x.name, "runner": asdict(got[1]), "relay": on}
 
-    def _relay(self, base: str, path: str, xs: list[Listed], listed: list[Listed], now: float,
-               transport: Any) -> dict[str, Any]:
-        """RelayRead (ui/src/types.ts): the status project, the listed repos that name it, the person's name there, the
-        listed repos of its GitLab by their project (to open a row's 运行过程 here), and its snapshot as last read."""
-        key = (base, path)
+    def _relay(self, x: Listed, now: float, transport: Any) -> Relayed:
+        if not x.base or not x.project:
+            return Relayed(False, None, None, None)
+        key = (x.base, x.project)
         got = self._relays.get(key)
         if got is None or self.clock() - got[0] > TTL_S:
-            last = got[1] if got else Relayed(None, None, None)
-            got = self._relays[key] = (self.clock(), read_relay(base, path, now, transport, last))
-        r = got[1]
-        snap = r.snapshot
-        return {"project": path, "repos": [x.repo for x in xs], "me": next((x.me for x in xs if x.me), None),
-                "repo_of": {x.project: x.repo for x in listed if x.base == base and x.project},
-                "read_at": r.read_at, "snapshot": snap,
-                "stale": snap is not None and now - snap["generated_at"] > snapshot.STALE_S,
-                "problem": asdict(r.problem) if r.problem else None}
+            got = self._relays[key] = (self.clock(), read_relay(x.base, x.project, now, transport,
+                                                                got[1] if got else Relayed(None, None, None, None)))
+        return got[1]
 
     @staticmethod
     def _read(x: Listed, bridge: str, now: float, transport: Any, last: Seen | None) -> Runner:
@@ -292,27 +282,79 @@ class Runners:
         return runner(seen_of(mrs, notes, kit=x.kit, bridge_user=bridge, me=x.me, now=now), None)
 
 
-def read_relay(base: str, path: str, now: float, transport: Any, last: Relayed) -> Relayed:
-    """snapshot.json of status project *path*, read with the person's token and parsed; *last* kept when it cannot
-    be, with why (blocking)."""
+def read_relay(base: str, project: str, now: float, transport: Any, last: Relayed) -> Relayed:
+    """snapshot.json on *project*'s brain/status, read with the person's token and parsed, only the project's own parts
+    kept; *last* kept when it cannot be, with why (blocking). on: whether brain/status is there."""
     def kept(problem: Problem) -> Relayed:
-        return Relayed(last.read_at, last.snapshot, problem)
+        return Relayed(last.on, last.read_at, last.snapshot, problem)
     try:
-        gl = mrinfo.client(base, transport) if base else None
+        gl = mrinfo.client(base, transport)
     except Exception as exc:  # noqa: BLE001 - brain-kit refuses a token file others can read
         return kept(Problem("GitLab 令牌读不了", "chmod 600 ~/.brain/gitlab-token：令牌文件只能你自己读",
                             str(exc).split("\n", 1)[0][:300]))
     if gl is None:
-        return kept(NO_TOKEN if base else NO_PROJECT)
+        return kept(NO_TOKEN)
     try:
-        raw = gl.file_raw(path, snapshot.FILE, snapshot.BRANCH)
+        raw = gl.file_raw(project, snapshot.FILE, snapshot.BRANCH)
+        on = raw is not None or branch_there(gl, project)
     except Exception as exc:  # noqa: BLE001 - GitLab down, the token refused, SSO expired: said, the last read kept
         return kept(problem_of(exc))
     if raw is None:
-        return kept(Problem(NOT_WRITTEN[0] % path, NOT_WRITTEN[1] % path))
+        return Relayed(on, last.read_at, last.snapshot, NOT_WRITTEN if on else None)
     try:
-        return Relayed(now, snapshot.parse(raw), None)
+        snap = snapshot.parse(raw)
     except snapshot.OtherSchema as exc:
         return kept(Problem(OTHER_SCHEMA[0] % exc.schema, OTHER_SCHEMA[1], str(exc)))
     except snapshot.Bad as exc:
-        return kept(Problem(NOT_SNAPSHOT[0], NOT_SNAPSHOT[1] % path, str(exc)[:300]))
+        return kept(Problem(NOT_SNAPSHOT[0], NOT_SNAPSHOT[1] % project, str(exc)[:300]))
+    if snap["project"] != project:
+        return kept(Problem(NOT_SNAPSHOT[0], NOT_SNAPSHOT[1] % project, "project: %s" % snap["project"][:200]))
+    return Relayed(True, now, own_parts(snap, project), None)
+
+
+def branch_there(gl: Any, project: str) -> bool:
+    """Whether *project* has brain/status (GitLab answers 404 for a branch not there)."""
+    try:
+        gl.call("GET", "/projects/%s/repository/branches/%s" % (bk.m("rest").q(project), bk.m("rest").q(snapshot.BRANCH)))
+    except Exception as exc:  # noqa: BLE001 - only GitLab's 404 is an answer here
+        if getattr(exc, "status", None) == 404:
+            return False
+        raise
+    return True
+
+
+def own_parts(snap: dict[str, Any], project: str) -> dict[str, Any]:
+    """*snap* with the rows and items of *project* only: a person sees what GitLab lets them read, whatever a writer
+    put in."""
+    runner = {k: [i for i in snap["runner"][k] if i["project"] == project] for k in snap["runner"]}
+    return dict(snap, runner=runner, delivery=[r for r in snap["delivery"] if r["project"] == project])
+
+
+def together(base: str, xs: list[Listed], listed: list[Listed], reads: Mapping[str, Relayed],
+             now: float) -> dict[str, Any]:
+    """RelayRead (ui/src/types.ts): the listed repos of one GitLab that are on the relay, the person's name there, its
+    listed repos by project (a row of one opens its 需求现状 here), each project as last read, and their snapshots
+    put together (view: the newest's server, every project's runner and delivery; None before any is read)."""
+    projects, snaps, seen = [], [], set()
+    for x in xs:
+        if x.project in seen:
+            continue                    # another checkout of the same project: read once, shown once
+        seen.add(x.project)
+        r = reads[x.repo]
+        snap = r.snapshot
+        projects.append({"project": x.project, "repo": x.repo, "read_at": r.read_at,
+                         "written_at": snap["generated_at"] if snap else None,
+                         "stale": snap is not None and now - snap["generated_at"] > snapshot.STALE_S,
+                         "state": snap["state"] if snap else None, "delivery_at": snap["delivery_at"] if snap else None,
+                         "version": snap["server"]["version"] if snap else None,
+                         "problem": asdict(r.problem) if r.problem else None})
+        if snap is not None:
+            snaps.append(snap)
+    newest = max(snaps, key=lambda s: s["generated_at"]) if snaps else None
+    view = newest and {"generated_at": newest["generated_at"], "server": newest["server"],
+                       "runner": {k: [i for s in snaps for i in s["runner"][k]] for k in ("handovers", "patrol", "staging")},
+                       "delivery": [r for s in snaps for r in s["delivery"]]}
+    return {"repos": [x.repo for x in xs], "me": next((x.me for x in xs if x.me), None),
+            "repo_of": {x.project: x.repo for x in listed if x.base == base and x.project},
+            "projects": projects, "stale": newest is not None and now - newest["generated_at"] > snapshot.STALE_S,
+            "view": view}

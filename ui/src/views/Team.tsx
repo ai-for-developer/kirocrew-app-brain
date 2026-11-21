@@ -15,7 +15,7 @@ import { Fragment } from 'react'
 import { useAppApi, useNavigate } from '@kirocrew/app-sdk'
 import { paths, useAction, usePoll } from '../api'
 import { ago, fmtIso } from '../format'
-import type { CheckRow, HandoverResult, PatrolState, RunState, TeamConfigRow, TeamHandover, TeamLoopResult, TeamNote, TeamPatrol, TeamStaging, TeamStatus, TeamView } from '../types'
+import type { CheckRow, HandoverResult, PatrolState, RunState, TeamConfigRow, TeamHandover, TeamLoopResult, TeamNote, TeamPatrol, TeamRelayProject, TeamStaging, TeamStatus, TeamView } from '../types'
 import { CheckRows, EmptyHero, ExtLink, Icon, LEVEL_LABEL, LoadState, RoleIcon, questionMeta, type FlowStep } from '../ui'
 import type { Tone } from '../styles'
 import { ACT } from '../vocab'
@@ -228,13 +228,13 @@ export function TeamPage({ status, go, reloadStatus, pollMs }: ViewProps) {
             </button>
           </div>
           {st.error && <StartError st={st} />}
-          {st.relay?.error && (
-            <div className="tm-loop-error" data-testid="relay-error">
-              <p className="br-bad-text"><b>状态中转没写成：</b>{st.relay.error}</p>
-              <span className="tm-do"><b>做什么</b>{st.relay.todo}</span>
-              {st.relay.raw && <details className="br-raw"><summary>细节</summary><pre>{st.relay.raw}</pre></details>}
+          {st.relay?.projects.filter((x) => x.error).map((x) => (
+            <div key={x.project} className="tm-loop-error" data-testid="relay-error" data-project={x.project}>
+              <p className="br-bad-text"><b>状态中转没写成 {x.project}：</b>{x.error}</p>
+              <span className="tm-do"><b>做什么</b>{x.todo}</span>
+              {x.raw && <details className="br-raw"><summary>细节</summary><pre>{x.raw}</pre></details>}
             </div>
-          )}
+          ))}
           {st.loop_error && (
             <div className="tm-loop-error" data-testid="loop-error">
               <p className="br-bad-text"><b>上一轮有一步没成：</b>{failedSteps(st.loop_error).join('、')}</p>
@@ -319,12 +319,17 @@ export function TeamPage({ status, go, reloadStatus, pollMs }: ViewProps) {
   )
 }
 
-/** 状态中转 in one line: where the bridge's rounds write the team's state for every person's app, and when they last
- * did; without a status project in bridge.json, how one gets there. */
+/** 状态中转 in one line: each project's state goes on its own branch for the people who can read the project, and when
+ * the newest was written; a project whose last write failed says why below. Nothing while the runner does not run. */
 function RelayFact({ relay }: { relay: TeamStatus['relay'] }) {
-  if (!relay) return <span data-testid="relay-line" title="团队的状态写进 GitLab，每个人的 app 用自己的令牌读">状态中转 <b className="br-dim">没配：再跑一次一键建运行机就有</b></span>
-  const when = relay.written_at ? `${ago(relay.written_at)}写的${relay.heartbeat ? '（没有变化，心跳）' : ''}` : '还没写过（每 5 分钟最多写一次）'
-  return <span data-testid="relay-line" title={`团队的状态写在 GitLab 的 ${relay.project}，每个人的 app 用自己的令牌读`}>状态中转 <b>{relay.project}</b> · <b>{when}</b></span>
+  if (!relay) return null
+  const newest = relay.projects.reduce<TeamRelayProject | null>((a, x) => (x.written_at !== null && (a === null || x.written_at > (a.written_at ?? 0)) ? x : a), null)
+  const when = newest?.written_at ? `${ago(newest.written_at)}写的${newest.heartbeat ? '（没有变化，心跳）' : ''}` : '还没写过（每 5 分钟最多写一次）'
+  return (
+    <span data-testid="relay-line" title={`每个项目的状态写在它自己的 ${relay.branch} 分支上，能看这个项目的人用自己的 GitLab 令牌读`}>
+      状态中转 <b>{relay.projects.length} 个项目的 {relay.branch}</b> · <b>{when}</b>
+    </span>
+  )
 }
 
 /** Why the bridge did not start: what is wrong and what to do in the backend's words (problems.team_start), the error

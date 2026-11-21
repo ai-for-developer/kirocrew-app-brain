@@ -22,7 +22,9 @@ patched or subclassed. What the app changes:
   say which;
 - patrol: a round ends with MR 巡检 (team/patrol.py, work source mr-patrol), on the same worker thread, then
   测试环境报错 (team/staging.py, work source staging-errors). MR 巡检 reads the logs of Jenkins builds with
-  bridge.json's optional "jenkins" (team/jenkins.py), a block brain-kit leaves alone.
+  bridge.json's optional "jenkins" (team/jenkins.py), a block brain-kit leaves alone;
+- 状态中转: after every step, each project's TeamSnapshot on its own branch brain/status (team/relay.py), for
+  relay.BUDGET_S a round at most; an MR from or into that branch is never a hand-over.
 
 The ledger is brain-kit's ``Ledger``: one sqlite connection any thread may use, ``ledger.lock`` around several
 statements. Rounds run one at a time on the runtime's own worker thread (a round may wait on GitLab, KiroCrew and the
@@ -44,7 +46,7 @@ import threading
 import time
 from collections import deque
 from datetime import timedelta
-from typing import Any
+from typing import Any, Mapping
 
 from .. import bk, deliveries, lean_view, problems, snapshot
 from ..constants import APP_ROOT, PYTHON_BIN, VERSION
@@ -58,6 +60,9 @@ from .crewadapter import KiroCrewAdapter
 from .jenkins import Jenkins
 
 REQ_RE = re.compile(r"^[a-z]+-[A-Za-z0-9-]{1,80}-[0-9a-f]{12}\.json$")
+NO_PUSH = ("这台机器不推代码（没有 runnerd.json）：在 GitLab 上先建好 brain/status，一个没有父提交的分支（git push 一个孤立提交），"
+           "团队服务器就往里写")
+OUT_OF_TIME = "全队交付这一轮没读完（%d 秒到了），下一轮接着读：下面是上次读完的" % relay_mod.BUDGET_S
 MAX_SPOOL_FILE = 64 * 1024
 PENDING_WINDOW_S = 3600   # brain-kit's Ledger.pending_voucher(newer_than=3600): older ones are not asked for again
 LEDGER_TABLES = ("runs", "decisions", "handoffs", "outbox", "notices")
@@ -110,10 +115,8 @@ def start_inputs(team: dict[str, Any]) -> list[str]:
     gitlab = cfg.get("gitlab") if isinstance(cfg.get("gitlab"), dict) else {}
     signer = cfg.get("signer") if isinstance(cfg.get("signer"), dict) else {}
     jenkins = cfg.get("jenkins") if isinstance(cfg.get("jenkins"), dict) else {}
-    status = cfg.get("team_status") if isinstance(cfg.get("team_status"), dict) else {}
     named = [team.get("bridge_config"), team.get("runnerd_config"), gitlab.get("token_file"), cfg.get("identities"),
-             signer.get("allowed_signers"), signerproc.config_for(team), jenkins.get("token_file"),
-             status.get("token_file")]
+             signer.get("allowed_signers"), signerproc.config_for(team), jenkins.get("token_file")]
     return [os.path.expanduser(str(p)) for p in named if p]
 
 
@@ -140,8 +143,8 @@ class TeamRuntime:
         self.last_summary: dict[str, int] = {}
         self.last_handovers: list[dict[str, Any]] = []   # what Bridge.process said for each labelled MR, last round
         self.poll_checks: list[dict[str, Any]] = []      # CheckRows: the projects the last poll did not read or poll
-        self.poll_projects: list[dict[str, Any]] = []    # each project as the last poll left it (relay.project_states)
-        self.relay: relay_mod.Relay | None = None        # 状态中转: bridge.json team_status
+        self.poll_projects: list[dict[str, Any]] = []    # each project as the last poll left it (relay.project_state)
+        self.relay: relay_mod.Relay | None = None        # 状态中转: each project's brain/status
         self.deliveries: relay_mod.Deliveries | None = None
         self.lines: deque = deque(maxlen=200)
         self.same_user = False
@@ -222,7 +225,7 @@ class TeamRuntime:
                 ledger_path=os.path.join(os.path.dirname(config), "staging.sqlite"),
                 workspaces=staging_mod.beside(self.patrol.workspaces), helper=self.patrol.helper,
                 claims=lambda: sources.held(self), shared=lambda: sources.at_work(self, but=sources.STAGING))
-            self.relay, self.deliveries = self._relay(cfg, gl)
+            self.relay, self.deliveries = self._relay(cfg, gl, rcfg, config)
             self.cfg, self.runnerd_cfg, self.spool, self.allowed_signers = cfg, rcfg, spool, allowed
             self.error = ""
             return True
@@ -231,20 +234,20 @@ class TeamRuntime:
             self.host = self.patrol = self.staging = self.relay = self.deliveries = None
             return False
 
-    def _relay(self, cfg: dict[str, Any], gl: Any) -> tuple[relay_mod.Relay | None, relay_mod.Deliveries | None]:
-        """状态中转 when bridge.json names its project (team_status.project): written with the bridge's token, or the
-        one in team_status.token_file (a project token of the status project's own, as 一键建运行机 makes it for a
-        runner on project tokens), read when the first round writes."""
-        ts = cfg.get("team_status") if isinstance(cfg.get("team_status"), dict) else {}
-        project = str(ts.get("project") or "").strip()
-        if not project:
-            return None, None
-        base, rest = str(cfg["gitlab"]["base"]), bk.m("rest")
-        token_file = str(ts.get("token_file") or "")
-        connect = (lambda: rest.GitLab(base, rest.read_token(relay_mod.NO_TOKEN_ENV, relay_mod.NO_TOKEN_ENV,
-                                                             default_file=token_file), self.transport)) \
-            if token_file else (lambda: gl)
-        return relay_mod.Relay(connect, project), relay_mod.Deliveries(gl, base, self.host.kit)
+    def _relay(self, cfg: dict[str, Any], gl: Any, rcfg: dict[str, Any] | None,
+               config: str) -> tuple[relay_mod.Relay, relay_mod.Deliveries]:
+        """状态中转 in every project of bridge.json, written with the bridge's token; a project's brain/status pushed
+        once, when it has none, through runnerd's clone address with its name (relay.push_orphan), from status.git
+        beside bridge.json."""
+        work = os.path.join(os.path.dirname(config), "status.git")
+
+        def make_branch(project: str) -> None:
+            if not rcfg or not rcfg.get("clone_url"):
+                raise bk.m("common").BrainError(NO_PUSH)
+            relay_mod.push_orphan(str(rcfg["clone_url"]).replace("{project}", project), work,
+                                  str(rcfg.get("git_name") or "brain-bot"),
+                                  str(rcfg.get("git_email") or "brain-bot@noreply.invalid"))
+        return relay_mod.Relay(gl, make_branch), relay_mod.Deliveries(gl, str(cfg["gitlab"]["base"]), self.host.kit)
 
     def stop(self) -> None:
         """Close the ledger after the round in progress (it runs on the executor), then let the executor go."""
@@ -274,7 +277,8 @@ class TeamRuntime:
     # ---- one round ------------------------------------------------------------------------------------ #
 
     def loop_once(self) -> dict[str, int]:
-        """poll, runnerd, dispatch, watch, collect, reconcile, patrol, staging; one bad step does not stop the others."""
+        """poll, runnerd, dispatch, watch, collect, reconcile, patrol, staging, then 状态中转; one bad step does not stop
+        the others."""
         host = self.host
         if host is None:
             raise RuntimeError(self.error or "运行机模式没有启动")
@@ -307,38 +311,71 @@ class TeamRuntime:
                     self._out("%s failed this round: %s" % (step, exc))
             self.last_loop_at = time.time()
             self.loop_error = "；".join(errors)
-            if self.relay is not None:      # 状态中转: what goes wrong is its own to say, the round is done
-                summary["relay"] = int(self.relay.round(self.snapshot) in ("wrote", "heartbeat"))
+            if self.relay is not None:      # 状态中转, after the hand-over steps and bounded: what goes wrong is its own
+                summary["relay"] = self._relay_round()
             self.last_summary = summary
         return summary
 
-    def snapshot(self, now: float) -> dict[str, Any]:
-        """The TeamSnapshot this round relays (snapshot.py): the server and each project as the round left it; the
-        runner at work as 运行机 shows it (its runs, runner_rows, still open; MR 巡检's and 测试环境报错's views, as
-        they are); 全队交付 from GitLab (relay.Deliveries). Scrubbed as the pages are."""
+    def _relay_round(self) -> int:
+        """状态中转's part of the round (relay.Relay.round): each project's TeamSnapshot as snapshot_of makes it, what
+        every project shares made once, when the first one is due. -> how many projects it wrote."""
         projects = [p["project"] if isinstance(p, dict) else str(p) for p in self.host.cfg["projects"]]
+        shared: dict[str, Any] = {}
+
+        def build(project: str, now: float, deadline: float, there: dict[str, Any] | None) -> dict[str, Any]:
+            if not shared:
+                shared.update(self._shared())
+            return self.snapshot_of(project, now, deadline, there, shared)
+        got = self.relay.round(projects, build)
+        self.deliveries.forget(projects)
+        return sum(1 for x in got.values() if x in ("wrote", "heartbeat"))
+
+    def _shared(self) -> dict[str, Any]:
+        """What every project's snapshot is made from this round: MR 巡检's and 测试环境报错's views, identities.json's
+        roles, each project's deployed commit, the runner's open runs (runner_rows) and the server."""
         patrol, staging = self.patrol_view(), self.staging_view()
-        roles = relay_mod.identity_roles(self.cfg.get("identities"))
-        deployed = {p["project"]: str(p.get("deployed_sha") or "") for p in staging.get("projects") or [] if p.get("on")}
-        rows, said = self.deliveries.build(projects, deployed=deployed, roles=roles)
-        asked = {(r["project"], r["key"]): r["waits"] for r in rows}
-        handovers = []
-        for row, _facts, _decs, run in self.runner_rows():
-            if run["state"] in ("merged", "closed"):
-                continue
-            seen = asked.get((str(run["project"]), row["key"]))
-            gate = row["waits"]["do"] in deliveries.GATES
-            on = seen["on"] if seen and gate and seen["do"] in deliveries.GATES else relay_mod.on_names(row, None, roles)
-            handovers.append({"project": str(run["project"]), "iid": int(run["iid"]),
-                              "mr_url": self.mr_url(run["project"], run["iid"]), "key": row["key"], "title": row["title"],
-                              "run_id": str(run["run_id"]), "state": str(run["state"]), "owner": run.get("owner") or None,
-                              "waits": relay_mod.waits_of(row, on)})
-        snap = {"schema": snapshot.SCHEMA, "generated_at": now,
+        return {"patrol": patrol, "staging": staging, "roles": relay_mod.identity_roles(self.cfg.get("identities")),
+                "deployed": {p["project"]: str(p.get("deployed_sha") or "") for p in staging.get("projects") or []
+                             if p.get("on")},
+                "runs": [(row, run) for row, _facts, _decs, run in self.runner_rows()
+                         if run["state"] not in ("merged", "closed")],
                 "server": {"version": VERSION, "team_mode": True, "last_round_at": self.last_loop_at,
-                           "projects": relay_mod.project_states(self.poll_projects, patrol, staging, said)},
-                "runner": {"handovers": handovers, "patrol": patrol["items"], "staging": staging["items"],
-                           "cap": int(patrol["cap"]), "working": int(patrol["working"]) + int(staging["working"])},
-                "delivery": rows}
+                           "cap": int(patrol["cap"]), "working": int(patrol["working"]) + int(staging["working"])}}
+
+    def snapshot_of(self, project: str, now: float, deadline: float, there: dict[str, Any] | None,
+                    shared: Mapping[str, Any]) -> dict[str, Any]:
+        """The TeamSnapshot of *project* this round relays (snapshot.py): the server as every project's says it; the
+        project as the round left it; the runner's runs, MR 巡检's and 测试环境报错's items of the project, as 运行机
+        shows them; its 全队交付 from GitLab (relay.Deliveries), or the last rows read, with when, when they could not
+        be read whole by *deadline* (*there*: the one on its brain/status, for a project not read since the start).
+        Scrubbed as the pages are."""
+        try:
+            got = self.deliveries.read(project, deployed=shared["deployed"].get(project, ""), roles=shared["roles"],
+                                       deadline=deadline)
+            rows, at, said = got.rows, got.at, "全队交付：%s" % "；".join(got.notes) if got.notes else ""
+        except Exception as exc:  # noqa: BLE001 - GitLab, what it holds, the time: the last rows, with why
+            last = self.deliveries.last.get(project)
+            rows, at = (last.rows, last.at) if last else ((there or {}).get("delivery") or [], (there or {}).get("delivery_at"))
+            said = OUT_OF_TIME if isinstance(exc, relay_mod.OutOfTime) else "全队交付没读成：%s" % relay_mod.said_of(exc)
+        asked = {r["key"]: r["waits"] for r in rows}
+        handovers = []
+        for row, run in shared["runs"]:
+            if str(run["project"]) != project:
+                continue
+            seen = asked.get(row["key"])
+            gate = row["waits"]["do"] in deliveries.GATES
+            on = seen["on"] if seen and gate and seen["do"] in deliveries.GATES else \
+                relay_mod.on_names(row, None, shared["roles"])
+            handovers.append({"project": project, "iid": int(run["iid"]), "mr_url": self.mr_url(project, run["iid"]),
+                              "key": row["key"], "title": row["title"], "run_id": str(run["run_id"]),
+                              "state": str(run["state"]), "owner": run.get("owner") or None,
+                              "waits": relay_mod.waits_of(row, on)})
+        snap = {"schema": snapshot.SCHEMA, "generated_at": now, "project": project, "server": dict(shared["server"]),
+                "state": relay_mod.project_state(project, self.poll_projects, shared["patrol"], shared["staging"], said),
+                "runner": {"handovers": handovers,
+                           "patrol": [i for i in shared["patrol"]["items"] if i["project"] == project],
+                           "staging": [i for i in shared["staging"]["items"] if i["project"] == project]},
+                "delivery": rows, "delivery_at": at}
         return scrub_tree(snap, self.scrub)
 
     def _poll(self, host: Any) -> int:
@@ -377,6 +414,8 @@ class TeamRuntime:
                     continue
                 state["on"] = True
                 for mr in mrs:
+                    if snapshot.BRANCH in (mr.get("source_branch"), mr.get("target_branch")):
+                        continue        # 状态中转's own branch: never a hand-over
                     row = {"project": str(project), "iid": int(mr.get("iid") or 0), "sha": str(mr.get("sha") or "")[:40],
                            "result": "error", "error": "", "at": time.time()}
                     try:

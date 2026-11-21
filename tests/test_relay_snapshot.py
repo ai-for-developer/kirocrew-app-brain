@@ -14,12 +14,12 @@ WAITS = {"who": "product", "do": "accept", "text": "等产品在 MR 上验收 D-
 
 
 def a_snapshot():
-    """Every part of a TeamSnapshot with one row each, as a team server of 0.4.2 writes it."""
+    """Every part of a project's TeamSnapshot with one row each, as a team server writes it on shop/pay's brain/status."""
     link = {"iid": 61, "url": "https://gitlab.example.com/shop/pay/-/issues/61", "title": "测试环境报错：KeyError"}
     return {
-        "schema": 1, "generated_at": 1794146400.0,
-        "server": {"version": "0.4.2", "team_mode": True, "last_round_at": 1794146390.5,
-                   "projects": [{"project": "shop/pay", "on": True, "sources": ["mr-handoff", "mr-patrol"], "error": ""}]},
+        "schema": 1, "generated_at": 1794146400.0, "project": "shop/pay",
+        "server": {"version": "0.4.2", "team_mode": True, "last_round_at": 1794146390.5, "cap": 2, "working": 1},
+        "state": {"on": True, "sources": ["mr-handoff", "mr-patrol"], "error": ""},
         "runner": {
             "handovers": [{"project": "shop/pay", "iid": 41, "mr_url": "https://gitlab.example.com/shop/pay/-/merge_requests/41",
                            "key": "PAY-4", "title": "退款审核", "run_id": "RUN-PAY-4-1", "state": "parked", "owner": "alice",
@@ -29,13 +29,13 @@ def a_snapshot():
                         "note": "", "attempts": 1, "slot": "patrol-7-52", "updated_at": "2026-11-08T13:00:00Z"}],
             "staging": [{"project": "shop/pay", "signature": "KeyError at pay/refund.py:refund", "count": 3, "state": "issued",
                          "issue": link, "origin": None, "fix_mr": None, "first_seen": 1794140000, "last_seen": 1794146000,
-                         "deployed_sha": "a" * 40, "attempts": 0, "slot": None, "note": ""}],
-            "cap": 2, "working": 1},
+                         "deployed_sha": "a" * 40, "attempts": 0, "slot": None, "note": ""}]},
         "delivery": [{"project": "shop/pay", "key": "PAY-4", "title": "退款审核", "owner": "alice", "stage": "发布 · 验收",
                       "state": "acceptance", "branch": "ai/alice/PAY-4-refund",
                       "mr": {"iid": 41, "url": "https://gitlab.example.com/shop/pay/-/merge_requests/41", "state": "opened",
                              "ci": "success"},
                       "deployed": None, "waits": copy.deepcopy(WAITS), "updated_at": 1794146000.0}],
+        "delivery_at": 1794146380.0,
     }
 
 
@@ -52,7 +52,8 @@ def test_what_a_newer_server_adds_is_left_out_and_what_one_lacks_is_said_where()
     newer["delivery"][0]["mr"]["approvals"] = 2
     assert snapshot.parse(newer) == snapshot.parse(a_snapshot())
     for path, value, said in ((("delivery", 0, "waits", "on"), "carol", "delivery[0].waits.on: want a list"),
-                              (("runner", "cap"), True, "runner.cap: want a whole number"),
+                              (("server", "cap"), True, "server.cap: want a whole number"),
+                              (("state", "sources"), "mr-handoff", "state.sources: want a list"),
                               (("server", "team_mode"), 1, "server.team_mode: want true or false"),
                               (("delivery", 0, "mr", "iid"), "41", "delivery[0].mr.iid: want a whole number"),
                               (("generated_at",), None, "generated_at: want a number")):
