@@ -225,6 +225,19 @@ def parse_pipelines(rows: Any, base: str, project: str) -> list[dict[str, Any]]:
     return sorted(out, key=lambda p: -p["id"])[:MAX_PIPELINES]
 
 
+def pipelines(gl: Any, base: str, project: str, iid: int, last: dict[str, Any] | None) -> list[dict[str, Any]] | None:
+    """The MR's newest pipelines (parse_pipelines), read with *gl*'s token. None when GitLab serves none for it (403,
+    404: CI off, or the token may not read them); any other failure keeps *last*'s (the same MR's last read: its
+    pipelines): the MR and its notes still count."""
+    try:
+        rows = gl.call("GET", "/projects/%s/merge_requests/%d/pipelines" % (quote(str(project), safe=""), iid),
+                       {"per_page": MAX_PIPELINES})
+    except Exception as exc:  # noqa: BLE001 - GitLab down halfway through the refresh
+        kept = (last or {}).get("pipelines") if (last or {}).get("iid") == iid else None
+        return None if getattr(exc, "status", None) in (403, 404) else kept
+    return parse_pipelines(rows, base, str(project))
+
+
 class MrCache:
     """Per (project, branch): {at, mr: {iid, url, state, labels, questions, rejected_reason, rejected_raw, pipelines}}
     or an error."""
@@ -260,7 +273,7 @@ class MrCache:
                 parsed = parse_notes(gl.mr_notes(project, mr["iid"]), bridge_user)
                 info = {"iid": int(mr["iid"]), "url": mr.get("web_url"), "state": mr.get("state"),
                         "labels": list(mr.get("labels") or []), "sha": mr.get("sha"), **parsed,
-                        "pipelines": self._pipelines(gl, base, project, int(mr["iid"]), old.get("mr"))}
+                        "pipelines": pipelines(gl, base, project, int(mr["iid"]), old.get("mr"))}
             with self._lock:
                 self._rows[(project, branch)] = {"at": time.monotonic(), "mr": info}
             return info
@@ -269,19 +282,6 @@ class MrCache:
                 self._rows[(project, branch)] = {"at": time.monotonic(), "mr": old.get("mr"),
                                                  "error": str(exc).split("\n", 1)[0][:200]}
             return old.get("mr")
-
-    @staticmethod
-    def _pipelines(gl: Any, base: str, project: str, iid: int, last: dict[str, Any] | None) -> list[dict[str, Any]] | None:
-        """The MR's newest pipelines (parse_pipelines). None when GitLab serves none for it (403, 404: CI off, or the
-        token may not read them); any other failure keeps the last copy of the same MR's: the MR and its notes still
-        count."""
-        try:
-            rows = gl.call("GET", "/projects/%s/merge_requests/%d/pipelines" % (quote(str(project), safe=""), iid),
-                           {"per_page": MAX_PIPELINES})
-        except Exception as exc:  # noqa: BLE001 - GitLab down halfway through the refresh
-            kept = (last or {}).get("pipelines") if (last or {}).get("iid") == iid else None
-            return None if getattr(exc, "status", None) in (403, 404) else kept
-        return parse_pipelines(rows, base, str(project))
 
     def post_answer(self, base: str, project: str, iid: int, did: str, choice: str, note: str, *,
                     transport: Any = None) -> dict[str, Any]:

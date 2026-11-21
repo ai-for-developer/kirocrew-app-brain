@@ -387,6 +387,30 @@ def outbox_note(o: dict[str, Any]) -> dict[str, Any] | None:
     return {"kind": "outbox_" + st, "text": text, "at": lean_view.epoch(o.get("updated") or o.get("created"))}
 
 
+def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """{run id: [TeamNote]}: what brain-kit's bridge (0d52e97) holds about a run in its ledger, said plainly
+    (team_note): the notices it told the MR or counts (CI holding the acceptance question, runnerd silent, sends that
+    keep failing, queued …) and the messages into its session that are not known to have landed."""
+    out: dict[str, list[dict[str, Any]]] = {}
+    sent = {str(o.get("send_id")) for o in outbox if o.get("state") == "sent"}
+    holding = {str(n.get("key") or "").split(":")[1] for n in notices
+               if str(n.get("key") or "").startswith("ciheld:") and n.get("state") == "counting"}
+    for n in notices:
+        key = str(n.get("key") or "")
+        if key.startswith("gaveup:") and key[len("gaveup:"):] in sent:
+            continue        # it landed in the end
+        if key.startswith(("ciheld-wait:", "ciheld-person:", "ciheld-red:")) and str(n.get("run_id")) not in holding:
+            continue        # the pipeline it was about is green, or another push started another wait
+        got = team_note(n)
+        if got and n.get("run_id"):
+            out.setdefault(str(n["run_id"]), []).append(got)
+    for o in outbox:
+        got = outbox_note(o)
+        if got and o.get("run_id"):
+            out.setdefault(str(o["run_id"]), []).append(got)
+    return out
+
+
 def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[dict[str, Any]],
                   park: Any, notes: list[dict[str, Any]] | None = None) -> None:
     """Team mode: the ledger's run state and its decisions (brain-kit's states). A run id reserved while the signer

@@ -46,8 +46,9 @@ from collections import deque
 from datetime import timedelta
 from typing import Any
 
-from .. import bk, problems
+from .. import bk, deliveries, lean_view, problems
 from ..constants import APP_ROOT, PYTHON_BIN
+from ..repo import Git, Source, read_claim, read_facts
 from . import patrol as patrol_mod
 from . import signerproc, sources
 from . import staging as staging_mod
@@ -345,6 +346,42 @@ class TeamRuntime:
         out = []
         for r in list(self.last_handovers):
             out.append(dict(r, mr_url=self.mr_url(r["project"], r["iid"])))
+        return out
+
+    def runner_rows(self) -> list[tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], dict[str, Any]]]:
+        """(row, facts, decisions, run) per requirement the bridge has a run of, its latest run: the row as 交付总览 and
+        需求现状 say it (deliveries.team_classify over the ledger and the records in the run's workspace, its run ids,
+        MR and last update). Its credits and the first line of its 变更说明 are the service's."""
+        if self.host is None:
+            return []
+        led = self.ledger()
+        latest: dict[str, dict[str, Any]] = {}
+        all_ids: dict[str, list[str]] = {}
+        for r in led["runs"]:
+            all_ids.setdefault(r["req"], []).append(r["run_id"])
+            latest[r["req"]] = r
+        notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [])
+        out = []
+        for key, r in sorted(latest.items()):
+            facts = {"key": key, "claim": None, "where": "runner", "branch": None, "owner": r.get("owner"),
+                     "worktree": None, "stages": [], "events": [], "approvals": [], "run": None, "park": None,
+                     "project": r.get("project")}
+            path = r.get("path")
+            if path and os.path.isdir(path):
+                g = Git(path)
+                got = read_facts(Source(g, path=path), key, "runs")
+                # runnerd's clone fetches every branch: the claim says the requirement's title, as a person's row does
+                facts.update(got, worktree=path, stages=lean_view.stages(got["events"]),
+                             claim=read_claim(g, "refs/remotes/origin/claim/" + key, "refs/heads/claim/" + key))
+                facts["branch"] = (got["run"] or {}).get("branch")
+            row = deliveries.base_row("runner", facts)
+            row["where"] = "runner"
+            decs = [d for d in led["decisions"] if d["run_id"] in all_ids[key]]
+            deliveries.team_classify(row, r, decs, facts.get("park"), notes=notes.get(r["run_id"], []))
+            row["run_ids"] = all_ids[key]
+            row["mr"] = {"iid": int(r["iid"]), "url": self.mr_url(r["project"], r["iid"]), "state": None}
+            row["updated_at"] = lean_view.epoch(r.get("updated"))
+            out.append((row, facts, decs, r))
         return out
 
     # ---- what the page reads -------------------------------------------------------------------------- #

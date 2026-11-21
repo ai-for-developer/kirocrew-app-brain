@@ -30,7 +30,7 @@ from .constants import APP_NAME, APP_ROOT, KEY_RE, LOCAL_FOLDER, PYTHON_BIN, REP
 from .gateway import Gateway, GatewayError
 from .gateway import said as gateway_said
 from .httpkit import AppError
-from .repo import Git, Repo, Source, files_stamp, git_stamp, read_claim, read_facts
+from .repo import Git, Repo, files_stamp, git_stamp
 from .repoids import RepoIds, from_records
 from .sessions import SessionManager, requirement_credits
 from . import store as store_mod
@@ -656,39 +656,15 @@ class Service:
         return (path, sha, main, key, c), (lambda: mrdesc_view.describe(path, cfg, key, sha, cr))
 
     def _team_rows(self, snap: dict[str, Any]) -> list[tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]]:
-        """(row, facts, decisions) per requirement the team runner has (its latest run)."""
+        """(row, facts, decisions) per requirement the team runner has (its latest run, TeamRuntime.runner_rows), with
+        the credits of its sessions here and its 变更说明's first line."""
         if self.team is None or self.team.host is None:
             return []
-        led = self.team.ledger()
-        latest: dict[str, dict[str, Any]] = {}
-        all_ids: dict[str, list[str]] = {}
-        for r in led["runs"]:
-            all_ids.setdefault(r["req"], []).append(r["run_id"])
-            latest[r["req"]] = r
         out = []
-        for key, r in sorted(latest.items()):
-            facts = {"key": key, "claim": None, "where": "runner", "branch": None, "owner": r.get("owner"),
-                     "worktree": None, "stages": [], "events": [], "approvals": [], "run": None, "park": None,
-                     "project": r.get("project")}
-            path = r.get("path")
-            if path and os.path.isdir(path):
-                g = Git(path)
-                got = read_facts(Source(g, path=path), key, "runs")
-                # runnerd's clone fetches every branch: the claim says the requirement's title, as a person's row does
-                facts.update(got, worktree=path, stages=lean_view.stages(got["events"]),
-                             claim=read_claim(g, "refs/remotes/origin/claim/" + key, "refs/heads/claim/" + key))
-                facts["branch"] = (got["run"] or {}).get("branch")
-            row = deliveries.base_row("runner", facts)
-            row["where"] = "runner"
-            decs = [d for d in led["decisions"] if d["run_id"] in all_ids[key]]
-            deliveries.team_classify(row, r, decs, facts.get("park"),
-                                     notes=notices_by_run(led.get("notices") or [], led.get("outbox") or []).get(r["run_id"], []))
-            row["run_ids"] = all_ids[key]
-            counted, cost = self._team_credits(snap, key, all_ids[key], r.get("project"))
+        for row, facts, decs, _run in self.team.runner_rows():
+            counted, cost = self._team_credits(snap, row["key"], row["run_ids"], facts.get("project"))
             row["credits"], row["credits_whole"], row["sessions"] = cost["total"], cost["whole"], len(counted)
-            row["mr"] = {"iid": int(r["iid"]), "url": self.team.mr_url(r["project"], r["iid"]), "state": None}
-            row["updated_at"] = lean_view.epoch(r.get("updated"))
-            job = self._runner_desc(facts, key, row) if facts.get("run") else None
+            job = self._runner_desc(facts, row["key"], row) if facts.get("run") else None
             row["summary"] = mrdesc_view.plain_line(self.desc.first(*job)) if job else None
             out.append((row, facts, decs))
         return out
@@ -2223,7 +2199,7 @@ class Service:
             got = problems.reason(row["error"]) if row["error"] else None
             row.update(error=got["text"] if got else "", raw=(got["raw"] or "") if got else "")
             handovers.append(row)
-        notes = notices_by_run(led.get("notices") or [], led.get("outbox") or [])
+        notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [])
         return {"status": self.team.status(), "ledger": self.team.counts(led),
                 "runs": [{"run_id": r["run_id"], "req": r["req"], "project": r["project"], "iid": int(r["iid"]),
                           "state": r["state"], "slot": r.get("slot"), "mr_url": self.team.mr_url(r["project"], r["iid"]),
@@ -2335,29 +2311,6 @@ class Service:
             await self.save_settings({"team": want})
         return self._team_status()
 
-
-def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-    """{run id: [TeamNote]}: what brain-kit's bridge (0d52e97) holds about a run in its ledger, said plainly
-    (deliveries.team_note): the notices it told the MR or counts (CI holding the acceptance question, runnerd silent,
-    sends that keep failing, queued …) and the messages into its session that are not known to have landed."""
-    out: dict[str, list[dict[str, Any]]] = {}
-    sent = {str(o.get("send_id")) for o in outbox if o.get("state") == "sent"}
-    holding = {str(n.get("key") or "").split(":")[1] for n in notices
-               if str(n.get("key") or "").startswith("ciheld:") and n.get("state") == "counting"}
-    for n in notices:
-        key = str(n.get("key") or "")
-        if key.startswith("gaveup:") and key[len("gaveup:"):] in sent:
-            continue        # it landed in the end
-        if key.startswith(("ciheld-wait:", "ciheld-person:", "ciheld-red:")) and str(n.get("run_id")) not in holding:
-            continue        # the pipeline it was about is green, or another push started another wait
-        got = deliveries.team_note(n)
-        if got and n.get("run_id"):
-            out.setdefault(str(n["run_id"]), []).append(got)
-    for o in outbox:
-        got = deliveries.outbox_note(o)
-        if got and o.get("run_id"):
-            out.setdefault(str(o["run_id"]), []).append(got)
-    return out
 
 
 def runner_repo(cfg: dict[str, Any], facts: list[dict[str, Any]]) -> bool:
