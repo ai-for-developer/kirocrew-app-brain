@@ -2,10 +2,12 @@
  * 交付总览: the sample's CTO 视图 for brain-kit — one sentence and three numbers (how many requirements handed to the
  * runner ran unattended end to end, how many times a person stepped in at the judgment points and outside them,
  * credits per requirement) and who settled the decisions, each with its small SVG chart (cto/charts.tsx); 轮到你 (what
- * waits on the person, with its one step) and beside it 全队卡点 (what is stuck across the team, the backend's roster);
- * the weekly merges; 需求流动 (cto/Flow.tsx: the kanban of what is in progress, 按阶段 or 按人); the 交付清单 (every
- * requirement, a big requirement's small ones folded under it); brain-kit's eval batch (its big requirements split
- * into small ones among its rows). Every card and row opens the requirement's board
+ * waits on the person, with its one step); the weekly merges; 需求流动 (cto/Flow.tsx: the kanban of what is in
+ * progress); the 交付清单 (a big requirement's small ones folded under it); brain-kit's eval batch (its big requirements
+ * split into small ones among its rows). On a person's machine it is theirs: the backend lists their own requirements
+ * (and the small ones of their big ones), and the team (everyone's requirements, what is stuck) is the 团队运行机 tab's
+ * 全队交付, which the top links to. On the team server it is the team's: 全队卡点 beside 轮到你 (the backend's roster)
+ * and 需求流动's 按人. Every card and row opens the requirement's board
  * (运行过程). Polls GET /overview (Overview.cto has the numbers, from brainkit.evaluate). The repo pills and the
  * ledger's state filter are in the URL; a big number, a legend entry, a week, a column, a lane or 「+N 个」 filters the
  * ledger once more (a LedgerPick, with its ✕) and scrolls to it.
@@ -320,6 +322,10 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
   // one repo of several: the team view's counts are this repo's (a person's whole load is 全部's)
   const partial = repo !== 'all' && repos.filter((r) => r.ok).length > 1
   const team = !!status && (status.app.team || status.team.enabled)
+  // the team view (全队卡点, 按人) is the team server's; a person's is in 团队运行机 (全队交付)
+  const teamView = status?.app.role === 'team_server'
+  // a person's 交付总览 lists what is theirs: where the app cannot tell who they are, nothing there is
+  const whoUnknown = !teamView && scope.some((r) => r.me && !r.me.name)
   const newReq = () => go({ kind: 'new', ...(repo !== 'all' ? { repo } : {}) })
 
   if (noRepos) {
@@ -346,6 +352,11 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
         <span className="cto-org">{noKit ? `${repos.length} 个仓库 · 现在一个都读不了` : unreadable ? (picked ? `${picked.name} 还读不了` : '这个仓库不在列表里')
           : [status ? `${scope.length} 个仓库` : '', data ? `${data.rows.length} 个需求` : '…'].filter(Boolean).join(' · ')}</span>
         <span className="cto-grow" />
+        {status && !teamView && !localOnly && (
+          <button type="button" className="br-link" data-testid="ov-team-link" title="全队的需求、卡点、运行机在做什么" onClick={() => go({ kind: 'team' })}>
+            全队交付在「团队运行机」里 ↗
+          </button>
+        )}
         <RefreshButton repos={readable.filter((r) => r.remote !== false)} onDone={ov.reload} />
       </header>
       {repos.filter((r) => r.pending && (repo === 'all' || r.id === repo)).map((r) => (
@@ -414,7 +425,11 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
       {data && unreadable && !picked?.pending && (
         <Unreadable repo={picked} error={data.errors.find((e) => e.repo === repo)} onImport={(path) => go({ kind: 'import', ...(path ? { path } : {}) })} onAll={() => pickRepo('all')} />
       )}
-      {empty && !noKit && !unreadable && (
+      {empty && !noKit && !unreadable && whoUnknown && (
+        <EmptyHero testid="ov-who" title="还不知道你是谁" text={['这里只列你自己的需求，可这台机器还不知道你在这些仓库里叫什么，看不出哪些需求是你的。在最上面填上你的名字（GitLab 用户名），你的需求就列出来了。']}
+          punch="全队的需求在「团队运行机」里看。" />
+      )}
+      {empty && !noKit && !unreadable && !whoUnknown && (
         <EmptyHero title="还没有需求" text={[`${where}还没有需求。认领一个需求，写一段话或导入文档（选填），开工：它会在这里一路走到合并——在哪一步、等谁、花了多少。`]}
           punch="人只在判断点上出手：批准、回答、验收。"
           flow={localOnly
@@ -428,11 +443,13 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
 
       {data && c && !empty && (
         <>
-          <div className={`cto-duo${yours.length > 0 ? '' : ' is-one'}`} data-testid="ov-duo">
-            {yours.length > 0 && <YourTurn rows={yours} at={data.at} repoName={manyRepos ? repoName : () => undefined} onGo={go} onOpen={(r) => toBoard(r)}
-              onAll={() => filterTo(cellPick(undefined, 'you'))} />}
-            <TeamStuck roster={data.roster} rows={data.rows} partial={partial} repoName={manyRepos ? repoName : () => undefined} onOpen={toBoard} onAll={() => filterTo(stuckPick(data.roster))} />
-          </div>
+          {(yours.length > 0 || teamView) && (
+            <div className={`cto-duo${yours.length > 0 && teamView ? '' : ' is-one'}`} data-testid="ov-duo">
+              {yours.length > 0 && <YourTurn rows={yours} at={data.at} repoName={manyRepos ? repoName : () => undefined} onGo={go} onOpen={(r) => toBoard(r)}
+                onAll={() => filterTo(cellPick(undefined, 'you'))} />}
+              {teamView && <TeamStuck roster={data.roster} rows={data.rows} partial={partial} repoName={manyRepos ? repoName : () => undefined} onOpen={toBoard} onAll={() => filterTo(stuckPick(data.roster))} />}
+            </div>
+          )}
 
           <section className="cto-cards" data-testid="ov-cards">
             <UnattendedCard c={c} localOnly={localOnly} computing={computing} pick={pick} onPick={filterTo} onKey={(r) => (r.repo ? toBoard(r) : openKey(r.key))} />
@@ -461,7 +478,7 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
 
           {data.overlaps.length > 0 && <Overlaps data={data} onKey={(k) => openKey(k)} />}
 
-          <Flow rows={data.rows} roster={data.roster} partial={partial} at={data.at} hl={null} localOnly={localOnly} repos={scope.length} onOpen={(r) => toBoard(r)} onGo={go} onNew={newReq} repoName={repoName}
+          <Flow rows={data.rows} roster={data.roster} partial={partial} at={data.at} hl={null} localOnly={localOnly} repos={scope.length} byPerson={teamView} onOpen={(r) => toBoard(r)} onGo={go} onNew={newReq} repoName={repoName}
             onCell={(col, lane) => filterTo(cellPick(col, lane))} onOwner={(owner, col) => filterTo(ownerPick(owner, col, data.roster))} />
 
           <section className="cto-card" aria-label="交付清单" data-anchor="ledger" data-testid="ledger" ref={ledgerRef}>
@@ -520,7 +537,10 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
             <li>决定 · 谁定的：<WhoSyntax />。每个决定只算一次，写了别的就算「没归类」，列出在哪一行，不猜是谁。还在分支上、没合并的需求也算；评估里的「知识有用率」只看默认分支上的引用，所以两个数的范围不一样。</li>
             <li>每周合并：合并进默认分支的那一周（周一起）；交付方式同上，没评估过的合并算「还没评」。</li>
             <li>轮到你、等别人：按每个需求此刻等谁；「已等」从它开始这样等的那一刻算起。</li>
-            <li data-testid="notes-team">全队卡点、按人看：「超时」是人关（批准、回答、验收）等了 {data.roster.limits.wait_timeout_h} 个工作小时以上；「很久没动」是别人在自己机器上做的需求，{data.roster.limits.stale_after_h} 个工作小时没有推上新进度；「目录撞车」是两个在做的需求要改的目录可能有同一个文件；「verify 失败」是同一项检查 verify 连续 {data.roster.limits.verify_fail_limit} 次没过，AI 该停下来问人。「在做」是一个人手上没做完的需求（待认领的不算，交给运行机的算在负责人名下，拆成小需求的大需求在等小需求时不算，它的小需求算），到了 {data.roster.limits.wip_limit} 个标红；只看一个仓库时只数这个仓库的。工作小时只算周一到周五 9 点到 18 点。这些数在设置里改。</li>
+            {!teamView && (
+              <li data-testid="notes-mine">这里只有你自己的需求（和你的大需求拆出的小需求）。卡片上的红标：「超时」是人关（批准、回答、验收）等了 {data.roster.limits.wait_timeout_h} 个工作小时以上；「verify 失败」是同一项检查 verify 连续 {data.roster.limits.verify_fail_limit} 次没过，AI 该停下来问人。全队的需求、卡点、每人在做几个，在「团队运行机」的全队交付里看。工作小时只算周一到周五 9 点到 18 点。这些数在设置里改。</li>
+            )}
+            {teamView && <li data-testid="notes-team">全队卡点、按人看：「超时」是人关（批准、回答、验收）等了 {data.roster.limits.wait_timeout_h} 个工作小时以上；「很久没动」是别人在自己机器上做的需求，{data.roster.limits.stale_after_h} 个工作小时没有推上新进度；「目录撞车」是两个在做的需求要改的目录可能有同一个文件；「verify 失败」是同一项检查 verify 连续 {data.roster.limits.verify_fail_limit} 次没过，AI 该停下来问人。「在做」是一个人手上没做完的需求（待认领的不算，交给运行机的算在负责人名下，拆成小需求的大需求在等小需求时不算，它的小需求算），到了 {data.roster.limits.wip_limit} 个标红；只看一个仓库时只数这个仓库的。工作小时只算周一到周五 9 点到 18 点。这些数在设置里改。</li>}
             <li>没交付就结束：交给运行机以后，运行机没能开始，或 MR 关了没合并。它不算无人值守，也不算进分母。</li>
             <li>大需求：拆成小需求的需求。已合并 = 合进大需求分支的小需求；评估里大需求那一行的介入、问题和 credits 是大需求和它的小需求加起来的。待认领：拆出来、还没人认领的小需求。</li>
           </ul>

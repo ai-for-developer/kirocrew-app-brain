@@ -6,7 +6,7 @@
  * (`waits.do`, stepOf). Column names, lane names and 「+N 个」 filter the ledger (onCell). In a repo done only on this
  * machine the runner's column and lane fold to a narrow 「这次不需要」.
  * While a big requirement is split here a fifth lane, 待认领, holds the small ones nobody has.
- * 按人 (the switch beside the title; 按阶段 is the default) makes each person a lane instead, with 「在做 n/上限」 from the
+ * 按人 (the switch beside the title, on the team server; 按阶段 is the default) makes each person a lane instead, with 「在做 n/上限」 from the
  * backend's roster, red at or over the limit, and a lane for what nobody has. A card past a timeout or a limit (the
  * roster's overdue, stale and verify_fails) has a red mark in either view.
  *
@@ -286,7 +286,7 @@ function Card({ r, at, hl, repoName, late = [], h }: { r: Requirement; at: numbe
 
 const PER_CELL = 3
 
-export function Flow({ rows, roster, partial = false, at, hl, onNew, repoName, localOnly = false, repos = 1, ...h }: {
+export function Flow({ rows, roster, partial = false, at, hl, onNew, repoName, localOnly = false, repos = 1, byPerson = true, ...h }: {
   rows: Requirement[]
   /** the backend's team view: 按人's lanes and limits, the cards' red marks */
   roster: Roster
@@ -300,8 +300,11 @@ export function Flow({ rows, roster, partial = false, at, hl, onNew, repoName, l
   localOnly?: boolean
   /** how many repos the board shows (the band says 这个仓库 or 这 N 个仓库) */
   repos?: number
+  /** 按人 is offered (the team server's; a person's 交付总览 has their own requirements only) */
+  byPerson?: boolean
 } & Handlers) {
-  const [by, setBy] = useState<'stage' | 'person'>('stage')
+  const [chosen, setBy] = useState<'stage' | 'person'>('stage')
+  const by = byPerson ? chosen : 'stage'
   const live = rows.filter((r) => colOf(r) && colOf(r) !== '已合并')
   // a merge that still waits on you (回写 Brain) stays on the board however old it is
   const merged = rows.filter((r) => colOf(r) === '已合并' && ((r.updated_at ?? 0) >= at - 14 * 86400 || r.waits.who === 'you'))
@@ -346,10 +349,12 @@ export function Flow({ rows, roster, partial = false, at, hl, onNew, repoName, l
         <h3>需求流动</h3>
         <span className="cto-dim">此刻 · 每 5 秒刷新 · 点卡片打开它的运行过程，点列名、行名看下方交付清单里的这些</span>
         <span className="cto-grow" />
-        <div className="cto-seg br-flow-by" role="group" aria-label="需求流动按什么分行" data-testid="flow-by">
-          <button type="button" aria-pressed={by === 'stage'} onClick={() => setBy('stage')}>按阶段</button>
-          <button type="button" aria-pressed={by === 'person'} onClick={() => setBy('person')}>按人</button>
-        </div>
+        {byPerson && (
+          <div className="cto-seg br-flow-by" role="group" aria-label="需求流动按什么分行" data-testid="flow-by">
+            <button type="button" aria-pressed={by === 'stage'} onClick={() => setBy('stage')}>按阶段</button>
+            <button type="button" aria-pressed={by === 'person'} onClick={() => setBy('person')}>按人</button>
+          </div>
+        )}
         {onNew && <button type="button" className="kt-btn is-small cto-noprint" onClick={onNew}>开需求 ↗</button>}
       </div>
       <div className="cto-stats" data-testid="flow-stats">

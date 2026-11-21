@@ -728,7 +728,11 @@ class Service:
                     q_counts["asked"] += 1
                     q_counts["answered"] += d.get("state") in ("answered", "delivered", "delivery_unknown", "refused")
                     q_counts["delivered"] += d.get("state") == "delivered"
-        overlaps = deliveries.overlaps(rows)
+        overlaps = deliveries.overlaps(rows)     # over every row: a teammate's may share a path with one of mine
+        if self.settings["role"] == settings_mod.PERSONAL:
+            rows = deliveries.own_rows(rows, {rid: self.me_in(r) for rid, r in self.repos.items()})
+            keys = {r["key"] for r in rows}
+            overlaps = [o for o in overlaps if keys & set(o["keys"])]
         parts: list[tuple[str, dict[str, Any]]] = []
         view, funnel = self._eval_view(which, snap, parts)
         if funnel is None:

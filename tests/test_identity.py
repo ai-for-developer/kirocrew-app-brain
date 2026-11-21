@@ -420,17 +420,21 @@ def test_a_token_only_person_is_who_gitlab_says_and_the_token_is_in_no_answer(te
 
 
 def test_a_token_only_persons_rows_and_todo_are_their_own_only(teammates, monkeypatch):
+    """GitLab's name for the token decides what is alice's: her 交付总览 lists hers alone, bob's run and claim wait on
+    him (their own pages say so), and 待办 has only hers."""
     w = teammates
     svc = make_service(w.app, [w.repo], transport=WhoAmI(a_token(monkeypatch)))
 
     async def go():
         await status_until(svc, named("alice"))
-        return rows_of(await svc.overview("all")), await svc.todo()
+        return (rows_of(await svc.overview("all")), await svc.todo(),
+                [(await svc.requirement("r1", k))["row"] for k in (w.theirs, w.claimed)])
 
-    rows, todo = started(svc, go)
+    rows, todo, (theirs, claimed) = started(svc, go)
+    assert list(rows) == [w.mine]
     assert rows[w.mine]["owner"] == "alice" and rows[w.mine]["waits"]["who"] != "people", rows[w.mine]["waits"]
-    assert (rows[w.theirs]["waits"]["who"], rows[w.theirs]["waits"]["text"]) == ("people", "bob 在自己的机器上做")
-    assert (rows[w.claimed]["waits"]["who"], rows[w.claimed]["waits"]["text"]) == ("people", "等 bob 开工")
+    assert (theirs["waits"]["who"], theirs["waits"]["text"]) == ("people", "bob 在自己的机器上做")
+    assert (claimed["waits"]["who"], claimed["waits"]["text"]) == ("people", "等 bob 开工")
     assert {i["key"] for i in todo["items"] if i["kind"] != "crew"} <= {w.mine}, todo["items"]
 
 
@@ -449,10 +453,10 @@ def test_a_token_only_persons_checkpoint_goes_to_origin(teammates, monkeypatch):
     assert sync["push_why"] == "" and sync["push_cmd"] == ""
 
 
-def test_a_token_only_person_is_you_on_the_team_view_and_their_checkpoint_goes_up(teammates, monkeypatch):
-    """GitLab's name for the token is the team view's 你: alice's lane comes first with what she has open against the
-    limit 开需求 reminds her of, bob's run and claim are his lane and not hers, and her own run branch goes up at a
-    checkpoint."""
+def test_a_token_only_person_is_you_in_the_roster_and_their_checkpoint_goes_up(teammates, monkeypatch):
+    """GitLab's name for the token is the roster's 你: alice's lane is hers with what she has open against the limit
+    开需求 reminds her of; bob's run and claim are the team's (团队运行机), not on her 交付总览; her own run branch goes
+    up at a checkpoint."""
     w = teammates
     svc = make_service(w.app, [w.repo], transport=WhoAmI(a_token(monkeypatch)))
 
@@ -466,12 +470,10 @@ def test_a_token_only_person_is_you_on_the_team_view_and_their_checkpoint_goes_u
 
     view, tip = started(svc, go)
     people = view["roster"]["people"]
-    assert [(p["owner"], p["you"]) for p in people] == [("alice", True), ("bob", False)], people
+    assert [(p["owner"], p["you"]) for p in people] == [("alice", True)], people
     assert (people[0]["keys"], people[0]["open"], people[0]["limit"]) == ([w.mine], 1, 1)
-    assert sorted(people[1]["keys"]) == sorted([w.theirs, w.claimed])
     rows = rows_of(view)
-    assert rows[w.mine]["waits"]["who"] != "people", rows[w.mine]["waits"]
-    assert [rows[k]["waits"]["who"] for k in (w.theirs, w.claimed)] == ["people", "people"]
+    assert list(rows) == [w.mine] and rows[w.mine]["waits"]["who"] != "people", rows[w.mine]["waits"]
     assert on_origin(w.origin) == tip, "her own run branch went up at the checkpoint"
 
 
@@ -501,11 +503,13 @@ def test_with_no_token_and_no_name_a_teammates_requirement_is_not_yours_and_sett
     svc = make_service(w.app, [w.repo], transport=gl)
 
     async def go():
-        return await svc.status(), rows_of(await svc.overview("all")), await svc.todo()
+        return (await svc.status(), rows_of(await svc.overview("all")), await svc.todo(),
+                [(await svc.requirement("r1", k))["row"] for k in (w.theirs, w.claimed)])
 
-    st, rows, todo = started(svc, go)
-    assert (rows[w.theirs]["waits"]["who"], rows[w.theirs]["waits"]["text"]) == ("people", "bob 在自己的机器上做")
-    assert (rows[w.claimed]["waits"]["who"], rows[w.claimed]["waits"]["text"]) == ("people", "等 bob 开工")
+    st, rows, todo, (theirs, claimed) = started(svc, go)
+    assert rows == {}, "nobody known: nothing on 交付总览 is hers, and the page asks who she is"
+    assert (theirs["waits"]["who"], theirs["waits"]["text"]) == ("people", "bob 在自己的机器上做")
+    assert (claimed["waits"]["who"], claimed["waits"]["text"]) == ("people", "等 bob 开工")
     assert not [i for i in todo["items"] if i["key"] in (w.theirs, w.claimed)], todo["items"]
     me = st["repos"][0]["me"]
     assert (me["name"], me["ask"], me["label"], me["why"]) == (None, True, identity.LABEL_GITLAB, identity.WHY_GITLAB)

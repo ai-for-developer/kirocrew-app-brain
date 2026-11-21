@@ -549,6 +549,17 @@ def overlap_pairs(rows: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict
     return out
 
 
+def own_rows(rows: list[dict[str, Any]], me: dict[str, str | None]) -> list[dict[str, Any]]:
+    """A person's 交付总览 (a personal install): their own requirements (*me*: repo id -> who they are there; none
+    known, nothing there is theirs), and the small requirements of their big ones, whoever builds them (its parts). The
+    team, everyone's requirements, is the 团队运行机 tab's (状态中转)."""
+    def mine(r: dict[str, Any]) -> bool:
+        return bool(me.get(r["repo"])) and r.get("owner") == me.get(r["repo"])
+    big = {(r["repo"], r["key"]) for r in rows if mine(r) and (r.get("family") or {}).get("role") == "parent"}
+    return [r for r in rows if mine(r) or ((r.get("family") or {}).get("role") == "child"
+                                           and (r["repo"], (r.get("family") or {}).get("parent")) in big)]
+
+
 def overlaps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The overlapping pairs as 交付总览 lists them, each row told the keys it shares a path with (its ``overlap``)."""
     out = []

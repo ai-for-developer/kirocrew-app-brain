@@ -1201,7 +1201,48 @@ describe('交付总览: 大需求和小需求', () => {
   })
 })
 
-describe('交付总览: 全队卡点和按人看', () => {
+describe('交付总览 on a person’s machine: their own deliveries, the team in 团队运行机', () => {
+  test('no 全队卡点 and no 按人: 轮到你 alone, 需求流动 by stage, the note says what is listed, the top links to 全队交付', async () => {
+    const user = userEvent.setup()
+    const ov = fx.overview()
+    ov.roster.stuck = [{ repo: 'r1', key: 'PAY-6', kind: 'overdue', text: '等 carol 批准设计，已等 6 个工作小时（超时）', since: ov.at - 2 * 86400, other_key: null }]
+    ov.roster.counts = { overdue: 1, stale: 0, overlap: 0, verify_fails: 0 }
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
+    const p = props()
+    expect(p.status?.app.role).toBe('personal')
+    render(<OverviewView entry={{}} {...p} />)
+    const duo = await screen.findByTestId('ov-duo')
+    expect(Array.from(duo.children).map((c) => c.getAttribute('data-testid'))).toEqual(['your-turn'])
+    expect(duo).toHaveClass('is-one')
+    expect(screen.queryByTestId('team-stuck')).toBeNull()
+    const flow = screen.getByTestId('flow')
+    expect(within(flow).queryByTestId('flow-by')).toBeNull()
+    expect(within(flow).queryByRole('button', { name: '按人' })).toBeNull()
+    expect(screen.queryByTestId('notes-team')).toBeNull()
+    expect(screen.getByTestId('notes-mine')).toHaveTextContent('这里只有你自己的需求（和你的大需求拆出的小需求）')
+    expect(screen.getByTestId('notes-mine')).toHaveTextContent('全队的需求、卡点、每人在做几个，在「团队运行机」的全队交付里看')
+    // the red mark on one's own card stays: an approval of theirs waiting past its timeout
+    expect(cardOf(flow, 'PAY-6')).toHaveTextContent('超时')
+    await user.click(screen.getByTestId('ov-team-link'))
+    expect(p.go).toHaveBeenCalledWith({ kind: 'team' })
+  })
+
+  test('where the app cannot tell who the person is, nothing is theirs: the empty page says so, not 还没有需求', async () => {
+    const ov = fx.overview()
+    ov.rows = []
+    const status = fx.status()
+    status.repos = status.repos.map((r) => (r.me ? { ...r, me: { ...r.me, name: null, ask: true } } : r))
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
+    render(<OverviewView entry={{}} {...props({ status })} />)
+    expect(await screen.findByTestId('ov-who')).toHaveTextContent('还不知道你是谁')
+    expect(screen.getByTestId('ov-who')).toHaveTextContent('在最上面填上你的名字（GitLab 用户名），你的需求就列出来了')
+    expect(screen.queryByText('还没有需求')).toBeNull()
+  })
+})
+
+describe('交付总览 on the team server: 全队卡点和按人看', () => {
+  /** the team server's 交付总览 keeps the team view; a person's is in 团队运行机 (全队交付) */
+  const server = (status = fx.status()): Status => ({ ...status, app: { ...status.app, role: 'team_server' } })
   /** every kind of stuck, the worst first, as the backend's roster says it over the fixture's rows */
   function stuckWorld(): Overview {
     const ov = fx.overview()
@@ -1221,7 +1262,7 @@ describe('交付总览: 全队卡点和按人看', () => {
   test('全队卡点 sits beside 轮到你, in its look: the counts by kind, a line per stuck requirement the worst first, each key opening its 运行过程', async () => {
     const user = userEvent.setup()
     installFixtureRoutes({ [`GET ${API}/overview*`]: () => stuckWorld() })
-    const p = props()
+    const p = props({ status: server() })
     render(<OverviewView entry={{}} {...p} />)
     const card = await screen.findByTestId('team-stuck')
     const duo = screen.getByTestId('ov-duo')
@@ -1250,7 +1291,7 @@ describe('交付总览: 全队卡点和按人看', () => {
     quiet.roster.counts = { overdue: 0, stale: 0, overlap: 0, verify_fails: 0 }
     quiet.rows = quiet.rows.map((r) => (r.waits.who === 'you' ? { ...r, waits: { ...r.waits, who: 'people' as const } } : r))
     installFixtureRoutes({ [`GET ${API}/overview*`]: () => quiet })
-    const { unmount } = render(<OverviewView entry={{}} {...props()} />)
+    const { unmount } = render(<OverviewView entry={{}} {...props({ status: server() })} />)
     const card = await screen.findByTestId('team-stuck')
     expect(card).toHaveClass('is-ok')
     expect(within(card).getByTestId('stuck-counts')).toHaveTextContent(/^没有卡住的需求$/)
@@ -1259,7 +1300,7 @@ describe('交付总览: 全队卡点和按人看', () => {
     expect(screen.getByTestId('ov-duo')).toHaveClass('is-one')
     unmount()
     installFixtureRoutes()
-    render(<OverviewView entry={{}} {...props()} />)
+    render(<OverviewView entry={{}} {...props({ status: server() })} />)
     const warn = await screen.findByTestId('team-stuck')
     expect(warn).toHaveClass('is-warn')
     expect(warn).not.toHaveClass('is-bad')
@@ -1272,7 +1313,7 @@ describe('交付总览: 全队卡点和按人看', () => {
     const more = ['PAY-5', 'PAY-2', 'PAY-6'].map((key) => ({ repo: 'r1', key, kind: 'overdue' as const, text: '等产品在 MR 上验收 D-3，已等 5 个工作小时（超时）', since: ov.at - 86400, other_key: null }))
     ov.roster.stuck = [...more, ...ov.roster.stuck]
     installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
-    render(<OverviewView entry={{}} {...props()} />)
+    render(<OverviewView entry={{}} {...props({ status: server() })} />)
     const card = await screen.findByTestId('team-stuck')
     expect(card.querySelectorAll('li')).toHaveLength(5)
     await user.click(within(card).getByRole('button', { name: '还有 2 件：在交付清单里看全部' }))
@@ -1287,7 +1328,7 @@ describe('交付总览: 全队卡点和按人看', () => {
     ov.rows.push({ ...six, key: 'PAY-14', title: '每晚自动对账', owner: null, state: 'unclaimed', state_label: '待认领',
       waits: { ...six.waits, who: 'people', text: '待认领：谁做都可以认领', do: 'start' } })
     installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
-    render(<OverviewView entry={{}} {...props()} />)
+    render(<OverviewView entry={{}} {...props({ status: server() })} />)
     const flow = await screen.findByTestId('flow')
     const by = within(flow).getByTestId('flow-by')
     expect(within(by).getByRole('button', { name: '按阶段' })).toHaveAttribute('aria-pressed', 'true')
@@ -1321,7 +1362,7 @@ describe('交付总览: 全队卡点和按人看', () => {
     ov.rows = ov.rows.filter((r) => r.state === 'merged')
     ov.roster = { ...ov.roster, people: [], stuck: [], counts: { overdue: 0, stale: 0, overlap: 0, verify_fails: 0 } }
     installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
-    render(<OverviewView entry={{}} {...props()} />)
+    render(<OverviewView entry={{}} {...props({ status: server() })} />)
     const flow = await screen.findByTestId('flow')
     await user.click(within(flow).getByRole('button', { name: '按人' }))
     expect(Array.from(flow.querySelectorAll('.cto-lane')).map((l) => l.textContent)).toEqual(['没有人在做'])
@@ -1334,7 +1375,7 @@ describe('交付总览: 全队卡点和按人看', () => {
     const status = fx.status()
     status.repos = status.repos.map((r) => ({ ...r, ok: true, error: '', pending: null }))
     installFixtureRoutes()
-    render(<OverviewView entry={{ repo: 'r1' }} {...props({ status })} />)
+    render(<OverviewView entry={{ repo: 'r1' }} {...props({ status: server(status) })} />)
     const flow = await screen.findByTestId('flow')
     expect(within(screen.getByTestId('team-stuck')).getByTestId('stuck-counts')).toHaveTextContent(/^目录撞车 1 · 只看这个仓库$/)
     await user.click(within(flow).getByRole('button', { name: '按人' }))
@@ -1347,7 +1388,7 @@ describe('交付总览: 全队卡点和按人看', () => {
   test('a card past a timeout or a limit has the red mark in both views, its ledger row too; an overlap is no mark', async () => {
     const user = userEvent.setup()
     installFixtureRoutes({ [`GET ${API}/overview*`]: () => stuckWorld() })
-    render(<OverviewView entry={{}} {...props()} />)
+    render(<OverviewView entry={{}} {...props({ status: server() })} />)
     const flow = await screen.findByTestId('flow')
     const marks = (key: string) => within(cardOf(flow, key)).queryAllByTestId('late-mark').map((m) => m.textContent)
     const check = () => {

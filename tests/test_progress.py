@@ -411,6 +411,8 @@ def test_a_refused_push_is_kept_once_listed_in_todo_never_forced_and_tried_again
 
 @needs_brainkit
 def test_bobs_app_fetches_by_itself_and_shows_alices_progress_on_her_own_machine(team):
+    """bob's app fetches by itself: alice's requirement on his machine (its 需求现状) is where her last checkpoint left
+    it. His 交付总览 lists his own requirements only: hers is the team's (团队运行机's 全队交付, from the team server)."""
     w = team
     bob = person(w.tmp, w.origin, "bob")
     bsvc = make_service(w.tmp / "bob-app", [bob], transport=NoGitLab())
@@ -423,17 +425,18 @@ def test_bobs_app_fetches_by_itself_and_shows_alices_progress_on_her_own_machine
         return rows_of(await w.svc.overview("all"))["PAY-1"]
 
     async def bobs():
-        before = rows_of(await bsvc.overview("all"))["PAY-1"]
+        before = (await bsvc.requirement("r1", "PAY-1"))["row"]
         tick(bsvc)          # its first turn: a fetch, in the background
         for _ in range(500):
             if bsvc.sync.fetches.last(str(bob.resolve())):
                 break
             await asyncio.sleep(0.02)
-        return before, rows_of(await bsvc.overview("all"))["PAY-1"], await bsvc.status()
+        return before, (await bsvc.requirement("r1", "PAY-1"))["row"], await bsvc.status(), await bsvc.overview("all")
 
     hers = started(w.svc, alice)
-    before, after, st = started(bsvc, bobs)
+    before, after, st, his = started(bsvc, bobs)
     assert hers["stage"] and before["stage"] != hers["stage"]
     assert after["stage"] == hers["stage"] and after["lean"] == hers["lean"], (after["lean"], hers["lean"])
     assert after["owner"] == "alice" and after["waits"]["text"] == "alice 在自己的机器上做"
     assert st["repos"][0]["sync"]["fetch"]["ok"] is True
+    assert "PAY-1" not in rows_of(his)

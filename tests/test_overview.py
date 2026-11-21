@@ -273,7 +273,7 @@ def test_team_mode_lists_each_requirement_once_the_runners_facts_winning(tmp_pat
     sh("git", "-C", repo, "merge", "-q", "--no-ff", "-m", "merge PAY-2", "ai/alice/PAY-2-done")
     sh("git", "-C", repo, "worktree", "remove", "--force", wt2)
     start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "local", "local", "本地")
-    svc = make_service(tmp_path, [repo])
+    svc = make_service(tmp_path, [repo], role="team_server")          # team mode is the team server's
     deliveries = __import__("appkit").mod("deliveries")
 
     def runner_row(key, state, text, project="shop/pay"):
@@ -357,3 +357,35 @@ def test_a_repo_that_cannot_be_read_is_said_in_words_with_the_original_under_det
     assert e["error"] == "读不了这个仓库里的需求：在「导入仓库」里检查它，那里会说哪里不对"
     assert e["raw"].startswith("[Errno 13] Permission denied")
     assert (e["name"], e["path"]) == (repo.name, str(repo.resolve()))
+
+
+def test_a_persons_overview_lists_their_own_requirements_and_the_team_servers_everyones(tmp_path, home):
+    """交付总览 on alice's machine: her requirement only. bob's run, which her app fetched from origin, is the team's
+    (团队运行机's 全队交付), not hers; that it may change her paths is still said on hers. 按人 has her alone. On the
+    team server's 交付总览 every requirement is listed, as before."""
+    from brainfix import person
+    repo = make_project(tmp_path, origin=True)
+    start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款", "--paths", "src/pay")
+    sh("git", "-C", repo, "push", "-q", "origin", "refs/heads/claim/*:refs/heads/claim/*", "refs/heads/ai/*:refs/heads/ai/*")
+    bob = person(tmp_path, tmp_path / "pay-origin.git", "bob")
+    brain(bob, "start", "report", "--title", "报表", "--paths", "src/pay/report")
+    sh("git", "-C", bob, "push", "-q", "origin", "refs/heads/claim/PAY-2", "refs/heads/ai/bob/PAY-2-report")
+    sh("git", "-C", repo, "fetch", "-q", "origin")
+
+    def overview(svc):
+        async def go():
+            await svc.start()
+            try:
+                return await svc.overview("all")
+            finally:
+                await svc.stop()
+        return run(go())
+
+    mine = overview(make_service(tmp_path / "alice", [repo]))
+    team = overview(make_service(tmp_path / "server", [repo], role="team_server"))
+    assert sorted(rows_by_key(team)) == ["PAY-1", "PAY-2"] and rows_by_key(team)["PAY-2"]["owner"] == "bob"
+    assert list(rows_by_key(mine)) == ["PAY-1"] and sum(mine["counts"].values()) == 1
+    assert mine["overlaps"] == team["overlaps"] == [{"keys": ["PAY-1", "PAY-2"], "paths": ["src/pay"]}]
+    assert rows_by_key(mine)["PAY-1"]["overlap"] == ["PAY-2"]
+    assert [p["owner"] for p in mine["roster"]["people"]] == ["alice"]
+    assert sorted(p["owner"] for p in team["roster"]["people"]) == ["alice", "bob"]
