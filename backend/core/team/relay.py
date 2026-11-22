@@ -25,9 +25,11 @@ whose claim.json is not a JSON object is left out, and said. A requirement's rec
 aidlc-state.md, decisions.md and the Lean ledger, read_facts as a person's app reads a teammate's branch) are read at its
 branch's head (GitLabSource), once per head: a head that did not move is not read again, and a new head reads only the
 files that changed (each file by its blob id, once). A folder listed past MAX_PAGES of 100 files, and a default branch
-with more merged requirements than that, are read as far as that and said. A merged one is read at its merge. The row is then what 交付总览 says of a teammate's requirement (deliveries.classify with no one
-as "you", then family.classify for a big requirement and its small ones; a fast run's from its own MR as a teammate's
-app reads it, fastrow.theirs: the CI at its head, MR 巡检 where the project's kit.json has it): its stage in 交付总览's words
+with more merged requirements than that, are read as far as that and said. A merged one is read at its merge. The row
+is then what 交付总览 says of a teammate's requirement (deliveries.classify with no one as "you" and the runner bot's
+commits after a hand-over counted as a person's app counts them, deliveries.runner_commits_from; then family.classify
+for a big requirement and its small ones; a fast run's from its own MR as a teammate's app reads it, fastrow.theirs:
+the CI at its head, MR 巡检 where the project's kit.json has it): its stage in 交付总览's words
 (deliveries.flow_stage; a closed one and a small one merged into its big one's branch, in no column there, by their
 state's words), its MR and the CI of its head (kept once the pipeline is over), whether the staging VERSION holds its
 merge (GitLab's merge base; kept per merge and deploy), what it waits on and who takes that step (Waits.on). Only an MR
@@ -244,6 +246,7 @@ class Deliveries:
         self._ci: dict[tuple, dict | None] = {}             # (project, iid, head) -> its head pipeline (mrinfo's)
         self._deployed: dict[tuple, bool] = {}              # (project, merge, deployed) -> the deploy holds the merge
         self._branch_mr: dict[tuple, dict | None] = {}      # (project, branch, head) -> that branch's newest MR
+        self._bots: dict[tuple, int] = {}                   # (project, since, head) -> the runner bot's commits between
         self._merged: dict[str, tuple[str, frozenset[str], bool]] = {}   # project -> (default head, keys merged, cut)
         self.last: dict[str, Read] = {}                     # project -> its last read that worked
 
@@ -252,7 +255,7 @@ class Deliveries:
         OutOfTime once *deadline* (on clock) is past, else (last keeps it). *deployed*: the commit its staging VERSION
         names ('': no staging read); *roles*: identities.json's roles. What was read before is kept for the next try
         when it fails."""
-        caches = (self._facts, self._claims, self._notes, self._ci, self._deployed, self._branch_mr)
+        caches = (self._facts, self._claims, self._notes, self._ci, self._deployed, self._branch_mr, self._bots)
         seen: set[tuple] = set()
         try:
             got = self._project(project, deployed, roles, seen, deadline)
@@ -276,7 +279,7 @@ class Deliveries:
             self.last.pop(p, None)
             self._merged.pop(p, None)
             self._blobs.pop(p, None)
-        for c in (self._facts, self._claims, self._notes, self._ci, self._deployed, self._branch_mr):
+        for c in (self._facts, self._claims, self._notes, self._ci, self._deployed, self._branch_mr, self._bots):
             for k in [k for k in c if k[0] not in keep]:
                 del c[k]
 
@@ -384,9 +387,11 @@ class Deliveries:
         row = deliveries.base_row(project, f)
         handover = ((run.get("handoff") or {}).get("local_head")) if isinstance(run.get("handoff"), dict) else None
         parent = ((g.run_b or {}).get("commit") or {}).get("parent_ids") or []
+        since = deliveries.runner_commits_from(run, info, dict(kit)) if f["where"] == "branch" else None
         deliveries.classify(row, f, mr=info, slot=None, cfg=dict(kit), at_handover=bool(info) and bool(handover)
                             and list(parent) == [handover], me=None, reflected=reflected, now=now, pushed=True,
-                            fast=fast_of(f, kit))
+                            fast=fast_of(f, kit),
+                            bot_commits=self._bot_commits(project, since, g.sha, kit, seen) if since else 0)
         row["family"] = fam
         family.classify(row, fam, f, None)
         row["mr"] = info and {"iid": info["iid"], "url": info["url"], "state": info["state"]}
@@ -458,6 +463,23 @@ class Deliveries:
             rows = sorted((r for r in rows if isinstance(r, dict) and r.get("iid")), key=lambda r: int(r["iid"]))
             self._branch_mr[k] = rows[-1] if rows else None
         return self._branch_mr[k]
+
+    def _bot_commits(self, project: str, since: str, head: str, kit: Mapping[str, Any], seen: set[tuple]) -> int:
+        """The team runner's bot commits (kit.json bot_emails) after *since* up to *head*, as a person's app counts them
+        (repo.bot_commits_since), asked once per head; 0 when GitLab does not have *since*."""
+        k = (project, since, head)
+        seen.add(k)
+        if k not in self._bots:
+            emails = {str(e).lower() for e in kit.get("bot_emails") or []}
+            try:
+                rows, _ = listed(self.gl, "/projects/%s/repository/commits" % bk.m("rest").q(project),
+                                 {"ref_name": "%s..%s" % (since, head)})
+            except bk.m("rest").HttpError as exc:
+                if exc.status not in (400, 404):
+                    raise
+                rows = []
+            self._bots[k] = sum(1 for c in rows if str(c.get("author_email") or "").lower() in emails)
+        return self._bots[k]
 
     def _facts_at(self, project: str, key: str, sha: str, runs_dir: str, seen: set[tuple],
                   cut: set[str]) -> dict[str, Any]:

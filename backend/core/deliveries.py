@@ -165,6 +165,18 @@ def on_runner(run: dict[str, Any] | None) -> bool:
     return bool((run or {}).get("handoff")) or started_on_runner(run)
 
 
+def runner_commits_from(run: dict[str, Any] | None, mr: dict[str, Any] | None, cfg: dict[str, Any]) -> str | None:
+    """The commit after which the team runner's bot commits (kit bot_emails) on a handed-over run's branch say it runs
+    (classify's bot_commits), on a person's machine and in 全队交付 alike: the hand-over's local_head, while its MR does
+    not say so itself (not read, or without the running label: brain-kit's bridge takes a hand-over whose labels its
+    account may not change). None otherwise; a run the runner started gets its running label at its start."""
+    ho = (run or {}).get("handoff")
+    local = ho.get("local_head") if isinstance(ho, dict) else None
+    if not isinstance(local, str) or not local or (mr and cfg.get("running_label") in (mr.get("labels") or [])):
+        return None
+    return local
+
+
 def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | None, slot: dict[str, Any] | None,
              cfg: dict[str, Any], bot_commits: int = 0, at_handover: bool = False, me: str | None = None,
              reflected: bool = False, now: float | None = None, pushed: bool = True,

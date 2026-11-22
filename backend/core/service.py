@@ -594,9 +594,8 @@ class Service:
                                      bridge_user=str(repo.cfg.get("bridge_user") or "") or None)
         elif f.get("branch") and base and project:     # a fast run switched to the full flow reads no MR of its own
             self._mr_wanted.pop((base, project, f["branch"]), None)
-        bot = 0
-        if run.get("handoff") and not mr:
-            bot = repo.bot_commits_since((run.get("handoff") or {}).get("local_head"), f.get("origin_sha"))
+        since = deliveries.runner_commits_from(run, mr, repo.cfg)
+        bot = repo.bot_commits_since(since, f.get("origin_sha")) if since else 0
         merged = bool(f.get("merged") or (mr or {}).get("state") == "merged")
         fast = self._fast_of(repo, f, git=mine and not merged and (mr or {}).get("state") != "closed")
         deliveries.classify(row, f, mr=mr, slot=live, cfg=repo.cfg, bot_commits=bot,
