@@ -75,6 +75,9 @@ NO_PUSH = ("这台机器不推代码（没有 runnerd.json）：在 GitLab 上�
 OUT_OF_TIME = "全队交付这一轮没读完（%d 秒到了），下一轮接着读：下面是上次读完的" % relay_mod.BUDGET_S
 SIGN_IN_TEXT = "GitLab 的登录过期了：桥现在读不了 GitLab"
 SIGN_IN_TODO = "在这台机器上重新登录 GitLab（单点登录）：下一轮桥自己接上，不用重启，也不用再保存设置"
+NO_HELPER_TEXT = "GitLab 在单点登录后面，这台机器上没有登录助手：桥读不了 GitLab"
+NO_HELPER_TODO = ("把登录助手文件放到跑 app 的用户的 ~/.brain/local_transport.py（brain-kit 的 docs/安装和使用.md 第 2 节）："
+                  "下一轮桥自己接上，不用重启，也不用再保存设置")
 LEFT_TEXT = "%s 不归这台运行机管了（bridge.json 里没有%s）：账本里%s的 %d 个运行，桥不再看"
 MAX_SPOOL_FILE = 64 * 1024
 PENDING_WINDOW_S = 3600   # brain-kit's Ledger.pending_voucher(newer_than=3600): older ones are not asked for again
@@ -694,12 +697,14 @@ class TeamRuntime:
                 "relay": self.relay.view() if self.relay is not None else None}
 
     def signin_checks(self) -> list[dict[str, Any]]:
-        """The sign-in of a GitLab behind single sign-on ended (signin.py): in plain words until a call goes through
-        again, which is the round after the person signs in again on this machine."""
+        """The sign-in of a GitLab behind single sign-on ended, or this machine has no sign-in helper for it
+        (signin.py): in plain words until a call goes through again, which is the round after the person signs in again
+        on this machine, or puts the helper's file in place."""
         gl = self.gl
         if gl is None or not gl.expired:
             return []
-        return [problems.mk("FAIL", SIGN_IN_TEXT, SIGN_IN_TODO, raw=self.scrub(gl.expired))]
+        text, todo = (NO_HELPER_TEXT, NO_HELPER_TODO) if gl.no_helper else (SIGN_IN_TEXT, SIGN_IN_TODO)
+        return [problems.mk("FAIL", text, todo, raw=self.scrub(gl.expired))]
 
     def left_checks(self) -> list[dict[str, Any]]:
         """One line for the runs of projects that left the runner (_leave): the ledger keeps them, nothing looks at

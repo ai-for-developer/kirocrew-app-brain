@@ -284,6 +284,28 @@ def test_a_new_sign_in_is_picked_up_by_the_next_round_without_a_restart(world, t
     assert any(b.startswith("AI 已接手：RUN-PAY-1-1") for b in world["gl"].bodies())
 
 
+def test_a_machine_without_the_sign_in_helper_is_told_to_put_its_file_in_place_not_to_sign_in_again(world, tmp_path):
+    """GitLab sits behind single sign-on and this machine has no sign-in helper: every call gets the sign-in page, and
+    brain-kit's words say the helper's file is missing. The 运行机 page says where to put that file, not that the
+    sign-in expired: signing in again would not help."""
+    svc = make_service(tmp_path / "app", [], team=world["team"], transport=lambda *_a, **_kw: (401, signinfix.PAGE),
+                       kick=lambda: world["signer"].once())
+
+    async def go():
+        await svc.start()
+        try:
+            return await svc.team_loop(), (await svc.status())["team"]
+        finally:
+            await svc.stop()
+
+    got, st = run(go())
+    (row,) = [c for c in st["checks"] if "登录" in c["text"]]
+    assert not got["ok"] and (row["level"], row["text"]) == ("FAIL", "GitLab 在单点登录后面，这台机器上没有登录助手：桥读不了 GitLab")
+    assert row["todo"] == ("把登录助手文件放到跑 app 的用户的 ~/.brain/local_transport.py（brain-kit 的 docs/安装和使用.md 第 2 节）："
+                           "下一轮桥自己接上，不用重启，也不用再保存设置")
+    assert "Put the helper file at ~/.brain/local_transport.py" in row["raw"]
+
+
 class Repointed:
     """GitLab once the runner serves grp/new instead of grp/repo: the bridge's account sees grp/new (its kit.json, no
     MR) and no longer grp/repo (404, as GitLab answers for a project it does not show it), every request about

@@ -115,3 +115,25 @@ def test_the_client_kept_for_a_gitlab_takes_a_new_sign_in_without_a_restart(home
         assert clients.gitlab(GL).current_user() == {"username": "alice"}
     finally:
         bk.unload()
+
+
+@needs_brainkit
+def test_without_the_sign_in_helper_the_deploys_say_to_put_it_in_place_and_the_next_client_uses_it(home, monkeypatch):
+    """A GitLab behind single sign-on and no sign-in helper on this machine: brain-kit's own transport gets the sign-in
+    page. The reason in words says the helper is missing, not that the sign-in expired; once its file is in place, the
+    next client asked for goes through it, with no restart."""
+    bk = mod("bk")
+    assert bk.load(str(BRAINKIT))["ok"]
+    try:
+        monkeypatch.setenv("GITLAB_TOKEN", "fake-person-token")
+        monkeypatch.setattr(bk.m("rest"), "urllib_transport", lambda *_a, **_kw: (401, signinfix.PAGE))
+        clients = V.Clients()
+        with pytest.raises(bk.m("common").BrainError, match="Put the helper file at") as got:
+            clients.gitlab(GL).current_user()
+        assert V.said(str(got.value)) == "GitLab 在单点登录后面，这台机器上没有登录助手"
+        assert V.said("GET /projects/shop%2Fpay/deployments -> HTTP 401: {\"message\": \"401 Unauthorized\"}") == \
+            "GitLab 不让读：令牌或登录过期了"
+        signinfix.install(lambda method, url, headers, body: (200, b'{"username": "alice"}'), "new")
+        assert clients.gitlab(GL).current_user() == {"username": "alice"}
+    finally:
+        bk.unload()

@@ -35,6 +35,7 @@ WHY = ((re.compile(r"no GitLab token here"), "这台机器上没有 GitLab 的�
        (re.compile(r"while it ran: the rollout may have gone on"), "部署作业中途停了，灰度可能还在接着走"),
        (re.compile(r"gives no result|names no image digest|is not a JSON object|is not JSON"), "部署证据不全，看不出结果"),
        (re.compile(r"the deploy evidence"), "部署证据和这次部署对不上"),
+       (signin.NO_HELPER_RE, "GitLab 在单点登录后面，这台机器上没有登录助手"),
        (re.compile(r"HTTP 40[13]\b|sign-in page|sign in again"), "GitLab 不让读：令牌或登录过期了"))
 UNREAD = "GitLab 上的部署记录读不了"
 RULE = {"deploy_frequency": "最近 28 天，默认分支部署到 %s、灰度走完上线的次数，按周算（中止的、读不到的不算）",
