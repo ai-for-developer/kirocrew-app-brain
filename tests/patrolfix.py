@@ -75,20 +75,21 @@ def pipeline(output: list[bytes]) -> tuple[bytes, bytes]:
 
 class FakeJenkins:
     """Jenkins at JENKINS_BASE, its root URL configured as JENKINS_ROOT_URL: a build's log from a byte on
-    (logText/progressiveText?start=, its length in X-Text-Size; a start past its end gives all of it, as Jenkins does)
-    as progressiveText sends it, unlike consoleText: the console notes the log keeps are in it (note()), and each line
-    end comes as CRLF (Jenkins' LineEndNormalizingWriter: measured, a CR before every LF), so N bytes of the log come
-    as N bytes and one more per line; for its read-only user signed in with its token (basic auth); 401 to a
-    wrong token; 403 to no one signed in
-    (anonymous read off, as measured) and to a user without Overall/Read; 404 to one without Job/Read (Jenkins hides the
-    job from it) and to a build it does not have. Called as jenkins.urllib_fetch is. Every request is kept in calls:
-    (method, url, user). *wait*: each request takes this long on *clock* (a timeout cuts it short); *down*: no request
-    gets through, each one taking its whole timeout."""
+    (logText/progressiveText?start=, its length in X-Text-Size; a start past its end gives all of it, as Jenkins
+    does) as progressiveText sends it, unlike consoleText: the console notes the log keeps are in it (note()), and
+    each line end comes as CRLF (Jenkins' LineEndNormalizingWriter: measured, a CR before every LF), so N bytes of
+    the log come as N bytes and one more per line; X-More-Data: true while the build is *running*
+    (LargeText.doProgressText); for its read-only user signed in with its token (basic auth); 401 to a wrong token;
+    403 to no one signed in (anonymous read off, as measured) and to a user without Overall/Read; 404 to one without
+    Job/Read (Jenkins hides the job from it) and to a build it does not have. Called as jenkins.urllib_fetch is.
+    Every request is kept in calls: (method, url, user). *wait*: each request takes this long on *clock* (a timeout
+    cuts it short); *down*: no request gets through, each one taking its whole timeout."""
 
     def __init__(self, user: str = "brain-reader", clock: "Clock | None" = None) -> None:
         self.user, self.token = user, "fake-" + secrets.token_hex(8)
         self.overall_read = self.job_read = True
         self.logs: dict[str, bytes] = {}
+        self.running: set[str] = set()      # the builds Jenkins is still writing the log of
         self.calls: list[tuple[str, str, str]] = []
         self.clock, self.wait, self.down = clock, 0.0, False
 
@@ -118,7 +119,8 @@ class FakeJenkins:
         log = self.logs[m.group(1)]
         start = int(dict(parse_qsl(u.query)).get("start") or 0)
         sent = re.sub(rb"(?<!\r)\n", b"\r\n", log[start if start <= len(log) else 0:])
-        return 200, sent[:cap], {"X-Text-Size": str(len(log))}
+        more = {"X-More-Data": "true"} if m.group(1) in self.running else {}
+        return 200, sent[:cap], {"X-Text-Size": str(len(log)), **more}
 
     def reads(self) -> list[str]:
         """The path and query of every request, in order."""

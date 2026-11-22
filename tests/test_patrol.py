@@ -411,11 +411,73 @@ def just_under_the_window():
 @pytest.mark.parametrize("case", [window_in_a_note, still_writing_a_note, just_under_the_window])
 def test_a_build_s_tail_reads_as_its_console_text_from_the_start_of_a_line_to_the_end_of_one(bk, tmp_path, case):
     """What Jenkins.tail gives is consoleText's end: no console note, LF line ends, and a line the window cuts (a note
-    in it too) left out at either end, whatever more bytes than the log progressiveText sends."""
+    in it too) left out at either end, whatever more bytes than the log progressiveText sends; and whether it is the
+    log's end: not while Jenkins says more is coming (X-More-Data), as it does for a log it still writes."""
     jk = FakeJenkins()
     raw, console = case()
     jk.build("/job/orders/2", raw)
-    assert reader(tmp_path, jk).tail("/job/orders/2", 10.0) == console
+    if case is still_writing_a_note:
+        jk.running.add("/job/orders/2")
+    assert reader(tmp_path, jk).tail("/job/orders/2", 10.0) == (console, case is not still_writing_a_note)
+
+
+def test_a_build_still_running_when_its_check_failed_is_read_again_once_it_ends(bk, tmp_path):
+    """Jenkins' GitLab plugin posts the check failed before the build ends: what the round reads then is not its log
+    (X-More-Data). The MR waits, saying why, its build read again the next round; once it ended the session gets the
+    log's end, the exit code and the result in it, and the build is not read again."""
+    w = World(tmp_path)
+    w.with_jenkins()
+    gl, jk = w.gl, w.jk
+    rows = pipeline_lines([b"FAILED (failures=1)"])
+    url = jk.build("/job/orders/15", b"".join(k for k, _ in rows[:-6]))   # its blocks not all closed yet
+    jk.running.add("/job/orders/15")
+    gl.mr(P, 7)
+    gl.check(P, 7, "unit-tests", "failed", url)
+    w.round()
+    assert w.sessions.sent == [] and w.item(7)["state"] == "waiting"
+    assert w.item(7)["note"] == "Jenkins 的构建还没跑完：跑完再派（最多等 10 分钟）"
+    jk.build("/job/orders/15", b"".join(k for k, _ in rows))
+    jk.running.discard("/job/orders/15")
+    w.later()
+    w.round()
+    msg, = w.sessions.messages("patrol-42-7")
+    assert ("     > [Pipeline] End of Pipeline\n     > ERROR: script returned exit code 1\n"
+            "     > Finished: FAILURE\n") in msg
+    assert "没跑完" not in msg
+    for _ in range(3):
+        w.later()
+        w.round()
+    assert jk.reads() == ["/job/orders/15/logText/progressiveText?start=0"] * 2
+
+
+def test_a_build_that_does_not_end_goes_out_after_ten_minutes_with_what_was_read_and_says_so(bk, tmp_path):
+    """A build Jenkins never ends does not hold its MR for good: read every round, ten minutes from the first read that
+    found it running, then the last read goes out, the session told the build had not ended. It is not read again."""
+    wait = 10 * 60
+    w = World(tmp_path)
+    w.with_jenkins()
+    gl, jk = w.gl, w.jk
+    rows = pipeline_lines([b"waiting for orders-db to accept connections"] * 3)
+    url = jk.build("/job/orders/15", b"".join(k for k, _ in rows[:-11]))
+    jk.running.add("/job/orders/15")
+    gl.mr(P, 7)
+    gl.check(P, 7, "unit-tests", "failed", url)
+    start = w.clock.t
+    while w.clock.t - start < wait:
+        w.round()
+        assert w.sessions.sent == [] and w.item(7)["state"] == "waiting"
+        w.later()
+    assert len(jk.calls) == wait // 60
+    w.round()
+    msg, = w.sessions.messages("patrol-42-7")
+    block = quoted(msg, "   - unit-tests（Jenkins 构建 %s/job/orders/15/）：" % JENKINS_BASE)
+    assert block == ["     （构建等了 10 分钟还没跑完，下面是那时读到的）"] + [
+        "     > " + plain.decode().rstrip("\n") for _, plain in rows[:-11]]
+    assert block[-1] == "     > waiting for orders-db to accept connections"
+    for _ in range(3):
+        w.later()
+        w.round()
+    assert len(jk.calls) == wait // 60 + 1
 
 
 def test_a_jenkins_the_runner_cannot_reach_costs_one_try_a_round_and_three_in_all_ten_minutes_apart(bk, tmp_path):

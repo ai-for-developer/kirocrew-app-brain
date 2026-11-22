@@ -14,7 +14,9 @@ end, TAIL_BYTES (Jenkins' progressiveText from a byte on, read as consoleText re
 at most; no read starts once ROUND_S went by since the round's first one, and none is given longer than what is left of
 it (one it cuts short is left for the next round, as the rest are); after a Jenkins that cannot be reached none is tried
 that round (the other builds fail the same way); a build not read is asked for again RETRY_S later, MAX_TRIES times in
-all. A start of team mode starts with none read.
+all. A read while Jenkins says more is coming (X-More-Data: the GitLab plugin posts a check failed before its build
+ends) is not the log: the build is read again each round, its MR waiting, WAIT_S at most from the first such read; then
+the last one read goes out, saying the build had not ended. A start of team mode starts with none read.
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Mapping, NamedTuple
 
 from .. import bk
@@ -44,8 +46,11 @@ TIMEOUT_S = 10.0            # one request to Jenkins, its connect and each read
 ROUND_S = 20.0              # the reads of one round, from its first one on
 RETRY_S = 10 * 60           # a build whose log was not read is asked for again this long after
 MAX_TRIES = 3               # ... this many times in all
+WAIT_S = 10 * 60            # a build still running when read is read again each round, this long at most
 KEEP = 200                  # builds whose read is kept (the oldest are let go)
 OUT_OF_TIME = "这一轮读 Jenkins 的 %d 秒用完了，下一轮接着读" % ROUND_S
+RUNNING = "构建还没跑完，跑完再读"
+UNFINISHED = "构建等了 %d 分钟还没跑完，下面是那时读到的" % (WAIT_S // 60)
 
 
 def build_path(target_url: str) -> str | None:
@@ -128,40 +133,43 @@ class Jenkins:
         """The build's page: at *base* when it is known, else *target_url* itself."""
         return self.base + build + "/" if self.base else target_url
 
-    def tail(self, build: str, timeout: float) -> bytes:
-        """The end of the build's log at *base* as its consoleText reads, TAIL_BYTES of the log at most, from the start
-        of a line to the end of one. Jenkins' progressiveText gives a log from a byte on and says how long it is
-        (X-Text-Size), so a longer one is asked for again from TAIL_BYTES before its end. It sends what consoleText does
-        not: the console notes (NOTE_RE), and each line end as CRLF, so those bytes come as up to twice as many. A line
-        the window cuts, at its start or at a log's end Jenkins is still writing, is left out with any note in it.
+    def tail(self, build: str, timeout: float) -> tuple[bytes, bool]:
+        """(the end of the build's log at *base* as its consoleText reads, TAIL_BYTES of the log at most, from the start
+        of a line to the end of one; whether that is the end of its log: not while Jenkins says more is coming,
+        X-More-Data, the build still running). Jenkins' progressiveText gives a log from a byte on and says how long it
+        is (X-Text-Size), so a longer one is asked for again from TAIL_BYTES before its end. It sends what consoleText
+        does not: the console notes (NOTE_RE), and each line end as CRLF, so those bytes come as up to twice as many. A
+        line the window cuts, at its start or at a log's end Jenkins is still writing, is left out with any note in it.
         rest.HttpError when Jenkins refuses, BrainError when it cannot be reached."""
-        body, size, cut = self._from(build, 0, TAIL_BYTES, timeout)
+        body, size, cut, more = self._from(build, 0, TAIL_BYTES, timeout)
         start = 0
         if cut:
             start = max(0, size - TAIL_BYTES)
-            body, _, _ = self._from(build, start, 2 * TAIL_BYTES, timeout)
+            body, _, _, more = self._from(build, start, 2 * TAIL_BYTES, timeout)
         body = body.replace(b"\r\n", b"\n")
         if start:
             body = body[body.find(b"\n") + 1:]
-        return NOTE_RE.sub(b"", body[:body.rfind(b"\n") + 1])
+        return NOTE_RE.sub(b"", body[:body.rfind(b"\n") + 1]), not more
 
-    def _from(self, build: str, start: int, cap: int, timeout: float) -> tuple[bytes, int, bool]:
+    def _from(self, build: str, start: int, cap: int, timeout: float) -> tuple[bytes, int, bool, bool]:
         """(the log from byte *start* as Jenkins sends it, *cap* bytes at most, its whole length (-1: Jenkins did not
-        say), whether Jenkins sent more than *cap*)."""
+        say), whether Jenkins sent more than *cap*, whether it says more is coming)."""
         url = "%s%s/logText/progressiveText?start=%d" % (self.base, build, start)
         status, body, headers = (self.transport or urllib_fetch)(
             "GET", url, {"Authorization": self.auth} if self.auth else {}, cap + 1, timeout)
         if status != 200:
             raise bk.m("rest").HttpError(status, "GET %s -> HTTP %d" % (url, status))
-        size = str({k.lower(): v for k, v in headers.items()}.get("x-text-size") or "")
-        return body[:cap], int(size) if size.isdigit() else -1, len(body) > cap
+        said = {k.lower(): str(v) for k, v in headers.items()}
+        size = said.get("x-text-size") or ""
+        return body[:cap], int(size) if size.isdigit() else -1, len(body) > cap, said.get("x-more-data") == "true"
 
 
 class Log(NamedTuple):
     page: str                   # the build's page (target_url itself for a link that is no build)
     raw: bytes | None           # the end of its log; None: not read, *why* says why
     why: str = ""
-    later: bool = False         # not read yet: the round's time for Jenkins is over, or cut the read short; no try
+    later: bool = False         # not read yet: the round's time for Jenkins is over, or cut the read short (no try),
+                                # or the build is still running (RUNNING)
 
 
 @dataclass
@@ -170,6 +178,7 @@ class Got:
     why: str
     tries: int
     at: float
+    running: float | None = None    # still running at the last read, which *raw* is: since this first read found it
 
 
 class Logs:
@@ -189,7 +198,8 @@ class Logs:
     def console(self, target_url: str) -> Log:
         """The log of the Jenkins build *target_url* links to: the one read before; else read now, unless it was tried
         less than RETRY_S ago or MAX_TRIES times, or Jenkins could not be reached this round, or the round's time for
-        Jenkins is over (later)."""
+        Jenkins is over (later). A build still running is read again each round (later) until it ends, WAIT_S at most
+        from the first read that found it running; then the last one read goes out, saying so (UNFINISHED)."""
         build = build_path(target_url)
         if build is None:
             return Log(target_url, None, NOT_A_BUILD)
@@ -198,18 +208,20 @@ class Logs:
         if j.why:
             return Log(page, None, j.why)
         now, had = self.now(), self.got.get(build)
-        if had is not None and (had.raw is not None or had.tries >= MAX_TRIES or now - had.at < RETRY_S):
+        running = had is not None and had.running is not None
+        if had is not None and not running and (
+                had.raw is not None or had.tries >= MAX_TRIES or now - had.at < RETRY_S):
             return Log(page, had.raw, had.why)
         if self.deadline is None:
             self.deadline = now + ROUND_S
         left = self.deadline - now
         if not self.down and left < 1:
             return Log(page, None, OUT_OF_TIME, later=True)
-        raw, why = None, self.down
+        raw, done, why = None, False, self.down
         if not why:
             timeout = min(TIMEOUT_S, left)
             try:
-                raw = j.tail(build, timeout)
+                raw, done = j.tail(build, timeout)
             except bk.m("rest").HttpError as exc:
                 why = refused(exc.status, j.user)
             except bk.m("common").BrainError as exc:
@@ -217,10 +229,24 @@ class Logs:
                     return Log(page, None, OUT_OF_TIME, later=True)
                 why = self.down = "连不上 Jenkins：%s" % " ".join(str(exc).split())[:200]
         tries = (had.tries if had is not None else 0) + 1
-        if raw is None and tries >= MAX_TRIES:
-            why += "（试了 %d 次都没读到，不再读）" % tries
+        if raw is not None and done:
+            got = Got(raw, "", tries, now)
+        elif raw is not None or running:        # the build runs on: this read of it, or the last one when this failed
+            since = had.running if running else now
+            got = Got(raw if raw is not None else had.raw, "", tries, now, since)
+            if now - since < WAIT_S:
+                self._keep(build, got)
+                return Log(page, None, RUNNING, later=True)
+            got = replace(got, why=UNFINISHED, running=None)
+        else:
+            if tries >= MAX_TRIES:
+                why += "（试了 %d 次都没读到，不再读）" % tries
+            got = Got(None, why, tries, now)
+        self._keep(build, got)
+        return Log(page, got.raw, got.why)
+
+    def _keep(self, build: str, got: Got) -> None:
         self.got.pop(build, None)
-        self.got[build] = Got(raw, why, tries, now)
+        self.got[build] = got
         while len(self.got) > KEEP:
             self.got.pop(next(iter(self.got)))
-        return Log(page, raw, why)

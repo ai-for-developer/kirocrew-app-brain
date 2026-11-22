@@ -61,7 +61,7 @@ from typing import Any, Callable, ClassVar, Mapping, Union
 
 from .. import bk, snapshot
 from . import sources
-from .jenkins import Jenkins, Logs, build_path
+from .jenkins import RUNNING as BUILD_RUNNING, WAIT_S, Jenkins, Logs, build_path
 
 KIND = sources.PATROL
 AGENT = "brain-patrol"
@@ -78,6 +78,7 @@ NO_PIPELINE_S = 600         # an MR changed this recently with no pipeline at it
 RECHECK_S = 600             # an MR that did not change is read again this often (a pipeline run again on its head)
 LOCK_STALE_S = 5 * 60       # a git lock this old in a clone no turn works in was left by a turn stopped mid-commit
 SKIP_LABEL = "ai-skip"
+BUILD_WAIT = "Jenkins 的构建还没跑完：跑完再派（最多等 %d 分钟）" % (WAIT_S // 60)
 FINAL_PIPELINE = ("success", "failed", "canceled", "skipped", "manual")
 UNSURE_MERGE = ("checking", "unchecked", "preparing")      # detailed_merge_status before GitLab knows
 BOT_RE = re.compile(r"^(?:project|group)_\d+_bot(?:_[0-9a-f]+)?\d*$")
@@ -105,7 +106,8 @@ class FailedCheck:
     url: str                    # its target_url (a Jenkins build's: at the address the runner reaches Jenkins at)
     log: str | None             # the last LOG_LINES lines of its log; None: not read, *why* says why
     why: str = ""
-    later: bool = False         # not read yet: the round's time for Jenkins ran out (jenkins.Logs); read next round
+    later: bool = False         # not read yet: the round's time for Jenkins ran out, or the build still runs
+                                # (jenkins.Logs); read next round
 
 
 @dataclass(frozen=True)
@@ -717,7 +719,10 @@ def message(item: PatrolItem, path: str, helper: Helper) -> str:
             for c in p.checks:
                 where = "Jenkins 构建 %s" % c.url if build_path(c.url) else "外部 CI 报给 GitLab 的，%s" % (c.url or "没有链接")
                 out.append("   - %s（%s）：" % (c.name, where))
-                out += ["     没读到日志：%s" % c.why] if c.log is None else _quoted(c.log or "（日志是空的）", "     ")
+                if c.log is None:
+                    out.append("     没读到日志：%s" % c.why)
+                else:
+                    out += (["     （%s）" % c.why] if c.why else []) + _quoted(c.log or "（日志是空的）", "     ")
         elif isinstance(p, Comment):
             out.append("%d. MR 上的评论（不在讨论里）：评论 #%d，@%s：" % (n, p.note_id, p.author))
             out += _quoted(p.body, "   ")
@@ -1041,8 +1046,10 @@ class Patrol:
         e.row, e.item, e.standing = row, item, standing(row, item)
         if e.standing == "ok" and row.read.bot_notes:
             e.skip, e.standing = Skip("bots_only", "只有机器人写的评论，没有要修的"), "skipped"
-        if e.standing == "todo" and any(c.later for c in row.read.checks):
-            e.standing, e.note = "waiting", "Jenkins 的日志这一轮没读完：下一轮读完再派"
+        waits = [c.why for c in row.read.checks if c.later]
+        if e.standing == "todo" and waits:
+            e.standing = "waiting"
+            e.note = BUILD_WAIT if BUILD_RUNNING in waits else "Jenkins 的日志这一轮没读完：下一轮读完再派"
 
     def _push_rules(self, e: Entry, row: MrRow) -> MrRow:
         """*row* in state rules for good when brain-push-rules refused the MR for commits of the runner's: any commit
