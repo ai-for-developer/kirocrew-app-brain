@@ -13,13 +13,18 @@ patched or subclassed. What the app changes:
   (brain-intake gets its copy from the signer, its only writer);
 - bridge.json must not name a ``signing_key``; ``kirocrew.base/app/secret_file`` are not used (the app talks to its
   own gateway);
+- GitLab: every part holds one client (signin.Renewing); when a call finds that the sign-in of a GitLab behind single
+  sign-on ended, the next round makes the client again, so a new sign-in on this machine is used without a restart,
+  and the status says so until then;
 - poll: the app runs ``Bridge.poll``'s loop itself (every project, every MR with the hand-over label,
   ``Bridge.process``) to keep what process() said for each MR for the page: accepted, rejected, seen (that head and
   label event were checked before), and brain-kit 72b278e's unlabelled (the newest event on the label takes it off:
   `brain handoff` re-adding it right now) and waiting (this very hand-over is being signed elsewhere: looked at again
-  next round). brain-kit's poll returns nothing (BRAINKIT_REQUESTS 27). A project whose kit.json work_sources leaves
-  mr-handoff out (sources.py) is not polled, and one that cannot be read holds up none after it: the status' checks
-  say which;
+  next round); and the app's signing: the signer did not answer within the SpoolSigner's wait (bridge.json
+  signer.timeout; a first signature looks at GitLab for a while), which is no error: the next round asks for that very
+  voucher, so its late signature is taken. brain-kit's poll returns nothing (BRAINKIT_REQUESTS 27). A project whose
+  kit.json work_sources leaves mr-handoff out (sources.py) is not polled, and one that cannot be read holds up none
+  after it: the status' checks say which;
 - issues: right after poll, the issues labelled for Brain (team/issues.py, work source issue-label) are claimed, given
   a start commit, an MR and a start contract, which the signer checks like a hand-over's and the bridge then runs as
   one: runnerd, dispatch and the questions in the same round;
@@ -51,11 +56,12 @@ from collections import deque
 from datetime import timedelta
 from typing import Any, Mapping
 
-from .. import bk, deliveries, flowview, lean_view, problems, snapshot
+from .. import bk, deliveries, flowview, lean_view, problems, signin, snapshot
 from ..constants import APP_ROOT, PYTHON_BIN, VERSION
 from ..repo import Git, Source, read_claim, read_facts
 from ..scrub import scrub_tree
 from . import issues as issues_mod
+from . import left as left_mod
 from . import patrol as patrol_mod
 from . import relay as relay_mod
 from . import signerproc, sources
@@ -67,6 +73,12 @@ REQ_RE = re.compile(r"^[a-z]+-[A-Za-z0-9-]{1,80}-[0-9a-f]{12}\.json$")
 NO_PUSH = ("这台机器不推代码（没有 runnerd.json）：在 GitLab 上先建好 brain/status，一个没有父提交的分支（git push 一个孤立提交），"
            "团队服务器就往里写")
 OUT_OF_TIME = "全队交付这一轮没读完（%d 秒到了），下一轮接着读：下面是上次读完的" % relay_mod.BUDGET_S
+SIGN_IN_TEXT = "GitLab 的登录过期了：桥现在读不了 GitLab"
+SIGN_IN_TODO = "在这台机器上重新登录 GitLab（单点登录）：下一轮桥自己接上，不用重启，也不用再保存设置"
+NO_HELPER_TEXT = "GitLab 在单点登录后面，这台机器上没有登录助手：桥读不了 GitLab"
+NO_HELPER_TODO = ("把登录助手文件放到跑 app 的用户的 ~/.brain/local_transport.py（brain-kit 的 docs/安装和使用.md 第 2 节）："
+                  "下一轮桥自己接上，不用重启，也不用再保存设置")
+LEFT_TEXT = "%s 不归这台运行机管了（bridge.json 里没有%s）：账本里%s的 %d 个运行，桥不再看"
 MAX_SPOOL_FILE = 64 * 1024
 PENDING_WINDOW_S = 3600   # brain-kit's Ledger.pending_voucher(newer_than=3600): older ones are not asked for again
 LEDGER_TABLES = ("runs", "decisions", "handoffs", "outbox", "notices")
@@ -135,6 +147,7 @@ class TeamRuntime:
         # kick (tests): run the signer while the SpoolSigner waits; sign_timeout: instead of bridge.json's
         self.transport, self.kick, self.sign_timeout = transport, kick, sign_timeout
         self.host: Any = None
+        self.gl: signin.Renewing | None = None     # the GitLab client every part of it holds (signin.py)
         self.patrol: patrol_mod.Patrol | None = None
         self.staging: staging_mod.StagingWatch | None = None
         self.issues: issues_mod.IssueSource | None = None
@@ -149,6 +162,7 @@ class TeamRuntime:
         self.last_handovers: list[dict[str, Any]] = []   # what Bridge.process said for each labelled MR, last round
         self.poll_checks: list[dict[str, Any]] = []      # CheckRows: the projects the last poll did not read or poll
         self.poll_projects: list[dict[str, Any]] = []    # each project as the last poll left it (relay.project_state)
+        self.left: list[dict[str, Any]] = []             # the ledger's runs of projects bridge.json leaves out (left.py)
         self.relay: relay_mod.Relay | None = None        # 状态中转: each project's brain/status
         self.deliveries: relay_mod.Deliveries | None = None
         self.lines: deque = deque(maxlen=200)
@@ -197,7 +211,7 @@ class TeamRuntime:
             if not gcfg.get("base") or not tok:
                 raise common.BrainError("bridge.json 的 gitlab.base 没写，或者读不到 GitLab token（%s / %s）"
                                         % (gcfg.get("token_env", "BRIDGE_GITLAB_TOKEN"), gcfg.get("token_file", rest.DEFAULT_TOKEN_FILE)))
-            gl = rest.GitLab(gcfg["base"], tok, self.transport)
+            gl = signin.Renewing(lambda: rest.GitLab(gcfg["base"], tok, self.transport))
             jc = cfg.get("jira") or {}
             jira = None
             if jc.get("base"):
@@ -236,12 +250,12 @@ class TeamRuntime:
                 clones=issues_mod.Clones.of(rcfg) if rcfg and rcfg.get("runs_root") and rcfg.get("clone_url") else None,
                 claims=lambda: sources.held(self), out=self._out)
             self.relay, self.deliveries = self._relay(cfg, gl, rcfg, config)
-            self.cfg, self.runnerd_cfg, self.spool, self.allowed_signers = cfg, rcfg, spool, allowed
+            self.cfg, self.runnerd_cfg, self.spool, self.allowed_signers, self.gl = cfg, rcfg, spool, allowed, gl
             self.error = ""
             return True
         except Exception as exc:  # noqa: BLE001
             self.error = str(exc).split("\n", 1)[0][:400]
-            self.host = self.patrol = self.staging = self.issues = self.relay = self.deliveries = None
+            self.host = self.patrol = self.staging = self.issues = self.relay = self.deliveries = self.gl = None
             return False
 
     def _relay(self, cfg: dict[str, Any], gl: Any, rcfg: dict[str, Any] | None,
@@ -293,10 +307,18 @@ class TeamRuntime:
         host = self.host
         if host is None:
             raise RuntimeError(self.error or "运行机模式没有启动")
-        common = bk.m("common")
         summary: dict[str, int] = {}
-        errors = []
+        errors: list[str] = []
         with self._lock:
+            if self.gl is not None and self.gl.expired:     # the sign-in ended last round: a new sign-in is used now
+                try:
+                    self.gl.renew()
+                except Exception as exc:  # noqa: BLE001 - the helper cannot be loaded, or says to sign in
+                    errors.append(self._failed("signin", exc))
+            try:
+                self._leave(host)
+            except Exception as exc:  # noqa: BLE001 - said as a step's; the round goes on
+                errors.append(self._failed("left", exc))
             for step in ("poll", "issues", "runnerd", "dispatch", "watch", "collect", "reconcile", "patrol", "staging"):
                 try:
                     if step == "issues":
@@ -321,15 +343,44 @@ class TeamRuntime:
                     n = getattr(host, step)()
                     if isinstance(n, int):
                         summary[step] = n
-                except (common.BrainError, OSError, ValueError, sqlite3.Error) as exc:
-                    errors.append("%s: %s" % (step, str(exc).split("\n", 1)[0][:200]))
-                    self._out("%s failed this round: %s" % (step, exc))
+                except Exception as exc:  # noqa: BLE001 - foreseen or a bug: it stops none of the other steps
+                    errors.append(self._failed(step, exc))
             self.last_loop_at = time.time()
             self.loop_error = "；".join(errors)
             if self.relay is not None:      # 状态中转, after the hand-over steps and bounded: what goes wrong is its own
-                summary["relay"] = self._relay_round()
+                try:
+                    summary["relay"] = self._relay_round()
+                except Exception as exc:  # noqa: BLE001 - a bug in it, said as a step's
+                    errors.append(self._failed("relay", exc))
+                    self.loop_error = "；".join(errors)
             self.last_summary = summary
         return summary
+
+    def _leave(self, host: Any) -> None:
+        """The open runs of projects bridge.json leaves out marked left (left.py: failed, their questions closed,
+        their sessions stopped), before brain-kit's steps would ask GitLab about them; what the ledger holds of such
+        projects is kept for the page."""
+        keep = left_mod.kept(host.cfg["projects"])
+        runs, copy = left_mod.leave(host.ledger, host.cfg["ledger"], keep, left_mod.BRIDGE_TO,
+                                    stop=host.kc.stop if host.kc is not None else None)
+        if runs:
+            self._out("%s: not in bridge.json, left: %s (the ledger before: %s)" % (
+                "、".join(sorted({str(r["project"]) for r in runs})), ", ".join(r["run_id"] for r in runs), copy))
+        rows = host.ledger.db.execute("SELECT run_id, project, state FROM runs ORDER BY created").fetchall()
+        self.left = [dict(r) for r in rows if str(r["project"]).lower() not in keep]
+
+    def _failed(self, step: str, exc: Exception) -> str:
+        """A step that failed this round, as loop_error says it. What brain-kit, GitLab, git or the ledger can raise is
+        said in its own words; anything else is a bug: its type goes with it and its traceback into the log."""
+        said = str(exc).split("\n", 1)[0][:200]
+        if isinstance(exc, (bk.m("common").BrainError, OSError, ValueError, sqlite3.Error)):
+            self._out("%s failed this round: %s" % (step, exc))
+            return "%s: %s" % (step, said)
+        said = "%s: %s" % (type(exc).__name__, said)
+        if self.log is not None:
+            self.log.error("brain bridge: %s failed this round", step, exc_info=exc)
+        self._out("%s failed this round: %s" % (step, said))
+        return "%s: %s" % (step, said)
 
     def _relay_round(self) -> int:
         """状态中转's part of the round (relay.Relay.round): each project's TeamSnapshot as snapshot_of makes it, what
@@ -355,15 +406,16 @@ class TeamRuntime:
                 "runs": [(row, run) for row, _facts, _decs, run in self.runner_rows()
                          if run["state"] not in ("merged", "closed")],
                 "server": {"version": VERSION, "team_mode": True, "last_round_at": self.last_loop_at,
-                           "cap": int(patrol["cap"]), "working": int(patrol["working"]) + int(staging["working"])}}
+                           "cap": int(patrol["cap"]), "working": int(patrol["working"]) + int(staging["working"]),
+                           "held": {"patrol": int(patrol["working"]), "staging": int(staging["working"])}}}
 
     def snapshot_of(self, project: str, now: float, deadline: float, there: dict[str, Any] | None,
                     shared: Mapping[str, Any]) -> dict[str, Any]:
         """The TeamSnapshot of *project* this round relays (snapshot.py): the server as every project's says it; the
         project as the round left it; the runner's runs, MR 巡检's and 测试环境报错's items of the project, as 运行机
-        shows them; its 全队交付 from GitLab (relay.Deliveries), or the last rows read, with when, when they could not
-        be read whole by *deadline* (*there*: the one on its brain/status, for a project not read since the start).
-        Scrubbed as the pages are."""
+        shows them, with their sessions in it no item shows at work, and the labelled issues 从 issue 接活 has not started yet (relay.waiting_issues); its 全队交付 from
+        GitLab (relay.Deliveries), or the last rows read, with when, when they could not be read whole by *deadline*
+        (*there*: the one on its brain/status, for a project not read since the start). Scrubbed as the pages are."""
         try:
             got = self.deliveries.read(project, deployed=shared["deployed"].get(project, ""), roles=shared["roles"],
                                        deadline=deadline)
@@ -385,11 +437,16 @@ class TeamRuntime:
                               "key": row["key"], "title": row["title"], "run_id": str(run["run_id"]),
                               "state": str(run["state"]), "owner": run.get("owner") or None,
                               "waits": relay_mod.waits_of(row, on)})
+        issues = self.issues_view()
         snap = {"schema": snapshot.SCHEMA, "generated_at": now, "project": project, "server": dict(shared["server"]),
-                "state": relay_mod.project_state(project, self.poll_projects, shared["patrol"], shared["staging"], said),
+                "state": relay_mod.project_state(project, self.poll_projects, shared["patrol"], shared["staging"], said,
+                                                 issues),
                 "runner": {"handovers": handovers,
                            "patrol": [i for i in shared["patrol"]["items"] if i["project"] == project],
-                           "staging": [i for i in shared["staging"]["items"] if i["project"] == project]},
+                           "staging": [i for i in shared["staging"]["items"] if i["project"] == project],
+                           "patrol_hidden": [h for h in shared["patrol"]["hidden"] if h["project"] == project],
+                           "staging_hidden": [h for h in shared["staging"]["hidden"] if h["project"] == project],
+                           "issues": relay_mod.waiting_issues(issues, project)},
                 "delivery": rows, "delivery_at": at}
         return scrub_tree(snap, self.scrub)
 
@@ -398,7 +455,7 @@ class TeamRuntime:
         kit.json or labelled MRs cannot be read, or one MR that fails, does not stop the others, as in brain-kit: a
         project's error is raised at the end, an MR's is logged the same way. The projects not read and those whose
         kit.json leaves mr-handoff out are the status' checks. -> how many MRs were looked at."""
-        common = bk.m("common")
+        common, sign = bk.m("common"), bk.m("sign")
         seen: list[dict[str, Any]] = []
         checks: list[dict[str, Any]] = []
         errors: list[str] = []
@@ -435,6 +492,9 @@ class TeamRuntime:
                            "result": "error", "error": "", "at": time.time()}
                     try:
                         row["result"] = str(host.process(project, kit, mr) or "")
+                    except sign.SignerUnavailable as e:     # a slow signer: brain-kit asks for this voucher again
+                        host.out("%s!%s: waiting for the signer: %s" % (project, mr.get("iid"), e))
+                        row["result"] = "signing"
                     except common.BrainError as e:  # retried next round, as brain-kit's poll does
                         host.out("error on %s!%s: %s" % (project, mr.get("iid"), e))
                         row["error"] = self.scrub(str(e).split("\n", 1)[0][:300])
@@ -508,7 +568,8 @@ class TeamRuntime:
     def ledger(self) -> dict[str, Any]:
         """{runs, decisions, handoffs, outbox, notices}: read from the bridge's own Ledger (any thread), under its
         lock so the tables are one moment's. outbox and notices are brain-kit 0d52e97's (QA rounds 3 and 4: every
-        message into a run's session, and what the bridge told an MR once); [] with an older brain-kit."""
+        message into a run's session, and what the bridge told an MR once); [] with an older brain-kit. Only what is
+        of the projects bridge.json lists: the rest is of projects that left the runner (left_checks says so)."""
         out: dict[str, Any] = {k: [] for k in LEDGER_TABLES}
         host = self.host
         if host is None:
@@ -537,6 +598,11 @@ class TeamRuntime:
                         "SELECT key, run_id, project, iid, state, count, created, updated FROM notices ORDER BY created")]
         except sqlite3.Error:  # closed by stop() meanwhile
             return {k: [] for k in LEDGER_TABLES}
+        keep = left_mod.kept(host.cfg["projects"])
+        for k in ("runs", "decisions", "handoffs"):
+            out[k] = [r for r in out[k] if str(r["project"]).lower() in keep]
+        ids = {r["run_id"] for r in out["runs"]}
+        out["outbox"] = [r for r in out["outbox"] if r["run_id"] in ids]
         return out
 
     def hook_rows(self) -> list[dict[str, Any]]:
@@ -627,10 +693,31 @@ class TeamRuntime:
         why = problems.team_start(self.error)   # the start error in words; as it was (file names, keys) for 细节
         return {"enabled": bool(self.team.get("enabled")), "ok": self.host is not None and not self.error,
                 "error": why["text"], "error_todo": why["todo"], "error_raw": why["raw"],
-                "last_loop_at": self.last_loop_at, "loop_error": self.loop_error, "checks": list(self.poll_checks),
+                "last_loop_at": self.last_loop_at, "loop_error": self.loop_error,
+                "checks": list(self.poll_checks) + self.signin_checks() + self.left_checks(),
                 "same_user": self.same_user,
                 "signer": {"pending": len(sig["pending"]), "refused": len(sig["refused"])},
                 "relay": self.relay.view() if self.relay is not None else None}
+
+    def signin_checks(self) -> list[dict[str, Any]]:
+        """The sign-in of a GitLab behind single sign-on ended, or this machine has no sign-in helper for it
+        (signin.py): in plain words until a call goes through again, which is the round after the person signs in again
+        on this machine, or puts the helper's file in place."""
+        gl = self.gl
+        if gl is None or not gl.expired:
+            return []
+        text, todo = (NO_HELPER_TEXT, NO_HELPER_TODO) if gl.no_helper else (SIGN_IN_TEXT, SIGN_IN_TODO)
+        return [problems.mk("FAIL", text, todo, raw=self.scrub(gl.expired))]
+
+    def left_checks(self) -> list[dict[str, Any]]:
+        """One line for the runs of projects that left the runner (_leave): the ledger keeps them, nothing looks at
+        them any more, and they are not among the runs the page lists."""
+        if not self.left:
+            return []
+        projects = list(dict.fromkeys(str(r["project"]) for r in self.left))
+        it = "它" if len(projects) == 1 else "它们"
+        return [problems.mk("OK", LEFT_TEXT % ("、".join(projects), it, it, len(self.left)),
+                            raw="\n".join("%s %s (%s)" % (r["project"], r["run_id"], r["state"]) for r in self.left))]
 
     def signer_view(self) -> dict[str, Any]:
         return spool_view(self.spool) if self.host is not None and self.spool else {"pending": [], "refused": []}

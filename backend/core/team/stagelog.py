@@ -10,7 +10,8 @@ errors_in finds the errors in plain text or JSON lines: a line at level ERROR or
 ERROR line that logged it), and a request answered 5xx (one right after a traceback is the request that raised it, and
 joins it). Each error has a signature: a traceback's is its exception type and innermost project frame, any other's its
 message with what changes from one error to the next taken out (VARYING: quoted values, e-mails, paths, ids, long
-tokens, numbers). grouped() counts them by signature.
+tokens, numbers; builds before 0.5.1 took out ids and numbers only, OLD_VARYING, and staging.rekeyed keys their ledgers
+again). grouped() counts them by signature.
 """
 
 from __future__ import annotations
@@ -54,6 +55,7 @@ TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_+/=-])(?=[A-Za-z0-9_+/=-]*\d)(?=[A-Za-z0-
                       r"(?![A-Za-z0-9_+/=-])")
 VARYING = ((QUOTED_RE, "<str>"), (EMAIL_RE, "<email>"), (PATH_RE, "<path>"), (ID_RE, "<id>"), (TOKEN_RE, "<token>"),
            (NUM_RE, "<n>"))         # in this order: a quoted value may hold a path, a token may hold numbers
+OLD_VARYING = ((ID_RE, "<id>"), (NUM_RE, "<n>"))        # before 9d78742 (builds before 0.5.1): ids and numbers only
 SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 JSON_LEVEL = ("level", "levelname", "severity", "lvl")
 JSON_MESSAGE = ("message", "msg", "event")
@@ -197,9 +199,9 @@ def short(text: str, n: int = 80) -> str:
     return text if len(text) <= n else text[:n - 1] + "…"
 
 
-def normalized(text: str) -> str:
-    """A message without what changes from one error to the next (VARYING)."""
-    for rx, mark in VARYING:
+def normalized(text: str, varying: Sequence[tuple[re.Pattern, str]] = VARYING) -> str:
+    """A message without what changes from one error to the next (*varying*)."""
+    for rx, mark in varying:
         text = rx.sub(mark, text)
     return " ".join(text.split())[:SIGNATURE_CHARS]
 
@@ -219,11 +221,11 @@ def _level(line: str) -> str:
     return (m.group(1) or m.group(2)).upper() if m else ""
 
 
-def _message(line: str) -> str:
+def _message(line: str, varying: Sequence[tuple[re.Pattern, str]]) -> str:
     """What an ERROR line says after its level."""
     m = LEVEL_RE.search(line)
     rest = line[m.end():].lstrip(" :]-|\t") if m else line
-    return normalized(rest or line)
+    return normalized(rest or line, varying)
 
 
 def _request(method: str, path: str, status: int) -> str:
@@ -277,7 +279,7 @@ def _traceback_end(lines: Sequence[str], i: int, prefix: str) -> tuple[int, bool
     return j, said
 
 
-def _json_error(d: Mapping[str, Any], line: str) -> ErrorEvent | None:
+def _json_error(d: Mapping[str, Any], line: str, varying: Sequence[tuple[re.Pattern, str]]) -> ErrorEvent | None:
     level = next((str(d[k]).upper() for k in JSON_LEVEL if isinstance(d.get(k), str)), "")
     message = next((str(d[k]) for k in JSON_MESSAGE if isinstance(d.get(k), str)), "")
     trace = next((d[k] for k in JSON_TRACE if isinstance(d.get(k), str) and d[k].strip()), "")
@@ -286,7 +288,7 @@ def _json_error(d: Mapping[str, Any], line: str) -> ErrorEvent | None:
     if TRACEBACK in trace:
         return ErrorEvent(traceback_signature(trace.split("\n")), shown)
     if level in ERROR_LEVELS:
-        return ErrorEvent(normalized(message or line), shown)
+        return ErrorEvent(normalized(message or line, varying), shown)
     if status >= 500:
         path = next((str(d[k]) for k in ("path", "url", "uri") if isinstance(d.get(k), str)), "")
         return ErrorEvent(_request(str(d.get("method") or "").upper() or "?", path or "?", status), shown)
@@ -303,9 +305,10 @@ def _json(line: str) -> dict[str, Any] | None:
     return d if isinstance(d, dict) else None
 
 
-def errors_in(lines: Sequence[str]) -> tuple[list[ErrorEvent], int]:
+def errors_in(lines: Sequence[str], varying: Sequence[tuple[re.Pattern, str]] = VARYING) -> tuple[list[ErrorEvent], int]:
     """The errors in *lines*, and how many of the lines they used: a traceback still being written at the end is left
-    for the next read, unless the read began with it (it was left once already)."""
+    for the next read, unless the read began with it (it was left once already). *varying*: what a message's signature
+    leaves out (OLD_VARYING: as a ledger of an older build keyed it)."""
     lines = [ANSI_RE.sub("", x) for x in lines]
     events: list[ErrorEvent] = []
     joinable: int | None = None                 # the line after the newest traceback, while a 5xx may join it
@@ -314,7 +317,7 @@ def errors_in(lines: Sequence[str]) -> tuple[list[ErrorEvent], int]:
         line = lines[i]
         d = _json(line)
         if d is not None:
-            e = _json_error(d, line)
+            e = _json_error(d, line, varying)
             if e is not None:
                 events.append(e)
                 joinable = None
@@ -344,7 +347,7 @@ def errors_in(lines: Sequence[str]) -> tuple[list[ErrorEvent], int]:
             end = i + 1
             while end < len(lines) and lines[end][:1] in (" ", "\t") and lines[end].strip():
                 end += 1
-            events.append(ErrorEvent(_message(line), _excerpt(lines[i:end])))
+            events.append(ErrorEvent(_message(line, varying), _excerpt(lines[i:end])))
             i, joinable = end, None
             continue
         i += 1

@@ -19,7 +19,8 @@ are put together, the server, the runner at work and 全队交付 of each. GitLa
 read a project's code reads its status, and nobody else. A project's one older than snapshot.STALE_S says the server may
 have stopped writing there (stale). A read that fails, or a file that is not a snapshot of this schema or of this
 project, keeps the last good one, with why. A repo whose project has no brain/status keeps the read above alone, so an
-older server still shows.
+older server still shows; so does one whose brain/status has no snapshot this app could read yet (its project's line
+says why), until one is read.
 """
 
 from __future__ import annotations
@@ -239,7 +240,8 @@ class Runners:
                 if reads[x.repo].on:
                     groups.setdefault(x.base, []).append(x)
             return {"recent_h": RECENT_S // 3600, "at": now, "stale_after_s": snapshot.STALE_S,
-                    "repos": [self._repo(x, now, transport, bool(reads[x.repo].on)) for x in listed],
+                    "repos": [self._repo(x, now, transport, bool(reads[x.repo].on and reads[x.repo].snapshot))
+                              for x in listed],
                     "relays": [together(base, xs, listed, reads, now) for base, xs in groups.items()]}
 
     def _repo(self, x: Listed, now: float, transport: Any, on: bool) -> dict[str, Any]:
@@ -352,7 +354,7 @@ def together(base: str, xs: list[Listed], listed: list[Listed], reads: Mapping[s
             snaps.append(snap)
     newest = max(snaps, key=lambda s: s["generated_at"]) if snaps else None
     view = newest and {"generated_at": newest["generated_at"], "server": newest["server"],
-                       "runner": {k: [i for s in snaps for i in s["runner"][k]] for k in ("handovers", "patrol", "staging")},
+                       "runner": {k: [i for s in snaps for i in s["runner"][k]] for k in snapshot.RUNNER},
                        "delivery": [r for s in snaps for r in s["delivery"]]}
     return {"repos": [x.repo for x in xs], "me": next((x.me for x in xs if x.me), None),
             "repo_of": {x.project: x.repo for x in listed if x.base == base and x.project},

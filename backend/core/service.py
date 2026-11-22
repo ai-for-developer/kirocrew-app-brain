@@ -43,6 +43,7 @@ from .team import patrol as patrol_mod
 from .team import setup as setup_mod
 from .team import signerproc
 from .team import staging as staging_mod
+from .team.crewadapter import KiroCrewAdapter
 
 _REGISTRY: dict[str, "Service"] = {}
 EVAL_TTL_S = 120.0
@@ -53,6 +54,7 @@ CREW_EVERY_S = 300.0
 FOLD_TTL_S = 10.0     # the 产出 drawer reads the board's last fold; the board polls every 2 s while it is open
 FAILED_TRACE_S = 15.0  # a trace brain-kit could not make (git timed out under load) is made again this soon
 RUNNER_ELSEWHERE = "交接以后，运行机上的会话这台机器读不到，没算进来"
+RUNNER_STARTED = "它在运行机上开工，运行机上的会话这台机器读不到，没算进来"
 LOCAL_ELSEWHERE = "交接以前，开发者机器上的会话这台机器读不到，没算进来"
 RUNNER_TOOK = ("running", "parked", "acceptance", "merged", "closed")   # a hand-over's states once the runner has it
 
@@ -140,6 +142,8 @@ class Service:
         self.jobs = importer.Jobs(now)                                      # clone / install in the background
         self.crew: dict[str, Any] = {"rows": [], "fix": {"agent": False, "engine": False}, "checked_at": None}
         self.team: Any = None
+        self._team_loop: asyncio.Task | None = None     # the rounds of self.team, started and stopped with it
+        self._team_lock = asyncio.Lock()                # team mode started again (or stopped) one at a time
         self._setup_task: asyncio.Task | None = None    # 一键建运行机's run (team/setup.py), in a worker thread
         self._tasks: list[asyncio.Task] = []
         self._mr_wanted: dict[tuple, tuple[str, str]] = {}   # (base, project, branch) -> (scope, kit bridge_user)
@@ -189,10 +193,7 @@ class Service:
         self.started = True
         loop = asyncio.get_running_loop()
         self._tasks = [loop.create_task(self._forever()), loop.create_task(self._slow()),
-                       loop.create_task(self._sync_forever())]
-        if self.team is not None:
-            self._tasks.append(loop.create_task(self._team_forever()))
-        self._tasks.append(loop.create_task(self._regroup_soon()))
+                       loop.create_task(self._sync_forever()), loop.create_task(self._regroup_soon())]
         self.log.info("brain: started, brain-kit %s, %d repos, team %s", bk.info().get("version"), len(self.repos),
                       "on" if self.team is not None else "off")
 
@@ -202,7 +203,8 @@ class Service:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks = []
-        await self._stop_team()
+        async with self._team_lock:
+            await self._stop_team()
         if hasattr(self.sessions.gw, "close"):
             await self.sessions.gw.close()
         bk.unload()
@@ -259,27 +261,35 @@ class Service:
         return crewcheck.checks([r.path for r in self.repos.values()], team_paths=self.team_paths())
 
     async def _start_team(self) -> None:
-        """Team mode from the settings: brain-kit's bridge and runnerd in a TeamRuntime, and, for the same-user trial
-        一键建运行机 made, the signer beside its bridge.json as a child process (team/signerproc.py)."""
-        team = self.settings["team"]
-        await self._stop_team()
-        if not team.get("enabled") or not bk.ok():
-            return
-        from .team.bridgehost import TeamRuntime
-        loop = asyncio.get_running_loop()
-        rt = TeamRuntime(team, loop, self.sessions, self.log, transport=self.transport, kick=self.signer_kick,
-                         sign_timeout=self.sign_timeout, scrub=self.scrub)
-        await loop.run_in_executor(rt.executor, rt.start)
-        signer = signerproc.config_for(team) if rt.host is not None else None
-        if signer is not None:
-            try:
-                await asyncio.to_thread(signerproc.ensure, signer, APP_ROOT, PYTHON_BIN)
-            except signerproc.SignerFailed as exc:
-                rt.error = exc.team_error()
-        self.team = rt
+        """Team mode from the settings: brain-kit's bridge and runnerd in a TeamRuntime with its loop of rounds, and,
+        for the same-user trial 一键建运行机 made, the signer beside its bridge.json as a child process
+        (team/signerproc.py). Team mode that ran is stopped first, its loop with it, and two saves at once start it one
+        after the other: one loop runs at most."""
+        async with self._team_lock:
+            team = self.settings["team"]
+            await self._stop_team()
+            if not team.get("enabled") or not bk.ok():
+                return
+            from .team.bridgehost import TeamRuntime
+            loop = asyncio.get_running_loop()
+            rt = TeamRuntime(team, loop, self.sessions, self.log, transport=self.transport, kick=self.signer_kick,
+                             sign_timeout=self.sign_timeout, scrub=self.scrub)
+            await loop.run_in_executor(rt.executor, rt.start)
+            signer = signerproc.config_for(team) if rt.host is not None else None
+            if signer is not None:
+                try:
+                    await asyncio.to_thread(signerproc.ensure, signer, APP_ROOT, PYTHON_BIN)
+                except signerproc.SignerFailed as exc:
+                    rt.error = exc.team_error()
+            self.team = rt
+            self._team_loop = loop.create_task(self._team_forever(rt))
 
     async def _stop_team(self) -> None:
-        """Team mode stops: its TeamRuntime after the round in progress, and the signer started with it."""
+        """Team mode stops: its loop, its TeamRuntime after the round in progress, and the signer started with it."""
+        task, self._team_loop = self._team_loop, None
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
         rt, self.team = self.team, None
         if rt is None:
             return
@@ -421,17 +431,17 @@ class Service:
         """The install and upgrade records nothing waits for any more, cleared (landing.sweep): the repo tops."""
         return landing.sweep(self.imports, "install") + landing.sweep(self.upgrades, "upgrade")
 
-    async def _team_forever(self) -> None:
+    async def _team_forever(self, rt: Any) -> None:
+        """The rounds of *rt*, one interval apart, until _stop_team cancels them."""
         while True:
             try:
-                rt = self.team
-                if rt is not None and rt.host is not None:
+                if rt.host is not None:
                     await self._in_team(lambda: self._team_round(rt))
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001
                 self.log.exception("brain: the bridge loop failed")
-            await asyncio.sleep(self.team.interval() if self.team is not None else 60)
+            await asyncio.sleep(rt.interval())
 
     def _team_round(self, rt: Any) -> dict[str, int]:
         """One round of team mode on its worker (blocking): the signer 一键建运行机 set up started again when its process
@@ -520,8 +530,9 @@ class Service:
         left out."""
         runs = sorted((k for k in snap["by"] if re.fullmatch(r"RUN-%s-[1-9][0-9]*" % re.escape(f["key"]), k)),
                       key=lambda k: int(k.rsplit("-", 1)[1]))
-        took = (f.get("run") or {}).get("handoff") and state in RUNNER_TOOK
-        gone = RUNNER_ELSEWHERE if took and not runs and not self._team_on() else None
+        run = f.get("run") or {}
+        took = deliveries.on_runner(run) and state in RUNNER_TOOK
+        gone = None if not took or runs or self._team_on() else RUNNER_ELSEWHERE if run.get("handoff") else RUNNER_STARTED
         return self._req_credits(snap, [scope] + runs, gone)
 
     def _team_credits(self, snap: dict[str, Any], key: str, run_ids: list[str], project: Any
@@ -592,9 +603,8 @@ class Service:
                                      bridge_user=str(repo.cfg.get("bridge_user") or "") or None)
         elif f.get("branch") and base and project:     # a fast run switched to the full flow reads no MR of its own
             self._mr_wanted.pop((base, project, f["branch"]), None)
-        bot = 0
-        if run.get("handoff") and not mr:
-            bot = repo.bot_commits_since((run.get("handoff") or {}).get("local_head"), f.get("origin_sha"))
+        since = deliveries.runner_commits_from(run, mr, repo.cfg)
+        bot = repo.bot_commits_since(since, f.get("origin_sha")) if since else 0
         merged = bool(f.get("merged") or (mr or {}).get("state") == "merged")
         fast = self._fast_of(repo, f, git=mine and not merged and (mr or {}).get("state") != "closed")
         deliveries.classify(row, f, mr=mr, slot=live, cfg=repo.cfg, bot_commits=bot,
@@ -717,7 +727,7 @@ class Service:
         return self._desc_runner_job(path, cfg, key, row.get("credits"), row.get("run_ids") or [])
 
     def _overview_sync(self, which: str, snap: dict[str, Any]) -> dict[str, Any]:
-        rows, errors, all_decisions, q_counts = [], [], [], {"asked": 0, "answered": 0, "delivered": 0}
+        rows, errors, per_row = [], [], []   # each row's questions asked and decisions, added up over the rows listed
         team = self._team_on()
         mine = []
         for rid, repo in self.repos.items():
@@ -741,12 +751,10 @@ class Service:
             base, project = self._gitlab_of(repo)
             rows.append(row)
             mr = self.mr.get(project, f["branch"]) if base and project and f.get("branch") else None
-            for k, n in deliveries.questions_asked(f, mr).items():
-                q_counts[k] += n
             intent = (f.get("run") or {}).get("intent")
-            all_decisions += [dict(d, key=f["key"]) for d in detail.decisions(
+            per_row.append((row, deliveries.questions_asked(f, mr), [dict(d, key=f["key"]) for d in detail.decisions(
                 f.get("decisions_text"), "aidlc-docs/%s/decisions.md" % intent if intent else "decisions.md",
-                repo.cfg.get("bot_users") or [])]
+                repo.cfg.get("bot_users") or [])]))
         for rid, (path, err) in self.repo_errors.items():
             if which in ("all", rid):   # the app's own words say what to do; anything else is under 细节
                 said = re.search(r"[\u4e00-\u9fff]", err)
@@ -756,29 +764,28 @@ class Service:
         for row, f, decs in runner:   # a repo's view has what the runner does for it, as 全部 and the runner's do
             if which in ("all", "runner", row["home"]):
                 rows.append(row)
-                all_decisions += [dict(d, key=row["key"]) for d in detail.decisions(f.get("decisions_text"), "decisions.md", [])]
-                for d in decs:
-                    if d.get("state") == "invalid" or d.get("state") in deliveries.NOT_POSTED:   # not on the MR (yet)
-                        continue
-                    q_counts["asked"] += 1
-                    q_counts["answered"] += d.get("state") in ("answered", "delivered", "delivery_unknown", "refused")
-                    q_counts["delivered"] += d.get("state") == "delivered"
+                per_row.append((row, deliveries.ledger_questions(decs),
+                                [dict(d, key=row["key"]) for d in detail.decisions(f.get("decisions_text"), "decisions.md", [])]))
         overlaps = deliveries.overlaps(rows)     # over every row: a teammate's may share a path with one of mine
         listed = len(rows)
+        own = None      # a person's: (repo id, key) of the rows listed, which the numbers count
         if self.settings["role"] == settings_mod.PERSONAL:
             rows = deliveries.own_rows(rows, {rid: self.me_in(r) for rid, r in self.repos.items()})
             keys = {r["key"] for r in rows}
             overlaps = [o for o in overlaps if keys & set(o["keys"])]
+            own = {(r["home"] if r["repo"] == "runner" else r["repo"], r["key"]) for r in rows}
+        kept = {id(r) for r in rows}
+        q_counts = {k: sum(q[k] for row, q, _ in per_row if id(row) in kept) for k in ("asked", "answered", "delivered")}
         parts: list[tuple[str, dict[str, Any]]] = []
         view, funnel = self._eval_view(which, snap, parts)
         if funnel is None:
-            funnel = deliveries.funnel_app(all_decisions, q_counts)
+            funnel = deliveries.funnel_app([d for row, _, ds in per_row if id(row) in kept for d in ds], q_counts)
         else:
-            funnel["questions"] = q_counts
+            funnel = dict(deliveries.own_funnel(funnel, parts, own) if own is not None else funnel, questions=q_counts)
         scope = [r for rid, r in self.repos.items() if which in ("all", rid)]
         cto = deliveries.cto_numbers(parts, rows, available=bool(view.get("available")), now=self.now(),
                                      names={rid: r.name for rid, r in self.repos.items()}, repos=len(scope),
-                                     local_repos=sum(1 for r in scope if self._local_only(r)))
+                                     local_repos=sum(1 for r in scope if self._local_only(r)), mine=own)
         return {"at": self.now(), "rows": rows, "others": listed - len(rows), "overlaps": overlaps, "funnel": funnel,
                 "eval": view, "cto": cto, "counts": deliveries.counts(rows), "errors": errors,
                 "roster": roster.roster(rows, me=self.me(which), now=self.now(), settings=self.settings)}
@@ -915,7 +922,7 @@ class Service:
         mr = self.mr.get(project, f["branch"]) if (base and project and f.get("branch")) else None
         can_post = own and bool(base and project) and self._token_present()
         questions = []
-        handed = bool(run.get("handoff"))
+        handed = deliveries.on_runner(run)
         pq = detail.park_question(f.get("park"), answerable=own and not handed and bool(
             self._live(snap["by"].get(scope, []))), via="session", handed=handed,
             mr_url=(row.get("mr") or {}).get("url"))
@@ -949,7 +956,7 @@ class Service:
             "questions": questions,
             "timeline": {"source": tl["source"], "items": tl["items"], "error": tl["error"],
                          "missing": board_mod.missing_sources(tl["missing"], local_only=row["local_only"],
-                                                              handed=bool(run.get("handoff")), ci_read=board_mod.pipelines_read(mr)),
+                                                              handed=handed, ci_read=board_mod.pipelines_read(mr)),
                          "other_runs": tl.get("other_runs") or []},
             "sessions": [{k: s[k] for k in ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting",
                                              "last_activity", "opened_at", "project", "url", "error", "missing")}
@@ -1331,7 +1338,7 @@ class Service:
         repo = self._repo(rid)
         f = await asyncio.to_thread(self._facts, repo, key)
         run = f.get("run") or {}
-        if not run or run.get("handoff") or f.get("merged"):
+        if not run or deliveries.on_runner(run) or f.get("merged"):
             raise AppError("只有本地开发中的需求能在这里开会话", "not_local", 409)
         if not f.get("worktree"):
             raise AppError("这台机器上没有检出 %s 的分支：先在开需求里开工" % f.get("branch"), "no_worktree", 409)
@@ -1433,7 +1440,7 @@ class Service:
         repo = self._repo(rid)
         f = await asyncio.to_thread(self._facts, repo, key)
         run = f.get("run") or {}
-        if not run or run.get("handoff") or f.get("merged"):
+        if not run or deliveries.on_runner(run) or f.get("merged"):
             raise AppError("只有本地开发中的需求能在这里开会话", "not_local", 409)
         if not f.get("worktree"):
             raise AppError("这台机器上没有检出 %s 的分支：先在开需求里开工" % f.get("branch"), "no_worktree", 409)
@@ -1473,7 +1480,7 @@ class Service:
         run = f.get("run") or {}
         scope = scope_of(rid, key)
         park = f.get("park")
-        if not run.get("handoff"):
+        if not deliveries.on_runner(run):
             if not deliveries.park_waiting(park) or park.get("kind") != "clarify" or park.get("lean_request"):
                 raise AppError("这个需求没有等你回答的澄清问题", "no_question", 409)
             if choice not in answer_choices([str(o.get("id")) for o in park.get("options") or [] if isinstance(o, dict)]):
@@ -1695,7 +1702,7 @@ class Service:
                     except Exception as exc:  # noqa: BLE001 - a token file others can read: brain-kit says so itself
                         self.log.info("brain: reading the MR of %s: %s", branch, exc)
 
-                if (f.get("run") or {}).get("handoff") and branch and base and project and self.mr.due(project, branch):
+                if deliveries.on_runner(f.get("run")) and branch and base and project and self.mr.due(project, branch):
                     await asyncio.to_thread(mr_now)
                 why = f.get("flow_error") or flowview.action_problem(f["flow"], "handoff")
                 if why:
@@ -1994,10 +2001,6 @@ class Service:
         await asyncio.to_thread(self.reload_sync)
         if self.started:
             await self._start_team()
-            if self.team is not None and not any(getattr(t, "_brain_team", False) for t in self._tasks if not t.done()):
-                t = asyncio.get_running_loop().create_task(self._team_forever())
-                t._brain_team = True  # type: ignore[attr-defined]
-                self._tasks.append(t)
         return {"ok": True, "settings": self.settings_view(), "status": await self.status()}
 
     # ---- 导入仓库 ------------------------------------------------------------------------------------- #
@@ -2434,23 +2437,18 @@ class Service:
         if not bk.ok():
             raise AppError("brain-kit 没装载：先在设置里写对 brain-kit 的位置", "no_brainkit", 409)
         paths = self._setup_paths()
-        try:
-            lock = await asyncio.to_thread(setup_mod.Lock, paths.root)
-        except setup_mod.Busy as exc:
-            raise AppError(str(exc), "setup_busy", 409)
         loop = asyncio.get_running_loop()
-        rest, transport = bk.m("rest"), self.transport
+        rest, transport = bk.m("rest"), self.transport      # brain-kit before the root's lock: a failure holds nothing
 
         def team_mode(want: dict[str, Any]) -> dict[str, Any]:
             return asyncio.run_coroutine_threadsafe(self._setup_team_mode(want), loop).result(600)
 
         ctx = setup_mod.Ctx(inp, paths, gitlab=lambda tok: rest.GitLab(inp.gitlab_base, tok, transport),
-                             team_mode=team_mode)
+                             team_mode=team_mode, stop=KiroCrewAdapter(loop, self.sessions, bk.brain_error()).stop)
         try:
-            await asyncio.to_thread(setup_mod.begin, ctx)
-        except BaseException:
-            lock.release()
-            raise
+            lock = await asyncio.to_thread(setup_mod.Lock, paths.root)
+        except setup_mod.Busy as exc:
+            raise AppError(str(exc), "setup_busy", 409)
 
         async def go() -> None:
             try:
@@ -2460,7 +2458,12 @@ class Service:
             finally:
                 lock.release()
 
-        self._setup_task = loop.create_task(go())
+        try:            # until the run's task holds it, the lock is this request's to give back
+            await asyncio.to_thread(setup_mod.begin, ctx)
+            self._setup_task = loop.create_task(go())
+        except BaseException:
+            lock.release()
+            raise
         return await self.team_setup_view()
 
     async def wait_setup(self) -> dict[str, Any]:

@@ -10,7 +10,9 @@ listens on nothing. It is the other end of brain-kit's ``sign.SpoolSigner``: the
 voucher}); this process checks each request again against GitLab, signs it with the key (``sign.KeySigner``) and
 answers in ``<spool>/signed/<req>.json`` ({req_id, voucher, sig}) or ``<spool>/refused/<req>.json`` ({req_id, reasons}).
 A check it cannot make (GitLab down, more notes than brain-kit reads) gets no answer: the SpoolSigner gives up after its
-timeout and the bridge asks again next round. Nothing in a request is trusted.
+timeout and the bridge asks again next round; one that found the sign-in of a GitLab behind single sign-on ended makes
+its GitLab client again before the next requests (Renewing), so a new sign-in on this machine is used without a
+restart. Nothing in a request is trusted.
 
 The rules are brain-kit's own (commit 72b278e or newer), run with this signer's identities, ledger, GitLab token and
 Jira, and the kit config read from the default branch (never anything from the app):
@@ -125,6 +127,10 @@ ROUTES = ("recheck", "issue")       # a hand-over contract's: brain handoff's MR
 ISSUE_LABEL = "brain"               # kit.json issue_label when it names none, as the app's team/issues.py
 DEVELOPER = 30                      # GitLab's access level: who may start a run from an issue
 EDIT_RE = re.compile(r"^changed (?:the description|title\b)")     # GitLab's system notes of an edit to an issue
+# the sign-in helper's "session expired / sign in again", and brain-kit's words for a sign-in page in place of the API
+# (the app's backend/core/signin.py, which this signer cannot import)
+SIGN_IN_RE = re.compile(r"sign[- ]in page|sign in again|log ?in again|(?:session|sign[- ]in|login) (?:has )?expired",
+                        re.I)
 
 
 def is_int(x):
@@ -201,6 +207,25 @@ class Refuse(Exception):
 class CannotCheck(Exception):
     """A check this signer cannot make right now (GitLab GraphQL did not answer): no answer is written, the bridge
     asks again. Deliberately not a BrainError: brain-kit's DecisionLoop catches those."""
+
+
+class Renewing:
+    """This signer's GitLab client for a GitLab behind single sign-on: made again (renew) after a check found its
+    sign-in ended, the sign-in helper's refresh() first when it has one, so brain-kit asks the helper for a new
+    transport and a new sign-in on this machine is used without a restart. Every attribute is the current client's."""
+
+    def __init__(self, make):
+        self._make, self._client = make, make()
+
+    def renew(self):
+        from brainkit.rest import local_transport
+        refresh = getattr(local_transport(), "refresh", None)
+        if callable(refresh):
+            refresh()
+        self._client = self._make()
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
 
 
 class EditsOrNothing:
@@ -304,6 +329,7 @@ class Signer:
         self.projects = [p["project"] if isinstance(p, dict) else p for p in cfg.get("projects") or []]
         self.bridge_users = {str(u).lower() for u in cfg.get("bridge_users") or []}
         self._failed = {}   # req id -> when a check could not be made (GitLab down): tried again after RETRY_S
+        self._renew = False     # a check found the GitLab sign-in ended: the client is made again first (Renewing)
 
     # ---------- the spool (brain-kit's SpoolSigner on the other side) ----------
 
@@ -311,6 +337,12 @@ class Signer:
         return {k: os.path.join(self.cfg["spool"], k) for k in ("requests", "signed", "refused")}
 
     def once(self):
+        if self._renew and isinstance(self.gl, Renewing):
+            self._renew = False
+            try:
+                self.gl.renew()
+            except Exception as e:  # noqa: BLE001 - the helper cannot be loaded, or says to sign in: next failure again
+                self.out("GitLab's sign-in not made again: %s" % str(e).split("\n", 1)[0])
         d = self.dirs()
         for k in ("signed", "refused"):
             os.makedirs(d[k], exist_ok=True)
@@ -333,6 +365,7 @@ class Signer:
                 self.out("refused %s: %s" % (rid, "; ".join(e.reasons)))
             except Exception as e:  # noqa: BLE001 - GitLab down, SSO expired: no answer, so the bridge asks again
                 self._failed[rid] = time.time()
+                self._renew = self._renew or bool(SIGN_IN_RE.search(str(e)))
                 self.out("could not check %s (no answer written; the bridge asks again): %s"
                          % (rid, str(e).split("\n", 1)[0]))
                 continue
@@ -802,7 +835,7 @@ def build(cfg, transport=None):
     tok = read_token(g.get("token_env", "SIGNER_GITLAB_TOKEN"), default_file=g.get("token_file", DEFAULT_TOKEN_FILE))
     if not g.get("base") or not tok:
         raise SystemExit("brain-signer: gitlab.base or the GitLab token is missing")
-    gl = GitLab(g["base"], tok, transport)
+    gl = Renewing(lambda: GitLab(g["base"], tok, transport))
     jc = cfg.get("jira") or {}
     jira = Jira(jc["base"], os.environ.get(jc.get("token_env", "SIGNER_JIRA_TOKEN"), ""), jc.get("api", "2"), transport,
                 basic_user=os.environ.get(jc.get("user_env", ""), "") or None) if jc.get("base") else None

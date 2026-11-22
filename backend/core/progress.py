@@ -4,12 +4,13 @@ own run branch to origin when Lean records a checkpoint on it, and fetches every
 
 Push. ``push_due`` (pure) walks RULES, one row per reason not to push; a branch no row stops is pushed. That is the
 person's own run branch, checked out in a worktree here, in a repo done with the team (a remote and GitLab) whose
-auto_push is on; not merged, closed or handed over (``brain handoff`` pushes a hand-over, or leaves it to the person
-after --no-push); on origin already and ahead of it; with a checkpoint (CHECKPOINT_KINDS) committed that this machine
-has not pushed or tried yet. What goes is the commit judged, ``git push origin <sha>:refs/heads/<branch>``: never
-forced, hooks on, no prompt, no label, no MR, no GitLab API (the bridge takes only open MRs with the hand-over label).
-A push git refuses stays in the branch's mark with git's words and is not tried again before the next checkpoint;
-待办 says what happened and what to do.
+auto_push is on; not merged, closed or the team runner's (deliveries.on_runner: ``brain handoff`` pushes a hand-over, or
+leaves it to the person after --no-push; a run started there from an issue is the runner's from its first commit); on
+origin already and ahead of it; with a checkpoint (CHECKPOINT_KINDS) committed that this machine has not pushed or tried
+yet. What goes is the commit judged, ``git push origin <sha>:refs/heads/<branch>``: never forced, hooks on, no prompt,
+no label, no MR, no GitLab API (the bridge takes only open MRs with the hand-over label). A push git refuses stays in
+the branch's mark with git's words and is not tried again before the next checkpoint; 待办 says what happened and what
+to do.
 
 The marks (``pushes.json`` in the app's data dir, {repo path: {branch: Mark}}) have one writer, ``Sync.push_tick``,
 which only the service's background loop runs; the page reads them from memory.
@@ -34,7 +35,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Optional, Union
 
-from . import flowview, importer, lean_view
+from . import deliveries, flowview, importer, lean_view
 from .constants import GIT_BIN
 from .repo import Repo, Source, parse_branch
 
@@ -87,7 +88,7 @@ class Branch:
     origin_sha: Optional[str]
     merged: bool
     closed: bool
-    handed_over: bool
+    on_runner: bool
     checkpoint: Callable[[], Optional[str]]    # the newest checkpoint committed at local_sha
     behind: Callable[[], bool]                 # origin's tip has local_sha already
 
@@ -107,7 +108,7 @@ class Skip(Enum):
     MERGED = "merged"
     CLOSED = "closed with brain intent close"
     NOT_HERE = "not checked out in a worktree on this machine"
-    HANDED_OVER = "run.json records a hand-over: brain handoff pushes it"
+    ON_RUNNER = "the team runner has the run (handed over: brain handoff pushes it; or started there): never from here"
     NOT_ON_ORIGIN = "origin has no such branch (brain start --no-push, or deleted there): only a branch origin has moves"
     UP_TO_DATE = "origin has this tip"
     NO_CHECKPOINT = "no checkpoint committed on the branch"
@@ -129,7 +130,7 @@ RULES: tuple[tuple[Skip, Rule], ...] = (    # in order: the first that holds is 
     (Skip.MERGED, lambda b, m, c: b.merged),
     (Skip.CLOSED, lambda b, m, c: b.closed),
     (Skip.NOT_HERE, lambda b, m, c: not b.worktree or not b.local_sha),
-    (Skip.HANDED_OVER, lambda b, m, c: b.handed_over),
+    (Skip.ON_RUNNER, lambda b, m, c: b.on_runner),
     (Skip.NOT_ON_ORIGIN, lambda b, m, c: not b.origin_sha),
     (Skip.UP_TO_DATE, lambda b, m, c: b.local_sha == b.origin_sha),
     (Skip.NO_CHECKPOINT, lambda b, m, c: b.checkpoint() is None),
@@ -368,7 +369,7 @@ class Sync:
         local, origin = f.get("local_sha"), f.get("origin_sha")
         return Branch(name=name, owner=f.get("owner"), worktree=f.get("worktree"), local_sha=local, origin_sha=origin,
                       merged=bool(f.get("merged")), closed=bool((f.get("claim") or {}).get("closed")),
-                      handed_over=bool(run.get("handoff")),
+                      on_runner=deliveries.on_runner(run),
                       checkpoint=lambda: self._checkpoint(repo, local, run, f["flow"]),
                       behind=lambda: self._is_behind(repo, local, origin))
 

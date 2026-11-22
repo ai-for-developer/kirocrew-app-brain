@@ -19,7 +19,8 @@ from typing import Any, Mapping, Optional, Tuple
 
 from . import lean_view, problems, runs, stages
 from . import outputs as outputs_mod
-from .deliveries import ASK_NAME, ASK_WHO, CAT_LABEL, CAT_ORDER, category, owns, park_waiting, question_label
+from .deliveries import (ASK_NAME, ASK_WHO, CAT_LABEL, CAT_ORDER, category, on_runner, owns, park_waiting,
+                         question_label, started_on_runner)
 
 RUNNER_NO_DESC = "运行机还没开始做：它做完提交以后才有变更说明"
 # Lean's approval kinds the board says, in words (CR-<team>-<n> is left out)
@@ -148,6 +149,7 @@ def events_of(f: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any]
     run = f.get("run") or {}
     handoff = run.get("handoff") if isinstance(run.get("handoff"), dict) else None
     hand_at = _epoch((handoff or {}).get("requested_at"))
+    held = runner_from(f)
     out: list[dict[str, Any]] = []
     order = [0]
 
@@ -158,7 +160,7 @@ def events_of(f: dict[str, Any], t: dict[str, Any] | None, *, mr: dict[str, Any]
         out.append({"at": at, "kind": kind, "text": _clip(text, 200), "detail": detail, "src": src, "_n": order[0], **data})
 
     def side(at: float | None) -> str:
-        return "runner" if hand_at is not None and at is not None and at > hand_at else "local"
+        return "runner" if held is not None and at is not None and at > held else "local"
 
     parks = [q for q in ((t or {}).get("actions") or {}).get("questions") or []
              if isinstance(q, dict) and q.get("status") == "waiting"]
@@ -523,13 +525,14 @@ def _quiet(evs: list[dict[str, Any]], records: list[dict[str, Any]], who: runs.A
 def stage_graph(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, evs: list[dict[str, Any]], *,
                 mr: dict[str, Any] | None, sessions: list[dict[str, Any]], team_decisions: list[dict[str, Any]],
                 subjects: dict[str, str], changes: dict[str, list[dict[str, Any]]], docs: DocsByCommit,
-                reflect_refs: list[tuple[str, float, float | None]], you: str, me: str | None, hand_at: float | None,
+                reflect_refs: list[tuple[str, float, float | None]], you: str, me: str | None, held: float | None,
                 merged_at: float | None, proposals: int, units: Any, now: float, live_slot: str | None = None
                 ) -> dict[str, Any]:
     """The board's stage graph: phases, nodes, runs, relays, other_runs, and each event (*evs*, events_of's) placed
     on it (node, run, round, and where it travels: from, to), live. Rounds and gates are stages', who did them runs'.
     The words of a gate's decider (decided_by) and of whom a request waits on (the park.json ask, the MR question)
-    are the board's."""
+    are the board's. *held*: when the team runner took the run (runner_from); one it started has no local run and no
+    relay from one, its first runner run is from before its first record."""
     run = run_of(f)
     lean = sorted((e for e in f.get("events") or [] if isinstance(e, dict) and isinstance(e.get("_at"), (int, float))),
                   key=lambda e: e["_at"])
@@ -543,7 +546,8 @@ def stage_graph(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None
     others = {str(o.get("run_id")) for o in (t or {}).get("other_runs") or [] if isinstance(o, dict)}
     ids = {str(x) for x in list((t or {}).get("run_ids") or []) + [h.get("run_id") for h in hands if isinstance(h, dict)]
            + list(row.get("run_ids") or []) if x} - others
-    who = runs.attribute(lean, runs.file_roles(lean, family), bounds, sorted(ids), commits)
+    there = held == runs.FROM_START
+    who = runs.attribute(lean, runs.file_roles(lean, family), ([held] if there else []) + bounds, sorted(ids), commits)
     humans = [h for h in (t or {}).get("humans") or [] if isinstance(h, dict)]
     owners = {c.key: c.owner for c in family.children} if family is not None else {}
     qs = _mr_questions(t, team_decisions, mr)
@@ -568,7 +572,7 @@ def stage_graph(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None
         """Whom a request waits on; after the hand-over, the MR question that asks it: the first of its kind the
         bridge put up after the request and before the next one."""
         if ask.run == runs.LOCAL:
-            return stages.Pending(_who(you), you, line_ok=hand_at is None)
+            return stages.Pending(_who(you), you, line_ok=held is None)
         lean_kinds = ("REQUIREMENTS", "DESIGN") if ask.kind == "INCEPTION" else (ask.kind,)
         w, asker = _asked(you, _park_for(parks, ask.at, lean=lean_kinds).get("ask"),
                           "acceptance" if ask.kind == "RELEASE" else None, ask.kind)
@@ -597,9 +601,9 @@ def stage_graph(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None
     for x in lean + commits:
         k, at = who.run_of(x), x.get("_at", x.get("at"))
         last_at[k], starts[k] = max(last_at.get(k, at), at), min(starts.get(k, at), at)
-    rs = runs.runs(nodes, who, started=bool(run), family=family, sessions=sessions, owner=f.get("owner"),
+    rs = runs.runs(nodes, who, started=bool(run) and not there, family=family, sessions=sessions, owner=f.get("owner"),
                    mine=you == "你", team=row.get("where") == "runner")
-    runs.overlay(rs, nodes, row=row, sessions=sessions, hand_at=hand_at, last_at=last_at, over=over, you=you,
+    runs.overlay(rs, nodes, row=row, sessions=sessions, hand_at=held, last_at=last_at, over=over, you=you,
                  approvals=f.get("approvals") or [], now=now, live_slot=live_slot)
     stages.with_status(nodes, rec, {r.key: (stages.NodeStatus(r.now.status, r.now.doing, r.now.since, r.now.who),
                                             r.now.node) for r in rs if r.now is not None}, way, pending,
@@ -686,6 +690,7 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
     run = f.get("run") or {}
     handoff = run.get("handoff") if isinstance(run.get("handoff"), dict) else None
     hand_at = _epoch((handoff or {}).get("requested_at"))
+    held = runner_from(f)
     local_only = bool(local_only or row.get("local_only"))
     you = _you(me, f.get("owner"))
     unpushed = (row.get("waits") or {}).get("do") == "push_handoff"
@@ -694,11 +699,11 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
     proposals = ((brain or {}).get("proposals") or 0) if isinstance(brain, dict) else 0
     merged_at = next((e["at"] for e in evs if e["kind"] == "merge"), None)
     sg = stage_graph(f, row, t, evs, mr=mr, sessions=sessions, team_decisions=team_decisions, subjects=subjects,
-                     changes=changes or {}, docs=docs or {}, reflect_refs=reflect_refs, you=you, me=me, hand_at=hand_at,
+                     changes=changes or {}, docs=docs or {}, reflect_refs=reflect_refs, you=you, me=me, held=held,
                      merged_at=merged_at, proposals=proposals, units=units, now=now, live_slot=live_slot)
     wait_who = str((row.get("waits") or {}).get("who"))
     asked = you if wait_who == "you" else ASK_NAME.get(wait_who, "人")
-    checks = _checks(sg["_nodes"], sg["_runs"], sg["relays"], kit_rows, t, local_only, hand_at, merged_at, sg["_way"],
+    checks = _checks(sg["_nodes"], sg["_runs"], sg["relays"], kit_rows, t, local_only, held, merged_at, sg["_way"],
                      you, asked, handed=(hand_at is not None and not unpushed) or runner_blind(f, row),
                      unpushed=unpushed)
     for i, e in enumerate(evs, 1):
@@ -714,7 +719,7 @@ def build(f: dict[str, Any], row: dict[str, Any], t: dict[str, Any] | None, *, m
             "lean_steps": lean_view.steps(f.get("events") or []),
             "phases": sg["phases"], "nodes": sg["nodes"], "runs": sg["runs"], "relays": sg["relays"],
             "other_runs": sg["other_runs"],
-            "missing": missing_sources((t or {}).get("missing") or [], local_only=local_only, handed=hand_at is not None,
+            "missing": missing_sources((t or {}).get("missing") or [], local_only=local_only, handed=held is not None,
                                        ci_read=pipelines_read(mr))}
 
 
@@ -775,7 +780,7 @@ def _no_design(nodes: list[stages.Node], over: Optional[Tuple[str, float]]) -> s
 
 
 def _checks(nodes: list[stages.Node], rs: list[runs.RunView], relays: list[dict[str, Any]], kit_rows: list[dict[str, Any]],
-            t: dict[str, Any] | None, local_only: bool, hand_at: float | None, merged_at: float | None,
+            t: dict[str, Any] | None, local_only: bool, held: float | None, merged_at: float | None,
             way: stages.Way, you: str, asked: str = "人", handed: bool = False, unpushed: bool = False
             ) -> dict[str, Any]:
     """The check wall, read off the stage graph. It counts what has happened (pass, fail, and wait: asked of a person);
@@ -783,9 +788,10 @@ def _checks(nodes: list[stages.Node], rs: list[runs.RunView], relays: list[dict[
     the hand-over of a repo done only here) is not_needed or left out; the 14 days after the merge are watched,
     nobody's turn. A gate cell is its approval's last word (_last_gate), the verify cells build-and-test's latest round,
     桥 and 签名 the latest hand-over's steps. A small requirement is never handed over and its big one releases it, so
-    its wall has no 桥 or 签名 and its release is not_needed. *asked*: whom the requirement waits on, in words;
+    its wall has no 桥 or 签名 and its release is not_needed; nor has one the team runner started (从 issue 接活), which was
+    never handed over. *held*: when the runner took it (runner_from); *asked*: whom the requirement waits on, in words;
     *handed*: it was handed over (the team runner's page of one it cannot read yet knows it was)."""
-    blind = handed and hand_at is None   # the runner's page, nothing before the hand-over readable: not said
+    blind = handed and held is None   # the runner's page, nothing before the hand-over readable: not said
     by_stage: dict[str, list[stages.Node]] = {}
     for n in nodes:
         by_stage.setdefault(n.stage.id, []).append(n)
@@ -824,10 +830,10 @@ def _checks(nodes: list[stages.Node], rs: list[runs.RunView], relays: list[dict[
             cell("gate-" + lean, "gate", label, name, "fail", g.at, "%s退回了：等它改好再批" % (g.by or you), n)
         elif g.kind == lean and g.state in ("pending", "queued"):
             cell("gate-" + lean, "gate", label, name, "wait", None,
-                 "等%s在会话里打这一行批准：%s" % (you, g.line) if hand_at is None and g.line
+                 "等%s在会话里打这一行批准：%s" % (you, g.line) if held is None and g.line
                  else "等%s在 MR 上回答（approve 通过 / reject 退回）" % asked, n)
         else:
-            here = hand_at is None or (g.at or 0) <= hand_at
+            here = held is None or (g.at or 0) <= held
             cell("gate-" + lean, "gate", label, name, "wait", None,
                  "等%s批准" % (you if here else "%s在 MR 上" % (g.asker or "人")), n)
     # verify: build-and-test's latest round
@@ -851,7 +857,7 @@ def _checks(nodes: list[stages.Node], rs: list[runs.RunView], relays: list[dict[
         cell("verify", "verify", "自动检查", "自动检查", "skip", None, "还没跑过自动检查（构建和测试阶段跑）", bt, later="自动检查")
     # the hand-over: the bridge and the signer (not on the way of a repo done only here, of one done here and merged, or
     # of a small requirement)
-    if not local_only and not way.child and not (not handed and merged_at is not None):
+    if not local_only and not way.child and held != runs.FROM_START and not (not handed and merged_at is not None):
         steps = {x["key"]: x for x in relays[-1]["steps"]} if relays else {}
         hand, bridge, signer = steps.get("handover") or {}, steps.get("bridge") or {}, steps.get("signer") or {}
         mine = runner.key if runner is not None else None
@@ -1010,7 +1016,7 @@ def _accept(f: dict[str, Any], row: dict[str, Any], nodes: list[stages.Node], ch
     local = [s for s in sessions if live_slot and s.get("slot") == live_slot]
     session_url = local[-1]["url"] if local else None
     mr_url = (row.get("mr") or {}).get("url")
-    hand = isinstance(run_of(f).get("handoff"), dict)
+    hand = on_runner(run_of(f))
     do = _do_of(row, f, nodes, hand, local, merged)
     where = waits.get("where") or ("app" if do == "start" else "mr" if hand else "session")
     who = {"product": "产品", "people": "别人", "builder": "开发的人"}.get(str(waits.get("who")), you.strip())
@@ -1138,6 +1144,15 @@ def runner_blind(f: dict[str, Any], row: dict[str, Any]) -> bool:
 
 def run_of(f: dict[str, Any]) -> dict[str, Any]:
     return f.get("run") if isinstance(f.get("run"), dict) else {}
+
+
+def runner_from(f: dict[str, Any]) -> float | None:
+    """When the team runner took the run: its hand-over request (run.json's handoff), or from before its first record
+    when it started there (deliveries.started_on_runner: runs.FROM_START); None while it has not."""
+    run = run_of(f)
+    if started_on_runner(run):
+        return runs.FROM_START
+    return _epoch((run.get("handoff") if isinstance(run.get("handoff"), dict) else {}).get("requested_at"))
 
 
 # the one git call the board's commits are read with (read only): each commit's subject, and the files it changed with

@@ -4,8 +4,9 @@
 brain-kit reads them from GitLab only when the default branch's .brain/kit.json has "deploys"; without that, or with a
 brain-kit that has no deploys module, there is nothing to show. A GitLab behind single sign-on signs each new client in
 on its first call (17 s measured), then each call takes a second or two: ``Clients`` keeps one client per GitLab and
-token for the app's life, and makes a new Source for each trace and each eval (a Source keeps what it read, so it is
-never shared between two of them, nor between threads).
+token for the app's life (made again once a call found that its sign-in ended: signin.py), and makes a new Source for
+each trace and each eval (a Source keeps what it read, so it is never shared between two of them, nor between
+threads).
 
 Promoted and aborted are what the deploy evidence says (brain-kit's rule D2); any other value is unknown, never a
 success. brain-kit's reasons are said in words (WHY), its own words go under 细节.
@@ -18,7 +19,7 @@ import re
 import threading
 from typing import Any
 
-from . import bk, identity, lean_view
+from . import bk, identity, lean_view, signin
 
 VALUES = ("promoted", "aborted", "running", "not_deployed", "unknown")
 RESULTS = ("promoted", "aborted", "running", "unknown")
@@ -34,6 +35,7 @@ WHY = ((re.compile(r"no GitLab token here"), "这台机器上没有 GitLab 的�
        (re.compile(r"while it ran: the rollout may have gone on"), "部署作业中途停了，灰度可能还在接着走"),
        (re.compile(r"gives no result|names no image digest|is not a JSON object|is not JSON"), "部署证据不全，看不出结果"),
        (re.compile(r"the deploy evidence"), "部署证据和这次部署对不上"),
+       (signin.NO_HELPER_RE, "GitLab 在单点登录后面，这台机器上没有登录助手"),
        (re.compile(r"HTTP 40[13]\b|sign-in page|sign in again"), "GitLab 不让读：令牌或登录过期了"))
 UNREAD = "GitLab 上的部署记录读不了"
 RULE = {"deploy_frequency": "最近 28 天，默认分支部署到 %s、灰度走完上线的次数，按周算（中止的、读不到的不算）",
@@ -175,7 +177,8 @@ def notes(dp: Any, unknown_after_merge: Any) -> list[dict[str, str]]:
 
 class Clients:
     """brain-kit's GitLab client, one per GitLab and token, kept for the app's life (the module's note on single
-    sign-on); ``source`` makes the deploys Source of a repo with it."""
+    sign-on) and made again when it is next asked for after its sign-in ended; ``source`` makes the deploys Source of a
+    repo with it."""
 
     def __init__(self, transport: Any = None) -> None:
         self.transport = transport      # tests: a fake GitLab; None: brain-kit's own (its sign-in helper, if any)
@@ -192,8 +195,11 @@ class Clients:
         with self._lock:
             got = self._by_base.get(home)
             if got is None or got[0] != mark:
-                got = self._by_base[home] = (mark, bk.m("rest").GitLab(home, tok, self.transport))
-            return got[1]
+                made = signin.Renewing(lambda: bk.m("rest").GitLab(home, tok, self.transport))
+                got = self._by_base[home] = (mark, made)
+        if got[1].expired:          # a new sign-in on this machine is used from now on
+            got[1].renew()
+        return got[1]
 
     def source(self, path: str, cfg: dict[str, Any], ref: str | None = None) -> Any:
         """A new deploys Source of the repo at *path*: what .brain/kit.json on its default branch sets up

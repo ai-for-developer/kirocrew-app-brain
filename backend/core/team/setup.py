@@ -62,6 +62,7 @@ from typing import Any, Callable, Mapping
 from .. import bk, kitmr, snapshot
 from ..constants import APP_ROOT, PYTHON_BIN
 from . import issues as issues_mod
+from . import left as left_mod
 from . import patrol as patrol_mod
 from . import signerproc, sources
 
@@ -101,8 +102,12 @@ ACCOUNT_NEEDS = {"bridge": "没有 api 权限：桥要用它在 MR 上贴问题�
                  "bot": "没有 write_repository 权限：运行机要用它推代码。在 GitLab 上给 %s 换一个有 write_repository 的令牌"}
 SSH_BOT = ("brain-bot", "brain-bot@noreply.invalid")    # git_name, git_email of a runner pushing over this machine's SSH
 REACH_WAIT_S = 20
+# bridge.json signer.timeout: how long brain-kit's SpoolSigner waits for each signature (its own default, 30 s, is less
+# than the signer's first look at a GitLab behind single sign-on can take); one not answered by then is asked again
+SIGN_WAIT_S = 90
 BRANCH = "brain/runner-setup"
 STATUS_BRANCH = snapshot.BRANCH     # where the team server writes each project's status (状态中转, team/relay.py)
+FIRST_WRITE = "团队服务器第一次写 %s 时就知道能不能推，推不了会在它的运行机页上说" % STATUS_BRANCH
 MR_TITLE = "运行机：更新 .brain/kit.json"
 MR_TEXT = ("一键建运行机开的 MR：运行机要 kit.json 写上 bridge_user（桥的账号）、bot_users 和 bot_emails（运行机推送用的账号和邮箱）、"
            "gitlab 和 default_branch。合并以前，签名服务不签交接。")
@@ -134,6 +139,8 @@ FORBIDDEN = {PROJECT_TOKEN: "这个 token 做不了这一步：要有 api 权限
 SIGN_IN = "GitLab 回的是登录页：这个 GitLab 要单点登录，先放好它的登录辅助文件（~/.brain/local_transport.py），再跑一次"
 # a step's result from those of its projects: the first of these one of them has
 WORST = ("failed", "waiting", "done", "skipped")
+LEFT_SAID = ("；%s 不归这台运行机管了：账本里%s没做完的 %d 个运行（%s）停了，桥的账本里记成没做完，签名服务的账本里关了；"
+             "改之前的账本另存在 %s")
 
 
 class SetupRefused(ValueError):
@@ -361,6 +368,8 @@ class Paths:
     vouchers = _under("root", "vouchers")
     signer_vouchers = _under("root", "signer-vouchers")
     bridge_json = _under("root", "bridge.json")
+    bridge_ledger = _under("root", "bridge-ledger.sqlite")
+    signer_ledger = _under("root", "signer-ledger.sqlite")
     runnerd_json = _under("root", "runnerd.json")
     signer_json = _under("root", "signer.json")
     jenkins_token = _under("root", "jenkins-token")
@@ -378,6 +387,7 @@ class Ctx:
     gitlab: Callable[[str], Any]                                # token -> brain-kit's rest.GitLab for inp.gitlab_base
     team_mode: Callable[[dict], dict] | None = None             # settings team -> TeamStatus; None: not here
     signer: Callable[[Paths], tuple[int, bool]] | None = None   # -> (pid, started now); None: signerproc.ensure
+    stop: Callable[[str], Any] | None = None                    # a runner session's slot -> stopped; None: not here
     reach: Callable[[str], tuple[bool, str]] | None = None      # clone URL -> (git reaches it, what git said)
     state: dict = field(default_factory=dict)
     results: list = field(default_factory=list)
@@ -609,7 +619,8 @@ def _said(exc: BaseException, mode: str = PROJECT_TOKEN) -> tuple[str, str]:
 def view(state: Mapping[str, Any], paths: Paths, running: bool | None = None) -> dict[str, Any]:
     """GET /team/setup (TeamSetup in ui/src/types.ts): every step of the table with the last run's result (and its
     projects' when there were two or more), the one in progress, or todo; that run's input without the tokens; the
-    accounts of the personal tokens kept here (bot-account). *running*: whether a run holds the root now. A run cut off
+    accounts of the personal tokens kept here (bot-account); when each token of the runner ends (tokens_view).
+    *running*: whether a run holds the root now. A run cut off
     part-way (the app or the command stopped) left running in its file with no one holding the root: cut_off is the
     step it had not finished."""
     on = bool(state.get("running")) if running is None else bool(running)
@@ -641,7 +652,37 @@ def view(state: Mapping[str, Any], paths: Paths, running: bool | None = None) ->
                       "jenkins": {"base": str(jenkins.get("base") or ""), "user": str(jenkins.get("user") or "")}},
             "accounts": {k: str((kept.get(k) if isinstance(kept.get(k), dict) else {}).get("username") or "")
                          for k in ("bridge", "bot")},
-            "steps": steps, "root": str(paths.root)}
+            "tokens": tokens_view(state), "steps": steps, "root": str(paths.root)}
+
+
+def tokens_view(state: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """TeamSetup.tokens: the GitLab tokens the runner works with as the last run left them, the bridge's and, when the
+    runner pushes with a token, the bot's: a project token this setup made, or a personal token kept here; its account,
+    its last day as GitLab said it, the days left from today in UTC and whether that is RENEW_DAYS or fewer (ends_soon:
+    a project token gets a new value on the next run then, a personal token is its owner's to replace)."""
+    inp = state.get("input") if isinstance(state.get("input"), dict) else {}
+    push = state.get("push") if isinstance(state.get("push"), dict) else {}
+    keys = ("bridge", "bot") if push.get("mode") == "token" else ("bridge",)
+    if inp.get("mode") == BOT_ACCOUNT:
+        kind, recs = "personal", state.get("accounts")
+    else:
+        found = state.get("projects") if isinstance(state.get("projects"), list) else []
+        pid = found[0].get("id") if found and isinstance(found[0], dict) else None
+        kind, recs = "project", (state.get("tokens") or {}).get("%s/projects/%s" % (inp.get("gitlab_base"), pid))
+    out = []
+    for key in keys:
+        rec = recs.get(key) if isinstance(recs, dict) else None
+        if not isinstance(rec, dict):
+            continue
+        try:
+            end: str | None = date.fromisoformat(str(rec.get("expires_at"))[:10]).isoformat()
+        except ValueError:
+            end = None
+        out.append({"key": key, "kind": kind, "name": str(rec.get("name") or "") if kind == "project" else "",
+                    "user": str(rec.get("username") or ""), "expires_at": end,
+                    "days_left": (date.fromisoformat(end) - utc_today()).days if end else None,
+                    "soon": bool(end) and ends_soon(end)})
+    return out
 
 
 def _shown(r: Mapping[str, Any], status: str) -> dict[str, Any]:
@@ -956,9 +997,10 @@ def step_push(ctx: Ctx) -> StepResult:
     project token brain-bot (project-token), the bot user's personal token (bot-account); ssh or token: that one only."""
     host = urllib.parse.urlsplit(ctx.inp.gitlab_base).hostname or ""
     reach = ctx.reach or (lambda url: git_reaches(ctx, url))
-    why = ""
+    why, ssh = "", False            # ssh: git was run over SSH (only then do the words name it)
     if ctx.inp.push != "token":
         template, why = common_template(ctx, "ssh_url")
+        ssh = bool(template)
         missed, said = unreached(ctx, reach, lambda p: p.ssh_url) if template else ([], "")
         why = "\n".join(x for x in (why, said) if x)
         if template and not missed:
@@ -981,7 +1023,7 @@ def step_push(ctx: Ctx) -> StepResult:
         try:
             tok, me = account(ctx, "bot")
         except StepFailed as exc:
-            return failed(exc.message + ("，或者让这台机器的 SSH 能用" if ctx.inp.push == "auto" else ""), detail=why)
+            return failed(exc.message + ("，或者让这台机器的 SSH 能用" if ssh else ""), detail=why)
         if me.get("id") == account(ctx, "bridge")[1].get("id"):
             return failed("机器人账号和桥的账号是同一个 GitLab 用户 %s：要两个不同的用户，运行机不能替桥说话" % me.get("username"))
         if ctx.inp.admin_token and str(me.get("username") or "").lower() == ctx.owner:
@@ -994,13 +1036,13 @@ def step_push(ctx: Ctx) -> StepResult:
     missed, git_said = unreached(ctx, reach, lambda p: with_token(template, tok).format(project=p.path))
     if missed:
         where = host if len(ctx.found) == 1 else "%s 上的 %s" % (host, "、".join(missed))
-        how = " SSH 和%s 都连不上" % who if ctx.inp.push == "auto" else "%s 连不上" % who
+        how = " SSH 和%s 都连不上" % who if ssh else "%s 连不上" % who
         return failed("这台机器的 git 用%s %s：运行机拉不到代码" % (how, where), detail="\n".join(x for x in (why, git_said) if x))
     email = rec.get("email") or "%s@noreply.%s" % (rec["username"], host)
     ctx.state["push"] = {"mode": "token", "clone_url": template, "git_name": rec.get("display") or "brain-bot",
                          "git_email": email, "bot_user": rec["username"]}
     return done("%s运行机用%s拉取和推送。%s"
-                % ("这台机器的 SSH 连不上 GitLab，" if ctx.inp.push == "auto" else "",
+                % ("这台机器的 SSH 连不上 GitLab，" if ssh else "",
                    "项目令牌" if ctx.inp.mode == PROJECT_TOKEN else "机器人账号的个人令牌", said), detail=why)
 
 
@@ -1152,23 +1194,24 @@ def step_status(ctx: Ctx) -> StepResult:
     """状态中转 (team/relay.py): the team server writes each project's status into the project itself, on its branch
     brain/status, so GitLab lets whoever can read the project read its status, and nobody else. The bridge's account
     pushes it (it is a Developer or more in every project); here each project's protected branches are checked for a
-    rule that keeps it from pushing brain/status, which waits for a person to lift. Nothing is made: the team server's
+    rule that keeps it from pushing brain/status, which waits for a person to lift. Rules GitLab does not show this
+    time are no reason to stop the run: the team server's first write finds out too, and says so. Nothing is made: that
     first write makes the branch."""
     ctx.state.pop("status_project", None)       # an earlier run's status project of its own: left as it is, unused
     rows = each(ctx, of_found(ctx), lambda p: project_status(ctx, p))
     return summed(rows, "%d 个项目的 brain/status 桥的账号都能推" % len(rows),
-                  "有的项目的 brain/status 受保护，桥的账号推不了：看每个项目那一行")
+                  "有的项目的 brain/status 桥的账号推不了，或者这次没查成：看每个项目那一行")
 
 
 def project_status(ctx: Ctx, p: Proj) -> StepResult:
     name, uid, level = bridge_in(ctx, p)
     try:
         rules = ctx.gl.call("GET", "/projects/%d/protected_branches" % p.id, {"per_page": 100}) or []
-    except Exception as exc:  # noqa: BLE001 - a token that may not read the rules: said; anything else as every step says it
-        if _gitlab_status(exc) not in (401, 403):
-            raise
-        return done("看不了 %s 的受保护分支（这个 token 不够）：团队服务器第一次写 %s 时就知道能不能推，推不了会在它的运行机页上说"
-                    % (p.path, STATUS_BRANCH))
+    except Exception as exc:  # noqa: BLE001 - only a check: the team server's first write finds out as well
+        if _gitlab_status(exc) in (401, 403):
+            return done("看不了 %s 的受保护分支（这个 token 不够）：%s" % (p.path, FIRST_WRITE))
+        return waiting("这次没读成 %s 的受保护分支（GitLab 出错了）：%s；想现在就确认，过一会儿再跑一次" % (p.path, FIRST_WRITE),
+                       detail=str(exc))
     held = [r for r in rules if isinstance(r, dict) and branch_matches(str(r.get("name") or ""), STATUS_BRANCH)]
     if held and not any(may_push(a, uid, level) for r in held for a in r.get("push_access_levels") or []
                         if isinstance(a, dict)):
@@ -1319,14 +1362,32 @@ def step_configs(ctx: Ctx) -> StepResult:
     """bridge.json, runnerd.json and signer.json in the shapes of MIGRATE 第三部分 7, for one OS user and every project:
     no MR filter, no brain-intake, vouchers not published, the signer on the bridge's token with its account as
     bridge_users, one pseudonym_salt for both (made once, kept on every run). A file is written only when its content
-    changes."""
+    changes. The open runs the ledgers under the root hold of a project this run leaves out are left first
+    (leave_runner)."""
     ps = ctx.paths
     salt = old_salt(ps) or secrets.token_hex(16)
     ctx.remember(salt)
+    left = leave_runner(ctx)
     docs = ((ps.bridge_json, bridge_doc(ctx, salt)), (ps.runnerd_json, runnerd_doc(ctx)),
             (ps.signer_json, signer_doc(ctx, salt)))
     wrote = [path.name for path, doc in docs if write_file(path, dumps(doc))]
-    return done("写了 %s" % "、".join(wrote) if wrote else "三份配置都没变")
+    return done(("写了 %s" % "、".join(wrote) if wrote else "三份配置都没变") + left)
+
+
+def leave_runner(ctx: Ctx) -> str:
+    """The open runs that the bridge's and the signer's ledgers under the root hold of projects this run does not
+    serve (the runner was pointed at other ones), left (left.py): failed in the bridge's, their questions closed, their
+    sessions stopped when the app can (Ctx.stop); closed in the signer's; each ledger copied first. -> what the step
+    says of it ('' when there was none)."""
+    ps, keep = ctx.paths, left_mod.kept(p.path for p in ctx.found)
+    bridge, bcopy = left_mod.leave_file(str(ps.bridge_ledger), keep, left_mod.BRIDGE_TO, stop=ctx.stop)
+    signer, scopy = left_mod.leave_file(str(ps.signer_ledger), keep, left_mod.SIGNER_TO, signer=True)
+    runs = {r["run_id"]: r["project"] for r in bridge + signer}
+    if not runs:
+        return ""
+    projects = list(dict.fromkeys(runs.values()))
+    return LEFT_SAID % ("、".join(projects), "它" if len(projects) == 1 else "它们", len(runs), "、".join(sorted(runs)),
+                        "、".join(Path(c).name for c in (bcopy, scopy) if c))
 
 
 def old_salt(ps: Paths) -> str:
@@ -1340,13 +1401,14 @@ def old_salt(ps: Paths) -> str:
 
 def kept_entries(path: Path, wanted: list[str]) -> list[Any]:
     """bridge.json's project entries for these paths: an entry written as an object (a person's `staging` block) is
-    kept as it is, the others are the plain path."""
+    kept, under the path wanted (GitLab's paths are not case-sensitive: a hand may write one in another case), the
+    others are the plain path."""
     try:
         rows = json.loads(path.read_text(encoding="utf-8")).get("projects") or []
     except (OSError, ValueError, AttributeError):
         rows = []
-    old = {r["project"]: r for r in rows if isinstance(r, dict) and isinstance(r.get("project"), str)}
-    return [old.get(w, w) for w in wanted]
+    old = {r["project"].lower(): r for r in rows if isinstance(r, dict) and isinstance(r.get("project"), str)}
+    return [dict(old[w.lower()], project=w) if w.lower() in old else w for w in wanted]
 
 
 def bridge_doc(ctx: Ctx, salt: str) -> dict[str, Any]:
@@ -1355,16 +1417,17 @@ def bridge_doc(ctx: Ctx, salt: str) -> dict[str, Any]:
         "projects": kept_entries(ps.bridge_json, [p.path for p in ctx.found]),
         "gitlab": {"base": ctx.inp.gitlab_base, "token_env": NO_TOKEN_ENV["bridge"], "token_file": str(ps.token("bridge"))},
         "identities": str(ps.identities),
-        "ledger": str(ps.root / "bridge-ledger.sqlite"),
+        "ledger": str(ps.bridge_ledger),
         "spool_dir": str(ps.spool),
         "vouchers_dir": str(ps.vouchers),
         "runner_runs_root": str(ps.runs),
         "publish_vouchers": False,
-        "max_inflight": 1,
+        "max_inflight": len(ctx.found),     # each project one run at a time, every project at once
         "max_per_repo": 1,
         "pseudonym_salt": salt,
         "kirocrew": {"agent": "brain-run", "memory_mode": "incognito"},
-        "signer": {"type": "spool", "spool_dir": str(ps.signer_spool), "allowed_signers": str(ps.allowed)},
+        "signer": {"type": "spool", "spool_dir": str(ps.signer_spool), "allowed_signers": str(ps.allowed),
+                   "timeout": SIGN_WAIT_S},
         **jenkins_doc(ctx),
     }
 
@@ -1438,7 +1501,7 @@ def signer_doc(ctx: Ctx, salt: str) -> dict[str, Any]:
         "identities": str(ps.identities),
         "vouchers_dir": str(ps.signer_vouchers),
         "publish_vouchers": False,
-        "ledger": str(ps.root / "signer-ledger.sqlite"),
+        "ledger": str(ps.signer_ledger),
         "pseudonym_salt": salt,
         "bridge_users": [ctx.state["bridge_user"]],
     }

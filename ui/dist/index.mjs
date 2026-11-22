@@ -4765,14 +4765,17 @@ function Oi(e) {
 function ki(e, t) {
 	return `${e}（${t}${/[\x21-\x7e]$/.test(t) ? " " : ""}里没有）`;
 }
-function Ai(e, t, n) {
+function Ai(e, t) {
+	return `${e} · ${t} 的（不在你的交付总览里）`;
+}
+function ji(e, t, n) {
 	return t === "runner" || e.some((e) => e.repo === t && e.key === n) ? null : e.find((e) => e.repo === "runner" && e.key === n) ?? null;
 }
-function ji(e, t, n, r) {
+function Mi(e, t, n, r) {
 	let i = F(n?.app.team && e !== "runner" ? D.overview("all") : null, Math.max(r ?? 0, Ti));
-	return i.data ? Ai(i.data.rows, e, t) : null;
+	return i.data ? ji(i.data.rows, e, t) : null;
 }
-function Mi({ reqKey: e, what: t, onOpen: n }) {
+function Ni({ reqKey: e, what: t, onOpen: n }) {
 	return /* @__PURE__ */ g("div", {
 		className: "br-banner is-info",
 		role: "status",
@@ -4796,12 +4799,12 @@ function Mi({ reqKey: e, what: t, onOpen: n }) {
 		})
 	});
 }
-function Ni({ repo: e, reqKey: t, status: n, onPick: r, pollMs: i }) {
-	let a = F(D.overview("all"), Math.max(i ?? 0, 3e4)).data?.rows ?? [], o = a.some((n) => n.repo === e && n.key === t);
-	if (!a.length || a.length === 1 && o) return null;
-	let s = (e) => e.updated_at ?? 0, c = (n?.repos ?? []).map((e) => e.id), l = (e) => c.includes(e) ? c.indexOf(e) : e === "runner" ? c.length : c.length + 1, u = /* @__PURE__ */ new Map();
-	for (let e of [...a].sort((e, t) => l(e.repo) - l(t.repo) || s(t) - s(e))) u.set(e.repo, [...u.get(e.repo) ?? [], e]);
-	let d = (e) => e === "runner" ? "运行机" : n?.repos.find((t) => t.id === e)?.name ?? e, f = (e) => e.map((e) => /* @__PURE__ */ g("option", {
+function Pi({ repo: e, reqKey: t, status: n, onPick: r, pollMs: i, owner: a }) {
+	let o = F(D.overview("all"), Math.max(i ?? 0, 3e4)).data?.rows ?? [], s = o.some((n) => n.repo === e && n.key === t);
+	if (!o.length || o.length === 1 && s) return null;
+	let c = (e) => e.updated_at ?? 0, l = (n?.repos ?? []).map((e) => e.id), u = (e) => l.includes(e) ? l.indexOf(e) : e === "runner" ? l.length : l.length + 1, d = /* @__PURE__ */ new Map();
+	for (let e of [...o].sort((e, t) => u(e.repo) - u(t.repo) || c(t) - c(e))) d.set(e.repo, [...d.get(e.repo) ?? [], e]);
+	let f = (e) => e === "runner" ? "运行机" : n?.repos.find((t) => t.id === e)?.name ?? e, p = n?.repos.find((t) => t.id === e)?.me?.name, m = ji(o, e, t) ? `${t}（已交给运行机）` : a && p && a !== p ? Ai(t, a) : ki(t, f(e)), h = (e) => e.map((e) => /* @__PURE__ */ g("option", {
 		value: Di(e.repo, e.key),
 		children: Oi(e)
 	}, Di(e.repo, e.key)));
@@ -4817,17 +4820,17 @@ function Ni({ repo: e, reqKey: t, status: n, onPick: r, pollMs: i }) {
 				let [i, a] = n.target.value.split(Ei);
 				i && a && (i !== e || a !== t) && r(i, a);
 			},
-			children: [!o && /* @__PURE__ */ g("option", {
+			children: [!s && /* @__PURE__ */ g("option", {
 				value: Di(e, t),
-				children: Ai(a, e, t) ? `${t}（已交给运行机）` : ki(t, d(e))
-			}), u.size > 1 ? [...u].map(([e, t]) => /* @__PURE__ */ g("optgroup", {
-				label: d(e),
-				children: f(t)
-			}, e)) : f([...u.values()][0])]
+				children: m
+			}), d.size > 1 ? [...d].map(([e, t]) => /* @__PURE__ */ g("optgroup", {
+				label: f(e),
+				children: h(t)
+			}, e)) : h([...d.values()][0])]
 		})]
 	});
 }
-function Pi({ repoName: e, reqKey: t, backName: n, onBack: r, testId: i }) {
+function Fi({ repoName: e, reqKey: t, backName: n, onBack: r, testId: i }) {
 	return /* @__PURE__ */ _("section", {
 		className: "cto-card br-notfound",
 		"aria-label": "没有这个需求",
@@ -4861,14 +4864,14 @@ function Pi({ repoName: e, reqKey: t, backName: n, onBack: r, testId: i }) {
 }
 //#endregion
 //#region src/board/Evidence.tsx
-var Fi = "build-and-test", Ii = {
+var Ii = "build-and-test", Li = {
 	current: "ok",
 	stale: "warn",
 	unknown: "warn",
 	failed: "bad",
 	none: "idle",
 	off: "idle"
-}, Li = {
+}, Ri = {
 	current: "ok",
 	old: "warn",
 	unknown: "warn",
@@ -4876,14 +4879,14 @@ var Fi = "build-and-test", Ii = {
 	void: "bad",
 	planned: "idle",
 	not_taken: "idle"
-}, Ri = {
-	...Li,
+}, zi = {
+	...Ri,
 	no_proof_check: "idle",
 	no_verify: "idle",
 	uncommitted: "idle"
-}, zi = "\n.kt-proof { display: grid; gap: 6px; min-width: 0; }\n.kt-proof-late { margin: 0; font-size: .88em; }\n.kt-proof-chips { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 0; padding: 0 !important; }\n.kt-proof-chip { appearance: none; font: inherit; font-size: .86em; font-weight: 700; display: inline-flex; gap: 4px; align-items: baseline;\n  padding: 2px 10px; border-radius: 999px; color: var(--text); background: color-mix(in srgb, var(--kt-tone) 12%, transparent);\n  border: 1px solid color-mix(in srgb, var(--kt-tone) 42%, transparent); max-width: 100%; }\n.kt-root span.kt-proof-chip { color: var(--text); border-style: dashed; }\nbutton.kt-proof-chip { cursor: pointer; }\nbutton.kt-proof-chip:hover { background: color-mix(in srgb, var(--kt-tone) 24%, transparent); }\n.kt-proof-chip .kt-proof-ac { color: var(--muted); font-weight: 600; }\n.kt-proof-chip .kt-proof-mark { color: var(--kt-tone); }\n.kt-proof-gaps { margin: 0; padding-left: 1.1em !important; display: grid; gap: 2px; font-size: .9em; overflow-wrap: anywhere; }\n.kt-proof-gaps li::marker { color: var(--kt-tone); }\n";
-function Bi({ c: e, onOpen: t }) {
-	let n = Li[e.state] ?? "warn", r = /* @__PURE__ */ _(h, { children: [
+}, Bi = "\n.kt-proof { display: grid; gap: 6px; min-width: 0; }\n.kt-proof-late { margin: 0; font-size: .88em; }\n.kt-proof-chips { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 0; padding: 0 !important; }\n.kt-proof-chip { appearance: none; font: inherit; font-size: .86em; font-weight: 700; display: inline-flex; gap: 4px; align-items: baseline;\n  padding: 2px 10px; border-radius: 999px; color: var(--text); background: color-mix(in srgb, var(--kt-tone) 12%, transparent);\n  border: 1px solid color-mix(in srgb, var(--kt-tone) 42%, transparent); max-width: 100%; }\n.kt-root span.kt-proof-chip { color: var(--text); border-style: dashed; }\nbutton.kt-proof-chip { cursor: pointer; }\nbutton.kt-proof-chip:hover { background: color-mix(in srgb, var(--kt-tone) 24%, transparent); }\n.kt-proof-chip .kt-proof-ac { color: var(--muted); font-weight: 600; }\n.kt-proof-chip .kt-proof-mark { color: var(--kt-tone); }\n.kt-proof-gaps { margin: 0; padding-left: 1.1em !important; display: grid; gap: 2px; font-size: .9em; overflow-wrap: anywhere; }\n.kt-proof-gaps li::marker { color: var(--kt-tone); }\n";
+function Vi({ c: e, onOpen: t }) {
+	let n = Ri[e.state] ?? "warn", r = /* @__PURE__ */ _(h, { children: [
 		e.label,
 		e.ac.length > 0 && /* @__PURE__ */ g("span", {
 			className: "kt-proof-ac",
@@ -4911,21 +4914,21 @@ function Bi({ c: e, onOpen: t }) {
 		title: a,
 		"data-testid": "evidence-chip",
 		onClick: () => t({
-			node: Fi,
+			node: Ii,
 			round: i,
 			file: o
 		}),
 		children: r
 	});
 }
-function Vi({ proof: e, onOpen: t }) {
+function Hi({ proof: e, onOpen: t }) {
 	return e.state ? /* @__PURE__ */ _("div", {
 		className: "kt-proof",
 		"data-testid": "evidence",
 		children: [
-			/* @__PURE__ */ g("style", { children: zi }),
+			/* @__PURE__ */ g("style", { children: Bi }),
 			/* @__PURE__ */ g("b", {
-				className: `tone-${Ii[e.state] ?? "warn"}`,
+				className: `tone-${Li[e.state] ?? "warn"}`,
 				"data-testid": "evidence-line",
 				children: e.line
 			}),
@@ -4936,7 +4939,7 @@ function Vi({ proof: e, onOpen: t }) {
 			e.chips.length > 0 && /* @__PURE__ */ g("ul", {
 				className: "kt-proof-chips",
 				"aria-label": "每一项证据",
-				children: e.chips.map((e, n) => /* @__PURE__ */ g("li", { children: /* @__PURE__ */ g(Bi, {
+				children: e.chips.map((e, n) => /* @__PURE__ */ g("li", { children: /* @__PURE__ */ g(Vi, {
 					c: e,
 					onOpen: t
 				}) }, `${e.kind}:${e.label}:${n}`))
@@ -4945,7 +4948,7 @@ function Vi({ proof: e, onOpen: t }) {
 				className: "kt-proof-gaps",
 				"aria-label": "还缺什么",
 				children: e.gaps.map((e, t) => /* @__PURE__ */ g("li", {
-					className: `tone-${Ri[e.kind] ?? "warn"}`,
+					className: `tone-${zi[e.kind] ?? "warn"}`,
 					children: e.text
 				}, t))
 			})
@@ -4958,29 +4961,29 @@ function Vi({ proof: e, onOpen: t }) {
 }
 //#endregion
 //#region src/board/Accept.tsx
-var Hi = {
+var Ui = {
 	not_yet: "idle",
 	waiting: "approve",
 	accepted: "ok",
 	rejected: "bad",
 	merged: "ok"
-}, Ui = {
+}, Wi = {
 	not_yet: "还没到验收",
 	waiting: "等验收",
 	accepted: "验收过了",
 	rejected: "验收被退回",
 	merged: "已合并"
-}, Wi = {
+}, Gi = {
 	not_yet: "还没到发布审批",
 	waiting: "批准发布",
 	accepted: "发布批准了",
 	rejected: "发布被退回",
 	merged: "已合并"
-}, Gi = { unclassified: "没归类（「谁定的」没按规定写）" };
-function Ki(e, t, n = !1) {
+}, Ki = { unclassified: "没归类（「谁定的」没按规定写）" };
+function qi(e, t, n = !1) {
 	return e ? e === "owner" ? n ? "你（负责人）" : t ? `负责人 ${t}` : "负责人" : /^P-[0-9A-F]{4,}$/i.test(e) ? "一位组员" : e : "";
 }
-function qi({ text: e }) {
+function Ji({ text: e }) {
 	let t = /（([A-Z]\d+#S\d+[^）]*)）/.exec(e), n = (t ? e.replace(t[0], "") : e).split(/`([^`]+)`/).map((e, t) => t % 2 ? /* @__PURE__ */ g("code", { children: e }, t) : e);
 	return /* @__PURE__ */ _(h, { children: [/* @__PURE__ */ g("span", {
 		"data-testid": "accept-first",
@@ -4991,8 +4994,8 @@ function qi({ text: e }) {
 		children: " · 出处"
 	})] });
 }
-function Ji({ board: e, onDetail: t, onOutputs: n, quiet: r = !1 }) {
-	let i = e.accept, a = e.mr_desc, { copied: o, copy: s } = xi(a.text), c = zr(e), l = c ? "发布审批" : "验收", u = c && i.state === "waiting" ? Gr(pr(e), Wi.waiting) : (c ? Wi : Ui)[i.state], d = e.person.owner, f = e.decisions.filter((e) => e.by === "person"), p = i.by.reduce((e, t) => e + t.count, 0), m = i.state === "merged" || i.state === "accepted", v = Wr(e.checks, e), y = e.sessions.length, b = !e.steps;
+function Yi({ board: e, onDetail: t, onOutputs: n, quiet: r = !1 }) {
+	let i = e.accept, a = e.mr_desc, { copied: o, copy: s } = xi(a.text), c = zr(e), l = c ? "发布审批" : "验收", u = c && i.state === "waiting" ? Gr(pr(e), Gi.waiting) : (c ? Gi : Wi)[i.state], d = e.person.owner, f = e.decisions.filter((e) => e.by === "person"), p = i.by.reduce((e, t) => e + t.count, 0), m = i.state === "merged" || i.state === "accepted", v = Wr(e.checks, e), y = e.sessions.length, b = !e.steps;
 	return /* @__PURE__ */ _("section", {
 		id: "br-accept",
 		className: `kt-sign${m ? " is-signed" : ""}${i.state === "not_yet" ? " is-idle" : ""}`,
@@ -5004,7 +5007,7 @@ function Ji({ board: e, onDetail: t, onOutputs: n, quiet: r = !1 }) {
 				children: [
 					/* @__PURE__ */ g("h2", { children: l }),
 					/* @__PURE__ */ g("span", {
-						className: `kt-pill tone-${Hi[i.state]}`,
+						className: `kt-pill tone-${Ui[i.state]}`,
 						children: u
 					}),
 					/* @__PURE__ */ _("p", {
@@ -5046,7 +5049,7 @@ function Ji({ board: e, onDetail: t, onOutputs: n, quiet: r = !1 }) {
 								role: "status",
 								children: " 已复制"
 							})
-						] }), /* @__PURE__ */ _("dd", { children: [a.first ? /* @__PURE__ */ g(qi, { text: a.first }) : /* @__PURE__ */ g("span", {
+						] }), /* @__PURE__ */ _("dd", { children: [a.first ? /* @__PURE__ */ g(Ji, { text: a.first }) : /* @__PURE__ */ g("span", {
 							className: "br-dim",
 							children: a.error || "还没有"
 						}), a.text && /* @__PURE__ */ _("details", {
@@ -5061,7 +5064,7 @@ function Ji({ board: e, onDetail: t, onOutputs: n, quiet: r = !1 }) {
 					}) })] }),
 					b && /* @__PURE__ */ _("div", {
 						className: "br-accept-proof",
-						children: [/* @__PURE__ */ g("dt", { children: "证据" }), /* @__PURE__ */ g("dd", { children: r ? "回放时不列：证据按现在的提交核对" : /* @__PURE__ */ g(Vi, {
+						children: [/* @__PURE__ */ g("dt", { children: "证据" }), /* @__PURE__ */ g("dd", { children: r ? "回放时不列：证据按现在的提交核对" : /* @__PURE__ */ g(Hi, {
 							proof: e.proof,
 							onOpen: n
 						}) })]
@@ -5071,7 +5074,7 @@ function Ji({ board: e, onDetail: t, onOutputs: n, quiet: r = !1 }) {
 						children: i.by.map((e) => /* @__PURE__ */ _("li", {
 							className: e.id === "person" ? "is-ok" : e.id === "unclassified" ? "is-bad" : "",
 							children: [
-								Gi[e.id] ?? e.label,
+								Ki[e.id] ?? e.label,
 								" ",
 								e.count
 							]
@@ -5080,10 +5083,10 @@ function Ji({ board: e, onDetail: t, onOutputs: n, quiet: r = !1 }) {
 					/* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("dt", { children: "人做的决定" }), /* @__PURE__ */ _("dd", { children: [r ? "回放时不列：决定没有自己的时间" : f.length ? /* @__PURE__ */ g("ul", { children: f.slice(0, 4).map((t) => /* @__PURE__ */ _("li", { children: [
 						/* @__PURE__ */ g("b", { children: t.id }),
 						" ",
-						/* @__PURE__ */ g(Yi, { text: t.text }),
+						/* @__PURE__ */ g(Xi, { text: t.text }),
 						t.who ? /* @__PURE__ */ _("span", {
 							className: "kt-dim",
-							children: [" · ", Ki(t.who, d, e.person.me)]
+							children: [" · ", qi(t.who, d, e.person.me)]
 						}) : null
 					] }, t.id)) }) : "（这次没有人拍板的决定）", f.length > 4 && /* @__PURE__ */ _("span", {
 						className: "kt-dim br-small",
@@ -5109,7 +5112,7 @@ function Ji({ board: e, onDetail: t, onOutputs: n, quiet: r = !1 }) {
 						size: 16
 					}),
 					" ",
-					i.done.who ? /* @__PURE__ */ g("b", { children: Ki(i.done.who, d, e.person.me) }) : null,
+					i.done.who ? /* @__PURE__ */ g("b", { children: qi(i.done.who, d, e.person.me) }) : null,
 					" ",
 					Zn(i.done.at),
 					" ",
@@ -5125,57 +5128,57 @@ function Ji({ board: e, onDetail: t, onOutputs: n, quiet: r = !1 }) {
 		]
 	});
 }
-function Yi({ text: e }) {
+function Xi({ text: e }) {
 	return /* @__PURE__ */ g(h, { children: e.split(/`([^`]+)`/).map((e, t) => t % 2 ? /* @__PURE__ */ g("code", { children: e }, t) : e) });
 }
 //#endregion
 //#region src/board/hooks.ts
-function Xi(e) {
+function Zi(e) {
 	let t = s(e);
 	return t.current = e, t;
 }
-var Zi = "(prefers-reduced-motion: reduce)";
-function Qi() {
+var Qi = "(prefers-reduced-motion: reduce)";
+function $i() {
 	try {
-		return typeof window < "u" && typeof window.matchMedia == "function" && !!window.matchMedia(Zi)?.matches;
+		return typeof window < "u" && typeof window.matchMedia == "function" && !!window.matchMedia(Qi)?.matches;
 	} catch {
 		return !1;
 	}
 }
-function $i() {
-	let [e, t] = c(Qi);
+function ea() {
+	let [e, t] = c($i);
 	return i(() => {
 		if (typeof window.matchMedia != "function") return;
-		let e = window.matchMedia(Zi);
+		let e = window.matchMedia(Qi);
 		if (!e) return;
 		let n = () => t(!!e.matches);
 		return e.addEventListener?.("change", n), () => e.removeEventListener?.("change", n);
 	}, []), e;
 }
-var ea = /* @__PURE__ */ new Set(), ta = null, na = Date.now();
-function ra(e) {
-	return ea.add(e), ta ||= (na = Date.now(), setInterval(() => {
+var ta = /* @__PURE__ */ new Set(), na = null, ra = Date.now();
+function ia(e) {
+	return ta.add(e), na ||= (ra = Date.now(), setInterval(() => {
 		if (!(typeof document < "u" && document.hidden)) {
-			na = Date.now();
-			for (let e of ea) e();
+			ra = Date.now();
+			for (let e of ta) e();
 		}
 	}, 1e3)), () => {
-		ea.delete(e), !ea.size && ta && (clearInterval(ta), ta = null);
+		ta.delete(e), !ta.size && na && (clearInterval(na), na = null);
 	};
 }
-function ia() {
-	return l(ra, () => na, () => na);
+function aa() {
+	return l(ia, () => ra, () => ra);
 }
-var aa = t({
+var oa = t({
 	at: Date.now() / 1e3,
 	receivedAt: Date.now()
 });
-function oa() {
-	let { at: e, receivedAt: t } = r(aa), n = ia();
+function sa() {
+	let { at: e, receivedAt: t } = r(oa), n = aa();
 	return e + Math.max(0, n - t) / 1e3;
 }
-function sa(e, t = 900, n = !1) {
-	let [r, a] = c(e), o = s(e), l = Xi(r);
+function ca(e, t = 900, n = !1) {
+	let [r, a] = c(e), o = s(e), l = Zi(r);
 	return i(() => {
 		if (n || typeof requestAnimationFrame != "function") {
 			a(e);
@@ -5194,7 +5197,7 @@ function sa(e, t = 900, n = !1) {
 		l
 	]), r;
 }
-function ca(e) {
+function la(e) {
 	let t = s({
 		v: e,
 		n: 0
@@ -5206,7 +5209,7 @@ function ca(e) {
 }
 //#endregion
 //#region src/board/CheckWall.tsx
-function la({ board: e, focus: t, onNode: n, flips: r, onSettings: i }) {
+function ua({ board: e, focus: t, onNode: n, flips: r, onSettings: i }) {
 	let [a, o] = c(null), s = e.checks, l = s.cells.find((e) => e.id === a) ?? null, u = s.cells.filter((e) => e.status === "fail"), d = s.cells.filter((e) => e.status === "wait"), f = Wr(s, e), p = f.green, m = (t) => e.nodes.find((e) => e.id === t.node)?.icon, v = (t) => t.status === "wait" ? {
 		...lr.wait,
 		label: pr(e)
@@ -5235,7 +5238,7 @@ function la({ board: e, focus: t, onNode: n, flips: r, onSettings: i }) {
 						className: "kt-wall-src",
 						children: cr.filter((e) => s.cells.some((t) => t.group === e.key)).map((e) => e.label).join(" · ")
 					}),
-					/* @__PURE__ */ g(ua, { at: s.at })
+					/* @__PURE__ */ g(da, { at: s.at })
 				]
 			}),
 			s.history.length > 1 && /* @__PURE__ */ _("div", {
@@ -5243,7 +5246,7 @@ function la({ board: e, focus: t, onNode: n, flips: r, onSettings: i }) {
 				children: [/* @__PURE__ */ g("span", {
 					title: "每跑一次自动检查记一个点",
 					children: "自动检查通过数"
-				}), /* @__PURE__ */ g(da, { history: s.history })]
+				}), /* @__PURE__ */ g(fa, { history: s.history })]
 			}),
 			s.history.length === 1 && /* @__PURE__ */ _("p", {
 				className: "kt-dim br-small br-spark-one",
@@ -5362,14 +5365,14 @@ function la({ board: e, focus: t, onNode: n, flips: r, onSettings: i }) {
 		]
 	});
 }
-function ua({ at: e }) {
-	let t = oa();
+function da({ at: e }) {
+	let t = sa();
 	return /* @__PURE__ */ g("span", {
 		className: "kt-dim kt-wall-at",
 		children: e ? `${Jn(t - e)}更新` : "还没有结果"
 	});
 }
-function da({ history: e }) {
+function fa({ history: e }) {
 	if (!e.length) return null;
 	let t = e[0].at, n = e[e.length - 1].at, r = Math.max(1, ...e.map((e) => e.passed + e.failed)), i = (e) => n > t ? 5 + (e - t) / (n - t) * 290 : 150, a = (e) => 35 - e / r * 30, o = `M${i(e[0].at).toFixed(1)},${a(e[0].passed).toFixed(1)}`;
 	for (let t = 1; t < e.length; t++) o += ` H${i(e[t].at).toFixed(1)} V${a(e[t].passed).toFixed(1)}`;
@@ -5414,24 +5417,24 @@ function da({ history: e }) {
 }
 //#endregion
 //#region src/board/layout.ts
-var fa = 1640, pa = 12, ma = 26, ha = (e) => Math.round(e * 10) / 10;
-function ga(e, t) {
+var pa = 1640, ma = 12, ha = 26, ga = (e) => Math.round(e * 10) / 10;
+function _a(e, t) {
 	let n = 1 - t, r = n * n * n, i = 3 * n * n * t, a = 3 * n * t * t, o = t * t * t;
 	return {
 		x: r * e[0].x + i * e[1].x + a * e[2].x + o * e[3].x,
 		y: r * e[0].y + i * e[1].y + a * e[2].y + o * e[3].y
 	};
 }
-var _a = (e, t, n) => ({
+var va = (e, t, n) => ({
 	x: e.x + (t.x - e.x) * n,
 	y: e.y + (t.y - e.y) * n
-}), va = (e, t) => [
+}), ya = (e, t) => [
 	e,
-	_a(e, t, 1 / 3),
-	_a(e, t, 2 / 3),
+	va(e, t, 1 / 3),
+	va(e, t, 2 / 3),
 	t
 ];
-function ya(e, t) {
+function ba(e, t) {
 	let n = (t.x - e.x) / 2;
 	return [
 		e,
@@ -5446,7 +5449,7 @@ function ya(e, t) {
 		t
 	];
 }
-var ba = (e, t) => [
+var xa = (e, t) => [
 	e,
 	{
 		x: t.x,
@@ -5457,7 +5460,7 @@ var ba = (e, t) => [
 		y: e.y
 	},
 	t
-], xa = (e, t) => [
+], Sa = (e, t) => [
 	e,
 	{
 		x: e.x,
@@ -5469,16 +5472,16 @@ var ba = (e, t) => [
 	},
 	t
 ];
-function Sa(e) {
+function Ca(e) {
 	if (!e.length) return "";
-	let t = (e) => `${ha(e.x)},${ha(e.y)}`;
+	let t = (e) => `${ga(e.x)},${ga(e.y)}`;
 	return `M${t(e[0][0])}${e.map((e) => ` C${t(e[1])} ${t(e[2])} ${t(e[3])}`).join("")}`;
 }
-function Ca(e) {
+function wa(e) {
 	let t = e.map((e) => {
 		let t = 0, n = e[0];
 		for (let r = 1; r <= 12; r++) {
-			let i = ga(e, r / 12);
+			let i = _a(e, r / 12);
 			t += Math.hypot(i.x - n.x, i.y - n.y), n = i;
 		}
 		return t;
@@ -5489,7 +5492,7 @@ function Ca(e) {
 		total: t.reduce((e, t) => e + t, 0)
 	};
 }
-function wa(e, t) {
+function Ta(e, t) {
 	let n = e.segs.length;
 	if (!n) return {
 		x: 0,
@@ -5498,15 +5501,15 @@ function wa(e, t) {
 	let r = Math.min(1, Math.max(0, t)) * e.total;
 	for (let t = 0; t < n; t++) {
 		let i = e.lens[t];
-		if (r <= i || t === n - 1) return ga(e.segs[t], i > 0 ? Math.min(1, r / i) : 1);
+		if (r <= i || t === n - 1) return _a(e.segs[t], i > 0 ? Math.min(1, r / i) : 1);
 		r -= i;
 	}
 	return e.segs[n - 1][3];
 }
-function Ta(e, t, n, r) {
+function Ea(e, t, n, r) {
 	let i = [e];
 	for (let a of n) {
-		let n = (a.x - e.x) / (t.x - e.x || 1), o = e.y + (t.y - e.y) * n, s = [...a.ys].sort((e, t) => e - t).map((e) => [e - 40 - pa, e + 40 + pa + ma]).reduce((e, t) => {
+		let n = (a.x - e.x) / (t.x - e.x || 1), o = e.y + (t.y - e.y) * n, s = [...a.ys].sort((e, t) => e - t).map((e) => [e - 40 - ma, e + 40 + ma + ha]).reduce((e, t) => {
 			let n = e[e.length - 1];
 			return n && t[0] <= n[1] ? n[1] = Math.max(n[1], t[1]) : e.push([...t]), e;
 		}, []), c = 0;
@@ -5525,11 +5528,11 @@ function Ta(e, t, n, r) {
 	}
 	i.push(t);
 	let a = [];
-	for (let e = 0; e < i.length - 1; e++) a.push(e % 2 == 1 ? va(i[e], i[e + 1]) : ya(i[e], i[e + 1]));
+	for (let e = 0; e < i.length - 1; e++) a.push(e % 2 == 1 ? ya(i[e], i[e + 1]) : ba(i[e], i[e + 1]));
 	return a;
 }
-var Ea = .84, Da = "tests", Oa = "orch", ka = (e) => `relay:${e}`;
-function Aa(e) {
+var Da = .84, Oa = "tests", ka = "orch", Aa = (e) => `relay:${e}`;
+function ja(e) {
 	return JSON.stringify([
 		e.phases.map((e) => [e.key, e.state]),
 		e.nodes.map((e) => [
@@ -5545,10 +5548,10 @@ function Aa(e) {
 		e.roster.map((e) => [e.kind, e.run])
 	]);
 }
-var ja = 124, Ma = 10, Na = {
+var Ma = 124, Na = 10, Pa = {
 	w: 182,
 	h: 78
-}, Pa = 8, Fa = 214, Ia = 300, La = 3, Ra = 44, za = 24, Ba = {
+}, Fa = 8, Ia = 214, La = 300, Ra = 3, za = 44, Ba = 24, Va = {
 	head: 18,
 	run: 19,
 	sub: 15,
@@ -5556,15 +5559,15 @@ var ja = 124, Ma = 10, Na = {
 	"brain-head": 28,
 	brain: 17
 };
-function Va(e) {
+function Ha(e) {
 	let t = /* @__PURE__ */ new Map();
 	for (let n of e) n.unit !== null && t.set(n.stage, [...t.get(n.stage) ?? [], n.unit]);
 	let n = [...[...t.values()].sort((e, t) => t.length - e.length)[0] ?? []];
 	for (let t of e) t.unit !== null && !n.includes(t.unit) && n.push(t.unit);
 	return n;
 }
-function Ha(e, t) {
-	let n = e.nodes.filter((e) => e.status !== "skipped"), r = n.filter((e) => e.phase === "construction"), i = Va(r), a = r.filter((e) => e.unit === null), o = Math.max(La, i.length, a.length), s = (e) => ({
+function Ua(e, t) {
+	let n = e.nodes.filter((e) => e.status !== "skipped"), r = n.filter((e) => e.phase === "construction"), i = Ha(r), a = r.filter((e) => e.unit === null), o = Math.max(Ra, i.length, a.length), s = (e) => ({
 		cells: e.map((e, t) => ({
 			id: e.id,
 			slot: t
@@ -5613,21 +5616,21 @@ function Ha(e, t) {
 		rows: Math.max(1, ...c.flatMap((e) => e.cols.map((e) => e.span)))
 	};
 }
-var Ua = (e) => 220 + e.bands.length * Pa + e.bands.filter((e) => e.folded).length * 80, Wa = (e) => e.bands.reduce((e, t) => e + t.cols.length, 0), Ga = (e) => Ua(e) + Wa(e) * Fa;
-function Ka(e, t) {
-	let n = Ga(Ha(t, !1));
+var Wa = (e) => 220 + e.bands.length * Fa + e.bands.filter((e) => e.folded).length * 80, Ga = (e) => e.bands.reduce((e, t) => e + t.cols.length, 0), Ka = (e) => Wa(e) + Ga(e) * Ia;
+function qa(e, t) {
+	let n = Ka(Ua(t, !1));
 	if (!e) return {
-		width: Math.max(fa, n),
+		width: Math.max(pa, n),
 		compact: !1
 	};
-	let r = n * Ea > e, i = r ? Ga(Ha(t, !0)) : n;
+	let r = n * Da > e, i = r ? Ka(Ua(t, !0)) : n;
 	return {
-		width: Math.round(Math.max(i, Math.min(fa, e / Ea))),
+		width: Math.round(Math.max(i, Math.min(pa, e / Da))),
 		compact: r
 	};
 }
-function qa(e) {
-	let t = [], n = [Oa];
+function Ja(e) {
+	let t = [], n = [ka];
 	for (let r = 0; r < e.length;) {
 		if (e[r].unit === null) {
 			for (let i of n) t.push([i, e[r].id]);
@@ -5637,7 +5640,7 @@ function qa(e) {
 		let i = r;
 		for (; i < e.length && e[i].unit !== null;) i++;
 		let a = e.slice(r, i), o = n;
-		n = Va(a).map((e) => {
+		n = Ha(a).map((e) => {
 			let n = a.filter((t) => t.unit === e).map((e) => e.id);
 			return n.forEach((e, r) => {
 				for (let i of r ? [n[r - 1]] : o) t.push([i, e]);
@@ -5646,13 +5649,13 @@ function qa(e) {
 	}
 	return t;
 }
-function Ja(e, t, n, r, i) {
+function Ya(e, t, n, r, i) {
 	if (e.col === t.col) {
 		let i = t.y > e.y ? 1 : -1;
 		if (!n[e.col].ids.some((n) => {
 			let i = r.get(n).y;
 			return (i - e.y) * (i - t.y) < 0;
-		})) return [va({
+		})) return [ya({
 			x: e.x,
 			y: e.y + i * 80 / 2
 		}, {
@@ -5667,12 +5670,12 @@ function Ja(e, t, n, r, i) {
 			y: t.y - i * 16
 		};
 		return [
-			ba({
+			xa({
 				x: e.x + 92,
 				y: e.y
 			}, o),
-			va(o, s),
-			xa(s, {
+			ya(o, s),
+			Sa(s, {
 				x: t.x + 92,
 				y: t.y
 			})
@@ -5683,7 +5686,7 @@ function Ja(e, t, n, r, i) {
 		x: t.x,
 		ys: t.ids.map((e) => r.get(e).y)
 	}));
-	return Ta({
+	return Ea({
 		x: e.x + 92,
 		y: e.y
 	}, {
@@ -5691,7 +5694,7 @@ function Ja(e, t, n, r, i) {
 		y: t.y
 	}, a, i);
 }
-function Ya(e, t, n) {
+function Xa(e, t, n) {
 	let r = [], i = new Set(e.runs.map((e) => e.key));
 	for (let n of e.runs) {
 		e.relays.forEach((e, t) => e.to === n.key && r.push({
@@ -5725,27 +5728,27 @@ function Ya(e, t, n) {
 	let s = n.x2 - 40;
 	for (let e = r.length - 1; e >= 0; e--) a[e] = Math.min(a[e], s - r[e].w / 2), s = a[e] - r[e].w / 2 - 12;
 	return {
-		runX: new Map(r.flatMap((e, t) => e.run === null ? [] : [[e.run, ha(a[t])]])),
-		relayX: e.relays.map((e, t) => ha(a[r.findIndex((e) => e.relay === t)]))
+		runX: new Map(r.flatMap((e, t) => e.run === null ? [] : [[e.run, ga(a[t])]])),
+		relayX: e.relays.map((e, t) => ga(a[r.findIndex((e) => e.relay === t)]))
 	};
 }
-function Xa(e, t = Ka(null, e)) {
-	let { width: n, compact: r } = t, i = Ha(e, r), a = Wa(i), o = a ? Math.min(Ia, Math.max(Fa, (n - Ua(i)) / a)) : Fa, s = (e) => ha(150 + e * ja), c = [{
+function Za(e, t = qa(null, e)) {
+	let { width: n, compact: r } = t, i = Ua(e, r), a = Ga(i), o = a ? Math.min(La, Math.max(Ia, (n - Wa(i)) / a)) : Ia, s = (e) => ga(150 + e * Ma), c = [{
 		key: "init",
-		x1: Ma,
+		x1: Na,
 		x2: 210,
 		folded: !1
 	}], l = [], u = /* @__PURE__ */ new Map(), d = [], f = null, p = 210;
 	for (let e of i.bands) {
-		p += Pa;
+		p += Fa;
 		let t = e.folded ? 80 : e.cols.length * o;
 		if (c.push({
 			key: e.key,
-			x1: ha(p),
-			x2: ha(p + t),
+			x1: ga(p),
+			x2: ga(p + t),
 			folded: e.folded
 		}), e.cols.forEach((t, n) => {
-			let r = ha(p + o / 2 + n * o), a = (i.rows - t.span) / 2, c = [...t.cells].sort((e, t) => e.slot - t.slot);
+			let r = ga(p + o / 2 + n * o), a = (i.rows - t.span) / 2, c = [...t.cells].sort((e, t) => e.slot - t.slot);
 			for (let e of c) u.set(e.id, {
 				id: e.id,
 				col: l.length,
@@ -5759,30 +5762,30 @@ function Xa(e, t = Ka(null, e)) {
 			});
 		}), e.key === "construction" && !e.folded && i.units.length > 1) {
 			f = {
-				x: ha(p + t / 2),
+				x: ga(p + t / 2),
 				y: 72,
 				n: i.units.length
 			};
 			let e = (i.rows - i.units.length) / 2;
 			r || (d = i.units.map((t, n) => ({
 				unit: t,
-				x: ha(p + 10),
-				y: ha(s(e + n) - 40 - 7)
+				x: ga(p + 10),
+				y: ga(s(e + n) - 40 - 7)
 			})));
 		}
 		p += t;
 	}
 	let m = {
-		x: ha(110),
-		y: 104 + Na.h / 2
-	}, h = m.y + Na.h / 2 + 8, g = e.roster.map((e) => {
-		let t = Ba[e.kind], n = ha(h + (e.kind === "head" || e.kind === "brain-head" ? t - 9 : t / 2));
+		x: ga(110),
+		y: 104 + Pa.h / 2
+	}, h = m.y + Pa.h / 2 + 8, g = e.roster.map((e) => {
+		let t = Va[e.kind], n = ga(h + (e.kind === "head" || e.kind === "brain-head" ? t - 9 : t / 2));
 		return h += t, {
 			kind: e.kind,
 			run: e.run,
 			y: n
 		};
-	}), _ = ha(Math.max(s(i.rows - 1) + 40 + Ra + za, h + 14)), v = {
+	}), _ = ga(Math.max(s(i.rows - 1) + 40 + za + Ba, h + 14)), v = {
 		x: n - 42,
 		y: _ + 50,
 		r: 28
@@ -5790,19 +5793,19 @@ function Xa(e, t = Ka(null, e)) {
 		x1: 24,
 		x2: v.x - 28,
 		y: v.y
-	}, b = /* @__PURE__ */ new Map(), x = qa(e.nodes.filter((e) => u.has(e.id))).map(([e, t]) => {
-		let n = u.get(t), r = e === "orch" ? [ya({
-			x: m.x + Na.w / 2,
+	}, b = /* @__PURE__ */ new Map(), x = Ja(e.nodes.filter((e) => u.has(e.id))).map(([e, t]) => {
+		let n = u.get(t), r = e === "orch" ? [ba({
+			x: m.x + Pa.w / 2,
 			y: m.y
 		}, {
 			x: n.x - 92,
 			y: n.y
-		})] : Ja(u.get(e), n, l, u, b);
+		})] : Ya(u.get(e), n, l, u, b);
 		return {
 			from: e,
 			to: t,
 			path: r,
-			d: Sa(r)
+			d: Ca(r)
 		};
 	});
 	return {
@@ -5820,14 +5823,14 @@ function Xa(e, t = Ka(null, e)) {
 		bottom: _,
 		rail: y,
 		station: v,
-		...Ya(e, u, y)
+		...Xa(e, u, y)
 	};
 }
-function Za(e, t, n, r = 0) {
+function Qa(e, t, n, r = 0) {
 	let i = e.roster.find((e) => e.kind === "run" && e.run === t), a = e.boxes.get(n);
 	if (!i || !a) return null;
 	let o = 88 - r * 7, s = {
-		x: e.orch.x + Na.w / 2,
+		x: e.orch.x + Pa.w / 2,
 		y: i.y
 	}, c = {
 		x: s.x + 26,
@@ -5840,9 +5843,9 @@ function Za(e, t, n, r = 0) {
 		};
 		return {
 			path: [
-				ya(s, c),
-				va(c, e),
-				ba(e, {
+				ba(s, c),
+				ya(c, e),
+				xa(e, {
 					x: a.x,
 					y: a.y - 40
 				})
@@ -5863,10 +5866,10 @@ function Za(e, t, n, r = 0) {
 	};
 	return {
 		path: [
-			ya(s, c),
-			va(c, u),
-			ba(u, d),
-			xa(d, {
+			ba(s, c),
+			ya(c, u),
+			xa(u, d),
+			Sa(d, {
 				x: a.x - 92,
 				y: a.y
 			})
@@ -5878,7 +5881,7 @@ function Za(e, t, n, r = 0) {
 		}
 	};
 }
-function Qa(e, t, n) {
+function $a(e, t, n) {
 	if (t === "tests") return {
 		x: e.station.x,
 		y: e.station.y,
@@ -5895,8 +5898,8 @@ function Qa(e, t, n) {
 	};
 	if (t === "orch") return {
 		...e.orch,
-		w: Na.w,
-		h: Na.h,
+		w: Pa.w,
+		h: Pa.h,
 		rx: 18
 	};
 	if (t.startsWith("relay:")) {
@@ -5918,10 +5921,10 @@ function Qa(e, t, n) {
 		rx: 16
 	} : null;
 }
-function $a(e, t, n, r) {
+function eo(e, t, n, r) {
 	if (t === n) return null;
 	let i = e.station;
-	if (t === "run" && n === "tests") return [va({
+	if (t === "run" && n === "tests") return [ya({
 		x: Math.min(r, i.x - i.r - 20),
 		y: e.rail.y
 	}, {
@@ -5930,30 +5933,30 @@ function $a(e, t, n, r) {
 	})];
 	let a = e.edges.find((e) => e.from === t && e.to === n);
 	if (a) return a.path;
-	let o = Qa(e, t, r), s = Qa(e, n, r);
-	return o && s ? [ya(o, s)] : null;
+	let o = $a(e, t, r), s = $a(e, n, r);
+	return o && s ? [ba(o, s)] : null;
 }
-function eo(e, t) {
+function to(e, t) {
 	for (let n = t.length - 1; n >= 0; n--) {
 		let r = t[n].kind === "merge" ? null : t[n].run, i = r ? e.runX.get(r) : void 0;
 		if (i !== void 0) return i;
 	}
 	return e.rail.x1 + 120;
 }
-var to = (e) => `${e.row.repo}/${e.row.key}`, no = (e) => e.events.reduce((e, t) => Math.max(e, t.seq), 0), ro = (e) => `${e.kind}@${e.sha}@${e.at}`, io = (e, t) => `${e}#${t}`;
-function ao(e, t, n, r) {
+var no = (e) => `${e.row.repo}/${e.row.key}`, ro = (e) => e.events.reduce((e, t) => Math.max(e, t.seq), 0), io = (e) => `${e.kind}@${e.sha}@${e.at}`, ao = (e, t) => `${e}#${t}`;
+function oo(e, t, n, r) {
 	if (!e) return null;
-	if (e === "person") return Oa;
+	if (e === "person") return ka;
 	if (e === "branch") return "run";
-	if (e === "checks") return Da;
+	if (e === "checks") return Oa;
 	if (e === "relay") {
 		if (!n.relays.length) return null;
 		let e = n.relays.filter((e) => e.at <= t + 1).length;
-		return ka(Math.max(0, e - 1));
+		return Aa(Math.max(0, e - 1));
 	}
 	return r.has(e) ? e : null;
 }
-var oo = {
+var so = {
 	start: "开工",
 	request: "请批准",
 	approve: "批准",
@@ -5966,12 +5969,12 @@ var oo = {
 	answer: "回答",
 	reflect: "回写"
 };
-function so(e, t, n, r, i = {}) {
+function co(e, t, n, r, i = {}) {
 	let a = {
-		key: io(t, e.seq),
+		key: ao(t, e.seq),
 		t: e.at,
 		kind: e.kind
-	}, o = (t, n, r, i, o = oo[e.kind] ?? null) => {
+	}, o = (t, n, r, i, o = so[e.kind] ?? null) => {
 		if (t && n && t !== n) return {
 			...a,
 			from: t,
@@ -6019,7 +6022,7 @@ function so(e, t, n, r, i = {}) {
 			return {
 				...a,
 				from: "run",
-				to: Da,
+				to: Oa,
 				tone: /没过/.test(e.text) ? "fail" : n || /通过/.test(e.text) ? "pass" : "fail",
 				shape: "comet",
 				prio: 3,
@@ -6031,8 +6034,8 @@ function so(e, t, n, r, i = {}) {
 		default: return s(n ?? r, "info", "ring", 1);
 	}
 }
-function co(e, t, n, r) {
-	let i = io(t, e.seq), a = e.kind === "blocked" ? n ?? r : e.kind === "verify" ? Da : r ?? n;
+function lo(e, t, n, r) {
+	let i = ao(t, e.seq), a = e.kind === "blocked" ? n ?? r : e.kind === "verify" ? Oa : r ?? n;
 	return (e.kind === "reject" || e.kind === "rejected" || e.kind === "refused" || e.kind === "blocked" || e.kind === "verify" && /没过/.test(e.text)) && a ? [{
 		key: i,
 		target: a,
@@ -6040,7 +6043,7 @@ function co(e, t, n, r) {
 		kind: e.kind
 	}] : [];
 }
-function lo(e, t, n, r = 24) {
+function uo(e, t, n, r = 24) {
 	if (e.first) return {
 		items: [],
 		flashes: []
@@ -6050,11 +6053,11 @@ function lo(e, t, n, r = 24) {
 		total: i.length
 	} : null, o = Ir(t), s = [], c = [];
 	for (let r of e.flying) {
-		let i = ao(r.from, r.at, t, n), l = ao(r.to, r.at, t, n), u = r.kind === "commit" && o.some((e) => e.run === r.run && Math.abs(e.at - r.at) < 1), d = so(r, e.req, i, l, {
+		let i = oo(r.from, r.at, t, n), l = oo(r.to, r.at, t, n), u = r.kind === "commit" && o.some((e) => e.run === r.run && Math.abs(e.at - r.at) < 1), d = co(r, e.req, i, l, {
 			score: r.kind === "verify" ? a : null,
 			push: u
 		});
-		d && s.push(d), c.push(...co(r, e.req, i, l));
+		d && s.push(d), c.push(...lo(r, e.req, i, l));
 	}
 	if (e.merged) {
 		c.push({
@@ -6072,7 +6075,7 @@ function lo(e, t, n, r = 24) {
 	}
 	return e.green && c.push({
 		key: `${e.req}#green@${t.checks.at ?? ""}`,
-		target: Da,
+		target: Oa,
 		tone: "ok",
 		kind: "verify"
 	}), s.length > r && (s = s.slice().sort((e, t) => t.prio - e.prio || e.t - t.t).slice(0, r).sort((e, t) => e.t - t.t)), {
@@ -6080,7 +6083,7 @@ function lo(e, t, n, r = 24) {
 		flashes: c
 	};
 }
-function uo(e) {
+function fo(e) {
 	return {
 		req: e,
 		first: !0,
@@ -6094,11 +6097,11 @@ function uo(e) {
 		announce: null
 	};
 }
-function fo(e, t, n = {}) {
-	let r = n.lateS ?? 30, i = to(t);
-	if (!e || to(e) !== i || n.resync) return uo(i);
-	let a = no(e);
-	if (no(t) < a) return uo(i);
+function po(e, t, n = {}) {
+	let r = n.lateS ?? 30, i = no(t);
+	if (!e || no(e) !== i || n.resync) return fo(i);
+	let a = ro(e);
+	if (ro(t) < a) return fo(i);
 	let o = t.events.filter((e) => e.seq > a).sort((e, t) => e.seq - t.seq), s = o.filter((e) => n.at === void 0 || n.at - e.at <= r), c = e.ended_at === null && t.ended_at !== null, l = t.checks, u = l.total > 0 && l.failed === 0 && l.passed === l.total && (e.checks.failed > 0 || e.checks.passed !== l.passed), d = new Map(e.checks.cells.map((e) => [e.id, e.status])), f = l.cells.filter((e) => d.has(e.id) && d.get(e.id) !== e.status).map((e) => ({
 		id: e.id,
 		from: d.get(e.id),
@@ -6107,21 +6110,21 @@ function fo(e, t, n = {}) {
 		id: e.id,
 		from: p.get(e.id),
 		to: e.status
-	})), h = new Set(e.belt.map(ro));
+	})), h = new Set(e.belt.map(io));
 	return {
 		req: i,
 		first: !1,
 		fresh: o,
 		flying: s,
 		flips: f,
-		belt: t.belt.map(ro).filter((e) => !h.has(e)),
+		belt: t.belt.map(io).filter((e) => !h.has(e)),
 		nodes: m,
 		merged: c,
 		green: u,
-		announce: po(e, t, o)
+		announce: mo(e, t, o)
 	};
 }
-function po(e, t, n) {
+function mo(e, t, n) {
 	let r = [];
 	e.row.state !== t.row.state && r.push(`需求${t.row.state_label}`), (e.checks.passed !== t.checks.passed || e.checks.total !== t.checks.total) && r.push(`检查 ${e.checks.passed}/${e.checks.total} → ${t.checks.passed}/${t.checks.total}`);
 	let i = [...n].reverse().find((e) => [
@@ -6145,7 +6148,7 @@ function po(e, t, n) {
 }
 //#endregion
 //#region src/board/Conveyor.tsx
-function mo(e) {
+function ho(e) {
 	if (e.source === "trace") return "运行分支上还没有提交";
 	if (e.row.where === "runner" && !e.row.worktree) {
 		let t = e.runs.find((e) => e.kind === "runner")?.now.status;
@@ -6153,7 +6156,7 @@ function mo(e) {
 	}
 	return "这里读不到运行分支的提交：brain-kit 没读出这个需求的记录";
 }
-function ho(e, t, n) {
+function go(e, t, n) {
 	let r = n - t;
 	if (r <= 0) return {
 		left: 0,
@@ -6165,19 +6168,19 @@ function ho(e, t, n) {
 		room: i - r
 	};
 }
-var go = (e) => [...e.querySelectorAll(".kt-belt-chip")].filter((t) => t.offsetLeft < e.scrollLeft).length;
-function _o({ board: e, fresh: t, focus: n, onNode: r, onCommit: a }) {
+var _o = (e) => [...e.querySelectorAll(".kt-belt-chip")].filter((t) => t.offsetLeft < e.scrollLeft).length;
+function vo({ board: e, fresh: t, focus: n, onNode: r, onCommit: a }) {
 	let o = s(null), [l, u] = c(0), d = s(!1);
 	i(() => {
 		let e = o.current;
 		if (!e) return;
 		let t = () => {
 			e.style.paddingRight = "";
-			let t = parseFloat(getComputedStyle(e).paddingRight) || 0, { left: n, room: r } = ho([...e.children].map((e) => e.offsetLeft), e.clientWidth, e.scrollWidth);
+			let t = parseFloat(getComputedStyle(e).paddingRight) || 0, { left: n, room: r } = go([...e.children].map((e) => e.offsetLeft), e.clientWidth, e.scrollWidth);
 			r && (e.style.paddingRight = `${t + r}px`), e.scrollTo?.({
 				left: n,
 				behavior: "instant"
-			}), d.current = !0, u(go(e));
+			}), d.current = !0, u(_o(e));
 		};
 		if (t(), typeof ResizeObserver > "u") return;
 		let n = e.clientWidth, r = new ResizeObserver(() => {
@@ -6230,14 +6233,14 @@ function _o({ board: e, fresh: t, focus: n, onNode: r, onCommit: a }) {
 			]
 		}), e.belt.length === 0 ? /* @__PURE__ */ _("p", {
 			className: "kt-dim kt-wall-empty",
-			children: [mo(e), e.source !== "trace" && e.row.mr && /* @__PURE__ */ _(h, { children: [" ", /* @__PURE__ */ g($, {
+			children: [ho(e), e.source !== "trace" && e.row.mr && /* @__PURE__ */ _(h, { children: [" ", /* @__PURE__ */ g($, {
 				href: e.row.mr.url,
 				children: X.viewMr
 			})] })]
 		}) : /* @__PURE__ */ _("ol", {
 			className: `kt-belt${l ? " has-older" : ""}`,
 			ref: o,
-			onScroll: (e) => u(go(e.currentTarget)),
+			onScroll: (e) => u(_o(e.currentTarget)),
 			onWheel: f,
 			onPointerDown: f,
 			onKeyDown: f,
@@ -6248,7 +6251,7 @@ function _o({ board: e, fresh: t, focus: n, onNode: r, onCommit: a }) {
 					children: ["从 ", /* @__PURE__ */ g("code", { children: e.base })]
 				}),
 				e.belt.map((i) => {
-					let o = ro(i), s = p.get(i.run ?? ""), c = e.nodes.find((e) => e.id === i.node), l = i.kind === "commit" && i.by === "person" && s?.kind === "runner", u = i.kind === "handover" ? " is-handover" : i.kind === "merge" ? " is-merge" : l ? " is-push" : s && s.kind !== "local" ? " is-bot" : "", d = i.kind === "merge" ? `合并进 ${e.base}` : i.kind === "handover" ? "交接" : l ? "有人推的" : s ? _r(s, e) : i.by === "bot" ? "运行机" : "本机", f = i.kind === "merge" ? "merge" : i.kind === "handover" ? "handover" : s ? vr[s.kind] : "commit", m = c?.unit ? `${c.title} · ${c.unit}` : c?.title;
+					let o = io(i), s = p.get(i.run ?? ""), c = e.nodes.find((e) => e.id === i.node), l = i.kind === "commit" && i.by === "person" && s?.kind === "runner", u = i.kind === "handover" ? " is-handover" : i.kind === "merge" ? " is-merge" : l ? " is-push" : s && s.kind !== "local" ? " is-bot" : "", d = i.kind === "merge" ? `合并进 ${e.base}` : i.kind === "handover" ? "交接" : l ? "有人推的" : s ? _r(s, e) : i.by === "bot" ? "运行机" : "本机", f = i.kind === "merge" ? "merge" : i.kind === "handover" ? "handover" : s ? vr[s.kind] : "commit", m = c?.unit ? `${c.title} · ${c.unit}` : c?.title;
 					return /* @__PURE__ */ _("li", {
 						className: `kt-belt-chip${u}${t.has(o) ? " is-new" : ""}${n && n !== i.node ? " is-dim" : ""}`,
 						"data-run": i.run ?? void 0,
@@ -6317,9 +6320,9 @@ function _o({ board: e, fresh: t, focus: n, onNode: r, onCommit: a }) {
 }
 //#endregion
 //#region src/board/EventFeed.tsx
-var vo = (e) => e.unit ? `${e.title} · ${e.unit}` : e.title;
-function yo({ board: e, focus: t, onNode: n, fresh: r }) {
-	let i = oa(), [a, o] = c(!0), s = new Map(e.nodes.map((e) => [e.id, e])), l = new Map(e.runs.map((e) => [e.key, e])), u = e.events.slice().reverse().filter((e) => (a || !e.detail) && (!t || e.node === t)), d = t ? s.get(t) : void 0;
+var yo = (e) => e.unit ? `${e.title} · ${e.unit}` : e.title;
+function bo({ board: e, focus: t, onNode: n, fresh: r }) {
+	let i = sa(), [a, o] = c(!0), s = new Map(e.nodes.map((e) => [e.id, e])), l = new Map(e.runs.map((e) => [e.key, e])), u = e.events.slice().reverse().filter((e) => (a || !e.detail) && (!t || e.node === t)), d = t ? s.get(t) : void 0;
 	return /* @__PURE__ */ _("section", {
 		className: "kt-card kt-feed",
 		"data-testid": "kt-feed",
@@ -6337,7 +6340,7 @@ function yo({ board: e, focus: t, onNode: n, fresh: r }) {
 						type: "button",
 						className: "kt-filter",
 						onClick: () => n(d.id),
-						"aria-label": `不再只看${vo(d)}`,
+						"aria-label": `不再只看${yo(d)}`,
 						children: [
 							"只看 ",
 							/* @__PURE__ */ g(J, {
@@ -6345,7 +6348,7 @@ function yo({ board: e, focus: t, onNode: n, fresh: r }) {
 								size: 14
 							}),
 							" ",
-							vo(d),
+							yo(d),
 							" ✕"
 						]
 					}),
@@ -6385,7 +6388,7 @@ function yo({ board: e, focus: t, onNode: n, fresh: r }) {
 								className: "kt-ev-text",
 								children: t.text
 							}),
-							/* @__PURE__ */ g(bo, {
+							/* @__PURE__ */ g(xo, {
 								e: t,
 								board: e,
 								nodes: s,
@@ -6422,7 +6425,7 @@ function yo({ board: e, focus: t, onNode: n, fresh: r }) {
 		]
 	});
 }
-function bo({ e, board: t, nodes: n, onNode: r }) {
+function xo({ e, board: t, nodes: n, onNode: r }) {
 	let i = (i) => {
 		if (!i) return null;
 		let a = n.get(i);
@@ -6436,7 +6439,7 @@ function bo({ e, board: t, nodes: n, onNode: r }) {
 		}
 		return a.status === "skipped" ? /* @__PURE__ */ g("span", {
 			className: "kt-ev-role is-off",
-			title: `${vo(a)}：这次跳过了`,
+			title: `${yo(a)}：这次跳过了`,
 			children: /* @__PURE__ */ g(J, {
 				role: a.icon,
 				size: 15
@@ -6445,8 +6448,8 @@ function bo({ e, board: t, nodes: n, onNode: r }) {
 			type: "button",
 			className: "kt-ev-role",
 			onClick: () => r(a.id),
-			title: `只看${vo(a)}`,
-			"aria-label": `只看${vo(a)}`,
+			title: `只看${yo(a)}`,
+			"aria-label": `只看${yo(a)}`,
 			children: /* @__PURE__ */ g(J, {
 				role: a.icon,
 				size: 15
@@ -6470,21 +6473,21 @@ function bo({ e, board: t, nodes: n, onNode: r }) {
 }
 //#endregion
 //#region src/board/extra.ts
-var xo = "\n.br-board .kt-orch.br-person .kt-orch-title { font-size: 17px; }\n.br-board .kt-orch.br-person.is-awaiting_approval .kt-orch-body { fill: color-mix(in srgb, var(--kt-approve) 13%, var(--card)); stroke: var(--kt-approve); stroke-width: 3; }\n.br-board .kt-orch.br-person.is-awaiting_approval .kt-node-halo { stroke: var(--kt-approve); animation: kt-beacon 1.1s ease-in-out infinite; }\n.br-board .kt-orch.br-person.is-merged .kt-orch-body { fill: color-mix(in srgb, var(--kt-ok) 10%, var(--card)); stroke: var(--kt-ok); }\n.br-board .kt-orch.br-person.is-waiting .kt-orch-body { stroke: color-mix(in srgb, var(--muted) 55%, transparent); }\n.br-board .kt-orch-sub.is-wait { fill: var(--kt-approve); font-weight: 800; }\n.br-board .kt-node-x circle { fill: #fff; }\n.br-board .kt-node-x path { fill: none; stroke: var(--kt-bad-solid); stroke-width: 2.4; stroke-linecap: round; }\n.br-board .kt-node.is-done .kt-node-sub { fill: var(--kt-ok); }\n.br-board .kt-node.is-awaiting_approval .kt-node-task, .br-board .kt-node.is-failed .kt-node-task { fill: var(--text); }\n.br-board .kt-node.is-failed .kt-node-task { fill: #fff; fill-opacity: .85; }\n.br-board .kt-node.is-merged .kt-node-task { fill: #fff; fill-opacity: .8; }\n.br-board .kt-rail-dot.is-merge circle { fill: var(--kt-ok-solid); stroke: var(--kt-ok); stroke-width: 2.5; }\n.br-board .kt-rail-dot .kt-role-icon { color: #fff; }\n.br-board .kt-rail-n { fill: var(--muted); font-size: 11px; font-weight: 800; }\n.br-board .kt-station.is-part .kt-station-bg { stroke: color-mix(in srgb, var(--kt-approve) 60%, transparent); }\n\n/* the check wall: a cell that waits for a person is magenta, like everything that waits for one */\n.br-board .kt-cell.is-wait { --kt-c: var(--kt-approve); }\n.br-board .kt-cell.is-wait .kt-cell-face { border-style: solid; animation: kt-blink 2.4s ease-in-out infinite; }\n.br-board .kt-wall-inspect.is-wait { background: color-mix(in srgb, var(--kt-approve) 9%, transparent); }\n.br-board .br-wall-group .kt-ac-cells { flex-wrap: wrap; }\n.br-board .kt-cell-ac { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }\n.kt-segs i.is-wait { background: var(--kt-approve); box-shadow: 0 0 8px color-mix(in srgb, var(--kt-approve) 50%, transparent); }\n.kt-segs i.is-run { background: var(--kt-run); box-shadow: 0 0 8px color-mix(in srgb, var(--kt-run) 55%, transparent); }\n.kt-segs i.is-other { background: var(--kt-info); box-shadow: 0 0 8px color-mix(in srgb, var(--kt-info) 50%, transparent); }\n\n/* the lanes: work, waits for a person, work done again */\n.br-board .kt-track-span.is-wait { background: color-mix(in srgb, var(--kt-approve) 60%, transparent); }\n.br-board .kt-track-span.is-wait.is-live { background: var(--kt-approve); box-shadow: 0 0 10px color-mix(in srgb, var(--kt-approve) 70%, transparent); }\n.br-board .kt-track-span.is-fix { background: color-mix(in srgb, var(--kt-fix) 70%, transparent); }\n.br-board .kt-track-mark:is(.is-approved, .is-answer, .is-accepted, .is-verify-ok, .is-reflect) { background: var(--kt-ok); }\n.br-board .kt-track-mark:is(.is-rejected, .is-refused, .is-verify-fail) { background: var(--kt-bad); }\n.br-board .kt-track-mark:is(.is-request, .is-question) { background: var(--kt-approve); }\n.br-board .kt-track-mark:is(.is-handover, .is-signed) { background: var(--kt-handoff); }\n.br-board .kt-track-mark.is-blocked { background: var(--kt-warn); }\n.br-board .kt-track-mark.is-commit { top: 4px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--text-strong); box-shadow: 0 0 0 2px var(--card); }\n.br-board .kt-track-mark.is-session { background: var(--kt-run); }\n.br-board .br-fact { color: var(--text); }\n.br-board .br-facts-chips li { max-width: none; }\n.br-board .br-mark { padding: 0 6px; border-radius: 6px; font-family: var(--font-body, sans-serif); font-weight: 750; font-size: .95em;\n  background: color-mix(in srgb, var(--muted) 16%, transparent); color: var(--text-strong) !important; }\n.br-board .br-mark:is(.is-approved, .is-answer, .is-accepted, .is-verify-ok, .is-reflect) { background: color-mix(in srgb, var(--kt-ok) 18%, transparent); }\n.br-board .br-mark:is(.is-rejected, .is-refused, .is-verify-fail) { background: color-mix(in srgb, var(--kt-bad) 18%, transparent); }\n.br-board .br-mark:is(.is-request, .is-question) { background: color-mix(in srgb, var(--kt-approve) 18%, transparent); }\n.br-board .br-mark:is(.is-handover, .is-signed) { background: color-mix(in srgb, var(--kt-handoff) 20%, transparent); }\n.br-board .kt-lane .br-line { margin-top: 2px; }\n\n/* the conveyor */\n.br-board .kt-belt-chip.is-handover { border: 1px solid color-mix(in srgb, var(--kt-handoff) 60%, var(--border)); background: color-mix(in srgb, var(--kt-handoff) 12%, var(--card)); }\n.br-board .kt-belt-chip.is-bot { border-color: color-mix(in srgb, var(--kt-run) 50%, var(--border)); background: color-mix(in srgb, var(--kt-run) 9%, var(--card)); }\n.br-board .kt-belt-chip.is-merge { background: var(--kt-ok-solid); border-color: var(--kt-ok-solid); }\n.br-board .kt-belt-chip.is-merge :is(.kt-belt-role, .kt-belt-meta, .kt-belt-meta code) { color: #fff; }\n.br-board .kt-belt-text { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8em; color: var(--text); }\n.br-board .kt-belt-end.is-head.is-merged { background: var(--kt-ok-solid); color: #fff; border-color: var(--kt-ok-solid); }\n.br-board .kt-belt-end.is-head.is-merged code { color: #fff; }\n\n/* the counters: one row as long as the app is wide enough (its own width, not the window's: the KiroCrew sidebar) */\n.br-board .br-kpis { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1.1fr) minmax(0, 1.05fr) minmax(0, .7fr); }\n.br-board .br-kpis > * { grid-column: auto; order: 0; }\n@container kt-root (max-width: 860px) { .br-board .br-kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); } .br-board .br-kpis > * { grid-column: span 2; } .br-board .br-kpis > :nth-child(n+4) { grid-column: span 3; } }\n@container kt-root (max-width: 560px) { .br-board .br-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .br-board .br-kpis > *, .br-board .br-kpis > :nth-child(n+4) { grid-column: auto; } }\n.br-board .kt-kpi-note { white-space: normal; overflow: visible; word-break: keep-all; overflow-wrap: break-word; }\n.br-board .br-lean-next b { color: var(--kt-approve); }\n.kt-segs i.is-skip { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 38%, transparent) 0 3px, transparent 3px 6px); }\n.kt-segs i.is-next { background: color-mix(in srgb, var(--kt-approve) 30%, transparent); box-shadow: inset 0 0 0 2px var(--kt-approve); }\n.kt-segs i.is-watch { background: color-mix(in srgb, var(--kt-info) 60%, transparent); }\n.br-board .kt-kpi.is-warn { border-color: var(--kit-wait); }\n.br-dots { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; min-height: 12px; }\n.br-dots i { width: 12px; height: 12px; border-radius: 4px; }\n.br-dots i.is-point { background: var(--kt-ok); box-shadow: 0 0 6px color-mix(in srgb, var(--kt-ok) 55%, transparent); }\n.br-dots i.is-out { background: var(--kt-warn); }\n.br-board .kt-gates-rows { margin-top: 4px; }\n\n/* the event feed's places (你, 运行分支, 检查) */\n.br-board .kt-ev-place { padding: 0 5px; border-radius: 7px; border: 1px dashed var(--border-strong, var(--border)); font-size: 12px; color: var(--muted); }\n.br-board .kt-ev-role.is-off { cursor: default; opacity: .5; border-style: dashed; }\n.br-board .kt-ev-run { display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border-radius: 7px; font-size: 12px; color: var(--kt-handoff); white-space: nowrap;\n  background: color-mix(in srgb, var(--kt-handoff) 9%, transparent); }\n.br-board .kt-belt-chip.is-push { border: 2px solid var(--kt-warn); background: color-mix(in srgb, var(--kt-warn) 12%, var(--card)); }\n\n/* a stage's lane: its AI-DLC number, who did it, its rounds */\n.br-board .br-lane-n { margin-left: 6px; font-size: .62em; font-weight: 750; color: var(--muted); font-family: var(--mono, ui-monospace, monospace); }\n.br-board .br-run-pill { display: inline-flex; align-items: center; gap: 3px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.br-board .kt-lane-tag { flex-wrap: wrap; }\n/* a lane's 「交什么 · 第 N 轮」 line wraps instead of cutting the round off */\n.br-board .kt-lane-doing { white-space: normal; }\n.br-board .br-rounds { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 5px; font-size: .8em; }\n/* a chip breaks only between its parts (第 n 轮 · the CI cause · the outcome · the time), never inside one */\n.br-board .br-round { padding: 2px 8px; border-radius: 8px; max-width: 100%; color: var(--text);\n  border: 1px solid color-mix(in srgb, var(--kt-tone) 45%, var(--border)); background: color-mix(in srgb, var(--kt-tone) 8%, var(--card)); }\n.br-board .br-round > * { white-space: nowrap; }\n.br-board .br-round b { color: var(--kt-tone); font-weight: 800; }\n.br-board .br-round.is-now { border-width: 2px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-tone) 16%, transparent); }\n.br-board .br-round-cause { color: var(--kt-bad); font-weight: 700; }\n/* 交的文件: the file name is what matters, so the directory is the part that gives way (as 改动's rows do) */\n.br-board [data-testid=\"kt-outputs\"] .kt-commits li { display: grid; grid-template-columns: auto minmax(0, 1fr); }\n\n/* 验收 */\n.br-board .kt-sign.is-idle { border-color: var(--border); }\n.br-board .kt-sign-head .kt-pill { align-self: center; }\n.br-board .kt-sign-grid dd { color: var(--text-strong); }\n.br-board .br-accept-desc dt { display: flex; align-items: center; gap: 8px; }\n.br-board .br-accept-desc dd > span { font-weight: 650; }\n.br-board .br-accept-proof { grid-column: 1 / -1; }\n/* 产出: a piece of evidence by its words, a screenshot as a picture */\n.br-board .kt-frow-mark { font-size: .92em; font-weight: 750; white-space: nowrap; }\n.br-board .kt-fview-proof { margin: 0; padding: 6px 12px; border-bottom: 1px solid var(--border); font-size: .9em; overflow-wrap: anywhere; }\n.br-board .kt-fview-img { margin: 0; padding: 12px; }\n.br-board .kt-fview-img img { display: block; max-width: 100%; height: auto; margin: 0 auto; border: 1px solid var(--border); border-radius: 8px; }\n.br-step { display: grid; gap: 8px; margin-top: 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--kit-wait);\n  background: color-mix(in srgb, var(--kt-approve) 8%, var(--card)); }\n.br-step p { margin: 0; }\n.br-step-who { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; color: var(--kt-approve); font-size: .9em; }\n.br-extbtn { text-decoration: none; }\n.br-board .br-board-qs { display: grid; gap: 10px; }\n.br-board .kt-sign-blocked { font-size: .95em; }\n\n/* the introduction: five phases (four for a repo done only here) in a row while they fit, the next row when they do\n   not; a card never gets narrower than its words, which break only after a 、 (never inside a word) */\n.br-way.kt-team-intro.is-phased { display: flex; flex-wrap: wrap; }\n.br-way .kt-intro-phase { flex: 1 1 auto; }\n.br-way .kt-intro-phase-body > .kt-intro-stage { flex: 1 0 auto; min-width: auto; }\n.br-way .kt-intro-role { grid-template-columns: 36px minmax(min-content, 1fr); }\n.br-board .kt-intro-name b { white-space: nowrap; }\n.br-board .kt-intro-does { overflow-wrap: normal; }\n.br-board .kt-intro-does .br-phrase { display: inline-block; white-space: nowrap; }\n/* a requirement the repo does not have: the same card as 需求现状's */\n.br-board .br-notfound { padding: 16px 20px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); max-width: 720px; }\n.br-board .br-notfound h3 { margin: 0 0 6px; }\n/* a step said on two lines (what happened, then what to do) keeps its lines */\n.br-btn-big { padding: 10px 20px; font-size: 1.02em; border-radius: 12px; }\n\n/* whom it waits for: magenta is the person looking only; anyone else is a calm blue, no blinking */\n.br-board .kt-orch.br-person.is-other .kt-orch-body { fill: color-mix(in srgb, var(--kt-info) 9%, var(--card)); stroke: var(--kt-info); stroke-width: 2.5; }\n.br-board .kt-orch-sub.is-other { fill: var(--kt-info); font-weight: 750; }\n.br-board .kt-orch.br-person { cursor: default; }\n.br-board .kt-node.is-awaiting_approval.is-other .kt-node-body { stroke: var(--kt-info); stroke-width: 2.5; fill: color-mix(in srgb, var(--kt-info) 9%, var(--card)); }\n.br-board .kt-node.is-awaiting_approval.is-other .kt-node-sub { fill: var(--kt-info); }\n.kt-node-badge.is-other { --kt-badge: var(--kt-info); }\n.kt-legend-item.is-other i { border-color: var(--kt-info); background: color-mix(in srgb, var(--kt-info) 16%, transparent); }\n.br-board .kt-track-span.is-wait.is-other { background: color-mix(in srgb, var(--kt-info) 55%, transparent); }\n.br-board .kt-track-span.is-wait.is-other.is-live { background: var(--kt-info); box-shadow: none; }\n.br-board .kt-track-span.is-wait.is-other.is-live::after { display: none; }\n\n/* the graph keeps its text readable: an app too narrow for the full layout gets the compact one, each band in one\n   column (layout.ts stageShape); narrower still, it scrolls the graph sideways and the hidden part's edge fades and\n   says so */\n.br-graph-view { position: relative; }\n/* its smallest words are 12 px too, so at that scale nothing on the graph is under 10 px (BOARD-31) */\n.br-board .kt-graph-svg :is(.kt-orch-sub, .kt-rail-n, .kt-phase-stages, .kt-roster-title, .kt-roster-item text) { font-size: 12px; }\n.br-graph-scroll { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }\n.br-graph-view::before, .br-graph-view::after { content: ''; position: absolute; top: 0; bottom: 0; width: 56px; pointer-events: none; opacity: 0; transition: opacity .2s; z-index: 2; }\n.br-graph-view::before { left: 0; background: linear-gradient(90deg, var(--card), transparent); }\n.br-graph-view::after { right: 0; background: linear-gradient(270deg, var(--card), transparent); }\n.br-graph-view.has-left::before, .br-graph-view.has-right::after { opacity: 1; }\n.br-graph-more { position: absolute; top: 50%; transform: translateY(-50%); z-index: 3; padding: 5px 11px; border-radius: 999px; font: inherit; font-size: 12.5px; font-weight: 750; cursor: pointer;\n  color: var(--text-strong); background: var(--card); border: 1px solid var(--border-strong, var(--border)); box-shadow: 0 2px 10px rgba(0, 0, 0, .25); }\n.br-graph-more:hover { border-color: var(--accent); }\n.br-graph-more.is-right { right: 10px; }\n.br-graph-more.is-left { left: 10px; }\n\n/* a phase not on the way, folded to a narrow band */\n.br-board .kt-phase.is-folded .kt-phase-title { font-size: 14px; }\n.br-board .kt-phase.is-folded .kt-phase-band { fill: color-mix(in srgb, var(--muted) 5%, transparent); }\n\n/* the check wall: watching (the 14 days, nobody's turn) and not needed this time */\n.br-board .kt-cell.is-watch { --kt-c: var(--kt-info); }\n.br-board .kt-cell.is-watch .kt-cell-face { color: var(--kt-info); }\n.br-board .kt-wall-inspect.is-watch { background: color-mix(in srgb, var(--kt-info) 9%, transparent); }\n.br-board .kt-cell.is-not_needed { --kt-c: var(--muted); opacity: .6; }\n.br-board .kt-cell.is-not_needed .kt-cell-face { border-style: dotted; background: none; color: var(--muted); }\n.br-wall-fix { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 8px 0 0; font-size: .86em; color: var(--muted); }\n.br-wall-fix .br-link { font-weight: 750; }\n.br-spark-one { margin: -2px 0 8px; }\n\n/* the lanes: the quiet tail drawn short, the change block */\n.br-board .kt-axis .kt-axis-tick { transform: translateX(-50%); white-space: nowrap; }\n.br-board .kt-axis .kt-axis-tick.is-first { transform: none; }\n.br-board .kt-axis .kt-axis-tick.is-last { transform: translateX(-100%); }\n.kt-axis-tail { position: absolute; top: 0; padding-left: 6px; border-left: 2px dotted color-mix(in srgb, var(--muted) 55%, transparent); font-size: .76em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.kt-track-tail { position: absolute; top: 0; height: 14px; border-left: 2px dotted color-mix(in srgb, var(--muted) 55%, transparent);\n  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 12%, transparent) 0 4px, transparent 4px 8px); }\n.br-changes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }\n.br-commit-rows li { align-items: center; }\n.br-commit-rows li .br-commit-subj { flex: 1 1 auto; }\n.br-commit-rows li.is-records .br-commit-subj { color: var(--muted); }\n.br-commit-rows .br-commit-files { flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }\n.br-commit-rows .br-commit-files .kt-file-bar { width: 56px; }\n.br-board .kt-owned { margin-top: 2px; }\n\n/* 你要做的一步: one line above the graph */\n.br-next { display: grid; gap: 8px; padding: 10px 14px; border-radius: 14px; border: 1px solid var(--kit-wait, var(--kt-approve));\n  background: color-mix(in srgb, var(--kt-approve) 7%, var(--card)); }\n.br-next.is-mine { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; }\n.br-next-who { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; color: var(--kt-approve); white-space: nowrap; }\n.br-next-text { flex: 1 1 240px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.br-next.is-other { display: flex; align-items: baseline; gap: 6px 10px; flex-wrap: wrap; margin: 0; padding: 8px 14px; border-color: var(--border); background: var(--card); }\n.br-next.is-other .br-next-who { color: var(--muted); font-weight: 700; }\n\n/* 验收's small parts; the board's problem said with what to do */\n.br-board .br-copy { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }\n.br-board .br-desc-ref { cursor: help; }\n.br-board .br-problem { display: grid; gap: 4px; }\n", So = {
+var So = "\n.br-board .kt-orch.br-person .kt-orch-title { font-size: 17px; }\n.br-board .kt-orch.br-person.is-awaiting_approval .kt-orch-body { fill: color-mix(in srgb, var(--kt-approve) 13%, var(--card)); stroke: var(--kt-approve); stroke-width: 3; }\n.br-board .kt-orch.br-person.is-awaiting_approval .kt-node-halo { stroke: var(--kt-approve); animation: kt-beacon 1.1s ease-in-out infinite; }\n.br-board .kt-orch.br-person.is-merged .kt-orch-body { fill: color-mix(in srgb, var(--kt-ok) 10%, var(--card)); stroke: var(--kt-ok); }\n.br-board .kt-orch.br-person.is-waiting .kt-orch-body { stroke: color-mix(in srgb, var(--muted) 55%, transparent); }\n.br-board .kt-orch-sub.is-wait { fill: var(--kt-approve); font-weight: 800; }\n.br-board .kt-node-x circle { fill: #fff; }\n.br-board .kt-node-x path { fill: none; stroke: var(--kt-bad-solid); stroke-width: 2.4; stroke-linecap: round; }\n.br-board .kt-node.is-done .kt-node-sub { fill: var(--kt-ok); }\n.br-board .kt-node.is-awaiting_approval .kt-node-task, .br-board .kt-node.is-failed .kt-node-task { fill: var(--text); }\n.br-board .kt-node.is-failed .kt-node-task { fill: #fff; fill-opacity: .85; }\n.br-board .kt-node.is-merged .kt-node-task { fill: #fff; fill-opacity: .8; }\n.br-board .kt-rail-dot.is-merge circle { fill: var(--kt-ok-solid); stroke: var(--kt-ok); stroke-width: 2.5; }\n.br-board .kt-rail-dot .kt-role-icon { color: #fff; }\n.br-board .kt-rail-n { fill: var(--muted); font-size: 11px; font-weight: 800; }\n.br-board .kt-station.is-part .kt-station-bg { stroke: color-mix(in srgb, var(--kt-approve) 60%, transparent); }\n\n/* the check wall: a cell that waits for a person is magenta, like everything that waits for one */\n.br-board .kt-cell.is-wait { --kt-c: var(--kt-approve); }\n.br-board .kt-cell.is-wait .kt-cell-face { border-style: solid; animation: kt-blink 2.4s ease-in-out infinite; }\n.br-board .kt-wall-inspect.is-wait { background: color-mix(in srgb, var(--kt-approve) 9%, transparent); }\n.br-board .br-wall-group .kt-ac-cells { flex-wrap: wrap; }\n.br-board .kt-cell-ac { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }\n.kt-segs i.is-wait { background: var(--kt-approve); box-shadow: 0 0 8px color-mix(in srgb, var(--kt-approve) 50%, transparent); }\n.kt-segs i.is-run { background: var(--kt-run); box-shadow: 0 0 8px color-mix(in srgb, var(--kt-run) 55%, transparent); }\n.kt-segs i.is-other { background: var(--kt-info); box-shadow: 0 0 8px color-mix(in srgb, var(--kt-info) 50%, transparent); }\n\n/* the lanes: work, waits for a person, work done again */\n.br-board .kt-track-span.is-wait { background: color-mix(in srgb, var(--kt-approve) 60%, transparent); }\n.br-board .kt-track-span.is-wait.is-live { background: var(--kt-approve); box-shadow: 0 0 10px color-mix(in srgb, var(--kt-approve) 70%, transparent); }\n.br-board .kt-track-span.is-fix { background: color-mix(in srgb, var(--kt-fix) 70%, transparent); }\n.br-board .kt-track-mark:is(.is-approved, .is-answer, .is-accepted, .is-verify-ok, .is-reflect) { background: var(--kt-ok); }\n.br-board .kt-track-mark:is(.is-rejected, .is-refused, .is-verify-fail) { background: var(--kt-bad); }\n.br-board .kt-track-mark:is(.is-request, .is-question) { background: var(--kt-approve); }\n.br-board .kt-track-mark:is(.is-handover, .is-signed) { background: var(--kt-handoff); }\n.br-board .kt-track-mark.is-blocked { background: var(--kt-warn); }\n.br-board .kt-track-mark.is-commit { top: 4px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--text-strong); box-shadow: 0 0 0 2px var(--card); }\n.br-board .kt-track-mark.is-session { background: var(--kt-run); }\n.br-board .br-fact { color: var(--text); }\n.br-board .br-facts-chips li { max-width: none; }\n.br-board .br-mark { padding: 0 6px; border-radius: 6px; font-family: var(--font-body, sans-serif); font-weight: 750; font-size: .95em;\n  background: color-mix(in srgb, var(--muted) 16%, transparent); color: var(--text-strong) !important; }\n.br-board .br-mark:is(.is-approved, .is-answer, .is-accepted, .is-verify-ok, .is-reflect) { background: color-mix(in srgb, var(--kt-ok) 18%, transparent); }\n.br-board .br-mark:is(.is-rejected, .is-refused, .is-verify-fail) { background: color-mix(in srgb, var(--kt-bad) 18%, transparent); }\n.br-board .br-mark:is(.is-request, .is-question) { background: color-mix(in srgb, var(--kt-approve) 18%, transparent); }\n.br-board .br-mark:is(.is-handover, .is-signed) { background: color-mix(in srgb, var(--kt-handoff) 20%, transparent); }\n.br-board .kt-lane .br-line { margin-top: 2px; }\n\n/* the conveyor */\n.br-board .kt-belt-chip.is-handover { border: 1px solid color-mix(in srgb, var(--kt-handoff) 60%, var(--border)); background: color-mix(in srgb, var(--kt-handoff) 12%, var(--card)); }\n.br-board .kt-belt-chip.is-bot { border-color: color-mix(in srgb, var(--kt-run) 50%, var(--border)); background: color-mix(in srgb, var(--kt-run) 9%, var(--card)); }\n.br-board .kt-belt-chip.is-merge { background: var(--kt-ok-solid); border-color: var(--kt-ok-solid); }\n.br-board .kt-belt-chip.is-merge :is(.kt-belt-role, .kt-belt-meta, .kt-belt-meta code) { color: #fff; }\n.br-board .kt-belt-text { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8em; color: var(--text); }\n.br-board .kt-belt-end.is-head.is-merged { background: var(--kt-ok-solid); color: #fff; border-color: var(--kt-ok-solid); }\n.br-board .kt-belt-end.is-head.is-merged code { color: #fff; }\n\n/* the counters: one row as long as the app is wide enough (its own width, not the window's: the KiroCrew sidebar) */\n.br-board .br-kpis { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1.1fr) minmax(0, 1.05fr) minmax(0, .7fr); }\n.br-board .br-kpis > * { grid-column: auto; order: 0; }\n@container kt-root (max-width: 860px) { .br-board .br-kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); } .br-board .br-kpis > * { grid-column: span 2; } .br-board .br-kpis > :nth-child(n+4) { grid-column: span 3; } }\n@container kt-root (max-width: 560px) { .br-board .br-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .br-board .br-kpis > *, .br-board .br-kpis > :nth-child(n+4) { grid-column: auto; } }\n.br-board .kt-kpi-note { white-space: normal; overflow: visible; word-break: keep-all; overflow-wrap: break-word; }\n.br-board .br-lean-next b { color: var(--kt-approve); }\n.kt-segs i.is-skip { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 38%, transparent) 0 3px, transparent 3px 6px); }\n.kt-segs i.is-next { background: color-mix(in srgb, var(--kt-approve) 30%, transparent); box-shadow: inset 0 0 0 2px var(--kt-approve); }\n.kt-segs i.is-watch { background: color-mix(in srgb, var(--kt-info) 60%, transparent); }\n.br-board .kt-kpi.is-warn { border-color: var(--kit-wait); }\n.br-dots { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; min-height: 12px; }\n.br-dots i { width: 12px; height: 12px; border-radius: 4px; }\n.br-dots i.is-point { background: var(--kt-ok); box-shadow: 0 0 6px color-mix(in srgb, var(--kt-ok) 55%, transparent); }\n.br-dots i.is-out { background: var(--kt-warn); }\n.br-board .kt-gates-rows { margin-top: 4px; }\n\n/* the event feed's places (你, 运行分支, 检查) */\n.br-board .kt-ev-place { padding: 0 5px; border-radius: 7px; border: 1px dashed var(--border-strong, var(--border)); font-size: 12px; color: var(--muted); }\n.br-board .kt-ev-role.is-off { cursor: default; opacity: .5; border-style: dashed; }\n.br-board .kt-ev-run { display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border-radius: 7px; font-size: 12px; color: var(--kt-handoff); white-space: nowrap;\n  background: color-mix(in srgb, var(--kt-handoff) 9%, transparent); }\n.br-board .kt-belt-chip.is-push { border: 2px solid var(--kt-warn); background: color-mix(in srgb, var(--kt-warn) 12%, var(--card)); }\n\n/* a stage's lane: its AI-DLC number, who did it, its rounds */\n.br-board .br-lane-n { margin-left: 6px; font-size: .62em; font-weight: 750; color: var(--muted); font-family: var(--mono, ui-monospace, monospace); }\n.br-board .br-run-pill { display: inline-flex; align-items: center; gap: 3px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.br-board .kt-lane-tag { flex-wrap: wrap; }\n/* a lane's 「交什么 · 第 N 轮」 line wraps instead of cutting the round off */\n.br-board .kt-lane-doing { white-space: normal; }\n.br-board .br-rounds { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 5px; font-size: .8em; }\n/* a chip breaks only between its parts (第 n 轮 · the CI cause · the outcome · the time), never inside one */\n.br-board .br-round { padding: 2px 8px; border-radius: 8px; max-width: 100%; color: var(--text);\n  border: 1px solid color-mix(in srgb, var(--kt-tone) 45%, var(--border)); background: color-mix(in srgb, var(--kt-tone) 8%, var(--card)); }\n.br-board .br-round > * { white-space: nowrap; }\n.br-board .br-round b { color: var(--kt-tone); font-weight: 800; }\n.br-board .br-round.is-now { border-width: 2px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-tone) 16%, transparent); }\n.br-board .br-round-cause { color: var(--kt-bad); font-weight: 700; }\n/* 交的文件: the file name is what matters, so the directory is the part that gives way (as 改动's rows do) */\n.br-board [data-testid=\"kt-outputs\"] .kt-commits li { display: grid; grid-template-columns: auto minmax(0, 1fr); }\n\n/* 验收 */\n.br-board .kt-sign.is-idle { border-color: var(--border); }\n.br-board .kt-sign-head .kt-pill { align-self: center; }\n.br-board .kt-sign-grid dd { color: var(--text-strong); }\n.br-board .br-accept-desc dt { display: flex; align-items: center; gap: 8px; }\n.br-board .br-accept-desc dd > span { font-weight: 650; }\n.br-board .br-accept-proof { grid-column: 1 / -1; }\n/* 产出: a piece of evidence by its words, a screenshot as a picture */\n.br-board .kt-frow-mark { font-size: .92em; font-weight: 750; white-space: nowrap; }\n.br-board .kt-fview-proof { margin: 0; padding: 6px 12px; border-bottom: 1px solid var(--border); font-size: .9em; overflow-wrap: anywhere; }\n.br-board .kt-fview-img { margin: 0; padding: 12px; }\n.br-board .kt-fview-img img { display: block; max-width: 100%; height: auto; margin: 0 auto; border: 1px solid var(--border); border-radius: 8px; }\n.br-step { display: grid; gap: 8px; margin-top: 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--kit-wait);\n  background: color-mix(in srgb, var(--kt-approve) 8%, var(--card)); }\n.br-step p { margin: 0; }\n.br-step-who { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; color: var(--kt-approve); font-size: .9em; }\n.br-extbtn { text-decoration: none; }\n.br-board .br-board-qs { display: grid; gap: 10px; }\n.br-board .kt-sign-blocked { font-size: .95em; }\n\n/* the introduction: five phases (four for a repo done only here) in a row while they fit, the next row when they do\n   not; a card never gets narrower than its words, which break only after a 、 (never inside a word) */\n.br-way.kt-team-intro.is-phased { display: flex; flex-wrap: wrap; }\n.br-way .kt-intro-phase { flex: 1 1 auto; }\n.br-way .kt-intro-phase-body > .kt-intro-stage { flex: 1 0 auto; min-width: auto; }\n.br-way .kt-intro-role { grid-template-columns: 36px minmax(min-content, 1fr); }\n.br-board .kt-intro-name b { white-space: nowrap; }\n.br-board .kt-intro-does { overflow-wrap: normal; }\n.br-board .kt-intro-does .br-phrase { display: inline-block; white-space: nowrap; }\n/* a requirement the repo does not have: the same card as 需求现状's */\n.br-board .br-notfound { padding: 16px 20px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); max-width: 720px; }\n.br-board .br-notfound h3 { margin: 0 0 6px; }\n/* a step said on two lines (what happened, then what to do) keeps its lines */\n.br-btn-big { padding: 10px 20px; font-size: 1.02em; border-radius: 12px; }\n\n/* whom it waits for: magenta is the person looking only; anyone else is a calm blue, no blinking */\n.br-board .kt-orch.br-person.is-other .kt-orch-body { fill: color-mix(in srgb, var(--kt-info) 9%, var(--card)); stroke: var(--kt-info); stroke-width: 2.5; }\n.br-board .kt-orch-sub.is-other { fill: var(--kt-info); font-weight: 750; }\n.br-board .kt-orch.br-person { cursor: default; }\n.br-board .kt-node.is-awaiting_approval.is-other .kt-node-body { stroke: var(--kt-info); stroke-width: 2.5; fill: color-mix(in srgb, var(--kt-info) 9%, var(--card)); }\n.br-board .kt-node.is-awaiting_approval.is-other .kt-node-sub { fill: var(--kt-info); }\n.kt-node-badge.is-other { --kt-badge: var(--kt-info); }\n.kt-legend-item.is-other i { border-color: var(--kt-info); background: color-mix(in srgb, var(--kt-info) 16%, transparent); }\n.br-board .kt-track-span.is-wait.is-other { background: color-mix(in srgb, var(--kt-info) 55%, transparent); }\n.br-board .kt-track-span.is-wait.is-other.is-live { background: var(--kt-info); box-shadow: none; }\n.br-board .kt-track-span.is-wait.is-other.is-live::after { display: none; }\n\n/* the graph keeps its text readable: an app too narrow for the full layout gets the compact one, each band in one\n   column (layout.ts stageShape); narrower still, it scrolls the graph sideways and the hidden part's edge fades and\n   says so */\n.br-graph-view { position: relative; }\n/* its smallest words are 12 px too, so at that scale nothing on the graph is under 10 px (BOARD-31) */\n.br-board .kt-graph-svg :is(.kt-orch-sub, .kt-rail-n, .kt-phase-stages, .kt-roster-title, .kt-roster-item text) { font-size: 12px; }\n.br-graph-scroll { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }\n.br-graph-view::before, .br-graph-view::after { content: ''; position: absolute; top: 0; bottom: 0; width: 56px; pointer-events: none; opacity: 0; transition: opacity .2s; z-index: 2; }\n.br-graph-view::before { left: 0; background: linear-gradient(90deg, var(--card), transparent); }\n.br-graph-view::after { right: 0; background: linear-gradient(270deg, var(--card), transparent); }\n.br-graph-view.has-left::before, .br-graph-view.has-right::after { opacity: 1; }\n.br-graph-more { position: absolute; top: 50%; transform: translateY(-50%); z-index: 3; padding: 5px 11px; border-radius: 999px; font: inherit; font-size: 12.5px; font-weight: 750; cursor: pointer;\n  color: var(--text-strong); background: var(--card); border: 1px solid var(--border-strong, var(--border)); box-shadow: 0 2px 10px rgba(0, 0, 0, .25); }\n.br-graph-more:hover { border-color: var(--accent); }\n.br-graph-more.is-right { right: 10px; }\n.br-graph-more.is-left { left: 10px; }\n\n/* a phase not on the way, folded to a narrow band */\n.br-board .kt-phase.is-folded .kt-phase-title { font-size: 14px; }\n.br-board .kt-phase.is-folded .kt-phase-band { fill: color-mix(in srgb, var(--muted) 5%, transparent); }\n\n/* the check wall: watching (the 14 days, nobody's turn) and not needed this time */\n.br-board .kt-cell.is-watch { --kt-c: var(--kt-info); }\n.br-board .kt-cell.is-watch .kt-cell-face { color: var(--kt-info); }\n.br-board .kt-wall-inspect.is-watch { background: color-mix(in srgb, var(--kt-info) 9%, transparent); }\n.br-board .kt-cell.is-not_needed { --kt-c: var(--muted); opacity: .6; }\n.br-board .kt-cell.is-not_needed .kt-cell-face { border-style: dotted; background: none; color: var(--muted); }\n.br-wall-fix { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 8px 0 0; font-size: .86em; color: var(--muted); }\n.br-wall-fix .br-link { font-weight: 750; }\n.br-spark-one { margin: -2px 0 8px; }\n\n/* the lanes: the quiet tail drawn short, the change block */\n.br-board .kt-axis .kt-axis-tick { transform: translateX(-50%); white-space: nowrap; }\n.br-board .kt-axis .kt-axis-tick.is-first { transform: none; }\n.br-board .kt-axis .kt-axis-tick.is-last { transform: translateX(-100%); }\n.kt-axis-tail { position: absolute; top: 0; padding-left: 6px; border-left: 2px dotted color-mix(in srgb, var(--muted) 55%, transparent); font-size: .76em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.kt-track-tail { position: absolute; top: 0; height: 14px; border-left: 2px dotted color-mix(in srgb, var(--muted) 55%, transparent);\n  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 12%, transparent) 0 4px, transparent 4px 8px); }\n.br-changes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }\n.br-commit-rows li { align-items: center; }\n.br-commit-rows li .br-commit-subj { flex: 1 1 auto; }\n.br-commit-rows li.is-records .br-commit-subj { color: var(--muted); }\n.br-commit-rows .br-commit-files { flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }\n.br-commit-rows .br-commit-files .kt-file-bar { width: 56px; }\n.br-board .kt-owned { margin-top: 2px; }\n\n/* 你要做的一步: one line above the graph */\n.br-next { display: grid; gap: 8px; padding: 10px 14px; border-radius: 14px; border: 1px solid var(--kit-wait, var(--kt-approve));\n  background: color-mix(in srgb, var(--kt-approve) 7%, var(--card)); }\n.br-next.is-mine { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; }\n.br-next-who { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; color: var(--kt-approve); white-space: nowrap; }\n.br-next-text { flex: 1 1 240px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.br-next.is-other { display: flex; align-items: baseline; gap: 6px 10px; flex-wrap: wrap; margin: 0; padding: 8px 14px; border-color: var(--border); background: var(--card); }\n.br-next.is-other .br-next-who { color: var(--muted); font-weight: 700; }\n\n/* 验收's small parts; the board's problem said with what to do */\n.br-board .br-copy { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }\n.br-board .br-desc-ref { cursor: help; }\n.br-board .br-problem { display: grid; gap: 4px; }\n", Co = {
 	id: "lean",
 	label: "完整流程",
 	intent: !0,
 	actions: ["handoff", "review"]
-}, Co = (e) => e.flow ?? So, wo = (e, t) => Co(e).actions.includes(t);
-function To(e, t) {
-	if (Co(e).intent) return Je(e, t);
+}, wo = (e) => e.flow ?? Co, To = (e, t) => wo(e).actions.includes(t);
+function Eo(e, t) {
+	if (wo(e).intent) return Je(e, t);
 	let n = e.mr ? `MR !${e.mr.iid}` : "";
 	if (e.state === "merged") return "已合并";
 	if (e.state === "closed") return n ? `${n} 关了，没合并` : "已关闭";
 	let { who: r, do: i } = e.waits;
 	return i === "full" ? "改到风险目录" : i === "open_mr" ? "代码写好了，等开 MR" : n && i === "merge" ? `${n} 等合并` : n && r === "nobody" ? `${n}：CI 在跑` : n && (r === "runner" || i === "reply") ? `${n}：CI 没过` : "在写代码";
 }
-var Eo = {
+var Do = {
 	lean: {
 		way: ({ big: e, localOnly: t }) => [
 			{
@@ -6530,25 +6533,25 @@ var Eo = {
 		],
 		startedNext: `打开会话：AI 直接按你说的写代码和测试，自动检查绿了才提交。做完了在${X.openDetail}里点「${X.openMr}」。`
 	}
-}, Do = {
+}, Oo = {
 	code: "code",
 	verify: "lint",
 	mr: "pr",
 	ci: "ci",
 	merge: "merge"
-}, Oo = { verify: "kt-wall" };
-function ko(e, t) {
+}, ko = { verify: "kt-wall" };
+function Ao(e, t) {
 	if (e === "code") return t ?? null;
-	let n = Oo[e];
+	let n = ko[e];
 	return n ? (e) => e.closest("[data-testid=\"br-board\"]")?.querySelector(`[data-testid="${n}"]`)?.scrollIntoView?.({
 		behavior: "smooth",
 		block: "start"
 	}) : null;
 }
-var Ao = (e) => e.url && /^https?:\/\//i.test(e.url) ? e.url : null, jo = {
+var jo = (e) => e.url && /^https?:\/\//i.test(e.url) ? e.url : null, Mo = {
 	open_mr: "mr",
 	merge: "merge"
-}, Mo = {
+}, No = {
 	done: {
 		node: "done",
 		other: !1,
@@ -6582,8 +6585,8 @@ var Ao = (e) => e.url && /^https?:\/\//i.test(e.url) ? e.url : null, jo = {
 		word: "没过"
 	}
 };
-function No(e, t) {
-	if (e.status === "waiting" && jo[t.do ?? "none"] === e.id) {
+function Po(e, t) {
+	if (e.status === "waiting" && Mo[t.do ?? "none"] === e.id) {
 		let e = t.who === "you";
 		return {
 			node: "awaiting_approval",
@@ -6595,15 +6598,15 @@ function No(e, t) {
 		};
 	}
 	return e.status === "done" && e.id === "merge" ? {
-		...Mo.done,
+		...No.done,
 		node: "merged",
 		word: "已合并"
-	} : Mo[e.status];
+	} : No[e.status];
 }
-function Po({ r: e, children: t }) {
-	let { intent: n, label: r } = Co(e);
+function Fo({ r: e, children: t }) {
+	let { intent: n, label: r } = wo(e);
 	if (n) return /* @__PURE__ */ g(h, { children: t });
-	let i = To(e);
+	let i = Eo(e);
 	return /* @__PURE__ */ g("span", {
 		className: "br-lean",
 		"data-testid": "lean-cell",
@@ -6621,8 +6624,8 @@ function Po({ r: e, children: t }) {
 		] })
 	});
 }
-function Fo({ r: e, steps: t, onCode: n, children: r }) {
-	let { intent: i, label: a } = Co(e);
+function Io({ r: e, steps: t, onCode: n, children: r }) {
+	let { intent: i, label: a } = wo(e);
 	return i ? /* @__PURE__ */ g(h, { children: r }) : /* @__PURE__ */ _("section", {
 		className: "cto-card",
 		"aria-label": `${a}进度`,
@@ -6631,7 +6634,7 @@ function Fo({ r: e, steps: t, onCode: n, children: r }) {
 			className: "cto-chart-head",
 			children: [/* @__PURE__ */ g("h3", { children: a }), /* @__PURE__ */ _("span", {
 				className: "cto-dim",
-				children: [To(e), " · 不走 Lean 的阶段和审批：自动检查绿了才提交，做完开 MR，由人合并"]
+				children: [Eo(e), " · 不走 Lean 的阶段和审批：自动检查绿了才提交，做完开 MR，由人合并"]
 			})]
 		}), t ? /* @__PURE__ */ g("div", {
 			className: "br-lean-phases",
@@ -6645,7 +6648,7 @@ function Fo({ r: e, steps: t, onCode: n, children: r }) {
 					className: "br-stagecells",
 					"aria-label": `${a}的步骤`,
 					children: t.map((t, r) => {
-						let i = No(t, e.waits);
+						let i = Po(t, e.waits);
 						return /* @__PURE__ */ _("li", {
 							className: [
 								"br-stagecell",
@@ -6698,10 +6701,10 @@ function Fo({ r: e, steps: t, onCode: n, children: r }) {
 		})]
 	});
 }
-function Io({ board: e, children: t }) {
+function Lo({ board: e, children: t }) {
 	let n = e.steps;
 	if (!n) return /* @__PURE__ */ g(h, { children: t });
-	let r = Co(e.row).label, i = To(e.row);
+	let r = wo(e.row).label, i = Eo(e.row);
 	return /* @__PURE__ */ _("div", {
 		className: "kt-kpi kt-kpi-gates br-kpi-lean",
 		"aria-label": `${r}：${i}`,
@@ -6724,7 +6727,7 @@ function Io({ board: e, children: t }) {
 			/* @__PURE__ */ g("div", {
 				className: "kt-segs",
 				"aria-hidden": "true",
-				children: n.map((t) => /* @__PURE__ */ g("i", { className: No(t, e.row.waits).seg }, t.id))
+				children: n.map((t) => /* @__PURE__ */ g("i", { className: Po(t, e.row.waits).seg }, t.id))
 			}),
 			/* @__PURE__ */ g("div", {
 				className: "kt-kpi-note br-lean-next",
@@ -6733,12 +6736,12 @@ function Io({ board: e, children: t }) {
 		]
 	});
 }
-function Lo({ board: e, onCode: t, children: n }) {
+function Ro({ board: e, onCode: t, children: n }) {
 	let r = e.steps;
 	if (!r) return /* @__PURE__ */ g(h, { children: n });
 	let i = r.map((t) => ({
 		s: t,
-		look: No(t, e.row.waits)
+		look: Po(t, e.row.waits)
 	})), a = r.filter((e) => e.status === "running").length, o = i.find(({ look: e }) => e.node === "awaiting_approval")?.look;
 	return /* @__PURE__ */ _("div", {
 		className: "kt-kpi kt-kpi-roles",
@@ -6762,9 +6765,9 @@ function Lo({ board: e, onCode: t, children: n }) {
 				className: "kt-role-dots",
 				children: i.map(({ s: e, look: n }) => {
 					let r = `kt-role-dot tone-${n.tone}${e.status === "running" ? " is-working" : ""}`, i = `${e.label}：${n.word}`, a = /* @__PURE__ */ g(J, {
-						role: Do[e.id],
+						role: Oo[e.id],
 						size: 15
-					}), o = Ao(e);
+					}), o = jo(e);
 					if (o) return /* @__PURE__ */ g("a", {
 						className: r,
 						href: o,
@@ -6774,7 +6777,7 @@ function Lo({ board: e, onCode: t, children: n }) {
 						"aria-label": `${i} ↗`,
 						children: a
 					}, e.id);
-					let s = ko(e.id, t);
+					let s = Ao(e.id, t);
 					return /* @__PURE__ */ g("button", {
 						type: "button",
 						className: r,
@@ -6799,11 +6802,11 @@ function Lo({ board: e, onCode: t, children: n }) {
 		]
 	});
 }
-var Ro = 5e3, zo = 1500;
-function Bo(e) {
+var zo = 5e3, Bo = 1500;
+function Vo(e) {
 	return e === "bounce" || e === "fail" ? "cross" : e === "pass" || e === "merge" ? "check" : "ring";
 }
-var Vo = class {
+var Ho = class {
 	now;
 	spreadMs;
 	base;
@@ -6861,7 +6864,7 @@ var Vo = class {
 			id: this.nextId++,
 			from: n.to,
 			travel: !1,
-			shape: Bo(n.tone),
+			shape: Vo(n.tone),
 			start: n.start + n.dur,
 			dur: 850
 		});
@@ -6883,8 +6886,8 @@ var Vo = class {
 		}
 		if (this.hiddenAt === null) return;
 		this.hiddenAt = null;
-		let n = this.queue.filter((e) => t - e.playAt > Ro);
-		this.dropped.expired += n.length, this.queue = this.queue.filter((e) => t - e.playAt <= Ro), this.active = this.active.filter((e) => t - e.start < e.dur);
+		let n = this.queue.filter((e) => t - e.playAt > zo);
+		this.dropped.expired += n.length, this.queue = this.queue.filter((e) => t - e.playAt <= zo), this.active = this.active.filter((e) => t - e.start < e.dur);
 	}
 	remember(e) {
 		this.seen.add(e), this.order.push(e), this.order.length > 2048 && this.seen.delete(this.order.shift());
@@ -6909,7 +6912,7 @@ var Vo = class {
 			...e,
 			id: this.nextId++,
 			start: t,
-			dur: o ? zo : 900,
+			dur: o ? Bo : 900,
 			count: 1,
 			travel: o
 		});
@@ -6918,7 +6921,7 @@ var Vo = class {
 		let n = e.filter((e) => e.prio < 3 && e.prio < t).sort((e, t) => e.prio - t.prio || e.start - t.start)[0];
 		return n ? (this.active = this.active.filter((e) => e !== n), this.dropped.admission++, !0) : t === 3;
 	}
-}, Ho = "http://www.w3.org/2000/svg", Uo = 9, Wo = 96, Go = (e) => typeof requestAnimationFrame == "function" ? requestAnimationFrame(e) : setTimeout(() => e(performance.now()), 16), Ko = (e) => typeof cancelAnimationFrame == "function" ? cancelAnimationFrame(e) : clearTimeout(e), qo = (e) => e < .5 ? 2 * e * e : 1 - (-2 * e + 2) ** 2 / 2, Jo = (e) => 1 - (1 - e) ** 3, Yo = (e) => e.toFixed(1), Xo = class {
+}, Uo = "http://www.w3.org/2000/svg", Wo = 9, Go = 96, Ko = (e) => typeof requestAnimationFrame == "function" ? requestAnimationFrame(e) : setTimeout(() => e(performance.now()), 16), qo = (e) => typeof cancelAnimationFrame == "function" ? cancelAnimationFrame(e) : clearTimeout(e), Jo = (e) => e < .5 ? 2 * e * e : 1 - (-2 * e + 2) ** 2 / 2, Yo = (e) => 1 - (1 - e) ** 3, Xo = (e) => e.toFixed(1), Zo = class {
 	group;
 	engine;
 	opts;
@@ -6933,38 +6936,38 @@ var Vo = class {
 		return this.handle !== null;
 	}
 	wake() {
-		!this.stopped && this.handle === null && this.engine.busy && (this.handle = (this.opts.raf ?? Go)(this.tick));
+		!this.stopped && this.handle === null && this.engine.busy && (this.handle = (this.opts.raf ?? Ko)(this.tick));
 	}
 	dispose() {
-		this.stopped = !0, this.handle !== null && (this.opts.caf ?? Ko)(this.handle), this.handle = null;
+		this.stopped = !0, this.handle !== null && (this.opts.caf ?? qo)(this.handle), this.handle = null;
 		for (let e of this.pool) e.remove();
 		this.pool.length = 0, this.routes.clear();
 	}
 	tick = () => {
 		this.handle = null;
 		let e = this.opts.perf ?? (() => performance.now()), t = e(), n = this.engine.frame(this.opts.now());
-		this.draw(n.particles), this.engine.report(e() - t), this.opts.onFrame?.(n), this.engine.busy && !this.stopped ? this.handle = (this.opts.raf ?? Go)(this.tick) : this.hideFrom(0);
+		this.draw(n.particles), this.engine.report(e() - t), this.opts.onFrame?.(n), this.engine.busy && !this.stopped ? this.handle = (this.opts.raf ?? Ko)(this.tick) : this.hideFrom(0);
 	};
 	shape(e) {
 		let t = this.pool[e];
 		if (t) return t;
-		let n = document.createElementNS(Ho, "g"), r = (e) => {
-			let t = document.createElementNS(Ho, "circle");
+		let n = document.createElementNS(Uo, "g"), r = (e) => {
+			let t = document.createElementNS(Uo, "circle");
 			return t.setAttribute("class", e), t;
 		}, i = (e, t) => {
-			let n = document.createElementNS(Ho, "path");
+			let n = document.createElementNS(Uo, "path");
 			return n.setAttribute("class", e), n.setAttribute("d", t), n;
 		}, a = (e) => {
-			let t = document.createElementNS(Ho, "polyline");
+			let t = document.createElementNS(Uo, "polyline");
 			return t.setAttribute("class", e), t;
-		}, o = document.createElementNS(Ho, "rect");
+		}, o = document.createElementNS(Uo, "rect");
 		o.setAttribute("class", "kt-p-ring");
-		let s = document.createElementNS(Ho, "text");
+		let s = document.createElementNS(Uo, "text");
 		return s.setAttribute("class", "kt-p-label"), s.setAttribute("text-anchor", "middle"), n.append(a("kt-p-tail-glow"), a("kt-p-tail"), r("kt-p-halo"), r("kt-p-head"), o, i("kt-p-cross", "M-6,-6 L6,6 M6,-6 L-6,6"), i("kt-p-check", "M-6,0 L-2,4.5 L6.5,-5"), s), this.group.appendChild(n), this.pool[e] = n, n;
 	}
 	route(e) {
 		if (this.routes.has(e.id)) return this.routes.get(e.id) ?? null;
-		let t = this.opts.path(e.from, e.to), n = t && t.length ? Ca(t) : null;
+		let t = this.opts.path(e.from, e.to), n = t && t.length ? wa(t) : null;
 		return this.routes.set(e.id, n), n;
 	}
 	draw(e) {
@@ -6975,17 +6978,17 @@ var Vo = class {
 				if (!e) continue;
 				let t = this.shape(n++);
 				this.mark(t, r);
-				let i = Math.min(1.8, 1 + .25 * (r.count - 1)) * (r.prio >= 3 ? 1.15 : 1), a = qo(r.p), o = wa(e, a), s = t.children, c = Math.min(a, Wo / Math.max(1, e.total)), l = [];
-				for (let t = 0; t <= Uo; t++) {
-					let n = wa(e, a - c + c * t / Uo);
-					l.push(`${Yo(n.x)},${Yo(n.y)}`);
+				let i = Math.min(1.8, 1 + .25 * (r.count - 1)) * (r.prio >= 3 ? 1.15 : 1), a = Jo(r.p), o = Ta(e, a), s = t.children, c = Math.min(a, Go / Math.max(1, e.total)), l = [];
+				for (let t = 0; t <= Wo; t++) {
+					let n = Ta(e, a - c + c * t / Wo);
+					l.push(`${Xo(n.x)},${Xo(n.y)}`);
 				}
 				let u = l.join(" ");
-				for (let e of [0, 1]) s[e].setAttribute("points", u), s[e].setAttribute("stroke-width", Yo((e === 0 ? 9 : 3.2) * i)), s[e].setAttribute("display", "inline");
-				Zo(s[2], o, 12 * i), Zo(s[3], o, 5.4 * i);
+				for (let e of [0, 1]) s[e].setAttribute("points", u), s[e].setAttribute("stroke-width", Xo((e === 0 ? 9 : 3.2) * i)), s[e].setAttribute("display", "inline");
+				Qo(s[2], o, 12 * i), Qo(s[3], o, 5.4 * i);
 				for (let e = 4; e < 7; e++) s[e].setAttribute("display", "none");
 				let d = s[7];
-				r.label ? (d.textContent !== r.label && (d.textContent = r.label), d.setAttribute("x", Yo(o.x)), d.setAttribute("y", Yo(o.y - 15 * i)), d.setAttribute("display", "inline")) : d.setAttribute("display", "none"), t.setAttribute("opacity", Yo(Math.min(1, r.p / .06, (1 - r.p) / .08 + .35)));
+				r.label ? (d.textContent !== r.label && (d.textContent = r.label), d.setAttribute("x", Xo(o.x)), d.setAttribute("y", Xo(o.y - 15 * i)), d.setAttribute("display", "inline")) : d.setAttribute("display", "none"), t.setAttribute("opacity", Xo(Math.min(1, r.p / .06, (1 - r.p) / .08 + .35)));
 				continue;
 			}
 			let e = this.opts.box(r.to);
@@ -7000,11 +7003,11 @@ var Vo = class {
 				3,
 				7
 			]) a[e].setAttribute("display", "none");
-			let o = Jo(r.p), s = (r.shape === "spark" ? 7 : 26) * Math.min(1.6, 1 + .2 * (r.count - 1)) * o, c = a[4];
-			c.setAttribute("x", Yo(e.x - e.w / 2 - s)), c.setAttribute("y", Yo(e.y - e.h / 2 - s)), c.setAttribute("width", Yo(e.w + 2 * s)), c.setAttribute("height", Yo(e.h + 2 * s)), c.setAttribute("rx", Yo(e.rx + s / 2)), c.setAttribute("stroke-width", Yo(r.shape === "spark" ? 2 : 4 - 2.5 * o)), c.setAttribute("display", "inline");
+			let o = Yo(r.p), s = (r.shape === "spark" ? 7 : 26) * Math.min(1.6, 1 + .2 * (r.count - 1)) * o, c = a[4];
+			c.setAttribute("x", Xo(e.x - e.w / 2 - s)), c.setAttribute("y", Xo(e.y - e.h / 2 - s)), c.setAttribute("width", Xo(e.w + 2 * s)), c.setAttribute("height", Xo(e.h + 2 * s)), c.setAttribute("rx", Xo(e.rx + s / 2)), c.setAttribute("stroke-width", Xo(r.shape === "spark" ? 2 : 4 - 2.5 * o)), c.setAttribute("display", "inline");
 			let l = r.shape === "cross" ? a[5] : r.shape === "check" ? a[6] : null;
 			for (let e of [5, 6]) a[e] !== l && a[e].setAttribute("display", "none");
-			l && (l.setAttribute("display", "inline"), l.setAttribute("transform", `translate(${Yo(e.x + e.w / 2 - 4)},${Yo(e.y - e.h / 2 - 6 - 10 * o)}) scale(${(1.7 - .5 * o).toFixed(2)})`)), i.setAttribute("opacity", Yo(1 - r.p * r.p));
+			l && (l.setAttribute("display", "inline"), l.setAttribute("transform", `translate(${Xo(e.x + e.w / 2 - 4)},${Xo(e.y - e.h / 2 - 6 - 10 * o)}) scale(${(1.7 - .5 * o).toFixed(2)})`)), i.setAttribute("opacity", Xo(1 - r.p * r.p));
 		}
 		for (let e of [...this.routes.keys()]) t.has(e) || this.routes.delete(e);
 		this.hideFrom(n);
@@ -7019,40 +7022,40 @@ var Vo = class {
 		}
 	}
 };
-function Zo(e, t, n) {
-	e.setAttribute("cx", Yo(t.x)), e.setAttribute("cy", Yo(t.y)), e.setAttribute("r", Yo(n)), e.setAttribute("display", "inline");
+function Qo(e, t, n) {
+	e.setAttribute("cx", Xo(t.x)), e.setAttribute("cy", Xo(t.y)), e.setAttribute("r", Xo(n)), e.setAttribute("display", "inline");
 }
 //#endregion
 //#region src/board/way.ts
-var Qo = /* @__PURE__ */ new Set([
+var $o = /* @__PURE__ */ new Set([
 	"IDEATION",
 	"REQUIREMENTS",
 	"DESIGN",
 	"INCEPTION"
 ]);
-function $o(e) {
+function es(e) {
 	if (e.status === "done" || e.status === "merged") return !0;
 	let t = xr(e);
-	return e.status === "awaiting_approval" && !!t && Qo.has(t.kind);
+	return e.status === "awaiting_approval" && !!t && $o.has(t.kind);
 }
-function es(e) {
-	let t = e.filter((e) => e.status !== "skipped"), n = t.filter((e) => e.status !== "waiting" && !$o(e));
+function ts(e) {
+	let t = e.filter((e) => e.status !== "skipped"), n = t.filter((e) => e.status !== "waiting" && !es(e));
 	return {
 		at: n[n.length - 1] ?? null,
 		next: t.find((e) => e.status === "waiting") ?? null
 	};
 }
-function ts(e) {
-	let t = e.nodes.filter((e) => e.status !== "skipped"), n = To(e.row, []).split(" · ").pop().startsWith("下一步：") ? t.findIndex((t) => t.stage === e.row.lean.next?.id && t.status === "waiting") : -1;
+function ns(e) {
+	let t = e.nodes.filter((e) => e.status !== "skipped"), n = Eo(e.row, []).split(" · ").pop().startsWith("下一步：") ? t.findIndex((t) => t.stage === e.row.lean.next?.id && t.status === "waiting") : -1;
 	if (n < 0) {
-		let { next: e } = es(t);
+		let { next: e } = ts(t);
 		return new Set(e ? [e.id] : []);
 	}
 	return new Set([...t.slice(0, n).filter((e) => e.stage === "review" && e.status === "waiting"), t[n]].map((e) => e.id));
 }
-var ns = (e) => e.outcome.kind === "passed" || e.outcome.kind === "failed";
-function rs(e) {
-	let t = e.find((e) => e.stage === "build-and-test")?.rounds.filter(ns) ?? [], n = t[t.length - 1];
+var rs = (e) => e.outcome.kind === "passed" || e.outcome.kind === "failed";
+function is(e) {
+	let t = e.find((e) => e.stage === "build-and-test")?.rounds.filter(rs) ?? [], n = t[t.length - 1];
 	if (!n) return {
 		passed: 0,
 		failed: 0,
@@ -7077,7 +7080,7 @@ function rs(e) {
 		tone: "ok"
 	};
 }
-function is(e) {
+function as(e) {
 	let t = e.checks.cells.filter((e) => e.group === "verify" && (e.status === "pass" || e.status === "fail")), n = t.filter((e) => e.status === "pass").length, r = t.length - n, i = e.steps?.find((e) => e.id === "verify")?.text;
 	return t.length ? {
 		passed: n,
@@ -7095,13 +7098,13 @@ function is(e) {
 }
 //#endregion
 //#region src/board/GraphFrame.tsx
-var as = 2400, os = () => `-${Math.round(performance.now() % as)}ms`;
-function ss(e) {
-	let [t] = c(os);
+var os = 2400, ss = () => `-${Math.round(performance.now() % os)}ms`;
+function cs(e) {
+	let [t] = c(ss);
 	return e ? void 0 : { animationDelay: t };
 }
-function cs({ w: e, h: t, reducedMotion: n }) {
-	let r = ss(n);
+function ls({ w: e, h: t, reducedMotion: n }) {
+	let r = cs(n);
 	return /* @__PURE__ */ g("rect", {
 		className: "kt-node-halo",
 		x: -e / 2 - 8,
@@ -7112,7 +7115,7 @@ function cs({ w: e, h: t, reducedMotion: n }) {
 		style: r
 	});
 }
-function ls({ minWidth: e, children: t }) {
+function us({ minWidth: e, children: t }) {
 	let r = s(null), [a, o] = c({
 		left: !1,
 		right: !1
@@ -7166,7 +7169,7 @@ function ls({ minWidth: e, children: t }) {
 		]
 	});
 }
-function us() {
+function ds() {
 	return /* @__PURE__ */ _("defs", { children: [
 		/* @__PURE__ */ g("pattern", {
 			id: "kt-dots",
@@ -7213,7 +7216,7 @@ function us() {
 		}, e))
 	] });
 }
-function ds({ board: e, mine: t, who: n }) {
+function fs({ board: e, mine: t, who: n }) {
 	let r = e.person, i = e.row.waits;
 	return /* @__PURE__ */ _("div", {
 		className: "kt-ncard-body",
@@ -7248,8 +7251,8 @@ function ds({ board: e, mine: t, who: n }) {
 		]
 	});
 }
-function fs({ board: e, at: t, flash: n }) {
-	let { passed: r, failed: i, total: a } = rs(e.nodes), o = t.r - 5, s = 2 * Math.PI * o, c = a ? r / a * s : 0, l = a ? i / a * s : 0;
+function ps({ board: e, at: t, flash: n }) {
+	let { passed: r, failed: i, total: a } = is(e.nodes), o = t.r - 5, s = 2 * Math.PI * o, c = a ? r / a * s : 0, l = a ? i / a * s : 0;
 	return /* @__PURE__ */ _("g", {
 		className: `kt-station is-${a ? i ? "fail" : r === a ? "pass" : "part" : "none"}`,
 		transform: `translate(${t.x},${t.y})`,
@@ -7298,12 +7301,12 @@ function fs({ board: e, at: t, flash: n }) {
 		]
 	});
 }
-function ps(e, t, r, a) {
-	let c = o(() => new Vo({
+function ms(e, t, r, a) {
+	let c = o(() => new Ho({
 		now: () => performance.now(),
 		reducedMotion: e
-	}), [e]), l = s(null), u = Xi(r), d = Xi(a), f = n((t) => {
-		l.current?.dispose(), l.current = t && !e ? new Xo(t, c, {
+	}), [e]), l = s(null), u = Zi(r), d = Zi(a), f = n((t) => {
+		l.current?.dispose(), l.current = t && !e ? new Zo(t, c, {
 			path: (e, t) => u.current(e, t),
 			box: (e) => d.current(e),
 			now: () => performance.now()
@@ -7325,7 +7328,7 @@ function ps(e, t, r, a) {
 		return document.addEventListener("visibilitychange", e), () => document.removeEventListener("visibilitychange", e);
 	}, [c]), i(() => () => l.current?.dispose(), []), f;
 }
-function ms() {
+function hs() {
 	let [e, t] = c(null), r = s(null), a = n((e, n) => {
 		r.current && clearTimeout(r.current), r.current = setTimeout(() => t(e), n);
 	}, []);
@@ -7339,9 +7342,9 @@ function ms() {
 }
 //#endregion
 //#region src/board/FastSteps.tsx
-var hs = 44, gs = 28;
-function _s({ steps: e, waits: t, reducedMotion: n, onCode: r }) {
-	let i = 56 + e.length * 184 + (e.length - 1) * hs, a = (e) => gs + 92 + e * (184 + hs), o = gs + 40, s = e.map((e) => No(e, t)), c = (t) => e.filter((e) => e.status === t).length, l = s.find((e) => e.node === "awaiting_approval"), u = [
+var gs = 44, _s = 28;
+function vs({ steps: e, waits: t, reducedMotion: n, onCode: r }) {
+	let i = 56 + e.length * 184 + (e.length - 1) * gs, a = (e) => _s + 92 + e * (184 + gs), o = _s + 40, s = e.map((e) => Po(e, t)), c = (t) => e.filter((e) => e.status === t).length, l = s.find((e) => e.node === "awaiting_approval"), u = [
 		`快速需求的路：${e.length} 步，${c("done")} 步做完`,
 		c("running") ? `${c("running")} 步在做` : "",
 		c("failed") ? `${c("failed")} 步没过` : "",
@@ -7350,15 +7353,15 @@ function _s({ steps: e, waits: t, reducedMotion: n, onCode: r }) {
 	return /* @__PURE__ */ g("div", {
 		className: "kt-graph is-stages br-graph",
 		"data-testid": "br-fast-steps",
-		children: /* @__PURE__ */ g(ls, {
-			minWidth: Math.floor(i * Ea),
+		children: /* @__PURE__ */ g(us, {
+			minWidth: Math.floor(i * Da),
 			children: /* @__PURE__ */ _("svg", {
 				className: "kt-graph-svg",
 				viewBox: `0 0 ${i} 136`,
 				role: "group",
 				"aria-label": `${u}。`,
 				children: [
-					/* @__PURE__ */ g(us, {}),
+					/* @__PURE__ */ g(ds, {}),
 					/* @__PURE__ */ g("rect", {
 						className: "kt-g-bg",
 						x: 0,
@@ -7382,13 +7385,13 @@ function _s({ steps: e, waits: t, reducedMotion: n, onCode: r }) {
 					}),
 					/* @__PURE__ */ g("g", {
 						className: "kt-nodes",
-						children: e.map((e, t) => /* @__PURE__ */ g(vs, {
+						children: e.map((e, t) => /* @__PURE__ */ g(ys, {
 							s: e,
 							look: s[t],
 							x: a(t),
 							y: o,
 							reducedMotion: n,
-							go: ko(e.id, r)
+							go: Ao(e.id, r)
 						}, e.id))
 					})
 				]
@@ -7396,12 +7399,12 @@ function _s({ steps: e, waits: t, reducedMotion: n, onCode: r }) {
 		})
 	});
 }
-function vs({ s: e, look: t, x: n, y: r, reducedMotion: i, go: a }) {
+function ys({ s: e, look: t, x: n, y: r, reducedMotion: i, go: a }) {
 	let o = t.node === "merged", s = e.status === "failed", c = `${e.status === "done" ? "✓ " : s ? "✕ " : ""}${t.word}`, l = [
 		`${e.label}：${t.word}`,
 		e.text,
 		e.at ? Zn(e.at) : ""
-	].filter(Boolean).join("，"), u = Ao(e), d = u ? {} : a ? {
+	].filter(Boolean).join("，"), u = jo(e), d = u ? {} : a ? {
 		role: "button",
 		tabIndex: 0,
 		"aria-label": l,
@@ -7420,7 +7423,7 @@ function vs({ s: e, look: t, x: n, y: r, reducedMotion: i, go: a }) {
 		...d,
 		children: [
 			/* @__PURE__ */ g("title", { children: l }),
-			(e.status === "running" || t.node === "awaiting_approval" && !t.other) && /* @__PURE__ */ g(cs, {
+			(e.status === "running" || t.node === "awaiting_approval" && !t.other) && /* @__PURE__ */ g(ls, {
 				w: 184,
 				h: 80,
 				reducedMotion: i
@@ -7446,7 +7449,7 @@ function vs({ s: e, look: t, x: n, y: r, reducedMotion: i, go: a }) {
 				r: 27
 			}),
 			/* @__PURE__ */ g(Fe, {
-				role: Do[e.id],
+				role: Oo[e.id],
 				cx: -59,
 				cy: 0,
 				size: 24,
@@ -7498,7 +7501,7 @@ function vs({ s: e, look: t, x: n, y: r, reducedMotion: i, go: a }) {
 		children: f
 	}) : f;
 }
-var ys = ["label_handoff", "redo_handoff"], bs = {
+var bs = ["label_handoff", "redo_handoff"], xs = {
 	handed: {
 		cls: "is-ok",
 		glyph: "✓"
@@ -7524,12 +7527,12 @@ var ys = ["label_handoff", "redo_handoff"], bs = {
 		glyph: "✕"
 	}
 };
-function xs(e, t) {
+function Ss(e, t) {
 	let n = e.row;
-	return !wo(n, "handoff") || t || !n.worktree || !e.run || n.family?.role === "child" ? !1 : n.state === "local" || ys.includes(n.waits.do ?? "none");
+	return !To(n, "handoff") || t || !n.worktree || !e.run || n.family?.role === "child" ? !1 : n.state === "local" || bs.includes(n.waits.do ?? "none");
 }
-function Ss({ x: e, repo: t, reqKey: n, localOnly: r, onDone: i }) {
-	let a = u(), o = I(() => a.post(D.handoff(t, n), {})), [s, l] = c(!1), d = xs(e, r), f = e.sessions.some((e) => e.kind === "local" && e.busy);
+function Cs({ x: e, repo: t, reqKey: n, localOnly: r, onDone: i }) {
+	let a = u(), o = I(() => a.post(D.handoff(t, n), {})), [s, l] = c(!1), d = Ss(e, r), f = e.sessions.some((e) => e.kind === "local" && e.busy);
 	if (!d && !o.result && !o.error && !o.busy) return null;
 	let p = async () => {
 		l(!1), await o.run(), i();
@@ -7539,7 +7542,7 @@ function Ss({ x: e, repo: t, reqKey: n, localOnly: r, onDone: i }) {
 		"aria-label": "交接",
 		"data-testid": "handover",
 		children: [
-			/* @__PURE__ */ g("style", { children: ws }),
+			/* @__PURE__ */ g("style", { children: Ts }),
 			/* @__PURE__ */ _("div", {
 				className: "br-row",
 				children: [
@@ -7600,7 +7603,7 @@ function Ss({ x: e, repo: t, reqKey: n, localOnly: r, onDone: i }) {
 				role: "status",
 				children: "正在交接：提交、推送，等 GitLab 记下这次推送，再加交接标签。一般一两分钟。"
 			}),
-			o.result && !o.busy && /* @__PURE__ */ g(Cs, {
+			o.result && !o.busy && /* @__PURE__ */ g(ws, {
 				r: o.result,
 				onClose: o.reset
 			}),
@@ -7612,8 +7615,8 @@ function Ss({ x: e, repo: t, reqKey: n, localOnly: r, onDone: i }) {
 		]
 	});
 }
-function Cs({ r: e, onClose: t }) {
-	let n = bs[e.state] ?? bs.failed, r = e.mr?.url && /^https?:\/\//i.test(e.mr.url) ? e.mr.url : null;
+function ws({ r: e, onClose: t }) {
+	let n = xs[e.state] ?? xs.failed, r = e.mr?.url && /^https?:\/\//i.test(e.mr.url) ? e.mr.url : null;
 	return /* @__PURE__ */ _("div", {
 		className: `br-hand-out ${n.cls}`,
 		"data-testid": "handover-result",
@@ -7678,21 +7681,21 @@ function Cs({ r: e, onClose: t }) {
 		]
 	});
 }
-var ws = "\n.br-hand { display: grid; gap: 10px; }\n.br-hand .kt-btn { display: inline-flex; align-items: center; gap: 6px; }\n.br-hand .kt-btn:disabled { cursor: not-allowed; opacity: .55; }\n.br-hand a.kt-btn { text-decoration: none; }\n.br-hand .br-confirm p { margin: 0; }\n.br-hand-out { display: grid; gap: 8px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--kt-glass); min-width: 0; }\n.br-hand-out.is-ok { border-color: var(--kit-ok); background: color-mix(in srgb, var(--kt-ok) 7%, var(--card)); }\n.br-hand-out.is-bad { border-color: var(--kit-bad); background: color-mix(in srgb, var(--kt-bad) 7%, var(--card)); }\n.br-hand-out.is-warn { border-color: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); background: color-mix(in srgb, var(--kt-warn) 7%, var(--card)); }\n.br-hand-out p { margin: 0; }\n.br-hand-verdict { display: flex; align-items: center; gap: 8px; color: var(--text-strong); }\n.br-hand-verdict b { font-weight: 800; }\n.br-hand-verdict i { font-style: normal; flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; font-size: .8em; font-weight: 900;\n  color: #fff; background: var(--kt-ok-solid); }\n.br-hand-out.is-bad .br-hand-verdict i { background: var(--kt-bad-solid); }\n.br-hand-out.is-warn .br-hand-verdict i { background: var(--kt-warn); color: var(--kt-on); }\n.br-hand-out .br-raw pre { max-height: 16em; overflow: auto; }\n", Ts = "以后按 Lean 走：同一个分支，写好的代码留着。", Es = {
+var Ts = "\n.br-hand { display: grid; gap: 10px; }\n.br-hand .kt-btn { display: inline-flex; align-items: center; gap: 6px; }\n.br-hand .kt-btn:disabled { cursor: not-allowed; opacity: .55; }\n.br-hand a.kt-btn { text-decoration: none; }\n.br-hand .br-confirm p { margin: 0; }\n.br-hand-out { display: grid; gap: 8px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--kt-glass); min-width: 0; }\n.br-hand-out.is-ok { border-color: var(--kit-ok); background: color-mix(in srgb, var(--kt-ok) 7%, var(--card)); }\n.br-hand-out.is-bad { border-color: var(--kit-bad); background: color-mix(in srgb, var(--kt-bad) 7%, var(--card)); }\n.br-hand-out.is-warn { border-color: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); background: color-mix(in srgb, var(--kt-warn) 7%, var(--card)); }\n.br-hand-out p { margin: 0; }\n.br-hand-verdict { display: flex; align-items: center; gap: 8px; color: var(--text-strong); }\n.br-hand-verdict b { font-weight: 800; }\n.br-hand-verdict i { font-style: normal; flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; font-size: .8em; font-weight: 900;\n  color: #fff; background: var(--kt-ok-solid); }\n.br-hand-out.is-bad .br-hand-verdict i { background: var(--kt-bad-solid); }\n.br-hand-out.is-warn .br-hand-verdict i { background: var(--kt-warn); color: var(--kt-on); }\n.br-hand-out .br-raw pre { max-height: 16em; overflow: auto; }\n", Es = "以后按 Lean 走：同一个分支，写好的代码留着。", Ds = {
 	mr: "正在推送，开 MR。一般几秒到一分钟。",
 	full: "正在转完整流程：建 Lean 的需求记录，提交。"
-}, Ds = {
+}, Os = {
 	mr: X.openMr,
 	full: X.toFull
-}, Os = {
+}, ks = {
 	open_mr: "mr",
 	full: "full"
 };
-function ks(e, t, n) {
-	return !e.worktree || !t || e.state === "merged" || e.state === "closed" ? [] : ["mr", "full"].filter((t) => wo(e, t) && !(t === "mr" && n));
+function As(e, t, n) {
+	return !e.worktree || !t || e.state === "merged" || e.state === "closed" ? [] : ["mr", "full"].filter((t) => To(e, t) && !(t === "mr" && n));
 }
-var As = (e, t) => e.find((e) => e === Os[t ?? "none"]), js = (e) => e.some((e) => e.kind === "local" && e.busy);
-function Ms(e, t, n) {
+var js = (e, t) => e.find((e) => e === ks[t ?? "none"]), Ms = (e) => e.some((e) => e.kind === "local" && e.busy);
+function Ns(e, t, n) {
 	let r = u(), i = I((n) => r.post(D.act(e, t, n), {})), [a, o] = c(!1), [s, l] = c("mr"), d = async (e) => {
 		o(!1), l(e), await i.run(e), n();
 	};
@@ -7707,7 +7710,7 @@ function Ms(e, t, n) {
 		cancel: () => o(!1)
 	};
 }
-function Ns({ f: e, offers: t, lead: n, busy: r }) {
+function Ps({ f: e, offers: t, lead: n, busy: r }) {
 	return e.asking || e.act.busy ? null : /* @__PURE__ */ g(h, { children: t.map((t) => /* @__PURE__ */ _("button", {
 		type: "button",
 		className: `kt-btn br-act${t === n ? " is-primary" : ""}`,
@@ -7716,10 +7719,10 @@ function Ns({ f: e, offers: t, lead: n, busy: r }) {
 		children: [/* @__PURE__ */ g(J, {
 			role: t === "mr" ? "pr" : "req",
 			size: 15
-		}), Ds[t]]
+		}), Os[t]]
 	}, t)) });
 }
-function Ps({ f: e, offers: t, lead: n, busy: r, className: i, children: a }) {
+function Fs({ f: e, offers: t, lead: n, busy: r, className: i, children: a }) {
 	let { act: o, asking: s, sent: c } = e, l = t.length > 0 && r && !o.busy;
 	return !l && !s && !o.busy && !o.result && !o.error ? null : /* @__PURE__ */ _("div", {
 		className: i,
@@ -7731,7 +7734,7 @@ function Ps({ f: e, offers: t, lead: n, busy: r, className: i, children: a }) {
 				role: "status",
 				children: [
 					"AI 正在会话里做事：等它停下再",
-					Ds[n],
+					Os[n],
 					"。"
 				]
 			}),
@@ -7757,9 +7760,9 @@ function Ps({ f: e, offers: t, lead: n, busy: r, className: i, children: a }) {
 			o.busy && /* @__PURE__ */ g("p", {
 				className: "br-loading",
 				role: "status",
-				children: Es[c]
+				children: Ds[c]
 			}),
-			o.result && !o.busy && /* @__PURE__ */ g(Is, {
+			o.result && !o.busy && /* @__PURE__ */ g(Ls, {
 				r: o.result,
 				onClose: o.reset
 			}),
@@ -7771,32 +7774,32 @@ function Ps({ f: e, offers: t, lead: n, busy: r, className: i, children: a }) {
 		]
 	});
 }
-function Fs({ x: e, repo: t, reqKey: n, localOnly: r, onDone: i }) {
-	let a = Ms(t, n, i), o = ks(e.row, !!e.run, r);
+function Is({ x: e, repo: t, reqKey: n, localOnly: r, onDone: i }) {
+	let a = Ns(t, n, i), o = As(e.row, !!e.run, r);
 	if (!o.length && !a.act.result && !a.act.error && !a.act.busy) return null;
-	let s = js(e.sessions), c = As(o, e.row.waits.do) ?? o[0] ?? a.sent, l = e.row.mr, u = c === "full" ? Ts : l ? `MR !${l.iid} 开着：又提交了的话，再点「${X.openMr}」推上去。` : /* @__PURE__ */ _(h, { children: [
+	let s = Ms(e.sessions), c = js(o, e.row.waits.do) ?? o[0] ?? a.sent, l = e.row.mr, u = c === "full" ? Es : l ? `MR !${l.iid} 开着：又提交了的话，再点「${X.openMr}」推上去。` : /* @__PURE__ */ _(h, { children: [
 		"会把分支 ",
 		/* @__PURE__ */ g("code", { children: e.row.branch ?? e.run?.branch }),
 		" 推到远端，在 GitLab 上开 MR：CI 照跑，人来审、合并，不交给运行机。"
 	] });
 	return /* @__PURE__ */ _("section", {
 		className: "cto-card br-hand",
-		"aria-label": Ds[c],
+		"aria-label": Os[c],
 		"data-testid": "fast-acts",
 		children: [
-			/* @__PURE__ */ g("style", { children: ws }),
+			/* @__PURE__ */ g("style", { children: Ts }),
 			/* @__PURE__ */ _("div", {
 				className: "br-row",
 				children: [
 					/* @__PURE__ */ _("div", {
 						className: "cto-chart-head",
-						children: [/* @__PURE__ */ g("h3", { children: Ds[c] }), /* @__PURE__ */ g("span", {
+						children: [/* @__PURE__ */ g("h3", { children: Os[c] }), /* @__PURE__ */ g("span", {
 							className: "cto-dim",
-							children: o.length ? u : `${Ds[a.sent]}的结果`
+							children: o.length ? u : `${Os[a.sent]}的结果`
 						})]
 					}),
 					/* @__PURE__ */ g("span", { className: "br-grow" }),
-					/* @__PURE__ */ g(Ns, {
+					/* @__PURE__ */ g(Ps, {
 						f: a,
 						offers: o,
 						lead: c,
@@ -7804,7 +7807,7 @@ function Fs({ x: e, repo: t, reqKey: n, localOnly: r, onDone: i }) {
 					})
 				]
 			}),
-			/* @__PURE__ */ g(Ps, {
+			/* @__PURE__ */ g(Fs, {
 				f: a,
 				offers: o,
 				lead: c,
@@ -7814,7 +7817,7 @@ function Fs({ x: e, repo: t, reqKey: n, localOnly: r, onDone: i }) {
 		]
 	});
 }
-function Is({ r: e, onClose: t }) {
+function Ls({ r: e, onClose: t }) {
 	return /* @__PURE__ */ _("div", {
 		className: `br-hand-out ${e.ok ? "is-ok" : "is-bad"}`,
 		"data-testid": "act-result",
@@ -7834,7 +7837,7 @@ function Is({ r: e, onClose: t }) {
 				children: e
 			}, t)),
 			e.action === "full" && e.ok && /* @__PURE__ */ g("p", { children: e.told ? "会话正空着：已经跟它说了以后按 Lean 走。" : "会话在忙，或者没开着：在会话里跟它说一声以后按 Lean 走，或者开一个新会话。" }),
-			/* @__PURE__ */ g(Ls, { r: e }),
+			/* @__PURE__ */ g(Rs, { r: e }),
 			/* @__PURE__ */ _("div", {
 				className: "br-row",
 				children: [/* @__PURE__ */ g("span", { className: "br-grow" }), /* @__PURE__ */ g("button", {
@@ -7851,7 +7854,7 @@ function Is({ r: e, onClose: t }) {
 		]
 	});
 }
-function Ls({ r: e }) {
+function Rs({ r: e }) {
 	let [t, n] = c("");
 	if (e.mr) return /* @__PURE__ */ g("p", { children: /* @__PURE__ */ _($, {
 		href: e.mr.url,
@@ -7902,13 +7905,13 @@ function Ls({ r: e }) {
 }
 //#endregion
 //#region src/board/next.ts
-var Rs = (e) => vt(e) && e.answerable_here && !e.lean_request, zs = (e) => /审查/.test(e) && /新会话/.test(e), Bs = `${X.review}会把 Lean 的审查要求发给新会话`, Vs = (e) => e.review ?? zs(e.text);
-function Hs(e) {
+var zs = (e) => vt(e) && e.answerable_here && !e.lean_request, Bs = (e) => /审查/.test(e) && /新会话/.test(e), Vs = `${X.review}会把 Lean 的审查要求发给新会话`, Hs = (e) => e.review ?? Bs(e.text);
+function Us(e) {
 	let t = e.row.state;
 	return t === "claimed" ? "start" : t === "rejected" ? "redo_handoff" : t === "acceptance" ? "accept" : t === "parked" ? "answer" : e.runs.find((e) => e.now.who === "you" && e.now.do)?.now.do || (e.accept.step.line || e.nodes.some((e) => xr(e)?.line) ? "approve" : t === "merged" && e.nodes.find((e) => e.id === "reflect")?.status === "awaiting_approval" ? "write_back" : t === "local" && e.row.waits.who === "you" ? "reply" : "none");
 }
-var Us = (e) => e.row.waits.do ?? Hs(e);
-function Ws(e) {
+var Ws = (e) => e.row.waits.do ?? Us(e);
+function Gs(e) {
 	let t = e.row.waits, n = t.who === "you", r = e.accept.step.mr_url ?? e.row.mr?.url ?? null, i = e.runs.filter((e) => e.now.status === "awaiting_approval"), a = t.since === void 0 ? i.map((e) => e.now.since).filter((e) => e !== null).sort((e, t) => e - t)[0] ?? null : t.since;
 	if (!n) return {
 		who: t.who,
@@ -7920,14 +7923,14 @@ function Ws(e) {
 	};
 	let o = [];
 	e.questions.forEach((e, t) => {
-		Rs(e) && o.push({
+		zs(e) && o.push({
 			id: `q-${e.id ?? t}`,
 			do: "answer",
 			text: e.question,
 			question: e
 		});
 	});
-	let s = e.accept.step, c = Us(e), l = s.text || t.text;
+	let s = e.accept.step, c = Ws(e), l = s.text || t.text;
 	if (l && c !== "none" && c !== "watch") {
 		let e = {
 			id: "main",
@@ -7935,7 +7938,7 @@ function Ws(e) {
 			text: l,
 			line: s.line
 		};
-		c === "reply" && Vs(t) && Object.assign(e, {
+		c === "reply" && Hs(t) && Object.assign(e, {
 			text: t.text,
 			line: null
 		}), c === "redo_handoff" && (e.why = t.text.replace(/^接手被拒[：:]\s*/, ""), e.text = l.split("\n").filter((e) => !e.startsWith("接手被拒")).join("\n") || l), c === "answer" && o.some((e) => e.question) && (e.text = ""), e.text && o.push(e);
@@ -7963,19 +7966,19 @@ function Ws(e) {
 		mr: r
 	};
 }
-function Gs(e, t = !1) {
-	return Rr(e) && !t ? Ws(e).steps.length : e.runs.filter((e) => e.now.status === "awaiting_approval").length;
+function Ks(e, t = !1) {
+	return Rr(e) && !t ? Gs(e).steps.length : e.runs.filter((e) => e.now.status === "awaiting_approval").length;
 }
 //#endregion
 //#region src/board/NextStep.tsx
-function Ks({ board: e, repo: t, reqKey: n, onDetail: r, onActed: i }) {
-	let a = Ws(e), o = oa(), s = Ms(t, n, i), c = e.row.state, l = a.mine ? As(ks(e.row, c !== "claimed", zr(e)), a.steps[0]?.do) : void 0, u = l ? [l] : [], d = js(e.sessions), f = /* @__PURE__ */ g(Ps, {
+function qs({ board: e, repo: t, reqKey: n, onDetail: r, onActed: i }) {
+	let a = Gs(e), o = sa(), s = Ns(t, n, i), c = e.row.state, l = a.mine ? js(As(e.row, c !== "claimed", zr(e)), a.steps[0]?.do) : void 0, u = l ? [l] : [], d = Ms(e.sessions), f = /* @__PURE__ */ g(Fs, {
 		f: s,
 		offers: u,
 		lead: l ?? s.sent,
 		busy: d,
 		className: "br-hand",
-		children: /* @__PURE__ */ g("style", { children: ws })
+		children: /* @__PURE__ */ g("style", { children: Ts })
 	});
 	return a.mine ? a.steps.length ? /* @__PURE__ */ _(h, { children: [/* @__PURE__ */ _("section", {
 		id: "br-next",
@@ -7993,8 +7996,8 @@ function Ks({ board: e, repo: t, reqKey: n, onDetail: r, onActed: i }) {
 			/* @__PURE__ */ g("span", {
 				className: "br-next-text br-strong",
 				"data-testid": "br-next-text",
-				title: qs(a.steps[0]),
-				children: qs(a.steps[0])
+				title: Js(a.steps[0]),
+				children: Js(a.steps[0])
 			}),
 			a.steps.length > 1 && /* @__PURE__ */ _("span", {
 				className: "kt-pill tone-approve",
@@ -8008,7 +8011,7 @@ function Ks({ board: e, repo: t, reqKey: n, onDetail: r, onActed: i }) {
 				className: "kt-dim",
 				children: ["已经等了 ", qn(o - a.since)]
 			}),
-			l && /* @__PURE__ */ g(Ns, {
+			l && /* @__PURE__ */ g(Ps, {
 				f: s,
 				offers: u,
 				lead: l,
@@ -8039,20 +8042,20 @@ function Ks({ board: e, repo: t, reqKey: n, onDetail: r, onActed: i }) {
 		]
 	}), f] });
 }
-function qs(e) {
+function Js(e) {
 	return e.question ? `回答：${e.question.question}` : e.why ? `接手被拒：${e.why}` : e.text.split("\n")[0];
 }
 //#endregion
 //#region src/board/picker.ts
-var Js = /* @__PURE__ */ new Set(["review", "reflect"]), Ys = { runner: "brain-run" }, Xs = /* @__PURE__ */ new Set([
+var Ys = /* @__PURE__ */ new Set(["review", "reflect"]), Xs = { runner: "brain-run" }, Zs = /* @__PURE__ */ new Set([
 	"done",
 	"merged",
 	"skipped"
-]), Zs = (e) => (t) => e === "all" || t.run === e, Qs = (e, t) => t === "all" || e.rounds.some(Zs(t));
-function $s(e, t) {
+]), Qs = (e) => (t) => e === "all" || t.run === e, $s = (e, t) => t === "all" || e.rounds.some(Qs(t));
+function ec(e, t) {
 	return t === "all" ? null : e.runs.find((e) => e.key === t) ?? null;
 }
-function ec(e, t) {
+function tc(e, t) {
 	let n = /* @__PURE__ */ new Map();
 	for (let r of e.nodes) {
 		let e = r.rounds.filter((e) => e.run === t && e.outcome.kind !== "skipped").length;
@@ -8063,16 +8066,16 @@ function ec(e, t) {
 		rounds: t
 	}));
 }
-function tc(e, t) {
+function nc(e, t) {
 	let n = e.now.node ? xr(t.nodes.find((t) => t.id === e.now.node) ?? { gates: [] }) : null;
 	return n ? Er(n, t) : e.now.doing || Bn(e.now.status).label;
 }
-function nc(e, t) {
+function rc(e, t) {
 	let n = new Map(e.phases.map((e) => [e.key, e.title.split(" · ")[0]])), r = new Set(e.nodes.filter((e) => e.rounds.some((e) => e.run === t && e.outcome.kind !== "skipped")).map((e) => e.phase));
 	return e.phases.filter((e) => r.has(e.key)).map((e) => n.get(e.key) ?? e.key);
 }
-function rc(e) {
-	let t = e.runs.map((t, n) => `${_r(t, e)}${n ? "接着" : ""}做${nc(e, t.key).join("、") || "准备"}`), n = [{
+function ic(e) {
+	let t = e.runs.map((t, n) => `${_r(t, e)}${n ? "接着" : ""}做${rc(e, t.key).join("、") || "准备"}`), n = [{
 		key: "all",
 		icon: "list",
 		title: "全部",
@@ -8080,16 +8083,16 @@ function rc(e) {
 		sub: `需求的整条路${t.length > 1 ? `：${t.join("，")}` : ""}`
 	}];
 	for (let t of e.runs) {
-		let r = ec(e, t.key), i = e.nodes.flatMap((e) => e.rounds.filter((e) => e.run === t.key)), a = Math.min(...i.map((e) => e.started)), o = Math.max(...i.map((e) => e.ended ?? e.started)), s = i.length ? Xs.has(t.now.status) ? `${Pr(a, e.at)}–${Pr(o, e.at).slice(-5)}` : `${Pr(a, e.at)} 起` : "", c = r.map((e) => e.rounds > 1 ? `${e.title} ${e.rounds} 轮` : e.title).join("、");
+		let r = tc(e, t.key), i = e.nodes.flatMap((e) => e.rounds.filter((e) => e.run === t.key)), a = Math.min(...i.map((e) => e.started)), o = Math.max(...i.map((e) => e.ended ?? e.started)), s = i.length ? Zs.has(t.now.status) ? `${Pr(a, e.at)}–${Pr(o, e.at).slice(-5)}` : `${Pr(a, e.at)} 起` : "", c = r.map((e) => e.rounds > 1 ? `${e.title} ${e.rounds} 轮` : e.title).join("、");
 		n.push({
 			key: t.key,
 			icon: vr[t.kind],
-			title: [t.label, t.run_id ?? (yr(t)?.agent || Ys[t.kind])].filter(Boolean).join(" · "),
+			title: [t.label, t.run_id ?? (yr(t)?.agent || Xs[t.kind])].filter(Boolean).join(" · "),
 			count: r.length ? `${r.length} 个阶段` : "还没有阶段",
 			sub: [
 				s,
 				c,
-				tc(t, e)
+				nc(t, e)
 			].filter(Boolean).join(" · ")
 		});
 	}
@@ -8109,9 +8112,9 @@ function rc(e) {
 	});
 	return n;
 }
-function ic(e, t) {
+function ac(e, t) {
 	if (t === "all") return e;
-	let n = Zs(t), r = e.nodes.map((t) => {
+	let n = Qs(t), r = e.nodes.map((t) => {
 		let r = t.rounds.filter(n);
 		if (r.length === t.rounds.length) return t;
 		let i = (e) => r.some((t) => e >= t.started && (t.ended === null || e <= t.ended)), a = new Set(r.flatMap((e) => e.commits)), o = new Set(e.belt.filter((e) => e.node === t.id && a.has(e.sha)).map((e) => e.at));
@@ -8143,20 +8146,20 @@ function ic(e, t) {
 		decisions: []
 	};
 }
-function ac(e) {
-	let t = e.nodes.filter((e) => e.rounds.length > 0 && !Js.has(e.stage)), n = new Map(e.phases.map((e) => [e.key, e.title.split(" · ")[0]])), r = [...new Set(t.map((e) => e.phase))].filter((e) => t.every((t) => t.phase !== e || t.status === "skipped")), i = t.filter((e) => !r.includes(e.phase)), a = /* @__PURE__ */ new Map();
+function oc(e) {
+	let t = e.nodes.filter((e) => e.rounds.length > 0 && !Ys.has(e.stage)), n = new Map(e.phases.map((e) => [e.key, e.title.split(" · ")[0]])), r = [...new Set(t.map((e) => e.phase))].filter((e) => t.every((t) => t.phase !== e || t.status === "skipped")), i = t.filter((e) => !r.includes(e.phase)), a = /* @__PURE__ */ new Map();
 	for (let e of i) a.set(e.stage, [...a.get(e.stage) ?? [], e]);
 	let o = [...a.values()];
 	return {
-		done: o.filter((e) => e.every($o)).length,
+		done: o.filter((e) => e.every(es)).length,
 		skipped: o.filter((e) => e.every((e) => e.status === "skipped")).length,
 		total: o.length,
-		at: es(t).at,
+		at: ts(t).at,
 		whole: r.map((e) => n.get(e) ?? e)
 	};
 }
-var oc = (e) => e.rounds[e.rounds.length - 1], sc = (e) => e === "done" || e === "merged", cc = (e) => e.nodes.filter((e) => e.status !== "skipped" && e.rounds.length > 0);
-function lc(e) {
+var sc = (e) => e.rounds[e.rounds.length - 1], cc = (e) => e === "done" || e === "merged", lc = (e) => e.nodes.filter((e) => e.status !== "skipped" && e.rounds.length > 0);
+function uc(e) {
 	let t = /* @__PURE__ */ new Map();
 	for (let n of e) {
 		let e = xr(n);
@@ -8164,18 +8167,18 @@ function lc(e) {
 	}
 	return new Set(t.values());
 }
-function uc({ board: e, focus: t, bumps: n, onNode: r, quiet: i = !1, onOutputs: a }) {
-	let o = hc(e, oa()), s = new Map(e.runs.map((e) => [e.key, e])), c = cc(e), l = lc(c);
+function dc({ board: e, focus: t, bumps: n, onNode: r, quiet: i = !1, onOutputs: a }) {
+	let o = gc(e, sa()), s = new Map(e.runs.map((e) => [e.key, e])), c = lc(e), l = uc(c);
 	return /* @__PURE__ */ _("section", {
 		className: "kt-lanes",
 		"aria-label": "每一步的泳道",
 		"data-testid": "kt-lanes",
 		children: [
-			/* @__PURE__ */ g(gc, {
+			/* @__PURE__ */ g(_c, {
 				board: e,
 				ax: o
 			}),
-			c.map((c) => /* @__PURE__ */ g(yc, {
+			c.map((c) => /* @__PURE__ */ g(bc, {
 				n: c,
 				run: s.get(c.run ?? ""),
 				runs: s,
@@ -8197,7 +8200,7 @@ function uc({ board: e, focus: t, bumps: n, onNode: r, quiet: i = !1, onOutputs:
 		]
 	});
 }
-function dc(e) {
+function fc(e) {
 	let t = [
 		60,
 		300,
@@ -8214,7 +8217,7 @@ function dc(e) {
 	for (let r = 0; r <= e + 1e-6; r += t) n.push(r);
 	return n;
 }
-function fc(e) {
+function pc(e) {
 	if (e <= 0) return "0";
 	if (e < 3600) return `${Math.round(e / 60)} 分`;
 	if (e < 86400) {
@@ -8224,7 +8227,7 @@ function fc(e) {
 	let t = Math.floor(e / 86400), n = Math.round(e % 86400 / 3600);
 	return n ? `${t} 天 ${n} 时` : `${t} 天`;
 }
-function pc(e) {
+function mc(e) {
 	let t = [...e.events.map((e) => e.at), ...e.belt.map((e) => e.at)];
 	for (let n of e.nodes) {
 		for (let e of n.marks) t.push(e.at);
@@ -8232,7 +8235,7 @@ function pc(e) {
 	}
 	return t.length ? Math.max(...t) : null;
 }
-function mc(e) {
+function hc(e) {
 	let t = e.events.find((e) => e.kind === "start");
 	if (t) return {
 		t0: t.at,
@@ -8244,8 +8247,8 @@ function mc(e) {
 		from: e.events.some((e) => e.kind === "claim" && e.at === n) ? "认领" : ""
 	};
 }
-function hc(e, t) {
-	let { t0: n, from: r } = mc(e), i = Math.max(n + 60, e.ended_at ?? t), a = Math.min(i, Math.max(n + 60, pc(e) ?? i)), o = i - a, s = e.ended_at === null && o > Math.max(900, .3 * (a - n)) ? o : null, c = s === null ? 100 : 84, l = s === null ? i : a;
+function gc(e, t) {
+	let { t0: n, from: r } = hc(e), i = Math.max(n + 60, e.ended_at ?? t), a = Math.min(i, Math.max(n + 60, mc(e) ?? i)), o = i - a, s = e.ended_at === null && o > Math.max(900, .3 * (a - n)) ? o : null, c = s === null ? 100 : 84, l = s === null ? i : a;
 	return {
 		t0: n,
 		from: r,
@@ -8255,8 +8258,8 @@ function hc(e, t) {
 		pct: (e) => e <= l ? Math.max(0, (e - n) / (l - n) * c) : Math.min(100, c + (e - a) / (i - a) * 16)
 	};
 }
-function gc({ board: e, ax: t }) {
-	let n = dc((t.tail === null ? t.end : t.last) - t.t0), r = e.nodes.some((e) => e.status === "awaiting_approval");
+function _c({ board: e, ax: t }) {
+	let n = fc((t.tail === null ? t.end : t.last) - t.t0), r = e.nodes.some((e) => e.status === "awaiting_approval");
 	return /* @__PURE__ */ _("div", {
 		className: "kt-lane kt-lane-axis",
 		"aria-hidden": "true",
@@ -8277,7 +8280,7 @@ function gc({ board: e, ax: t }) {
 				return /* @__PURE__ */ g("span", {
 					className: `kt-axis-tick${i}`,
 					style: { left: `${r}%` },
-					children: fc(e)
+					children: pc(e)
 				}, e);
 			}), t.tail !== null && /* @__PURE__ */ _("span", {
 				className: "kt-axis-tail",
@@ -8292,7 +8295,7 @@ function gc({ board: e, ax: t }) {
 		})]
 	});
 }
-var _c = {
+var vc = {
 	commit: "提交",
 	approved: "批准",
 	rejected: "退回",
@@ -8309,8 +8312,8 @@ var _c = {
 	reflect: "回写",
 	session: "会话"
 };
-function vc({ n: e, title: t, board: n, ax: r }) {
-	let i = oa(), a = (t) => t.kind === "wait" ? pr(n, hr(e, n, t)) : t.kind === "fix" ? "返工" : "在做", o = (t) => t === "wait" ? e.status === "awaiting_approval" : Vn.has(e.status);
+function yc({ n: e, title: t, board: n, ax: r }) {
+	let i = sa(), a = (t) => t.kind === "wait" ? pr(n, hr(e, n, t)) : t.kind === "fix" ? "返工" : "在做", o = (t) => t === "wait" ? e.status === "awaiting_approval" : Vn.has(e.status);
 	return /* @__PURE__ */ _("div", {
 		className: "kt-track",
 		role: "img",
@@ -8335,12 +8338,12 @@ function vc({ n: e, title: t, board: n, ax: r }) {
 			e.marks.map((e, t) => /* @__PURE__ */ g("span", {
 				className: `kt-track-mark is-${e.kind}`,
 				style: { left: `${r.pct(e.at)}%` },
-				title: `${Zn(e.at)} · ${_c[e.kind] ?? e.kind}：${e.title}`
+				title: `${Zn(e.at)} · ${vc[e.kind] ?? e.kind}：${e.title}`
 			}, `m${t}`))
 		]
 	});
 }
-function yc({ n: e, run: t, runs: n, board: r, ax: i, focused: a, dim: o, bump: s, onNode: c, quiet: l, asks: u, onOutputs: d }) {
+function bc({ n: e, run: t, runs: n, board: r, ax: i, focused: a, dim: o, bump: s, onNode: c, quiet: l, asks: u, onOutputs: d }) {
 	let f = Bn(e.status), p = Sr(e, t), m = e.unit ? `${e.title} · ${e.unit}` : e.title;
 	return /* @__PURE__ */ _("article", {
 		className: `kt-lane is-${e.status} tone-${p && p !== "you" ? "info" : f.tone}${a ? " is-focus" : ""}${o ? " is-dim" : ""}`,
@@ -8353,7 +8356,7 @@ function yc({ n: e, run: t, runs: n, board: r, ax: i, focused: a, dim: o, bump: 
 				className: "kt-lane-bump",
 				"aria-hidden": "true"
 			}, s),
-			/* @__PURE__ */ g(xc, {
+			/* @__PURE__ */ g(Sc, {
 				n: e,
 				run: t,
 				runs: n,
@@ -8365,14 +8368,14 @@ function yc({ n: e, run: t, runs: n, board: r, ax: i, focused: a, dim: o, bump: 
 			}),
 			/* @__PURE__ */ _("div", {
 				className: "kt-lane-live",
-				children: [/* @__PURE__ */ g(wc, {
+				children: [/* @__PURE__ */ g(Tc, {
 					n: e,
 					run: t,
 					runs: n,
 					board: r,
 					quiet: l,
 					asks: u
-				}), e.rounds.length > 1 && /* @__PURE__ */ g(Ec, {
+				}), e.rounds.length > 1 && /* @__PURE__ */ g(Dc, {
 					n: e,
 					runs: n,
 					board: r
@@ -8380,7 +8383,7 @@ function yc({ n: e, run: t, runs: n, board: r, ax: i, focused: a, dim: o, bump: 
 			}),
 			/* @__PURE__ */ _("div", {
 				className: "kt-lane-work",
-				children: [/* @__PURE__ */ g(Oc, {
+				children: [/* @__PURE__ */ g(kc, {
 					n: e,
 					board: r,
 					onFile: d && ((t, n) => d(e.id, n, t))
@@ -8392,7 +8395,7 @@ function yc({ n: e, run: t, runs: n, board: r, ax: i, focused: a, dim: o, bump: 
 					children: "看产出 ›"
 				})]
 			}),
-			/* @__PURE__ */ g(vc, {
+			/* @__PURE__ */ g(yc, {
 				n: e,
 				title: m,
 				board: r,
@@ -8401,11 +8404,11 @@ function yc({ n: e, run: t, runs: n, board: r, ax: i, focused: a, dim: o, bump: 
 		]
 	});
 }
-function bc(e, t) {
+function xc(e, t) {
 	return e.rounds.reduce((e, n) => e + Math.max(0, (n.ended ?? t) - n.started), 0);
 }
-function xc({ n: e, run: t, board: n, title: r, focused: i, onNode: a, quiet: o }) {
-	let s = Bn(e.status), c = p(), l = oa(), u = Sr(e, t), d = wr(e, t, n), f = bc(e, l), m = n.belt.filter((t) => t.node === e.id && t.kind === "commit").length, v = t?.readable === "here" ? yr(t) : void 0;
+function Sc({ n: e, run: t, board: n, title: r, focused: i, onNode: a, quiet: o }) {
+	let s = Bn(e.status), c = p(), l = sa(), u = Sr(e, t), d = wr(e, t, n), f = xc(e, l), m = n.belt.filter((t) => t.node === e.id && t.kind === "commit").length, v = t?.readable === "here" ? yr(t) : void 0;
 	return /* @__PURE__ */ _("div", {
 		className: "kt-lane-id",
 		children: [
@@ -8462,7 +8465,7 @@ function xc({ n: e, run: t, board: n, title: r, focused: i, onNode: a, quiet: o 
 					}),
 					/* @__PURE__ */ _("div", {
 						className: "kt-lane-doing",
-						children: [e.sub, (oc(e)?.n ?? 0) > 1 ? ` · 第 ${oc(e).n} 轮` : ""]
+						children: [e.sub, (sc(e)?.n ?? 0) > 1 ? ` · 第 ${sc(e).n} 轮` : ""]
 					})
 				]
 			}),
@@ -8471,7 +8474,7 @@ function xc({ n: e, run: t, board: n, title: r, focused: i, onNode: a, quiet: o 
 				children: [
 					u && e.since !== null ? /* @__PURE__ */ _("span", {
 						title: `从 ${Zn(e.since)} 起`,
-						children: ["⏱ 等了 ", /* @__PURE__ */ g("b", { children: /* @__PURE__ */ g(Cc, { since: e.since }) })]
+						children: ["⏱ 等了 ", /* @__PURE__ */ g("b", { children: /* @__PURE__ */ g(wc, { since: e.since }) })]
 					}) : f >= 30 && /* @__PURE__ */ _("span", {
 						title: e.rounds.length > 1 ? "每一轮的用时加起来" : void 0,
 						children: [
@@ -8488,7 +8491,7 @@ function xc({ n: e, run: t, board: n, title: r, focused: i, onNode: a, quiet: o 
 					] }),
 					e.since !== null && !u && /* @__PURE__ */ g("span", {
 						title: Zn(e.since),
-						children: /* @__PURE__ */ g(Sc, { at: e.since })
+						children: /* @__PURE__ */ g(Cc, { at: e.since })
 					})
 				]
 			}),
@@ -8502,15 +8505,15 @@ function xc({ n: e, run: t, board: n, title: r, focused: i, onNode: a, quiet: o 
 		]
 	});
 }
-function Sc({ at: e }) {
-	let t = oa();
+function Cc({ at: e }) {
+	let t = sa();
 	return /* @__PURE__ */ g(h, { children: Jn(t - e) });
 }
-function Cc({ since: e }) {
-	let t = oa();
+function wc({ since: e }) {
+	let t = sa();
 	return /* @__PURE__ */ g(h, { children: qn(t - e) });
 }
-function wc({ n: e, run: t, board: n, quiet: r, asks: i }) {
+function Tc({ n: e, run: t, board: n, quiet: r, asks: i }) {
 	let a = Bn(e.status), o = Sr(e, t), s = o === "you", c = xr(e), l = e.rounds[e.rounds.length - 1], u = {
 		awaiting_approval: o && e.doing.startsWith("等") ? s ? "✋" : "" : `${s ? "✋ " : ""}${wr(e, t, n)}：`,
 		failed: "✕ 没过：",
@@ -8534,7 +8537,7 @@ function wc({ n: e, run: t, board: n, quiet: r, asks: i }) {
 		sessionUrl: br(n, t)?.url ?? null
 	})] });
 }
-var Tc = {
+var Ec = {
 	open: "⏳",
 	done: "✓",
 	approved: "✓",
@@ -8545,7 +8548,7 @@ var Tc = {
 	superseded: "↻",
 	skipped: "–"
 };
-function Ec({ n: e, runs: t, board: n }) {
+function Dc({ n: e, runs: t, board: n }) {
 	let r = new Set(e.rounds.map((e) => e.run)).size > 1;
 	return /* @__PURE__ */ g("ol", {
 		className: "br-rounds",
@@ -8568,7 +8571,7 @@ function Ec({ n: e, runs: t, board: n }) {
 					})] }),
 					" ",
 					/* @__PURE__ */ _("span", { children: [
-						Tc[i.outcome.kind],
+						Ec[i.outcome.kind],
 						" ",
 						tr(o, 14),
 						r ? ` · ${s}` : ""
@@ -8580,12 +8583,12 @@ function Ec({ n: e, runs: t, board: n }) {
 		})
 	});
 }
-var Dc = (e, t) => t ? e.rounds.find((e) => e.commits.some((e) => e.startsWith(t) || t.startsWith(e)))?.n : void 0;
-function Oc({ n: e, board: t, onFile: n }) {
+var Oc = (e, t) => t ? e.rounds.find((e) => e.commits.some((e) => e.startsWith(t) || t.startsWith(e)))?.n : void 0;
+function kc({ n: e, board: t, onFile: n }) {
 	let r = t.belt.filter((t) => t.node === e.id && t.kind !== "merge"), i = [...e.rounds].reverse().find((e) => e.outcome.checks.length)?.outcome.checks ?? [], a = [...e.rounds].reverse().find((e) => e.outputs.length)?.outputs ?? [];
 	return !r.length && !i.length && !a.length ? /* @__PURE__ */ g("p", {
 		className: "kt-dim kt-nothing",
-		children: sc(e.status) ? "没有提交" : "还没提交"
+		children: cc(e.status) ? "没有提交" : "还没提交"
 	}) : /* @__PURE__ */ _(h, { children: [i.length > 0 && /* @__PURE__ */ _("div", {
 		className: "kt-owned",
 		"aria-label": "这一轮的检查",
@@ -8602,9 +8605,9 @@ function Oc({ n: e, board: t, onFile: n }) {
 				e.secs === null ? "" : ` ${Math.round(e.secs)}s`
 			]
 		}, e.name))]
-	}), r.length > 0 ? /* @__PURE__ */ g(Mc, {
+	}), r.length > 0 ? /* @__PURE__ */ g(Nc, {
 		commits: r,
-		onFile: n && ((t, r) => n(t, Dc(e, r)))
+		onFile: n && ((t, r) => n(t, Oc(e, r)))
 	}) : a.length > 0 && /* @__PURE__ */ _("div", {
 		className: "br-changes",
 		"data-testid": "kt-outputs",
@@ -8630,8 +8633,8 @@ function Oc({ n: e, board: t, onFile: n }) {
 		})]
 	})] });
 }
-var kc = (e, t) => (t.added ?? 0) + (t.removed ?? 0) - ((e.added ?? 0) + (e.removed ?? 0));
-function Ac(e) {
+var Ac = (e, t) => (t.added ?? 0) + (t.removed ?? 0) - ((e.added ?? 0) + (e.removed ?? 0));
+function jc(e) {
 	let t = /* @__PURE__ */ new Map();
 	for (let n of e) for (let e of n.changes ?? []) {
 		let n = t.get(e.path);
@@ -8642,11 +8645,11 @@ function Ac(e) {
 			status: n.status === "A" ? "A" : e.status
 		} : { ...e });
 	}
-	return [...t.values()].sort(kc);
+	return [...t.values()].sort(Ac);
 }
-var jc = (e, t) => [...e].reverse().find((e) => e.changes?.some((e) => e.path === t))?.sha ?? "";
-function Mc({ commits: e, onFile: t }) {
-	let n = Ac(e), r = n.reduce((e, t) => e + t.added, 0), i = n.reduce((e, t) => e + t.removed, 0), a = Math.max(1, ...n.map((e) => e.added + e.removed)), o = Math.max(1, ...e.map((e) => e.files)), s = n.slice(0, 5);
+var Mc = (e, t) => [...e].reverse().find((e) => e.changes?.some((e) => e.path === t))?.sha ?? "";
+function Nc({ commits: e, onFile: t }) {
+	let n = jc(e), r = n.reduce((e, t) => e + t.added, 0), i = n.reduce((e, t) => e + t.removed, 0), a = Math.max(1, ...n.map((e) => e.added + e.removed)), o = Math.max(1, ...e.map((e) => e.files)), s = n.slice(0, 5);
 	return /* @__PURE__ */ _("div", {
 		className: "br-changes",
 		"data-testid": "kt-changes",
@@ -8692,7 +8695,7 @@ function Mc({ commits: e, onFile: t }) {
 						t ? /* @__PURE__ */ _("button", {
 							type: "button",
 							className: "kt-file-path kt-mono is-split kt-file-open",
-							onClick: () => t(n.path, jc(e, n.path)),
+							onClick: () => t(n.path, Mc(e, n.path)),
 							title: `看 ${n.path} 这一轮的样子`,
 							children: [/* @__PURE__ */ g("span", {
 								className: "kt-file-dir",
@@ -8786,15 +8789,15 @@ function Mc({ commits: e, onFile: t }) {
 		]
 	});
 }
-function Nc(e) {
+function Pc(e) {
 	let t = e.events.map((e) => e.at), n = Math.min(e.started_at ?? Infinity, ...t), r = Number.isFinite(n) ? n : e.at, i = t.length ? Math.max(...t) : r;
 	return {
 		start: r,
 		end: Math.max(e.ended_at ?? i, i, r + 1)
 	};
 }
-function Pc(e, t = 900) {
-	let n = Nc(e), r = [.../* @__PURE__ */ new Set([
+function Fc(e, t = 900) {
+	let n = Pc(e), r = [.../* @__PURE__ */ new Set([
 		n.start,
 		...e.events.map((e) => e.at).filter((e) => e >= n.start && e <= n.end),
 		n.end
@@ -8824,7 +8827,7 @@ function Pc(e, t = 900) {
 		}
 	};
 }
-var Fc = {
+var Ic = {
 	kind: "open",
 	at: null,
 	gate: null,
@@ -8835,12 +8838,12 @@ var Fc = {
 	subject: null,
 	checks: [],
 	pipeline: null
-}, Ic = /* @__PURE__ */ new Set([
+}, Lc = /* @__PURE__ */ new Set([
 	"approved",
 	"sent_back",
 	"refused"
 ]);
-function Lc(e, t, n, r) {
+function Rc(e, t, n, r) {
 	let i = [...e.history].reverse().find((e) => e.at <= t), a = e.status === "skipped" && !e.history.length, o = i !== void 0 && i === e.history[e.history.length - 1], s = i ? {
 		status: i.status,
 		doing: i.doing,
@@ -8861,12 +8864,12 @@ function Lc(e, t, n, r) {
 		} : {
 			...e,
 			ended: null,
-			outcome: Fc,
+			outcome: Ic,
 			note: null,
 			outputs: [],
 			commits: n
 		};
-	}), d = new Set(u.map((e) => e.n)), f = e.gates.flatMap((e) => d.has(e.round) ? Ic.has(e.state) && e.at !== null && e.at <= t ? [e] : c ? [{
+	}), d = new Set(u.map((e) => e.n)), f = e.gates.flatMap((e) => d.has(e.round) ? Lc.has(e.state) && e.at !== null && e.at <= t ? [e] : c ? [{
 		...e,
 		state: e.state === "queued" ? "queued" : "pending",
 		at: s.since,
@@ -8902,7 +8905,7 @@ function Lc(e, t, n, r) {
 		who: l
 	};
 }
-function Rc(e, t, n, r, i, a) {
+function zc(e, t, n, r, i, a) {
 	let o = t.flatMap((t) => t.rounds.filter((t) => t.run === e.key && t.ended === null).map((e) => ({
 		n: t,
 		started: e.started
@@ -8928,7 +8931,7 @@ function Rc(e, t, n, r, i, a) {
 		sessions: e.sessions.filter((t) => i(t.slot, e.kind) <= r)
 	};
 }
-function zc(e, t) {
+function Bc(e, t) {
 	return {
 		...e,
 		to: e.at <= t ? e.to : null,
@@ -8941,11 +8944,11 @@ function zc(e, t) {
 		})
 	};
 }
-var Bc = /* @__PURE__ */ new Set(["review", "reflect"]);
-function Vc(e, t) {
+var Vc = /* @__PURE__ */ new Set(["review", "reflect"]);
+function Hc(e, t) {
 	let n = t.filter((e) => e.rounds[e.rounds.length - 1]?.outcome.kind === "skipped");
 	if (!n.length) return null;
-	let r = t.filter((e) => !Bc.has(e.stage));
+	let r = t.filter((e) => !Vc.has(e.stage));
 	if (r.length && r.every((e) => n.includes(e))) return `${e.title.split(" · ")[0]} ${new Set(r.map((e) => e.stage)).size} 个阶段：这次不需要`;
 	let i = [...new Map(n.map((e) => [e.stage, e])).values()], a = i.filter((e) => e.unit === null).map((e) => e.title), o = i.filter((e) => e.unit !== null && t.every((t) => t.stage !== e.stage || n.includes(t)));
 	return [
@@ -8954,35 +8957,35 @@ function Vc(e, t) {
 		...i.filter((e) => e.unit !== null && !o.includes(e)).map((e) => `${n.filter((t) => t.stage === e.stage).map((e) => e.unit).join("、")} 跳过了${e.title}`)
 	].filter(Boolean).join(" · ");
 }
-function Hc(e, t) {
+function Uc(e, t) {
 	return e.map((e) => {
 		let n = t.filter((t) => t.phase === e.key);
 		return e.key === "init" || !n.length || e.state === "unrecorded" ? e : e.state === "used" ? {
 			...e,
-			note: Vc(e, n)
+			note: Hc(e, n)
 		} : n.some((e) => e.status === "skipped") ? e : {
 			...e,
 			note: "还没轮到"
 		};
 	});
 }
-function Uc(e, t) {
-	if (t >= Nc(e).end) return e;
-	let n = e.person.me ? "you" : "people", r = new Set(e.belt.filter((e) => e.at <= t).map((e) => e.sha)), i = new Set(e.belt.map((e) => e.sha)), a = e.nodes.map((e) => Lc(e, t, n, (e) => r.has(e) || !i.has(e))), o = a.map((e) => e.node), s = new Map(a.flatMap((e) => e.who ? [[e.node.id, e.who]] : [])), c = new Map(e.runs.map((e) => [e.key, e.kind])), l = e.events.find((e) => e.kind === "start")?.at ?? -Infinity, u = e.events.find((e) => e.kind === "session")?.at, d = (t) => Math.min(Infinity, ...e.nodes.flatMap((e) => e.rounds.filter((e) => c.get(e.run) === "runner" == (t === "runner")).map((e) => e.started))), f = (e) => e.kind === "runner" ? e.opened_at ?? d("runner") : Math.max(u ?? e.opened_at ?? d("local"), l), p = (t, n) => f({
+function Wc(e, t) {
+	if (t >= Pc(e).end) return e;
+	let n = e.person.me ? "you" : "people", r = new Set(e.belt.filter((e) => e.at <= t).map((e) => e.sha)), i = new Set(e.belt.map((e) => e.sha)), a = e.nodes.map((e) => Rc(e, t, n, (e) => r.has(e) || !i.has(e))), o = a.map((e) => e.node), s = new Map(a.flatMap((e) => e.who ? [[e.node.id, e.who]] : [])), c = new Map(e.runs.map((e) => [e.key, e.kind])), l = e.events.find((e) => e.kind === "start")?.at ?? -Infinity, u = e.events.find((e) => e.kind === "session")?.at, d = (t) => Math.min(Infinity, ...e.nodes.flatMap((e) => e.rounds.filter((e) => c.get(e.run) === "runner" == (t === "runner")).map((e) => e.started))), f = (e) => e.kind === "runner" ? e.opened_at ?? d("runner") : Math.max(u ?? e.opened_at ?? d("local"), l), p = (t, n) => f({
 		kind: n === "runner" ? "runner" : "local",
 		opened_at: e.sessions.find((e) => e.slot === t)?.opened_at ?? null
-	}), m = e.relays.map((e) => zc(e, t)), h = new Map(o.map((e) => [e.id, e.status])), g = e.checks.cells.map((e) => e.at !== null && e.at <= t || e.at === null && e.status === "wait" && e.node && h.get(e.node) === "awaiting_approval" ? e : {
+	}), m = e.relays.map((e) => Bc(e, t)), h = new Map(o.map((e) => [e.id, e.status])), g = e.checks.cells.map((e) => e.at !== null && e.at <= t || e.at === null && e.status === "wait" && e.node && h.get(e.node) === "awaiting_approval" ? e : {
 		...e,
 		status: "skip",
 		at: null,
 		detail: "还没到这一步"
-	}), _ = g.filter((e) => e.status === "pass").length, v = g.filter((e) => e.status === "fail").length, y = o.filter((e) => e.status === "awaiting_approval"), b = y.find((e) => s.get(e.id) === "you") ?? y[0], x = o.filter((e) => e.status === "running" || e.status === "fixing"), S = e.ended_at !== null && e.ended_at <= t, C = !S && !e.events.some((e) => e.kind !== "claim" && e.at <= t), w = e.runs.map((e) => Rc(e, o, s, t, p, C)), T = Kc(e, t, h.get("release"), w, m, S), E = [...e.lean_steps].reverse().find((e) => e.at <= t)?.lean ?? e.row.lean, D = x.some((e) => c.get(e.rounds[e.rounds.length - 1]?.run ?? "") === "runner"), O = b ? s.get(b.id) ?? "people" : x.length ? D ? "runner" : "agent" : "nobody", k = e.events.find((e) => e.kind === "claim")?.at ?? null, A = dr(e) ? "已认领，还没开工" : `等 ${e.person.owner} 开工`;
+	}), _ = g.filter((e) => e.status === "pass").length, v = g.filter((e) => e.status === "fail").length, y = o.filter((e) => e.status === "awaiting_approval"), b = y.find((e) => s.get(e.id) === "you") ?? y[0], x = o.filter((e) => e.status === "running" || e.status === "fixing"), S = e.ended_at !== null && e.ended_at <= t, C = !S && !e.events.some((e) => e.kind !== "claim" && e.at <= t), w = e.runs.map((e) => zc(e, o, s, t, p, C)), T = qc(e, t, h.get("release"), w, m, S), E = [...e.lean_steps].reverse().find((e) => e.at <= t)?.lean ?? e.row.lean, D = x.some((e) => c.get(e.rounds[e.rounds.length - 1]?.run ?? "") === "runner"), O = b ? s.get(b.id) ?? "people" : x.length ? D ? "runner" : "agent" : "nobody", k = e.events.find((e) => e.kind === "claim")?.at ?? null, A = dr(e) ? "已认领，还没开工" : `等 ${e.person.owner} 开工`;
 	return {
 		...e,
 		row: {
 			...e.row,
 			state: T,
-			state_label: Wc[T],
+			state_label: Gc[T],
 			credits: null,
 			mr: e.events.some((e) => e.kind === "handover" && e.at <= t) ? e.row.mr : null,
 			...C ? {
@@ -9020,7 +9023,7 @@ function Uc(e, t) {
 			status: O === "you" ? "awaiting_approval" : x.length && !b ? "running" : "waiting",
 			doing: b ? b.doing : x.length ? "AI 在做" : "没有等你的事"
 		},
-		phases: Hc(e.phases, o),
+		phases: Uc(e.phases, o),
 		nodes: o,
 		runs: w,
 		relays: m,
@@ -9050,7 +9053,7 @@ function Uc(e, t) {
 		},
 		accept: {
 			...e.accept,
-			state: Gc(o.find((e) => e.id === "release")),
+			state: Kc(o.find((e) => e.id === "release")),
 			step: {
 				text: "",
 				who: "",
@@ -9062,7 +9065,7 @@ function Uc(e, t) {
 		}
 	};
 }
-var Wc = {
+var Gc = {
 	claimed: "已认领",
 	local: "本地开发中",
 	handed_over: "已交接",
@@ -9075,11 +9078,11 @@ var Wc = {
 	unclaimed: "待认领",
 	merged_into_parent: "已合进大需求"
 };
-function Gc(e) {
+function Kc(e) {
 	let t = e?.gates[e.gates.length - 1];
 	return t?.state === "approved" ? "accepted" : t?.state === "sent_back" || t?.state === "refused" ? e?.status === "awaiting_approval" ? "waiting" : "rejected" : e?.status === "awaiting_approval" ? "waiting" : "not_yet";
 }
-function Kc(e, t, n, r, i, a) {
+function qc(e, t, n, r, i, a) {
 	if (a) return e.row.state === "closed" ? "closed" : "merged";
 	let o = (n) => e.events.some((e) => e.kind === n && e.at <= t);
 	if (n === "awaiting_approval") return "acceptance";
@@ -9088,7 +9091,7 @@ function Kc(e, t, n, r, i, a) {
 	let s = r.filter((e) => e.kind === "runner");
 	return s.some((e) => e.now.status === "awaiting_approval") ? "parked" : s.some((e) => e.now.status === "running" || e.now.status === "fixing") ? "running" : "handed_over";
 }
-function qc(e) {
+function Jc(e) {
 	let t = /* @__PURE__ */ new Set(), n = [], r = /* @__PURE__ */ new Map();
 	for (let i of e.events) {
 		if (!i.node || ((i.kind === "request" || i.kind === "question") && t.add(i.node), i.from !== "person" || i.kind !== "approve" && i.kind !== "reject" && i.kind !== "answer")) continue;
@@ -9114,21 +9117,21 @@ function qc(e) {
 	}
 	return n;
 }
-function Jc(e, t) {
+function Yc(e, t) {
 	let n = new Map(e.belt.map((e) => [e.sha, e.at]));
 	return {
 		t,
 		made: (e) => (n.get(e.slice(0, 12)) ?? -Infinity) <= t
 	};
 }
-function Yc(e, t, n, r) {
+function Xc(e, t, n, r) {
 	let i = e.filter((e) => e.output && (n || t.ended !== null) || e.ref !== null && e.ref !== "worktree" && r.made(e.ref));
 	return {
 		files: i,
 		later: e.length - i.length
 	};
 }
-function Xc(e, t) {
+function Zc(e, t) {
 	let n = e.why_not && e.why_not.asked !== null && e.why_not.asked > t ? {
 		...e.why_not,
 		asked: null
@@ -9161,18 +9164,18 @@ function Xc(e, t) {
 }
 //#endregion
 //#region src/board/Turns.tsx
-var Zc = (e) => String(e).padStart(2, "0"), Qc = (e) => {
+var Qc = (e) => String(e).padStart(2, "0"), $c = (e) => {
 	let t = /* @__PURE__ */ new Date(e * 1e3);
-	return `${Zc(t.getHours())}:${Zc(t.getMinutes())}:${Zc(t.getSeconds())}`;
+	return `${Qc(t.getHours())}:${Qc(t.getMinutes())}:${Qc(t.getSeconds())}`;
 };
-function $c(e, t, n, r) {
+function el(e, t, n, r) {
 	return [
 		`${Pr(e.started, r.at)} 开始`,
 		n ? `${Pr(n, r.at)} 请批` : "",
 		e.ended === null ? "" : `${Pr(e.ended, r.at)} ${Mr(e, t, r)}`
 	].filter(Boolean).join("、");
 }
-function el({ w: e, r: t, n, board: r }) {
+function tl({ w: e, r: t, n, board: r }) {
 	let i = Ar(t);
 	return /* @__PURE__ */ _("div", {
 		className: "kt-whynot",
@@ -9197,7 +9200,7 @@ function el({ w: e, r: t, n, board: r }) {
 					]
 				}),
 				e.here.map((e) => /* @__PURE__ */ g("li", { children: e }, e)),
-				n.stage !== "reflect" && /* @__PURE__ */ _("li", { children: ["Lean 记下的这一轮：", $c(t, n, e.asked, r)] })
+				n.stage !== "reflect" && /* @__PURE__ */ _("li", { children: ["Lean 记下的这一轮：", el(t, n, e.asked, r)] })
 			] }),
 			e.do && /* @__PURE__ */ _("p", {
 				className: "do",
@@ -9206,7 +9209,7 @@ function el({ w: e, r: t, n, board: r }) {
 		]
 	});
 }
-function tl(e, t) {
+function nl(e, t) {
 	switch (e.kind) {
 		case "app": return `app 发的（${e.cause}）`;
 		case "bridge": return `桥发的（${e.cause}）`;
@@ -9214,12 +9217,12 @@ function tl(e, t) {
 		case "hidden": return "说不清是谁发的";
 	}
 }
-var nl = (e) => e.n ? `第 ${e.n} 回合` : "一个回合";
-function rl(e, t) {
+var rl = (e) => e.n ? `第 ${e.n} 回合` : "一个回合";
+function il(e, t) {
 	let n = e.task, r = n.kind === "app" ? n.cause.split("，")[0] : n.kind === "bridge" ? n.cause : n.kind === "person" ? t?.kind === "local" ? "你打的" : "有人打的" : "说不清是谁发的";
-	return `${nl(e)} · ${r}`;
+	return `${rl(e)} · ${r}`;
 }
-function il({ t: e, run: t }) {
+function al({ t: e, run: t }) {
 	let n = p();
 	return e.kind === "app" || e.kind === "bridge" ? /* @__PURE__ */ g("pre", {
 		className: "kt-task",
@@ -9245,25 +9248,25 @@ function il({ t: e, run: t }) {
 		})]
 	});
 }
-function al({ turns: e, run: t, board: n }) {
+function ol({ turns: e, run: t, board: n }) {
 	return /* @__PURE__ */ g("div", {
 		"data-testid": "out-tasks",
 		children: e.map((e, r) => /* @__PURE__ */ _("section", { children: [/* @__PURE__ */ _("p", {
 			className: "kt-task-h",
 			children: [
-				nl(e),
+				rl(e),
 				" · ",
 				Pr(e.at, n.at),
 				" · ",
-				tl(e.task, t)
+				nl(e.task, t)
 			]
-		}), /* @__PURE__ */ g(il, {
+		}), /* @__PURE__ */ g(al, {
 			t: e.task,
 			run: t
 		})] }, r))
 	});
 }
-function ol({ turns: e, data: t, run: n, board: r }) {
+function sl({ turns: e, data: t, run: n, board: r }) {
 	let [i, a] = c(e.length - 1), o = e[Math.min(i, e.length - 1)], s = o === e[e.length - 1], l = `${Pr(o.at, r.at)}${o.until ? `–${Pr(o.until, r.at)}` : ""}`;
 	return /* @__PURE__ */ _("div", {
 		"data-testid": "out-reply-tab",
@@ -9277,7 +9280,7 @@ function ol({ turns: e, data: t, run: n, board: r }) {
 					className: `kt-btn is-small${e === o ? " is-on" : ""}`,
 					"aria-pressed": e === o,
 					onClick: () => a(t),
-					children: rl(e, n)
+					children: il(e, n)
 				}, t))
 			}),
 			/* @__PURE__ */ g("p", {
@@ -9285,7 +9288,7 @@ function ol({ turns: e, data: t, run: n, board: r }) {
 				"data-testid": "out-reply-meta",
 				children: [
 					o.slot ? `本机会话 ${o.slot}` : "",
-					`${s ? "这一轮的最后一个回合" : "这一轮的"}（${nl(o)} · ${l}）的回复`,
+					`${s ? "这一轮的最后一个回合" : "这一轮的"}（${rl(o)} · ${l}）的回复`,
 					t.meta.calls === null ? "" : `这一轮里 ${t.meta.calls} 次工具调用`,
 					o.also.length ? `这一回合也做了：${o.also.join("、")}` : ""
 				].filter(Boolean).join(" · ")
@@ -9305,13 +9308,13 @@ function ol({ turns: e, data: t, run: n, board: r }) {
 		]
 	});
 }
-function sl({ c: e }) {
+function cl({ c: e }) {
 	return /* @__PURE__ */ _("li", {
 		className: e.in_round ? void 0 : "is-out",
 		children: [
 			/* @__PURE__ */ g("span", {
 				className: "t",
-				children: e.at ? Qc(e.at) : ""
+				children: e.at ? $c(e.at) : ""
 			}),
 			/* @__PURE__ */ g("span", {
 				className: "k",
@@ -9325,7 +9328,7 @@ function sl({ c: e }) {
 		]
 	});
 }
-function cl({ turns: e, lit: t, run: n, board: r }) {
+function ll({ turns: e, lit: t, run: n, board: r }) {
 	let i = e.filter((e) => e.slot), a = e.map((e) => e.n ? String(e.n) : "?").join("、"), o = t ? `（${Pr(t.from, r.at)}–${Pr(t.to, r.at)}）` : "";
 	return /* @__PURE__ */ _("div", {
 		"data-testid": "out-calls-tab",
@@ -9342,19 +9345,19 @@ function cl({ turns: e, lit: t, run: n, board: r }) {
 					children: [
 						/* @__PURE__ */ g("span", {
 							className: "t",
-							children: Qc(t.at)
+							children: $c(t.at)
 						}),
 						/* @__PURE__ */ g("span", {
 							className: "k",
-							children: nl(t)
+							children: rl(t)
 						}),
 						/* @__PURE__ */ g("span", {
 							className: "d kt-dim",
-							children: tl(t.task, n)
+							children: nl(t.task, n)
 						})
 					]
 				}, `h${r}`),
-				...t.calls.map((e, t) => /* @__PURE__ */ g(sl, { c: e }, `${r}:${t}`)),
+				...t.calls.map((e, t) => /* @__PURE__ */ g(cl, { c: e }, `${r}:${t}`)),
 				t.more_calls > 0 && /* @__PURE__ */ _("li", { children: [
 					/* @__PURE__ */ g("span", {
 						className: "t",
@@ -9382,26 +9385,26 @@ function cl({ turns: e, lit: t, run: n, board: r }) {
 		})]
 	});
 }
-function ll({ tab: e, data: t, error: n, r, n: i, run: a, board: o }) {
+function ul({ tab: e, data: t, error: n, r, n: i, run: a, board: o }) {
 	return n ? /* @__PURE__ */ g("p", {
 		className: "kt-pad",
 		role: "alert",
 		children: n
-	}) : t ? t.why_not ? /* @__PURE__ */ g(el, {
+	}) : t ? t.why_not ? /* @__PURE__ */ g(tl, {
 		w: t.why_not,
 		r,
 		n: i,
 		board: o
-	}) : t.turns.length ? e === "reply" ? /* @__PURE__ */ g(ol, {
+	}) : t.turns.length ? e === "reply" ? /* @__PURE__ */ g(sl, {
 		turns: t.turns,
 		data: t,
 		run: a,
 		board: o
-	}, `${r.n}`) : e === "task" ? /* @__PURE__ */ g(al, {
+	}, `${r.n}`) : e === "task" ? /* @__PURE__ */ g(ol, {
 		turns: t.turns,
 		run: a,
 		board: o
-	}) : /* @__PURE__ */ g(cl, {
+	}) : /* @__PURE__ */ g(ll, {
 		turns: t.turns,
 		lit: t.lit,
 		run: a,
@@ -9417,12 +9420,12 @@ function ll({ tab: e, data: t, error: n, r, n: i, run: a, board: o }) {
 }
 //#endregion
 //#region src/board/Outputs.tsx
-var ul = 4e3;
-function dl(e, t, n) {
+var dl = 4e3;
+function fl(e, t, n) {
 	let r = e.outcome;
 	switch (r.kind) {
 		case "open": {
-			let r = fl(t, e);
+			let r = pl(t, e);
 			return r ? r.kind === "RELEASE" && r.who === "product" ? "等验收" : Er(r, n) : "在做";
 		}
 		case "sent_back": return "退回";
@@ -9435,18 +9438,18 @@ function dl(e, t, n) {
 		default: return "做完";
 	}
 }
-var fl = (e, t) => e.gates.find((e) => e.round === t.n && (e.state === "pending" || e.state === "queued")), pl = (e) => e ? `${e.label}${e.run_id ? `（${e.run_id}）` : ""}` : "", ml = (e) => e.replace(/^aidlc-docs\/[^/]+\//, ""), hl = (e) => /\.(md|markdown)$/i.test(e), gl = (e) => /^(aidlc-docs|runs)\//.test(e);
-function _l(e, t) {
+var pl = (e, t) => e.gates.find((e) => e.round === t.n && (e.state === "pending" || e.state === "queued")), ml = (e) => e ? `${e.label}${e.run_id ? `（${e.run_id}）` : ""}` : "", hl = (e) => e.replace(/^aidlc-docs\/[^/]+\//, ""), gl = (e) => /\.(md|markdown)$/i.test(e), _l = (e) => /^(aidlc-docs|runs)\//.test(e);
+function vl(e, t) {
 	let n = t.filter((e) => e.output), r = t.filter((e) => !e.output);
 	return e ? [
-		["代码改动", r.filter((e) => !gl(e.path)).sort(kc)],
+		["代码改动", r.filter((e) => !_l(e.path)).sort(Ac)],
 		["约定它交的", n],
-		["其他改动", r.filter((e) => gl(e.path))]
+		["其他改动", r.filter((e) => _l(e.path))]
 	] : [["约定它交的", n], ["其他改动", r]];
 }
-var vl = (e) => /\.(png|jpe?g)$/i.test(e), yl = /^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/]+=*$/;
-function bl({ n: e, r: t, board: n, replay: r }) {
-	let i = t.outcome, a = (e) => e ? Pr(e, n.at) : "", o = fl(e, t);
+var yl = (e) => /\.(png|jpe?g)$/i.test(e), bl = /^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/]+=*$/;
+function xl({ n: e, r: t, board: n, replay: r }) {
+	let i = t.outcome, a = (e) => e ? Pr(e, n.at) : "", o = pl(e, t);
 	if (o) {
 		let e = Cr(o.who, n).replace(/^等\s?/, "");
 		return /* @__PURE__ */ _("div", {
@@ -9523,7 +9526,7 @@ function bl({ n: e, r: t, board: n, replay: r }) {
 		children: [/* @__PURE__ */ _("strong", { children: ["✓ ", Mr(t, e, n)] }), i.at && /* @__PURE__ */ g("span", { children: a(i.at) })]
 	}) : null;
 }
-function xl({ r: e, board: t }) {
+function Sl({ r: e, board: t }) {
 	let n = Ar(e);
 	return n ? /* @__PURE__ */ _("div", {
 		className: "kt-round-banner tone-bad",
@@ -9543,7 +9546,7 @@ function xl({ r: e, board: t }) {
 		]
 	}) : null;
 }
-function Sl({ proof: e }) {
+function Cl({ proof: e }) {
 	if (!e.result) return null;
 	let t = e.result === "ok";
 	return /* @__PURE__ */ g("span", {
@@ -9551,8 +9554,8 @@ function Sl({ proof: e }) {
 		children: t ? "✓" : e.mark
 	});
 }
-function Cl({ f: e, on: t, onPick: n }) {
-	let r = ml(e.path), i = r.lastIndexOf("/") + 1;
+function wl({ f: e, on: t, onPick: n }) {
+	let r = hl(e.path), i = r.lastIndexOf("/") + 1;
 	return /* @__PURE__ */ g("li", { children: /* @__PURE__ */ _("button", {
 		type: "button",
 		className: `kt-frow${t ? " is-on" : ""}${e.ref ? "" : " is-missing"}`,
@@ -9578,7 +9581,7 @@ function Cl({ f: e, on: t, onPick: n }) {
 					children: r.slice(i)
 				})]
 			}),
-			e.proof ? /* @__PURE__ */ g(Sl, { proof: e.proof }) : /* @__PURE__ */ _("span", {
+			e.proof ? /* @__PURE__ */ g(Cl, { proof: e.proof }) : /* @__PURE__ */ _("span", {
 				className: "kt-frow-num",
 				children: [e.added !== null && /* @__PURE__ */ _("span", {
 					className: "kt-add",
@@ -9591,14 +9594,14 @@ function Cl({ f: e, on: t, onPick: n }) {
 		]
 	}) });
 }
-function wl({ groups: t, pick: n, onPick: r, more: i, children: a }) {
+function Tl({ groups: t, pick: n, onPick: r, more: i, children: a }) {
 	return /* @__PURE__ */ _("div", {
 		className: "kt-flist",
 		children: [
 			t.map(([t, i]) => i.length > 0 && /* @__PURE__ */ _(e, { children: [/* @__PURE__ */ g("p", {
 				className: "kt-flist-h",
 				children: t
-			}), /* @__PURE__ */ g("ul", { children: i.map((e) => /* @__PURE__ */ g(Cl, {
+			}), /* @__PURE__ */ g("ul", { children: i.map((e) => /* @__PURE__ */ g(wl, {
 				f: e,
 				on: e === n,
 				onPick: () => r(e)
@@ -9615,8 +9618,8 @@ function wl({ groups: t, pick: n, onPick: r, more: i, children: a }) {
 		]
 	});
 }
-function Tl({ repo: e, reqKey: t, f: n, version: r, asked: i }) {
-	let a = hl(n.path), o = vl(n.path), [s, l] = c(o ? "image" : a ? "content" : n.proof ? "source" : "diff"), [u, d] = c(n.base), f = s === "diff", p = f ? "diff" : s === "image" ? "image" : "source", m = F(n.ref ? D.outputsFile(e, t, {
+function El({ repo: e, reqKey: t, f: n, version: r, asked: i }) {
+	let a = gl(n.path), o = yl(n.path), [s, l] = c(o ? "image" : a ? "content" : n.proof ? "source" : "diff"), [u, d] = c(n.base), f = s === "diff", p = f ? "diff" : s === "image" ? "image" : "source", m = F(n.ref ? D.outputsFile(e, t, {
 		ref: n.ref,
 		base: f ? u : null,
 		path: n.path,
@@ -9714,7 +9717,7 @@ function Tl({ repo: e, reqKey: t, f: n, version: r, asked: i }) {
 				"data-testid": "out-proof",
 				children: [
 					n.proof.label,
-					n.proof.result && /* @__PURE__ */ _(h, { children: [" ", /* @__PURE__ */ g(Sl, { proof: n.proof })] }),
+					n.proof.result && /* @__PURE__ */ _(h, { children: [" ", /* @__PURE__ */ g(Cl, { proof: n.proof })] }),
 					n.proof.note && /* @__PURE__ */ _("span", {
 						className: "kt-dim",
 						children: [" · ", n.proof.note]
@@ -9728,7 +9731,7 @@ function Tl({ repo: e, reqKey: t, f: n, version: r, asked: i }) {
 					role: "alert",
 					"data-testid": "out-error",
 					children: m.error
-				}) : y ? y.image && yl.test(y.image) ? /* @__PURE__ */ g("figure", {
+				}) : y ? y.image && bl.test(y.image) ? /* @__PURE__ */ g("figure", {
 					className: "kt-fview-img",
 					children: /* @__PURE__ */ g("img", {
 						src: y.image,
@@ -9738,7 +9741,7 @@ function Tl({ repo: e, reqKey: t, f: n, version: r, asked: i }) {
 				}) : y.binary ? /* @__PURE__ */ g("p", {
 					className: "kt-pad kt-dim",
 					children: "二进制文件：这里不显示"
-				}) : /* @__PURE__ */ g(El, {
+				}) : /* @__PURE__ */ g(Dl, {
 					v: y,
 					mode: s
 				}) : /* @__PURE__ */ g("p", {
@@ -9753,7 +9756,7 @@ function Tl({ repo: e, reqKey: t, f: n, version: r, asked: i }) {
 		]
 	});
 }
-function El({ v: e, mode: t }) {
+function Dl({ v: e, mode: t }) {
 	let n = o(() => e.text.replace(/\n$/, "").split("\n"), [e.text]);
 	return /* @__PURE__ */ _(h, { children: [e.truncated && /* @__PURE__ */ g("p", {
 		className: "kt-pad kt-dim",
@@ -9774,17 +9777,17 @@ function El({ v: e, mode: t }) {
 		}, n))
 	})] });
 }
-function Dl({ board: e, repo: t, reqKey: n, n: r, r: a, at: l, onAt: u, moment: d }) {
-	let f = o(() => new Map(e.runs.map((e) => [e.key, e])), [e.runs]), p = F(d && !a ? null : D.outputs(t, n, r.id, a?.n ?? null), 0), [m, h] = c(!1), v = F(a ? D.outputsTurns(t, n, r.id, a.n) : null, m && !d ? ul : 0);
+function Ol({ board: e, repo: t, reqKey: n, n: r, r: a, at: l, onAt: u, moment: d }) {
+	let f = o(() => new Map(e.runs.map((e) => [e.key, e])), [e.runs]), p = F(d && !a ? null : D.outputs(t, n, r.id, a?.n ?? null), 0), [m, h] = c(!1), v = F(a ? D.outputsTurns(t, n, r.id, a.n) : null, m && !d ? dl : 0);
 	i(() => h(!!v.data?.turns.some((e) => e.live)), [v.data]);
 	let y = a && !d ? `${a.n}:${a.commits.length}:${a.outcome.kind}:${a.outputs.map((e) => e.sha8).join(",")}` : "", b = s(y);
 	i(() => {
 		b.current !== y && (p.reload(), v.reload()), b.current = y;
 	}, [y]);
-	let x = a ? f.get(a.run) : void 0, S = p.data?.files ?? [], C = !d || !a || a.ended !== null || !!fl(r, a), { files: w, later: T } = d && a ? Yc(S, a, C, d) : {
+	let x = a ? f.get(a.run) : void 0, S = p.data?.files ?? [], C = !d || !a || a.ended !== null || !!pl(r, a), { files: w, later: T } = d && a ? Xc(S, a, C, d) : {
 		files: S,
 		later: 0
-	}, E = _l(r.stage === "code-generation", w), O = E.flatMap(([, e]) => e), k = O.find((e) => e.path === l.file) ?? O.find((e) => e.ref) ?? O[0], A = Bn(r.status), j = d ? a?.commits[a.commits.length - 1] : p.data?.head, M = r.unit ? `${r.title} · ${r.unit}` : r.title, N = l.tab ?? "files", P = v.data && d ? Xc(v.data, d.t) : v.data, I = P && !P.why_not ? P : null, L = [
+	}, E = vl(r.stage === "code-generation", w), O = E.flatMap(([, e]) => e), k = O.find((e) => e.path === l.file) ?? O.find((e) => e.ref) ?? O[0], A = Bn(r.status), j = d ? a?.commits[a.commits.length - 1] : p.data?.head, M = r.unit ? `${r.title} · ${r.unit}` : r.title, N = l.tab ?? "files", P = v.data && d ? Zc(v.data, d.t) : v.data, I = P && !P.why_not ? P : null, L = [
 		[
 			void 0,
 			"产出文件",
@@ -9841,7 +9844,7 @@ function Dl({ board: e, repo: t, reqKey: n, n: r, r: a, at: l, onAt: u, moment: 
 						" 轮 · ",
 						/* @__PURE__ */ g("b", {
 							className: "kt-pane-run",
-							children: pl(x)
+							children: ml(x)
 						}),
 						" · ",
 						Pr(a.started, e.at),
@@ -9859,7 +9862,7 @@ function Dl({ board: e, repo: t, reqKey: n, n: r, r: a, at: l, onAt: u, moment: 
 						children: "第几轮"
 					}), r.rounds.map((t) => /* @__PURE__ */ _("button", {
 						type: "button",
-						className: `kt-round tone-${fl(r, t) ? "approve" : Or[t.outcome.kind]}${t.n === a?.n ? " is-on" : ""}`,
+						className: `kt-round tone-${pl(r, t) ? "approve" : Or[t.outcome.kind]}${t.n === a?.n ? " is-on" : ""}`,
 						"aria-pressed": t.n === a?.n,
 						onClick: () => u({
 							node: r.id,
@@ -9871,14 +9874,14 @@ function Dl({ board: e, repo: t, reqKey: n, n: r, r: a, at: l, onAt: u, moment: 
 							"第 ",
 							t.n,
 							" 轮"
-						] }), dl(t, r, e)]
+						] }), fl(t, r, e)]
 					}, t.n))]
 				}),
-				a && /* @__PURE__ */ g(xl, {
+				a && /* @__PURE__ */ g(Sl, {
 					r: a,
 					board: e
 				}),
-				a && /* @__PURE__ */ g(bl, {
+				a && /* @__PURE__ */ g(xl, {
 					n: r,
 					r: a,
 					board: e,
@@ -9917,7 +9920,7 @@ function Dl({ board: e, repo: t, reqKey: n, n: r, r: a, at: l, onAt: u, moment: 
 				children: p.error
 			}) : p.data ? w.length ? /* @__PURE__ */ _("div", {
 				className: "kt-files-pane",
-				children: [/* @__PURE__ */ _(wl, {
+				children: [/* @__PURE__ */ _(Tl, {
 					groups: E,
 					pick: k,
 					onPick: (e) => u({
@@ -9939,7 +9942,7 @@ function Dl({ board: e, repo: t, reqKey: n, n: r, r: a, at: l, onAt: u, moment: 
 						className: "kt-dim kt-flist-foot",
 						children: "都在运行机推上来的提交里：这台机器取回来以后能看全"
 					})]
-				}), k && /* @__PURE__ */ g(Tl, {
+				}), k && /* @__PURE__ */ g(El, {
 					repo: t,
 					reqKey: n,
 					f: k,
@@ -9953,7 +9956,7 @@ function Dl({ board: e, repo: t, reqKey: n, n: r, r: a, at: l, onAt: u, moment: 
 			}) : /* @__PURE__ */ g("p", {
 				className: "kt-pad kt-dim",
 				children: "读取中…"
-			}) : a ? /* @__PURE__ */ g(ll, {
+			}) : a ? /* @__PURE__ */ g(ul, {
 				tab: N,
 				data: P,
 				error: v.error,
@@ -9968,7 +9971,7 @@ function Dl({ board: e, repo: t, reqKey: n, n: r, r: a, at: l, onAt: u, moment: 
 		})]
 	});
 }
-function Ol({ title: e, board: t, reqKey: n, moment: r, bar: a, then: o, nav: c, picked: l, prev: u, next: d, onClose: f, children: p }) {
+function kl({ title: e, board: t, reqKey: n, moment: r, bar: a, then: o, nav: c, picked: l, prev: u, next: d, onClose: f, children: p }) {
 	let m = s(null), h = s(null);
 	return i(() => m.current?.focus(), []), i(() => {
 		h.current?.querySelector("[aria-current=\"step\"]")?.scrollIntoView?.({
@@ -10045,12 +10048,12 @@ function Ol({ title: e, board: t, reqKey: n, moment: r, bar: a, then: o, nav: c,
 		})
 	});
 }
-function kl(e) {
-	return e.board.steps && e.at.node === "code" ? /* @__PURE__ */ g(jl, { ...e }) : /* @__PURE__ */ g(Al, { ...e });
+function Al(e) {
+	return e.board.steps && e.at.node === "code" ? /* @__PURE__ */ g(Ml, { ...e }) : /* @__PURE__ */ g(jl, { ...e });
 }
-function Al({ board: e, repo: t, reqKey: n, at: r, onAt: i, onClose: a, moment: o = null, bar: s }) {
-	let c = cc(e), l = e.nodes.filter((e) => c.includes(e) || e.id === r.node), u = l.findIndex((e) => e.id === r.node), d = l[u], f = d ? d.rounds.find((e) => e.n === r.round) ?? d.rounds[d.rounds.length - 1] ?? null : null;
-	return /* @__PURE__ */ g(Ol, {
+function jl({ board: e, repo: t, reqKey: n, at: r, onAt: i, onClose: a, moment: o = null, bar: s }) {
+	let c = lc(e), l = e.nodes.filter((e) => c.includes(e) || e.id === r.node), u = l.findIndex((e) => e.id === r.node), d = l[u], f = d ? d.rounds.find((e) => e.n === r.round) ?? d.rounds[d.rounds.length - 1] ?? null : null;
+	return /* @__PURE__ */ g(kl, {
 		title: "每一步的产出",
 		board: e,
 		reqKey: n,
@@ -10085,7 +10088,7 @@ function Al({ board: e, repo: t, reqKey: n, at: r, onAt: i, onClose: a, moment: 
 				]
 			}, e.id))
 		},
-		children: d ? /* @__PURE__ */ g(Dl, {
+		children: d ? /* @__PURE__ */ g(Ol, {
 			board: e,
 			repo: t,
 			reqKey: n,
@@ -10100,7 +10103,7 @@ function Al({ board: e, repo: t, reqKey: n, at: r, onAt: i, onClose: a, moment: 
 		})
 	});
 }
-function jl({ board: e, repo: t, reqKey: n, at: r, onAt: a, onClose: o, moment: c = null, bar: l }) {
+function Ml({ board: e, repo: t, reqKey: n, at: r, onAt: a, onClose: o, moment: c = null, bar: l }) {
 	let u = F(D.outputsCommits(t, n), 0), d = c ? "" : e.belt.filter((e) => e.kind === "commit").map((e) => e.sha).join(","), f = s(d);
 	i(() => {
 		d && f.current !== d && u.reload(), f.current = d;
@@ -10109,7 +10112,7 @@ function jl({ board: e, repo: t, reqKey: n, at: r, onAt: a, onClose: o, moment: 
 		node: r.node,
 		commit: m[e - 1].sha.slice(0, 12)
 	};
-	return /* @__PURE__ */ g(Ol, {
+	return /* @__PURE__ */ g(kl, {
 		title: "写代码的产出",
 		board: e,
 		reqKey: n,
@@ -10151,7 +10154,7 @@ function jl({ board: e, repo: t, reqKey: n, at: r, onAt: a, onClose: o, moment: 
 			className: "kt-pad kt-dim",
 			"data-testid": "out-none",
 			children: c ? `那时还没有提交 ${v}` : `运行分支上没有提交 ${v}：点上面的一个提交看它改了什么`
-		}) : /* @__PURE__ */ g(Ml, {
+		}) : /* @__PURE__ */ g(Nl, {
 			board: e,
 			repo: t,
 			reqKey: n,
@@ -10174,8 +10177,8 @@ function jl({ board: e, repo: t, reqKey: n, at: r, onAt: a, onClose: o, moment: 
 		})
 	});
 }
-function Ml({ board: e, repo: t, reqKey: n, data: r, commits: i, c: a, file: o, onFile: s, moment: c }) {
-	let l = i[i.length - 1], u = a ? a.files : r.files, d = a || !c ? u : u.filter((e) => e.ref !== null && c.made(e.ref)), f = _l(!0, d), p = f.flatMap(([, e]) => e), m = p.find((e) => e.path === o) ?? p.find((e) => e.ref) ?? p[0], h = (a ?? l).sha.slice(0, 7), v = r.branch ?? e.branch;
+function Nl({ board: e, repo: t, reqKey: n, data: r, commits: i, c: a, file: o, onFile: s, moment: c }) {
+	let l = i[i.length - 1], u = a ? a.files : r.files, d = a || !c ? u : u.filter((e) => e.ref !== null && c.made(e.ref)), f = vl(!0, d), p = f.flatMap(([, e]) => e), m = p.find((e) => e.path === o) ?? p.find((e) => e.ref) ?? p[0], h = (a ?? l).sha.slice(0, 7), v = r.branch ?? e.branch;
 	return /* @__PURE__ */ _("section", {
 		className: "kt-pane",
 		"aria-label": a ? `提交 ${h}的改动` : "全部改动",
@@ -10212,7 +10215,7 @@ function Ml({ board: e, repo: t, reqKey: n, data: r, commits: i, c: a, file: o, 
 			className: "kt-pane-body",
 			children: d.length ? /* @__PURE__ */ _("div", {
 				className: "kt-files-pane",
-				children: [/* @__PURE__ */ g(wl, {
+				children: [/* @__PURE__ */ g(Tl, {
 					groups: f,
 					pick: m,
 					onPick: (e) => s(e.path),
@@ -10226,7 +10229,7 @@ function Ml({ board: e, repo: t, reqKey: n, data: r, commits: i, c: a, file: o, 
 							" 个文件这里没列"
 						]
 					})
-				}), m && /* @__PURE__ */ g(Tl, {
+				}), m && /* @__PURE__ */ g(El, {
 					repo: t,
 					reqKey: n,
 					f: m,
@@ -10243,7 +10246,7 @@ function Ml({ board: e, repo: t, reqKey: n, data: r, commits: i, c: a, file: o, 
 }
 //#endregion
 //#region src/board/RunPicker.tsx
-function Nl({ board: e, value: t, onPick: n }) {
+function Pl({ board: e, value: t, onPick: n }) {
 	let [r, a] = c(!1), o = s(null);
 	if (i(() => {
 		if (!r) return;
@@ -10255,7 +10258,7 @@ function Nl({ board: e, value: t, onPick: n }) {
 			document.removeEventListener("mousedown", e), document.removeEventListener("keydown", e);
 		};
 	}, [r]), !e.runs.length) return null;
-	let l = e.runs.length === 1, u = l ? e.runs[0].label : $s(e, t)?.label ?? "全部", d = rc(e);
+	let l = e.runs.length === 1, u = l ? e.runs[0].label : ec(e, t)?.label ?? "全部", d = ic(e);
 	return /* @__PURE__ */ _("span", {
 		className: "kt-runpick",
 		ref: o,
@@ -10314,7 +10317,7 @@ function Nl({ board: e, value: t, onPick: n }) {
 }
 //#endregion
 //#region src/board/Header.tsx
-function Pl({ board: e, replaying: t, follow: n, onReplay: r, onFollow: a, onDetail: o, onSession: s, onStart: l, onParent: u, onFamily: d, onOutputs: f, onStopped: p, run: m = "all", onRun: h }) {
+function Fl({ board: e, replaying: t, follow: n, onReplay: r, onFollow: a, onDetail: o, onSession: s, onStart: l, onParent: u, onFamily: d, onOutputs: f, onStopped: p, run: m = "all", onRun: h }) {
 	let v = e.row, y = e.runs.find((e) => e.kind === "local"), b = y?.sessions ?? (e.steps ? e.sessions.filter((e) => e.kind === "local") : []), x = br(e, y) ?? (e.steps ? b.find((t) => t.slot === e.live_slot) : void 0) ?? null, S = yr([...e.runs].reverse().find((e) => e.kind === "runner" && e.sessions.length)) ?? null, C = e.ended_at !== null || v.state === "merged" || v.state === "closed", [w, T] = c(!1);
 	return i(() => {
 		if (!w) return;
@@ -10345,7 +10348,7 @@ function Pl({ board: e, replaying: t, follow: n, onReplay: r, onFollow: a, onDet
 					label: v.state_label,
 					who: v.waits.who
 				}),
-				v.family && /* @__PURE__ */ g(Il, {
+				v.family && /* @__PURE__ */ g(Ll, {
 					f: v.family,
 					onParent: u,
 					onFamily: d
@@ -10372,7 +10375,7 @@ function Pl({ board: e, replaying: t, follow: n, onReplay: r, onFollow: a, onDet
 		}), /* @__PURE__ */ _("div", {
 			className: "kt-actions",
 			children: [
-				h && !t && /* @__PURE__ */ g(Nl, {
+				h && !t && /* @__PURE__ */ g(Pl, {
 					board: e,
 					value: m,
 					onPick: h
@@ -10391,7 +10394,7 @@ function Pl({ board: e, replaying: t, follow: n, onReplay: r, onFollow: a, onDet
 					title: "在 Kiro Crew 里打开本机的 brain-dev 会话",
 					children: X.openSession
 				}),
-				!t && p && b.some((e) => e.busy) && /* @__PURE__ */ g(Fl, {
+				!t && p && b.some((e) => e.busy) && /* @__PURE__ */ g(Il, {
 					repo: v.repo,
 					reqKey: v.key,
 					onStopped: () => {
@@ -10449,7 +10452,7 @@ function Pl({ board: e, replaying: t, follow: n, onReplay: r, onFollow: a, onDet
 		})]
 	});
 }
-function Fl({ repo: e, reqKey: t, onStopped: n }) {
+function Il({ repo: e, reqKey: t, onStopped: n }) {
 	let r = u(), [a, o] = c(!1), s = I(() => r.post(D.stop(e, t), {}));
 	if (i(() => {
 		if (!a) return;
@@ -10503,7 +10506,7 @@ function Fl({ repo: e, reqKey: t, onStopped: n }) {
 		]
 	});
 }
-function Il({ f: e, onParent: t, onFamily: n }) {
+function Ll({ f: e, onParent: t, onFamily: n }) {
 	if (e.role === "child") return /* @__PURE__ */ _(h, { children: [t ? /* @__PURE__ */ _("button", {
 		type: "button",
 		className: "kt-pill kt-pill-btn tone-handoff br-fam-parent",
@@ -10544,36 +10547,36 @@ function Il({ f: e, onParent: t, onFamily: n }) {
 		children: r
 	});
 }
-function Ll({ board: e, reducedMotion: t, onNode: n, onCode: r, replaying: i = !1, run: a = "all" }) {
-	let o = $s(e, a);
+function Rl({ board: e, reducedMotion: t, onNode: n, onCode: r, replaying: i = !1, run: a = "all" }) {
+	let o = ec(e, a);
 	return /* @__PURE__ */ _("div", {
 		className: "kt-kpis br-kpis",
 		role: "group",
 		"aria-label": "指标",
 		children: [
-			/* @__PURE__ */ g(Rl, {
+			/* @__PURE__ */ g(zl, {
 				board: e,
 				reducedMotion: t
 			}),
-			o ? /* @__PURE__ */ g(Vl, {
+			o ? /* @__PURE__ */ g(Hl, {
 				board: e,
 				run: o
-			}) : /* @__PURE__ */ g(Io, {
+			}) : /* @__PURE__ */ g(Lo, {
 				board: e,
-				children: /* @__PURE__ */ g(zl, { board: e })
+				children: /* @__PURE__ */ g(Bl, { board: e })
 			}),
-			/* @__PURE__ */ g(Wl, { board: e }),
-			/* @__PURE__ */ g(Lo, {
+			/* @__PURE__ */ g(Gl, { board: e }),
+			/* @__PURE__ */ g(Ro, {
 				board: e,
 				onCode: r,
-				children: /* @__PURE__ */ g(Gl, {
+				children: /* @__PURE__ */ g(Kl, {
 					board: e,
 					onNode: n,
 					replaying: i,
 					picked: !!o
 				})
 			}),
-			/* @__PURE__ */ g(Kl, {
+			/* @__PURE__ */ g(ql, {
 				board: e,
 				reducedMotion: t,
 				replaying: i,
@@ -10582,8 +10585,8 @@ function Ll({ board: e, reducedMotion: t, onNode: n, onCode: r, replaying: i = !
 		]
 	});
 }
-function Rl({ board: e, reducedMotion: t }) {
-	let n = e.steps ? is(e) : rs(e.nodes), r = Math.round(sa(n.passed, 900, t)), i = ca(n.passed), a = n.total > 0 && n.passed === n.total;
+function zl({ board: e, reducedMotion: t }) {
+	let n = e.steps ? as(e) : is(e.nodes), r = Math.round(ca(n.passed, 900, t)), i = la(n.passed), a = n.total > 0 && n.passed === n.total;
 	return /* @__PURE__ */ _("div", {
 		className: `kt-kpi kt-kpi-tests${a ? " is-green" : ""}`,
 		children: [
@@ -10619,8 +10622,8 @@ function Rl({ board: e, reducedMotion: t }) {
 		]
 	});
 }
-function zl({ board: e }) {
-	let t = Hr(e.row.lean), n = t.done_n + t.skipped_n, r = e.events.filter((e) => e.kind === "approve").length, i = e.events.filter((e) => e.kind === "reject").length, a = e.events.filter((e) => e.kind === "blocked").length, o = Br(e), s = Ke(t.skipped_phases), c = Je(e.row, []).split(" · ").pop(), l = /^(在做|下一步)：(.+)$/.exec(c), u = !l && c !== "还没开工", { at: d } = es(e.nodes), f = l?.[1] === "在做" ? d ? Bl(d, e) : "is-run" : "is-next", p = (e) => e < t.done_n ? "is-pass" : e < n || u ? "is-skip" : !o && l && e === n ? f : "";
+function Bl({ board: e }) {
+	let t = Hr(e.row.lean), n = t.done_n + t.skipped_n, r = e.events.filter((e) => e.kind === "approve").length, i = e.events.filter((e) => e.kind === "reject").length, a = e.events.filter((e) => e.kind === "blocked").length, o = Br(e), s = Ke(t.skipped_phases), c = Je(e.row, []).split(" · ").pop(), l = /^(在做|下一步)：(.+)$/.exec(c), u = !l && c !== "还没开工", { at: d } = ts(e.nodes), f = l?.[1] === "在做" ? d ? Vl(d, e) : "is-run" : "is-next", p = (e) => e < t.done_n ? "is-pass" : e < n || u ? "is-skip" : !o && l && e === n ? f : "";
 	return /* @__PURE__ */ _("div", {
 		className: "kt-kpi kt-kpi-gates br-kpi-lean",
 		"aria-label": `AI-DLC Lean：${o ? "运行机还读不到 Lean 的记录" : Je(e.row)}`,
@@ -10673,11 +10676,11 @@ function zl({ board: e }) {
 		]
 	});
 }
-function Bl(e, t) {
+function Vl(e, t) {
 	return e.status === "awaiting_approval" ? Sr(e, t.runs.find((t) => t.key === e.run)) === "you" ? "is-wait" : "is-other" : "is-run";
 }
-function Vl({ board: e, run: t }) {
-	let n = ac(e), r = Ke(n.whole), i = [
+function Hl({ board: e, run: t }) {
+	let n = oc(e), r = Ke(n.whole), i = [
 		`做完 ${n.done}`,
 		...n.skipped ? [`跳过 ${n.skipped}`] : [],
 		n.at ? `在做：${n.at.title}` : t.now.doing,
@@ -10709,11 +10712,11 @@ function Vl({ board: e, run: t }) {
 			/* @__PURE__ */ g("div", {
 				className: "kt-segs",
 				"aria-hidden": "true",
-				children: Array.from({ length: n.total }, (t, r) => /* @__PURE__ */ g("i", { className: r < n.done ? "is-pass" : r < a ? "is-skip" : n.at && r === a ? Bl(n.at, e) : "" }, r))
+				children: Array.from({ length: n.total }, (t, r) => /* @__PURE__ */ g("i", { className: r < n.done ? "is-pass" : r < a ? "is-skip" : n.at && r === a ? Vl(n.at, e) : "" }, r))
 			}),
 			/* @__PURE__ */ _("div", {
 				className: "kt-kpi-note br-lean-next",
-				children: [n.at ? Hl(e) : t.now.doing, r && /* @__PURE__ */ _("span", {
+				children: [n.at ? Ul(e) : t.now.doing, r && /* @__PURE__ */ _("span", {
 					"data-testid": "br-lean-whole",
 					children: [" · ", r]
 				})]
@@ -10735,13 +10738,13 @@ function Vl({ board: e, run: t }) {
 		]
 	});
 }
-function Hl(e) {
+function Ul(e) {
 	let t = /* @__PURE__ */ new Map();
-	for (let n of e.nodes) n.rounds.length && n.status !== "skipped" && !Js.has(n.stage) && t.set(n.title, (t.get(n.title) ?? 0) + 1);
-	let { at: n } = es(e.nodes.filter((e) => e.rounds.length));
+	for (let n of e.nodes) n.rounds.length && n.status !== "skipped" && !Ys.has(n.stage) && t.set(n.title, (t.get(n.title) ?? 0) + 1);
+	let { at: n } = ts(e.nodes.filter((e) => e.rounds.length));
 	return [...t].filter(([e]) => e !== n?.title).map(([e, t]) => t > 1 ? `${e}（${t} 个单元）` : e).join(" · ");
 }
-function Ul(e) {
+function Wl(e) {
 	let t = e.events.filter((e) => (e.kind === "approve" || e.kind === "reject") && e.from === "person").length, n = e.events.filter((e) => e.kind === "answer" && e.from === "person").length, r = e.decisions.filter((e) => e.by === "person").length, i = Ir(e).length;
 	return {
 		gates: t,
@@ -10749,8 +10752,8 @@ function Ul(e) {
 		outside: i
 	};
 }
-function Wl({ board: e }) {
-	let { gates: t, answers: n, outside: r } = Ul(e), i = t + n;
+function Gl({ board: e }) {
+	let { gates: t, answers: n, outside: r } = Wl(e), i = t + n;
 	return /* @__PURE__ */ _("div", {
 		className: `kt-kpi br-kpi-people${r ? " is-warn" : ""}`,
 		children: [
@@ -10790,8 +10793,8 @@ function Wl({ board: e }) {
 		]
 	});
 }
-function Gl({ board: e, onNode: t, replaying: n, picked: r }) {
-	let i = e.nodes.filter((e) => e.status !== "skipped" && (!r || e.rounds.length > 0)), a = new Map(e.runs.map((e) => [e.key, e])), o = i.filter((e) => e.status === "merged" || e.status === "done").length, s = i.filter((e) => Vn.has(e.status)).length, c = Rr(e), l = Gs(e, n);
+function Kl({ board: e, onNode: t, replaying: n, picked: r }) {
+	let i = e.nodes.filter((e) => e.status !== "skipped" && (!r || e.rounds.length > 0)), a = new Map(e.runs.map((e) => [e.key, e])), o = i.filter((e) => e.status === "merged" || e.status === "done").length, s = i.filter((e) => Vn.has(e.status)).length, c = Rr(e), l = Ks(e, n);
 	return /* @__PURE__ */ _("div", {
 		className: "kt-kpi kt-kpi-roles",
 		children: [
@@ -10845,8 +10848,8 @@ function Gl({ board: e, onNode: t, replaying: n, picked: r }) {
 		]
 	});
 }
-function Kl({ board: e, reducedMotion: t, replaying: n, run: r }) {
-	let i = n ? null : r ? r.credits : e.credits.total, a = sa(i ?? 0, 900, t), o = r ? r.sessions.length : e.sessions.length;
+function ql({ board: e, reducedMotion: t, replaying: n, run: r }) {
+	let i = n ? null : r ? r.credits : e.credits.total, a = ca(i ?? 0, 900, t), o = r ? r.sessions.length : e.sessions.length;
 	if (r && i === null && !n) return /* @__PURE__ */ _("div", {
 		className: "kt-kpi kt-kpi-credits",
 		children: [
@@ -10893,7 +10896,7 @@ function Kl({ board: e, reducedMotion: t, replaying: n, run: r }) {
 		]
 	});
 }
-var ql = (e) => ({
+var Jl = (e) => ({
 	phase: "0 认领",
 	title: "一个需求号，一段话或文档（选填）",
 	steps: [[{
@@ -10901,7 +10904,7 @@ var ql = (e) => ({
 		title: e,
 		does: "认领、交一段话或文档、开工"
 	}]]
-}), Jl = [
+}), Yl = [
 	{
 		phase: "1 本机 · Lean",
 		title: "brain-dev 会话带着 Lean 推进",
@@ -10966,8 +10969,8 @@ var ql = (e) => ({
 			does: "学到的写回去"
 		}]]
 	}
-], Yl = [
-	Jl[0],
+], Xl = [
+	Yl[0],
 	{
 		phase: "2 检查 · 发布",
 		title: "机器检查，你批准发布",
@@ -10990,7 +10993,7 @@ var ql = (e) => ({
 			does: "学到的写回去"
 		}]]
 	}
-], Xl = [
+], Zl = [
 	{
 		phase: "0 认领",
 		title: "谁做哪个单元",
@@ -11041,8 +11044,8 @@ var ql = (e) => ({
 		}]]
 	}
 ];
-function Zl({ board: e, onStart: t }) {
-	let n = e.row.family, r = n?.role === "child" ? n : null, i = !r && zr(e), a = r ? r.owner : e.person.owner, o = r ? Xl : [ql(t ? "你" : a ?? "负责人"), ...i ? Yl : Jl], s = t ? "你" : a ? ` ${a} ` : "负责人", c = r ? r.state === "unclaimed" || !r.owner ? `${e.row.key} 待认领` : `${e.row.key} ${r.owner} 认领了，还没开工` : `${e.row.key} 认领了，还没开工`;
+function Ql({ board: e, onStart: t }) {
+	let n = e.row.family, r = n?.role === "child" ? n : null, i = !r && zr(e), a = r ? r.owner : e.person.owner, o = r ? Zl : [Jl(t ? "你" : a ?? "负责人"), ...i ? Xl : Yl], s = t ? "你" : a ? ` ${a} ` : "负责人", c = r ? r.state === "unclaimed" || !r.owner ? `${e.row.key} 待认领` : `${e.row.key} ${r.owner} 认领了，还没开工` : `${e.row.key} 认领了，还没开工`;
 	return /* @__PURE__ */ _("section", {
 		className: "kt-empty",
 		"data-testid": "br-board-intro",
@@ -11164,38 +11167,38 @@ function Zl({ board: e, onStart: t }) {
 		]
 	});
 }
-var Ql = [
+var $l = [
 	1,
 	2,
 	4
-], $l = {
+], eu = {
 	approve: "ok",
 	accept: "ok",
 	answer: "ok",
 	reject: "bad"
 };
-function eu(e, t) {
+function tu(e, t) {
 	let n = e.nodes.find((e) => e.id === t.node), r = n ? n.unit ? `${n.title} · ${n.unit}` : n.title : "这一步";
 	if (t.picked) return `${r}：${t.text}`;
 	let i = n ? xr(n) : null;
 	return `${r}：${i ? Er(i, e) : t.choice === "answer" ? "等人回答" : "等人拍板"}`;
 }
-var tu = {
+var nu = {
 	on: !1,
 	p: 0,
 	speed: 1,
 	playing: !1,
 	hold: null
 };
-function nu(e, t) {
-	let [r, a] = c(tu), l = s(null), u = s(null), d = s(!1);
+function ru(e, t) {
+	let [r, a] = c(nu), l = s(null), u = s(null), d = s(!1);
 	r.on || (l.current = e);
-	let f = r.on ? l.current : null, p = o(() => f ? Pc(f) : null, [f]), m = o(() => f ? Nc(f) : null, [f]), h = p?.total ?? 0, g = p ? p.toReal(r.p) : 0, _ = o(() => f && p ? qc(f).map((e) => ({
+	let f = r.on ? l.current : null, p = o(() => f ? Fc(f) : null, [f]), m = o(() => f ? Pc(f) : null, [f]), h = p?.total ?? 0, g = p ? p.toReal(r.p) : 0, _ = o(() => f && p ? Jc(f).map((e) => ({
 		...e,
 		p: p.toPlay(e.at)
 	})) : [], [f, p]), v = n((t) => {
 		l.current = e, u.current = null;
-		let n = t !== void 0 && e ? Pc(e).toPlay(t) : 0;
+		let n = t !== void 0 && e ? Fc(e).toPlay(t) : 0;
 		a({
 			on: !0,
 			p: n,
@@ -11204,7 +11207,7 @@ function nu(e, t) {
 			hold: null
 		});
 	}, [e]), y = n(() => {
-		u.current = null, a(tu);
+		u.current = null, a(nu);
 	}, []), b = n(() => a((e) => e.p >= h ? (d.current = !0, u.current = null, {
 		...e,
 		p: 0,
@@ -11258,14 +11261,14 @@ function nu(e, t) {
 		h,
 		_
 	]);
-	let w = o(() => f && m ? Uc(f, g) : null, [
+	let w = o(() => f && m ? Wc(f, g) : null, [
 		f,
 		m,
 		g
 	]);
 	i(() => {
 		if (!w) return;
-		let e = Math.max(30, h / 60 * r.speed * (250 / 1e3) * 2), n = fo(u.current, w, {
+		let e = Math.max(30, h / 60 * r.speed * (250 / 1e3) * 2), n = po(u.current, w, {
 			at: g,
 			resync: d.current,
 			lateS: e
@@ -11275,7 +11278,7 @@ function nu(e, t) {
 	let T = o(() => w ? {
 		at: g,
 		receivedAt: Infinity
-	} : null, [w, g]), E = !!f && (f.ended_at !== null || f.row.state === "merged" || f.row.state === "closed"), D = o(() => f && w ? Jc(f, g) : null, [
+	} : null, [w, g]), E = !!f && (f.ended_at !== null || f.row.state === "merged" || f.row.state === "closed"), D = o(() => f && w ? Yc(f, g) : null, [
 		f,
 		w,
 		g
@@ -11304,7 +11307,7 @@ function nu(e, t) {
 		setSpeed: C
 	};
 }
-function ru({ rp: e }) {
+function iu({ rp: e }) {
 	if (!e.on || !e.span) return null;
 	let t = e.p >= e.total;
 	return /* @__PURE__ */ _("div", {
@@ -11348,7 +11351,7 @@ function ru({ rp: e }) {
 				className: "kt-replay-speeds",
 				role: "radiogroup",
 				"aria-label": "倍速",
-				children: Ql.map((t) => /* @__PURE__ */ _("button", {
+				children: $l.map((t) => /* @__PURE__ */ _("button", {
 					type: "button",
 					role: "radio",
 					"aria-checked": e.speed === t,
@@ -11358,10 +11361,10 @@ function ru({ rp: e }) {
 				}, t))
 			}),
 			e.held && e.board ? /* @__PURE__ */ g("span", {
-				className: `kt-replay-held${e.held.picked ? ` is-${$l[e.held.choice]}` : ""}`,
+				className: `kt-replay-held${e.held.picked ? ` is-${eu[e.held.choice]}` : ""}`,
 				role: "status",
 				"data-testid": "br-replay-held",
-				children: eu(e.board, e.held)
+				children: tu(e.board, e.held)
 			}) : /* @__PURE__ */ g("span", {
 				className: "kt-dim kt-replay-note",
 				children: t ? e.finished ? "放完了：下面是这个需求最后的样子" : "放到现在了：它还在进行" : !e.playing && e.p > 0 ? "停在这一刻：按 ▶ 接着放" : "按记录重放：安静的时段缩短了，不调用 agent"
@@ -11377,18 +11380,18 @@ function ru({ rp: e }) {
 }
 //#endregion
 //#region src/board/StageGraph.tsx
-var iu = 4, au = (Na.w - 26) / 12, ou = (Na.w - 16) / 12, su = 9.6, cu = {
+var au = 4, ou = (Pa.w - 26) / 12, su = (Pa.w - 16) / 12, cu = 9.6, lu = {
 	handover: "交接",
 	bridge: "桥",
 	signer: "签名",
 	workspace: "工作区"
-}, lu = (e) => e === "done" || e === "merged", uu = (e) => lu(e) ? "✓" : Bn(e).icon, du = (e) => tr(Dr(e).replace(/的负责人$/, ""), 5), fu = {
+}, uu = (e) => e === "done" || e === "merged", du = (e) => uu(e) ? "✓" : Bn(e).icon, fu = (e) => tr(Dr(e).replace(/的负责人$/, ""), 5), pu = {
 	approve: "✓ 批了",
 	accept: "✓ 验收通过",
 	answer: "✓ 回答了",
 	reject: "✗ 退回了"
-}, pu = (e, t) => `${Er(e, t)} · ${e.mr?.decision ?? Tr(e.kind)}`, mu = (e) => e.line ? "approve" : e.kind === "RELEASE" ? "accept" : "answer";
-function hu(e, t = !1) {
+}, mu = (e, t) => `${Er(e, t)} · ${e.mr?.decision ?? Tr(e.kind)}`, hu = (e) => e.line ? "approve" : e.kind === "RELEASE" ? "accept" : "answer";
+function gu(e, t = !1) {
 	let n = [{
 		kind: "head",
 		run: null,
@@ -11397,8 +11400,8 @@ function hu(e, t = !1) {
 		tip: ""
 	}], r = new Set(e.runs.map((e) => e.key));
 	for (let t of e.runs) {
-		for (let r of e.relays) r.to === t.key && n.push(yu(r));
-		n.push(gu(t, e)), t.run_id && n.push({
+		for (let r of e.relays) r.to === t.key && n.push(bu(r));
+		n.push(_u(t, e)), t.run_id && n.push({
 			kind: "sub",
 			run: t.key,
 			text: t.run_id,
@@ -11407,12 +11410,12 @@ function hu(e, t = !1) {
 		}, {
 			kind: "sub",
 			run: t.key,
-			text: _u(t, e),
+			text: vu(t, e),
 			tone: null,
 			tip: ""
 		});
 	}
-	for (let t of e.relays) (t.to === null || !r.has(t.to)) && n.push(yu(t));
+	for (let t of e.relays) (t.to === null || !r.has(t.to)) && n.push(bu(t));
 	e.runs.length || n.push({
 		kind: "run",
 		run: null,
@@ -11433,10 +11436,10 @@ function hu(e, t = !1) {
 		text: "Brain 带来的知识",
 		tone: null,
 		tip: ""
-	}, a(i.loaded === null ? "载入 —" : `载入 ${i.loaded} 条`, i.loaded ? "know" : "quiet", "开工时从 Brain 带进来的条目"), t ? a("引用 —", "quiet", "回放时不算：引用记在决定里，决定没有自己的时间") : a(`引用 ${i.cited.length} 条`, i.cited.length ? "know" : "quiet", "决定里引用的 Brain 条目"), ...i.cited.slice(0, iu).map((e) => a(e, "know", `引用了 ${e}`))), i.cited.length > iu && n.push(a(`+${i.cited.length - iu} 条`, "quiet", i.cited.slice(iu).join("、"))), i.stale.length && n.push(a(`过时 ${i.stale.length} 条`, "stale", `引用了过时的 ${i.stale.join("、")}`)), n;
+	}, a(i.loaded === null ? "载入 —" : `载入 ${i.loaded} 条`, i.loaded ? "know" : "quiet", "开工时从 Brain 带进来的条目"), t ? a("引用 —", "quiet", "回放时不算：引用记在决定里，决定没有自己的时间") : a(`引用 ${i.cited.length} 条`, i.cited.length ? "know" : "quiet", "决定里引用的 Brain 条目"), ...i.cited.slice(0, au).map((e) => a(e, "know", `引用了 ${e}`))), i.cited.length > au && n.push(a(`+${i.cited.length - au} 条`, "quiet", i.cited.slice(au).join("、"))), i.stale.length && n.push(a(`过时 ${i.stale.length} 条`, "stale", `引用了过时的 ${i.stale.join("、")}`)), n;
 }
-function gu(e, t) {
-	let n = e.now.status, r = n === "awaiting_approval", i = r ? e.now.who === "you" ? "mine" : "other" : Vn.has(n) ? "work" : n === "failed" || n === "stalled" ? "bad" : lu(n) ? "done" : "idle", a = [
+function _u(e, t) {
+	let n = e.now.status, r = n === "awaiting_approval", i = r ? e.now.who === "you" ? "mine" : "other" : Vn.has(n) ? "work" : n === "failed" || n === "stalled" ? "bad" : uu(n) ? "done" : "idle", a = [
 		e.label,
 		e.now.doing,
 		e.credits === null ? "" : `${Yn(e.credits)} credits`,
@@ -11445,17 +11448,17 @@ function gu(e, t) {
 	return {
 		kind: "run",
 		run: e.key,
-		text: `${o}${sr(r ? Cr(e.now.who, t) : e.now.doing, au - Qn(o), Bn(n).label)}`,
+		text: `${o}${sr(r ? Cr(e.now.who, t) : e.now.doing, ou - Qn(o), Bn(n).label)}`,
 		tone: i,
 		tip: a.filter(Boolean).join(" · ")
 	};
 }
-function _u(e, t) {
+function vu(e, t) {
 	let n = e.now.node ? xr(t.nodes.find((t) => t.id === e.now.node) ?? { gates: [] }) : null, r = n?.at ?? e.now.since, i = r ? `${Pr(r, t.at)} ` : "";
 	return n ? `${i}请批${Tr(n.kind)}` : e.now.status === "awaiting_approval" ? `${i}${Cr(e.now.who, t)}` : Vn.has(e.now.status) ? `${i}起在做` : `${i}${e.now.doing || Bn(e.now.status).label}`;
 }
-function vu(e) {
-	let t = e.steps.filter((e) => e.key !== "workspace" || !lu(e.status)), n = t.findIndex((e) => !lu(e.status));
+function yu(e) {
+	let t = e.steps.filter((e) => e.key !== "workspace" || !uu(e.status)), n = t.findIndex((e) => !uu(e.status));
 	return n < 0 ? {
 		steps: t,
 		more: !1
@@ -11464,30 +11467,30 @@ function vu(e) {
 		more: n + 1 < t.length
 	};
 }
-function yu(e) {
-	let { steps: t, more: n } = vu(e), r = e.steps.some((e) => e.status === "failed" || e.status === "stalled");
+function bu(e) {
+	let { steps: t, more: n } = yu(e), r = e.steps.some((e) => e.status === "failed" || e.status === "stalled");
 	return {
 		kind: "relay",
 		run: null,
-		text: !n && t.every((e) => lu(e.status)) ? `${t.map((e) => cu[e.key]).join(" → ")} ✓` : t.map((e) => `${cu[e.key]} ${uu(e.status)}`).join(" → "),
+		text: !n && t.every((e) => uu(e.status)) ? `${t.map((e) => lu[e.key]).join(" → ")} ✓` : t.map((e) => `${lu[e.key]} ${du(e.status)}`).join(" → "),
 		tone: r ? "bad" : "relay",
 		tip: e.steps.map((e) => `${e.title}：${e.text}${e.todo ? `（做什么：${e.todo}）` : ""}`).join("\n")
 	};
 }
-function bu(e) {
+function xu(e) {
 	return {
 		phases: e.phases,
 		nodes: e.nodes,
 		runs: e.runs,
 		relays: e.relays,
-		roster: hu(e).map(({ kind: e, run: t }) => ({
+		roster: gu(e).map(({ kind: e, run: t }) => ({
 			kind: e,
 			run: t
 		}))
 	};
 }
-function xu({ board: e, run: t = "all", lay: n, focus: r, onNode: i, flashes: a, reducedMotion: s, feed: c, quiet: l = !1, onSession: u, onAct: d, onOutputs: f, held: p = null }) {
-	let [m, h] = ms(), v = eo(n, e.belt), y = o(() => new Map(e.runs.map((e) => [e.key, e])), [e.runs]), b = o(() => new Map(e.nodes.map((e) => [e.id, e])), [e.nodes]), x = ps(s, c, (e, t) => $a(n, e, t, v), (e) => Qa(n, e, v)), S = hu(e, l), C = e.nodes.filter((e) => n.boxes.has(e.id)), w = /* @__PURE__ */ new Map();
+function Su({ board: e, run: t = "all", lay: n, focus: r, onNode: i, flashes: a, reducedMotion: s, feed: c, quiet: l = !1, onSession: u, onAct: d, onOutputs: f, held: p = null }) {
+	let [m, h] = hs(), v = to(n, e.belt), y = o(() => new Map(e.runs.map((e) => [e.key, e])), [e.runs]), b = o(() => new Map(e.nodes.map((e) => [e.id, e])), [e.nodes]), x = ms(s, c, (e, t) => eo(n, e, t, v), (e) => $a(n, e, v)), S = gu(e, l), C = e.nodes.filter((e) => n.boxes.has(e.id)), w = /* @__PURE__ */ new Map();
 	for (let e of C) {
 		let t = xr(e);
 		if (t) {
@@ -11495,17 +11498,17 @@ function xu({ board: e, run: t = "all", lay: n, focus: r, onNode: i, flashes: a,
 			w.set(e.id, t);
 		}
 	}
-	let T = Rr(e), E = Us(e), D = !l && T && E !== "approve" && E !== "none" && E !== "watch" ? e.runs.flatMap((e) => e.now.status === "awaiting_approval" && e.now.who === "you" && e.now.node && n.boxes.has(e.now.node) && !xr(b.get(e.now.node)) ? [b.get(e.now.node)] : []) : [], O = [...w.values()].find((e) => e.state === "pending" && e.who === "you"), k = O ? pu(O, e) : null, A = p && n.boxes.has(p.node) && !w.has(p.node) ? p : null, j = /* @__PURE__ */ new Set([
+	let T = Rr(e), E = Ws(e), D = !l && T && E !== "approve" && E !== "none" && E !== "watch" ? e.runs.flatMap((e) => e.now.status === "awaiting_approval" && e.now.who === "you" && e.now.node && n.boxes.has(e.now.node) && !xr(b.get(e.now.node)) ? [b.get(e.now.node)] : []) : [], O = [...w.values()].find((e) => e.state === "pending" && e.who === "you"), k = O ? mu(O, e) : null, A = p && n.boxes.has(p.node) && !w.has(p.node) ? p : null, j = /* @__PURE__ */ new Set([
 		...w.keys(),
 		...D.map((e) => e.id),
-		...C.filter((t) => Iu(t, y.get(t.run ?? ""), l, e)).map((e) => e.id),
+		...C.filter((t) => Lu(t, y.get(t.run ?? ""), l, e)).map((e) => e.id),
 		...A ? [A.node] : []
-	]), M = C.filter((e) => Vn.has(e.status)).length, N = C.map((e) => Sr(e, y.get(e.run ?? ""))).filter((e) => e !== null), P = C.filter((e) => lu(e.status)).length, F = [...new Set(N.map((t) => Cr(t, e)))].join("、"), I = o(() => ic(e, t), [e, t]), L = rs(I.nodes), ee = ts(e), R = `需求的路：${C.length} 步，${M} 步在做${N.length ? `，${N.length} 步${F}` : ""}，${P} 步做完；${L.total ? `检查 ${L.passed}/${L.total}` : L.say}。点一步只看它。`, z = [.../* @__PURE__ */ new Set([...N.filter((t) => fr(t, e) !== "you").map((t) => Cr(t, e)), ...gr(e)])], B = m ? b.get(m) : void 0, V = m ? n.boxes.get(m) : void 0;
+	]), M = C.filter((e) => Vn.has(e.status)).length, N = C.map((e) => Sr(e, y.get(e.run ?? ""))).filter((e) => e !== null), P = C.filter((e) => uu(e.status)).length, F = [...new Set(N.map((t) => Cr(t, e)))].join("、"), I = o(() => ac(e, t), [e, t]), L = is(I.nodes), ee = ns(e), R = `需求的路：${C.length} 步，${M} 步在做${N.length ? `，${N.length} 步${F}` : ""}，${P} 步做完；${L.total ? `检查 ${L.passed}/${L.total}` : L.say}。点一步只看它。`, z = [.../* @__PURE__ */ new Set([...N.filter((t) => fr(t, e) !== "you").map((t) => Cr(t, e)), ...gr(e)])], B = m ? b.get(m) : void 0, V = m ? n.boxes.get(m) : void 0;
 	return /* @__PURE__ */ _("div", {
 		className: "kt-graph is-stages br-graph",
 		"data-testid": "kt-graph",
-		children: [/* @__PURE__ */ _(ls, {
-			minWidth: Math.floor(n.width * Ea),
+		children: [/* @__PURE__ */ _(us, {
+			minWidth: Math.floor(n.width * Da),
 			children: [
 				/* @__PURE__ */ _("svg", {
 					className: "kt-graph-svg",
@@ -11513,7 +11516,7 @@ function xu({ board: e, run: t = "all", lay: n, focus: r, onNode: i, flashes: a,
 					role: "group",
 					"aria-label": R,
 					children: [
-						/* @__PURE__ */ g(us, {}),
+						/* @__PURE__ */ g(ds, {}),
 						/* @__PURE__ */ g("rect", {
 							className: "kt-g-bg",
 							x: 0,
@@ -11522,22 +11525,22 @@ function xu({ board: e, run: t = "all", lay: n, focus: r, onNode: i, flashes: a,
 							height: n.height,
 							fill: "url(#kt-dots)"
 						}),
-						/* @__PURE__ */ g(Eu, {
+						/* @__PURE__ */ g(Du, {
 							board: e,
 							lay: n,
 							runs: y,
 							under: j
 						}),
-						/* @__PURE__ */ g(Ou, {
+						/* @__PURE__ */ g(ku, {
 							board: e,
 							lay: n,
-							flash: a[Oa],
+							flash: a[ka],
 							reducedMotion: s,
 							mine: T,
 							asking: k,
-							onHover: (e) => h(e ? Su : null, e ? 300 : 250)
+							onHover: (e) => h(e ? Cu : null, e ? 300 : 250)
 						}),
-						/* @__PURE__ */ g(Au, {
+						/* @__PURE__ */ g(ju, {
 							rows: S,
 							lay: n
 						}),
@@ -11545,7 +11548,7 @@ function xu({ board: e, run: t = "all", lay: n, focus: r, onNode: i, flashes: a,
 							className: "kt-edges",
 							"aria-hidden": "true",
 							children: n.edges.map((t) => {
-								let n = wu(t.from === "orch" ? e.started_at === null ? "waiting" : "done" : b.get(t.from)?.status, b.get(t.to)?.status, ee.has(t.to), ee.has(t.from)), i = !!r && (t.from === r || t.to === r);
+								let n = Tu(t.from === "orch" ? e.started_at === null ? "waiting" : "done" : b.get(t.from)?.status, b.get(t.to)?.status, ee.has(t.to), ee.has(t.from)), i = !!r && (t.from === r || t.to === r);
 								return /* @__PURE__ */ g("path", {
 									"data-edge": `${t.from}>${t.to}`,
 									className: `kt-edge is-${n}${r ? i ? " is-hot" : " is-dim" : ""}`,
@@ -11554,20 +11557,20 @@ function xu({ board: e, run: t = "all", lay: n, focus: r, onNode: i, flashes: a,
 								}, `${t.from}>${t.to}`);
 							})
 						}),
-						/* @__PURE__ */ g(ju, {
+						/* @__PURE__ */ g(Mu, {
 							board: e,
 							lay: n,
 							byId: b,
 							run: t
 						}),
-						/* @__PURE__ */ g(Mu, {
+						/* @__PURE__ */ g(Nu, {
 							board: e,
 							lay: n,
 							head: v,
 							focusRun: r ? b.get(r)?.run ?? null : t === "all" ? null : t,
 							flash: a.run
 						}),
-						/* @__PURE__ */ g(fs, {
+						/* @__PURE__ */ g(ps, {
 							board: I,
 							at: n.station,
 							flash: a.tests
@@ -11575,13 +11578,13 @@ function xu({ board: e, run: t = "all", lay: n, focus: r, onNode: i, flashes: a,
 						/* @__PURE__ */ _("g", {
 							className: "kt-nodes",
 							children: [
-								C.map((o) => /* @__PURE__ */ g(Uu, {
+								C.map((o) => /* @__PURE__ */ g(Wu, {
 									n: o,
 									box: n.boxes.get(o.id),
 									board: e,
 									run: y.get(o.run ?? ""),
 									focus: r,
-									off: !Qs(o, t),
+									off: !$s(o, t),
 									flash: a[o.id],
 									onNode: i,
 									reducedMotion: s,
@@ -11589,25 +11592,25 @@ function xu({ board: e, run: t = "all", lay: n, focus: r, onNode: i, flashes: a,
 									onHover: (e) => h(e ? o.id : null, e ? 300 : 250),
 									held: p?.node === o.id ? p : void 0
 								}, o.id)),
-								[...w].map(([r, i]) => /* @__PURE__ */ g(Gu, {
+								[...w].map(([r, i]) => /* @__PURE__ */ g(Ku, {
 									n: b.get(r),
 									g: i,
 									box: n.boxes.get(r),
 									board: e,
-									off: !Qs(b.get(r), t),
+									off: !$s(b.get(r), t),
 									onAct: l ? void 0 : d,
 									onDoc: l || !f ? void 0 : f,
 									held: p?.node === r ? p : void 0
 								}, `gate-${r}`)),
-								A && /* @__PURE__ */ g(Ku, {
+								A && /* @__PURE__ */ g(qu, {
 									h: A,
 									box: n.boxes.get(A.node)
 								}),
-								D.map((t) => /* @__PURE__ */ g(qu, {
+								D.map((t) => /* @__PURE__ */ g(Ju, {
 									n: t,
 									box: n.boxes.get(t.id),
 									d: E,
-									review: Vs(e.row.waits),
+									review: Hs(e.row.waits),
 									onAct: d
 								}, `step-${t.id}`))
 							]
@@ -11619,18 +11622,18 @@ function xu({ board: e, run: t = "all", lay: n, focus: r, onNode: i, flashes: a,
 						})
 					]
 				}),
-				m === Su && /* @__PURE__ */ g("div", {
+				m === Cu && /* @__PURE__ */ g("div", {
 					className: "kt-ncard",
 					style: {
 						top: `${(n.orch.y - 40) / n.height * 100}%`,
-						left: `${(n.orch.x + Na.w / 2 + 8) / n.width * 100}%`
+						left: `${(n.orch.x + Pa.w / 2 + 8) / n.width * 100}%`
 					},
 					"data-testid": "kt-ncard",
 					role: "dialog",
 					"aria-label": "负责人",
-					onMouseEnter: () => h(Su, 0),
+					onMouseEnter: () => h(Cu, 0),
 					onMouseLeave: () => h(null, 200),
-					children: /* @__PURE__ */ g(ds, {
+					children: /* @__PURE__ */ g(fs, {
 						board: e,
 						mine: T,
 						who: Cr(e.row.waits.who, e)
@@ -11638,13 +11641,13 @@ function xu({ board: e, run: t = "all", lay: n, focus: r, onNode: i, flashes: a,
 				}),
 				B && V && /* @__PURE__ */ g("div", {
 					className: "kt-ncard",
-					style: Cu(V, n),
+					style: wu(V, n),
 					"data-testid": "kt-ncard",
 					role: "dialog",
 					"aria-label": `${B.title}做了什么`,
 					onMouseEnter: () => h(m, 0),
 					onMouseLeave: () => h(null, 200),
-					children: /* @__PURE__ */ g(Ju, {
+					children: /* @__PURE__ */ g(Yu, {
 						n: B,
 						board: e,
 						runs: y,
@@ -11653,28 +11656,28 @@ function xu({ board: e, run: t = "all", lay: n, focus: r, onNode: i, flashes: a,
 					})
 				}, m)
 			]
-		}), /* @__PURE__ */ g(Zu, {
+		}), /* @__PURE__ */ g(Qu, {
 			others: z,
 			relay: e.relays.length > 0
 		})]
 	});
 }
-var Su = "__person";
-function Cu(e, t) {
+var Cu = "__person";
+function wu(e, t) {
 	let n = e.x > t.width * .62;
 	return {
 		...e.y > t.height * .55 ? { bottom: `${Math.max(1, (t.height - (e.y + 40)) / t.height * 100)}%` } : { top: `${Math.max(1, (e.y - 40) / t.height * 100)}%` },
 		...n ? { right: `${(t.width - (e.x - 92 - 10)) / t.width * 100}%` } : { left: `${(e.x + 92 + 10) / t.width * 100}%` }
 	};
 }
-function wu(e, t, n, r) {
-	return !e || !t ? "pending" : n && r ? "ready" : lu(e) || e === "awaiting_approval" ? t !== "waiting" && t !== "skipped" ? "used" : n ? "ready" : "pending" : "pending";
+function Tu(e, t, n, r) {
+	return !e || !t ? "pending" : n && r ? "ready" : uu(e) || e === "awaiting_approval" ? t !== "waiting" && t !== "skipped" ? "used" : n ? "ready" : "pending" : "pending";
 }
-function Tu(e, t, n) {
+function Eu(e, t, n) {
 	let r = t.columns.filter((t) => t.phase === e.key).flatMap((e) => e.ids), i = Math.max(0, ...r.map((e) => t.boxes.get(e).y + 40 + (n.has(e) ? 38 : 6)));
 	return Math.max(1, Math.min(3, 1 + Math.floor((t.bottom - 22 - i) / 15)));
 }
-function Eu({ board: e, lay: t, runs: n, under: r }) {
+function Du({ board: e, lay: t, runs: n, under: r }) {
 	let i = new Map(e.phases.map((e) => [e.key, e]));
 	return /* @__PURE__ */ _("g", {
 		className: "kt-phases",
@@ -11684,14 +11687,14 @@ function Eu({ board: e, lay: t, runs: n, under: r }) {
 				let o = i.get(a.key);
 				if (!o) return null;
 				let s = (a.x1 + a.x2) / 2;
-				if (a.folded) return /* @__PURE__ */ g(Du, {
+				if (a.folded) return /* @__PURE__ */ g(Ou, {
 					band: a,
 					n: o.n,
 					title: o.title.split(" · ")[0],
 					note: o.note ?? "这次不需要",
 					bottom: t.bottom
 				}, a.key);
-				let c = e.nodes.filter((e) => e.phase === a.key && t.boxes.has(e.id)), l = a.key === "init", u = c.some((e) => Sr(e, n.get(e.run ?? "")) === "you") || l && e.person.status === "awaiting_approval" && Rr(e), d = c.some((e) => Hn.has(e.status) && e.status !== "awaiting_approval"), f = c.length > 0 && c.every((e) => lu(e.status)), p = a.key === "release" && zr(e) ? Le("RELEASE") : o.sub, m = o.note ? ar(o.note, (a.x2 - a.x1 - 16) / 13, Tu(a, t, r)) : [];
+				let c = e.nodes.filter((e) => e.phase === a.key && t.boxes.has(e.id)), l = a.key === "init", u = c.some((e) => Sr(e, n.get(e.run ?? "")) === "you") || l && e.person.status === "awaiting_approval" && Rr(e), d = c.some((e) => Hn.has(e.status) && e.status !== "awaiting_approval"), f = c.length > 0 && c.every((e) => uu(e.status)), p = a.key === "release" && zr(e) ? Le("RELEASE") : o.sub, m = o.note ? ar(o.note, (a.x2 - a.x1 - 16) / 13, Eu(a, t, r)) : [];
 				return /* @__PURE__ */ _("g", {
 					className: `kt-phase${u ? " is-wait" : d ? " is-live" : ""}${f ? " is-done" : ""}`,
 					"data-phase": a.key,
@@ -11756,7 +11759,7 @@ function Eu({ board: e, lay: t, runs: n, under: r }) {
 		]
 	});
 }
-function Du({ band: e, n: t, title: n, note: r, bottom: i }) {
+function Ou({ band: e, n: t, title: n, note: r, bottom: i }) {
 	let a = (e.x1 + e.x2) / 2;
 	return /* @__PURE__ */ _("g", {
 		className: "kt-phase is-unused is-folded",
@@ -11792,8 +11795,8 @@ function Du({ band: e, n: t, title: n, note: r, bottom: i }) {
 		]
 	});
 }
-function Ou({ board: e, lay: t, flash: n, reducedMotion: r, mine: i, asking: a, onHover: o }) {
-	let { w: s, h: c } = Na, l = e.person, u = l.status === "awaiting_approval" && i, d = l.status === "awaiting_approval" && !i, f = l.me ? `你${l.owner ? ` · ${l.owner}` : ""}` : l.owner ?? "负责人", p = sr(l.doing, u ? ou - 1.6 : ou, u ? a : null);
+function ku({ board: e, lay: t, flash: n, reducedMotion: r, mine: i, asking: a, onHover: o }) {
+	let { w: s, h: c } = Pa, l = e.person, u = l.status === "awaiting_approval" && i, d = l.status === "awaiting_approval" && !i, f = l.me ? `你${l.owner ? ` · ${l.owner}` : ""}` : l.owner ?? "负责人", p = sr(l.doing, u ? su - 1.6 : su, u ? a : null);
 	return /* @__PURE__ */ _("g", {
 		className: `kt-orch br-person is-${d ? "waiting" : l.status}${u ? " is-active" : ""}${d ? " is-other" : ""}`,
 		transform: `translate(${t.orch.x},${t.orch.y})`,
@@ -11805,7 +11808,7 @@ function Ou({ board: e, lay: t, flash: n, reducedMotion: r, mine: i, asking: a, 
 		onFocus: () => o(!0),
 		onBlur: () => o(!1),
 		children: [
-			u && /* @__PURE__ */ g(cs, {
+			u && /* @__PURE__ */ g(ls, {
 				w: s,
 				h: c,
 				reducedMotion: r
@@ -11854,13 +11857,13 @@ function Ou({ board: e, lay: t, flash: n, reducedMotion: r, mine: i, asking: a, 
 		]
 	});
 }
-var ku = {
+var Au = {
 	know: "is-team is-used",
 	quiet: "is-team",
 	stale: "is-team is-busy"
 };
-function Au({ rows: e, lay: t }) {
-	let n = Na.w, r = t.orch.x;
+function ju({ rows: e, lay: t }) {
+	let n = Pa.w, r = t.orch.x;
 	return /* @__PURE__ */ g("g", {
 		className: "kt-roster",
 		"data-testid": "kt-roster",
@@ -11881,7 +11884,7 @@ function Au({ rows: e, lay: t }) {
 			}, i);
 			let o = e.kind === "brain", s = o ? 15 : 16;
 			return /* @__PURE__ */ _("g", {
-				className: o ? `kt-roster-item ${ku[e.tone ?? "quiet"]}` : `kt-run-row is-${e.tone}${e.kind === "relay" ? " is-relay" : ""}`,
+				className: o ? `kt-roster-item ${Au[e.tone ?? "quiet"]}` : `kt-run-row is-${e.tone}${e.kind === "relay" ? " is-relay" : ""}`,
 				transform: `translate(${r},${a})`,
 				"data-testid": o ? void 0 : "kt-roster-row",
 				"data-run": e.run ?? void 0,
@@ -11909,13 +11912,13 @@ function Au({ rows: e, lay: t }) {
 		})
 	});
 }
-function ju({ board: e, lay: t, byId: n, run: r }) {
+function Mu({ board: e, lay: t, byId: n, run: r }) {
 	let i = e.runs.filter((e) => e.now.node && (Hn.has(e.now.status) || e.now.status === "queued") && (r === "all" || e.key === r));
 	return /* @__PURE__ */ g("g", {
 		className: "kt-cmds",
 		"aria-hidden": "true",
 		children: i.map((r, i) => {
-			let a = Za(t, r.key, r.now.node, i);
+			let a = Qa(t, r.key, r.now.node, i);
 			if (!a) return null;
 			let o = r.now.status === "awaiting_approval", s = o ? r.now.who === "you" ? "awaiting_approval" : "other" : r.now.status, c = `${_r(r, e)} → ${n.get(r.now.node)?.title ?? ""}：${o ? Cr(r.now.who, e) : Bn(r.now.status).label}`, l = Qn(c) * 12 + 22, u = Math.max(a.bus.x1 + l / 2 + 6, a.bus.x2 - l / 2 - 16);
 			return /* @__PURE__ */ _("g", {
@@ -11923,7 +11926,7 @@ function ju({ board: e, lay: t, byId: n, run: r }) {
 				"data-run": r.key,
 				children: [/* @__PURE__ */ g("path", {
 					className: `kt-cmd is-${s}`,
-					d: Sa(a.path)
+					d: Ca(a.path)
 				}), /* @__PURE__ */ _("g", {
 					className: `kt-cmd-label is-${s}`,
 					transform: `translate(${u},${a.bus.y})`,
@@ -11943,7 +11946,7 @@ function ju({ board: e, lay: t, byId: n, run: r }) {
 		})
 	});
 }
-function Mu({ board: e, lay: t, head: n, focusRun: r, flash: i }) {
+function Nu({ board: e, lay: t, head: n, focusRun: r, flash: i }) {
 	let { x1: a, x2: o, y: s } = t.rail, c = /* @__PURE__ */ new Map();
 	for (let t of e.belt) t.kind === "commit" && t.run && c.set(t.run, {
 		n: (c.get(t.run)?.n ?? 0) + 1,
@@ -12019,7 +12022,7 @@ function Mu({ board: e, lay: t, head: n, focusRun: r, flash: i }) {
 					]
 				}, e.key);
 			}),
-			e.relays.map((n, r) => /* @__PURE__ */ g(Nu, {
+			e.relays.map((n, r) => /* @__PURE__ */ g(Pu, {
 				r: n,
 				x: t.relayX[r],
 				y: s,
@@ -12048,8 +12051,8 @@ function Mu({ board: e, lay: t, head: n, focusRun: r, flash: i }) {
 		]
 	});
 }
-function Nu({ r: e, x: t, y: n, today: r }) {
-	let { steps: i, more: a } = vu(e), o = e.steps.some((e) => e.status === "failed" || e.status === "stalled"), s = !a && i.every((e) => lu(e.status)), c = Math.max(e.at, ...i.map((e) => e.at ?? 0)), l = [...i.map((e) => `${cu[e.key]} ${uu(e.status)}`), ...a ? ["…"] : []].join(" · ");
+function Pu({ r: e, x: t, y: n, today: r }) {
+	let { steps: i, more: a } = yu(e), o = e.steps.some((e) => e.status === "failed" || e.status === "stalled"), s = !a && i.every((e) => uu(e.status)), c = Math.max(e.at, ...i.map((e) => e.at ?? 0)), l = [...i.map((e) => `${lu[e.key]} ${du(e.status)}`), ...a ? ["…"] : []].join(" · ");
 	return /* @__PURE__ */ _("g", {
 		className: `kt-relay${o ? " is-bad" : ""}`,
 		transform: `translate(${t},${n})`,
@@ -12071,11 +12074,11 @@ function Nu({ r: e, x: t, y: n, today: r }) {
 				children: [
 					i.map((e, t) => /* @__PURE__ */ _("tspan", { children: [
 						t ? " · " : "",
-						cu[e.key],
+						lu[e.key],
 						" ",
 						/* @__PURE__ */ g("tspan", {
-							className: lu(e.status) ? "ok" : e.status === "failed" || e.status === "stalled" ? "bad" : "",
-							children: uu(e.status)
+							className: uu(e.status) ? "ok" : e.status === "failed" || e.status === "stalled" ? "bad" : "",
+							children: du(e.status)
 						})
 					] }, e.key)),
 					a && " · …",
@@ -12085,7 +12088,7 @@ function Nu({ r: e, x: t, y: n, today: r }) {
 		]
 	});
 }
-function Pu(e, t, n) {
+function Fu(e, t, n) {
 	let r = [];
 	if (e.rounds.length > 1 && r.push({
 		text: `第 ${e.rounds.length} 轮`,
@@ -12101,7 +12104,7 @@ function Pu(e, t, n) {
 	else {
 		let t = [...e.gates].reverse().find((e) => e.state === "approved");
 		t && r.push({
-			text: `✓ ${Gr(du(t.by), "批了")}`,
+			text: `✓ ${Gr(fu(t.by), "批了")}`,
 			tone: "okline"
 		}), e.gates.some((e) => e.state === "stale") && r.push({
 			text: "⚠ 文件改过了",
@@ -12113,16 +12116,16 @@ function Pu(e, t, n) {
 		tone: "warn"
 	}), r.slice(0, 2);
 }
-function Fu(e) {
-	return Qn(e.sub) <= su ? [e.sub] : e.unit && Qn(e.unit) <= su ? [e.unit] : ar(e.sub, su, 2);
+function Iu(e) {
+	return Qn(e.sub) <= cu ? [e.sub] : e.unit && Qn(e.unit) <= cu ? [e.unit] : ar(e.sub, cu, 2);
 }
-function Iu(e, t, n, r) {
+function Lu(e, t, n, r) {
 	if (n || !Vn.has(e.status) || !t) return null;
 	if (t.readable === "here") {
 		let e = t.ticker;
 		return {
 			kind: "here",
-			call: e?.tool ? `${e.tool}${e.detail ? ` ${Lu(e.detail)}` : ""}` : null,
+			call: e?.tool ? `${e.tool}${e.detail ? ` ${Ru(e.detail)}` : ""}` : null,
 			said: e?.text ?? null,
 			at: e?.at ?? null,
 			credits: t.credits
@@ -12135,19 +12138,19 @@ function Iu(e, t, n, r) {
 		at: i.at
 	} : null;
 }
-var Lu = (e) => /\s/.test(e) ? e : e.slice(e.lastIndexOf("/") + 1) || e;
-function Ru(e, t) {
+var Ru = (e) => /\s/.test(e) ? e : e.slice(e.lastIndexOf("/") + 1) || e;
+function zu(e, t) {
 	if (Qn(e) <= t) return e;
 	let n = [...e], r = "";
 	for (let e = n.length - 1; e >= 0 && Qn(n[e] + r) <= t - .8; e--) r = n[e] + r;
 	return `…${r.trimStart()}`;
 }
-var zu = 17;
-function Bu({ t: e, h: t }) {
-	let n = oa(), r, i;
+var Bu = 17;
+function Vu({ t: e, h: t }) {
+	let n = sa(), r, i;
 	if (e.kind === "step") {
 		let t = Jn(n - e.at);
-		r = `▸ ${tr(e.text, zu - Qn(t) - 2.5)} · ${t}`, i = `最后一步：${e.text}（${t}）`;
+		r = `▸ ${tr(e.text, Bu - Qn(t) - 2.5)} · ${t}`, i = `最后一步：${e.text}（${t}）`;
 	} else e.call ? (r = `▸ ${tr(e.call, 16)}`, i = [`正在：${e.call}`, e.said && `它刚写：${e.said}`].filter(Boolean).join("\n")) : (r = `▸ AI 在做${e.credits === null ? "" : ` · ${Yn(e.credits)} credits`}`, i = e.said ? `它刚写：${e.said}` : r);
 	return /* @__PURE__ */ _("text", {
 		className: "kt-node-ticker",
@@ -12158,20 +12161,20 @@ function Bu({ t: e, h: t }) {
 		children: [/* @__PURE__ */ g("title", { children: i }), r]
 	});
 }
-var Vu = (e) => e?.kind === "here" && e.said ? `「${Ru(e.said, 8.6)}」` : null;
-function Hu(e, t, n, r) {
+var Hu = (e) => e?.kind === "here" && e.said ? `「${zu(e.said, 8.6)}」` : null;
+function Uu(e, t, n, r) {
 	if (e.child && e.child.state !== "merged") return `${e.child.req} · ${Ve[e.child.state]}`;
 	let i = _r(t, n);
 	if (e.status === "waiting" || !i) return e.doing || Bn(e.status).label;
 	if (r) return `${r === "you" ? "✋ " : ""}${i} · ${Cr(r, n)}`;
 	let a = e.rounds[e.rounds.length - 1], o = a?.outcome.checks ?? [];
-	if (lu(e.status)) {
+	if (uu(e.status)) {
 		let t = e.rounds.reduce((e, t) => e + (t.ended === null ? 0 : Math.max(0, t.ended - t.started)), 0);
 		return `✓ ${i} · ${o.length ? `${o.filter((e) => e.ok).length}/${o.length}` : Fr(t)}`;
 	}
 	return e.status === "failed" ? `✕ ${i} · ${a ? Mr(a, e, n) : e.doing}` : `${Bn(e.status).icon} ${i} · ${e.doing || Bn(e.status).label}`;
 }
-function Uu({ n: e, box: t, board: n, run: r, focus: i, off: a, flash: o, onNode: s, reducedMotion: c, quiet: l, onHover: u, held: d }) {
+function Wu({ n: e, box: t, board: n, run: r, focus: i, off: a, flash: o, onNode: s, reducedMotion: c, quiet: l, onHover: u, held: d }) {
 	let f = Vn.has(e.status), p = Sr(e, r), m = p !== null && p !== "you", h = xr(e), v = i === e.id, y = p ? Cr(p, n) : Bn(e.status).label, b = [
 		`${e.title}（${e.sub}）：${y}`,
 		r?.label,
@@ -12179,7 +12182,7 @@ function Uu({ n: e, box: t, board: n, run: r, focus: i, off: a, flash: o, onNode
 		e.doing
 	].filter(Boolean).join("，"), x = (t) => {
 		(t.key === "Enter" || t.key === " ") && (t.preventDefault(), s(e.id));
-	}, S = e.status === "merged" || e.status === "failed", C = 84, w = Iu(e, r, l, n), T = !!h && h.state === "pending" && h.at !== null && !l, E = Vu(w), D = T ? [] : E ? [E] : Fu(e), O = D.length > 1 ? 30 : 23, k = S ? 7.4 : 8.6, A = Hu(e, r, n, p), j = Qn(A) > k && S && /^[✓✕] /.test(A) ? A.slice(2) : A;
+	}, S = e.status === "merged" || e.status === "failed", C = 84, w = Lu(e, r, l, n), T = !!h && h.state === "pending" && h.at !== null && !l, E = Hu(w), D = T ? [] : E ? [E] : Iu(e), O = D.length > 1 ? 30 : 23, k = S ? 7.4 : 8.6, A = Uu(e, r, n, p), j = Qn(A) > k && S && /^[✓✕] /.test(A) ? A.slice(2) : A;
 	return /* @__PURE__ */ _("g", {
 		className: `kt-node is-${e.status}${m ? " is-other" : ""}${e.status === "merged" ? " is-final" : ""}${i ? v ? " is-focus" : " is-dim" : a ? " is-dim" : ""}`,
 		transform: `translate(${t.x},${t.y})`,
@@ -12195,7 +12198,7 @@ function Uu({ n: e, box: t, board: n, run: r, focus: i, off: a, flash: o, onNode
 		onMouseLeave: () => u(!1),
 		children: [
 			/* @__PURE__ */ g("title", { children: b }),
-			(f || p === "you") && /* @__PURE__ */ g(cs, {
+			(f || p === "you") && /* @__PURE__ */ g(ls, {
 				w: 184,
 				h: 80,
 				reducedMotion: c
@@ -12254,7 +12257,7 @@ function Uu({ n: e, box: t, board: n, run: r, focus: i, off: a, flash: o, onNode
 					children: e.n
 				})]
 			}),
-			T ? /* @__PURE__ */ g(Wu, { g: h }) : D.map((e, t) => /* @__PURE__ */ g("text", {
+			T ? /* @__PURE__ */ g(Gu, { g: h }) : D.map((e, t) => /* @__PURE__ */ g("text", {
 				className: `kt-node-task${E ? " is-said" : ""}`,
 				x: -26,
 				y: D.length > 1 ? 1 + t * 13 : 4,
@@ -12277,7 +12280,7 @@ function Uu({ n: e, box: t, board: n, run: r, focus: i, off: a, flash: o, onNode
 				transform: "translate(78,26)",
 				children: [/* @__PURE__ */ g("circle", { r: 9 }), /* @__PURE__ */ g("path", { d: "M-3.5,-3.5 L3.5,3.5 M3.5,-3.5 L-3.5,3.5" })]
 			}),
-			Pu(e, n, p).map((e) => {
+			Fu(e, n, p).map((e) => {
 				let t = Math.max(34, Math.round(Qn(e.text) * 12.4) + 16);
 				C -= t;
 				let n = C;
@@ -12297,12 +12300,12 @@ function Uu({ n: e, box: t, board: n, run: r, focus: i, off: a, flash: o, onNode
 					})]
 				}, e.text);
 			}),
-			w && /* @__PURE__ */ g(Bu, {
+			w && /* @__PURE__ */ g(Vu, {
 				t: w,
 				h: 80
 			}),
 			d && /* @__PURE__ */ g("rect", {
-				className: `kt-node-held${d.picked ? ` is-${$l[d.choice]}` : ""}`,
+				className: `kt-node-held${d.picked ? ` is-${eu[d.choice]}` : ""}`,
 				x: -98,
 				y: -46,
 				width: 196,
@@ -12329,16 +12332,16 @@ function Uu({ n: e, box: t, board: n, run: r, focus: i, off: a, flash: o, onNode
 		]
 	});
 }
-function Wu({ g: e }) {
-	let t = oa(), n = `已等 ${qn(t - (e.at ?? t))}`, r = e.mr?.decision ? `${e.mr.decision} · ${n}` : n, i = [...r].reduce((e, t) => e + (Qn(t) === 1 ? 1 : .6), 0);
+function Gu({ g: e }) {
+	let t = sa(), n = `已等 ${qn(t - (e.at ?? t))}`, r = e.mr?.decision ? `${e.mr.decision} · ${n}` : n, i = [...r].reduce((e, t) => e + (Qn(t) === 1 ? 1 : .6), 0);
 	return /* @__PURE__ */ g("text", {
 		className: `kt-node-task is-wait${e.who === "you" ? "" : " is-other"}`,
 		x: -26,
 		y: 4,
-		children: tr(i <= 9.5 ? r : n, su)
+		children: tr(i <= 9.5 ? r : n, cu)
 	});
 }
-function Gu({ n: e, g: t, box: n, board: r, off: i, onAct: a, onDoc: o, held: s }) {
+function Ku({ n: e, g: t, box: n, board: r, off: i, onAct: a, onDoc: o, held: s }) {
 	let c = e.rounds.filter((e) => e.outcome.kind === "sent_back" && e.outcome.gate === t.kind).slice(-2), l = t.docs[0], u = r.nodes.find((e) => e.rounds.some((e) => e.outputs.some((e) => e.path === l))) ?? e, d = [
 		...c.map((t) => ({
 			text: `✗ 退回 · ${t.outcome.decision ?? `第 ${t.n} 轮`}`,
@@ -12347,8 +12350,8 @@ function Gu({ n: e, g: t, box: n, board: r, off: i, onAct: a, onDoc: o, held: s 
 			open: !1
 		})),
 		s?.picked ? {
-			text: fu[s.choice],
-			cls: `is-picked is-${$l[s.choice]}`,
+			text: pu[s.choice],
+			cls: `is-picked is-${eu[s.choice]}`,
 			tip: s.text,
 			open: !1
 		} : t.state === "queued" ? {
@@ -12357,7 +12360,7 @@ function Gu({ n: e, g: t, box: n, board: r, off: i, onAct: a, onDoc: o, held: s 
 			tip: t.text ?? "",
 			open: !1
 		} : {
-			text: pu(t, r),
+			text: mu(t, r),
 			cls: t.who === "you" ? "is-mine" : "is-other",
 			tip: t.line ?? "",
 			open: !0
@@ -12377,7 +12380,7 @@ function Gu({ n: e, g: t, box: n, board: r, off: i, onAct: a, onDoc: o, held: s 
 		children: d.map((n, r) => {
 			let i = p + f[r] / 2;
 			p += f[r] + 6;
-			let s = n.doc && o ? () => o(u.id, u === e ? t.round : void 0, l) : n.open && t.state === "pending" && a ? () => a(e.id, mu(t)) : void 0;
+			let s = n.doc && o ? () => o(u.id, u === e ? t.round : void 0, l) : n.open && t.state === "pending" && a ? () => a(e.id, hu(t)) : void 0;
 			return /* @__PURE__ */ _("g", {
 				className: `kt-gate-pill ${n.cls}${s ? "" : " is-static"}`,
 				transform: `translate(${i},${m})`,
@@ -12408,10 +12411,10 @@ function Gu({ n: e, g: t, box: n, board: r, off: i, onAct: a, onDoc: o, held: s 
 		})
 	});
 }
-function Ku({ h: e, box: t }) {
-	let n = e.picked ? fu[e.choice] : e.choice === "answer" ? "等人回答" : "等人拍板", r = Math.max(84, Math.round(Qn(n) * 12.6) + 20);
+function qu({ h: e, box: t }) {
+	let n = e.picked ? pu[e.choice] : e.choice === "answer" ? "等人回答" : "等人拍板", r = Math.max(84, Math.round(Qn(n) * 12.6) + 20);
 	return /* @__PURE__ */ _("g", {
-		className: `kt-gate-pill is-static ${e.picked ? `is-picked is-${$l[e.choice]}` : "is-other"}`,
+		className: `kt-gate-pill is-static ${e.picked ? `is-picked is-${eu[e.choice]}` : "is-other"}`,
 		transform: `translate(${t.x},${t.y + 40 + 22})`,
 		"data-testid": "kt-held-pill",
 		children: [
@@ -12431,7 +12434,7 @@ function Ku({ h: e, box: t }) {
 		]
 	});
 }
-function qu({ n: e, box: t, d: n, review: r, onAct: i }) {
+function Ju({ n: e, box: t, d: n, review: r, onAct: i }) {
 	let a = `✋ ${r && n === "reply" ? X.review : Y[n] || Y.answer}`, o = i ? () => i(e.id, n) : void 0, s = Math.max(96, Math.round(Qn(a) * 12.6) + 20);
 	return /* @__PURE__ */ _("g", {
 		className: `kt-gate-pill is-mine${o ? "" : " is-static"}`,
@@ -12457,8 +12460,8 @@ function qu({ n: e, box: t, d: n, review: r, onAct: i }) {
 		})]
 	});
 }
-function Ju({ n: e, board: t, runs: n, onSession: r, onOutputs: i }) {
-	let a = n.get(e.run ?? ""), o = Sr(e, a), s = xr(e), c = Bn(e.status), l = a && a.readable === "here" ? br(t, a) : void 0, u = Iu(e, a, !1, t);
+function Yu({ n: e, board: t, runs: n, onSession: r, onOutputs: i }) {
+	let a = n.get(e.run ?? ""), o = Sr(e, a), s = xr(e), c = Bn(e.status), l = a && a.readable === "here" ? br(t, a) : void 0, u = Lu(e, a, !1, t);
 	return /* @__PURE__ */ _("div", {
 		className: "kt-ncard-body",
 		children: [
@@ -12496,7 +12499,7 @@ function Ju({ n: e, board: t, runs: n, onSession: r, onOutputs: i }) {
 				className: "kt-ncard-did",
 				children: e.doing
 			}),
-			u && /* @__PURE__ */ g(Yu, { t: u }),
+			u && /* @__PURE__ */ g(Xu, { t: u }),
 			e.rounds.length > 0 && /* @__PURE__ */ g("ol", {
 				className: "kt-ncard-rounds",
 				children: e.rounds.map((r) => {
@@ -12556,8 +12559,8 @@ function Ju({ n: e, board: t, runs: n, onSession: r, onOutputs: i }) {
 		]
 	});
 }
-function Yu({ t: e }) {
-	let t = oa();
+function Xu({ t: e }) {
+	let t = sa();
 	return e.kind === "step" ? /* @__PURE__ */ _("p", {
 		className: "kt-ncard-facts",
 		"data-testid": "kt-ncard-now",
@@ -12573,7 +12576,7 @@ function Yu({ t: e }) {
 		children: [e.call && /* @__PURE__ */ _("li", { children: ["正在：", /* @__PURE__ */ g("code", { children: e.call })] }), e.said && /* @__PURE__ */ _("li", { children: ["它刚写：", e.said] })]
 	});
 }
-var Xu = [
+var Zu = [
 	{
 		status: "running",
 		text: "在做"
@@ -12611,13 +12614,13 @@ var Xu = [
 		text: "还没轮到"
 	}
 ];
-function Zu({ others: e, relay: t }) {
+function Qu({ others: e, relay: t }) {
 	return /* @__PURE__ */ _("div", {
 		className: "kt-legend",
 		role: "note",
 		"aria-label": "图例",
 		children: [
-			Xu.map((t) => /* @__PURE__ */ _("span", {
+			Zu.map((t) => /* @__PURE__ */ _("span", {
 				className: `kt-legend-item is-${t.status}`,
 				"data-testid": t.status === "other" ? "kt-legend-other" : void 0,
 				children: [/* @__PURE__ */ g("i", { "aria-hidden": "true" }), t.status === "other" && e.length ? e.join(" / ") : t.text]
@@ -12659,21 +12662,21 @@ function Zu({ others: e, relay: t }) {
 }
 //#endregion
 //#region src/board/useBoard.ts
-function Qu(e, t) {
+function $u(e, t) {
 	let r = t.pollMs ?? 2e3, [a, o] = c({
 		board: null,
 		error: "",
 		missing: !1,
 		loading: !0,
 		receivedAt: 0
-	}), l = Xi(e), u = Xi(t.onDiff), d = D.board(t.repo, t.reqKey), f = Xi(d), p = s(!1), m = s(null), h = s(!1), g = s(() => {}), _ = n(async () => {
+	}), l = Zi(e), u = Zi(t.onDiff), d = D.board(t.repo, t.reqKey), f = Zi(d), p = s(!1), m = s(null), h = s(!1), g = s(() => {}), _ = n(async () => {
 		if (p.current) return;
 		p.current = !0;
 		let e = f.current;
 		try {
 			let t = await l.current.get(e);
 			if (e !== f.current) return;
-			let n = typeof document > "u" || !document.hidden, r = fo(m.current, t, {
+			let n = typeof document > "u" || !document.hidden, r = po(m.current, t, {
 				at: t.at,
 				resync: h.current
 			});
@@ -12728,7 +12731,7 @@ function Qu(e, t) {
 }
 //#endregion
 //#region src/board/BoardPage.tsx
-var $u = {
+var ed = {
 	req: null,
 	flips: {},
 	flashes: {},
@@ -12737,9 +12740,9 @@ var $u = {
 	fresh: /* @__PURE__ */ new Set(),
 	announce: ""
 };
-function ed(e, t, n) {
+function td(e, t, n) {
 	if (t.first || e.req !== t.req) return {
-		...$u,
+		...ed,
 		req: t.req
 	};
 	let r = { ...e.flips };
@@ -12761,22 +12764,22 @@ function ed(e, t, n) {
 		announce: t.announce ?? e.announce
 	};
 }
-function td(e) {
+function nd(e) {
 	let t = e.nodes.filter((e) => Vn.has(e.status) || e.status === "awaiting_approval");
 	return t.sort((e, t) => (t.since ?? 0) - (e.since ?? 0)), t[0]?.id ?? null;
 }
-function nd(e) {
-	let t = cc(e), n = td(e);
+function rd(e) {
+	let t = lc(e), n = nd(e);
 	return t.find((e) => e.id === n)?.id ?? t[t.length - 1]?.id ?? e.nodes[0].id;
 }
-function rd(e, t) {
+function id(e, t) {
 	let n = e.nodes.find((e) => e.id === t);
 	return n ? {
 		icon: n.icon,
 		title: n.unit ? `${n.title} · ${n.unit}` : n.title
 	} : null;
 }
-function id(e) {
+function ad(e) {
 	return !e.error || e.row.state === "claimed" ? null : /[A-Za-z]{4,}/.test(e.error.replace(/brain-kit|Lean|KiroCrew/g, "")) ? {
 		text: "这个需求的运行记录没读全：图上只画了 Lean 的记录和仓库里看得到的",
 		todo: "到需求现状看细节；一直这样的话，到设置里看 brain-kit 能不能用",
@@ -12787,16 +12790,16 @@ function id(e) {
 		raw: ""
 	};
 }
-function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d, push: f, status: m, pollMs: v, reloadStatus: y }) {
-	let b = u(), x = p(), S = $i(), [C, w] = c(null), [T, E] = c(!1), [D, O] = c($u), k = s(null), A = s(null), j = s(!1), M = s(/* @__PURE__ */ new Set()), N = n((e, t) => {
-		let n = lo(e, t, M.current);
-		n.items.length && k.current?.(n.items), O((t) => ed(t, e, n.flashes));
-	}, []), P = n((e, t) => void (j.current || N(e, t)), [N]), F = Qu(b, {
+function od({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d, push: f, status: m, pollMs: v, reloadStatus: y }) {
+	let b = u(), x = p(), S = ea(), [C, w] = c(null), [T, E] = c(!1), [D, O] = c(ed), k = s(null), A = s(null), j = s(!1), M = s(/* @__PURE__ */ new Set()), N = n((e, t) => {
+		let n = uo(e, t, M.current);
+		n.items.length && k.current?.(n.items), O((t) => td(t, e, n.flashes));
+	}, []), P = n((e, t) => void (j.current || N(e, t)), [N]), F = $u(b, {
 		repo: e.repo,
 		reqKey: e.key,
 		pollMs: v,
 		onDiff: P
-	}), I = F.missing && !F.board, L = ji(e.repo, e.key, m, v), ee = r ?? ((e, t) => l({
+	}), I = F.missing && !F.board, L = Mi(e.repo, e.key, m, v), ee = r ?? ((e, t) => l({
 		kind: "board",
 		repo: e,
 		key: t
@@ -12806,10 +12809,10 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 	}, [I, !!F.board]);
 	let R = un(e.repo, e.key, () => {
 		F.reload(), y();
-	}), z = nu(F.board, N);
+	}), z = ru(F.board, N);
 	j.current = z.on;
 	let B = z.board ?? F.board;
-	i(() => O($u), [z.on]);
+	i(() => O(ed), [z.on]);
 	let V = s(!!e.replay || !!e.at), H = s(!1), [U, te] = c(e.out ?? null), ne = s(U);
 	ne.current = U;
 	let [W, re] = c(e.run ?? "all"), G = s(W);
@@ -12833,7 +12836,7 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 		};
 		return window.addEventListener("popstate", t), () => window.removeEventListener("popstate", t);
 	}, []);
-	let se = B && $s(B, W) ? W : "all", ce = o(() => B ? ic(B, se) : null, [B, se]);
+	let se = B && ec(B, W) ? W : "all", ce = o(() => B ? ac(B, se) : null, [B, se]);
 	i(() => {
 		H.current && z.on !== V.current && (V.current = z.on, ae());
 	}, [z.on]), i(() => {
@@ -12845,7 +12848,7 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 			block: "start"
 		}), 80);
 	}, [F.board]);
-	let le = o(() => F.board ? bu(F.board) : null, [F.board]), ue = le ? Aa(le) : "", [de, fe] = c(null), pe = s(null), me = n((e) => {
+	let le = o(() => F.board ? xu(F.board) : null, [F.board]), ue = le ? ja(le) : "", [de, fe] = c(null), pe = s(null), me = n((e) => {
 		if (pe.current?.disconnect(), !e || typeof ResizeObserver > "u") return;
 		let t = () => {
 			let t = e.firstElementChild?.clientWidth || e.clientWidth;
@@ -12854,7 +12857,7 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 		t(), pe.current = new ResizeObserver(t), pe.current.observe(e);
 	}, []);
 	i(() => () => pe.current?.disconnect(), []);
-	let he = o(() => le ? Xa(le, Ka(de, le)) : null, [ue, de]);
+	let he = o(() => le ? Za(le, qa(de, le)) : null, [ue, de]);
 	M.current = o(() => new Set(he?.boxes.keys() ?? []), [he]);
 	let ge = o(() => ({
 		at: F.board?.at ?? Date.now() / 1e3,
@@ -12868,7 +12871,7 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 	}), [ve]), be = n((e) => ve({
 		node: "code",
 		...e ? { commit: e } : {}
-	}), [ve]), xe = T && B ? td(B) : null;
+	}), [ve]), xe = T && B ? nd(B) : null;
 	i(() => {
 		xe && A.current?.querySelector(`[data-testid="kt-lane"][data-node="${xe}"]`)?.scrollIntoView?.({
 			block: "nearest",
@@ -12899,7 +12902,7 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 		repo: e.repo,
 		key: t
 	}), Ae = n((e, t) => {
-		let n = (B?.runs ?? []).find((t) => t.key === B?.nodes.find((t) => t.id === e)?.run), r = B && (br(B, n) ?? br(B))?.url, i = !!B && Vs(B.row.waits);
+		let n = (B?.runs ?? []).find((t) => t.key === B?.nodes.find((t) => t.id === e)?.run), r = B && (br(B, n) ?? br(B))?.url, i = !!B && Hs(B.row.waits);
 		if ((t === "reply" && !i || t === "tool") && r) return x(r);
 		if (t === "write_back") return we();
 		let a = t === "accept" ? A.current?.querySelector("#br-accept") : null;
@@ -12908,7 +12911,7 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 			behavior: "smooth",
 			block: "center"
 		}), w(e);
-	}, [B, x]), je = z.on, Me = B ? rd(B, C) : null, Ne = B ? B.questions.filter((e) => e.state === "waiting" || e.state === "open") : [], Pe = !B || B.row.waits.who === "you" ? null : Lr.has(B.row.waits.who) ? pr(B) : "等人", J = !!B && B.accept.state !== "not_yet", Fe = B ? id(B) : null, Ie = B?.row.family ?? null, Le = De && Ie?.role !== "child" ? Oe : void 0, Re = !!B && (B.row.state === "claimed" || B.row.state === "unclaimed") && !z.on, ze = B && Ie && /* @__PURE__ */ g(dn, {
+	}, [B, x]), je = z.on, Me = B ? id(B, C) : null, Ne = B ? B.questions.filter((e) => e.state === "waiting" || e.state === "open") : [], Pe = !B || B.row.waits.who === "you" ? null : Lr.has(B.row.waits.who) ? pr(B) : "等人", J = !!B && B.accept.state !== "not_yet", Fe = B ? ad(B) : null, Ie = B?.row.family ?? null, Le = De && Ie?.role !== "child" ? Oe : void 0, Re = !!B && (B.row.state === "claimed" || B.row.state === "unclaimed") && !z.on, ze = B && Ie && /* @__PURE__ */ g(dn, {
 		f: Ie,
 		repo: e.repo,
 		reqKey: e.key,
@@ -12923,7 +12926,7 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 		className: `kt-root br-view br-board${B?.live && !je ? " is-live" : ""}`,
 		"data-testid": "br-board",
 		"data-motion": S ? "reduce" : void 0,
-		children: [/* @__PURE__ */ g("style", { children: xo }), /* @__PURE__ */ _(aa.Provider, {
+		children: [/* @__PURE__ */ g("style", { children: So }), /* @__PURE__ */ _(oa.Provider, {
 			value: _e,
 			children: [
 				/* @__PURE__ */ _("div", {
@@ -12973,12 +12976,13 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 							]
 						}),
 						/* @__PURE__ */ g("span", { className: "cto-grow" }),
-						!z.on && /* @__PURE__ */ g(Ni, {
+						!z.on && /* @__PURE__ */ g(Pi, {
 							repo: e.repo,
 							reqKey: e.key,
 							status: m,
 							pollMs: v,
-							onPick: ee
+							onPick: ee,
+							owner: B?.row.owner
 						}),
 						t && /* @__PURE__ */ _("button", {
 							type: "button",
@@ -12988,12 +12992,12 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 						})
 					]
 				}),
-				L && !z.on && /* @__PURE__ */ g(Mi, {
+				L && !z.on && /* @__PURE__ */ g(Ni, {
 					reqKey: e.key,
 					what: "运行过程",
 					onOpen: () => ee("runner", e.key)
 				}),
-				F.missing && !B ? !L && /* @__PURE__ */ g(Pi, {
+				F.missing && !B ? !L && /* @__PURE__ */ g(Fi, {
 					repoName: m?.repos.find((t) => t.id === e.repo)?.name ?? (e.repo === "runner" ? "运行机" : null),
 					reqKey: e.key,
 					backName: t ? Ce : Te.overview,
@@ -13008,7 +13012,7 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 					has: !!B
 				}),
 				B && ce && he && /* @__PURE__ */ _(h, { children: [
-					/* @__PURE__ */ g(Pl, {
+					/* @__PURE__ */ g(Fl, {
 						board: B,
 						run: se,
 						onRun: oe,
@@ -13025,9 +13029,9 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 							block: "start"
 						}),
 						onStopped: e.repo === "runner" ? void 0 : F.reload,
-						onOutputs: B.steps ? () => be() : cc(ce).length ? () => ye(nd(ce)) : void 0
+						onOutputs: B.steps ? () => be() : lc(ce).length ? () => ye(rd(ce)) : void 0
 					}),
-					/* @__PURE__ */ g(ru, { rp: z }),
+					/* @__PURE__ */ g(iu, { rp: z }),
 					Fe && /* @__PURE__ */ _("div", {
 						className: "kt-banner br-problem",
 						role: "status",
@@ -13041,11 +13045,11 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 							})
 						]
 					}),
-					Re ? /* @__PURE__ */ _(h, { children: [ze, /* @__PURE__ */ g(Zl, {
+					Re ? /* @__PURE__ */ _(h, { children: [ze, /* @__PURE__ */ g(Ql, {
 						board: B,
 						onStart: Le
 					})] }) : /* @__PURE__ */ _(h, { children: [
-						!je && /* @__PURE__ */ g(Ks, {
+						!je && /* @__PURE__ */ g(qs, {
 							board: B,
 							repo: e.repo,
 							reqKey: e.key,
@@ -13054,7 +13058,7 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 								F.reload(), y();
 							}
 						}),
-						/* @__PURE__ */ g(Ll, {
+						/* @__PURE__ */ g(Rl, {
 							board: ce,
 							run: se,
 							reducedMotion: S,
@@ -13062,7 +13066,7 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 							onCode: () => be(),
 							replaying: z.on
 						}, `${z.on ? "replay" : "live"}`),
-						J && /* @__PURE__ */ g(Ji, {
+						J && /* @__PURE__ */ g(Yi, {
 							board: B,
 							onDetail: Se,
 							onOutputs: ve,
@@ -13076,12 +13080,12 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 								children: [
 									/* @__PURE__ */ g("div", {
 										ref: me,
-										children: B.steps ? /* @__PURE__ */ g(_s, {
+										children: B.steps ? /* @__PURE__ */ g(vs, {
 											steps: B.steps,
 											waits: B.row.waits,
 											reducedMotion: S,
 											onCode: () => be()
-										}) : /* @__PURE__ */ g(xu, {
+										}) : /* @__PURE__ */ g(Su, {
 											board: B,
 											run: se,
 											lay: he,
@@ -13097,12 +13101,12 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 											held: z.held
 										}, `${e.repo}/${e.key}${z.on ? ":replay" : ""}`)
 									}),
-									C && /* @__PURE__ */ g(od, {
+									C && /* @__PURE__ */ g(sd, {
 										board: B,
 										focus: C,
 										onClear: () => w(null)
 									}),
-									/* @__PURE__ */ g(_o, {
+									/* @__PURE__ */ g(vo, {
 										board: ce,
 										fresh: D.belt,
 										focus: C,
@@ -13110,7 +13114,7 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 										onCommit: B.steps ? be : void 0
 									}),
 									(Ie?.role === "parent" || Ie?.role === "child") && ze,
-									!B.steps && /* @__PURE__ */ g(uc, {
+									!B.steps && /* @__PURE__ */ g(dc, {
 										board: ce,
 										focus: C,
 										bumps: D.bumps,
@@ -13118,7 +13122,7 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 										quiet: je,
 										onOutputs: ye
 									}),
-									!J && !B.steps && /* @__PURE__ */ g(Ji, {
+									!J && !B.steps && /* @__PURE__ */ g(Yi, {
 										board: B,
 										onDetail: Se,
 										onOutputs: ve,
@@ -13129,7 +13133,7 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 								className: "kt-side",
 								"aria-label": "检查、问题和事件",
 								children: [
-									/* @__PURE__ */ g(la, {
+									/* @__PURE__ */ g(ua, {
 										board: ce,
 										focus: C,
 										onNode: K,
@@ -13154,7 +13158,7 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 											waiter: Pe
 										}, `${t.id ?? "q"}-${n}`))]
 									}),
-									/* @__PURE__ */ g(yo, {
+									/* @__PURE__ */ g(bo, {
 										board: ce,
 										focus: C,
 										onNode: K,
@@ -13165,7 +13169,7 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 						})
 					] })
 				] }),
-				ce && U && (H.current || !(e.at || e.replay)) && /* @__PURE__ */ g(kl, {
+				ce && U && (H.current || !(e.at || e.replay)) && /* @__PURE__ */ g(Al, {
 					board: ce,
 					repo: e.repo,
 					reqKey: e.key,
@@ -13173,7 +13177,7 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 					onAt: ve,
 					onClose: () => ve(null),
 					moment: z.moment,
-					bar: z.on && /* @__PURE__ */ g(ru, { rp: z })
+					bar: z.on && /* @__PURE__ */ g(iu, { rp: z })
 				}),
 				/* @__PURE__ */ g("div", {
 					className: "kt-sr",
@@ -13185,8 +13189,8 @@ function ad({ entry: e, onBack: t, onSwitch: r, onMissing: a, go: l, replace: d,
 		})]
 	});
 }
-function od({ board: e, focus: t, onClear: n }) {
-	let r = rd(e, t);
+function sd({ board: e, focus: t, onClear: n }) {
+	let r = id(e, t);
 	return r ? /* @__PURE__ */ _("div", {
 		className: "kt-focuschip",
 		role: "status",
@@ -13208,7 +13212,7 @@ function od({ board: e, focus: t, onClear: n }) {
 		]
 	}) : null;
 }
-var sd = `
+var cd = `
 .kt-root, .br-app {
   --kt-run: #3cc4ff; --kt-fix: #ff9f43; --kt-ok: #3ee08f; --kt-ok-solid: #0b7a4b; --kt-done: #7fe3b8;
   --kt-queue: #9ba6ff; --kt-warn: #ffc53d; --kt-approve: #ff6ec7; --kt-bad: #ff5d6c; --kt-bad-solid: #c4253a;
@@ -14199,13 +14203,13 @@ ${Object.entries({
   .kt-root *, .kt-root *::before, .kt-root *::after { animation: none !important; transition: none !important; }
 }
 .kt-root[data-motion="reduce"] *, .kt-root[data-motion="reduce"] *::before, .kt-root[data-motion="reduce"] *::after { animation: none !important; transition: none !important; }
-`, cd = "--bg: #fff; --bg-hover: #f0f0f0; --card: #fff; --text: #4a464f; --text-strong: #19161d; --muted: #5e5966;\n  --border: #e4e4e7; --border-strong: #d4d4d8; --kt-approve: #b8237a; --kt-ok: #0a7d45;", ld = "--s1: #2a78d6; --s2: #eb6834; --s3: #b9b6bf; --s4: #6250d6; --deemph: #b9b6bf; --cto-cell: #f7f7f8; --vs-person: #e87ba4; --vs-rework: #eda100;", ud = `
+`, ld = "--bg: #fff; --bg-hover: #f0f0f0; --card: #fff; --text: #4a464f; --text-strong: #19161d; --muted: #5e5966;\n  --border: #e4e4e7; --border-strong: #d4d4d8; --kt-approve: #b8237a; --kt-ok: #0a7d45;", ud = "--s1: #2a78d6; --s2: #eb6834; --s3: #b9b6bf; --s4: #6250d6; --deemph: #b9b6bf; --cto-cell: #f7f7f8; --vs-person: #e87ba4; --vs-rework: #eda100;", dd = `
 .cto-root { --s1: #3987e5; --s2: #d95926; --s3: #6b6673; --s4: #9085e9; --deemph: #6b6673; --cto-cell: var(--bg, #19161d);
   --vs-agent: var(--s4); --vs-person: #d55181; --vs-rework: #c98500;
   --cto-wash: color-mix(in srgb, var(--accent) 10%, transparent); --cto-fresh: color-mix(in srgb, var(--accent) 16%, transparent);
   --cto-glass: color-mix(in srgb, var(--text) 4%, transparent); gap: 16px; }
-:root[data-mode="light"] .cto-root { ${ld} }
-.cto-root.is-printing { ${cd} ${ld} background: #fff; color: #4a464f; }
+:root[data-mode="light"] .cto-root { ${ud} }
+.cto-root.is-printing { ${ld} ${ud} background: #fff; color: #4a464f; }
 .cto-root [hidden] { display: none !important; }
 .cto-root .kt-btn.is-small { padding: 3px 10px; font-size: 13px; border-radius: 8px; }
 .cto-tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border); color: var(--text); }
@@ -14416,16 +14420,16 @@ ${Object.entries({
 }
 @media (max-width: 1180px) { .cto-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 960px) { .cto-cards { grid-template-columns: 1fr; } .cto-kanban { grid-template-columns: 1fr; } .cto-cell.is-span { grid-row: auto; } .cto-pop { width: auto; left: 12px !important; right: 12px !important; } }
-`, dd = ".kt-kpi, .cto-cards > .cto-card, .br-kpi", fd = ".kt-card, .kt-experts, .kt-kb, .kt-sign, .kt-start, .cto-root > section.cto-card, .cto-root > :where(.cto-duo) > section.cto-card, .br-card", pd = `
+`, fd = ".kt-kpi, .cto-cards > .cto-card, .br-kpi", pd = ".kt-card, .kt-experts, .kt-kb, .kt-sign, .kt-start, .cto-root > section.cto-card, .cto-root > :where(.cto-duo) > section.cto-card, .br-card", md = `
 .kt-root { --kit-r: 16px; --kit-r-cell: 10px; --kit-pad-kpi: 16px 18px; --kit-pad-block: 16px 20px; --kit-gap-row: 12px; --kit-gap-block: 16px;
   --kit-ok: color-mix(in srgb, var(--kt-ok) 55%, var(--border)); --kit-wait: color-mix(in srgb, var(--kt-approve) 55%, var(--border));
   --kit-run: color-mix(in srgb, var(--kt-run) 55%, var(--border)); --kit-bad: color-mix(in srgb, var(--kt-bad) 55%, var(--border)); gap: var(--kit-gap-block); }
-${`${dd}, ${fd}, .kt-graph, .kt-lane`} { border-radius: var(--kit-r); border: 1px solid var(--border); }
-${dd}, ${fd} { background-color: var(--card); }
-${dd} { position: relative; overflow: hidden; padding: var(--kit-pad-kpi); }
+${`${fd}, ${pd}, .kt-graph, .kt-lane`} { border-radius: var(--kit-r); border: 1px solid var(--border); }
+${fd}, ${pd} { background-color: var(--card); }
+${fd} { position: relative; overflow: hidden; padding: var(--kit-pad-kpi); }
 .kt-kpi::after, .cto-cards > .cto-card::after, .br-kpi::after { content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
   background: radial-gradient(90% 70% at 100% 0%, color-mix(in srgb, var(--text) 4%, transparent), transparent 70%); }
-${fd} { padding: var(--kit-pad-block); margin: 0; }
+${pd} { padding: var(--kit-pad-block); margin: 0; }
 .kt-kpis, .cto-cards { gap: var(--kit-gap-row); align-items: stretch; }
 .cto-kcard, .kt-kb-chip, .cto-cell, .cto-lane { border-radius: var(--kit-r-cell); }
 
@@ -14460,7 +14464,7 @@ ${fd} { padding: var(--kit-pad-block); margin: 0; }
 .kt-root.is-live .kt-kpi-tests.is-green, .kt-root.is-live .kt-wall.is-green { box-shadow: 0 0 34px -12px var(--kt-ok); }
 .cto-kcard.is-live { box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-approve) 18%, transparent); }
 .cto-kcard.is-live.is-agent { box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-run) 18%, transparent); }
-`, md = [
+`, hd = [
 	"ok",
 	"run",
 	"wait",
@@ -14469,7 +14473,7 @@ ${fd} { padding: var(--kit-pad-block); margin: 0; }
 	"warn",
 	"info",
 	"idle"
-], hd = {
+], gd = {
 	ok: "ok",
 	run: "run",
 	wait: "approve",
@@ -14478,14 +14482,14 @@ ${fd} { padding: var(--kit-pad-block); margin: 0; }
 	warn: "warn",
 	info: "info",
 	idle: "idle"
-}, gd = `
+}, _d = `
 .br-app { --br-ok: var(--kt-ok); --br-run: var(--kt-run); --br-wait: var(--kt-approve); --br-hand: var(--kt-handoff); --br-bad: var(--kt-bad);
   --br-warn: var(--kt-warn); --br-info: var(--kt-info); --br-idle: var(--kt-idle); --br-tone: var(--kt-idle);
   --br-cell: color-mix(in srgb, var(--text, #dcdadf) 5%, transparent);
   display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; color: var(--text);
   font-family: var(--font-body, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif); font-size: 14px; line-height: 1.5; }
 .br-app *, .br-app *::before, .br-app *::after { box-sizing: border-box; }
-${md.map((e) => `.br-app .tone-${e} { --br-tone: var(--kt-${hd[e]}); --kt-tone: var(--kt-${hd[e]}); }`).join("\n")}
+${hd.map((e) => `.br-app .tone-${e} { --br-tone: var(--kt-${gd[e]}); --kt-tone: var(--kt-${gd[e]}); }`).join("\n")}
 .br-app :is(button, select, textarea, input, a, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .br-mono, .br-app code { font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: .92em; }
 .br-dim { color: var(--muted); }
@@ -14779,12 +14783,12 @@ button.br-tag:hover { border-color: var(--accent); color: var(--text-strong); }
 /* ---------- a command a person types in a terminal (ui.tsx CommandLine) ---------- */
 .br-cmd { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .br-cmd code { padding: 3px 9px; border-radius: 8px; border: 1px solid var(--border); background: var(--kt-glass); color: var(--text-strong); font-size: .92em; user-select: all; word-break: break-all; }
-`, _d = 2e3, vd = {
+`, vd = 2e3, yd = {
 	PRODUCT: "产品",
 	TECH: "技术",
 	IMPROVEMENT: "改进",
 	PROJECT: "项目"
-}, yd = {
+}, bd = {
 	principle: "原则",
 	correction: "纠正",
 	decision: "决定",
@@ -14792,34 +14796,34 @@ button.br-tag:hover { border-color: var(--accent); color: var(--text-strong); }
 	guideline: "准则",
 	pitfall: "坑",
 	process: "流程"
-}, bd = {
+}, xd = {
 	product: "产品",
 	builder: "开发",
 	shared: "共用"
-}, xd = {
+}, Sd = {
 	new: "新",
 	same: "只加来源",
 	"adds-to": "补充",
 	replaces: "取代",
 	repeats: "又出现",
 	withdraws: "撤回"
-}, Sd = /* @__PURE__ */ new Set([
+}, Cd = /* @__PURE__ */ new Set([
 	"adds-to",
 	"replaces",
 	"repeats",
 	"withdraws"
-]), Cd = {
+]), wd = {
 	new: "ok",
 	same: "idle",
 	"adds-to": "info",
 	replaces: "warn",
 	repeats: "warn",
 	withdraws: "bad"
-}, wd = (e) => {
+}, Td = (e) => {
 	let [t, ...n] = e.split(" ");
-	return xd[t] ? [xd[t], ...n].join(" ") : e;
-}, Td = (e) => Cd[e.split(" ")[0]] ?? "idle", Ed = (e, t) => e.sections.some((e) => e.entries.some((e) => e.id === t)), Dd = (e) => e.sections.flatMap((e) => e.entries);
-function Od(e, t, n) {
+	return Sd[t] ? [Sd[t], ...n].join(" ") : e;
+}, Ed = (e) => wd[e.split(" ")[0]] ?? "idle", Dd = (e, t) => e.sections.some((e) => e.entries.some((e) => e.id === t)), Od = (e) => e.sections.flatMap((e) => e.entries);
+function kd(e, t, n) {
 	if (n && e.type !== n) return !1;
 	if (!t) return !0;
 	let r = t.toLowerCase();
@@ -14831,15 +14835,15 @@ function Od(e, t, n) {
 		...e.src
 	].some((e) => e.toLowerCase().includes(r));
 }
-var kd = (e) => [...e.errors, ...e.warnings];
-function Ad({ text: e }) {
+var Ad = (e) => [...e.errors, ...e.warnings];
+function jd({ text: e }) {
 	let t = e.split(/(`[^`\n]+`)/);
 	return /* @__PURE__ */ g(h, { children: t.map((e, t) => e.length > 2 && e.startsWith("`") && e.endsWith("`") ? /* @__PURE__ */ g("code", {
 		className: "bv-code",
 		children: e.slice(1, -1)
 	}, t) : e) });
 }
-var jd = [
+var Md = [
 	{
 		icon: "release",
 		title: "做完一个需求",
@@ -14861,10 +14865,10 @@ var jd = [
 		text: "运行加载它，用上了就引用"
 	}
 ];
-function Md({ entry: e, ...t }) {
-	let n = u(), r = w(), a = t.status?.repos ?? [], l = a.filter((e) => e.ok), [d, f] = c(e.repo ?? ""), p = l.length > 0 ? a.find((e) => e.id === d && !e.ok) : void 0, m = p ? "" : d && (!t.status || l.some((e) => e.id === d)) ? d : l[0]?.id ?? "", [v, y] = c(!1), b = F(m ? D.brain(m) : null, v ? _d : t.pollMs ?? 0), x = b.data?.stale ?? null;
+function Nd({ entry: e, ...t }) {
+	let n = u(), r = w(), a = t.status?.repos ?? [], l = a.filter((e) => e.ok), [d, f] = c(e.repo ?? ""), p = l.length > 0 ? a.find((e) => e.id === d && !e.ok) : void 0, m = p ? "" : d && (!t.status || l.some((e) => e.id === d)) ? d : l[0]?.id ?? "", [v, y] = c(!1), b = F(m ? D.brain(m) : null, v ? vd : t.pollMs ?? 0), x = b.data?.stale ?? null;
 	i(() => y(x !== null), [x]);
-	let S = b.data, [C, T] = c(e.file ?? (e.id ? we(e.id) : void 0)), [E, O] = c(e.id), [k, A] = c(e.reflect), [j, M] = c(""), [N, P] = c(""), I = S ? S.files.find((e) => e.key === C) ?? (E ? S.files.find((e) => Ed(e, E)) : void 0) ?? S.files[0] : void 0, L = S ? Bd(S.reflect) : [], ee = k && L.some((e) => e.key === k) ? k : L[0]?.key, z = (e) => {
+	let S = b.data, [C, T] = c(e.file ?? (e.id ? we(e.id) : void 0)), [E, O] = c(e.id), [k, A] = c(e.reflect), [j, M] = c(""), [N, P] = c(""), I = S ? S.files.find((e) => e.key === C) ?? (E ? S.files.find((e) => Dd(e, E)) : void 0) ?? S.files[0] : void 0, L = S ? Vd(S.reflect) : [], ee = k && L.some((e) => e.key === k) ? k : L[0]?.key, z = (e) => {
 		let n = {
 			repo: m || void 0,
 			file: I?.key ?? C,
@@ -14889,7 +14893,7 @@ function Md({ entry: e, ...t }) {
 			id: t
 		});
 	}, H = (e) => {
-		let t = S?.files.find((t) => Ed(t, e))?.key ?? we(e);
+		let t = S?.files.find((t) => Dd(t, e))?.key ?? we(e);
 		T(t), O(e), z({
 			file: t,
 			id: e
@@ -14915,13 +14919,13 @@ function Md({ entry: e, ...t }) {
 	]);
 	let re = o(() => I ? I.sections.map((e) => ({
 		title: e.title,
-		entries: e.entries.filter((e) => e.id === E || Od(e, j.trim(), N))
+		entries: e.entries.filter((e) => e.id === E || kd(e, j.trim(), N))
 	})).filter((e) => e.entries.length > 0) : [], [
 		I,
 		E,
 		j,
 		N
-	]), G = I ? Dd(I).length : 0, ie = re.reduce((e, t) => e + t.entries.length, 0), ae = !!(E && S && !S.files.some((e) => Ed(e, E))), oe = !!S && S.files.every((e) => Dd(e).length === 0), se = S ? kd(S.lint) : [], ce = S && /* @__PURE__ */ g(qd, {
+	]), G = I ? Od(I).length : 0, ie = re.reduce((e, t) => e + t.entries.length, 0), ae = !!(E && S && !S.files.some((e) => Dd(e, E))), oe = !!S && S.files.every((e) => Od(e).length === 0), se = S ? Ad(S.lint) : [], ce = S && /* @__PURE__ */ g(Jd, {
 		repo: m,
 		branch: te,
 		items: L,
@@ -14944,7 +14948,7 @@ function Md({ entry: e, ...t }) {
 		"data-testid": "br-brain",
 		ref: ne,
 		children: [
-			/* @__PURE__ */ g("style", { children: Yd }),
+			/* @__PURE__ */ g("style", { children: Xd }),
 			/* @__PURE__ */ _("header", {
 				className: "bv-top",
 				children: [
@@ -15008,7 +15012,7 @@ function Md({ entry: e, ...t }) {
 						size: 17
 					}), "去导入仓库检查"]
 				})
-			}) : /* @__PURE__ */ g(Nd, {
+			}) : /* @__PURE__ */ g(Pd, {
 				status: t.status,
 				onSettings: () => t.go({ kind: "settings" })
 			})),
@@ -15078,7 +15082,7 @@ function Md({ entry: e, ...t }) {
 					title: "Brain 还是空的",
 					text: [S.reflect.length ? "下面「回写」里有做完的需求：把那次运行里 AI 提议的知识（原则、决定、踩过的坑）写进这个仓库的 Brain，写在一个新分支上，开 MR 给大家看过再合并。" : "这个仓库还没有能回写的需求。开一个需求做完、合并以后，在这一页「回写」：把那次运行里 AI 提议的知识（原则、决定、踩过的坑）写进 Brain。"],
 					punch: "写进去的条目，下一次运行会加载；用上了就引用，这里都看得到。",
-					flow: jd,
+					flow: Md,
 					children: [S.reflect.length > 0 && /* @__PURE__ */ _("button", {
 						type: "button",
 						className: "br-btn is-primary is-big",
@@ -15103,11 +15107,11 @@ function Md({ entry: e, ...t }) {
 						}), "去开需求"]
 					})]
 				}),
-				se.length > 0 && /* @__PURE__ */ g(Ud, { rows: se }),
+				se.length > 0 && /* @__PURE__ */ g(Wd, { rows: se }),
 				ce
 			] }),
 			S && !oe && /* @__PURE__ */ _(h, { children: [
-				/* @__PURE__ */ g(Pd, {
+				/* @__PURE__ */ g(Fd, {
 					data: S,
 					lint: se,
 					branch: te,
@@ -15127,7 +15131,7 @@ function Md({ entry: e, ...t }) {
 								"aria-pressed": I?.key === e.key,
 								onClick: () => V(e.key),
 								title: `brain/${e.key}.md`,
-								"aria-label": `${vd[e.key] ?? e.key} ${e.count}`,
+								"aria-label": `${yd[e.key] ?? e.key} ${e.count}`,
 								children: [
 									/* @__PURE__ */ g("b", {
 										className: "bv-letter",
@@ -15136,7 +15140,7 @@ function Md({ entry: e, ...t }) {
 									}),
 									/* @__PURE__ */ g("span", {
 										className: "bv-tab-name",
-										children: vd[e.key] ?? e.key
+										children: yd[e.key] ?? e.key
 									}),
 									/* @__PURE__ */ g("span", {
 										className: "bv-tab-n",
@@ -15146,10 +15150,10 @@ function Md({ entry: e, ...t }) {
 							}, e.key))
 						}), I && /* @__PURE__ */ _("section", {
 							className: `br-card bv-file is-${I.key}`,
-							"aria-label": `${vd[I.key] ?? I.key}知识`,
+							"aria-label": `${yd[I.key] ?? I.key}知识`,
 							children: [
 								/* @__PURE__ */ _("header", { children: [
-									/* @__PURE__ */ _("h3", { children: [vd[I.key] ?? I.key, "知识"] }),
+									/* @__PURE__ */ _("h3", { children: [yd[I.key] ?? I.key, "知识"] }),
 									/* @__PURE__ */ _("code", {
 										className: "br-dim br-small",
 										children: [
@@ -15160,7 +15164,7 @@ function Md({ entry: e, ...t }) {
 									}),
 									/* @__PURE__ */ g("span", {
 										className: "br-tag",
-										children: bd[I.side] ?? I.side
+										children: xd[I.side] ?? I.side
 									}),
 									/* @__PURE__ */ g("span", { className: "br-grow" }),
 									/* @__PURE__ */ _("span", {
@@ -15196,7 +15200,7 @@ function Md({ entry: e, ...t }) {
 												onChange: (e) => M(e.target.value)
 											})
 										]
-									}), /* @__PURE__ */ g(Vd, {
+									}), /* @__PURE__ */ g(Hd, {
 										file: I,
 										type: N,
 										onType: P
@@ -15228,7 +15232,7 @@ function Md({ entry: e, ...t }) {
 										})
 									] }), /* @__PURE__ */ g("div", {
 										className: "bv-entries",
-										children: e.entries.map((e) => /* @__PURE__ */ g(Hd, {
+										children: e.entries.map((e) => /* @__PURE__ */ g(Ud, {
 											e,
 											hl: e.id === E
 										}, e.id))
@@ -15238,13 +15242,13 @@ function Md({ entry: e, ...t }) {
 						})]
 					}), /* @__PURE__ */ _("div", {
 						className: "bv-col",
-						children: [/* @__PURE__ */ g(Ud, { rows: se }), /* @__PURE__ */ g(Wd, {
+						children: [/* @__PURE__ */ g(Wd, { rows: se }), /* @__PURE__ */ g(Gd, {
 							usage: S.usage,
 							onEntry: H
 						})]
 					})]
 				}),
-				/* @__PURE__ */ g(Gd, {
+				/* @__PURE__ */ g(Kd, {
 					runs: S.usage.runs,
 					unmerged: S.usage.unmerged ?? [],
 					branch: te,
@@ -15256,7 +15260,7 @@ function Md({ entry: e, ...t }) {
 		]
 	});
 }
-function Nd({ status: e, onSettings: t }) {
+function Pd({ status: e, onSettings: t }) {
 	let n = $t(e.brainkit.error), r = e.repos.filter((e) => !e.pending && /没装载/.test(e.error)), i = e.repos.filter((e) => !r.includes(e));
 	return /* @__PURE__ */ g(Jt, {
 		testid: "repos-unusable",
@@ -15274,8 +15278,8 @@ function Nd({ status: e, onSettings: t }) {
 		})
 	});
 }
-function Pd({ data: e, lint: t, branch: n, onEntry: r }) {
-	let i = e.files.reduce((e, t) => e + Dd(t).length, 0), a = e.files.flatMap(Dd).filter((e) => e.candidate), o = t.filter((e) => e.level === "FAIL").length, s = t.filter((e) => e.level === "WARN").length, c = e.usage;
+function Fd({ data: e, lint: t, branch: n, onEntry: r }) {
+	let i = e.files.reduce((e, t) => e + Od(t).length, 0), a = e.files.flatMap(Od).filter((e) => e.candidate), o = t.filter((e) => e.level === "FAIL").length, s = t.filter((e) => e.level === "WARN").length, c = e.usage;
 	return /* @__PURE__ */ _("div", {
 		className: "br-kpis bv-kpis",
 		role: "group",
@@ -15286,12 +15290,12 @@ function Pd({ data: e, lint: t, branch: n, onEntry: r }) {
 				value: i,
 				of: "条",
 				testid: "kpi-entries",
-				children: /* @__PURE__ */ g(Fd, {
+				children: /* @__PURE__ */ g(Id, {
 					files: e.files,
 					total: i
 				})
 			}),
-			/* @__PURE__ */ g(Id, {
+			/* @__PURE__ */ g(Ld, {
 				label: "知识有用率",
 				rate: c.useful,
 				hit: "pass",
@@ -15300,7 +15304,7 @@ function Pd({ data: e, lint: t, branch: n, onEntry: r }) {
 				note: `现有条目里被引用过的 · 只算合并进 ${n} 的运行`,
 				none: "Brain 里还没有条目：写进条目以后才算得出"
 			}),
-			/* @__PURE__ */ g(Id, {
+			/* @__PURE__ */ g(Ld, {
 				label: "重复纠正率",
 				rate: c.repeat_rate,
 				hit: "fail",
@@ -15316,7 +15320,7 @@ function Pd({ data: e, lint: t, branch: n, onEntry: r }) {
 				testid: "kpi-candidates",
 				note: a.length ? void 0 : `没有 · 已归档 ${c.archived} · 已清除 ${c.purged}`,
 				children: a.length > 0 && /* @__PURE__ */ _(h, { children: [
-					/* @__PURE__ */ g(Rd, {
+					/* @__PURE__ */ g(zd, {
 						ids: a.map((e) => e.id),
 						onEntry: r,
 						tone: "warn"
@@ -15351,17 +15355,17 @@ function Pd({ data: e, lint: t, branch: n, onEntry: r }) {
 		]
 	});
 }
-function Fd({ files: e, total: t }) {
+function Id({ files: e, total: t }) {
 	return /* @__PURE__ */ _(h, { children: [/* @__PURE__ */ _("div", {
 		className: "bv-stack",
 		role: "img",
-		"aria-label": e.map((e) => `${vd[e.key] ?? e.key} ${Dd(e).length}`).join("，"),
+		"aria-label": e.map((e) => `${yd[e.key] ?? e.key} ${Od(e).length}`).join("，"),
 		children: [e.map((e) => {
-			let t = Dd(e).length;
+			let t = Od(e).length;
 			return t > 0 ? /* @__PURE__ */ g("i", {
 				className: `is-${e.key}`,
 				style: { flexGrow: t },
-				title: `${vd[e.key] ?? e.key} ${t} 条`
+				title: `${yd[e.key] ?? e.key} ${t} 条`
 			}, e.key) : null;
 		}), t === 0 && /* @__PURE__ */ g("i", { className: "is-none" })]
 	}), /* @__PURE__ */ g("div", {
@@ -15371,13 +15375,13 @@ function Fd({ files: e, total: t }) {
 				className: `cto-sw is-${e.key}`,
 				"aria-hidden": "true"
 			}),
-			vd[e.key] ?? e.key,
+			yd[e.key] ?? e.key,
 			" ",
-			/* @__PURE__ */ g("b", { children: Dd(e).length })
+			/* @__PURE__ */ g("b", { children: Od(e).length })
 		] }, e.key))
 	})] });
 }
-function Id({ label: e, rate: t, hit: n, cells: r, note: i, none: a, testid: o }) {
+function Ld({ label: e, rate: t, hit: n, cells: r, note: i, none: a, testid: o }) {
 	if (t[1] <= 0) return /* @__PURE__ */ g(Yt, {
 		label: e,
 		value: /* @__PURE__ */ g("span", {
@@ -15394,14 +15398,14 @@ function Id({ label: e, rate: t, hit: n, cells: r, note: i, none: a, testid: o }
 		of: s.frac,
 		note: i,
 		testid: o,
-		children: /* @__PURE__ */ g(Ld, {
+		children: /* @__PURE__ */ g(Rd, {
 			rate: t,
 			hit: n,
 			label: r
 		})
 	});
 }
-function Ld({ rate: [e, t], hit: n, label: r }) {
+function Rd({ rate: [e, t], hit: n, label: r }) {
 	return t <= 40 ? /* @__PURE__ */ g(Xt, {
 		label: `${e}/${t} ${r}`,
 		cells: Array.from({ length: t }, (t, r) => ({ tone: r < e ? n : "idle" }))
@@ -15412,7 +15416,7 @@ function Ld({ rate: [e, t], hit: n, label: r }) {
 		children: /* @__PURE__ */ g("i", { style: { width: `${Math.round(e / t * 100)}%` } })
 	});
 }
-function Rd({ ids: e, onEntry: t, tone: n = "idle" }) {
+function zd({ ids: e, onEntry: t, tone: n = "idle" }) {
 	return e.length ? /* @__PURE__ */ g("span", {
 		className: "bv-ids",
 		children: e.map((e) => /* @__PURE__ */ g("button", {
@@ -15427,7 +15431,7 @@ function Rd({ ids: e, onEntry: t, tone: n = "idle" }) {
 		children: "—"
 	});
 }
-function zd({ source: e }) {
+function Bd({ source: e }) {
 	let t = /^([^\s:]+):(\S.*)$/.exec(e);
 	return /* @__PURE__ */ _("p", {
 		className: "br-note",
@@ -15445,9 +15449,9 @@ function zd({ source: e }) {
 		})]
 	});
 }
-var Bd = (e) => [...e.filter((e) => e.state === "merged"), ...e.filter((e) => e.state !== "merged")];
-function Vd({ file: e, type: t, onType: n }) {
-	let r = Dd(e), i = e.types.filter((e) => r.some((t) => t.type === e)), a = Array.from(new Set(r.map((e) => e.type))).filter((e) => !i.includes(e)), o = [...i, ...a];
+var Vd = (e) => [...e.filter((e) => e.state === "merged"), ...e.filter((e) => e.state !== "merged")];
+function Hd({ file: e, type: t, onType: n }) {
+	let r = Od(e), i = e.types.filter((e) => r.some((t) => t.type === e)), a = Array.from(new Set(r.map((e) => e.type))).filter((e) => !i.includes(e)), o = [...i, ...a];
 	return o.length < 2 ? null : /* @__PURE__ */ _("div", {
 		className: "bv-types",
 		role: "group",
@@ -15464,14 +15468,14 @@ function Vd({ file: e, type: t, onType: n }) {
 			"aria-pressed": t === e,
 			onClick: () => n(t === e ? "" : e),
 			children: [
-				yd[e] ?? e,
+				bd[e] ?? e,
 				" ",
 				/* @__PURE__ */ g("b", { children: r.filter((t) => t.type === e).length })
 			]
 		}, e))]
 	});
 }
-function Hd({ e, hl: t }) {
+function Ud({ e, hl: t }) {
 	let n = e.loaded_by > 0 ? Math.min(1, e.runs / e.loaded_by) : 0;
 	return /* @__PURE__ */ _("article", {
 		className: `bv-entry${t ? " is-hl" : ""}${e.candidate ? " is-cand" : ""}`,
@@ -15488,15 +15492,15 @@ function Hd({ e, hl: t }) {
 					}),
 					/* @__PURE__ */ g("span", {
 						className: "br-chip tone-info",
-						children: yd[e.type] ?? e.type
+						children: bd[e.type] ?? e.type
 					}),
 					/* @__PURE__ */ g("span", {
 						className: "br-tag",
-						children: bd[e.side] ?? e.side
+						children: xd[e.side] ?? e.side
 					}),
-					e.rel && Sd.has(e.rel.split(" ")[0]) && /* @__PURE__ */ g("span", {
+					e.rel && Cd.has(e.rel.split(" ")[0]) && /* @__PURE__ */ g("span", {
 						className: "br-tag",
-						children: wd(e.rel)
+						children: Td(e.rel)
 					}),
 					/* @__PURE__ */ g("span", { className: "br-grow" }),
 					e.repeats > 0 && /* @__PURE__ */ _("span", {
@@ -15516,7 +15520,7 @@ function Hd({ e, hl: t }) {
 			}),
 			/* @__PURE__ */ g("p", {
 				className: "bv-text",
-				children: /* @__PURE__ */ g(Ad, { text: e.text })
+				children: /* @__PURE__ */ g(jd, { text: e.text })
 			}),
 			/* @__PURE__ */ _("div", {
 				className: "bv-entry-foot",
@@ -15547,7 +15551,7 @@ function Hd({ e, hl: t }) {
 		]
 	});
 }
-function Ud({ rows: e }) {
+function Wd({ rows: e }) {
 	let t = e.filter((e) => e.level === "FAIL").length, n = e.filter((e) => e.level === "WARN").length;
 	return /* @__PURE__ */ _("section", {
 		className: `br-card${t ? " is-bad" : e.length ? "" : " is-ok"}`,
@@ -15578,7 +15582,7 @@ function Ud({ rows: e }) {
 		}] })]
 	});
 }
-function Wd({ usage: e, onEntry: t }) {
+function Gd({ usage: e, onEntry: t }) {
 	return /* @__PURE__ */ _("section", {
 		className: "br-card",
 		"aria-label": "用处",
@@ -15641,7 +15645,7 @@ function Wd({ usage: e, onEntry: t }) {
 				children: [/* @__PURE__ */ g("b", {
 					className: "bv-block-h",
 					children: "从没被引用"
-				}), /* @__PURE__ */ g(Rd, {
+				}), /* @__PURE__ */ g(zd, {
 					ids: e.never_cited,
 					onEntry: t
 				})]
@@ -15649,7 +15653,7 @@ function Wd({ usage: e, onEntry: t }) {
 		]
 	});
 }
-function Gd({ runs: e, unmerged: t, branch: n, onEntry: r, onItem: i }) {
+function Kd({ runs: e, unmerged: t, branch: n, onEntry: r, onItem: i }) {
 	return /* @__PURE__ */ _("section", {
 		className: "br-card",
 		"aria-label": "每次运行的用处",
@@ -15711,17 +15715,17 @@ function Gd({ runs: e, unmerged: t, branch: n, onEntry: r, onItem: i }) {
 									]
 								})]
 							}) }),
-							/* @__PURE__ */ g("td", { children: /* @__PURE__ */ g(Rd, {
+							/* @__PURE__ */ g("td", { children: /* @__PURE__ */ g(zd, {
 								ids: e.cited,
 								onEntry: r,
 								tone: "ok"
 							}) }),
-							/* @__PURE__ */ g("td", { children: /* @__PURE__ */ g(Rd, {
+							/* @__PURE__ */ g("td", { children: /* @__PURE__ */ g(zd, {
 								ids: e.stale,
 								onEntry: r,
 								tone: "warn"
 							}) }),
-							/* @__PURE__ */ g("td", { children: /* @__PURE__ */ g(Rd, {
+							/* @__PURE__ */ g("td", { children: /* @__PURE__ */ g(zd, {
 								ids: e.unknown,
 								onEntry: r,
 								tone: "bad"
@@ -15752,7 +15756,7 @@ function Gd({ runs: e, unmerged: t, branch: n, onEntry: r, onItem: i }) {
 							" · 引用 ",
 							e.cited.length
 						] }),
-						/* @__PURE__ */ g(Rd, {
+						/* @__PURE__ */ g(zd, {
 							ids: e.cited,
 							onEntry: r,
 							tone: "ok"
@@ -15763,7 +15767,7 @@ function Gd({ runs: e, unmerged: t, branch: n, onEntry: r, onItem: i }) {
 		]
 	});
 }
-function Kd(e) {
+function qd(e) {
 	if (e.error || e.problems.length) return {
 		what: "blocked",
 		text: ""
@@ -15783,8 +15787,8 @@ function Kd(e) {
 		text: `这次的提议只是给已有的 ${Array.from(new Set(e.ops.map((e) => e.target).filter((e) => !!e))).join("、") || "条目"} 补来源，没有新知识：不开分支，Brain 不变，不用回写。${t}`
 	};
 }
-function qd({ repo: e, branch: t, items: n, pick: r, onPick: i, onItem: a, onApplied: o, post: s }) {
-	let l = I(s.preview), u = I(s.apply), [d, f] = c(null), p = l.result && l.result.key === r ? l.result : null, m = p ? Kd(p) : null, h = !!u.result?.ok, v = !m || m.what !== "write" || h, y = async (t) => {
+function Jd({ repo: e, branch: t, items: n, pick: r, onPick: i, onItem: a, onApplied: o, post: s }) {
+	let l = I(s.preview), u = I(s.apply), [d, f] = c(null), p = l.result && l.result.key === r ? l.result : null, m = p ? qd(p) : null, h = !!u.result?.ok, v = !m || m.what !== "write" || h, y = async (t) => {
 		if (!r) return;
 		let n = await u.run({
 			repo: e,
@@ -15888,7 +15892,7 @@ function qd({ repo: e, branch: t, items: n, pick: r, onPick: i, onItem: a, onApp
 				className: "bv-preview",
 				"data-testid": "reflect-preview",
 				children: [
-					p.source && /* @__PURE__ */ g(zd, { source: p.source }),
+					p.source && /* @__PURE__ */ g(Bd, { source: p.source }),
 					p.error && /* @__PURE__ */ g("p", {
 						className: "br-error br-pre",
 						role: "alert",
@@ -15912,8 +15916,8 @@ function qd({ repo: e, branch: t, items: n, pick: r, onPick: i, onItem: a, onApp
 								/* @__PURE__ */ g("th", { children: "文字" })
 							] }) }), /* @__PURE__ */ g("tbody", { children: p.ops.map((e, t) => /* @__PURE__ */ _("tr", { children: [
 								/* @__PURE__ */ g("td", { children: /* @__PURE__ */ g("span", {
-									className: `br-chip tone-${Td(e.kind)}`,
-									children: wd(e.kind)
+									className: `br-chip tone-${Ed(e.kind)}`,
+									children: Td(e.kind)
 								}) }),
 								/* @__PURE__ */ g("td", {
 									className: "br-mono",
@@ -15924,7 +15928,7 @@ function qd({ repo: e, branch: t, items: n, pick: r, onPick: i, onItem: a, onApp
 								}),
 								/* @__PURE__ */ _("td", { children: [e.file ? /* @__PURE__ */ g("span", {
 									className: `bv-filetag is-${e.file}`,
-									children: vd[e.file] ?? e.file
+									children: yd[e.file] ?? e.file
 								}) : /* @__PURE__ */ g("span", {
 									className: "br-dim",
 									children: "—"
@@ -15934,7 +15938,7 @@ function qd({ repo: e, branch: t, items: n, pick: r, onPick: i, onItem: a, onApp
 								})] }),
 								/* @__PURE__ */ g("td", { children: e.type ? /* @__PURE__ */ g("span", {
 									className: "br-chip tone-info",
-									children: yd[e.type] ?? e.type
+									children: bd[e.type] ?? e.type
 								}) : /* @__PURE__ */ g("span", {
 									className: "br-dim",
 									children: "—"
@@ -15948,7 +15952,7 @@ function qd({ repo: e, branch: t, items: n, pick: r, onPick: i, onItem: a, onApp
 								}) : "—" }),
 								/* @__PURE__ */ g("td", {
 									className: "br-pre",
-									children: e.text ? /* @__PURE__ */ g(Ad, { text: e.text }) : /* @__PURE__ */ g("span", {
+									children: e.text ? /* @__PURE__ */ g(jd, { text: e.text }) : /* @__PURE__ */ g("span", {
 										className: "br-dim",
 										children: "—"
 									})
@@ -16104,9 +16108,9 @@ function qd({ repo: e, branch: t, items: n, pick: r, onPick: i, onItem: a, onApp
 		]
 	});
 }
-var Jd = (e, t, n, r) => `--bv-PRODUCT: ${e}; --bv-TECH: ${t}; --bv-IMPROVEMENT: ${n}; --bv-PROJECT: ${r};`, Yd = `
-.bv-root { ${Jd("#3987e5", "#9085e9", "#d95926", "#3ea37a")} }
-:root[data-mode="light"] .bv-root { ${Jd("#2a78d6", "#6250d6", "#eb6834", "#1f8a5c")} }
+var Yd = (e, t, n, r) => `--bv-PRODUCT: ${e}; --bv-TECH: ${t}; --bv-IMPROVEMENT: ${n}; --bv-PROJECT: ${r};`, Xd = `
+.bv-root { ${Yd("#3987e5", "#9085e9", "#d95926", "#3ea37a")} }
+:root[data-mode="light"] .bv-root { ${Yd("#2a78d6", "#6250d6", "#eb6834", "#1f8a5c")} }
 .bv-top { display: flex; align-items: center; gap: .6em 1em; flex-wrap: wrap; }
 .bv-top-icon { color: var(--accent); }
 .bv-top .br-view-head p { font-size: .93em; }
@@ -16227,25 +16231,25 @@ var Jd = (e, t, n, r) => `--bv-PRODUCT: ${e}; --bv-TECH: ${t}; --bv-IMPROVEMENT:
 .bv-applied p { margin: 0; }
 .bv-applied a.br-btn { text-decoration: none; }
 .bv-applied a.br-btn.is-primary { color: var(--accent-fg, #fff); }
-`, Xd = (e) => Math.round(e).toLocaleString("zh-CN"), Zd = (e) => e.slice(5), Qd = (e) => Zd(e).replace(/^0/, "").replace("-0", "-").replace("-", "/"), $d = [
+`, Zd = (e) => Math.round(e).toLocaleString("zh-CN"), Qd = (e) => e.slice(5), $d = (e) => Qd(e).replace(/^0/, "").replace("-0", "-").replace("-", "/"), ef = [
 	"unattended",
 	"people",
 	"local",
 	"pending"
-], ef = {
+], tf = {
 	unattended: "无人值守",
 	people: "有人插手",
 	local: "只在本机",
 	pending: "还没评",
 	ended: "没交付就结束"
-}, tf = {
+}, nf = {
 	unattended: "var(--s4)",
 	people: "var(--s2)",
 	local: "var(--s1)",
 	pending: "var(--s3)",
 	ended: "var(--kt-bad)"
 };
-function nf(e = 600) {
+function rf(e = 600) {
 	let t = s(null), [n, r] = c(e);
 	return i(() => {
 		let e = t.current;
@@ -16256,7 +16260,7 @@ function nf(e = 600) {
 		return i.observe(e), () => i.disconnect();
 	}, []), [t, n];
 }
-function rf({ tip: e, width: t }) {
+function af({ tip: e, width: t }) {
 	let n = s(null), [r, a] = c(0);
 	return i(() => {
 		if (!e || !n.current) return;
@@ -16286,7 +16290,7 @@ function rf({ tip: e, width: t }) {
 		}, r))]
 	}) : null;
 }
-function af({ x: e, y: t, w: n, h: r, rows: i, onTip: a, when: o, tipY: s, tipX: c, side: l, onPick: u, label: d }) {
+function of({ x: e, y: t, w: n, h: r, rows: i, onTip: a, when: o, tipY: s, tipX: c, side: l, onPick: u, label: d }) {
 	let f = () => a({
 		x: c ?? e + n / 2,
 		y: s ?? t + r + 6,
@@ -16312,15 +16316,15 @@ function af({ x: e, y: t, w: n, h: r, rows: i, onTip: a, when: o, tipY: s, tipX:
 		onKeyDown: u ? (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), u()) : void 0
 	});
 }
-function of({ x: e, y: t, w: n, h: r, fill: i }) {
+function sf({ x: e, y: t, w: n, h: r, fill: i }) {
 	let a = Math.min(4, n, r / 2);
 	return /* @__PURE__ */ g("path", {
 		d: `M${e},${t} H${e + n - a} Q${e + n},${t} ${e + n},${t + a} V${t + r - a} Q${e + n},${t + r} ${e + n - a},${t + r} H${e} Z`,
 		fill: i
 	});
 }
-function sf({ label: e, height: t, children: n }) {
-	let [r, i] = nf(360), [a, o] = c(null);
+function cf({ label: e, height: t, children: n }) {
+	let [r, i] = rf(360), [a, o] = c(null);
 	return /* @__PURE__ */ _("div", {
 		className: "cto-mini",
 		ref: r,
@@ -16330,16 +16334,16 @@ function sf({ label: e, height: t, children: n }) {
 			role: "img",
 			"aria-label": e,
 			children: n(i, o)
-		}), /* @__PURE__ */ g(rf, {
+		}), /* @__PURE__ */ g(af, {
 			tip: a,
 			width: i
 		})]
 	});
 }
-function cf({ y0: e, bh: t, L: n, pw: r, max: i, segs: a, total: o, label: s, strong: c, onTip: l, tipLabel: u }) {
+function lf({ y0: e, bh: t, L: n, pw: r, max: i, segs: a, total: o, label: s, strong: c, onTip: l, tipLabel: u }) {
 	let d = 0, f = a.filter((e) => e.n > 0), p = f.map((a, o) => {
 		let s = n + d / i * r + (d > 0 ? 2 : 0), c = n + (d + a.n) / i * r;
-		return d += a.n, c - s <= .5 ? null : o === f.length - 1 ? /* @__PURE__ */ g(of, {
+		return d += a.n, c - s <= .5 ? null : o === f.length - 1 ? /* @__PURE__ */ g(sf, {
 			x: s,
 			y: e,
 			w: c - s,
@@ -16375,31 +16379,31 @@ function cf({ y0: e, bh: t, L: n, pw: r, max: i, segs: a, total: o, label: s, st
 			className: c ? "is-strong" : void 0,
 			children: o
 		}),
-		/* @__PURE__ */ g(af, {
+		/* @__PURE__ */ g(of, {
 			x: n - 4,
 			y: e - 3,
 			w: Math.max(m - n, r * .3) + 8,
 			h: t + 6,
 			onTip: l,
 			rows: [[o, u], ...a.map((e) => [
-				Xd(e.n),
+				Zd(e.n),
 				e.name,
 				e.fill
 			])]
 		})
 	] });
 }
-function lf({ c: e }) {
-	let t = (t) => e.runs.filter((e) => e.how === t).length, n = [...$d, ...t("ended") ? ["ended"] : []].map((e) => ({
+function uf({ c: e }) {
+	let t = (t) => e.runs.filter((e) => e.how === t).length, n = [...ef, ...t("ended") ? ["ended"] : []].map((e) => ({
 		key: e,
 		n: t(e),
-		fill: tf[e],
-		name: ef[e]
+		fill: nf[e],
+		name: tf[e]
 	})), r = n.reduce((e, t) => e + t.n, 0);
-	return /* @__PURE__ */ g(sf, {
+	return /* @__PURE__ */ g(cf, {
 		label: `评估过的需求，按交付方式：${n.map((e) => `${e.name} ${e.n}`).join("，")}`,
 		height: 28,
-		children: (e, t) => /* @__PURE__ */ g(cf, {
+		children: (e, t) => /* @__PURE__ */ g(lf, {
 			y0: 2,
 			bh: 22,
 			L: 0,
@@ -16413,7 +16417,7 @@ function lf({ c: e }) {
 		})
 	});
 }
-function uf({ c: e }) {
+function df({ c: e }) {
 	let t = e.stepped_in, n = t?.at_points ?? 0, r = t?.outside ?? 0, i = t?.kinds ?? [], a = [[
 		"判断点上",
 		n,
@@ -16425,7 +16429,7 @@ function uf({ c: e }) {
 		"var(--vs-rework)",
 		!1
 	]], o = Math.max(1, n, r);
-	return /* @__PURE__ */ g(sf, {
+	return /* @__PURE__ */ g(cf, {
 		label: `人介入：判断点上 ${n} 次，判断点之外 ${r} 次`,
 		height: 62,
 		children: (e, t) => {
@@ -16439,7 +16443,7 @@ function uf({ c: e }) {
 						className: c === 0 ? "is-strong" : void 0,
 						children: e
 					}),
-					r > 0 ? /* @__PURE__ */ g(of, {
+					r > 0 ? /* @__PURE__ */ g(sf, {
 						x: 64,
 						y: l,
 						w: Math.max(u, 1),
@@ -16457,24 +16461,24 @@ function uf({ c: e }) {
 						x: 64 + (r > 0 ? u : 0) + 8,
 						y: l + 11 + 4,
 						className: c === 0 ? "is-strong" : void 0,
-						children: [Xd(r), " 次"]
+						children: [Zd(r), " 次"]
 					}),
-					/* @__PURE__ */ g(af, {
+					/* @__PURE__ */ g(of, {
 						x: 60,
 						y: l - 3,
 						w: Math.max(u, n * .3) + 8,
 						h: 28,
 						onTip: t,
-						rows: [[Xd(r), s ? "判断点上（批准、退回、回答）" : "判断点之外"], ...d.map((e) => [Xd(e.n), e.label])]
+						rows: [[Zd(r), s ? "判断点上（批准、退回、回答）" : "判断点之外"], ...d.map((e) => [Zd(e.n), e.label])]
 					})
 				] }, e);
 			});
 		}
 	});
 }
-function df({ rows: e, avg: t, onKey: n }) {
+function ff({ rows: e, avg: t, onKey: n }) {
 	let r = e.slice().sort((e, t) => t.credits - e.credits).slice(0, 6), i = e.length - r.length, a = t === null ? 3 : 16, o = a + Math.max(1, r.length) * 14 + (i > 0 ? 16 : 3), s = Math.max(1, ...r.map((e) => e.credits), t ?? 0);
-	return /* @__PURE__ */ g(sf, {
+	return /* @__PURE__ */ g(cf, {
 		label: `credits：${r.map((e) => `${e.key} ${e.credits}`).join("，")}${t === null ? "" : `；平均 ${t}`}${i > 0 ? `；还有 ${i} 个` : ""}`,
 		height: o,
 		children: (e, c) => {
@@ -16505,7 +16509,7 @@ function df({ rows: e, avg: t, onKey: n }) {
 							className: t === 0 ? "is-strong" : void 0,
 							children: e.key
 						}),
-						/* @__PURE__ */ g(of, {
+						/* @__PURE__ */ g(sf, {
 							x: 64,
 							y: r,
 							w: Math.max(i, 1),
@@ -16518,7 +16522,7 @@ function df({ rows: e, avg: t, onKey: n }) {
 							style: { fontSize: 11 },
 							children: o
 						}),
-						/* @__PURE__ */ g(af, {
+						/* @__PURE__ */ g(of, {
 							x: 60,
 							y: r - 2,
 							w: Math.max(i, 30) + 8,
@@ -16544,12 +16548,12 @@ function df({ rows: e, avg: t, onKey: n }) {
 		}
 	});
 }
-function ff({ rows: e }) {
+function pf({ rows: e }) {
 	let t = e.reduce((e, t) => e + t.count, 0);
-	return /* @__PURE__ */ g(sf, {
+	return /* @__PURE__ */ g(cf, {
 		label: `决定：${e.map((e) => `${e.label} ${e.count}`).join("，")}`,
 		height: 28,
-		children: (n, r) => /* @__PURE__ */ g(cf, {
+		children: (n, r) => /* @__PURE__ */ g(lf, {
 			y0: 2,
 			bh: 22,
 			L: 0,
@@ -16560,7 +16564,7 @@ function ff({ rows: e }) {
 			segs: e.map((e) => ({
 				key: e.id,
 				n: e.count,
-				fill: pf[e.id] ?? "var(--ov-ink-3)",
+				fill: mf[e.id] ?? "var(--ov-ink-3)",
 				name: e.label
 			})),
 			onTip: r,
@@ -16568,7 +16572,7 @@ function ff({ rows: e }) {
 		})
 	});
 }
-var pf = {
+var mf = {
 	person: "var(--ov-person)",
 	check: "var(--ov-ink)",
 	brain: "var(--ov-ink-2)",
@@ -16576,7 +16580,7 @@ var pf = {
 	unknown: "var(--ov-ink-4)",
 	unclassified: "var(--vs-rework)"
 };
-function mf(e) {
+function hf(e) {
 	let t = Math.max(1, Math.ceil(e)), n = 1;
 	for (let e = 1;; e *= 10) {
 		let r = [
@@ -16591,9 +16595,9 @@ function mf(e) {
 	}
 	return Array.from({ length: Math.ceil(t / n) + 1 }, (e, t) => t * n);
 }
-var hf = (e) => e.unattended + e.people + e.local + e.pending;
-function gf({ weeks: e, onWeek: t }) {
-	return e.every((e) => hf(e) === 0) ? /* @__PURE__ */ g("section", {
+var gf = (e) => e.unattended + e.people + e.local + e.pending;
+function _f({ weeks: e, onWeek: t }) {
+	return e.every((e) => gf(e) === 0) ? /* @__PURE__ */ g("section", {
 		className: "cto-card",
 		"aria-label": "每周合并",
 		"data-anchor": "weekly",
@@ -16605,13 +16609,13 @@ function gf({ weeks: e, onWeek: t }) {
 				children: "近 12 周还没有合并的需求：合并进默认分支以后，这里按周画出来。"
 			})]
 		})
-	}) : /* @__PURE__ */ g(_f, {
+	}) : /* @__PURE__ */ g(vf, {
 		weeks: e,
 		onWeek: t
 	});
 }
-function _f({ weeks: e, onWeek: t }) {
-	let [n, r] = c(!1), [i, a] = nf(1100), [o, s] = c(null), l = hf, u = e.reduce((e, t) => e + l(t), 0), d = Math.max(10, a - 40 - 12) / Math.max(1, e.length), f = Math.min(24, d * .56), p = mf(Math.max(...e.map(l))), m = p[p.length - 1], h = (e) => 200 - e / m * 180, v = e.slice(-4).reduce((e, t) => e + l(t), 0);
+function vf({ weeks: e, onWeek: t }) {
+	let [n, r] = c(!1), [i, a] = rf(1100), [o, s] = c(null), l = gf, u = e.reduce((e, t) => e + l(t), 0), d = Math.max(10, a - 40 - 12) / Math.max(1, e.length), f = Math.min(24, d * .56), p = hf(Math.max(...e.map(l))), m = p[p.length - 1], h = (e) => 200 - e / m * 180, v = e.slice(-4).reduce((e, t) => e + l(t), 0);
 	return /* @__PURE__ */ _("section", {
 		className: "cto-card",
 		"aria-label": "每周合并",
@@ -16625,9 +16629,9 @@ function _f({ weeks: e, onWeek: t }) {
 						className: "cto-dim",
 						children: [
 							"近 12 周合并了 ",
-							Xd(u),
+							Zd(u),
 							" 个需求，最近 4 周 ",
-							Xd(v),
+							Zd(v),
 							" 个 · 按交付方式 · 点一周看那一周合并的"
 						]
 					}),
@@ -16652,10 +16656,10 @@ function _f({ weeks: e, onWeek: t }) {
 			}),
 			!n && /* @__PURE__ */ g("div", {
 				className: "cto-legend",
-				children: $d.map((e) => /* @__PURE__ */ _("span", { children: [/* @__PURE__ */ g("i", {
+				children: ef.map((e) => /* @__PURE__ */ _("span", { children: [/* @__PURE__ */ g("i", {
 					className: "cto-sw",
-					style: { background: tf[e] }
-				}), ef[e]] }, e))
+					style: { background: nf[e] }
+				}), tf[e]] }, e))
 			}),
 			/* @__PURE__ */ _("div", {
 				className: "cto-plot br-weekly",
@@ -16679,10 +16683,10 @@ function _f({ weeks: e, onWeek: t }) {
 							x: 32,
 							y: t + 4,
 							textAnchor: "end",
-							children: Xd(e)
+							children: Zd(e)
 						})] }, e);
 					}), e.map((n, r) => {
-						let i = 40 + d * r + d / 2, o = i - f / 2, c = 0, u = $d.filter((e) => n[e] > 0), p = u.map((e, t) => {
+						let i = 40 + d * r + d / 2, o = i - f / 2, c = 0, u = ef.filter((e) => n[e] > 0), p = u.map((e, t) => {
 							let r = h(c) - (c > 0 ? 2 : 0), i = h(c + n[e]);
 							c += n[e];
 							let a = r - i;
@@ -16691,7 +16695,7 @@ function _f({ weeks: e, onWeek: t }) {
 								let t = Math.min(4, a, f / 2);
 								return /* @__PURE__ */ g("path", {
 									d: `M${o},${r} V${i + t} Q${o},${i} ${o + t},${i} H${o + f - t} Q${o + f},${i} ${o + f},${i + t} V${r} Z`,
-									fill: tf[e]
+									fill: nf[e]
 								}, e);
 							}
 							return /* @__PURE__ */ g("rect", {
@@ -16699,7 +16703,7 @@ function _f({ weeks: e, onWeek: t }) {
 								y: i,
 								width: f,
 								height: a,
-								fill: tf[e]
+								fill: nf[e]
 							}, e);
 						}), m = l(n), v = i < a / 2;
 						return /* @__PURE__ */ _("g", { children: [
@@ -16715,9 +16719,9 @@ function _f({ weeks: e, onWeek: t }) {
 								x: i,
 								y: 218,
 								textAnchor: "middle",
-								children: Qd(n.week)
+								children: $d(n.week)
 							}),
-							/* @__PURE__ */ g(af, {
+							/* @__PURE__ */ g(of, {
 								x: 40 + d * r,
 								y: 20,
 								w: d,
@@ -16726,22 +16730,22 @@ function _f({ weeks: e, onWeek: t }) {
 								tipY: 20,
 								tipX: v ? o + f + 10 : o - 10,
 								side: v ? "right" : "left",
-								when: `${Qd(n.week)} 起的一周`,
+								when: `${$d(n.week)} 起的一周`,
 								rows: [
-									[Xd(m), "合并"],
-									...$d.map((e) => [
-										Xd(n[e]),
-										ef[e],
-										tf[e]
+									[Zd(m), "合并"],
+									...ef.map((e) => [
+										Zd(n[e]),
+										tf[e],
+										nf[e]
 									]),
 									...t && m > 0 ? [["点击", "看这一周合并的需求"]] : []
 								],
 								onPick: t && m > 0 ? () => t(n.week) : void 0,
-								label: `${Qd(n.week)} 起的一周：${m} 个`
+								label: `${$d(n.week)} 起的一周：${m} 个`
 							})
 						] }, n.week);
 					})]
-				}), /* @__PURE__ */ g(rf, {
+				}), /* @__PURE__ */ g(af, {
 					tip: o,
 					width: a
 				})]
@@ -16752,23 +16756,23 @@ function _f({ weeks: e, onWeek: t }) {
 					className: "cto-table",
 					children: [/* @__PURE__ */ g("thead", { children: /* @__PURE__ */ _("tr", { children: [
 						/* @__PURE__ */ g("th", { children: "一周起始" }),
-						$d.map((e) => /* @__PURE__ */ g("th", {
+						ef.map((e) => /* @__PURE__ */ g("th", {
 							className: "is-num",
-							children: ef[e]
+							children: tf[e]
 						}, e)),
 						/* @__PURE__ */ g("th", {
 							className: "is-num",
 							children: "合计"
 						})
 					] }) }), /* @__PURE__ */ g("tbody", { children: e.map((e) => /* @__PURE__ */ _("tr", { children: [
-						/* @__PURE__ */ _("td", { children: [Qd(e.week), " 起"] }),
-						$d.map((t) => /* @__PURE__ */ g("td", {
+						/* @__PURE__ */ _("td", { children: [$d(e.week), " 起"] }),
+						ef.map((t) => /* @__PURE__ */ g("td", {
 							className: "is-num",
-							children: Xd(e[t])
+							children: Zd(e[t])
 						}, t)),
 						/* @__PURE__ */ g("td", {
 							className: "is-num",
-							children: Xd(l(e))
+							children: Zd(l(e))
 						})
 					] }, e.week)) })]
 				})
@@ -16778,38 +16782,38 @@ function _f({ weeks: e, onWeek: t }) {
 }
 //#endregion
 //#region src/views/Stream.tsx
-var vf = {
+var yf = {
 	agent: "AI 在本机做",
 	runner: "运行机在做",
 	person: "等人",
 	rework: "返工"
-}, yf = {
+}, bf = {
 	agent: "var(--vs-agent)",
 	runner: "var(--s1)",
 	person: "var(--vs-person)",
 	rework: "var(--vs-rework)"
-}, bf = [
+}, xf = [
 	"agent",
 	"runner",
 	"person",
 	"rework"
-], xf = {
+], Sf = {
 	person: 4,
 	rework: 3,
 	runner: 2,
 	agent: 1
 };
-function Sf(e, t) {
+function Cf(e, t) {
 	return e === "wait" ? "person" : e === "fix" ? "rework" : t?.kind === "runner" ? "runner" : "agent";
 }
-function Cf(e, t) {
+function wf(e, t) {
 	let n = e.ended_at ?? t, r = new Map(e.runs.map((e) => [e.key, e])), i = [];
 	for (let t of e.nodes) for (let e of t.spans) {
 		let a = Math.min(e.b ?? n, n), o = r.get(e.run ?? t.run ?? "");
 		a > e.a && i.push({
 			a: e.a,
 			b: a,
-			part: Sf(e.kind, o),
+			part: Cf(e.kind, o),
 			node: t,
 			run: o
 		});
@@ -16828,7 +16832,7 @@ function Cf(e, t) {
 	for (let e = 0; e < a.length - 1; e++) {
 		let t = a[e], n = a[e + 1], r = i.filter((e) => e.a <= t && e.b >= n);
 		if (!r.length) continue;
-		let s = r.sort((e, t) => xf[t.part] - xf[e.part])[0], c = o[o.length - 1], l = s.node?.id ?? `run:${s.run?.key ?? ""}`;
+		let s = r.sort((e, t) => Sf[t.part] - Sf[e.part])[0], c = o[o.length - 1], l = s.node?.id ?? `run:${s.run?.key ?? ""}`;
 		c && c.part === s.part && c.node === l && Math.abs(c.to - t) < 1 ? c.to = n : o.push({
 			from: t,
 			to: n,
@@ -16838,15 +16842,15 @@ function Cf(e, t) {
 	}
 	return o;
 }
-function wf(e) {
-	return bf.map((t) => ({
+function Tf(e) {
+	return xf.map((t) => ({
 		p: t,
 		s: e.filter((e) => e.part === t).reduce((e, t) => e + t.to - t.from, 0)
 	}));
 }
 //#endregion
 //#region src/views/StagingErrors.tsx
-var Tf = {
+var Ef = {
 	fixing: {
 		label: "在修",
 		tone: "run"
@@ -16875,14 +16879,29 @@ var Tf = {
 		label: "已关",
 		tone: "ok"
 	}
-}, Ef = (e) => Tf[e] ?? {
+}, Df = (e) => Ef[e] ?? {
 	label: e,
 	tone: "idle"
-}, Df = (e) => {
-	let t = Object.keys(Tf).indexOf(e);
+}, Of = (e) => {
+	let t = Object.keys(Ef).indexOf(e);
 	return t < 0 ? 99 : t;
-}, Of = "还没有项目打开测试环境报错：项目的 .brain/kit.json 里 work_sources 写全，比如 [\"mr-handoff\", \"mr-patrol\", \"staging-errors\"]（只写 staging-errors 会把交接关掉），桥的 bridge.json 里这个项目写上 staging（测试环境的日志和 VERSION 文件在哪）就开始。";
-function kf({ what: e, link: t }) {
+}, kf = "还没有项目打开测试环境报错：项目的 .brain/kit.json 里 work_sources 写全，比如 [\"mr-handoff\", \"mr-patrol\", \"staging-errors\"]（只写 staging-errors 会把交接关掉），桥的 bridge.json 里这个项目写上 staging（测试环境的日志和 VERSION 文件在哪）就开始。";
+function Af({ hidden: e, unlisted: t }) {
+	let n = Math.max(t, e.length);
+	if (n === 0) return null;
+	let r = n - e.length, i = e.map((e) => e.text).concat(r === 0 ? [] : e.length ? [`另外 ${r} 个在别的项目里`] : ["在别的项目里"]);
+	return /* @__PURE__ */ _("p", {
+		className: "br-dim br-small",
+		"data-testid": "held-hint",
+		children: [
+			"在修的里有 ",
+			n,
+			" 个下面没列出：",
+			i.join("；")
+		]
+	});
+}
+function jf({ what: e, link: t }) {
 	return /* @__PURE__ */ _("span", {
 		title: t.title || void 0,
 		children: [
@@ -16896,14 +16915,14 @@ function kf({ what: e, link: t }) {
 		]
 	});
 }
-function Af({ view: e, openSession: t }) {
-	let n = [...e.items].sort((e, t) => Df(e.state) - Df(t.state) || t.last_seen - e.last_seen), r = n.slice(0, 8), i = e.projects.filter((e) => e.on).map((e) => e.project);
+function Mf({ view: e, openSession: t }) {
+	let n = [...e.items].sort((e, t) => Of(e.state) - Of(t.state) || t.last_seen - e.last_seen), r = n.slice(0, 8), i = e.projects.filter((e) => e.on).map((e) => e.project);
 	return /* @__PURE__ */ _("section", {
 		className: "br-card",
 		"aria-label": "测试环境报错",
 		"data-testid": "staging",
 		children: [
-			/* @__PURE__ */ g("style", { children: jf }),
+			/* @__PURE__ */ g("style", { children: Nf }),
 			/* @__PURE__ */ _("header", { children: [
 				/* @__PURE__ */ g(J, {
 					role: "alarm",
@@ -16925,6 +16944,10 @@ function Af({ view: e, openSession: t }) {
 					]
 				})
 			] }),
+			e.on && /* @__PURE__ */ g(Af, {
+				hidden: e.hidden,
+				unlisted: e.working - e.items.filter((e) => e.state === "fixing").length
+			}),
 			e.on ? n.length === 0 ? /* @__PURE__ */ g("p", {
 				className: "br-empty",
 				children: e.last_at ? `上一轮（${R(e.last_at)}）测试环境的日志里没有报错。` : "还没看过测试环境：下一轮就看。"
@@ -16940,7 +16963,7 @@ function Af({ view: e, openSession: t }) {
 						/* @__PURE__ */ g("th", { children: "MR" }),
 						t && /* @__PURE__ */ g("th", { children: "会话" })
 					] }) }), /* @__PURE__ */ g("tbody", { children: r.map((e) => {
-						let n = Ef(e.state);
+						let n = Df(e.state);
 						return /* @__PURE__ */ _("tr", {
 							"data-state": e.state,
 							children: [
@@ -16982,10 +17005,10 @@ function Af({ view: e, openSession: t }) {
 								}) }),
 								/* @__PURE__ */ g("td", { children: e.origin || e.fix_mr ? /* @__PURE__ */ _("span", {
 									className: "tm-st-mrs",
-									children: [e.origin && /* @__PURE__ */ g(kf, {
+									children: [e.origin && /* @__PURE__ */ g(jf, {
 										what: "带进来的",
 										link: e.origin
-									}), e.fix_mr && /* @__PURE__ */ g(kf, {
+									}), e.fix_mr && /* @__PURE__ */ g(jf, {
 										what: "修复",
 										link: e.fix_mr
 									})]
@@ -17011,7 +17034,7 @@ function Af({ view: e, openSession: t }) {
 				})
 			}) : /* @__PURE__ */ g("p", {
 				className: "br-empty",
-				children: Of
+				children: kf
 			}),
 			n.length > r.length && /* @__PURE__ */ _("p", {
 				className: "br-dim br-small",
@@ -17033,7 +17056,7 @@ function Af({ view: e, openSession: t }) {
 		]
 	});
 }
-var jf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width: 30em; white-space: normal; overflow-wrap: anywhere; }\n.tm-st-count { font-variant-numeric: tabular-nums; font-weight: 650; color: var(--text-strong); }\n.tm-st-mrs { display: inline-grid; gap: .15em; font-size: .9em; white-space: nowrap; }\n", Mf = {
+var Nf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width: 30em; white-space: normal; overflow-wrap: anywhere; }\n.tm-st-count { font-variant-numeric: tabular-nums; font-weight: 650; color: var(--text-strong); }\n.tm-st-mrs { display: inline-grid; gap: .15em; font-size: .9em; white-space: nowrap; }\n", Pf = {
 	poll: {
 		name: "看 MR",
 		did: "看了 MR"
@@ -17073,17 +17096,25 @@ var jf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width:
 	staging: {
 		name: "看测试环境",
 		did: "看了测试环境"
+	},
+	signin: {
+		name: "重新接上 GitLab 的登录",
+		did: "重新接上 GitLab 的登录"
+	},
+	left: {
+		name: "收起离开的项目的运行",
+		did: "收起离开的项目的运行"
 	}
-}, Nf = {
+}, Ff = {
 	answer: "回答的凭证",
 	handoff: "交接的合同"
-}, Pf = (e) => Nf[e] ?? "其他", Ff = (e) => {
+}, If = (e) => Ff[e] ?? "其他", Lf = (e) => {
 	let [t, n] = e.split(/\s+/, 2);
-	return Nf[t] ? `${t === "answer" ? "回答" : "交接"} ${n ?? ""}`.trim() : e;
-}, If = (e, t = !0) => {
+	return Ff[t] ? `${t === "answer" ? "回答" : "交接"} ${n ?? ""}`.trim() : e;
+}, Rf = (e, t = !0) => {
 	let n = /^RUN-(.+)-(\d+)$/.exec(e);
 	return n ? `${t ? `${n[1]} 的` : ""}第 ${n[2]} 次运行` : "一次运行";
-}, Lf = (e) => /[\u3400-\u9fff]/.test(e), Rf = (e) => Array.from(new Set(e.split("；").map((e) => e.split(":", 1)[0].trim()).filter(Boolean))).map((e) => Mf[e]?.name ?? "其他一步"), zf = {
+}, zf = (e) => /[\u3400-\u9fff]/.test(e), Bf = (e) => Array.from(new Set(e.split("；").map((e) => e.split(":", 1)[0].trim()).filter(Boolean))).map((e) => Pf[e]?.name ?? "其他一步"), Vf = {
 	signing: {
 		label: "签名中",
 		tone: "hand"
@@ -17118,10 +17149,10 @@ var jf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width:
 		label: "已关闭",
 		tone: "idle"
 	}
-}, Bf = (e) => zf[e] ?? {
+}, Hf = (e) => Vf[e] ?? {
 	label: e,
 	tone: "idle"
-}, Vf = {
+}, Uf = {
 	checking: {
 		label: "在检查",
 		tone: "run"
@@ -17134,7 +17165,7 @@ var jf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width:
 		label: "拒绝接手",
 		tone: "bad"
 	}
-}, Hf = {
+}, Wf = {
 	sending: {
 		label: "正在送",
 		tone: "run"
@@ -17155,10 +17186,10 @@ var jf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width:
 		label: "不送了",
 		tone: "bad"
 	}
-}, Uf = (e) => Hf[e] ?? {
+}, Gf = (e) => Wf[e] ?? {
 	label: e,
 	tone: "idle"
-}, Wf = {
+}, Kf = {
 	ci_wait: "warn",
 	ci_person: "warn",
 	ci_red: "bad",
@@ -17174,10 +17205,10 @@ var jf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width:
 	outbox_interrupted: "warn",
 	outbox_dropped: "bad",
 	queued: "idle"
-}, Gf = (e) => Wf[e] ?? (/^(ci|runnerd)_/.test(e) ? "warn" : "idle"), Kf = {
+}, qf = (e) => Kf[e] ?? (/^(ci|runnerd)_/.test(e) ? "warn" : "idle"), Jf = {
 	bad: "✕",
 	warn: "!"
-}, qf = {
+}, Yf = {
 	working: {
 		label: "在修",
 		tone: "run"
@@ -17198,6 +17229,10 @@ var jf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width:
 		label: "没修好",
 		tone: "bad"
 	},
+	rules: {
+		label: "推送规则不让修",
+		tone: "bad"
+	},
 	done: {
 		label: "修过一轮",
 		tone: "info"
@@ -17210,13 +17245,13 @@ var jf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width:
 		label: "不管",
 		tone: "idle"
 	}
-}, Jf = (e) => qf[e] ?? {
+}, Xf = (e) => Yf[e] ?? {
 	label: e,
 	tone: "idle"
-}, Yf = (e) => {
-	let t = Object.keys(qf).indexOf(e);
+}, Zf = (e) => {
+	let t = Object.keys(Yf).indexOf(e);
 	return t < 0 ? 99 : t;
-}, Xf = {
+}, Qf = {
 	new: {
 		label: "刚打上标签",
 		tone: "idle"
@@ -17245,19 +17280,19 @@ var jf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width:
 		label: "标签去掉了",
 		tone: "idle"
 	}
-}, Zf = (e) => Xf[e] ?? {
+}, $f = (e) => Qf[e] ?? {
 	label: e,
 	tone: "idle"
-}, Qf = (e) => {
-	let t = Object.keys(Xf).indexOf(e);
+}, ep = (e) => {
+	let t = Object.keys(Qf).indexOf(e);
 	return t < 0 ? 99 : t;
-}, $f = "还没有项目从 issue 接活：项目的 .brain/kit.json 里 work_sources 写全，比如 [\"mr-handoff\", \"issue-label\"]（只写 issue-label 会把交接关掉）就开始。一键建运行机勾上「从打了标签的 issue 接活」，它开的 kit.json MR 会写好。", ep = "还没有项目打开巡检：项目的 .brain/kit.json 里 work_sources 写全，比如 [\"mr-handoff\", \"mr-patrol\"]（只写 mr-patrol 会把交接关掉）就开始。一键建运行机勾上「巡检所有开着的 MR」，它开的 kit.json MR 会写好。", tp = [{
+}, tp = "还没有项目从 issue 接活：项目的 .brain/kit.json 里 work_sources 写全，比如 [\"mr-handoff\", \"issue-label\"]（只写 issue-label 会把交接关掉）就开始。一键建运行机勾上「从打了标签的 issue 接活」，它开的 kit.json MR 会写好。", np = "没有还没开工的 issue：打了标签的都开工了，在上面「运行机在做」和下面的全队交付里。", rp = "还没有项目打开巡检：项目的 .brain/kit.json 里 work_sources 写全，比如 [\"mr-handoff\", \"mr-patrol\"]（只写 mr-patrol 会把交接关掉）就开始。一键建运行机勾上「巡检所有开着的 MR」，它开的 kit.json MR 会写好。", ip = [{
 	file: "bridge.json",
 	what: "桥"
 }, {
 	file: "runnerd.json",
 	what: "运行机（brain-runnerd）"
-}], np = {
+}], ap = {
 	accepted: {
 		label: "接手了",
 		tone: "ok",
@@ -17283,6 +17318,11 @@ var jf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width:
 		tone: "hand",
 		hint: "这份交接的合同正在别处签（另一个桥进程，或停下的桥留下的占位）：下一轮再看"
 	},
+	signing: {
+		label: "等签名服务",
+		tone: "hand",
+		hint: "签名服务这一轮没来得及签这份合同（第一次签常常慢一些）：下一轮再问同一份，签好就接手"
+	},
 	skipped: {
 		label: "没看：不在名单里",
 		tone: "idle",
@@ -17293,21 +17333,22 @@ var jf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width:
 		tone: "warn",
 		hint: "下一轮再试"
 	}
-}, rp = (e) => np[e] ?? {
+}, op = (e) => ap[e] ?? {
 	label: e,
 	tone: "idle",
 	hint: ""
-}, ip = {
+}, sp = {
 	rejected: "is-conflict",
 	waiting: "is-pending",
+	signing: "is-pending",
 	unlabelled: "is-pending",
 	error: "is-pending",
 	seen: "is-seen",
 	skipped: "is-seen"
-}, ap = (e, t) => e === "runs" ? Bf(t) : e === "decisions" ? _t(t) : e === "outbox" ? Uf(t) : Vf[t] ?? {
+}, cp = (e, t) => e === "runs" ? Hf(t) : e === "decisions" ? _t(t) : e === "outbox" ? Gf(t) : Uf[t] ?? {
 	label: t,
 	tone: "idle"
-}, op = [
+}, lp = [
 	{
 		icon: "handover",
 		title: "交接",
@@ -17334,19 +17375,19 @@ var jf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width:
 		text: "在 MR 上，以\xA0GitLab\xA0身份"
 	}
 ];
-function sp({ status: t, go: n, reloadStatus: r, pollMs: i }) {
+function up({ status: t, go: n, reloadStatus: r, pollMs: i }) {
 	let a = u(), o = p(), s = !!t?.app.team, c = F(s ? D.team() : null, i ?? 1e4), l = F(s ? D.teamPatrol() : null, i ?? 1e4), d = F(s ? D.teamStaging() : null, i ?? 1e4), f = F(s ? D.teamIssues() : null, i ?? 1e4), m = I(() => a.post(D.teamLoop(), {})), v = async () => {
 		await m.run() && (c.reload(), l.reload(), d.reload(), f.reload(), r());
 	};
 	if (t && !s) return /* @__PURE__ */ _("main", {
 		className: "kt-root br-view tm-root",
 		"data-testid": "team",
-		children: [/* @__PURE__ */ g("style", { children: Cp }), /* @__PURE__ */ g(Jt, {
+		children: [/* @__PURE__ */ g("style", { children: Ep }), /* @__PURE__ */ g(Jt, {
 			testid: "team-off",
 			title: "这台机器不是团队运行机",
 			text: ["这台机器没开团队模式。要当团队运行机：在设置里打开团队模式，填上桥和运行机工作区的配置文件。"],
 			punch: "运行机接手交接过来的需求，问题和验收都在 MR 上，以 GitLab 身份回答。",
-			flow: op,
+			flow: lp,
 			children: /* @__PURE__ */ _("button", {
 				type: "button",
 				className: "br-btn is-primary",
@@ -17372,7 +17413,7 @@ function sp({ status: t, go: n, reloadStatus: r, pollMs: i }) {
 		className: "kt-root br-view tm-root",
 		"data-testid": "team",
 		children: [
-			/* @__PURE__ */ g("style", { children: Cp }),
+			/* @__PURE__ */ g("style", { children: Ep }),
 			b?.same_user && /* @__PURE__ */ _("div", {
 				className: "br-banner tm-same",
 				role: "alert",
@@ -17442,7 +17483,7 @@ function sp({ status: t, go: n, reloadStatus: r, pollMs: i }) {
 											" · 拒签 ",
 											b.signer.refused
 										] })] }),
-										/* @__PURE__ */ g(cp, { relay: b.relay })
+										/* @__PURE__ */ g(dp, { relay: b.relay })
 									]
 								})]
 							}),
@@ -17459,7 +17500,7 @@ function sp({ status: t, go: n, reloadStatus: r, pollMs: i }) {
 							})
 						]
 					}),
-					b.error && /* @__PURE__ */ g(lp, { st: b }),
+					b.error && /* @__PURE__ */ g(fp, { st: b }),
 					b.relay?.projects.filter((e) => e.error).map((e) => /* @__PURE__ */ _("div", {
 						className: "tm-loop-error",
 						"data-testid": "relay-error",
@@ -17489,7 +17530,7 @@ function sp({ status: t, go: n, reloadStatus: r, pollMs: i }) {
 						children: [
 							/* @__PURE__ */ _("p", {
 								className: "br-bad-text",
-								children: [/* @__PURE__ */ g("b", { children: "上一轮有一步没成：" }), Rf(b.loop_error).join("、")]
+								children: [/* @__PURE__ */ g("b", { children: "上一轮有一步没成：" }), Bf(b.loop_error).join("、")]
 							}),
 							/* @__PURE__ */ _("span", {
 								className: "tm-do",
@@ -17502,7 +17543,7 @@ function sp({ status: t, go: n, reloadStatus: r, pollMs: i }) {
 						]
 					}),
 					/* @__PURE__ */ g(Ot, { rows: b.checks ?? [] }),
-					m.result && /* @__PURE__ */ g(dp, { r: m.result }),
+					m.result && /* @__PURE__ */ g(mp, { r: m.result }),
 					m.error && /* @__PURE__ */ g("p", {
 						className: "br-error",
 						role: "alert",
@@ -17515,39 +17556,39 @@ function sp({ status: t, go: n, reloadStatus: r, pollMs: i }) {
 					className: "br-kpis tm-kpis",
 					"aria-label": "账本",
 					children: [
-						/* @__PURE__ */ g(fp, {
+						/* @__PURE__ */ g(hp, {
 							k: "runs",
 							label: "运行",
 							unit: "个",
 							counts: y.ledger.runs
 						}),
-						/* @__PURE__ */ g(fp, {
+						/* @__PURE__ */ g(hp, {
 							k: "decisions",
 							label: "问题",
 							unit: "个",
 							counts: y.ledger.decisions
 						}),
-						/* @__PURE__ */ g(fp, {
+						/* @__PURE__ */ g(hp, {
 							k: "handoffs",
 							label: "交接",
 							unit: "次",
 							counts: y.ledger.handoffs,
 							big: "accepted"
 						}),
-						/* @__PURE__ */ g(pp, { counts: y.ledger.outbox ?? {} }),
-						/* @__PURE__ */ g(mp, { signer: y.signer })
+						/* @__PURE__ */ g(gp, { counts: y.ledger.outbox ?? {} }),
+						/* @__PURE__ */ g(_p, { signer: y.signer })
 					]
 				}),
-				/* @__PURE__ */ g(hp, {
+				/* @__PURE__ */ g(vp, {
 					rows: y.handovers,
 					at: b?.last_loop_at ?? null
 				}),
-				f.data && /* @__PURE__ */ g(gp, { view: f.data }),
-				l.data && /* @__PURE__ */ g(_p, {
+				f.data && /* @__PURE__ */ g(yp, { view: f.data }),
+				l.data && /* @__PURE__ */ g(bp, {
 					view: l.data,
 					openSession: (e) => o(`/chat?sid=${encodeURIComponent(e)}`)
 				}),
-				d.data && /* @__PURE__ */ g(Af, {
+				d.data && /* @__PURE__ */ g(Mf, {
 					view: d.data,
 					openSession: (e) => o(`/chat?sid=${encodeURIComponent(e)}`)
 				}),
@@ -17580,14 +17621,14 @@ function sp({ status: t, go: n, reloadStatus: r, pollMs: i }) {
 								/* @__PURE__ */ g("th", { children: "更新" }),
 								/* @__PURE__ */ g("th", { children: "会话" })
 							] }) }), /* @__PURE__ */ g("tbody", { children: y.runs.map((t) => {
-								let r = t.notes ?? [], i = Bf(t.state).hint;
+								let r = t.notes ?? [], i = Hf(t.state).hint;
 								return /* @__PURE__ */ _(e, { children: [/* @__PURE__ */ _("tr", {
 									"data-state": t.state,
 									className: r.length ? "has-notes" : void 0,
 									children: [
 										/* @__PURE__ */ g("td", {
 											title: t.run_id,
-											children: If(t.run_id, !1)
+											children: Rf(t.run_id, !1)
 										}),
 										/* @__PURE__ */ g("td", { children: /* @__PURE__ */ g("button", {
 											type: "button",
@@ -17606,7 +17647,7 @@ function sp({ status: t, go: n, reloadStatus: r, pollMs: i }) {
 										}),
 										/* @__PURE__ */ g("td", { children: /* @__PURE__ */ _("span", {
 											className: "tm-state",
-											children: [/* @__PURE__ */ g(yp, { state: t.state }), i && /* @__PURE__ */ g("span", {
+											children: [/* @__PURE__ */ g(Sp, { state: t.state }), i && /* @__PURE__ */ g("span", {
 												className: "tm-state-hint",
 												children: i
 											})]
@@ -17637,7 +17678,7 @@ function sp({ status: t, go: n, reloadStatus: r, pollMs: i }) {
 									"data-notes": t.run_id,
 									children: /* @__PURE__ */ g("td", {
 										colSpan: 7,
-										children: /* @__PURE__ */ g(bp, {
+										children: /* @__PURE__ */ g(Cp, {
 											runId: t.run_id,
 											notes: r
 										})
@@ -17647,14 +17688,14 @@ function sp({ status: t, go: n, reloadStatus: r, pollMs: i }) {
 						})
 					})]
 				}),
-				/* @__PURE__ */ g(xp, { rows: y.hooks ?? [] }),
-				/* @__PURE__ */ g(vp, { signer: y.signer }),
-				/* @__PURE__ */ g(Sp, { rows: y.config ?? [] })
+				/* @__PURE__ */ g(wp, { rows: y.hooks ?? [] }),
+				/* @__PURE__ */ g(xp, { signer: y.signer }),
+				/* @__PURE__ */ g(Tp, { rows: y.config ?? [] })
 			] })
 		]
 	});
 }
-function cp({ relay: e }) {
+function dp({ relay: e }) {
 	if (!e) return null;
 	let t = e.projects.reduce((e, t) => t.written_at !== null && (e === null || t.written_at > (e.written_at ?? 0)) ? t : e, null), n = t?.written_at ? `${R(t.written_at)}写的${t.heartbeat ? "（没有变化，心跳）" : ""}` : "还没写过（每 5 分钟最多写一次）";
 	return /* @__PURE__ */ _("span", {
@@ -17672,7 +17713,7 @@ function cp({ relay: e }) {
 		]
 	});
 }
-function lp({ st: e }) {
+function fp({ st: e }) {
 	let t = !!e.error_todo, n = t ? e.error_raw ?? "" : e.error, r = t ? e.error : "桥没准备好";
 	return /* @__PURE__ */ _("div", {
 		className: "tm-loop-error",
@@ -17684,7 +17725,7 @@ function lp({ st: e }) {
 			}),
 			/* @__PURE__ */ _("span", {
 				className: "tm-do",
-				children: [/* @__PURE__ */ g("b", { children: "做什么" }), t ? e.error_todo : up]
+				children: [/* @__PURE__ */ g("b", { children: "做什么" }), t ? e.error_todo : pp]
 			}),
 			n && n !== r && /* @__PURE__ */ _("details", {
 				className: "br-raw",
@@ -17693,9 +17734,9 @@ function lp({ st: e }) {
 		]
 	});
 }
-var up = "看设置里团队模式填的两个配置文件（桥的、运行机的）对不对，改好再跑一轮";
-function dp({ r: e }) {
-	let t = Object.entries(e.summary).filter(([e]) => Mf[e]), n = [...Object.entries(e.summary).filter(([e]) => !Mf[e]).map(([e, t]) => `${e} ${t}`), e.error].filter(Boolean).join("\n");
+var pp = "看设置里团队模式填的两个配置文件（桥的、运行机的）对不对，改好再跑一轮";
+function mp({ r: e }) {
+	let t = Object.entries(e.summary).filter(([e]) => Pf[e]), n = [...Object.entries(e.summary).filter(([e]) => !Pf[e]).map(([e, t]) => `${e} ${t}`), e.error].filter(Boolean).join("\n");
 	return /* @__PURE__ */ _("div", {
 		className: `tm-loop ${e.ok ? "is-ok" : "is-bad"}`,
 		role: "status",
@@ -17705,7 +17746,7 @@ function dp({ r: e }) {
 			t.map(([e, t]) => /* @__PURE__ */ _("span", {
 				className: "br-tag",
 				children: [
-					Mf[e].did,
+					Pf[e].did,
 					" ",
 					t,
 					" 个"
@@ -17722,7 +17763,7 @@ function dp({ r: e }) {
 		]
 	});
 }
-function fp({ k: e, label: t, unit: n, counts: r, big: i, order: a, mark: o, note: s }) {
+function hp({ k: e, label: t, unit: n, counts: r, big: i, order: a, mark: o, note: s }) {
 	let c = (e) => a && a.includes(e) ? a.indexOf(e) : a?.length ?? 0, l = Object.entries(r).filter(([, e]) => e > 0).sort((e, t) => c(e[0]) - c(t[0])), u = l.reduce((e, [, t]) => e + t, 0), d = i ? r[i] ?? 0 : u;
 	return /* @__PURE__ */ _("div", {
 		className: `br-kpi tm-kpi${o ? ` has-${o}` : ""}`,
@@ -17742,9 +17783,9 @@ function fp({ k: e, label: t, unit: n, counts: r, big: i, order: a, mark: o, not
 			u > 0 ? /* @__PURE__ */ g("div", {
 				className: "tm-stack",
 				role: "img",
-				"aria-label": l.map(([t, n]) => `${ap(e, t).label} ${n}`).join("，"),
+				"aria-label": l.map(([t, n]) => `${cp(e, t).label} ${n}`).join("，"),
 				children: l.map(([t, n]) => /* @__PURE__ */ g("i", {
-					className: `tone-${ap(e, t).tone}`,
+					className: `tone-${cp(e, t).tone}`,
 					style: { flexGrow: n }
 				}, t))
 			}) : /* @__PURE__ */ g("div", {
@@ -17761,10 +17802,10 @@ function fp({ k: e, label: t, unit: n, counts: r, big: i, order: a, mark: o, not
 					className: "tm-leg",
 					children: [
 						/* @__PURE__ */ g("i", {
-							className: `tone-${ap(e, t).tone}`,
+							className: `tone-${cp(e, t).tone}`,
 							"aria-hidden": "true"
 						}),
-						ap(e, t).label,
+						cp(e, t).label,
 						" ",
 						/* @__PURE__ */ g("b", { children: n })
 					]
@@ -17777,20 +17818,20 @@ function fp({ k: e, label: t, unit: n, counts: r, big: i, order: a, mark: o, not
 		]
 	});
 }
-function pp({ counts: e }) {
+function gp({ counts: e }) {
 	let t = (t) => e[t] ?? 0, n = t("unknown") + t("interrupted");
-	return /* @__PURE__ */ g(fp, {
+	return /* @__PURE__ */ g(hp, {
 		k: "outbox",
 		label: "送进会话的消息",
 		unit: "条",
 		counts: e,
 		big: "sent",
-		order: Object.keys(Hf),
+		order: Object.keys(Wf),
 		mark: t("dropped") ? "bad" : n ? "warn" : void 0,
 		note: n ? "桥每轮看会话：看到了就算送到，一直这样要人看一下" : void 0
 	});
 }
-function mp({ signer: e }) {
+function _p({ signer: e }) {
 	let t = e.pending.length, n = e.refused.length, r = e.waiting.length;
 	return /* @__PURE__ */ _("div", {
 		className: `br-kpi tm-kpi${t ? " is-wait" : n ? " is-bad" : ""}`,
@@ -17813,15 +17854,15 @@ function mp({ signer: e }) {
 				children: [
 					e.pending.map((e) => /* @__PURE__ */ g("i", {
 						className: "is-wait",
-						title: `等签名：${Pf(e.kind)}`
+						title: `等签名：${If(e.kind)}`
 					}, e.req_id)),
 					e.refused.map((e) => /* @__PURE__ */ g("i", {
 						className: "is-bad",
-						title: `拒签：${Pf(e.kind)}`
+						title: `拒签：${If(e.kind)}`
 					}, e.req_id)),
 					e.waiting.map((e) => /* @__PURE__ */ g("i", {
 						className: "is-warn",
-						title: `上一轮没等到：${Ff(e.ref)}`
+						title: `上一轮没等到：${Lf(e.ref)}`
 					}, e.ref))
 				]
 			}),
@@ -17840,8 +17881,8 @@ function mp({ signer: e }) {
 		]
 	});
 }
-function hp({ rows: e, at: t }) {
-	let n = e.filter((e) => e.result === "accepted").length, r = e.filter((e) => e.result === "rejected").length, i = e.filter((e) => e.result === "waiting" || e.result === "unlabelled" || e.result === "error").length;
+function vp({ rows: e, at: t }) {
+	let n = e.filter((e) => e.result === "accepted").length, r = e.filter((e) => e.result === "rejected").length, i = e.filter((e) => sp[e.result] === "is-pending").length;
 	return /* @__PURE__ */ _("section", {
 		className: "kt-card tm-ho",
 		"aria-label": "交接",
@@ -17898,9 +17939,9 @@ function hp({ rows: e, at: t }) {
 				/* @__PURE__ */ g("ol", {
 					className: "kt-belt tm-belt",
 					children: e.map((e) => {
-						let t = rp(e.result), n = e.error ? Lf(e.error) ? e.error : "没查成：原话在细节里" : t.hint;
+						let t = op(e.result), n = e.error ? zf(e.error) ? e.error : "没查成：原话在细节里" : t.hint;
 						return /* @__PURE__ */ _("li", {
-							className: `kt-belt-chip ${ip[e.result] ?? ""}`,
+							className: `kt-belt-chip ${sp[e.result] ?? ""}`,
 							"data-result": e.result,
 							title: e.sha ? `交接的提交 ${e.sha.slice(0, 12)}` : void 0,
 							children: [
@@ -17923,7 +17964,7 @@ function hp({ rows: e, at: t }) {
 									className: "tm-hint",
 									children: n
 								}),
-								e.error && !Lf(e.error) && /* @__PURE__ */ _("details", {
+								e.error && !zf(e.error) && /* @__PURE__ */ _("details", {
 									className: "br-raw tm-hint",
 									children: [/* @__PURE__ */ g("summary", { children: "细节" }), /* @__PURE__ */ g("pre", { children: e.error })]
 								})
@@ -17943,8 +17984,8 @@ function hp({ rows: e, at: t }) {
 		})]
 	});
 }
-function gp({ view: e }) {
-	let t = [...e.items].sort((e, t) => Qf(e.state) - Qf(t.state)), n = e.projects.filter((e) => e.on), r = Array.from(new Set(n.map((e) => e.label)));
+function yp({ view: e, me: t = null, waiting: n = !1 }) {
+	let r = [...e.items].sort((e, t) => ep(e.state) - ep(t.state)), i = e.projects.filter((e) => e.on), a = Array.from(new Set(i.map((e) => e.label)));
 	return /* @__PURE__ */ _("section", {
 		className: "br-card",
 		"aria-label": "从 issue 接活",
@@ -17958,12 +17999,12 @@ function gp({ view: e }) {
 				/* @__PURE__ */ g("h3", { children: "从 issue 接活" }),
 				/* @__PURE__ */ g("span", {
 					className: "br-dim br-small",
-					children: e.on ? `${n.map((e) => e.project).join("、")}：Developer 以上的人给 issue 打上标签 ${r.join("、")}，运行机就认领成需求、开 MR、开工` : "没打开"
+					children: e.on ? `${i.map((e) => e.project).join("、")}：Developer 以上的人给 issue 打上标签 ${a.join("、")}，运行机就认领成需求、开 MR、开工${n ? "；这里是还没开工的" : ""}` : "没打开"
 				})
 			] }),
-			e.on ? t.length === 0 ? /* @__PURE__ */ g("p", {
+			e.on ? r.length === 0 ? /* @__PURE__ */ g("p", {
 				className: "br-empty",
-				children: e.last_at ? `上一轮（${R(e.last_at)}）没有打了标签的 issue。` : "还没看过：下一轮就看。"
+				children: n ? np : e.last_at ? `上一轮（${R(e.last_at)}）没有打了标签的 issue。` : "还没看过：下一轮就看。"
 			}) : /* @__PURE__ */ g("div", {
 				className: "br-scroll",
 				children: /* @__PURE__ */ _("table", {
@@ -17973,8 +18014,8 @@ function gp({ view: e }) {
 						/* @__PURE__ */ g("th", { children: "谁打的标签" }),
 						/* @__PURE__ */ g("th", { children: "需求和 MR" }),
 						/* @__PURE__ */ g("th", { children: "状态" })
-					] }) }), /* @__PURE__ */ g("tbody", { children: t.map((e) => {
-						let t = Zf(e.state), n = e.reason.split("\n").map((e) => e.replace(/^- /, "").trim()).filter(Boolean);
+					] }) }), /* @__PURE__ */ g("tbody", { children: r.map((e) => {
+						let n = $f(e.state), r = e.reason.split("\n").map((e) => e.replace(/^- /, "").trim()).filter(Boolean);
 						return /* @__PURE__ */ _("tr", {
 							"data-state": e.state,
 							children: [
@@ -17993,18 +18034,14 @@ function gp({ view: e }) {
 										children: e.title
 									})]
 								}) }),
-								/* @__PURE__ */ _("td", { children: [
-									"@",
-									e.labeler,
-									e.role && /* @__PURE__ */ _("span", {
-										className: "br-dim br-small",
-										children: [
-											"（",
-											e.role,
-											"）"
-										]
-									})
-								] }),
+								/* @__PURE__ */ _("td", { children: [t && e.labeler === t ? `你（@${e.labeler}）` : `@${e.labeler}`, e.role && /* @__PURE__ */ _("span", {
+									className: "br-dim br-small",
+									children: [
+										"（",
+										e.role,
+										"）"
+									]
+								})] }),
 								/* @__PURE__ */ _("td", { children: [
 									e.key ? /* @__PURE__ */ g("b", {
 										className: "br-mono",
@@ -18021,19 +18058,19 @@ function gp({ view: e }) {
 									e.run_id && /* @__PURE__ */ _("span", {
 										className: "br-dim br-small",
 										title: e.run_id,
-										children: [" ", If(e.run_id, !1)]
+										children: [" ", Rf(e.run_id, !1)]
 									})
 								] }),
 								/* @__PURE__ */ g("td", { children: /* @__PURE__ */ _("span", {
 									className: "tm-state",
 									children: [
 										/* @__PURE__ */ g("span", {
-											className: `br-chip kt-pill tone-${t.tone}`,
-											children: t.label
+											className: `br-chip kt-pill tone-${n.tone}`,
+											children: n.label
 										}),
-										n.length > 0 && /* @__PURE__ */ g("ul", {
+										r.length > 0 && /* @__PURE__ */ g("ul", {
 											className: "tm-pt-probs",
-											children: n.map((e, t) => /* @__PURE__ */ g("li", { children: e }, t))
+											children: r.map((e, t) => /* @__PURE__ */ g("li", { children: e }, t))
 										}),
 										e.note && /* @__PURE__ */ g("span", {
 											className: "tm-state-hint",
@@ -18047,7 +18084,7 @@ function gp({ view: e }) {
 				})
 			}) : /* @__PURE__ */ g("p", {
 				className: "br-empty",
-				children: $f
+				children: tp
 			}),
 			e.projects.filter((e) => e.error).map((e) => /* @__PURE__ */ _("p", {
 				className: "br-bad-text br-small",
@@ -18061,8 +18098,8 @@ function gp({ view: e }) {
 		]
 	});
 }
-function _p({ view: e, openSession: t }) {
-	let n = [...e.items].sort((e, t) => Yf(e.state) - Yf(t.state)), r = e.projects.filter((e) => e.on).map((e) => e.project);
+function bp({ view: e, openSession: t }) {
+	let n = [...e.items].sort((e, t) => Zf(e.state) - Zf(t.state)), r = e.projects.filter((e) => e.on).map((e) => e.project);
 	return /* @__PURE__ */ _("section", {
 		className: "br-card",
 		"aria-label": "MR 巡检",
@@ -18089,6 +18126,10 @@ function _p({ view: e, openSession: t }) {
 					]
 				})
 			] }),
+			e.on && /* @__PURE__ */ g(Af, {
+				hidden: e.hidden,
+				unlisted: e.working - e.items.filter((e) => e.state === "working").length
+			}),
 			e.on ? n.length === 0 ? /* @__PURE__ */ g("p", {
 				className: "br-empty",
 				children: e.last_at ? `上一轮（${R(e.last_at)}）没有开着的 MR。` : "还没巡检过：下一轮就看。"
@@ -18102,7 +18143,7 @@ function _p({ view: e, openSession: t }) {
 						/* @__PURE__ */ g("th", { children: "状态" }),
 						t && /* @__PURE__ */ g("th", { children: "会话" })
 					] }) }), /* @__PURE__ */ g("tbody", { children: n.map((e) => {
-						let n = Jf(e.state), r = e.skip || e.note;
+						let n = Xf(e.state), r = e.skip || e.note;
 						return /* @__PURE__ */ _("tr", {
 							"data-state": e.state,
 							children: [
@@ -18159,7 +18200,7 @@ function _p({ view: e, openSession: t }) {
 				})
 			}) : /* @__PURE__ */ g("p", {
 				className: "br-empty",
-				children: ep
+				children: rp
 			}),
 			e.projects.filter((e) => e.error).map((e) => /* @__PURE__ */ _("p", {
 				className: "br-bad-text br-small",
@@ -18173,7 +18214,7 @@ function _p({ view: e, openSession: t }) {
 		]
 	});
 }
-function vp({ signer: e }) {
+function xp({ signer: e }) {
 	return /* @__PURE__ */ _("section", {
 		className: "br-card",
 		"aria-label": "签名",
@@ -18205,7 +18246,7 @@ function vp({ signer: e }) {
 							children: [/* @__PURE__ */ _("span", {
 								className: "br-row",
 								children: [
-									/* @__PURE__ */ g("b", { children: Pf(e.kind) }),
+									/* @__PURE__ */ g("b", { children: If(e.kind) }),
 									/* @__PURE__ */ g("span", { className: "br-grow" }),
 									/* @__PURE__ */ g("span", {
 										className: "br-dim br-small",
@@ -18215,7 +18256,7 @@ function vp({ signer: e }) {
 							}), /* @__PURE__ */ g("span", {
 								className: "br-dim br-small",
 								title: `${e.run_id} · ${e.req_id}`,
-								children: If(e.run_id)
+								children: Rf(e.run_id)
 							})]
 						}, e.req_id))
 					})]
@@ -18236,7 +18277,7 @@ function vp({ signer: e }) {
 								/* @__PURE__ */ g("span", {
 									className: "br-row",
 									title: e.req_id,
-									children: /* @__PURE__ */ g("b", { children: Pf(e.kind) })
+									children: /* @__PURE__ */ g("b", { children: If(e.kind) })
 								}),
 								/* @__PURE__ */ g("ul", {
 									className: "br-list br-bad-text",
@@ -18260,10 +18301,10 @@ function vp({ signer: e }) {
 							children: [/* @__PURE__ */ _("span", {
 								className: "br-row",
 								children: [
-									/* @__PURE__ */ g("b", { children: Ff(e.ref) }),
+									/* @__PURE__ */ g("b", { children: Lf(e.ref) }),
 									/* @__PURE__ */ g("span", {
 										className: "br-tag",
-										children: Pf(e.kind)
+										children: If(e.kind)
 									}),
 									/* @__PURE__ */ g("span", { className: "br-grow" }),
 									/* @__PURE__ */ g("span", {
@@ -18274,7 +18315,7 @@ function vp({ signer: e }) {
 							}), /* @__PURE__ */ g("span", {
 								className: "br-dim br-small",
 								title: e.run_id,
-								children: If(e.run_id)
+								children: Rf(e.run_id)
 							})]
 						}, e.ref))
 					})]
@@ -18283,8 +18324,8 @@ function vp({ signer: e }) {
 		})]
 	});
 }
-function yp({ state: e }) {
-	let t = Bf(e), n = e === "dispatched" || e === "signing";
+function Sp({ state: e }) {
+	let t = Hf(e), n = e === "dispatched" || e === "signing";
 	return /* @__PURE__ */ g("span", {
 		className: `br-chip kt-pill tone-${t.tone}${n ? " is-live" : ""}`,
 		"data-state": e,
@@ -18292,12 +18333,12 @@ function yp({ state: e }) {
 		children: t.label
 	});
 }
-function bp({ runId: e, notes: t }) {
+function Cp({ runId: e, notes: t }) {
 	return /* @__PURE__ */ g("ul", {
 		className: "tm-notes",
-		"aria-label": `${If(e)}：桥记着的事`,
+		"aria-label": `${Rf(e)}：桥记着的事`,
 		children: t.map((e, t) => {
-			let n = Gf(e.kind);
+			let n = qf(e.kind);
 			return /* @__PURE__ */ _("li", {
 				className: `tm-note tone-${n}`,
 				"data-kind": e.kind,
@@ -18305,7 +18346,7 @@ function bp({ runId: e, notes: t }) {
 					/* @__PURE__ */ g("span", {
 						className: "tm-note-glyph",
 						"aria-hidden": "true",
-						children: Kf[n] ?? "·"
+						children: Jf[n] ?? "·"
 					}),
 					/* @__PURE__ */ g("span", {
 						className: "tm-note-text",
@@ -18320,7 +18361,7 @@ function bp({ runId: e, notes: t }) {
 		})
 	});
 }
-function xp({ rows: e }) {
+function wp({ rows: e }) {
 	if (e.length === 0) return null;
 	let t = e.some((e) => e.level === "FAIL") ? "FAIL" : e.some((e) => e.level === "WARN") ? "WARN" : "OK", n = t === "FAIL" ? "bad" : t === "WARN" ? "warn" : "ok";
 	return /* @__PURE__ */ _("section", {
@@ -18344,8 +18385,8 @@ function xp({ rows: e }) {
 		] }), /* @__PURE__ */ g(Ot, { rows: e })]
 	});
 }
-function Sp({ rows: e }) {
-	let t = [...tp, ...[...new Set(e.map((e) => e.file))].filter((e) => !tp.some((t) => t.file === e)).map((e) => ({
+function Tp({ rows: e }) {
+	let t = [...ip, ...[...new Set(e.map((e) => e.file))].filter((e) => !ip.some((t) => t.file === e)).map((e) => ({
 		file: e,
 		what: ""
 	}))], n = e.filter((e) => !e.default).length;
@@ -18429,10 +18470,10 @@ function Sp({ rows: e }) {
 		})]
 	});
 }
-var Cp = "\n/* a step's words break only between phrases (回答、| 验收; 每一轮看 MR，| 检查交接), never inside a word */\n.tm-root .br-flow > li { word-break: keep-all; overflow-wrap: anywhere; }\n.tm-top { display: flex; align-items: center; gap: .6em 1em; flex-wrap: wrap; }\n.tm-top-icon { color: var(--accent); }\n.tm-same .kt-role-icon { color: var(--kt-warn); }\n.tm-status { gap: .7em; }\n.tm-status.is-ok { border-color: var(--kit-ok); }\n.tm-status.is-bad { border-color: var(--kit-bad); }\n.tm-status-row { display: flex; align-items: center; gap: .8em 1.2em; flex-wrap: wrap; }\n.tm-status-icon { display: grid; place-items: center; width: 3.2em; height: 3.2em; border-radius: .9em; color: var(--text-strong);\n  border: 1px solid var(--border); background: var(--kt-glass); }\n.tm-status.is-ok .tm-status-icon { color: var(--kt-ok); border-color: var(--kit-ok); background: color-mix(in srgb, var(--kt-ok) 10%, transparent); }\n.tm-status.is-bad .tm-status-icon { color: var(--kt-bad); border-color: var(--kit-bad); }\n.tm-status-main { display: grid; gap: .3em; }\n.tm-status-main h3 { font-size: 1.25em; }\n.tm-facts { display: flex; gap: .3em 1.4em; flex-wrap: wrap; color: var(--muted); font-size: .93em; }\n.tm-facts b { color: var(--text-strong); font-weight: 650; }\n.tm-loop { display: flex; align-items: center; gap: .4em .7em; flex-wrap: wrap; padding: .5em .8em; border-radius: var(--kit-r-cell, 10px); }\n.tm-loop.is-ok { background: color-mix(in srgb, var(--kt-ok) 9%, transparent); border: 1px solid var(--kit-ok); }\n.tm-loop.is-ok > b { color: var(--kt-ok); }\n.tm-loop.is-bad { background: color-mix(in srgb, var(--kt-bad) 9%, transparent); border: 1px solid var(--kit-bad); }\n.tm-loop.is-bad > b { color: var(--kt-bad); }\n.tm-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }\n@container br-app (max-width: 1280px) { .tm-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }\n@container br-app (max-width: 760px) { .tm-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }\n.tm-kpi.has-bad { border-color: var(--kit-bad); }\n.tm-kpi.has-warn { border-color: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); }\n.tm-do { font-size: .93em; color: var(--text); }\n.tm-do b { color: var(--muted); font-weight: 650; margin-right: .5em; }\n.tm-same { display: grid; gap: .3em; }\n.tm-loop-error { display: grid; gap: .3em; }\n.tm-loop-error p { margin: 0; }\n.tm-belt-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }\n.tm-stack { display: flex; gap: 2px; height: .75em; margin-top: .2em; border-radius: .3em; overflow: hidden; }\n.tm-stack i { flex: 1 1 0; min-width: .4em; background: var(--kt-tone); }\n.tm-stack.is-empty i { background: color-mix(in srgb, var(--muted) 22%, transparent); }\n.tm-legs { display: flex; flex-wrap: wrap; gap: .25em .9em; font-size: .84em; color: var(--text); }\n.tm-leg { display: inline-flex; align-items: center; gap: .4em; white-space: nowrap; }\n.tm-leg i { width: .7em; height: .7em; border-radius: 2px; background: var(--kt-tone); flex: none; }\n.tm-leg b { color: var(--text-strong); font-variant-numeric: tabular-nums; }\n.tm-cells { display: flex; flex-wrap: wrap; gap: 4px; min-height: 1.4em; margin-top: .2em; }\n.tm-cells i { width: 1.4em; height: 1.4em; border-radius: .4em; border: 2px solid var(--kt-c); background: color-mix(in srgb, var(--kt-c) 22%, transparent); }\n.tm-cells i.is-wait { --kt-c: var(--kt-approve); } .tm-cells i.is-bad { --kt-c: var(--kt-bad); } .tm-cells i.is-warn { --kt-c: var(--kt-warn); border-style: dashed; }\n/* the hand-overs wrap onto more rows instead of scrolling (a hidden scrollbar hid the third one) */\n.tm-belt { align-items: stretch; padding-top: .5em; padding-bottom: .5em; flex-wrap: wrap; overflow: visible; }\n.tm-belt::before { display: none; }\n.tm-belt > li { flex: 1 1 15em; min-width: 0; }\n@container br-app (max-width: 760px) { .tm-belt-row { grid-template-columns: minmax(0, 1fr); } .tm-belt-row > .kt-belt-end { justify-self: start; } }\n.tm-belt .kt-belt-chip { gap: .25em; max-width: 26em; padding: .55em .8em .6em; }\n.tm-belt .kt-belt-chip.is-pending { border-color: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); background: color-mix(in srgb, var(--kt-warn) 6%, var(--card)); }\n.tm-belt .kt-belt-chip.is-seen { border: 1px solid var(--border); background: var(--card); }\n.tm-chip-top { display: flex; align-items: center; gap: .3em .6em; flex-wrap: wrap; }\n.tm-mr { display: inline-flex; align-items: center; gap: .25em; text-decoration: none; }\n.tm-mr:hover { text-decoration: underline; }\n.tm-hint { font-size: .8em; color: var(--text); white-space: normal; line-height: 1.4; }\n.tm-runs td { vertical-align: middle; }\n.tm-state { display: inline-grid; gap: .25em; justify-items: start; }\n.tm-state-hint { font-size: .8em; color: var(--muted); max-width: 22em; white-space: normal; line-height: 1.4; }\n.tm-runs tr.has-notes > td { border-bottom: 0; padding-bottom: .35em; }\n.tm-runs tr.tm-notes-row > td { padding-top: 0; padding-bottom: .8em; }\n.tm-notes { list-style: none; margin: 0; padding: 0; display: grid; gap: .3em; }\n.tm-note { display: flex; align-items: baseline; gap: .55em; padding: .32em .75em; border-radius: var(--kit-r-cell, 10px); font-size: .88em; color: var(--text);\n  border: 1px solid color-mix(in srgb, var(--kt-tone) 40%, var(--border)); background: color-mix(in srgb, var(--kt-tone) 7%, transparent); }\n.tm-note.tone-idle { border-color: var(--border); background: var(--kt-glass); }\n.tm-note-glyph { flex: none; display: inline-grid; place-items: center; width: 1.35em; height: 1.35em; border-radius: .4em; align-self: center;\n  font-weight: 900; font-size: .86em; color: var(--kt-tone); border: 1.5px solid var(--kt-tone); background: color-mix(in srgb, var(--kt-tone) 14%, transparent); }\n.tm-note.tone-idle .tm-note-glyph { border-color: color-mix(in srgb, var(--muted) 50%, transparent); color: var(--muted); background: transparent; }\n.tm-note-text { flex: 1; min-width: 0; color: var(--text-strong); white-space: normal; overflow-wrap: anywhere; }\n.tm-note.tone-idle .tm-note-text { color: var(--text); }\n.tm-note-at { flex: none; color: var(--muted); font-size: .92em; white-space: nowrap; font-variant-numeric: tabular-nums; }\n.tm-cfg th, .tm-cfg td { vertical-align: baseline; }\n.tm-cfg tr.tm-cfg-file > th { padding-top: 1.1em; padding-bottom: .45em; border-bottom: 1px solid var(--border); font-weight: 700; color: var(--text-strong); }\n.tm-cfg tbody:first-of-type tr.tm-cfg-file > th { padding-top: .7em; }\n.tm-cfg tr.tm-cfg-file code { font-size: .95em; color: var(--text-strong); }\n.tm-cfg tr.tm-cfg-file .kt-role-icon { color: var(--muted); }\n.tm-cfg tbody tr:last-child td { border-bottom: 0; }\n.tm-cfg-key code { white-space: nowrap; font-weight: 650; color: var(--text-strong); }\n.tm-cfg-val { min-width: 8em; max-width: 22em; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }\n.tm-cfg-val > span:first-child { font-weight: 650; }\n.tm-cfg tr.is-default .tm-cfg-val > span:first-child { font-weight: 500; color: var(--text); }\n.tm-def { display: inline-flex; margin-left: .55em; padding: 0 .55em; border-radius: 999px; font-size: .78em; font-weight: 650; vertical-align: 1px; white-space: nowrap;\n  color: var(--muted); background: color-mix(in srgb, var(--text) 7%, transparent); }\n.tm-cfg-text { color: var(--text); font-size: .93em; min-width: 18em; }\n@container br-app (max-width: 760px) { .tm-cfg-text { min-width: 12em; } }\n.tm-signer { display: grid; grid-template-columns: repeat(auto-fit, minmax(20em, 1fr)); gap: var(--kit-gap-row, 12px); align-items: start; }\n.tm-sig-col { display: grid; gap: .5em; }\n.tm-sig-col h4 { margin: 0; display: flex; align-items: center; gap: .5em; font-size: .93em; color: var(--text-strong); }\n.tm-sigs { list-style: none; margin: 0; padding: 0; display: grid; gap: .5em; }\n.tm-sig { display: grid; gap: .3em; padding: .6em .8em; border-radius: var(--kit-r-cell, 10px); border: 1px solid var(--border); background: var(--bg-elevated, var(--card)); }\n.tm-sig.is-wait { border-color: var(--kit-wait); }\n.tm-sig.is-bad { border-color: var(--kit-bad); background: color-mix(in srgb, var(--kt-bad) 6%, var(--card)); }\n.tm-sig.is-warn { border-style: dashed; border-color: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); }\n.tm-pt-mr { display: inline-grid; gap: .15em; }\n.tm-pt-title { font-size: .86em; color: var(--muted); max-width: 22em; white-space: normal; overflow-wrap: anywhere; }\n.tm-pt-probs { list-style: none; margin: 0; padding: 0; display: grid; gap: .2em; font-size: .9em; }\n.tm-pt-probs li { white-space: normal; overflow-wrap: anywhere; }\n";
+var Ep = "\n/* a step's words break only between phrases (回答、| 验收; 每一轮看 MR，| 检查交接), never inside a word */\n.tm-root .br-flow > li { word-break: keep-all; overflow-wrap: anywhere; }\n.tm-top { display: flex; align-items: center; gap: .6em 1em; flex-wrap: wrap; }\n.tm-top-icon { color: var(--accent); }\n.tm-same .kt-role-icon { color: var(--kt-warn); }\n.tm-status { gap: .7em; }\n.tm-status.is-ok { border-color: var(--kit-ok); }\n.tm-status.is-bad { border-color: var(--kit-bad); }\n.tm-status-row { display: flex; align-items: center; gap: .8em 1.2em; flex-wrap: wrap; }\n.tm-status-icon { display: grid; place-items: center; width: 3.2em; height: 3.2em; border-radius: .9em; color: var(--text-strong);\n  border: 1px solid var(--border); background: var(--kt-glass); }\n.tm-status.is-ok .tm-status-icon { color: var(--kt-ok); border-color: var(--kit-ok); background: color-mix(in srgb, var(--kt-ok) 10%, transparent); }\n.tm-status.is-bad .tm-status-icon { color: var(--kt-bad); border-color: var(--kit-bad); }\n.tm-status-main { display: grid; gap: .3em; }\n.tm-status-main h3 { font-size: 1.25em; }\n.tm-facts { display: flex; gap: .3em 1.4em; flex-wrap: wrap; color: var(--muted); font-size: .93em; }\n.tm-facts b { color: var(--text-strong); font-weight: 650; }\n.tm-loop { display: flex; align-items: center; gap: .4em .7em; flex-wrap: wrap; padding: .5em .8em; border-radius: var(--kit-r-cell, 10px); }\n.tm-loop.is-ok { background: color-mix(in srgb, var(--kt-ok) 9%, transparent); border: 1px solid var(--kit-ok); }\n.tm-loop.is-ok > b { color: var(--kt-ok); }\n.tm-loop.is-bad { background: color-mix(in srgb, var(--kt-bad) 9%, transparent); border: 1px solid var(--kit-bad); }\n.tm-loop.is-bad > b { color: var(--kt-bad); }\n.tm-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }\n@container br-app (max-width: 1280px) { .tm-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }\n@container br-app (max-width: 760px) { .tm-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }\n.tm-kpi.has-bad { border-color: var(--kit-bad); }\n.tm-kpi.has-warn { border-color: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); }\n.tm-do { font-size: .93em; color: var(--text); }\n.tm-do b { color: var(--muted); font-weight: 650; margin-right: .5em; }\n.tm-same { display: grid; gap: .3em; }\n.tm-loop-error { display: grid; gap: .3em; }\n.tm-loop-error p { margin: 0; }\n.tm-belt-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }\n.tm-stack { display: flex; gap: 2px; height: .75em; margin-top: .2em; border-radius: .3em; overflow: hidden; }\n.tm-stack i { flex: 1 1 0; min-width: .4em; background: var(--kt-tone); }\n.tm-stack.is-empty i { background: color-mix(in srgb, var(--muted) 22%, transparent); }\n.tm-legs { display: flex; flex-wrap: wrap; gap: .25em .9em; font-size: .84em; color: var(--text); }\n.tm-leg { display: inline-flex; align-items: center; gap: .4em; white-space: nowrap; }\n.tm-leg i { width: .7em; height: .7em; border-radius: 2px; background: var(--kt-tone); flex: none; }\n.tm-leg b { color: var(--text-strong); font-variant-numeric: tabular-nums; }\n.tm-cells { display: flex; flex-wrap: wrap; gap: 4px; min-height: 1.4em; margin-top: .2em; }\n.tm-cells i { width: 1.4em; height: 1.4em; border-radius: .4em; border: 2px solid var(--kt-c); background: color-mix(in srgb, var(--kt-c) 22%, transparent); }\n.tm-cells i.is-wait { --kt-c: var(--kt-approve); } .tm-cells i.is-bad { --kt-c: var(--kt-bad); } .tm-cells i.is-warn { --kt-c: var(--kt-warn); border-style: dashed; }\n/* the hand-overs wrap onto more rows instead of scrolling (a hidden scrollbar hid the third one) */\n.tm-belt { align-items: stretch; padding-top: .5em; padding-bottom: .5em; flex-wrap: wrap; overflow: visible; }\n.tm-belt::before { display: none; }\n.tm-belt > li { flex: 1 1 15em; min-width: 0; }\n@container br-app (max-width: 760px) { .tm-belt-row { grid-template-columns: minmax(0, 1fr); } .tm-belt-row > .kt-belt-end { justify-self: start; } }\n.tm-belt .kt-belt-chip { gap: .25em; max-width: 26em; padding: .55em .8em .6em; }\n.tm-belt .kt-belt-chip.is-pending { border-color: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); background: color-mix(in srgb, var(--kt-warn) 6%, var(--card)); }\n.tm-belt .kt-belt-chip.is-seen { border: 1px solid var(--border); background: var(--card); }\n.tm-chip-top { display: flex; align-items: center; gap: .3em .6em; flex-wrap: wrap; }\n.tm-mr { display: inline-flex; align-items: center; gap: .25em; text-decoration: none; }\n.tm-mr:hover { text-decoration: underline; }\n.tm-hint { font-size: .8em; color: var(--text); white-space: normal; line-height: 1.4; }\n.tm-runs td { vertical-align: middle; }\n.tm-state { display: inline-grid; gap: .25em; justify-items: start; }\n.tm-state-hint { font-size: .8em; color: var(--muted); max-width: 22em; white-space: normal; line-height: 1.4; }\n.tm-runs tr.has-notes > td { border-bottom: 0; padding-bottom: .35em; }\n.tm-runs tr.tm-notes-row > td { padding-top: 0; padding-bottom: .8em; }\n.tm-notes { list-style: none; margin: 0; padding: 0; display: grid; gap: .3em; }\n.tm-note { display: flex; align-items: baseline; gap: .55em; padding: .32em .75em; border-radius: var(--kit-r-cell, 10px); font-size: .88em; color: var(--text);\n  border: 1px solid color-mix(in srgb, var(--kt-tone) 40%, var(--border)); background: color-mix(in srgb, var(--kt-tone) 7%, transparent); }\n.tm-note.tone-idle { border-color: var(--border); background: var(--kt-glass); }\n.tm-note-glyph { flex: none; display: inline-grid; place-items: center; width: 1.35em; height: 1.35em; border-radius: .4em; align-self: center;\n  font-weight: 900; font-size: .86em; color: var(--kt-tone); border: 1.5px solid var(--kt-tone); background: color-mix(in srgb, var(--kt-tone) 14%, transparent); }\n.tm-note.tone-idle .tm-note-glyph { border-color: color-mix(in srgb, var(--muted) 50%, transparent); color: var(--muted); background: transparent; }\n.tm-note-text { flex: 1; min-width: 0; color: var(--text-strong); white-space: normal; overflow-wrap: anywhere; }\n.tm-note.tone-idle .tm-note-text { color: var(--text); }\n.tm-note-at { flex: none; color: var(--muted); font-size: .92em; white-space: nowrap; font-variant-numeric: tabular-nums; }\n.tm-cfg th, .tm-cfg td { vertical-align: baseline; }\n.tm-cfg tr.tm-cfg-file > th { padding-top: 1.1em; padding-bottom: .45em; border-bottom: 1px solid var(--border); font-weight: 700; color: var(--text-strong); }\n.tm-cfg tbody:first-of-type tr.tm-cfg-file > th { padding-top: .7em; }\n.tm-cfg tr.tm-cfg-file code { font-size: .95em; color: var(--text-strong); }\n.tm-cfg tr.tm-cfg-file .kt-role-icon { color: var(--muted); }\n.tm-cfg tbody tr:last-child td { border-bottom: 0; }\n.tm-cfg-key code { white-space: nowrap; font-weight: 650; color: var(--text-strong); }\n.tm-cfg-val { min-width: 8em; max-width: 22em; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }\n.tm-cfg-val > span:first-child { font-weight: 650; }\n.tm-cfg tr.is-default .tm-cfg-val > span:first-child { font-weight: 500; color: var(--text); }\n.tm-def { display: inline-flex; margin-left: .55em; padding: 0 .55em; border-radius: 999px; font-size: .78em; font-weight: 650; vertical-align: 1px; white-space: nowrap;\n  color: var(--muted); background: color-mix(in srgb, var(--text) 7%, transparent); }\n.tm-cfg-text { color: var(--text); font-size: .93em; min-width: 18em; }\n@container br-app (max-width: 760px) { .tm-cfg-text { min-width: 12em; } }\n.tm-signer { display: grid; grid-template-columns: repeat(auto-fit, minmax(20em, 1fr)); gap: var(--kit-gap-row, 12px); align-items: start; }\n.tm-sig-col { display: grid; gap: .5em; }\n.tm-sig-col h4 { margin: 0; display: flex; align-items: center; gap: .5em; font-size: .93em; color: var(--text-strong); }\n.tm-sigs { list-style: none; margin: 0; padding: 0; display: grid; gap: .5em; }\n.tm-sig { display: grid; gap: .3em; padding: .6em .8em; border-radius: var(--kit-r-cell, 10px); border: 1px solid var(--border); background: var(--bg-elevated, var(--card)); }\n.tm-sig.is-wait { border-color: var(--kit-wait); }\n.tm-sig.is-bad { border-color: var(--kit-bad); background: color-mix(in srgb, var(--kt-bad) 6%, var(--card)); }\n.tm-sig.is-warn { border-style: dashed; border-color: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); }\n.tm-pt-mr { display: inline-grid; gap: .15em; }\n.tm-pt-title { font-size: .86em; color: var(--muted); max-width: 22em; white-space: normal; overflow-wrap: anywhere; }\n.tm-pt-probs { list-style: none; margin: 0; padding: 0; display: grid; gap: .2em; font-size: .9em; }\n.tm-pt-probs li { white-space: normal; overflow-wrap: anywhere; }\n";
 //#endregion
 //#region src/views/Reopen.tsx
-function wp({ repo: e, reqKey: t, live: n, onOpened: r }) {
+function Dp({ repo: e, reqKey: t, live: n, onOpened: r }) {
 	let i = u(), a = p(), [o, s] = c(!1), l = I((n) => i.post(D.session(e, t), n)), d = l.result, f = async () => {
 		let e = await l.run({
 			fresh: !0,
@@ -18507,23 +18548,23 @@ function wp({ repo: e, reqKey: t, live: n, onOpened: r }) {
 }
 //#endregion
 //#region src/views/Detail.tsx
-var Tp = "\n.br-detail { container: br-detail / inline-size; }\n.br-detail .br-detail-head { display: grid; gap: 12px; }\n.br-detail .cto-item-head .kt-run-title { margin: 0; }\n.br-detail .br-now { display: grid; gap: 8px; padding: 12px 16px; border-radius: 14px; border: 1px solid var(--border); background: var(--kt-glass); }\n.br-detail .br-now.is-you { border-color: var(--kit-wait); background: color-mix(in srgb, var(--kt-approve) 7%, var(--card)); }\n.br-detail .br-now-head { display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap; }\n.br-detail .br-now-head .cto-eyebrow { align-self: center; }\n.br-detail .br-now-text { color: var(--text-strong); font-size: 1.08em; font-weight: 700; }\n.br-detail .br-now p { margin: 0; color: var(--text); }\n.br-detail .br-now-say { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; border: 1px dashed color-mix(in srgb, var(--kt-approve) 55%, var(--border)); background: var(--card); }\n.br-detail .br-now-say code { font-weight: 700; color: var(--text-strong); user-select: all; overflow-wrap: anywhere; flex: 1 1 260px; }\n.br-detail .br-now-act { gap: 8px; }\n.br-detail .br-now-act a.kt-btn { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }\n.br-detail .br-now-proof { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; align-items: baseline; padding-top: 8px; border-top: 1px dashed var(--border); }\n.br-detail .br-claimed-text { font-size: 1.7em; font-weight: 800; color: var(--text-strong); line-height: 1.25; margin: 4px 0 0; }\n.br-detail .cto-item-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }\n.br-detail .cto-item-cards > .cto-card { container-type: inline-size; }\n.br-detail .cto-item-cards .cto-value { white-space: nowrap; font-size: min(2.85em, 14cqi); }\n@container br-detail (max-width: 1180px) { .br-detail .cto-item-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }\n@container br-detail (max-width: 600px) { .br-detail .cto-item-cards { grid-template-columns: minmax(0, 1fr); } }\n.br-detail .cto-segs i.is-skip { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 45%, transparent) 0 2px, transparent 2px 5px); box-shadow: none; }\n.br-detail .cto-segs i.is-next, .br-detail .cto-segs i.is-todo { background: transparent; box-shadow: inset 0 0 0 1.5px var(--border-strong); }\n.br-detail .cto-segs i.is-next { box-shadow: inset 0 0 0 2px var(--accent); }\n.br-detail .cto-segs i.is-run { background: var(--kt-run); }\n.br-detail .cto-segs i.is-wait { background: var(--kt-approve); }\n.br-detail .cto-segs i.is-watch { background: color-mix(in srgb, var(--kt-ok) 45%, transparent); }\n.br-detail .cto-chips button.cto-chip { cursor: pointer; padding: 0; font: inherit; }\n.br-detail .br-twocol { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }\n@container br-detail (max-width: 1100px) { .br-detail .br-twocol { grid-template-columns: minmax(0, 1fr); } }\n.br-detail .br-col { display: grid; gap: 16px; min-width: 0; }\n.br-detail :where(.br-col) > section.cto-card { border-radius: var(--kit-r); border: 1px solid var(--border); background-color: var(--card); padding: var(--kit-pad-block); margin: 0; }\n.br-detail .br-detail-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 5px 22px; margin: 0; padding: 10px 14px;\n  border: 1px solid var(--border); border-radius: 12px; background: var(--kt-glass); }\n.br-detail .br-detail-facts > div { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 8px; align-items: baseline; min-width: 0; }\n.br-detail .br-detail-facts > details { grid-column: 1 / -1; }\n.br-detail .br-detail-facts dt { font-size: .86em; }\n.br-detail .br-detail-facts dd { overflow-wrap: anywhere; }\n.br-detail :is(.br-path > span, .br-nowrap) { white-space: nowrap; }\n.br-detail .br-phrase { display: inline-block; max-width: 100%; }\n.br-detail .br-rawlist { margin: 6px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 12px; }\n.br-detail .br-rawlist dd { margin: 0; overflow-wrap: anywhere; }\n/* Lean's phases left to right, as the board's AI-DLC bands: each group as wide as its cells, a phase said once one cell */\n.br-detail .br-lean-phases { display: flex; flex-wrap: wrap; gap: 8px 10px; }\n.br-detail .br-lean-phase { display: grid; gap: 4px; align-content: start; min-width: 0; flex: var(--cells) 1 calc(var(--cells) * var(--cell));\n  max-width: calc(var(--cells) * 150px); }\n.br-detail .br-lean-phase-h { font-size: .74em; font-weight: 800; color: var(--muted); white-space: nowrap; }\n.br-detail .br-stagecells { display: grid; grid-template-columns: repeat(var(--cells), minmax(0, 1fr)); gap: 4px; list-style: none; margin: 0; padding: 0; }\n@container br-detail (max-width: 600px) { .br-detail .br-stagecells { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); } }\n.br-detail .br-stagecell.is-whole { grid-column: 1 / -1; }\n.br-detail .br-stagecell { position: relative; display: grid; gap: 2px; align-content: start; padding: 7px 8px 8px; border-radius: 10px; min-height: 64px;\n  border: 2px solid color-mix(in srgb, var(--kt-tone) 70%, var(--border)); background: color-mix(in srgb, var(--kt-tone) 12%, var(--card)); }\n.br-detail .br-stagecell.is-done { background: var(--kt-ok-solid); border-color: color-mix(in srgb, var(--kt-ok) 75%, transparent); }\n.br-detail .br-stagecell.is-done :is(.br-stage-n, .br-stage-label) { color: #fff; }\n.br-detail .br-stagecell.is-done .br-stage-units .br-chip { color: #fff; background: rgba(255, 255, 255, .18); border-color: rgba(255, 255, 255, .4); }\n.br-detail .br-stagecell.is-skipped { border-style: dashed; background: transparent; opacity: .7; }\n.br-detail .br-stagecell.is-todo { border-style: dashed; background: transparent; border-color: var(--border-strong); }\n.br-detail .br-stagecell.is-optional { border-style: dotted; background: transparent; border-color: var(--border-strong); opacity: .6; }\n.br-detail .br-stagecell.is-next { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent); }\n.br-detail .br-stagecell.is-next .br-stage-n { color: var(--accent); }\n.br-detail .br-stagecell.is-started { box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-run) 25%, transparent), 0 0 18px -6px var(--kt-run); }\n.br-detail .br-stage-n { font-size: .74em; font-weight: 800; color: var(--muted); }\n.br-detail .br-stage-label { font-size: .86em; font-weight: 750; color: var(--text-strong); line-height: 1.25; }\n.br-detail .br-stage-go { justify-self: start; appearance: none; border: 0; background: none; padding: 0; margin-top: 2px; font: inherit; font-size: .78em; font-weight: 800;\n  color: var(--accent); cursor: pointer; }\n.br-detail .br-stage-go:hover { text-decoration: underline; }\n.br-detail .br-stagecell.is-done .br-stage-go { color: #fff; text-decoration: underline; }\n/* a unit's chip stays inside its tile (its state as a glyph, the words in its title) */\n.br-detail .br-stagecell { grid-template-columns: minmax(0, 1fr); min-width: 0; }\n.br-detail .br-stage-units { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; min-width: 0; }\n.br-detail .br-stage-units .br-chip { display: block; font-size: .7em; padding: 0 6px; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.br-detail .br-lean-sub { margin: 14px 0 6px; }\n.br-detail :is(.br-approvals, .br-deploys) { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }\n.br-detail :is(.br-approval, .br-deploy) { display: grid; gap: 6px; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--kt-glass); }\n.br-detail .br-approval[data-state=\"pending\"] { border-color: var(--kit-wait); background: color-mix(in srgb, var(--kt-approve) 6%, var(--card)); }\n.br-detail .br-approval[data-state=\"approved\"] { border-color: var(--kit-ok); }\n.br-detail :is(.br-approval, .br-deploy) .br-raw { margin-left: auto; }\n.br-detail .br-deploy[data-result=\"promoted\"] { border-color: var(--kit-ok); }\n.br-detail .br-deploy[data-result=\"aborted\"] { border-color: var(--kit-bad); }\n.br-detail .br-deploys { margin-top: 8px; }\n.br-detail .cto-table td { vertical-align: top; }\n.br-detail .br-dec td:last-child { white-space: nowrap; text-align: right; }\n@container br-detail (max-width: 1100px) {\n  .br-detail .br-dec thead { display: none; }\n  .br-detail .br-dec, .br-detail .br-dec tbody { display: block; }\n  .br-detail .br-dec tr { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 2px 12px; align-items: baseline; padding: 9px 12px; margin-bottom: 8px;\n    border: 1px solid var(--border); border-radius: 12px; background: var(--kt-glass); }\n  .br-detail .br-dec td { display: block; border: 0; padding: 0; min-width: 0; }\n  .br-detail .br-dec td.br-key { grid-area: 1 / 1; }\n  .br-detail .br-dec td[data-label=\"阶段\"] { grid-area: 1 / 2; }\n  .br-detail .br-dec td[data-label=\"谁定的\"] { grid-area: 1 / 3; white-space: normal; }\n  .br-detail .br-dec td[data-label=\"决定\"] { grid-area: 2 / 1 / 3 / -1; color: var(--text-strong); }\n  .br-detail .br-dec td[data-label=\"为什么\"] { grid-area: 3 / 1 / 4 / -1; }\n  .br-detail .br-dec td[data-label=\"引用 Brain\"] { grid-area: 4 / 1 / 5 / 4; }\n  .br-detail .br-dec td:last-child { grid-area: 4 / 4; text-align: right; }\n  .br-detail .br-dec td[data-label=\"引用 Brain\"] .br-dim { visibility: hidden; }\n  .br-detail .br-dec td:is([data-label=\"为什么\"], [data-label=\"谁定的\"])::before { content: attr(data-label) '：'; color: var(--muted); font-size: .9em; }\n}\n.br-detail .br-sessions { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }\n.br-detail .br-session { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-elevated, var(--card)); }\n.br-detail .br-session .kt-role-icon { color: var(--text-strong); }\n.br-detail .br-dec td:is(.br-key, [data-label=\"阶段\"], [data-label=\"谁定的\"]) { white-space: nowrap; }\n.br-detail .br-dec tr.is-picked { background: color-mix(in srgb, var(--kt-info) 12%, var(--card)); outline: 2px solid var(--kt-info); outline-offset: -2px; scroll-margin: 80px; }\n";
-function Ep(e) {
-	return e.row.waits.do !== "push_handoff" && (!!e.run?.handoff || [
+var Op = "\n.br-detail { container: br-detail / inline-size; }\n.br-detail .br-detail-head { display: grid; gap: 12px; }\n.br-detail .cto-item-head .kt-run-title { margin: 0; }\n.br-detail .br-now { display: grid; gap: 8px; padding: 12px 16px; border-radius: 14px; border: 1px solid var(--border); background: var(--kt-glass); }\n.br-detail .br-now.is-you { border-color: var(--kit-wait); background: color-mix(in srgb, var(--kt-approve) 7%, var(--card)); }\n.br-detail .br-now-head { display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap; }\n.br-detail .br-now-head .cto-eyebrow { align-self: center; }\n.br-detail .br-now-text { color: var(--text-strong); font-size: 1.08em; font-weight: 700; }\n.br-detail .br-now p { margin: 0; color: var(--text); }\n.br-detail .br-now-say { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; border: 1px dashed color-mix(in srgb, var(--kt-approve) 55%, var(--border)); background: var(--card); }\n.br-detail .br-now-say code { font-weight: 700; color: var(--text-strong); user-select: all; overflow-wrap: anywhere; flex: 1 1 260px; }\n.br-detail .br-now-act { gap: 8px; }\n.br-detail .br-now-act a.kt-btn { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }\n.br-detail .br-now-proof { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; align-items: baseline; padding-top: 8px; border-top: 1px dashed var(--border); }\n.br-detail .br-claimed-text { font-size: 1.7em; font-weight: 800; color: var(--text-strong); line-height: 1.25; margin: 4px 0 0; }\n.br-detail .cto-item-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }\n.br-detail .cto-item-cards > .cto-card { container-type: inline-size; }\n.br-detail .cto-item-cards .cto-value { white-space: nowrap; font-size: min(2.85em, 14cqi); }\n@container br-detail (max-width: 1180px) { .br-detail .cto-item-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }\n@container br-detail (max-width: 600px) { .br-detail .cto-item-cards { grid-template-columns: minmax(0, 1fr); } }\n.br-detail .cto-segs i.is-skip { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 45%, transparent) 0 2px, transparent 2px 5px); box-shadow: none; }\n.br-detail .cto-segs i.is-next, .br-detail .cto-segs i.is-todo { background: transparent; box-shadow: inset 0 0 0 1.5px var(--border-strong); }\n.br-detail .cto-segs i.is-next { box-shadow: inset 0 0 0 2px var(--accent); }\n.br-detail .cto-segs i.is-run { background: var(--kt-run); }\n.br-detail .cto-segs i.is-wait { background: var(--kt-approve); }\n.br-detail .cto-segs i.is-watch { background: color-mix(in srgb, var(--kt-ok) 45%, transparent); }\n.br-detail .cto-chips button.cto-chip { cursor: pointer; padding: 0; font: inherit; }\n.br-detail .br-twocol { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }\n@container br-detail (max-width: 1100px) { .br-detail .br-twocol { grid-template-columns: minmax(0, 1fr); } }\n.br-detail .br-col { display: grid; gap: 16px; min-width: 0; }\n.br-detail :where(.br-col) > section.cto-card { border-radius: var(--kit-r); border: 1px solid var(--border); background-color: var(--card); padding: var(--kit-pad-block); margin: 0; }\n.br-detail .br-detail-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 5px 22px; margin: 0; padding: 10px 14px;\n  border: 1px solid var(--border); border-radius: 12px; background: var(--kt-glass); }\n.br-detail .br-detail-facts > div { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 8px; align-items: baseline; min-width: 0; }\n.br-detail .br-detail-facts > details { grid-column: 1 / -1; }\n.br-detail .br-detail-facts dt { font-size: .86em; }\n.br-detail .br-detail-facts dd { overflow-wrap: anywhere; }\n.br-detail :is(.br-path > span, .br-nowrap) { white-space: nowrap; }\n.br-detail .br-phrase { display: inline-block; max-width: 100%; }\n.br-detail .br-rawlist { margin: 6px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 12px; }\n.br-detail .br-rawlist dd { margin: 0; overflow-wrap: anywhere; }\n/* Lean's phases left to right, as the board's AI-DLC bands: each group as wide as its cells, a phase said once one cell */\n.br-detail .br-lean-phases { display: flex; flex-wrap: wrap; gap: 8px 10px; }\n.br-detail .br-lean-phase { display: grid; gap: 4px; align-content: start; min-width: 0; flex: var(--cells) 1 calc(var(--cells) * var(--cell));\n  max-width: calc(var(--cells) * 150px); }\n.br-detail .br-lean-phase-h { font-size: .74em; font-weight: 800; color: var(--muted); white-space: nowrap; }\n.br-detail .br-stagecells { display: grid; grid-template-columns: repeat(var(--cells), minmax(0, 1fr)); gap: 4px; list-style: none; margin: 0; padding: 0; }\n@container br-detail (max-width: 600px) { .br-detail .br-stagecells { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); } }\n.br-detail .br-stagecell.is-whole { grid-column: 1 / -1; }\n.br-detail .br-stagecell { position: relative; display: grid; gap: 2px; align-content: start; padding: 7px 8px 8px; border-radius: 10px; min-height: 64px;\n  border: 2px solid color-mix(in srgb, var(--kt-tone) 70%, var(--border)); background: color-mix(in srgb, var(--kt-tone) 12%, var(--card)); }\n.br-detail .br-stagecell.is-done { background: var(--kt-ok-solid); border-color: color-mix(in srgb, var(--kt-ok) 75%, transparent); }\n.br-detail .br-stagecell.is-done :is(.br-stage-n, .br-stage-label) { color: #fff; }\n.br-detail .br-stagecell.is-done .br-stage-units .br-chip { color: #fff; background: rgba(255, 255, 255, .18); border-color: rgba(255, 255, 255, .4); }\n.br-detail .br-stagecell.is-skipped { border-style: dashed; background: transparent; opacity: .7; }\n.br-detail .br-stagecell.is-todo { border-style: dashed; background: transparent; border-color: var(--border-strong); }\n.br-detail .br-stagecell.is-optional { border-style: dotted; background: transparent; border-color: var(--border-strong); opacity: .6; }\n.br-detail .br-stagecell.is-next { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent); }\n.br-detail .br-stagecell.is-next .br-stage-n { color: var(--accent); }\n.br-detail .br-stagecell.is-started { box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-run) 25%, transparent), 0 0 18px -6px var(--kt-run); }\n.br-detail .br-stage-n { font-size: .74em; font-weight: 800; color: var(--muted); }\n.br-detail .br-stage-label { font-size: .86em; font-weight: 750; color: var(--text-strong); line-height: 1.25; }\n.br-detail .br-stage-go { justify-self: start; appearance: none; border: 0; background: none; padding: 0; margin-top: 2px; font: inherit; font-size: .78em; font-weight: 800;\n  color: var(--accent); cursor: pointer; }\n.br-detail .br-stage-go:hover { text-decoration: underline; }\n.br-detail .br-stagecell.is-done .br-stage-go { color: #fff; text-decoration: underline; }\n/* a unit's chip stays inside its tile (its state as a glyph, the words in its title) */\n.br-detail .br-stagecell { grid-template-columns: minmax(0, 1fr); min-width: 0; }\n.br-detail .br-stage-units { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; min-width: 0; }\n.br-detail .br-stage-units .br-chip { display: block; font-size: .7em; padding: 0 6px; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.br-detail .br-lean-sub { margin: 14px 0 6px; }\n.br-detail :is(.br-approvals, .br-deploys) { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }\n.br-detail :is(.br-approval, .br-deploy) { display: grid; gap: 6px; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--kt-glass); }\n.br-detail .br-approval[data-state=\"pending\"] { border-color: var(--kit-wait); background: color-mix(in srgb, var(--kt-approve) 6%, var(--card)); }\n.br-detail .br-approval[data-state=\"approved\"] { border-color: var(--kit-ok); }\n.br-detail :is(.br-approval, .br-deploy) .br-raw { margin-left: auto; }\n.br-detail .br-deploy[data-result=\"promoted\"] { border-color: var(--kit-ok); }\n.br-detail .br-deploy[data-result=\"aborted\"] { border-color: var(--kit-bad); }\n.br-detail .br-deploys { margin-top: 8px; }\n.br-detail .cto-table td { vertical-align: top; }\n.br-detail .br-dec td:last-child { white-space: nowrap; text-align: right; }\n@container br-detail (max-width: 1100px) {\n  .br-detail .br-dec thead { display: none; }\n  .br-detail .br-dec, .br-detail .br-dec tbody { display: block; }\n  .br-detail .br-dec tr { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 2px 12px; align-items: baseline; padding: 9px 12px; margin-bottom: 8px;\n    border: 1px solid var(--border); border-radius: 12px; background: var(--kt-glass); }\n  .br-detail .br-dec td { display: block; border: 0; padding: 0; min-width: 0; }\n  .br-detail .br-dec td.br-key { grid-area: 1 / 1; }\n  .br-detail .br-dec td[data-label=\"阶段\"] { grid-area: 1 / 2; }\n  .br-detail .br-dec td[data-label=\"谁定的\"] { grid-area: 1 / 3; white-space: normal; }\n  .br-detail .br-dec td[data-label=\"决定\"] { grid-area: 2 / 1 / 3 / -1; color: var(--text-strong); }\n  .br-detail .br-dec td[data-label=\"为什么\"] { grid-area: 3 / 1 / 4 / -1; }\n  .br-detail .br-dec td[data-label=\"引用 Brain\"] { grid-area: 4 / 1 / 5 / 4; }\n  .br-detail .br-dec td:last-child { grid-area: 4 / 4; text-align: right; }\n  .br-detail .br-dec td[data-label=\"引用 Brain\"] .br-dim { visibility: hidden; }\n  .br-detail .br-dec td:is([data-label=\"为什么\"], [data-label=\"谁定的\"])::before { content: attr(data-label) '：'; color: var(--muted); font-size: .9em; }\n}\n.br-detail .br-sessions { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }\n.br-detail .br-session { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-elevated, var(--card)); }\n.br-detail .br-session .kt-role-icon { color: var(--text-strong); }\n.br-detail .br-dec td:is(.br-key, [data-label=\"阶段\"], [data-label=\"谁定的\"]) { white-space: nowrap; }\n.br-detail .br-dec tr.is-picked { background: color-mix(in srgb, var(--kt-info) 12%, var(--card)); outline: 2px solid var(--kt-info); outline-offset: -2px; scroll-margin: 80px; }\n", kp = (e) => !!e?.handoff || e?.origin === "remote";
+function Ap(e) {
+	return e.row.waits.do !== "push_handoff" && (kp(e.run) || [
 		"handed_over",
 		"running",
 		"parked",
 		"acceptance"
 	].includes(e.row.state));
 }
-var Dp = (e) => {
+var jp = (e) => {
 	let t = new Set(e.lean.phases.filter((e) => e.state === "used").map((e) => e.key));
 	return e.lean.stages.filter((e) => t.has(e.phase) && e.state !== "optional");
-}, Op = (e) => e && Number.isFinite(Date.parse(e)) ? Date.parse(e) / 1e3 : null;
-function kp(e, t) {
-	return t?.events.find((e) => e.kind === "start")?.at ?? Op(e.run?.created_at);
+}, Mp = (e) => e && Number.isFinite(Date.parse(e)) ? Date.parse(e) / 1e3 : null;
+function Np(e, t) {
+	return t?.events.find((e) => e.kind === "start")?.at ?? Mp(e.run?.created_at);
 }
-function Ap(e) {
+function Pp(e) {
 	let t = e.row.waits;
 	if (t.line) return "approve";
 	switch (e.row.state) {
@@ -18535,8 +18576,8 @@ function Ap(e) {
 		default: return "none";
 	}
 }
-function jp(e, t, n) {
-	let r = e.row.waits, i = r.do ?? Ap(e), a = Ep(e), o = r.where === void 0 ? i === "start" || i === "write_back" ? "app" : i === "none" || i === "watch" ? null : a ? "mr" : "session" : r.where, s = e.questions.find((e) => vt(e) && e.source !== "park");
+function Fp(e, t, n) {
+	let r = e.row.waits, i = r.do ?? Pp(e), a = Ap(e), o = r.where === void 0 ? i === "start" || i === "write_back" ? "app" : i === "none" || i === "watch" ? null : a ? "mr" : "session" : r.where, s = e.questions.find((e) => vt(e) && e.source !== "park");
 	return {
 		who: r.who,
 		whoSay: ur(r.who, e.row.owner, t?.person.me ?? !1, i),
@@ -18544,25 +18585,25 @@ function jp(e, t, n) {
 		where: o,
 		text: r.text,
 		line: r.line,
-		since: r.since ?? (i === "start" ? Op(e.claim?.created_at) : i === "reply" ? n?.last_activity ?? null : null),
+		since: r.since ?? (i === "start" ? Mp(e.claim?.created_at) : i === "reply" ? n?.last_activity ?? null : null),
 		sessionUrl: n?.url ?? null,
 		mrUrl: t?.accept.step.mr_url ?? s?.mr_url ?? e.row.mr?.url ?? null,
 		question: s?.id ?? null,
 		choices: s?.options.length ? `选 ${s.options.map((e) => e.id).join(" / ")}` : "approve / reject",
 		comment: t?.accept.step.comment ?? null,
 		how: i === "redo_handoff" && t?.row.waits.do === "redo_handoff" && t.accept.step.text.split("\n").filter((e) => e && !e.startsWith("接手被拒")).join(" ") || null,
-		review: i === "reply" && wo(e.row, "review") ? Mp(e, t) : null
+		review: i === "reply" && To(e.row, "review") ? Ip(e, t) : null
 	};
 }
-function Mp(e, t) {
+function Ip(e, t) {
 	let n = e.row.waits;
 	if (n.review !== void 0) return n.review ? { say: t?.accept.step.line ?? null } : null;
 	let r = e.lean.next[0] ?? "";
-	if (!zs(r)) return zs(n.text) ? { say: null } : null;
+	if (!Bs(r)) return Bs(n.text) ? { say: null } : null;
 	let i = /说[:：]\s*「([^」]+)」/.exec(r);
 	return { say: i ? i[1] : null };
 }
-function Np(e, t) {
+function Lp(e, t) {
 	let n = [...(t?.events ?? []).filter((e) => e.kind === "reflect").map((e) => e.text), ...e.timeline.items.map((e) => `${e.label} ${e.detail ?? ""}`)];
 	for (let e of n) {
 		let t = /brain\/[A-Za-z0-9._-]+-reflect-\d+/.exec(e);
@@ -18570,12 +18611,12 @@ function Np(e, t) {
 	}
 	return null;
 }
-function Pp({ entry: e, onBack: t, onSwitch: n, onMissing: r, ...a }) {
+function Rp({ entry: e, onBack: t, onSwitch: n, onMissing: r, ...a }) {
 	let o = F(D.requirement(e.repo, e.key), a.pollMs ?? 5e3), s = F(o.data ? D.board(e.repo, e.key) : null, a.pollMs ?? 5e3), [l, u] = c(null), d = Te[e.from ?? "overview"], f = () => {
 		o.reload(), a.reloadStatus();
 	}, p = un(e.repo, e.key, () => {
 		f(), s.reload();
-	}), m = o.data, h = s.data, v = !m && o.status === 404, y = ji(e.repo, e.key, a.status, a.pollMs), b = n ?? ((e, t) => a.go({
+	}), m = o.data, h = s.data, v = !m && o.status === 404, y = Mi(e.repo, e.key, a.status, a.pollMs), b = n ?? ((e, t) => a.go({
 		kind: "item",
 		repo: e,
 		key: t
@@ -18603,7 +18644,7 @@ function Pp({ entry: e, onBack: t, onSwitch: n, onMissing: r, ...a }) {
 		className: "kt-root br-view cto-root cto-item br-detail",
 		"data-testid": "br-detail",
 		children: [
-			/* @__PURE__ */ g("style", { children: Tp }),
+			/* @__PURE__ */ g("style", { children: Op }),
 			/* @__PURE__ */ _("div", {
 				className: "cto-top",
 				children: [
@@ -18624,12 +18665,13 @@ function Pp({ entry: e, onBack: t, onSwitch: n, onMissing: r, ...a }) {
 						]
 					}),
 					/* @__PURE__ */ g("span", { className: "cto-grow" }),
-					/* @__PURE__ */ g(Ni, {
+					/* @__PURE__ */ g(Pi, {
 						repo: e.repo,
 						reqKey: e.key,
 						status: a.status,
 						pollMs: a.pollMs,
-						onPick: b
+						onPick: b,
+						owner: m?.row.owner
 					}),
 					/* @__PURE__ */ _("div", {
 						className: "cto-item-act",
@@ -18656,12 +18698,12 @@ function Pp({ entry: e, onBack: t, onSwitch: n, onMissing: r, ...a }) {
 					})
 				]
 			}),
-			y && /* @__PURE__ */ g(Mi, {
+			y && /* @__PURE__ */ g(Ni, {
 				reqKey: e.key,
 				what: "需求现状",
 				onOpen: () => b("runner", e.key)
 			}),
-			v ? !y && /* @__PURE__ */ g(Pi, {
+			v ? !y && /* @__PURE__ */ g(Fi, {
 				repoName: x?.name ?? null,
 				reqKey: e.key,
 				backName: w.name,
@@ -18672,7 +18714,7 @@ function Pp({ entry: e, onBack: t, onSwitch: n, onMissing: r, ...a }) {
 				error: o.error,
 				has: !!m
 			}),
-			m && /* @__PURE__ */ g(Fp, {
+			m && /* @__PURE__ */ g(zp, {
 				x: m,
 				board: h,
 				live: S,
@@ -18690,8 +18732,8 @@ function Pp({ entry: e, onBack: t, onSwitch: n, onMissing: r, ...a }) {
 		]
 	});
 }
-function Fp({ x: e, board: t, live: n, entry: r, props: i, opened: a, localOnly: o, onOpened: s, after: c, toBoard: l, family: u }) {
-	let d = t?.at ?? Date.now() / 1e3, f = jp(e, t, n), p = e.row.state !== "claimed" && e.row.state !== "unclaimed" && !(e.row.state === "closed" && !e.run), m = () => i.go({
+function zp({ x: e, board: t, live: n, entry: r, props: i, opened: a, localOnly: o, onOpened: s, after: c, toBoard: l, family: u }) {
+	let d = t?.at ?? Date.now() / 1e3, f = Fp(e, t, n), p = e.row.state !== "claimed" && e.row.state !== "unclaimed" && !(e.row.state === "closed" && !e.run), m = () => i.go({
 		kind: "new",
 		repo: r.repo,
 		key: r.key,
@@ -18708,24 +18750,24 @@ function Fp({ x: e, board: t, live: n, entry: r, props: i, opened: a, localOnly:
 		className: "br-detail-head",
 		"aria-label": "需求",
 		children: [
-			/* @__PURE__ */ g(Ip, {
+			/* @__PURE__ */ g(Bp, {
 				x: e,
 				localOnly: o
 			}),
-			/* @__PURE__ */ g(zp, {
+			/* @__PURE__ */ g(Up, {
 				x: e,
 				now: f,
 				at: d,
 				onStart: m
 			}),
-			/* @__PURE__ */ g(Rp, {
+			/* @__PURE__ */ g(Hp, {
 				x: e,
 				start: null,
 				localOnly: o
 			})
 		]
 	}), v] });
-	let y = e.row.state === "local" && !e.run?.handoff, b = y && !n && !!e.row.worktree, x = (e) => l(e ? { at: Math.round(e) } : {}), S = f.who === "you" ? null : Lr.has(f.who) ? f.whoSay : "等人", C = (e) => document.querySelector(`[data-testid="br-detail"] section[aria-label="${e}"]`)?.scrollIntoView?.({
+	let y = e.row.state === "local" && !kp(e.run), b = y && !n && !!e.row.worktree, x = (e) => l(e ? { at: Math.round(e) } : {}), S = f.who === "you" ? null : Lr.has(f.who) ? f.whoSay : "等人", C = (e) => document.querySelector(`[data-testid="br-detail"] section[aria-label="${e}"]`)?.scrollIntoView?.({
 		behavior: "smooth",
 		block: "start"
 	});
@@ -18734,11 +18776,11 @@ function Fp({ x: e, board: t, live: n, entry: r, props: i, opened: a, localOnly:
 			className: "br-detail-head",
 			"aria-label": "需求",
 			children: [
-				/* @__PURE__ */ g(Ip, {
+				/* @__PURE__ */ g(Bp, {
 					x: e,
 					localOnly: o
 				}),
-				/* @__PURE__ */ g(Bp, {
+				/* @__PURE__ */ g(Wp, {
 					x: e,
 					now: f,
 					at: d,
@@ -18756,40 +18798,40 @@ function Fp({ x: e, board: t, live: n, entry: r, props: i, opened: a, localOnly:
 					proof: t?.accept.state === "waiting" ? t.proof : null,
 					onProof: (e) => l({ out: e })
 				}),
-				(b || a) && /* @__PURE__ */ g(Vp, {
+				(b || a) && /* @__PURE__ */ g(Gp, {
 					repo: r.repo,
 					reqKey: r.key,
 					opened: a,
 					onOpened: s
 				}),
-				n && y && e.row.worktree && /* @__PURE__ */ g(wp, {
+				n && y && e.row.worktree && /* @__PURE__ */ g(Dp, {
 					repo: r.repo,
 					reqKey: r.key,
 					live: n,
 					onOpened: c
 				}),
-				/* @__PURE__ */ g(Ss, {
+				/* @__PURE__ */ g(Cs, {
 					x: e,
 					repo: r.repo,
 					reqKey: r.key,
 					localOnly: o,
 					onDone: c
 				}),
-				/* @__PURE__ */ g(Fs, {
+				/* @__PURE__ */ g(Is, {
 					x: e,
 					repo: r.repo,
 					reqKey: r.key,
 					localOnly: o,
 					onDone: c
 				}),
-				/* @__PURE__ */ g(Rp, {
+				/* @__PURE__ */ g(Hp, {
 					x: e,
-					start: kp(e, t),
+					start: Np(e, t),
 					localOnly: o
 				})
 			]
 		}),
-		/* @__PURE__ */ g(Wp, {
+		/* @__PURE__ */ g(Jp, {
 			x: e,
 			board: t,
 			at: d,
@@ -18799,7 +18841,7 @@ function Fp({ x: e, board: t, live: n, entry: r, props: i, opened: a, localOnly:
 			onSessions: () => C("会话")
 		}),
 		v,
-		e.deploy && /* @__PURE__ */ g(em, { d: e.deploy }),
+		e.deploy && /* @__PURE__ */ g(im, { d: e.deploy }),
 		/* @__PURE__ */ _("div", {
 			className: "br-row",
 			children: [/* @__PURE__ */ g("button", {
@@ -18812,18 +18854,18 @@ function Fp({ x: e, board: t, live: n, entry: r, props: i, opened: a, localOnly:
 				children: "AI 一步步怎么做的、每一步的产出、回放"
 			})]
 		}),
-		/* @__PURE__ */ g(Fo, {
+		/* @__PURE__ */ g(Io, {
 			r: e.row,
 			steps: t?.steps ?? null,
 			onCode: () => l({ out: { node: "code" } }),
-			children: /* @__PURE__ */ g(nm, {
+			children: /* @__PURE__ */ g(om, {
 				x: e,
 				sessionUrl: f.sessionUrl,
 				mrUrl: f.mrUrl,
 				waiter: S
 			})
 		}),
-		/* @__PURE__ */ g(cm, {
+		/* @__PURE__ */ g(fm, {
 			decisions: e.decisions,
 			stages: e.lean.stages,
 			repo: r.repo,
@@ -18837,7 +18879,7 @@ function Fp({ x: e, board: t, live: n, entry: r, props: i, opened: a, localOnly:
 			className: "br-twocol",
 			children: [/* @__PURE__ */ _("div", {
 				className: "br-col",
-				children: [/* @__PURE__ */ g(lm, {
+				children: [/* @__PURE__ */ g(pm, {
 					x: e,
 					repo: r.repo,
 					reqKey: r.key,
@@ -18847,14 +18889,14 @@ function Fp({ x: e, board: t, live: n, entry: r, props: i, opened: a, localOnly:
 			}), /* @__PURE__ */ _("div", {
 				className: "br-col",
 				children: [
-					Co(e.row).intent && /* @__PURE__ */ g(um, { x: e }),
-					/* @__PURE__ */ g(gm, {
+					wo(e.row).intent && /* @__PURE__ */ g(mm, { x: e }),
+					/* @__PURE__ */ g(bm, {
 						sessions: e.sessions,
 						credits: e.credits,
 						replying: f.do === "reply",
 						at: d
 					}),
-					/* @__PURE__ */ g(_m, {
+					/* @__PURE__ */ g(xm, {
 						x: e,
 						board: t,
 						repo: r.repo,
@@ -18866,7 +18908,7 @@ function Fp({ x: e, board: t, live: n, entry: r, props: i, opened: a, localOnly:
 		})
 	] });
 }
-function Ip({ x: e, localOnly: t }) {
+function Bp({ x: e, localOnly: t }) {
 	let n = e.row;
 	return /* @__PURE__ */ _("header", {
 		className: "cto-item-head",
@@ -18897,14 +18939,14 @@ function Ip({ x: e, localOnly: t }) {
 		]
 	});
 }
-function Lp({ path: e }) {
+function Vp({ path: e }) {
 	return /* @__PURE__ */ g("code", {
 		className: "br-path",
 		title: e,
 		children: Jr(e).map((e, t) => /* @__PURE__ */ _("span", { children: [/* @__PURE__ */ g("span", { children: e }), /* @__PURE__ */ g("wbr", {})] }, t))
 	});
 }
-function Rp({ x: e, start: t, localOnly: n }) {
+function Hp({ x: e, start: t, localOnly: n }) {
 	let r = e.row, i = e.run, a = [
 		["Lean 记录的名字", r.intent],
 		["Brain 提交", i?.brain_commit],
@@ -18917,10 +18959,10 @@ function Rp({ x: e, start: t, localOnly: n }) {
 		className: "br-detail-facts",
 		"aria-label": "基本信息",
 		children: [
-			r.branch && /* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("dt", { children: "分支" }), /* @__PURE__ */ g("dd", { children: /* @__PURE__ */ g(Lp, { path: r.branch }) })] }),
-			r.worktree && /* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("dt", { children: "工作目录" }), /* @__PURE__ */ g("dd", { children: /* @__PURE__ */ g(Lp, { path: r.worktree }) })] }),
-			r.intent && /* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("dt", { children: "Lean 记录" }), /* @__PURE__ */ g("dd", { children: /* @__PURE__ */ g(Lp, { path: `aidlc-docs/${r.intent}/` }) })] }),
-			r.where !== "claim" && /* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("dt", { children: "MR" }), /* @__PURE__ */ g("dd", { children: r.mr ? /* @__PURE__ */ g(yt, { mr: r.mr }) : n ? "这个仓库只在本机做，没有 MR" : wo(r, "mr") ? `还没有：做完了点「${X.openMr}」` : "还没有：交接时开" })] }),
+			r.branch && /* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("dt", { children: "分支" }), /* @__PURE__ */ g("dd", { children: /* @__PURE__ */ g(Vp, { path: r.branch }) })] }),
+			r.worktree && /* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("dt", { children: "工作目录" }), /* @__PURE__ */ g("dd", { children: /* @__PURE__ */ g(Vp, { path: r.worktree }) })] }),
+			r.intent && /* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("dt", { children: "Lean 记录" }), /* @__PURE__ */ g("dd", { children: /* @__PURE__ */ g(Vp, { path: `aidlc-docs/${r.intent}/` }) })] }),
+			r.where !== "claim" && /* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("dt", { children: "MR" }), /* @__PURE__ */ g("dd", { children: r.mr ? /* @__PURE__ */ g(yt, { mr: r.mr }) : n ? "这个仓库只在本机做，没有 MR" : To(r, "mr") ? `还没有：做完了点「${X.openMr}」` : "还没有：交接时开" })] }),
 			e.claim && /* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("dt", { children: "认领" }), /* @__PURE__ */ _("dd", { children: [
 				e.claim.owner ?? "—",
 				" · ",
@@ -18935,7 +18977,7 @@ function Rp({ x: e, start: t, localOnly: n }) {
 				t ? U(t) : te(i.created_at),
 				i.origin && /* @__PURE__ */ _(h, { children: [" · ", /* @__PURE__ */ g("span", {
 					className: "br-nowrap",
-					children: i.origin === "local" ? "在本机开工" : `来自${We(i.origin)}`
+					children: i.origin === "local" ? "在本机开工" : i.origin === "remote" ? "在运行机上开工" : `来自${We(i.origin)}`
 				})] }),
 				i.brain_commit && /* @__PURE__ */ _(h, { children: [" · ", /* @__PURE__ */ _("span", {
 					className: "br-nowrap",
@@ -18977,7 +19019,7 @@ function Rp({ x: e, start: t, localOnly: n }) {
 		]
 	});
 }
-function zp({ x: e, now: t, at: n, onStart: r }) {
+function Up({ x: e, now: t, at: n, onStart: r }) {
 	let i = e.row.family?.role === "child" ? e.row.family : null, a = t.who === "you" || !!i?.acts.release, o = i?.owner ?? e.row.owner ?? e.claim?.owner ?? "认领的人", s = t.since ? L(n - t.since) : null;
 	return i && e.row.state !== "closed" && (i.state === "unclaimed" || !i.owner) ? /* @__PURE__ */ _("section", {
 		className: "cto-card br-now",
@@ -19071,7 +19113,7 @@ function zp({ x: e, now: t, at: n, onStart: r }) {
 		]
 	});
 }
-function Bp({ x: e, now: t, at: n, live: r, canOpen: i, repo: a, reqKey: o, onStart: s, onAnswer: c, onBrain: l, proof: u, onProof: d }) {
+function Wp({ x: e, now: t, at: n, live: r, canOpen: i, repo: a, reqKey: o, onStart: s, onAnswer: c, onBrain: l, proof: u, onProof: d }) {
 	let f = p(), m = xi(t.line ?? ""), v = t.review, y = t.who === "you", b = ![
 		"agent",
 		"runner",
@@ -19146,7 +19188,7 @@ function Bp({ x: e, now: t, at: n, live: r, canOpen: i, repo: a, reqKey: o, onSt
 		case "reply":
 			v ? (D = /* @__PURE__ */ _(h, { children: [/* @__PURE__ */ _("p", { children: [
 				"Lean 的下一步是审查：写代码的会话不能自己审，要开一个新会话来审。",
-				Bs,
+				Vs,
 				"。"
 			] }), v.say && /* @__PURE__ */ g(Ci, { say: v.say })] }), O = /* @__PURE__ */ g(wi, {
 				repo: a,
@@ -19247,7 +19289,7 @@ function Bp({ x: e, now: t, at: n, live: r, canOpen: i, repo: a, reqKey: o, onSt
 				children: [/* @__PURE__ */ g("span", {
 					className: "cto-eyebrow",
 					children: "证据"
-				}), /* @__PURE__ */ g(Vi, {
+				}), /* @__PURE__ */ g(Hi, {
 					proof: u,
 					onOpen: d
 				})]
@@ -19259,7 +19301,7 @@ function Bp({ x: e, now: t, at: n, live: r, canOpen: i, repo: a, reqKey: o, onSt
 		]
 	});
 }
-function Vp({ repo: e, reqKey: t, opened: n, onOpened: r }) {
+function Gp({ repo: e, reqKey: t, opened: n, onOpened: r }) {
 	let i = u(), a = p(), [o, s] = c(!0), [l, d] = c(!0), f = I((n) => i.post(D.session(e, t), n)), m = async () => {
 		let e = await f.run({
 			trust: o,
@@ -19325,12 +19367,12 @@ function Vp({ repo: e, reqKey: t, opened: n, onOpened: r }) {
 		})]
 	});
 }
-function Hp(e) {
+function Kp(e) {
 	return e.todo ? Ur(e) : e.cells.filter((e) => e.status === "skip" && e.group === "gate").map((e) => e.name.replace(/（[^）]*）$/, ""));
 }
-var Up = (e) => e.name.replace(/（[^）]*）$/, "");
-function Wp({ x: e, board: t, at: n, localOnly: r, replying: i, onBoard: a, onSessions: o }) {
-	let s = kp(e, t), c = t?.ended_at ?? null, l = e.row.lean, u = Co(e.row), d = t ? Cf(t, n) : [], f = wf(d), p = f.filter((e) => e.p !== "person").reduce((e, t) => e + t.s, 0), m = d.filter((e) => e.part === "person"), h = t ? t.events.filter((e) => e.kind === "reject" || e.kind === "rejected").length : 0, v = t ? t.events.filter((e) => e.kind === "blocked").length : 0, y = (e) => e === "person" && m[0] ? a({ at: Math.round(m[0].from) }) : a({ focus: "lanes" });
+var qp = (e) => e.name.replace(/（[^）]*）$/, "");
+function Jp({ x: e, board: t, at: n, localOnly: r, replying: i, onBoard: a, onSessions: o }) {
+	let s = Np(e, t), c = t?.ended_at ?? null, l = e.row.lean, u = wo(e.row), d = t ? wf(t, n) : [], f = Tf(d), p = f.filter((e) => e.p !== "person").reduce((e, t) => e + t.s, 0), m = d.filter((e) => e.part === "person"), h = t ? t.events.filter((e) => e.kind === "reject" || e.kind === "rejected").length : 0, v = t ? t.events.filter((e) => e.kind === "blocked").length : 0, y = (e) => e === "person" && m[0] ? a({ at: Math.round(m[0].from) }) : a({ focus: "lanes" });
 	return /* @__PURE__ */ _("section", {
 		className: "cto-cards cto-item-cards",
 		"aria-label": "这个需求的四个数",
@@ -19355,12 +19397,12 @@ function Wp({ x: e, board: t, at: n, localOnly: r, replying: i, onBoard: a, onSe
 					/* @__PURE__ */ g("div", {
 						className: "kt-segs cto-segs",
 						role: "img",
-						"aria-label": u.intent ? `Lean：${Je(e.row)}` : `${u.label}：${To(e.row)}`,
-						children: u.intent ? Dp(e).map((e) => /* @__PURE__ */ g("i", {
+						"aria-label": u.intent ? `Lean：${Je(e.row)}` : `${u.label}：${Eo(e.row)}`,
+						children: u.intent ? jp(e).map((e) => /* @__PURE__ */ g("i", {
 							title: `${e.n} ${e.label} · ${l.next?.id === e.id && e.state === "todo" ? "下一步" : ht[e.state]?.label ?? e.state}`,
 							className: e.state === "done" ? "is-pass" : e.state === "skipped" ? "is-skip" : e.state === "started" ? "is-run" : l.next?.id === e.id ? "is-next" : "is-todo"
 						}, e.id)) : (t?.steps ?? []).map((t) => {
-							let n = No(t, e.row.waits);
+							let n = Po(t, e.row.waits);
 							return /* @__PURE__ */ g("i", {
 								title: `${t.label} · ${t.text || n.word}`,
 								className: n.seg || "is-todo"
@@ -19371,12 +19413,12 @@ function Wp({ x: e, board: t, at: n, localOnly: r, replying: i, onBoard: a, onSe
 						className: "cto-legend",
 						children: /* @__PURE__ */ g("span", {
 							"data-testid": "lean-progress",
-							children: u.intent ? `Lean ${Je(e.row)}` : `${u.label} · ${To(e.row)}`
+							children: u.intent ? `Lean ${Je(e.row)}` : `${u.label} · ${Eo(e.row)}`
 						})
 					})
 				]
 			}),
-			t?.steps ? /* @__PURE__ */ g(Gp, {
+			t?.steps ? /* @__PURE__ */ g(Yp, {
 				time: t.time ?? null,
 				onBoard: () => a()
 			}) : /* @__PURE__ */ _("article", {
@@ -19395,7 +19437,7 @@ function Wp({ x: e, board: t, at: n, localOnly: r, replying: i, onBoard: a, onSe
 						className: "cto-desc",
 						children: t ? `AI 在做 · 等人 ${L(f.find((e) => e.p === "person").s)}${m.length ? `（${m.length} 段）` : ""}` : "运行过程的数据还没来"
 					}),
-					t && /* @__PURE__ */ g(Zp, { split: f }),
+					t && /* @__PURE__ */ g(tm, { split: f }),
 					t && /* @__PURE__ */ g("div", {
 						className: "cto-legend",
 						children: f.filter((e) => e.s > 0).map(({ p: e, s: t }) => /* @__PURE__ */ _("button", {
@@ -19405,22 +19447,22 @@ function Wp({ x: e, board: t, at: n, localOnly: r, replying: i, onBoard: a, onSe
 							children: [
 								/* @__PURE__ */ g("i", {
 									className: "cto-sw",
-									style: { background: yf[e] }
+									style: { background: bf[e] }
 								}),
-								vf[e],
+								yf[e],
 								/* @__PURE__ */ g("b", { children: L(t) })
 							]
 						}, e))
 					})
 				]
 			}),
-			/* @__PURE__ */ g(Jp, {
+			/* @__PURE__ */ g(Qp, {
 				x: e,
 				replying: i,
 				me: t?.person.me ?? !1,
 				onSessions: o
 			}),
-			/* @__PURE__ */ g(Yp, {
+			/* @__PURE__ */ g($p, {
 				board: t,
 				localOnly: r,
 				sent: h,
@@ -19430,7 +19472,7 @@ function Wp({ x: e, board: t, at: n, localOnly: r, replying: i, onBoard: a, onSe
 		]
 	});
 }
-function Gp({ time: e, onBoard: t }) {
+function Yp({ time: e, onBoard: t }) {
 	let n = e && !e.whole ? "至少 " : "", r = e ? [{
 		p: "agent",
 		s: e.agent
@@ -19466,7 +19508,7 @@ function Gp({ time: e, onBoard: t }) {
 					e.waits ? `（${e.waits} 段）` : ""
 				]
 			}),
-			/* @__PURE__ */ g(Zp, { split: r }),
+			/* @__PURE__ */ g(tm, { split: r }),
 			/* @__PURE__ */ g("div", {
 				className: "cto-legend",
 				children: r.filter((e) => e.s > 0).map(({ p: e, s: r }) => /* @__PURE__ */ _("button", {
@@ -19476,9 +19518,9 @@ function Gp({ time: e, onBoard: t }) {
 					children: [
 						/* @__PURE__ */ g("i", {
 							className: "cto-sw",
-							style: { background: yf[e] }
+							style: { background: bf[e] }
 						}),
-						vf[e],
+						yf[e],
 						/* @__PURE__ */ _("b", { children: [n, L(r)] })
 					]
 				}, e))
@@ -19496,7 +19538,7 @@ function Gp({ time: e, onBoard: t }) {
 		})] })]
 	});
 }
-var Kp = {
+var Xp = {
 	bad: {
 		cls: " is-back",
 		label: "出错",
@@ -19518,15 +19560,15 @@ var Kp = {
 		sw: "var(--border-strong)"
 	}
 };
-function qp(e, t, n) {
+function Zp(e, t, n) {
 	return e.kind === "local" ? ze("you") : ur(t.row.waits.who, t.row.owner, n);
 }
-function Jp({ x: e, replying: t, me: n, onSessions: r }) {
+function Qp({ x: e, replying: t, me: n, onSessions: r }) {
 	let i = e.sessions, a = [...new Map(i.map((r) => {
-		let { tone: i } = pm(r, t), a = i === "wait" ? qp(r, e, n) : Kp[i].label;
+		let { tone: i } = _m(r, t), a = i === "wait" ? Zp(r, e, n) : Xp[i].label;
 		return [a, {
 			label: a,
-			sw: Kp[i].sw
+			sw: Xp[i].sw
 		}];
 	})).values()];
 	return /* @__PURE__ */ _("article", {
@@ -19561,19 +19603,19 @@ function Jp({ x: e, replying: t, me: n, onSessions: r }) {
 			}),
 			/* @__PURE__ */ g("div", {
 				className: "cto-desc",
-				children: i.length ? `${i.length} 个会话` : e.credits.total === null ? "还没开过会话" : mm
+				children: i.length ? `${i.length} 个会话` : e.credits.total === null ? "还没开过会话" : vm
 			}),
-			/* @__PURE__ */ g(hm, { credits: e.credits }),
+			/* @__PURE__ */ g(ym, { credits: e.credits }),
 			i.length > 0 && /* @__PURE__ */ _(h, { children: [
 				/* @__PURE__ */ g("div", {
 					className: "cto-chips",
 					"aria-label": "会话的用量",
 					children: i.map((e) => {
-						let n = pm(e, t);
+						let n = _m(e, t);
 						return /* @__PURE__ */ g("button", {
 							type: "button",
-							className: `cto-chip${Kp[n.tone].cls}`,
-							title: `${fm(e)} · ${n.label} · ${z(e.credits)} credits`,
+							className: `cto-chip${Xp[n.tone].cls}`,
+							title: `${gm(e)} · ${n.label} · ${z(e.credits)} credits`,
 							onClick: r,
 							children: /* @__PURE__ */ g(J, {
 								role: e.kind === "runner" ? "runner" : "laptop",
@@ -19602,14 +19644,14 @@ function Jp({ x: e, replying: t, me: n, onSessions: r }) {
 		]
 	});
 }
-function Yp({ board: e, localOnly: t, sent: n, blocked: r, onBoard: i }) {
+function $p({ board: e, localOnly: t, sent: n, blocked: r, onBoard: i }) {
 	let a = e?.checks, o = a && {
 		...a,
 		cells: a.cells.map((e) => e.group === "after" && e.status === "wait" ? {
 			...e,
 			status: "watch"
 		} : e)
-	}, s = o ? Hp(o) : [], c = o ? o.cells.filter((e) => e.status === "fail").map(Up) : [], l = o ? o.cells.filter((e) => e.status === "wait").map(Up) : [], u = o ? o.cells.filter((e) => e.status === "watch").map(Up) : [], d = o ? o.cells.filter((e) => e.status !== "not_needed" && e.status !== "skip" && !(t && e.group === "handover")) : [], f = o ? o.cells.filter((e) => e.status === "skip" && s.includes(Up(e))) : [], p = [...new Set([...d, ...f].map((e) => nt[e.group] ?? e.group))], m = !!o && o.total > 0 && o.passed === o.total && !s.length && !l.length, v = o ? o.total === 0 && !s.length ? "还没有检查结果" : [
+	}, s = o ? Kp(o) : [], c = o ? o.cells.filter((e) => e.status === "fail").map(qp) : [], l = o ? o.cells.filter((e) => e.status === "wait").map(qp) : [], u = o ? o.cells.filter((e) => e.status === "watch").map(qp) : [], d = o ? o.cells.filter((e) => e.status !== "not_needed" && e.status !== "skip" && !(t && e.group === "handover")) : [], f = o ? o.cells.filter((e) => e.status === "skip" && s.includes(qp(e))) : [], p = [...new Set([...d, ...f].map((e) => nt[e.group] ?? e.group))], m = !!o && o.total > 0 && o.passed === o.total && !s.length && !l.length, v = o ? o.total === 0 && !s.length ? "还没有检查结果" : [
 		c.length ? `没过：${c.join("、")}` : `目前 ${o.passed === 1 ? "1 项过了" : `${o.passed} 项都过`}`,
 		l.length ? `${e && Lr.has(e.row.waits.who) ? pr(e) : "等人"}：${l.join("、")}` : "",
 		u.length ? `观察中：${u.join("、")}` : "",
@@ -19637,7 +19679,7 @@ function Yp({ board: e, localOnly: t, sent: n, blocked: r, onBoard: i }) {
 			/* @__PURE__ */ g("div", {
 				className: "cto-desc",
 				"data-testid": "checks-say",
-				children: /* @__PURE__ */ g(Xp, { text: v })
+				children: /* @__PURE__ */ g(em, { text: v })
 			}),
 			o && d.length + f.length > 0 && /* @__PURE__ */ g("button", {
 				type: "button",
@@ -19645,7 +19687,7 @@ function Yp({ board: e, localOnly: t, sent: n, blocked: r, onBoard: i }) {
 				"aria-label": "在运行过程的检查墙上看每一项",
 				onClick: () => i({ focus: "checks" }),
 				children: [...d, ...f].map((e) => /* @__PURE__ */ g("i", {
-					title: `${Up(e)}：${e.detail}`,
+					title: `${qp(e)}：${e.detail}`,
 					className: e.status === "pass" ? "is-pass" : e.status === "fail" ? "is-fail" : e.status === "wait" ? "is-wait" : e.status === "watch" ? "is-watch" : "is-todo"
 				}, e.id))
 			}),
@@ -19673,17 +19715,17 @@ function Yp({ board: e, localOnly: t, sent: n, blocked: r, onBoard: i }) {
 		]
 	});
 }
-function Xp({ text: e }) {
+function em({ text: e }) {
 	let t = e.match(/.+?(?:、|：| · |$)/g) ?? [];
 	return /* @__PURE__ */ g(h, { children: t.map((e, t) => /* @__PURE__ */ _("span", { children: [/* @__PURE__ */ g("span", {
 		className: "br-phrase",
 		children: e.endsWith(" · ") ? e.slice(0, -1) : e
 	}), e.endsWith(" · ") ? " " : ""] }, t)) });
 }
-function Zp({ split: e }) {
+function tm({ split: e }) {
 	let t = e.filter((e) => e.s > 0), n = t.reduce((e, t) => e + t.s, 0) || 1;
-	return /* @__PURE__ */ g(sf, {
-		label: "时间花在哪：" + t.map((e) => `${vf[e.p]} ${L(e.s)}`).join("，"),
+	return /* @__PURE__ */ g(cf, {
+		label: "时间花在哪：" + t.map((e) => `${yf[e.p]} ${L(e.s)}`).join("，"),
 		height: 22,
 		children: (e, r) => {
 			let i = Math.max(10, e - 8), a = 0;
@@ -19695,8 +19737,8 @@ function Zp({ split: e }) {
 					width: s,
 					height: 14,
 					rx: o === t.length - 1 ? 4 : 0,
-					fill: yf[e.p]
-				}), /* @__PURE__ */ g(af, {
+					fill: bf[e.p]
+				}), /* @__PURE__ */ g(of, {
 					x: c,
 					y: 0,
 					w: Math.max(8, s),
@@ -19704,29 +19746,29 @@ function Zp({ split: e }) {
 					onTip: r,
 					rows: [[
 						L(e.s),
-						vf[e.p],
-						yf[e.p]
+						yf[e.p],
+						bf[e.p]
 					], [`${Math.round(e.s / n * 100)}%`, "占记下的时间"]]
 				})] }, e.p);
 			});
 		}
 	});
 }
-var Qp = {
+var nm = {
 	promoted: "ok",
 	aborted: "bad",
 	running: "run",
 	not_deployed: "idle",
 	unknown: "warn"
 };
-function $p({ d: e }) {
+function rm({ d: e }) {
 	return /* @__PURE__ */ g("code", {
 		className: "br-nowrap",
 		title: e,
 		children: e.slice(0, 19)
 	});
 }
-function em({ d: e }) {
+function im({ d: e }) {
 	let t = e.attempts[e.attempts.length - 1], n = e.value === "aborted" && t ? [...new Set(t.failed.map((e) => e.check))] : [];
 	return /* @__PURE__ */ _("section", {
 		className: `cto-card${e.value === "promoted" ? " is-ok" : e.value === "aborted" ? " is-bad" : ""}`,
@@ -19746,11 +19788,11 @@ function em({ d: e }) {
 				"data-testid": "deploy-say",
 				children: [
 					/* @__PURE__ */ g("span", {
-						className: `br-chip tone-${Qp[e.value]}`,
+						className: `br-chip tone-${nm[e.value]}`,
 						children: tt[e.value]
 					}),
 					e.value === "promoted" && /* @__PURE__ */ _(h, { children: [
-						e.digest && /* @__PURE__ */ g($p, { d: e.digest }),
+						e.digest && /* @__PURE__ */ g(rm, { d: e.digest }),
 						e.at !== null && /* @__PURE__ */ g("span", { children: U(e.at) }),
 						e.lead_s !== null && /* @__PURE__ */ _("span", {
 							className: "br-dim",
@@ -19769,7 +19811,7 @@ function em({ d: e }) {
 						children: [
 							oe(e.environment, " 还在跑原来的"),
 							" ",
-							/* @__PURE__ */ g($p, { d: t.kept })
+							/* @__PURE__ */ g(rm, { d: t.kept })
 						]
 					})] }),
 					e.value === "running" && t?.at != null && /* @__PURE__ */ _("span", {
@@ -19790,12 +19832,12 @@ function em({ d: e }) {
 			e.attempts.length > 0 && /* @__PURE__ */ g("ul", {
 				className: "br-deploys",
 				"aria-label": "部署",
-				children: e.attempts.map((e, t) => /* @__PURE__ */ g(tm, { a: e }, e.deployment ?? t))
+				children: e.attempts.map((e, t) => /* @__PURE__ */ g(am, { a: e }, e.deployment ?? t))
 			})
 		]
 	});
 }
-function tm({ a: e }) {
+function am({ a: e }) {
 	let t = [
 		e.deployment === null ? "" : `部署 ${e.deployment}`,
 		e.sha ? `提交 ${e.sha}` : "",
@@ -19816,7 +19858,7 @@ function tm({ a: e }) {
 					}),
 					/* @__PURE__ */ g("b", { children: e.pipeline === null ? "部署" : `流水线 #${e.pipeline}` }),
 					/* @__PURE__ */ g("span", {
-						className: `br-chip tone-${Qp[e.result]}`,
+						className: `br-chip tone-${nm[e.result]}`,
 						children: tt[e.result]
 					}),
 					e.at !== null && /* @__PURE__ */ g("span", {
@@ -19845,8 +19887,8 @@ function tm({ a: e }) {
 		]
 	});
 }
-function nm({ x: e, sessionUrl: t, mrUrl: n, waiter: r }) {
-	let { stages: i, phases: a, approvals: o } = e.lean, s = e.row.lean, c = Ep(e), l = p();
+function om({ x: e, sessionUrl: t, mrUrl: n, waiter: r }) {
+	let { stages: i, phases: a, approvals: o } = e.lean, s = e.row.lean, c = Ap(e), l = p();
 	return /* @__PURE__ */ _("section", {
 		className: "cto-card",
 		"aria-label": "Lean 进度",
@@ -19885,10 +19927,10 @@ function nm({ x: e, sessionUrl: t, mrUrl: n, waiter: r }) {
 						}), /* @__PURE__ */ g("ol", {
 							className: "br-stagecells",
 							"aria-label": `${e.name}的阶段`,
-							children: e.state === "used" ? t.map((e) => /* @__PURE__ */ g(am, {
+							children: e.state === "used" ? t.map((e) => /* @__PURE__ */ g(lm, {
 								s: e,
 								next: s.next?.id === e.id && e.state === "todo"
-							}, e.id)) : /* @__PURE__ */ g(im, {
+							}, e.id)) : /* @__PURE__ */ g(cm, {
 								p: e,
 								stages: t.length
 							})
@@ -19962,7 +20004,7 @@ function nm({ x: e, sessionUrl: t, mrUrl: n, waiter: r }) {
 									]
 								})] })
 							]
-						}), !r && s?.id && vt(s) && /* @__PURE__ */ g(bi, { comment: `answer ${s.id} approve` })] }) : !r && i.line && /* @__PURE__ */ g(rm, {
+						}), !r && s?.id && vt(s) && /* @__PURE__ */ g(bi, { comment: `answer ${s.id} approve` })] }) : !r && i.line && /* @__PURE__ */ g(sm, {
 							line: i.line,
 							sessionUrl: t,
 							onOpen: (e) => l(e)
@@ -19973,7 +20015,7 @@ function nm({ x: e, sessionUrl: t, mrUrl: n, waiter: r }) {
 		]
 	});
 }
-function rm({ line: e, sessionUrl: t, onOpen: n }) {
+function sm({ line: e, sessionUrl: t, onOpen: n }) {
 	let { copied: r, copy: i } = xi(e);
 	return /* @__PURE__ */ _("div", {
 		className: "br-line",
@@ -20020,7 +20062,7 @@ function rm({ line: e, sessionUrl: t, onOpen: n }) {
 		]
 	});
 }
-function im({ p: e, stages: t }) {
+function cm({ p: e, stages: t }) {
 	let n = e.state === "skipped" ? "整段不需要" : "可选，还没记";
 	return /* @__PURE__ */ _("li", {
 		className: `br-stagecell is-whole is-${e.state === "skipped" ? "skipped" : "optional"} tone-idle`,
@@ -20040,7 +20082,7 @@ function im({ p: e, stages: t }) {
 		})]
 	});
 }
-function am({ s: e, next: t }) {
+function lm({ s: e, next: t }) {
 	let n = ht[e.state] ?? ht.todo, r = t ? "下一步" : n.label;
 	return /* @__PURE__ */ _("li", {
 		className: `br-stagecell is-${e.state}${t ? " is-next" : ""} tone-${n.tone === "wait" ? "approve" : n.tone}`,
@@ -20092,10 +20134,10 @@ function am({ s: e, next: t }) {
 		]
 	});
 }
-function om(e, t, n) {
+function um(e, t, n) {
 	return e.by === "person" ? e.who === "owner" ? n ? "你（负责人）" : `负责人${t ? ` ${t}` : ""}` : e.who ? "一位组员" : "人" : e.by === "brain" ? `${et.brain}${e.who ? ` ${e.who}` : ""}` : e.by ? et[e.by] ?? e.by : e.who ?? "—";
 }
-function sm(e, t) {
+function dm(e, t) {
 	i(() => {
 		let n = e.current;
 		if (!t || !n) return;
@@ -20126,9 +20168,9 @@ function sm(e, t) {
 		};
 	}, [t]);
 }
-function cm({ decisions: e, stages: t, repo: n, owner: r, me: i, go: a, onAt: o, picked: c }) {
+function fm({ decisions: e, stages: t, repo: n, owner: r, me: i, go: a, onAt: o, picked: c }) {
 	let l = e.filter((e) => e.by === "person").length, u = (e) => t.find((t) => t.id === e.stage)?.at ?? null, d = s(null), f = !!c && e.some((e) => e.id === c);
-	return sm(d, f), /* @__PURE__ */ _("section", {
+	return dm(d, f), /* @__PURE__ */ _("section", {
 		className: "cto-card",
 		"aria-label": "决定",
 		children: [
@@ -20202,7 +20244,7 @@ function cm({ decisions: e, stages: t, repo: n, owner: r, me: i, go: a, onAt: o,
 							/* @__PURE__ */ g("td", {
 								"data-label": "谁定的",
 								title: l || void 0,
-								children: om(e, r, i)
+								children: um(e, r, i)
 							}),
 							/* @__PURE__ */ g("td", {
 								"data-label": "引用 Brain",
@@ -20233,7 +20275,7 @@ function cm({ decisions: e, stages: t, repo: n, owner: r, me: i, go: a, onAt: o,
 		]
 	});
 }
-function lm({ x: e, repo: t, reqKey: n, onAnswered: r, waiter: i }) {
+function pm({ x: e, repo: t, reqKey: n, onAnswered: r, waiter: i }) {
 	let a = e.decisions.flatMap((e) => (e.asked ?? []).map((t) => ({
 		q: t,
 		d: e.id
@@ -20266,7 +20308,7 @@ function lm({ x: e, repo: t, reqKey: n, onAnswered: r, waiter: i }) {
 		})]
 	});
 }
-function um({ x: e }) {
+function mm({ x: e }) {
 	let { status: t, next: n, open_questions: r } = e.lean;
 	return /* @__PURE__ */ _("section", {
 		className: "cto-card",
@@ -20304,11 +20346,11 @@ function um({ x: e }) {
 		]
 	});
 }
-var dm = /^RUN-.+-\d+$/;
-function fm(e) {
-	return dm.test(e.title) ? If(e.title, !1) : e.title;
+var hm = /^RUN-.+-\d+$/;
+function gm(e) {
+	return hm.test(e.title) ? Rf(e.title, !1) : e.title;
 }
-function pm(e, t) {
+function _m(e, t) {
 	return e.missing ? {
 		label: "不在 KiroCrew 里了",
 		tone: "idle"
@@ -20329,8 +20371,8 @@ function pm(e, t) {
 		tone: "idle"
 	};
 }
-var mm = "现在没有开着的会话";
-function hm({ credits: e }) {
+var vm = "现在没有开着的会话";
+function ym({ credits: e }) {
 	return e.whole ? null : /* @__PURE__ */ g("ul", {
 		className: "br-small br-dim",
 		"aria-label": "没算进来的",
@@ -20341,7 +20383,7 @@ function hm({ credits: e }) {
 		children: e.missing.map((e) => /* @__PURE__ */ g("li", { children: e }, e))
 	});
 }
-function gm({ sessions: e, credits: t, replying: n, at: r }) {
+function bm({ sessions: e, credits: t, replying: n, at: r }) {
 	let i = p(), a = t.total;
 	return /* @__PURE__ */ _("section", {
 		className: "cto-card",
@@ -20355,11 +20397,11 @@ function gm({ sessions: e, credits: t, replying: n, at: r }) {
 			})]
 		}), e.length === 0 ? /* @__PURE__ */ g("p", {
 			className: "br-empty",
-			children: a === null ? "还没开过会话。" : `${mm}；上面的合计是记下的用量。`
+			children: a === null ? "还没开过会话。" : `${vm}；上面的合计是记下的用量。`
 		}) : /* @__PURE__ */ g("ul", {
 			className: "br-sessions",
 			children: e.map((e) => {
-				let t = pm(e, n);
+				let t = _m(e, n);
 				return /* @__PURE__ */ _("li", {
 					className: "br-session",
 					"data-testid": "session",
@@ -20377,8 +20419,8 @@ function gm({ sessions: e, credits: t, replying: n, at: r }) {
 									children: [
 										/* @__PURE__ */ g("b", {
 											className: "br-strong",
-											title: dm.test(e.title) ? e.title : void 0,
-											children: fm(e)
+											title: hm.test(e.title) ? e.title : void 0,
+											children: gm(e)
 										}),
 										/* @__PURE__ */ g("span", {
 											className: `br-chip tone-${t.tone}`,
@@ -20420,8 +20462,8 @@ function gm({ sessions: e, credits: t, replying: n, at: r }) {
 		})]
 	});
 }
-function _m({ x: e, board: t, repo: n, reqKey: r, go: i }) {
-	let a = e.brain, o = a.proposals ? Np(e, t) : null, s = t?.nodes.find((e) => e.id === "reflect")?.status ?? null;
+function xm({ x: e, board: t, repo: n, reqKey: r, go: i }) {
+	let a = e.brain, o = a.proposals ? Lp(e, t) : null, s = t?.nodes.find((e) => e.id === "reflect")?.status ?? null;
 	return /* @__PURE__ */ _("section", {
 		className: "cto-card",
 		"aria-label": "用到的 Brain",
@@ -20462,12 +20504,12 @@ function _m({ x: e, board: t, repo: n, reqKey: r, go: i }) {
 						className: "br-dim",
 						children: [
 							"（回写分支 ",
-							/* @__PURE__ */ g(Lp, { path: o }),
+							/* @__PURE__ */ g(Vp, { path: o }),
 							"）"
 						]
 					})] }) : o || s === "done" ? /* @__PURE__ */ _(h, { children: [
 						"已写到回写分支",
-						o && /* @__PURE__ */ _(h, { children: [" ", /* @__PURE__ */ g(Lp, { path: o })] }),
+						o && /* @__PURE__ */ _(h, { children: [" ", /* @__PURE__ */ g(Vp, { path: o })] }),
 						"，等合并"
 					] }) : "还没回写到 Brain"
 				] }), /* @__PURE__ */ g("button", {
@@ -20524,26 +20566,26 @@ function _m({ x: e, board: t, repo: n, reqKey: r, go: i }) {
 }
 //#endregion
 //#region src/views/Import.tsx
-var vm = "把一个项目仓库导进来：先只读地检查它；没装 brain-kit 的，默认直接装在当前分支并提交，当天就能开需求（团队仓库推送以后就能开；也可以装到新分支、开 MR，合并以后才能开）；装好就自动加入列表，交付总览和开需求就能用它了。", ym = {
+var Sm = "把一个项目仓库导进来：先只读地检查它；没装 brain-kit 的，默认直接装在当前分支并提交，当天就能开需求（团队仓库推送以后就能开；也可以装到新分支、开 MR，合并以后才能开）；装好就自动加入列表，交付总览和开需求就能用它了。", Cm = {
 	OK: "✓",
 	WARN: "!",
 	FAIL: "✗"
-}, bm = {
+}, wm = {
 	added: "新增",
 	modified: "改动",
 	deleted: "删除",
 	other: "其他"
-}, xm = {
+}, Tm = {
 	added: "ok",
 	modified: "warn",
 	deleted: "bad",
 	other: "idle"
-}, Sm = [
+}, Em = [
 	"added",
 	"modified",
 	"deleted",
 	"other"
-], Cm = {
+], Dm = {
 	req_prefix: "",
 	tracker: "none",
 	jira_base: "",
@@ -20552,12 +20594,12 @@ var vm = "把一个项目仓库导进来：先只读地检查它；没装 brain-
 	default_branch: "main",
 	team: ""
 };
-function wm(e) {
+function Om(e) {
 	let t = e.trim().replace(/\/+$/, "").split(/[/:]/).pop() ?? "";
 	return t.endsWith(".git") ? t.slice(0, -4) : t;
 }
-var Tm = (e, t) => t.id === "kit" && e.next === "install" && e.kit.state === "none";
-function Em({ entry: e, go: t, setStatus: r, reloadStatus: i, pollMs: a }) {
+var km = (e, t) => t.id === "kit" && e.next === "install" && e.kit.state === "none";
+function Am({ entry: e, go: t, setStatus: r, reloadStatus: i, pollMs: a }) {
 	let o = u(), s = Math.min(a ?? 1e3, Ee), l = F(D.importDefaults(), 0), [d, f] = c("local"), [p, m] = c(e.path ?? ""), [h, v] = c(null), [y, b] = c(null), [x, S] = c(0), C = I((e) => o.post(D.importInspect(), { path: e })), w = I((e) => o.post(D.importAdd(), { path: e })), T = n(async (e, t = !1) => {
 		let n = await C.run(e);
 		n && (v({
@@ -20586,7 +20628,7 @@ function Em({ entry: e, go: t, setStatus: r, reloadStatus: i, pollMs: a }) {
 		...e,
 		state: z[t],
 		...t === 2 && ee === "off" ? { text: "已经装了：不用装" } : {}
-	})), V = !!j && !M && !!j.install && j.next !== "install" && !!j.pending, H = !!j && (j.next === "install" || !!M || V), U = (l.data?.found ?? []).filter((e) => e.path !== j?.path), te = j && /* @__PURE__ */ g(Im, {
+	})), V = !!j && !M && !!j.install && j.next !== "install" && !!j.pending, H = !!j && (j.next === "install" || !!M || V), U = (l.data?.found ?? []).filter((e) => e.path !== j?.path), te = j && /* @__PURE__ */ g(Bm, {
 		c: j,
 		job: M,
 		state: ee,
@@ -20608,11 +20650,11 @@ function Em({ entry: e, go: t, setStatus: r, reloadStatus: i, pollMs: a }) {
 		className: "kt-root br-view imp-root",
 		"data-testid": "br-import",
 		children: [
-			/* @__PURE__ */ g("style", { children: Gm }),
+			/* @__PURE__ */ g("style", { children: Ym }),
 			/* @__PURE__ */ _("section", {
 				className: "br-hero imp-hero",
 				"aria-label": "导入仓库",
-				children: [/* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("h2", { children: "导入仓库" }), /* @__PURE__ */ g("p", { children: vm })] }), /* @__PURE__ */ g(qt, {
+				children: [/* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("h2", { children: "导入仓库" }), /* @__PURE__ */ g("p", { children: Sm })] }), /* @__PURE__ */ g(qt, {
 					steps: B,
 					label: "导入的步骤"
 				})]
@@ -20621,7 +20663,7 @@ function Em({ entry: e, go: t, setStatus: r, reloadStatus: i, pollMs: a }) {
 				className: "br-card imp-sec",
 				"aria-label": "从哪来",
 				children: [
-					/* @__PURE__ */ g(Dm, {
+					/* @__PURE__ */ g(jm, {
 						n: 1,
 						title: "从哪来",
 						state: z[0],
@@ -20631,14 +20673,14 @@ function Em({ entry: e, go: t, setStatus: r, reloadStatus: i, pollMs: a }) {
 						className: "imp-options",
 						role: "radiogroup",
 						"aria-label": "从哪来",
-						children: [/* @__PURE__ */ g(Om, {
+						children: [/* @__PURE__ */ g(Mm, {
 							value: "local",
 							on: d === "local",
 							icon: "laptop",
 							title: "本机目录",
 							text: "这台机器上的检出；子目录、工作区也行",
 							onPick: () => f("local")
-						}), /* @__PURE__ */ g(Om, {
+						}), /* @__PURE__ */ g(Mm, {
 							value: "clone",
 							on: d === "clone",
 							icon: "clone",
@@ -20654,7 +20696,7 @@ function Em({ entry: e, go: t, setStatus: r, reloadStatus: i, pollMs: a }) {
 							e.preventDefault(), T(p.trim(), !0);
 						},
 						children: [
-							U.length > 0 && /* @__PURE__ */ g(km, {
+							U.length > 0 && /* @__PURE__ */ g(Nm, {
 								found: U,
 								busy: C.busy,
 								onPick: L
@@ -20700,7 +20742,7 @@ function Em({ entry: e, go: t, setStatus: r, reloadStatus: i, pollMs: a }) {
 								}), "目录改过了：再检查一遍。"]
 							})
 						]
-					}) : /* @__PURE__ */ g(Am, {
+					}) : /* @__PURE__ */ g(Pm, {
 						defaults: l.data,
 						ms: s,
 						onCloned: (e) => {
@@ -20714,7 +20756,7 @@ function Em({ entry: e, go: t, setStatus: r, reloadStatus: i, pollMs: a }) {
 					})
 				]
 			}),
-			j && /* @__PURE__ */ g(Pm, {
+			j && /* @__PURE__ */ g(Rm, {
 				c: j,
 				busy: C.busy,
 				state: z[1],
@@ -20725,7 +20767,7 @@ function Em({ entry: e, go: t, setStatus: r, reloadStatus: i, pollMs: a }) {
 				}
 			}),
 			H && !V && te,
-			j && !M && (j.next === "pending" || j.next === "listed") && j.pending && j.path && /* @__PURE__ */ g(Vm, {
+			j && !M && (j.next === "pending" || j.next === "listed") && j.pending && j.path && /* @__PURE__ */ g(Gm, {
 				path: j.path,
 				p: j.pending,
 				onChanged: () => {
@@ -20736,7 +20778,7 @@ function Em({ entry: e, go: t, setStatus: r, reloadStatus: i, pollMs: a }) {
 			j && !M && j.next === "listed" && /* @__PURE__ */ _("section", {
 				className: "br-card imp-sec is-ok",
 				"aria-label": "加入列表",
-				children: [/* @__PURE__ */ g(Dm, {
+				children: [/* @__PURE__ */ g(jm, {
 					n: 4,
 					title: "加入列表",
 					state: "done"
@@ -20777,7 +20819,7 @@ function Em({ entry: e, go: t, setStatus: r, reloadStatus: i, pollMs: a }) {
 					]
 				})]
 			}),
-			j && !M && (j.next === "add" || j.next === "pending") && j.path && /* @__PURE__ */ g(Wm, {
+			j && !M && (j.next === "add" || j.next === "pending") && j.path && /* @__PURE__ */ g(Jm, {
 				pending: j.next === "pending" ? j.pending : null,
 				state: R,
 				result: N,
@@ -20789,7 +20831,7 @@ function Em({ entry: e, go: t, setStatus: r, reloadStatus: i, pollMs: a }) {
 		]
 	});
 }
-function Dm({ n: e, title: t, state: n, sub: r, children: i }) {
+function jm({ n: e, title: t, state: n, sub: r, children: i }) {
 	return /* @__PURE__ */ _("header", {
 		className: "imp-head",
 		"data-step": e,
@@ -20809,7 +20851,7 @@ function Dm({ n: e, title: t, state: n, sub: r, children: i }) {
 		]
 	});
 }
-function Om({ value: e, on: t, icon: n, title: r, text: i, onPick: a }) {
+function Mm({ value: e, on: t, icon: n, title: r, text: i, onPick: a }) {
 	let o = `imp-src-${e}`;
 	return /* @__PURE__ */ _("label", {
 		className: `imp-option${t ? " is-on" : ""}`,
@@ -20844,7 +20886,7 @@ function Om({ value: e, on: t, icon: n, title: r, text: i, onPick: a }) {
 		]
 	});
 }
-function km({ found: e, busy: t, onPick: n }) {
+function Nm({ found: e, busy: t, onPick: n }) {
 	return /* @__PURE__ */ _("div", {
 		className: "imp-found",
 		role: "group",
@@ -20877,7 +20919,7 @@ function km({ found: e, busy: t, onPick: n }) {
 		}) }, e.path)) })]
 	});
 }
-function Am({ defaults: e, ms: t, onCloned: n }) {
+function Pm({ defaults: e, ms: t, onCloned: n }) {
 	let r = u(), [i, a] = c(""), [o, s] = c(null), [l, d] = c(""), f = I((e) => r.post(D.importClone(), e)), p = De(t, (e) => {
 		e.state === "done" && e.result?.path && n(e.result.path);
 	}), m = o ?? e?.clone_parent ?? "", h = p.job?.state === "running", v = async () => {
@@ -20953,7 +20995,7 @@ function Am({ defaults: e, ms: t, onCloned: n }) {
 							type: "text",
 							className: "br-mono",
 							value: l,
-							placeholder: wm(i) || "shop-pay",
+							placeholder: Om(i) || "shop-pay",
 							onChange: (e) => d(e.target.value)
 						})]
 					})
@@ -20976,7 +21018,7 @@ function Am({ defaults: e, ms: t, onCloned: n }) {
 				role: "alert",
 				children: f.error
 			}),
-			p.job && /* @__PURE__ */ g(jm, {
+			p.job && /* @__PURE__ */ g(Fm, {
 				job: p.job,
 				what: "克隆",
 				readError: p.readError
@@ -20993,7 +21035,7 @@ function Am({ defaults: e, ms: t, onCloned: n }) {
 		]
 	});
 }
-function jm({ job: e, what: t, readError: n }) {
+function Fm({ job: e, what: t, readError: n }) {
 	let r = e.state === "running", i = e.steps.some((e) => e.state === "fail"), [a, o, s] = r ? [
 		"run",
 		"●",
@@ -21040,7 +21082,7 @@ function jm({ job: e, what: t, readError: n }) {
 		]
 	});
 }
-function Mm({ rows: e, next: t, todo: n }) {
+function Im({ rows: e, next: t, todo: n }) {
 	return /* @__PURE__ */ g("ul", {
 		className: "imp-checks",
 		"data-testid": "import-checks",
@@ -21055,7 +21097,7 @@ function Mm({ rows: e, next: t, todo: n }) {
 						className: `imp-glyph tone-${r ? "info" : dt[e.level]}`,
 						role: "img",
 						"aria-label": r ? "下一步" : ft[e.level],
-						children: r ? "→" : ym[e.level]
+						children: r ? "→" : Cm[e.level]
 					}),
 					/* @__PURE__ */ _("span", {
 						className: "imp-check-main",
@@ -21076,7 +21118,7 @@ function Mm({ rows: e, next: t, todo: n }) {
 		})
 	});
 }
-function Nm({ levels: e }) {
+function Lm({ levels: e }) {
 	let t = (t) => e.filter((e) => e === t).length;
 	return /* @__PURE__ */ g("span", {
 		className: "imp-counts",
@@ -21090,7 +21132,7 @@ function Nm({ levels: e }) {
 			children: [
 				/* @__PURE__ */ g("i", {
 					"aria-hidden": "true",
-					children: ym[e]
+					children: Cm[e]
 				}),
 				t(e),
 				/* @__PURE__ */ _("span", {
@@ -21101,7 +21143,7 @@ function Nm({ levels: e }) {
 		}, e))
 	});
 }
-function Pm({ c: e, busy: t, state: n, asked: r, onRecheck: a, onFixed: o }) {
+function Rm({ c: e, busy: t, state: n, asked: r, onRecheck: a, onFixed: o }) {
 	let c = s(null), l = w();
 	i(() => {
 		r && c.current?.scrollIntoView?.({
@@ -21109,7 +21151,7 @@ function Pm({ c: e, busy: t, state: n, asked: r, onRecheck: a, onFixed: o }) {
 			behavior: l ? "auto" : "smooth"
 		});
 	}, [r]);
-	let u = (t) => Tm(e, t), d = (t) => t.id === "me" && e.me?.ask && e.path ? /* @__PURE__ */ g(Gt, {
+	let u = (t) => km(e, t), d = (t) => t.id === "me" && e.me?.ask && e.path ? /* @__PURE__ */ g(Gt, {
 		path: e.path,
 		me: e.me,
 		onSaved: o
@@ -21120,7 +21162,7 @@ function Pm({ c: e, busy: t, state: n, asked: r, onRecheck: a, onFixed: o }) {
 		"aria-label": "检查",
 		"data-testid": "inspect",
 		children: [
-			/* @__PURE__ */ _(Dm, {
+			/* @__PURE__ */ _(jm, {
 				n: 2,
 				title: "检查",
 				state: n,
@@ -21129,7 +21171,7 @@ function Pm({ c: e, busy: t, state: n, asked: r, onRecheck: a, onFixed: o }) {
 						className: "imp-path",
 						children: e.path
 					}),
-					/* @__PURE__ */ g(Nm, { levels: e.checks.filter((e) => !u(e)).map((e) => e.level) }),
+					/* @__PURE__ */ g(Lm, { levels: e.checks.filter((e) => !u(e)).map((e) => e.level) }),
 					/* @__PURE__ */ _("button", {
 						type: "button",
 						className: "br-btn is-small imp-end",
@@ -21151,7 +21193,7 @@ function Pm({ c: e, busy: t, state: n, asked: r, onRecheck: a, onFixed: o }) {
 				role: "alert",
 				children: e.error
 			}),
-			p.length > 0 && /* @__PURE__ */ g(Mm, {
+			p.length > 0 && /* @__PURE__ */ g(Im, {
 				rows: p,
 				next: u,
 				todo: d
@@ -21160,7 +21202,7 @@ function Pm({ c: e, busy: t, state: n, asked: r, onRecheck: a, onFixed: o }) {
 				className: "imp-more imp-fold",
 				"data-testid": "checks-fine",
 				open: p.length === 0 || void 0,
-				children: [/* @__PURE__ */ g("summary", { children: p.length ? `另外 ${m.length} 项正常` : `${m.length} 项都正常` }), /* @__PURE__ */ g(Mm, { rows: m })]
+				children: [/* @__PURE__ */ g("summary", { children: p.length ? `另外 ${m.length} 项正常` : `${m.length} 项都正常` }), /* @__PURE__ */ g(Im, { rows: m })]
 			}),
 			e.me?.ask && e.path && !f && /* @__PURE__ */ g(Gt, {
 				path: e.path,
@@ -21178,7 +21220,7 @@ function Pm({ c: e, busy: t, state: n, asked: r, onRecheck: a, onFixed: o }) {
 							size: 18
 						}),
 						/* @__PURE__ */ g("b", { children: "KiroCrew" }),
-						/* @__PURE__ */ g(Nm, { levels: v.map((e) => e.level) }),
+						/* @__PURE__ */ g(Lm, { levels: v.map((e) => e.level) }),
 						"都正常"
 					]
 				}) }), /* @__PURE__ */ g(Ot, { rows: v })]
@@ -21194,7 +21236,7 @@ function Pm({ c: e, busy: t, state: n, asked: r, onRecheck: a, onFixed: o }) {
 								size: 18
 							}),
 							/* @__PURE__ */ g("b", { children: "KiroCrew" }),
-							/* @__PURE__ */ g(Nm, { levels: e.crew.rows.map((e) => e.level) })
+							/* @__PURE__ */ g(Lm, { levels: e.crew.rows.map((e) => e.level) })
 						]
 					}),
 					/* @__PURE__ */ g(Ot, {
@@ -21223,7 +21265,7 @@ function Pm({ c: e, busy: t, state: n, asked: r, onRecheck: a, onFixed: o }) {
 		]
 	});
 }
-function Fm({ k: e }) {
+function zm({ k: e }) {
 	let t = e.req_prefix.trim().toUpperCase(), n = [
 		["需求号", e.tracker === "jira" ? "Jira 上的号" : t ? `${t}-1` : ""],
 		["跟踪", it[e.tracker] ?? e.tracker],
@@ -21240,8 +21282,8 @@ function Fm({ k: e }) {
 		}, e))
 	});
 }
-function Im({ c: e, job: t, state: n, readError: r, onStart: i, onCommitted: a, added: o, addBusy: s, addError: l, onAdd: d, onChanged: f, go: p }) {
-	let m = u(), [v, y] = c(() => e.form ?? Cm), [b, x] = c(() => !e.form?.req_prefix), [S, C] = c(e.branch), w = e.install, T = e.next !== "install" && !!e.pending, [E, O] = c(null), k = w?.options.filter((e) => e.ok) ?? [], A = (k.some((e) => e.mode === E) ? E : null) ?? k.find((e) => e.mode === w?.recommend)?.mode ?? k[0]?.mode ?? "inplace", j = I((e) => m.post(D.importInstall(), e)), M = (e) => y((t) => ({
+function Bm({ c: e, job: t, state: n, readError: r, onStart: i, onCommitted: a, added: o, addBusy: s, addError: l, onAdd: d, onChanged: f, go: p }) {
+	let m = u(), [v, y] = c(() => e.form ?? Dm), [b, x] = c(() => !e.form?.req_prefix), [S, C] = c(e.branch), w = e.install, T = e.next !== "install" && !!e.pending, [E, O] = c(null), k = w?.options.filter((e) => e.ok) ?? [], A = (k.some((e) => e.mode === E) ? E : null) ?? k.find((e) => e.mode === w?.recommend)?.mode ?? k[0]?.mode ?? "inplace", j = I((e) => m.post(D.importInstall(), e)), M = (e) => y((t) => ({
 		...t,
 		...e
 	})), N = t?.state === "running", P = t?.state === "done" && !!t.result?.commit.ok, F = w?.current || e.current_branch || "当前分支", L = w?.options.find((e) => e.mode === A), ee = async () => {
@@ -21262,7 +21304,7 @@ function Im({ c: e, job: t, state: n, readError: r, onStart: i, onCommitted: a, 
 		"aria-label": "安装",
 		"data-testid": "install",
 		children: [
-			/* @__PURE__ */ g(Dm, {
+			/* @__PURE__ */ g(jm, {
 				n: 3,
 				title: "安装",
 				state: n,
@@ -21291,7 +21333,7 @@ function Im({ c: e, job: t, state: n, readError: r, onStart: i, onCommitted: a, 
 					role: "radiogroup",
 					"aria-label": "装在哪",
 					"data-testid": "install-modes",
-					children: w.options.map((e) => /* @__PURE__ */ g(Rm, {
+					children: w.options.map((e) => /* @__PURE__ */ g(Hm, {
 						o: e,
 						on: A === e.mode,
 						rec: e.mode === w.recommend,
@@ -21482,7 +21524,7 @@ function Im({ c: e, job: t, state: n, readError: r, onStart: i, onCommitted: a, 
 									]
 								})] })]
 							}),
-							/* @__PURE__ */ g(Fm, { k: v }),
+							/* @__PURE__ */ g(zm, { k: v }),
 							A === "branch" && /* @__PURE__ */ _("div", {
 								className: "imp-route",
 								"aria-label": "新分支从哪来",
@@ -21528,12 +21570,12 @@ function Im({ c: e, job: t, state: n, readError: r, onStart: i, onCommitted: a, 
 					})]
 				})
 			] }),
-			t && /* @__PURE__ */ g(jm, {
+			t && /* @__PURE__ */ g(Fm, {
 				job: t,
 				what: "安装",
 				readError: r
 			}),
-			B && B.commit.ok && /* @__PURE__ */ g(Lm, {
+			B && B.commit.ok && /* @__PURE__ */ g(Vm, {
 				r: B,
 				c: e,
 				added: o,
@@ -21543,7 +21585,7 @@ function Im({ c: e, job: t, state: n, readError: r, onStart: i, onCommitted: a, 
 				onChanged: f,
 				go: p
 			}),
-			B && /* @__PURE__ */ g(zm, {
+			B && /* @__PURE__ */ g(Um, {
 				r: B,
 				onCommitted: a
 			}),
@@ -21559,7 +21601,7 @@ function Im({ c: e, job: t, state: n, readError: r, onStart: i, onCommitted: a, 
 		]
 	});
 }
-function Lm({ r: e, c: t, added: n, addBusy: r, addError: i, onAdd: a, onChanged: o, go: s }) {
+function Vm({ r: e, c: t, added: n, addBusy: r, addError: i, onAdd: a, onChanged: o, go: s }) {
 	let [l, u] = c(!1), d = e.mode === "inplace", f = n?.id ?? t.listed, p = e.target || "默认分支", m = d ? null : t.pending, h = d && (!e.remote_url || l), v = d ? `装好了，提交在 ${e.branch} 上` : `装在 ${e.branch} 分支上`, y = h ? "现在就能开需求了。" : d ? `推送 ${e.branch} 以后就能开需求。` : `合进 ${p} 以后才能开需求。${m?.next && !m.mr_url ? `下一步：${m.next}。` : ""}`;
 	return /* @__PURE__ */ _("div", {
 		className: `imp-done${h ? "" : " is-wait"}`,
@@ -21598,7 +21640,7 @@ function Lm({ r: e, c: t, added: n, addBusy: r, addError: i, onAdd: a, onChanged
 					target: e.target,
 					onDone: () => u(!0)
 				}),
-				m && m.state === "branch" && m.remote_url && !m.mr_url && /* @__PURE__ */ g(Hm, {
+				m && m.state === "branch" && m.remote_url && !m.mr_url && /* @__PURE__ */ g(Km, {
 					path: e.path,
 					p: m,
 					primary: !0,
@@ -21636,7 +21678,7 @@ function Lm({ r: e, c: t, added: n, addBusy: r, addError: i, onAdd: a, onChanged
 		]
 	});
 }
-function Rm({ o: e, on: t, rec: n, onPick: r }) {
+function Hm({ o: e, on: t, rec: n, onPick: r }) {
 	let i = `imp-mode-${e.mode}`;
 	return /* @__PURE__ */ _("label", {
 		className: `imp-option${t ? " is-on" : ""}${e.ok ? "" : " is-off"}`,
@@ -21675,10 +21717,10 @@ function Rm({ o: e, on: t, rec: n, onPick: r }) {
 		]
 	});
 }
-function zm({ r: e, onCommitted: t }) {
+function Um({ r: e, onCommitted: t }) {
 	let n = u(), r = I(() => n.post(D.importCommit(), { path: e.path })), i = r.result ?? e.commit, a = async () => {
 		(await r.run())?.ok && t();
-	}, o = Sm.map((t) => [t, e.files.filter((e) => (bm[e.change] ? e.change : "other") === t)]).filter(([, e]) => e.length > 0), s = e.doctor.rows.filter((e) => e.level === "OK"), c = e.mode === "inplace";
+	}, o = Em.map((t) => [t, e.files.filter((e) => (wm[e.change] ? e.change : "other") === t)]).filter(([, e]) => e.length > 0), s = e.doctor.rows.filter((e) => e.level === "OK"), c = e.mode === "inplace";
 	return /* @__PURE__ */ _("div", {
 		className: "imp-result",
 		"data-testid": "install-result",
@@ -21688,7 +21730,7 @@ function zm({ r: e, onCommitted: t }) {
 				children: [
 					c ? /* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("dt", { children: "提交在" }), /* @__PURE__ */ _("dd", { children: [/* @__PURE__ */ g("code", { children: e.branch }), "（你现在的检出）"] })] }) : /* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("dt", { children: "新分支" }), /* @__PURE__ */ _("dd", { children: [/* @__PURE__ */ g("code", { children: e.branch }), e.base ? `（从${e.base.startsWith("origin/") ? `远端的 ${e.base.slice(7)}` : ` ${e.base}`} 建）` : ""] })] }),
 					e.worktree && /* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("dt", { children: "工作目录" }), /* @__PURE__ */ g("dd", { children: /* @__PURE__ */ g("code", { children: e.worktree }) })] }),
-					/* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("dt", { children: "brain-kit 设置" }), /* @__PURE__ */ g("dd", { children: /* @__PURE__ */ g(Fm, { k: e.kit }) })] })
+					/* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("dt", { children: "brain-kit 设置" }), /* @__PURE__ */ g("dd", { children: /* @__PURE__ */ g(zm, { k: e.kit }) })] })
 				]
 			}),
 			i.ok ? /* @__PURE__ */ _("div", {
@@ -21743,7 +21785,7 @@ function zm({ r: e, onCommitted: t }) {
 							size: 18
 						}),
 						/* @__PURE__ */ g("b", { children: "自检" }),
-						/* @__PURE__ */ g(Nm, { levels: e.doctor.rows.map((e) => e.level) })
+						/* @__PURE__ */ g(Lm, { levels: e.doctor.rows.map((e) => e.level) })
 					]
 				}), e.doctor.rows.length > 0 ? /* @__PURE__ */ _(h, { children: [/* @__PURE__ */ g(Ot, {
 					rows: e.doctor.rows,
@@ -21766,9 +21808,9 @@ function zm({ r: e, onCommitted: t }) {
 						className: "imp-fgroup",
 						"data-change": e,
 						children: [/* @__PURE__ */ _("span", {
-							className: `br-chip kt-pill tone-${xm[e]}`,
+							className: `br-chip kt-pill tone-${Tm[e]}`,
 							children: [
-								bm[e],
+								wm[e],
 								" ",
 								/* @__PURE__ */ g("b", { children: t.length })
 							]
@@ -21789,19 +21831,19 @@ function zm({ r: e, onCommitted: t }) {
 		]
 	});
 }
-var Bm = {
+var Wm = {
 	branch: "在分支上",
 	uncommitted: "还没提交",
 	merged: "要拉取"
 };
-function Vm({ path: e, p: t, onChanged: n }) {
+function Gm({ path: e, p: t, onChanged: n }) {
 	let r = u(), i = I(() => r.post(D.importCommit(), { path: e }));
 	return /* @__PURE__ */ _("section", {
 		className: "br-card imp-sec is-wait",
 		"aria-label": "装在新分支上",
 		"data-testid": "pending",
 		children: [
-			/* @__PURE__ */ g(Dm, {
+			/* @__PURE__ */ g(jm, {
 				n: 3,
 				title: t.state === "merged" ? `已经合进 ${t.target || "默认分支"}` : "装在新分支上",
 				state: t.state === "uncommitted" ? "wait" : "done"
@@ -21814,7 +21856,7 @@ function Vm({ path: e, p: t, onChanged: n }) {
 						children: [/* @__PURE__ */ g("i", {
 							"aria-hidden": "true",
 							children: "✋"
-						}), t.word || Bm[t.state]]
+						}), t.word || Wm[t.state]]
 					}),
 					/* @__PURE__ */ g("b", { children: t.text }),
 					t.commit && /* @__PURE__ */ g("code", {
@@ -21860,7 +21902,7 @@ function Vm({ path: e, p: t, onChanged: n }) {
 				p: t,
 				onDone: n
 			}, `${t.state}:${t.branch}`),
-			t.state === "branch" && t.remote_url && !t.mr_url && /* @__PURE__ */ g(Hm, {
+			t.state === "branch" && t.remote_url && !t.mr_url && /* @__PURE__ */ g(Km, {
 				path: e,
 				p: t,
 				primary: !0,
@@ -21869,7 +21911,7 @@ function Vm({ path: e, p: t, onChanged: n }) {
 		]
 	});
 }
-function Hm({ path: e, p: t, primary: n = !1, onDone: r }) {
+function Km({ path: e, p: t, primary: n = !1, onDone: r }) {
 	let i = u(), [a, o] = c(!1), s = I((e) => i.post(D.importPublish(), e)), l = s.result, d = async () => {
 		let n = await s.run({
 			path: e,
@@ -21954,11 +21996,11 @@ function Hm({ path: e, p: t, primary: n = !1, onDone: r }) {
 				role: "alert",
 				children: s.error
 			}),
-			l && /* @__PURE__ */ g(Um, { r: l })
+			l && /* @__PURE__ */ g(qm, { r: l })
 		]
 	});
 }
-function Um({ r: e }) {
+function qm({ r: e }) {
 	let [t, n] = c(""), r = e.pushed ? e.commands.slice(1) : e.commands, i = async () => {
 		try {
 			await navigator.clipboard.writeText(r.join("\n")), n("已复制");
@@ -22027,14 +22069,14 @@ function Um({ r: e }) {
 		] })]
 	});
 }
-function Wm({ pending: e, state: t, result: n, busy: r, error: i, onAdd: a, go: o }) {
+function Jm({ pending: e, state: t, result: n, busy: r, error: i, onAdd: a, go: o }) {
 	let s = n?.status.repos.find((e) => e.id === n.id);
 	return /* @__PURE__ */ _("section", {
 		className: `br-card imp-sec${n ? " is-ok" : ""}`,
 		"aria-label": "加入列表",
 		"data-testid": "add",
 		children: [
-			/* @__PURE__ */ g(Dm, {
+			/* @__PURE__ */ g(jm, {
 				n: 4,
 				title: "加入列表",
 				state: t,
@@ -22100,9 +22142,9 @@ function Wm({ pending: e, state: t, result: n, busy: r, error: i, onAdd: a, go: 
 		]
 	});
 }
-var Gm = "\n.imp-root { container: imp / inline-size; }\n.imp-hero { gap: 16px; padding: 22px 26px; }\n.imp-hero h2 { margin-bottom: 4px; }\n.imp-sec { gap: 14px; }\n.imp-head { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; }\n.imp-head h3 { font-size: 1.15em; font-weight: 800; color: var(--text-strong); margin: 0; }\n.imp-head small { color: var(--muted); font-size: .88em; }\n.imp-head .imp-end { margin-left: auto; }\n.imp-n { display: inline-grid; place-items: center; width: 1.75em; height: 1.75em; border-radius: 50%; font-size: .88em; font-weight: 850;\n  background: color-mix(in srgb, var(--muted) 24%, transparent); color: var(--text-strong); }\n.imp-n.is-done { background: var(--kt-ok-solid); color: #fff; }\n.imp-n.is-now { background: var(--accent); color: var(--accent-fg, #fff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }\n.imp-n.is-bad { background: var(--kt-bad-solid); color: #fff; }\n.imp-n.is-wait { background: var(--kt-approve); color: var(--kt-on); }\n.imp-n.is-off { background: transparent; border: 1px dashed var(--border-strong, var(--border)); color: var(--muted); }\n.imp-path { padding: 2px 9px; border-radius: 8px; border: 1px solid var(--border); background: var(--kt-glass); color: var(--text); font-size: .86em; word-break: break-all; }\n.imp-counts { display: inline-flex; gap: 5px; flex-wrap: wrap; }\n\n/* 从哪来: two big option cards */\n.imp-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }\n@container imp (max-width: 760px) { .imp-options { grid-template-columns: minmax(0, 1fr); } }\n.imp-option { position: relative; display: grid; grid-template-columns: 46px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 12px; row-gap: 2px; align-items: center;\n  padding: 14px 44px 14px 18px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg-elevated, var(--card)); cursor: pointer; transition: border-color .15s, box-shadow .15s; }\n.imp-option:hover { border-color: var(--accent); }\n.imp-option input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }\n.imp-option:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }\n.imp-option > .kt-role-icon { grid-row: span 2; justify-self: center; color: var(--text-strong); opacity: .8; }\n.imp-option b { font-size: 1.1em; font-weight: 800; color: var(--text-strong); }\n.imp-option small { color: var(--muted); font-size: .88em; }\n.imp-option.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--card)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 32%, transparent); }\n.imp-option.is-on > .kt-role-icon { color: var(--accent); opacity: 1; }\n.imp-option.is-off { opacity: .62; cursor: not-allowed; }\n.imp-option.is-off small { color: var(--kt-warn); }\n.imp-rec { margin-left: 8px; vertical-align: 2px; font-size: .78em; }\n.imp-where { margin: 0; display: flex; align-items: baseline; gap: 6px 10px; flex-wrap: wrap; }\n.imp-where b { color: var(--text-strong); font-weight: 800; }\n.imp-where span { color: var(--muted); font-size: .92em; }\n.imp-where .kt-role-icon { align-self: center; color: var(--kt-ok); }\n.imp-tick { position: absolute; top: 50%; right: 16px; transform: translateY(-50%); width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;\n  border: 2px solid var(--border-strong, var(--border)); font-size: 11px; font-weight: 900; }\n.imp-option.is-on .imp-tick { background: var(--accent); border-color: var(--accent); color: var(--accent-fg, #fff); }\n.imp-local, .imp-clone { display: grid; gap: 12px; }\n.imp-inline { display: flex; gap: 10px; align-items: stretch; flex-wrap: wrap; }\n.imp-inline input { flex: 1 1 24em; min-width: 0; }\n.imp-stale { margin: 0; display: inline-flex; align-items: center; gap: 8px; color: var(--kt-warn); font-weight: 700; }\n.imp-stale i { font-style: normal; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--kt-warn); font-size: .8em; }\n.imp-found { display: grid; gap: 6px; }\n.imp-found ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 19em), 1fr)); gap: 6px; }\n.imp-found-btn { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; cursor: pointer; text-align: left;\n  border: 1px solid var(--border); background: var(--kt-glass); color: var(--text); font: inherit; min-width: 0; }\n.imp-found-btn:hover:not(:disabled) { border-color: var(--accent); }\n.imp-found-btn b { color: var(--text-strong); white-space: nowrap; }\n.imp-found-btn code { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .84em; }\n.imp-found-btn .br-chip { flex: none; font-size: .78em; }\n.imp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; align-content: start; align-items: start; }\n.imp-grid > .br-field { align-content: start; }\n.imp-grid > .is-full { grid-column: 1 / -1; }\n@container imp (max-width: 760px) { .imp-grid { grid-template-columns: minmax(0, 1fr); } }\n.imp-grid :is(input[type=\"text\"], input:not([type]), select) { width: 100%; }\n\n/* 检查: one row per check, two columns */\n.imp-checks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; align-items: stretch; }\n@container imp (max-width: 960px) { .imp-checks { grid-template-columns: minmax(0, 1fr); } }\n.imp-check { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 3px 10px; align-items: start; align-content: start; padding: 9px 12px; border-radius: 12px;\n  border: 1px solid var(--border); background: var(--kt-glass); }\n.imp-check.is-FAIL { border-color: color-mix(in srgb, var(--kt-bad) 50%, var(--border)); background: color-mix(in srgb, var(--kt-bad) 7%, transparent); }\n.imp-check.is-WARN { border-color: color-mix(in srgb, var(--kt-warn) 50%, var(--border)); background: color-mix(in srgb, var(--kt-warn) 6%, transparent); }\n.imp-check.is-next { border-color: color-mix(in srgb, var(--kt-info) 50%, var(--border)); background: color-mix(in srgb, var(--kt-info) 6%, transparent); }\n.imp-glyph { grid-row: span 2; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 8px; font-weight: 900; font-size: 13px;\n  color: var(--kt-tone); border: 2px solid var(--kt-tone); background: color-mix(in srgb, var(--kt-tone) 14%, transparent); }\n.imp-check.is-OK .imp-glyph { background: var(--kt-ok-solid); border-color: var(--kt-ok-solid); color: #fff; }\n.imp-check-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; padding-top: 2px; }\n.imp-check-main b { color: var(--text-strong); font-weight: 750; white-space: nowrap; }\n.imp-check-main span { color: var(--text); word-break: break-word; }\n.imp-check.is-OK .imp-check-main span { color: var(--muted); }\n.imp-todo { grid-column: 2; font-size: .9em; color: var(--text); }\n.imp-todo.is-box { padding-top: 4px; }\n.imp-todo b { color: var(--muted); font-weight: 650; margin-right: 6px; }\n.imp-block { display: grid; gap: 8px; }\n/* 「另外 N 项正常」 sits on its block's head line while closed, so after 检查 the install button is on the first screen\n   at 1050 (SETUP-18); opened, it takes its own row under the rows it adds to */\n.imp-inspect, .imp-block { grid-template-columns: minmax(0, 1fr) auto; }\n.imp-inspect > *, .imp-block > * { grid-column: 1 / -1; }\n.imp-inspect > .imp-head, .imp-block > .imp-block-head { grid-column: 1; grid-row: 1; }\n.imp-inspect > .imp-fold:not([open]), .imp-block > .imp-fold:not([open]) { grid-column: 2; grid-row: 1; align-self: center; }\n@container imp (max-width: 760px) { .imp-inspect > .imp-fold:not([open]), .imp-block > .imp-fold:not([open]) { grid-column: 1 / -1; grid-row: auto; } }\n.imp-block-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }\n.imp-block-head > .kt-role-icon { color: var(--text-strong); opacity: .85; }\n.imp-block-head b { color: var(--text-strong); font-weight: 750; }\n.imp-verdict { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--kt-bad);\n  background: color-mix(in srgb, var(--kt-bad) 9%, var(--card)); color: var(--kt-bad); }\n\n/* 安装: the field grid and its live preview */\n.imp-install { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }\n.imp-install.is-editing { grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); }\n@container imp (max-width: 1060px) { .imp-install.is-editing { grid-template-columns: minmax(0, 1fr); } }\n.imp-seg { display: flex; flex-wrap: wrap; gap: 6px; }\n.imp-opt { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 9px; border-radius: 999px; cursor: pointer; font-size: .92em; font-weight: 650;\n  border: 1px solid var(--border-strong, var(--border)); background: var(--card); color: var(--text); }\n.imp-opt input { margin: 0; accent-color: var(--accent); }\n.imp-opt:hover { border-color: var(--accent); }\n.imp-opt.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 17%, var(--card)); color: var(--text-strong); }\n.imp-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }\n.imp-preview { display: grid; gap: 12px; padding: 14px 16px; border-radius: 14px; border: 1px dashed color-mix(in srgb, var(--kt-info) 55%, var(--border));\n  background: color-mix(in srgb, var(--kt-info) 5%, var(--card)); }\n.imp-preview-head { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; }\n.imp-preview-head > b { color: var(--text-strong); font-weight: 750; }\n.imp-preview-head > .br-hint { margin: 0; }\n.imp-kv { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }\n.imp-kv li { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 10px; border-radius: 10px;\n  border: 1px solid color-mix(in srgb, var(--kt-info) 50%, var(--border)); background: color-mix(in srgb, var(--kt-info) 9%, transparent); }\n.imp-kv small { color: var(--muted); font-size: .82em; font-weight: 650; }\n.imp-kv b { color: var(--text-strong); font-weight: 750; font-family: var(--mono, ui-monospace, monospace); font-size: .92em; }\n.imp-kv li.is-empty { border-style: dashed; background: none; }\n.imp-kv li.is-empty b { color: var(--muted); font-weight: 500; }\n.imp-route { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }\n.imp-route code { padding: 3px 9px; border-radius: 8px; border: 1px solid var(--border-strong, var(--border)); background: var(--bg); font-weight: 700; color: var(--text-strong); }\n.imp-route code.is-new { border-color: var(--kit-ok); color: var(--kt-ok); background: color-mix(in srgb, var(--kt-ok) 9%, transparent); }\n.imp-route small { color: var(--muted); font-size: .84em; }\n.imp-arrow { color: var(--kt-handoff); font-weight: 900; }\n.imp-go { display: flex; align-items: center; gap: 10px 18px; flex-wrap: wrap; }\n.imp-go > .br-btn { flex: none; }\n.imp-go > .imp-safe { flex: 1 1 22em; }\n.imp-sum { display: inline-flex; vertical-align: middle; }\n.imp-safe { margin: 0; display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; font-size: .88em; color: var(--text); line-height: 1.55; }\n.imp-safe .kt-role-icon { color: var(--kt-ok); margin-top: 1px; }\n\n/* a job: its state, its time, its steps */\n.imp-job { display: grid; gap: 8px; padding: 12px 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--kt-tone) 45%, var(--border)); background: var(--kt-glass); }\n.imp-job.tone-run { box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-run) 14%, transparent); }\n.imp-job-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }\n.imp-elapsed { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; font-size: .9em; }\n\n/* the install's result */\n.imp-result { display: grid; gap: 14px; }\n.imp-facts { display: grid; grid-template-columns: repeat(3, minmax(0, auto)); justify-content: start; gap: 8px 28px; margin: 0; }\n@container imp (max-width: 1060px) { .imp-facts { grid-template-columns: minmax(0, 1fr); } }\n.imp-facts dt { font-size: .82em; color: var(--muted); font-weight: 700; }\n.imp-facts dd { margin: 3px 0 0; color: var(--text); word-break: break-word; }\n.imp-facts code { color: var(--text-strong); font-weight: 650; }\n.imp-files { display: grid; gap: 8px; }\n.imp-fgroup { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 8px; align-items: start; }\n.imp-fgroup > .kt-pill { justify-self: start; }\n.imp-fgroup ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 5px; }\n.imp-fgroup li { font-size: .8em; }\n.imp-commit { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 12px; }\n.imp-commit.is-ok { border: 1px solid var(--kit-ok); background: color-mix(in srgb, var(--kt-ok) 9%, var(--card)); }\n.imp-commit.is-bad { border: 1px solid var(--kt-bad); background: color-mix(in srgb, var(--kt-bad) 9%, var(--card)); }\n.imp-commit > div { display: grid; gap: 8px; min-width: 0; flex: 1; }\n.imp-commit p { margin: 0; }\n.imp-commit b { color: var(--text-strong); font-weight: 750; }\n.imp-mark { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-weight: 900; color: #fff; background: var(--kt-ok-solid); }\n.imp-commit.is-bad .imp-mark { background: var(--kt-bad-solid); }\n.imp-more > summary { cursor: pointer; color: var(--muted); font-size: .9em; }\n.imp-more > summary b { color: var(--text-strong); font-weight: 750; }\n.imp-more[open] > summary { margin-bottom: 8px; }\n\n/* pending, publish, the last step */\n.imp-pend { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }\n.imp-pend b { color: var(--text-strong); font-weight: 750; font-size: 1.05em; }\n.imp-confirm { border-color: var(--kt-approve); background: color-mix(in srgb, var(--kt-approve) 8%, var(--card)); }\n.imp-confirm p { margin: 0; }\n.imp-confirm-head { display: inline-flex; align-items: center; gap: 8px; color: var(--kt-approve); }\n.imp-confirm-head b { color: var(--text-strong); }\n.imp-final { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }\n.imp-done { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 18px; border-radius: 14px; border: 1px solid var(--kit-ok);\n  background: radial-gradient(70% 140% at 0% 0%, color-mix(in srgb, var(--kt-ok) 14%, transparent), transparent 60%), var(--card); }\n.imp-done.is-wait { align-items: flex-start; border-color: var(--kit-wait);\n  background: radial-gradient(70% 140% at 0% 0%, color-mix(in srgb, var(--kt-approve) 12%, transparent), transparent 60%), var(--card); }\n.imp-done.is-wait .imp-mark { background: var(--kt-approve); box-shadow: none; }\n.imp-done .imp-mark { width: 40px; height: 40px; border-radius: 12px; font-size: 1.3em; box-shadow: 0 0 24px -6px var(--kt-ok); }\n.imp-done > div:not(.br-row) { display: grid; gap: 6px; flex: 1 1 14em; min-width: 0; }\n.imp-done b { font-size: 1.2em; font-weight: 850; color: var(--text-strong); }\n.imp-done small { color: var(--muted); }\n.imp-done .br-confirm b, .imp-done .imp-block b { font-size: 1em; }\n", Km = /^[a-z0-9][a-z0-9-]{0,39}$/, qm = "证件号、电话、卡号、邮箱：整份打码。标签后面、姓名列里的人名：在找到的地方打码。看不准是人名（或密码）还是普通词的不打码，列在「请你确认」里。", Jm = "密钥打码。私钥和云访问密钥：整份不收。", Ym = "认领一个需求，写一段话或带上文档开工。它们先过五关，原件不进任何仓库。开工时在它自己的工作目录里开一个 AI 开发会话（brain-dev），", Xm = `${Ym}按 AI-DLC Lean 的步骤（需求 → 设计 → 代码 → 测试 → 发布）一步步做，需求和设计由你批准`, Zm = `${Xm}；团队仓库做完可以交给运行机（团队的服务器）接着跑。`, Qm = `${Xm}，做完在这台机器上发布、合并。`, $m = `${Ym}不开 Lean intent、不走阶段和审批，直接按你说的写代码和测试；提交前自动检查要绿，做完开 MR，由人合并。`, eh = "绝密材料不收：先请产品写一份脱敏摘要，交摘要。", th = "只检查：不认领，一段话和文档都不收进任何地方。", nh = "写清楚要做什么、给谁用、怎样算做完。它和文档一样过下面的五关。", rh = "KiroCrew 的检查都过了：开工以后能开会话。";
-Eo.lean.startedNext;
-var ih = Object.keys(b), ah = {
+var Ym = "\n.imp-root { container: imp / inline-size; }\n.imp-hero { gap: 16px; padding: 22px 26px; }\n.imp-hero h2 { margin-bottom: 4px; }\n.imp-sec { gap: 14px; }\n.imp-head { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; }\n.imp-head h3 { font-size: 1.15em; font-weight: 800; color: var(--text-strong); margin: 0; }\n.imp-head small { color: var(--muted); font-size: .88em; }\n.imp-head .imp-end { margin-left: auto; }\n.imp-n { display: inline-grid; place-items: center; width: 1.75em; height: 1.75em; border-radius: 50%; font-size: .88em; font-weight: 850;\n  background: color-mix(in srgb, var(--muted) 24%, transparent); color: var(--text-strong); }\n.imp-n.is-done { background: var(--kt-ok-solid); color: #fff; }\n.imp-n.is-now { background: var(--accent); color: var(--accent-fg, #fff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }\n.imp-n.is-bad { background: var(--kt-bad-solid); color: #fff; }\n.imp-n.is-wait { background: var(--kt-approve); color: var(--kt-on); }\n.imp-n.is-off { background: transparent; border: 1px dashed var(--border-strong, var(--border)); color: var(--muted); }\n.imp-path { padding: 2px 9px; border-radius: 8px; border: 1px solid var(--border); background: var(--kt-glass); color: var(--text); font-size: .86em; word-break: break-all; }\n.imp-counts { display: inline-flex; gap: 5px; flex-wrap: wrap; }\n\n/* 从哪来: two big option cards */\n.imp-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }\n@container imp (max-width: 760px) { .imp-options { grid-template-columns: minmax(0, 1fr); } }\n.imp-option { position: relative; display: grid; grid-template-columns: 46px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 12px; row-gap: 2px; align-items: center;\n  padding: 14px 44px 14px 18px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg-elevated, var(--card)); cursor: pointer; transition: border-color .15s, box-shadow .15s; }\n.imp-option:hover { border-color: var(--accent); }\n.imp-option input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }\n.imp-option:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }\n.imp-option > .kt-role-icon { grid-row: span 2; justify-self: center; color: var(--text-strong); opacity: .8; }\n.imp-option b { font-size: 1.1em; font-weight: 800; color: var(--text-strong); }\n.imp-option small { color: var(--muted); font-size: .88em; }\n.imp-option.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--card)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 32%, transparent); }\n.imp-option.is-on > .kt-role-icon { color: var(--accent); opacity: 1; }\n.imp-option.is-off { opacity: .62; cursor: not-allowed; }\n.imp-option.is-off small { color: var(--kt-warn); }\n.imp-rec { margin-left: 8px; vertical-align: 2px; font-size: .78em; }\n.imp-where { margin: 0; display: flex; align-items: baseline; gap: 6px 10px; flex-wrap: wrap; }\n.imp-where b { color: var(--text-strong); font-weight: 800; }\n.imp-where span { color: var(--muted); font-size: .92em; }\n.imp-where .kt-role-icon { align-self: center; color: var(--kt-ok); }\n.imp-tick { position: absolute; top: 50%; right: 16px; transform: translateY(-50%); width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;\n  border: 2px solid var(--border-strong, var(--border)); font-size: 11px; font-weight: 900; }\n.imp-option.is-on .imp-tick { background: var(--accent); border-color: var(--accent); color: var(--accent-fg, #fff); }\n.imp-local, .imp-clone { display: grid; gap: 12px; }\n.imp-inline { display: flex; gap: 10px; align-items: stretch; flex-wrap: wrap; }\n.imp-inline input { flex: 1 1 24em; min-width: 0; }\n.imp-stale { margin: 0; display: inline-flex; align-items: center; gap: 8px; color: var(--kt-warn); font-weight: 700; }\n.imp-stale i { font-style: normal; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--kt-warn); font-size: .8em; }\n.imp-found { display: grid; gap: 6px; }\n.imp-found ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 19em), 1fr)); gap: 6px; }\n.imp-found-btn { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; cursor: pointer; text-align: left;\n  border: 1px solid var(--border); background: var(--kt-glass); color: var(--text); font: inherit; min-width: 0; }\n.imp-found-btn:hover:not(:disabled) { border-color: var(--accent); }\n.imp-found-btn b { color: var(--text-strong); white-space: nowrap; }\n.imp-found-btn code { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .84em; }\n.imp-found-btn .br-chip { flex: none; font-size: .78em; }\n.imp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; align-content: start; align-items: start; }\n.imp-grid > .br-field { align-content: start; }\n.imp-grid > .is-full { grid-column: 1 / -1; }\n@container imp (max-width: 760px) { .imp-grid { grid-template-columns: minmax(0, 1fr); } }\n.imp-grid :is(input[type=\"text\"], input:not([type]), select) { width: 100%; }\n\n/* 检查: one row per check, two columns */\n.imp-checks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; align-items: stretch; }\n@container imp (max-width: 960px) { .imp-checks { grid-template-columns: minmax(0, 1fr); } }\n.imp-check { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 3px 10px; align-items: start; align-content: start; padding: 9px 12px; border-radius: 12px;\n  border: 1px solid var(--border); background: var(--kt-glass); }\n.imp-check.is-FAIL { border-color: color-mix(in srgb, var(--kt-bad) 50%, var(--border)); background: color-mix(in srgb, var(--kt-bad) 7%, transparent); }\n.imp-check.is-WARN { border-color: color-mix(in srgb, var(--kt-warn) 50%, var(--border)); background: color-mix(in srgb, var(--kt-warn) 6%, transparent); }\n.imp-check.is-next { border-color: color-mix(in srgb, var(--kt-info) 50%, var(--border)); background: color-mix(in srgb, var(--kt-info) 6%, transparent); }\n.imp-glyph { grid-row: span 2; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 8px; font-weight: 900; font-size: 13px;\n  color: var(--kt-tone); border: 2px solid var(--kt-tone); background: color-mix(in srgb, var(--kt-tone) 14%, transparent); }\n.imp-check.is-OK .imp-glyph { background: var(--kt-ok-solid); border-color: var(--kt-ok-solid); color: #fff; }\n.imp-check-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; padding-top: 2px; }\n.imp-check-main b { color: var(--text-strong); font-weight: 750; white-space: nowrap; }\n.imp-check-main span { color: var(--text); word-break: break-word; }\n.imp-check.is-OK .imp-check-main span { color: var(--muted); }\n.imp-todo { grid-column: 2; font-size: .9em; color: var(--text); }\n.imp-todo.is-box { padding-top: 4px; }\n.imp-todo b { color: var(--muted); font-weight: 650; margin-right: 6px; }\n.imp-block { display: grid; gap: 8px; }\n/* 「另外 N 项正常」 sits on its block's head line while closed, so after 检查 the install button is on the first screen\n   at 1050 (SETUP-18); opened, it takes its own row under the rows it adds to */\n.imp-inspect, .imp-block { grid-template-columns: minmax(0, 1fr) auto; }\n.imp-inspect > *, .imp-block > * { grid-column: 1 / -1; }\n.imp-inspect > .imp-head, .imp-block > .imp-block-head { grid-column: 1; grid-row: 1; }\n.imp-inspect > .imp-fold:not([open]), .imp-block > .imp-fold:not([open]) { grid-column: 2; grid-row: 1; align-self: center; }\n@container imp (max-width: 760px) { .imp-inspect > .imp-fold:not([open]), .imp-block > .imp-fold:not([open]) { grid-column: 1 / -1; grid-row: auto; } }\n.imp-block-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }\n.imp-block-head > .kt-role-icon { color: var(--text-strong); opacity: .85; }\n.imp-block-head b { color: var(--text-strong); font-weight: 750; }\n.imp-verdict { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--kt-bad);\n  background: color-mix(in srgb, var(--kt-bad) 9%, var(--card)); color: var(--kt-bad); }\n\n/* 安装: the field grid and its live preview */\n.imp-install { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }\n.imp-install.is-editing { grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); }\n@container imp (max-width: 1060px) { .imp-install.is-editing { grid-template-columns: minmax(0, 1fr); } }\n.imp-seg { display: flex; flex-wrap: wrap; gap: 6px; }\n.imp-opt { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 9px; border-radius: 999px; cursor: pointer; font-size: .92em; font-weight: 650;\n  border: 1px solid var(--border-strong, var(--border)); background: var(--card); color: var(--text); }\n.imp-opt input { margin: 0; accent-color: var(--accent); }\n.imp-opt:hover { border-color: var(--accent); }\n.imp-opt.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 17%, var(--card)); color: var(--text-strong); }\n.imp-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }\n.imp-preview { display: grid; gap: 12px; padding: 14px 16px; border-radius: 14px; border: 1px dashed color-mix(in srgb, var(--kt-info) 55%, var(--border));\n  background: color-mix(in srgb, var(--kt-info) 5%, var(--card)); }\n.imp-preview-head { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; }\n.imp-preview-head > b { color: var(--text-strong); font-weight: 750; }\n.imp-preview-head > .br-hint { margin: 0; }\n.imp-kv { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }\n.imp-kv li { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 10px; border-radius: 10px;\n  border: 1px solid color-mix(in srgb, var(--kt-info) 50%, var(--border)); background: color-mix(in srgb, var(--kt-info) 9%, transparent); }\n.imp-kv small { color: var(--muted); font-size: .82em; font-weight: 650; }\n.imp-kv b { color: var(--text-strong); font-weight: 750; font-family: var(--mono, ui-monospace, monospace); font-size: .92em; }\n.imp-kv li.is-empty { border-style: dashed; background: none; }\n.imp-kv li.is-empty b { color: var(--muted); font-weight: 500; }\n.imp-route { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }\n.imp-route code { padding: 3px 9px; border-radius: 8px; border: 1px solid var(--border-strong, var(--border)); background: var(--bg); font-weight: 700; color: var(--text-strong); }\n.imp-route code.is-new { border-color: var(--kit-ok); color: var(--kt-ok); background: color-mix(in srgb, var(--kt-ok) 9%, transparent); }\n.imp-route small { color: var(--muted); font-size: .84em; }\n.imp-arrow { color: var(--kt-handoff); font-weight: 900; }\n.imp-go { display: flex; align-items: center; gap: 10px 18px; flex-wrap: wrap; }\n.imp-go > .br-btn { flex: none; }\n.imp-go > .imp-safe { flex: 1 1 22em; }\n.imp-sum { display: inline-flex; vertical-align: middle; }\n.imp-safe { margin: 0; display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; font-size: .88em; color: var(--text); line-height: 1.55; }\n.imp-safe .kt-role-icon { color: var(--kt-ok); margin-top: 1px; }\n\n/* a job: its state, its time, its steps */\n.imp-job { display: grid; gap: 8px; padding: 12px 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--kt-tone) 45%, var(--border)); background: var(--kt-glass); }\n.imp-job.tone-run { box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-run) 14%, transparent); }\n.imp-job-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }\n.imp-elapsed { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; font-size: .9em; }\n\n/* the install's result */\n.imp-result { display: grid; gap: 14px; }\n.imp-facts { display: grid; grid-template-columns: repeat(3, minmax(0, auto)); justify-content: start; gap: 8px 28px; margin: 0; }\n@container imp (max-width: 1060px) { .imp-facts { grid-template-columns: minmax(0, 1fr); } }\n.imp-facts dt { font-size: .82em; color: var(--muted); font-weight: 700; }\n.imp-facts dd { margin: 3px 0 0; color: var(--text); word-break: break-word; }\n.imp-facts code { color: var(--text-strong); font-weight: 650; }\n.imp-files { display: grid; gap: 8px; }\n.imp-fgroup { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 8px; align-items: start; }\n.imp-fgroup > .kt-pill { justify-self: start; }\n.imp-fgroup ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 5px; }\n.imp-fgroup li { font-size: .8em; }\n.imp-commit { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 12px; }\n.imp-commit.is-ok { border: 1px solid var(--kit-ok); background: color-mix(in srgb, var(--kt-ok) 9%, var(--card)); }\n.imp-commit.is-bad { border: 1px solid var(--kt-bad); background: color-mix(in srgb, var(--kt-bad) 9%, var(--card)); }\n.imp-commit > div { display: grid; gap: 8px; min-width: 0; flex: 1; }\n.imp-commit p { margin: 0; }\n.imp-commit b { color: var(--text-strong); font-weight: 750; }\n.imp-mark { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-weight: 900; color: #fff; background: var(--kt-ok-solid); }\n.imp-commit.is-bad .imp-mark { background: var(--kt-bad-solid); }\n.imp-more > summary { cursor: pointer; color: var(--muted); font-size: .9em; }\n.imp-more > summary b { color: var(--text-strong); font-weight: 750; }\n.imp-more[open] > summary { margin-bottom: 8px; }\n\n/* pending, publish, the last step */\n.imp-pend { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }\n.imp-pend b { color: var(--text-strong); font-weight: 750; font-size: 1.05em; }\n.imp-confirm { border-color: var(--kt-approve); background: color-mix(in srgb, var(--kt-approve) 8%, var(--card)); }\n.imp-confirm p { margin: 0; }\n.imp-confirm-head { display: inline-flex; align-items: center; gap: 8px; color: var(--kt-approve); }\n.imp-confirm-head b { color: var(--text-strong); }\n.imp-final { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }\n.imp-done { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 18px; border-radius: 14px; border: 1px solid var(--kit-ok);\n  background: radial-gradient(70% 140% at 0% 0%, color-mix(in srgb, var(--kt-ok) 14%, transparent), transparent 60%), var(--card); }\n.imp-done.is-wait { align-items: flex-start; border-color: var(--kit-wait);\n  background: radial-gradient(70% 140% at 0% 0%, color-mix(in srgb, var(--kt-approve) 12%, transparent), transparent 60%), var(--card); }\n.imp-done.is-wait .imp-mark { background: var(--kt-approve); box-shadow: none; }\n.imp-done .imp-mark { width: 40px; height: 40px; border-radius: 12px; font-size: 1.3em; box-shadow: 0 0 24px -6px var(--kt-ok); }\n.imp-done > div:not(.br-row) { display: grid; gap: 6px; flex: 1 1 14em; min-width: 0; }\n.imp-done b { font-size: 1.2em; font-weight: 850; color: var(--text-strong); }\n.imp-done small { color: var(--muted); }\n.imp-done .br-confirm b, .imp-done .imp-block b { font-size: 1em; }\n", Xm = /^[a-z0-9][a-z0-9-]{0,39}$/, Zm = "证件号、电话、卡号、邮箱：整份打码。标签后面、姓名列里的人名：在找到的地方打码。看不准是人名（或密码）还是普通词的不打码，列在「请你确认」里。", Qm = "密钥打码。私钥和云访问密钥：整份不收。", $m = "认领一个需求，写一段话或带上文档开工。它们先过五关，原件不进任何仓库。开工时在它自己的工作目录里开一个 AI 开发会话（brain-dev），", eh = `${$m}按 AI-DLC Lean 的步骤（需求 → 设计 → 代码 → 测试 → 发布）一步步做，需求和设计由你批准`, th = `${eh}；团队仓库做完可以交给运行机（团队的服务器）接着跑。`, nh = `${eh}，做完在这台机器上发布、合并。`, rh = `${$m}不开 Lean intent、不走阶段和审批，直接按你说的写代码和测试；提交前自动检查要绿，做完开 MR，由人合并。`, ih = "绝密材料不收：先请产品写一份脱敏摘要，交摘要。", ah = "只检查：不认领，一段话和文档都不收进任何地方。", oh = "写清楚要做什么、给谁用、怎样算做完。它和文档一样过下面的五关。", sh = "KiroCrew 的检查都过了：开工以后能开会话。";
+Do.lean.startedNext;
+var ch = Object.keys(b), lh = {
 	ok: {
 		tone: "ok",
 		glyph: "✓"
@@ -22128,26 +22170,26 @@ var ih = Object.keys(b), ah = {
 		glyph: "–"
 	}
 };
-function oh(e) {
+function uh(e) {
 	let t = /^\s*(?:第\s*(\d)\s*关|门\s*(\d))/.exec(e);
 	return t ? Number(t[1] ?? t[2]) : null;
 }
-function sh(e, t) {
-	return e === "secret" ? eh : t || e !== "confidential" && e !== "unsure" ? "" : `这个仓库不收机密材料（你选的是「${e === "unsure" ? "不确定" : "机密"}」）：先请产品写一份脱敏摘要，交摘要。`;
+function dh(e, t) {
+	return e === "secret" ? ih : t || e !== "confidential" && e !== "unsure" ? "" : `这个仓库不收机密材料（你选的是「${e === "unsure" ? "不确定" : "机密"}」）：先请产品写一份脱敏摘要，交摘要。`;
 }
-function ch(e) {
+function fh(e) {
 	let t = [...e.matchAll(/「([^」]*)」/g)].map((e) => `「${e[1]}」`);
 	return t.length ? t.join("、") : e.replace(/^\s*D\d+\s+/, "").replace(/（[^）]*）/g, "").trim();
 }
-function lh(e, t) {
+function ph(e, t) {
 	let n = e.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "");
-	if (Km.test(n)) return n;
+	if (Xm.test(n)) return n;
 	let r = /-(\d+)$/.exec(t)?.[1];
 	return r ? `req-${r}` : "";
 }
-var uh = (e) => /点「([^」]{2,20})」/.exec(e.todo ?? "")?.[1] ?? "";
-function dh({ entry: e, ...t }) {
-	let n = u(), r = p(), i = (t.status?.repos ?? []).filter((e) => e.ok), [a, o] = c(e.repo ?? ""), s = a && (!t.status || i.some((e) => e.id === a)) ? a : i[0]?.id ?? "", l = i.find((e) => e.id === s) ?? null, d = l?.me ?? null, f = l?.remote === !1, m = e.key && (!e.repo || e.repo === s) ? e.key : "", v = F(s ? D.intakeNext(s) : null, 0), y = F(D.crew(), 0), x = F(D.overview("all"), 0), [S, C] = c(""), [w, T] = c(e.title ?? ""), [E, O] = c(""), [k, A] = c(!1), [j, M] = c(""), [N, P] = c(!1), [L, ee] = c(""), [z, B] = c(""), [V, H] = c(""), [U, te] = c(!1), [G, ie] = c(""), [ae, oe] = c(""), [se, ce] = c(""), [le, de] = c(!0), [fe, pe] = c(!0), [me, he] = c(null), [ge, _e] = c(null), K = v.data && v.data.repo === s ? v.data : null, ve = K?.key ?? "", ye = m || (N ? j : ve), be = k ? E : lh(w, ye), xe = K?.tracker || l?.kit?.tracker || "none", Se = K?.allow_confidential !== !1, q = ih.filter((e) => sh(e, Se)), Ce = K?.big ?? null, we = me === "big" && !!Ce?.ok, Te = K?.fast ?? null, Ee = me === "fast" && !!Te?.ok, De = Eo[Ee ? "fast" : "lean"], Oe = {
+var mh = (e) => /点「([^」]{2,20})」/.exec(e.todo ?? "")?.[1] ?? "";
+function hh({ entry: e, ...t }) {
+	let n = u(), r = p(), i = (t.status?.repos ?? []).filter((e) => e.ok), [a, o] = c(e.repo ?? ""), s = a && (!t.status || i.some((e) => e.id === a)) ? a : i[0]?.id ?? "", l = i.find((e) => e.id === s) ?? null, d = l?.me ?? null, f = l?.remote === !1, m = e.key && (!e.repo || e.repo === s) ? e.key : "", v = F(s ? D.intakeNext(s) : null, 0), y = F(D.crew(), 0), x = F(D.overview("all"), 0), [S, C] = c(""), [w, T] = c(e.title ?? ""), [E, O] = c(""), [k, A] = c(!1), [j, M] = c(""), [N, P] = c(!1), [L, ee] = c(""), [z, B] = c(""), [V, H] = c(""), [U, te] = c(!1), [G, ie] = c(""), [ae, oe] = c(""), [se, ce] = c(""), [le, de] = c(!0), [fe, pe] = c(!0), [me, he] = c(null), [ge, _e] = c(null), K = v.data && v.data.repo === s ? v.data : null, ve = K?.key ?? "", ye = m || (N ? j : ve), be = k ? E : ph(w, ye), xe = K?.tracker || l?.kit?.tracker || "none", Se = K?.allow_confidential !== !1, q = ch.filter((e) => dh(e, Se)), Ce = K?.big ?? null, we = me === "big" && !!Ce?.ok, Te = K?.fast ?? null, Ee = me === "fast" && !!Te?.ok, De = Do[Ee ? "fast" : "lean"], Oe = {
 		repo: s,
 		key: ye.trim(),
 		slug: be.trim(),
@@ -22178,14 +22220,14 @@ function dh({ entry: e, ...t }) {
 			...we ? { big: !0 } : {},
 			...Ee ? { fast: !0 } : {}
 		}) && t.reloadStatus();
-	}, Z = y.data ?? t.status?.crew ?? null, Be = l?.path, Ve = (e) => e.filter((e) => (e.level === "FAIL" || e.level === "WARN") && (!e.repo || e.repo === Be)), He = Z ? Ve(Z.rows) : [], Ue = He.some((e) => e.level === "FAIL"), We = He.filter((e) => e.level === "FAIL").map(uh).find(Boolean), Ge = (e) => {
+	}, Z = y.data ?? t.status?.crew ?? null, Be = l?.path, Ve = (e) => e.filter((e) => (e.level === "FAIL" || e.level === "WARN") && (!e.repo || e.repo === Be)), He = Z ? Ve(Z.rows) : [], Ue = He.some((e) => e.level === "FAIL"), We = He.filter((e) => e.level === "FAIL").map(mh).find(Boolean), Ge = (e) => {
 		y.data && y.set({
 			...y.data,
 			rows: e
-		}), C(Ve(e).length ? "" : rh), t.reloadStatus();
-	}, Ke = be.trim() !== "" && !Km.test(be.trim()), qe = ye.trim() !== "" && !ue.test(ye.trim()), Je = xe === "jira" && ye.trim() === "", Ye = (e) => e.ok && e.blocking.length === 0 && !e.error, Xe = Oe.docs.length === 0 && Oe.text === "", Ze = !Xe && !!G && q.includes(G), Qe = Ae && Ae.print === ke ? Ae.result : null, $e = s ? Oe.title ? Km.test(Oe.slug) ? Je ? "这个仓库用 Jira：要填需求号" : qe ? "需求号的格式不对" : d?.ask ? `先在上面「${d.label}」旁点「保存」${d.suggest ? `（确认是 ${d.suggest}）` : ""}` : Ie?.ok ? "已经开工了" : K?.push ? `先推送 ${K.push.branch}：开工从远端的 ${K.push.branch} 建分支，那里还没有 brain-kit` : le && Ue ? `KiroCrew 这边有问题，开不了会话：${We ? `先点上面的「${We}」` : "先照上面说的处理好"}，或者不勾「开工后开会话」` : Ze ? sh(G, Se) : Xe ? "" : Ae ? Ae.print === ke ? Ye(Ae.result) ? "" : "检查没过：照红色那几行改" : "表单改过了：再检查一遍" : "有一段话或文档：先检查一遍（不写入）" : "英文短名不对：英文小写、数字和 -" : "先写标题" : "先选一个仓库", et = $e === "" && !Fe.busy, tt = !!s && !Xe && !Pe.busy, nt = !Xe && !Qe && !Ie?.ok, rt = Qe ? [...Qe.blocking, Qe.error] : Me === ke ? [Pe.error] : [], it = /* @__PURE__ */ new Set();
+		}), C(Ve(e).length ? "" : sh), t.reloadStatus();
+	}, Ke = be.trim() !== "" && !Xm.test(be.trim()), qe = ye.trim() !== "" && !ue.test(ye.trim()), Je = xe === "jira" && ye.trim() === "", Ye = (e) => e.ok && e.blocking.length === 0 && !e.error, Xe = Oe.docs.length === 0 && Oe.text === "", Ze = !Xe && !!G && q.includes(G), Qe = Ae && Ae.print === ke ? Ae.result : null, $e = s ? Oe.title ? Xm.test(Oe.slug) ? Je ? "这个仓库用 Jira：要填需求号" : qe ? "需求号的格式不对" : d?.ask ? `先在上面「${d.label}」旁点「保存」${d.suggest ? `（确认是 ${d.suggest}）` : ""}` : Ie?.ok ? "已经开工了" : K?.push ? `先推送 ${K.push.branch}：开工从远端的 ${K.push.branch} 建分支，那里还没有 brain-kit` : le && Ue ? `KiroCrew 这边有问题，开不了会话：${We ? `先点上面的「${We}」` : "先照上面说的处理好"}，或者不勾「开工后开会话」` : Ze ? dh(G, Se) : Xe ? "" : Ae ? Ae.print === ke ? Ye(Ae.result) ? "" : "检查没过：照红色那几行改" : "表单改过了：再检查一遍" : "有一段话或文档：先检查一遍（不写入）" : "英文短名不对：英文小写、数字和 -" : "先写标题" : "先选一个仓库", et = $e === "" && !Fe.busy, tt = !!s && !Xe && !Pe.busy, nt = !Xe && !Qe && !Ie?.ok, rt = Qe ? [...Qe.blocking, Qe.error] : Me === ke ? [Pe.error] : [], it = /* @__PURE__ */ new Set();
 	for (let e of rt) {
-		let t = oh(e);
+		let t = uh(e);
 		t && it.add(t);
 	}
 	Ze && it.add(2);
@@ -22195,7 +22237,7 @@ function dh({ entry: e, ...t }) {
 		st(3, !!ae),
 		ct(4, !!Qe?.review.length),
 		ct(5)
-	], ut = (e, t) => e === "ok" ? ot ? "过了" : "好了" : e === "wait" ? t : e === "bad" ? "拦下了" : e === "warn" ? "请你确认" : e === "auto" ? "自动" : "不用", dt = !!s && !!Oe.title && Km.test(Oe.slug) && !Je && !qe && !d?.ask, ft = !!Ie?.ok, pt = !!Qe && !Ye(Qe) || Me === ke || Ze, mt = [
+	], ut = (e, t) => e === "ok" ? ot ? "过了" : "好了" : e === "wait" ? t : e === "bad" ? "拦下了" : e === "warn" ? "请你确认" : e === "auto" ? "自动" : "不用", dt = !!s && !!Oe.title && Xm.test(Oe.slug) && !Je && !qe && !d?.ask, ft = !!Ie?.ok, pt = !!Qe && !Ye(Qe) || Me === ke || Ze, mt = [
 		{
 			icon: "new",
 			title: "认领",
@@ -22227,7 +22269,7 @@ function dh({ entry: e, ...t }) {
 		return /* @__PURE__ */ _("main", {
 			className: "kt-root br-view nr-root",
 			"data-testid": "br-new",
-			children: [/* @__PURE__ */ g("style", { children: _h }), t.status.repos.length === 0 ? /* @__PURE__ */ g(Vt, {
+			children: [/* @__PURE__ */ g("style", { children: xh }), t.status.repos.length === 0 ? /* @__PURE__ */ g(Vt, {
 				title: "开需求之前，先导入一个仓库",
 				punch: "导入以后，就能在这里认领需求、开工。",
 				onImport: () => t.go({ kind: "import" })
@@ -22346,11 +22388,11 @@ function dh({ entry: e, ...t }) {
 		className: "kt-root br-view nr-root",
 		"data-testid": "br-new",
 		children: [
-			/* @__PURE__ */ g("style", { children: _h }),
+			/* @__PURE__ */ g("style", { children: xh }),
 			/* @__PURE__ */ _("section", {
 				className: "br-hero nr-hero",
 				"aria-label": "开需求",
-				children: [/* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("h2", { children: m ? `开工：${m}` : "开需求" }), /* @__PURE__ */ g("p", { children: m ? `${m} 已经认领了，还没开工。看一眼英文短名，有一段话或文档的话填上，点「开工」。` : Ee ? $m : f ? Qm : Zm })] }), /* @__PURE__ */ g(qt, {
+				children: [/* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("h2", { children: m ? `开工：${m}` : "开需求" }), /* @__PURE__ */ g("p", { children: m ? `${m} 已经认领了，还没开工。看一眼英文短名，有一段话或文档的话填上，点「开工」。` : Ee ? rh : f ? nh : th })] }), /* @__PURE__ */ g(qt, {
 					steps: mt,
 					label: "开需求的步骤"
 				})]
@@ -22409,7 +22451,7 @@ function dh({ entry: e, ...t }) {
 					/* @__PURE__ */ _("section", {
 						className: "br-card nr-sec",
 						"aria-label": "需求",
-						children: [/* @__PURE__ */ g(fh, {
+						children: [/* @__PURE__ */ g(gh, {
 							n: 1,
 							title: "认领",
 							state: ht(0),
@@ -22624,7 +22666,7 @@ function dh({ entry: e, ...t }) {
 						className: "br-card nr-sec",
 						"aria-label": "需求内容",
 						children: [
-							/* @__PURE__ */ g(fh, {
+							/* @__PURE__ */ g(gh, {
 								n: 2,
 								title: "需求内容（选填）",
 								state: Xe ? void 0 : ht(1),
@@ -22651,7 +22693,7 @@ function dh({ entry: e, ...t }) {
 											/* @__PURE__ */ g("p", {
 												className: "br-hint",
 												id: "new-text-hint",
-												children: nh
+												children: oh
 											})
 										]
 									}),
@@ -22740,7 +22782,7 @@ function dh({ entry: e, ...t }) {
 									className: "nr-gates",
 									"aria-label": "五关",
 									children: [
-										/* @__PURE__ */ g(ph, {
+										/* @__PURE__ */ g(_h, {
 											n: 1,
 											icon: "sign",
 											title: "同意",
@@ -22755,7 +22797,7 @@ function dh({ entry: e, ...t }) {
 												}), /* @__PURE__ */ g("span", { children: "我是作者，或已取得作者同意" })]
 											})
 										}),
-										/* @__PURE__ */ _(ph, {
+										/* @__PURE__ */ _(_h, {
 											n: 2,
 											icon: "security",
 											title: "密级",
@@ -22769,7 +22811,7 @@ function dh({ entry: e, ...t }) {
 												className: "nr-opts",
 												role: "radiogroup",
 												"aria-label": "第 2 关：密级",
-												children: ih.map((e) => /* @__PURE__ */ _("label", {
+												children: ch.map((e) => /* @__PURE__ */ _("label", {
 													className: `nr-opt${G === e ? " is-on" : ""}${q.includes(e) ? " is-refused" : ""}`,
 													children: [
 														/* @__PURE__ */ g("input", {
@@ -22788,7 +22830,7 @@ function dh({ entry: e, ...t }) {
 												}, e))
 											})]
 										}),
-										/* @__PURE__ */ g(ph, {
+										/* @__PURE__ */ g(_h, {
 											n: 3,
 											icon: "feasibility",
 											title: "金额、公司名、合同号",
@@ -22819,21 +22861,21 @@ function dh({ entry: e, ...t }) {
 												})]
 											})
 										}),
-										/* @__PURE__ */ g(ph, {
+										/* @__PURE__ */ g(_h, {
 											n: 4,
 											icon: "person",
 											title: "个人信息：自动打码",
 											state: lt[3],
 											word: ut(lt[3], ""),
-											children: /* @__PURE__ */ g("p", { children: qm })
+											children: /* @__PURE__ */ g("p", { children: Zm })
 										}),
-										/* @__PURE__ */ g(ph, {
+										/* @__PURE__ */ g(_h, {
 											n: 5,
 											icon: "signer",
 											title: "密钥：自动打码",
 											state: lt[4],
 											word: ut(lt[4], ""),
-											children: /* @__PURE__ */ g("p", { children: Jm })
+											children: /* @__PURE__ */ g("p", { children: Qm })
 										})
 									]
 								}),
@@ -22850,7 +22892,7 @@ function dh({ entry: e, ...t }) {
 										}), Pe.busy ? "正在检查…" : "先检查"]
 									}), /* @__PURE__ */ g("span", {
 										className: "br-hint",
-										children: Ae && Ae.print !== ke ? "表单改过了，这次检查不算数了。" : th
+										children: Ae && Ae.print !== ke ? "表单改过了，这次检查不算数了。" : ah
 									})]
 								}),
 								Pe.error && /* @__PURE__ */ g("p", {
@@ -22858,7 +22900,7 @@ function dh({ entry: e, ...t }) {
 									role: "alert",
 									children: Pe.error
 								}),
-								Ae && /* @__PURE__ */ g(mh, {
+								Ae && /* @__PURE__ */ g(vh, {
 									c: Ae.result,
 									stale: Ae.print !== ke
 								})
@@ -22869,7 +22911,7 @@ function dh({ entry: e, ...t }) {
 						className: `br-card nr-sec${ft ? " is-ok" : ""}`,
 						"aria-label": "开工",
 						children: [
-							/* @__PURE__ */ g(fh, {
+							/* @__PURE__ */ g(gh, {
 								n: 3,
 								title: "开工",
 								state: ht(2),
@@ -22960,7 +23002,7 @@ function dh({ entry: e, ...t }) {
 								role: "alert",
 								children: Fe.error
 							}),
-							Ie && /* @__PURE__ */ g(gh, {
+							Ie && /* @__PURE__ */ g(bh, {
 								r: Ie,
 								big: ge === "big",
 								fast: ge === "fast",
@@ -22985,7 +23027,7 @@ function dh({ entry: e, ...t }) {
 		]
 	});
 }
-function fh({ n: e, title: t, state: n, sub: r }) {
+function gh({ n: e, title: t, state: n, sub: r }) {
 	return /* @__PURE__ */ _("header", {
 		className: "nr-head",
 		"data-step": e,
@@ -23001,8 +23043,8 @@ function fh({ n: e, title: t, state: n, sub: r }) {
 		]
 	});
 }
-function ph({ n: e, icon: t, title: n, state: r, word: i, children: a }) {
-	let o = ah[r];
+function _h({ n: e, icon: t, title: n, state: r, word: i, children: a }) {
+	let o = lh[r];
 	return /* @__PURE__ */ _("li", {
 		className: `nr-gate is-${r}`,
 		"data-testid": `gate-${e}`,
@@ -23040,8 +23082,8 @@ function ph({ n: e, icon: t, title: n, state: r, word: i, children: a }) {
 		]
 	});
 }
-function mh({ c: e, stale: t }) {
-	let n = e.ok && e.blocking.length === 0 && !e.error, r = [...e.blocking_raw ?? [], ...e.findings], i = (e.files ?? []).filter((e) => e.review), a = i.length ? i.map((e) => [e.name, ch(e.review)]) : e.review.map((e) => ["", ch(e)]);
+function vh({ c: e, stale: t }) {
+	let n = e.ok && e.blocking.length === 0 && !e.error, r = [...e.blocking_raw ?? [], ...e.findings], i = (e.files ?? []).filter((e) => e.review), a = i.length ? i.map((e) => [e.name, fh(e.review)]) : e.review.map((e) => ["", fh(e)]);
 	return /* @__PURE__ */ _("div", {
 		className: `nr-result${t ? " is-stale" : ""}`,
 		"data-testid": "check-result",
@@ -23066,21 +23108,21 @@ function mh({ c: e, stale: t }) {
 			!e.error && /* @__PURE__ */ _(h, { children: [/* @__PURE__ */ _("div", {
 				className: "nr-cells",
 				children: [
-					/* @__PURE__ */ g(hh, {
+					/* @__PURE__ */ g(yh, {
 						n: e.blocking.length,
 						label: "拦下",
 						tone: e.blocking.length ? "bad" : "ok"
 					}),
-					/* @__PURE__ */ g(hh, {
+					/* @__PURE__ */ g(yh, {
 						n: e.review.length,
 						label: "请你确认",
 						tone: e.review.length ? "warn" : "ok"
 					}),
-					/* @__PURE__ */ g(hh, {
+					/* @__PURE__ */ g(yh, {
 						n: e.sources,
 						label: "份收下"
 					}),
-					/* @__PURE__ */ g(hh, {
+					/* @__PURE__ */ g(yh, {
 						n: e.refused.length,
 						label: "份没收",
 						tone: e.refused.length ? "warn" : void 0
@@ -23148,13 +23190,13 @@ function mh({ c: e, stale: t }) {
 		]
 	});
 }
-function hh({ n: e, label: t, tone: n }) {
+function yh({ n: e, label: t, tone: n }) {
 	return /* @__PURE__ */ _("div", {
 		className: `nr-cell${n ? ` is-${n}` : ""}`,
 		children: [/* @__PURE__ */ g("b", { children: e }), /* @__PURE__ */ g("small", { children: t })]
 	});
 }
-function gh({ r: e, big: t = !1, fast: n = !1, path: r, onOpen: i, onBoard: a, onItem: o, onMe: s }) {
+function bh({ r: e, big: t = !1, fast: n = !1, path: r, onOpen: i, onBoard: a, onItem: o, onMe: s }) {
 	return /* @__PURE__ */ _("div", {
 		className: `nr-started ${e.ok ? "is-ok" : "is-bad"}`,
 		"data-testid": "start-result",
@@ -23168,7 +23210,7 @@ function gh({ r: e, big: t = !1, fast: n = !1, path: r, onOpen: i, onBoard: a, o
 				}), /* @__PURE__ */ _("div", { children: [/* @__PURE__ */ g("b", {
 					role: "status",
 					children: e.ok ? `开工了${e.key ? `：${e.key}` : ""}` : e.problem ? `没开成：${e.problem.text}` : "没开成"
-				}), /* @__PURE__ */ g("small", { children: e.ok ? e.url ? Eo[n ? "fast" : "lean"].startedNext : `分支和工作目录都好了。要开会话时，在${X.openDetail}里点「${X.openSession}」。` : e.problem?.todo || "原因在下面「细节」里（开工时 brain-kit 的原话）：照它改好，再点「开工」。" })] })]
+				}), /* @__PURE__ */ g("small", { children: e.ok ? e.url ? Do[n ? "fast" : "lean"].startedNext : `分支和工作目录都好了。要开会话时，在${X.openDetail}里点「${X.openSession}」。` : e.problem?.todo || "原因在下面「细节」里（开工时 brain-kit 的原话）：照它改好，再点「开工」。" })] })]
 			}),
 			e.ok && /* @__PURE__ */ _("dl", {
 				className: "nr-facts",
@@ -23241,7 +23283,7 @@ function gh({ r: e, big: t = !1, fast: n = !1, path: r, onOpen: i, onBoard: a, o
 		]
 	});
 }
-var _h = "\n.nr-root { --nr-gap: 16px; container: nr / inline-size; }\n.nr-hero { gap: 16px; padding: 22px 26px; }\n.nr-hero h2 { margin-bottom: 4px; }\n.nr-form { display: grid; gap: var(--nr-gap); }\n.nr-sec { gap: 14px; }\n.nr-head { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; }\n.nr-head h3 { font-size: 1.15em; font-weight: 800; color: var(--text-strong); margin: 0; }\n.nr-head small { color: var(--muted); font-size: .88em; }\n.nr-bad-icon { color: var(--kt-bad); }\n.nr-wait-icon { color: var(--kt-approve); }\n.nr-n { display: inline-grid; place-items: center; width: 1.75em; height: 1.75em; border-radius: 50%; font-size: .88em; font-weight: 850;\n  background: color-mix(in srgb, var(--muted) 24%, transparent); color: var(--text-strong); }\n.nr-n.is-done { background: var(--kt-ok-solid); color: #fff; }\n.nr-n.is-now { background: var(--accent); color: var(--accent-fg, #fff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }\n.nr-n.is-bad { background: var(--kt-bad-solid); color: #fff; }\n.nr-n.is-off { background: transparent; border: 1px dashed var(--border-strong, var(--border)); color: var(--muted); }\n.nr-sec.is-ok { border-color: var(--kit-ok); }\n.nr-crew-wait { min-height: 1.6em; }\n.nr-waiting { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }\n.nr-waiting > li { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: start; gap: 6px 10px; padding: 10px 14px; border-radius: 12px;\n  border: 1px solid var(--border); background: var(--kt-glass); }\n.nr-waiting > li > b { color: var(--text-strong); }\n.nr-waiting > li > :nth-child(n+3) { grid-column: 1 / -1; }\n.nr-waiting > li > .nr-waiting-go { justify-self: start; }\n.nr-kit-todo { margin: 0; }\n.nr-kit-todo b { color: var(--muted); font-weight: 650; margin-right: .5em; }\n\n/* the fields: a grid of six columns */\n.nr-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px 16px; align-items: start; }\n.nr-grid > * { grid-column: span 3; min-width: 0; }\n.nr-grid > .is-2 { grid-column: span 2; }\n.nr-grid > .is-4 { grid-column: span 4; }\n.nr-grid > .is-full { grid-column: 1 / -1; }\n@container nr (max-width: 820px) { .nr-grid > * { grid-column: 1 / -1 !important; } }\n.nr-grid :is(input[type=\"text\"], input:not([type]), select, textarea) { width: 100%; }\n.nr-grid > .br-field { align-content: start; }\n.nr-grid textarea { min-height: 2.9em; }\n.nr-grid input[readonly] { opacity: .8; cursor: not-allowed; }\n.nr-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }\n.nr-hl { padding: 6px 8px; margin: -6px -8px; border-radius: 10px; box-shadow: 0 0 0 2px var(--kt-bad); background: color-mix(in srgb, var(--kt-bad) 7%, transparent); }\n.nr-who { display: grid; gap: 6px; }\n.nr-nodocs { margin: 0; display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 12px; border: 1px dashed var(--border-strong, var(--border));\n  color: var(--muted); font-size: .92em; }\n\n/* the five gates: a row of cards, arrows between them (the board's team introduction) */\n.nr-gates { list-style: none; margin: 0; padding: 0; display: grid; gap: 20px;\n  grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr) minmax(0, 1.1fr) minmax(0, 1.35fr) minmax(0, 1fr); align-items: stretch; }\n@container nr (max-width: 1180px) { .nr-gates { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } .nr-gate::after { display: none; } }\n@container nr (max-width: 560px) { .nr-gates { grid-template-columns: minmax(0, 1fr); } }\n.nr-gate { position: relative; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px 14px 14px; border-radius: 14px;\n  border: 1px solid var(--border); background: var(--bg-elevated, var(--card)); transition: border-color .2s, background .2s; }\n.nr-gate:not(:last-child)::after { content: '→'; position: absolute; right: -16px; top: 50%; transform: translateY(-50%); color: var(--kt-handoff); font-weight: 900; font-size: 1.1em; }\n.nr-gate.is-ok { border-color: var(--kit-ok); background: color-mix(in srgb, var(--kt-ok) 7%, var(--card)); }\n.nr-gate.is-wait { border-color: var(--kit-wait); background: color-mix(in srgb, var(--kt-approve) 6%, var(--card)); }\n.nr-gate.is-bad { border-color: var(--kt-bad); box-shadow: 0 0 0 1px var(--kt-bad); background: color-mix(in srgb, var(--kt-bad) 9%, var(--card)); }\n.nr-gate.is-warn { border-color: color-mix(in srgb, var(--kt-warn) 60%, var(--border)); background: color-mix(in srgb, var(--kt-warn) 7%, var(--card)); }\n.nr-gate.is-auto { border-color: color-mix(in srgb, var(--kt-info) 38%, var(--border)); }\n.nr-gate-top { display: flex; align-items: center; gap: 8px; }\n.nr-gate-top .kt-role-icon { color: var(--text-strong); opacity: .9; }\n.nr-gate.is-ok .nr-gate-top .kt-role-icon { color: var(--kt-ok); opacity: 1; }\n.nr-gate.is-wait .nr-gate-top .kt-role-icon { color: var(--kt-approve); opacity: 1; }\n.nr-gate.is-bad .nr-gate-top .kt-role-icon { color: var(--kt-bad); opacity: 1; }\n.nr-gate-n { font-size: .84em; font-weight: 800; color: var(--muted); letter-spacing: .04em; white-space: nowrap; }\n.nr-gate-top .kt-pill { margin-left: auto; }\n.nr-gate.is-wait .kt-pill i { animation: kt-blink 1.6s ease-in-out infinite; }\n.nr-gate-title { font-size: 1.06em; font-weight: 800; color: var(--text-strong); }\n.nr-gate p { margin: 0; font-size: .86em; color: var(--text); line-height: 1.55; }\n.nr-gate p.nr-gate-rule { color: var(--kt-warn); font-weight: 650; }\n.nr-opts { display: flex; flex-wrap: wrap; gap: 6px; }\n.nr-opt { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px 4px 8px; border-radius: 999px; cursor: pointer; font-size: .9em; font-weight: 650;\n  border: 1px solid var(--border-strong, var(--border)); background: var(--card); color: var(--text); }\n.nr-opt input { margin: 0; accent-color: var(--accent); }\n.nr-opt:hover { border-color: var(--accent); }\n.nr-opt.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 17%, var(--card)); color: var(--text-strong); }\n.nr-opt.is-refused { border-style: dashed; }\n.nr-opt.is-refused.is-on { border-color: var(--kt-bad); background: color-mix(in srgb, var(--kt-bad) 12%, var(--card)); }\n.nr-opt .nr-no { font-size: .8em; color: var(--kt-bad); font-weight: 750; }\n.nr-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }\n.nr-gate > .nr-opt { align-self: flex-start; border-radius: 12px; white-space: normal; }\n\n/* the check's answer */\n.nr-result { display: grid; gap: 12px; }\n.nr-result.is-stale { opacity: .55; }\n.nr-verdict { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; font-size: 1.04em; }\n.nr-verdict.is-ok { border: 1px solid var(--kit-ok); background: color-mix(in srgb, var(--kt-ok) 9%, var(--card)); color: var(--kt-ok); }\n.nr-verdict.is-bad { border: 1px solid var(--kt-bad); background: color-mix(in srgb, var(--kt-bad) 9%, var(--card)); color: var(--kt-bad); }\n.nr-verdict b { font-weight: 800; }\n.nr-stops { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }\n.nr-stops li { padding: 8px 12px; border-radius: 10px; border-left: 3px solid var(--kt-bad); background: color-mix(in srgb, var(--kt-bad) 9%, transparent);\n  color: var(--text-strong); font-weight: 650; }\n.nr-cells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }\n@container nr (max-width: 820px) { .nr-cells { grid-template-columns: repeat(2, minmax(0, 1fr)); } }\n.nr-cell { display: flex; align-items: baseline; gap: 8px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--kt-glass); }\n.nr-cell b { font-size: 1.9em; font-weight: 800; line-height: 1.1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--text-strong); }\n.nr-cell small { color: var(--muted); font-weight: 700; font-size: .9em; }\n.nr-cell.is-ok { border-color: var(--kit-ok); } .nr-cell.is-ok b { color: var(--kt-ok); }\n.nr-cell.is-bad { border-color: var(--kt-bad); background: color-mix(in srgb, var(--kt-bad) 9%, transparent); } .nr-cell.is-bad b { color: var(--kt-bad); }\n.nr-cell.is-warn { border-color: color-mix(in srgb, var(--kt-warn) 60%, var(--border)); background: color-mix(in srgb, var(--kt-warn) 8%, transparent); } .nr-cell.is-warn b { color: var(--kt-warn); }\n.nr-pkg { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }\n.nr-pkg li { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 11px; border-radius: 10px;\n  border: 1px solid color-mix(in srgb, var(--kt-info) 50%, var(--border)); background: color-mix(in srgb, var(--kt-info) 9%, transparent); }\n.nr-pkg small { color: var(--muted); font-size: .84em; font-weight: 650; }\n.nr-pkg b { color: var(--text-strong); font-weight: 750; }\n.nr-files { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17em), 1fr)); gap: 8px; }\n.nr-file { display: grid; gap: 6px; align-content: start; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--kt-glass); min-width: 0; }\n.nr-file > b { display: flex; align-items: center; gap: 6px; color: var(--text-strong); word-break: break-all; }\n.nr-file ul { margin: 0; padding-left: 1.2em; display: grid; gap: 2px; font-size: .88em; color: var(--text); }\n.nr-file.is-refused { border-style: dashed; border-color: color-mix(in srgb, var(--kt-warn) 60%, var(--border)); }\n.nr-file-no { display: flex; align-items: baseline; gap: 6px; font-size: .88em; color: var(--kt-warn); font-weight: 650; }\n.nr-file-no > .br-chip { flex: none; }\n.nr-review { display: grid; gap: 6px; padding: 10px 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--kt-warn) 60%, var(--border));\n  background: color-mix(in srgb, var(--kt-warn) 8%, var(--card)); }\n.nr-review-head { display: inline-flex; align-items: center; gap: 8px; }\n.nr-review-head i { font-style: normal; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; font-weight: 900; font-size: .85em;\n  color: var(--kt-warn); border: 2px solid var(--kt-warn); background: color-mix(in srgb, var(--kt-warn) 14%, transparent); }\n.nr-review ul { margin: 0; padding-left: 1.3em; color: var(--text-strong); }\n.nr-review li b { font-weight: 700; }\n.nr-review p { margin: 0; font-size: .86em; color: var(--muted); }\n.nr-raw pre { white-space: pre-wrap; word-break: break-word; max-height: 16em; overflow: auto; }\n\n/* 开工 */\n.nr-toggles { display: flex; flex-wrap: wrap; gap: 8px; }\n.nr-toggle { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 12px; cursor: pointer; font-weight: 650;\n  border: 1px solid var(--border); background: var(--kt-glass); color: var(--text); }\n.nr-toggle input { margin: 0; accent-color: var(--accent); }\n.nr-toggle.is-on { border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); background: color-mix(in srgb, var(--accent) 10%, var(--card)); color: var(--text-strong); }\n.nr-toggle.is-disabled { opacity: .55; cursor: not-allowed; }\n.nr-toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }\n.nr-push { padding: 10px 14px; border-radius: 12px; border: 1px solid var(--kit-wait); background: color-mix(in srgb, var(--kt-approve) 6%, var(--card)); }\n.nr-wip { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 9px 12px; border-radius: 10px; color: var(--text);\n  border: 1px dashed color-mix(in srgb, var(--kt-warn) 50%, var(--border)); background: color-mix(in srgb, var(--kt-warn) 6%, transparent); }\n.nr-wip .kt-role-icon { flex: none; margin-top: 2px; color: var(--kt-warn); }\n.nr-go-row { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }\n.nr-go-btn { font-size: 1.14em; padding: 12px 34px; border-radius: 14px; font-weight: 800; }\n.nr-go-btn:not(:disabled) { box-shadow: 0 10px 30px -12px var(--accent); }\n.nr-why { display: inline-flex; align-items: center; gap: 7px; padding: 5px 13px; border-radius: 999px; font-weight: 700; min-width: 0;\n  color: var(--kt-approve); background: color-mix(in srgb, var(--kt-approve) 11%, transparent); border: 1px solid color-mix(in srgb, var(--kt-approve) 42%, transparent); }\n.nr-why i { font-style: normal; }\n.nr-why.is-ok { color: var(--kt-ok); background: color-mix(in srgb, var(--kt-ok) 11%, transparent); border-color: color-mix(in srgb, var(--kt-ok) 42%, transparent); }\n.nr-started { display: grid; gap: 14px; padding: 16px 20px; border-radius: 16px; border: 1px solid var(--kit-ok);\n  background: radial-gradient(70% 120% at 0% 0%, color-mix(in srgb, var(--kt-ok) 14%, transparent), transparent 60%), var(--card); }\n.nr-started.is-bad { border-color: var(--kit-bad); background: radial-gradient(70% 120% at 0% 0%, color-mix(in srgb, var(--kt-bad) 12%, transparent), transparent 60%), var(--card); }\n.nr-started-head { display: flex; align-items: center; gap: 14px; }\n.nr-started-head > div { display: grid; gap: 2px; }\n.nr-started-head b { font-size: 1.35em; font-weight: 850; color: var(--text-strong); }\n.nr-started-head small { color: var(--text); font-size: .95em; }\n.nr-started-mark { flex: none; width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; font-weight: 900; font-size: 1.35em;\n  background: var(--kt-ok-solid); color: #fff; box-shadow: 0 0 24px -6px var(--kt-ok); }\n.nr-started.is-bad .nr-started-mark { background: var(--kt-bad-solid); box-shadow: none; }\n.nr-facts { display: grid; grid-template-columns: repeat(2, minmax(0, auto)); justify-content: start; gap: 8px 28px; margin: 0; }\n@container nr (max-width: 1000px) { .nr-facts { grid-template-columns: minmax(0, 1fr); } }\n.nr-facts dt { font-size: .82em; color: var(--muted); font-weight: 700; }\n.nr-facts dd { margin: 2px 0 0; font-family: var(--mono, ui-monospace, monospace); font-size: .95em; color: var(--text-strong); word-break: break-all; }\n.nr-out pre { max-height: 16em; overflow: auto; }\n\n/* 大需求：先拆成小需求 */\n.nr-big { display: grid; gap: 6px; }\n.nr-big .nr-toggle { justify-self: start; }\n.nr-big .br-hint { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }\n.nr-big-why { display: inline-flex; align-items: center; gap: 6px; padding: 2px 11px; border-radius: 999px; font-weight: 700;\n  color: var(--kt-approve); background: color-mix(in srgb, var(--kt-approve) 11%, transparent); border: 1px solid color-mix(in srgb, var(--kt-approve) 42%, transparent); }\n.nr-big-why i { font-style: normal; }\n.nr-big-next { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 9px 12px; border-radius: 10px; color: var(--text);\n  border: 1px dashed color-mix(in srgb, var(--kt-info) 50%, var(--border)); background: color-mix(in srgb, var(--kt-info) 6%, transparent); }\n.nr-big-next .kt-role-icon { flex: none; margin-top: 2px; color: var(--kt-info); }\n.nr-big-next b { color: var(--text-strong); }\n", vh = [
+var xh = "\n.nr-root { --nr-gap: 16px; container: nr / inline-size; }\n.nr-hero { gap: 16px; padding: 22px 26px; }\n.nr-hero h2 { margin-bottom: 4px; }\n.nr-form { display: grid; gap: var(--nr-gap); }\n.nr-sec { gap: 14px; }\n.nr-head { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; }\n.nr-head h3 { font-size: 1.15em; font-weight: 800; color: var(--text-strong); margin: 0; }\n.nr-head small { color: var(--muted); font-size: .88em; }\n.nr-bad-icon { color: var(--kt-bad); }\n.nr-wait-icon { color: var(--kt-approve); }\n.nr-n { display: inline-grid; place-items: center; width: 1.75em; height: 1.75em; border-radius: 50%; font-size: .88em; font-weight: 850;\n  background: color-mix(in srgb, var(--muted) 24%, transparent); color: var(--text-strong); }\n.nr-n.is-done { background: var(--kt-ok-solid); color: #fff; }\n.nr-n.is-now { background: var(--accent); color: var(--accent-fg, #fff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }\n.nr-n.is-bad { background: var(--kt-bad-solid); color: #fff; }\n.nr-n.is-off { background: transparent; border: 1px dashed var(--border-strong, var(--border)); color: var(--muted); }\n.nr-sec.is-ok { border-color: var(--kit-ok); }\n.nr-crew-wait { min-height: 1.6em; }\n.nr-waiting { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }\n.nr-waiting > li { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: start; gap: 6px 10px; padding: 10px 14px; border-radius: 12px;\n  border: 1px solid var(--border); background: var(--kt-glass); }\n.nr-waiting > li > b { color: var(--text-strong); }\n.nr-waiting > li > :nth-child(n+3) { grid-column: 1 / -1; }\n.nr-waiting > li > .nr-waiting-go { justify-self: start; }\n.nr-kit-todo { margin: 0; }\n.nr-kit-todo b { color: var(--muted); font-weight: 650; margin-right: .5em; }\n\n/* the fields: a grid of six columns */\n.nr-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px 16px; align-items: start; }\n.nr-grid > * { grid-column: span 3; min-width: 0; }\n.nr-grid > .is-2 { grid-column: span 2; }\n.nr-grid > .is-4 { grid-column: span 4; }\n.nr-grid > .is-full { grid-column: 1 / -1; }\n@container nr (max-width: 820px) { .nr-grid > * { grid-column: 1 / -1 !important; } }\n.nr-grid :is(input[type=\"text\"], input:not([type]), select, textarea) { width: 100%; }\n.nr-grid > .br-field { align-content: start; }\n.nr-grid textarea { min-height: 2.9em; }\n.nr-grid input[readonly] { opacity: .8; cursor: not-allowed; }\n.nr-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }\n.nr-hl { padding: 6px 8px; margin: -6px -8px; border-radius: 10px; box-shadow: 0 0 0 2px var(--kt-bad); background: color-mix(in srgb, var(--kt-bad) 7%, transparent); }\n.nr-who { display: grid; gap: 6px; }\n.nr-nodocs { margin: 0; display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 12px; border: 1px dashed var(--border-strong, var(--border));\n  color: var(--muted); font-size: .92em; }\n\n/* the five gates: a row of cards, arrows between them (the board's team introduction) */\n.nr-gates { list-style: none; margin: 0; padding: 0; display: grid; gap: 20px;\n  grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr) minmax(0, 1.1fr) minmax(0, 1.35fr) minmax(0, 1fr); align-items: stretch; }\n@container nr (max-width: 1180px) { .nr-gates { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } .nr-gate::after { display: none; } }\n@container nr (max-width: 560px) { .nr-gates { grid-template-columns: minmax(0, 1fr); } }\n.nr-gate { position: relative; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px 14px 14px; border-radius: 14px;\n  border: 1px solid var(--border); background: var(--bg-elevated, var(--card)); transition: border-color .2s, background .2s; }\n.nr-gate:not(:last-child)::after { content: '→'; position: absolute; right: -16px; top: 50%; transform: translateY(-50%); color: var(--kt-handoff); font-weight: 900; font-size: 1.1em; }\n.nr-gate.is-ok { border-color: var(--kit-ok); background: color-mix(in srgb, var(--kt-ok) 7%, var(--card)); }\n.nr-gate.is-wait { border-color: var(--kit-wait); background: color-mix(in srgb, var(--kt-approve) 6%, var(--card)); }\n.nr-gate.is-bad { border-color: var(--kt-bad); box-shadow: 0 0 0 1px var(--kt-bad); background: color-mix(in srgb, var(--kt-bad) 9%, var(--card)); }\n.nr-gate.is-warn { border-color: color-mix(in srgb, var(--kt-warn) 60%, var(--border)); background: color-mix(in srgb, var(--kt-warn) 7%, var(--card)); }\n.nr-gate.is-auto { border-color: color-mix(in srgb, var(--kt-info) 38%, var(--border)); }\n.nr-gate-top { display: flex; align-items: center; gap: 8px; }\n.nr-gate-top .kt-role-icon { color: var(--text-strong); opacity: .9; }\n.nr-gate.is-ok .nr-gate-top .kt-role-icon { color: var(--kt-ok); opacity: 1; }\n.nr-gate.is-wait .nr-gate-top .kt-role-icon { color: var(--kt-approve); opacity: 1; }\n.nr-gate.is-bad .nr-gate-top .kt-role-icon { color: var(--kt-bad); opacity: 1; }\n.nr-gate-n { font-size: .84em; font-weight: 800; color: var(--muted); letter-spacing: .04em; white-space: nowrap; }\n.nr-gate-top .kt-pill { margin-left: auto; }\n.nr-gate.is-wait .kt-pill i { animation: kt-blink 1.6s ease-in-out infinite; }\n.nr-gate-title { font-size: 1.06em; font-weight: 800; color: var(--text-strong); }\n.nr-gate p { margin: 0; font-size: .86em; color: var(--text); line-height: 1.55; }\n.nr-gate p.nr-gate-rule { color: var(--kt-warn); font-weight: 650; }\n.nr-opts { display: flex; flex-wrap: wrap; gap: 6px; }\n.nr-opt { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px 4px 8px; border-radius: 999px; cursor: pointer; font-size: .9em; font-weight: 650;\n  border: 1px solid var(--border-strong, var(--border)); background: var(--card); color: var(--text); }\n.nr-opt input { margin: 0; accent-color: var(--accent); }\n.nr-opt:hover { border-color: var(--accent); }\n.nr-opt.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 17%, var(--card)); color: var(--text-strong); }\n.nr-opt.is-refused { border-style: dashed; }\n.nr-opt.is-refused.is-on { border-color: var(--kt-bad); background: color-mix(in srgb, var(--kt-bad) 12%, var(--card)); }\n.nr-opt .nr-no { font-size: .8em; color: var(--kt-bad); font-weight: 750; }\n.nr-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }\n.nr-gate > .nr-opt { align-self: flex-start; border-radius: 12px; white-space: normal; }\n\n/* the check's answer */\n.nr-result { display: grid; gap: 12px; }\n.nr-result.is-stale { opacity: .55; }\n.nr-verdict { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; font-size: 1.04em; }\n.nr-verdict.is-ok { border: 1px solid var(--kit-ok); background: color-mix(in srgb, var(--kt-ok) 9%, var(--card)); color: var(--kt-ok); }\n.nr-verdict.is-bad { border: 1px solid var(--kt-bad); background: color-mix(in srgb, var(--kt-bad) 9%, var(--card)); color: var(--kt-bad); }\n.nr-verdict b { font-weight: 800; }\n.nr-stops { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }\n.nr-stops li { padding: 8px 12px; border-radius: 10px; border-left: 3px solid var(--kt-bad); background: color-mix(in srgb, var(--kt-bad) 9%, transparent);\n  color: var(--text-strong); font-weight: 650; }\n.nr-cells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }\n@container nr (max-width: 820px) { .nr-cells { grid-template-columns: repeat(2, minmax(0, 1fr)); } }\n.nr-cell { display: flex; align-items: baseline; gap: 8px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--kt-glass); }\n.nr-cell b { font-size: 1.9em; font-weight: 800; line-height: 1.1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--text-strong); }\n.nr-cell small { color: var(--muted); font-weight: 700; font-size: .9em; }\n.nr-cell.is-ok { border-color: var(--kit-ok); } .nr-cell.is-ok b { color: var(--kt-ok); }\n.nr-cell.is-bad { border-color: var(--kt-bad); background: color-mix(in srgb, var(--kt-bad) 9%, transparent); } .nr-cell.is-bad b { color: var(--kt-bad); }\n.nr-cell.is-warn { border-color: color-mix(in srgb, var(--kt-warn) 60%, var(--border)); background: color-mix(in srgb, var(--kt-warn) 8%, transparent); } .nr-cell.is-warn b { color: var(--kt-warn); }\n.nr-pkg { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }\n.nr-pkg li { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 11px; border-radius: 10px;\n  border: 1px solid color-mix(in srgb, var(--kt-info) 50%, var(--border)); background: color-mix(in srgb, var(--kt-info) 9%, transparent); }\n.nr-pkg small { color: var(--muted); font-size: .84em; font-weight: 650; }\n.nr-pkg b { color: var(--text-strong); font-weight: 750; }\n.nr-files { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17em), 1fr)); gap: 8px; }\n.nr-file { display: grid; gap: 6px; align-content: start; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--kt-glass); min-width: 0; }\n.nr-file > b { display: flex; align-items: center; gap: 6px; color: var(--text-strong); word-break: break-all; }\n.nr-file ul { margin: 0; padding-left: 1.2em; display: grid; gap: 2px; font-size: .88em; color: var(--text); }\n.nr-file.is-refused { border-style: dashed; border-color: color-mix(in srgb, var(--kt-warn) 60%, var(--border)); }\n.nr-file-no { display: flex; align-items: baseline; gap: 6px; font-size: .88em; color: var(--kt-warn); font-weight: 650; }\n.nr-file-no > .br-chip { flex: none; }\n.nr-review { display: grid; gap: 6px; padding: 10px 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--kt-warn) 60%, var(--border));\n  background: color-mix(in srgb, var(--kt-warn) 8%, var(--card)); }\n.nr-review-head { display: inline-flex; align-items: center; gap: 8px; }\n.nr-review-head i { font-style: normal; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; font-weight: 900; font-size: .85em;\n  color: var(--kt-warn); border: 2px solid var(--kt-warn); background: color-mix(in srgb, var(--kt-warn) 14%, transparent); }\n.nr-review ul { margin: 0; padding-left: 1.3em; color: var(--text-strong); }\n.nr-review li b { font-weight: 700; }\n.nr-review p { margin: 0; font-size: .86em; color: var(--muted); }\n.nr-raw pre { white-space: pre-wrap; word-break: break-word; max-height: 16em; overflow: auto; }\n\n/* 开工 */\n.nr-toggles { display: flex; flex-wrap: wrap; gap: 8px; }\n.nr-toggle { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 12px; cursor: pointer; font-weight: 650;\n  border: 1px solid var(--border); background: var(--kt-glass); color: var(--text); }\n.nr-toggle input { margin: 0; accent-color: var(--accent); }\n.nr-toggle.is-on { border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); background: color-mix(in srgb, var(--accent) 10%, var(--card)); color: var(--text-strong); }\n.nr-toggle.is-disabled { opacity: .55; cursor: not-allowed; }\n.nr-toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }\n.nr-push { padding: 10px 14px; border-radius: 12px; border: 1px solid var(--kit-wait); background: color-mix(in srgb, var(--kt-approve) 6%, var(--card)); }\n.nr-wip { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 9px 12px; border-radius: 10px; color: var(--text);\n  border: 1px dashed color-mix(in srgb, var(--kt-warn) 50%, var(--border)); background: color-mix(in srgb, var(--kt-warn) 6%, transparent); }\n.nr-wip .kt-role-icon { flex: none; margin-top: 2px; color: var(--kt-warn); }\n.nr-go-row { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }\n.nr-go-btn { font-size: 1.14em; padding: 12px 34px; border-radius: 14px; font-weight: 800; }\n.nr-go-btn:not(:disabled) { box-shadow: 0 10px 30px -12px var(--accent); }\n.nr-why { display: inline-flex; align-items: center; gap: 7px; padding: 5px 13px; border-radius: 999px; font-weight: 700; min-width: 0;\n  color: var(--kt-approve); background: color-mix(in srgb, var(--kt-approve) 11%, transparent); border: 1px solid color-mix(in srgb, var(--kt-approve) 42%, transparent); }\n.nr-why i { font-style: normal; }\n.nr-why.is-ok { color: var(--kt-ok); background: color-mix(in srgb, var(--kt-ok) 11%, transparent); border-color: color-mix(in srgb, var(--kt-ok) 42%, transparent); }\n.nr-started { display: grid; gap: 14px; padding: 16px 20px; border-radius: 16px; border: 1px solid var(--kit-ok);\n  background: radial-gradient(70% 120% at 0% 0%, color-mix(in srgb, var(--kt-ok) 14%, transparent), transparent 60%), var(--card); }\n.nr-started.is-bad { border-color: var(--kit-bad); background: radial-gradient(70% 120% at 0% 0%, color-mix(in srgb, var(--kt-bad) 12%, transparent), transparent 60%), var(--card); }\n.nr-started-head { display: flex; align-items: center; gap: 14px; }\n.nr-started-head > div { display: grid; gap: 2px; }\n.nr-started-head b { font-size: 1.35em; font-weight: 850; color: var(--text-strong); }\n.nr-started-head small { color: var(--text); font-size: .95em; }\n.nr-started-mark { flex: none; width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; font-weight: 900; font-size: 1.35em;\n  background: var(--kt-ok-solid); color: #fff; box-shadow: 0 0 24px -6px var(--kt-ok); }\n.nr-started.is-bad .nr-started-mark { background: var(--kt-bad-solid); box-shadow: none; }\n.nr-facts { display: grid; grid-template-columns: repeat(2, minmax(0, auto)); justify-content: start; gap: 8px 28px; margin: 0; }\n@container nr (max-width: 1000px) { .nr-facts { grid-template-columns: minmax(0, 1fr); } }\n.nr-facts dt { font-size: .82em; color: var(--muted); font-weight: 700; }\n.nr-facts dd { margin: 2px 0 0; font-family: var(--mono, ui-monospace, monospace); font-size: .95em; color: var(--text-strong); word-break: break-all; }\n.nr-out pre { max-height: 16em; overflow: auto; }\n\n/* 大需求：先拆成小需求 */\n.nr-big { display: grid; gap: 6px; }\n.nr-big .nr-toggle { justify-self: start; }\n.nr-big .br-hint { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }\n.nr-big-why { display: inline-flex; align-items: center; gap: 6px; padding: 2px 11px; border-radius: 999px; font-weight: 700;\n  color: var(--kt-approve); background: color-mix(in srgb, var(--kt-approve) 11%, transparent); border: 1px solid color-mix(in srgb, var(--kt-approve) 42%, transparent); }\n.nr-big-why i { font-style: normal; }\n.nr-big-next { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 9px 12px; border-radius: 10px; color: var(--text);\n  border: 1px dashed color-mix(in srgb, var(--kt-info) 50%, var(--border)); background: color-mix(in srgb, var(--kt-info) 6%, transparent); }\n.nr-big-next .kt-role-icon { flex: none; margin-top: 2px; color: var(--kt-info); }\n.nr-big-next b { color: var(--text-strong); }\n", Sh = [
 	[
 		"需求",
 		"需求",
@@ -23272,7 +23314,7 @@ var _h = "\n.nr-root { --nr-gap: 16px; container: nr / inline-size; }\n.nr-hero 
 		"已合并",
 		"近 14 天"
 	]
-], yh = [
+], Ch = [
 	[
 		"you",
 		"轮到你",
@@ -23303,7 +23345,7 @@ var _h = "\n.nr-root { --nr-gap: 16px; container: nr / inline-size; }\n.nr-hero 
 		"list",
 		!1
 	]
-], bh = Object.fromEntries(yh.map(([e, t]) => [e, t])), xh = Object.fromEntries(vh.map(([e, t]) => [e, t])), Sh = {
+], wh = Object.fromEntries(Ch.map(([e, t]) => [e, t])), Th = Object.fromEntries(Sh.map(([e, t]) => [e, t])), Eh = {
 	you: "you",
 	product: "people",
 	people: "people",
@@ -23312,38 +23354,38 @@ var _h = "\n.nr-root { --nr-gap: 16px; container: nr / inline-size; }\n.nr-hero 
 	runner: "runner",
 	bridge: "runner",
 	nobody: null
-}, Ch = /* @__PURE__ */ new Set([
+}, Dh = /* @__PURE__ */ new Set([
 	"handed_over",
 	"running",
 	"rejected",
 	"parked"
 ]);
-function wh(e) {
+function Oh(e) {
 	if (e.state === "closed" || e.state === "merged_into_parent") return null;
 	if (e.state === "merged") return "已合并";
-	if (!Co(e).intent) return e.mr ? "发布验收" : "构建";
+	if (!wo(e).intent) return e.mr ? "发布验收" : "构建";
 	if (e.state === "acceptance") return "发布验收";
 	if (e.state === "unclaimed") return "构建";
 	let t = e.lean.stage_n, n = t === "✓" || !!t?.startsWith("4."), r = Number(t ?? 0), i = e.state === "handed_over" || e.state === "running" || e.state === "rejected" || e.state === "parked" && (e.mr !== null || e.run_ids.length > 0), a = e.family?.role;
 	return a === "child" && !i ? "构建" : i && !e.local_only ? "交给运行机" : n ? "发布验收" : a === "parent" ? e.family?.family_state === "ready_to_release" ? "发布验收" : "构建" : e.state === "claimed" || r < 2.6 ? "需求" : r < 3.5 ? "设计" : "构建";
 }
-var Th = (e) => e.home ?? e.repo;
-function Eh(e) {
-	return e.state === "unclaimed" ? "unclaimed" : Sh[e.waits.who] ?? (Ch.has(e.state) ? "runner" : "agent");
+var kh = (e) => e.home ?? e.repo;
+function Ah(e) {
+	return e.state === "unclaimed" ? "unclaimed" : Eh[e.waits.who] ?? (Dh.has(e.state) ? "runner" : "agent");
 }
-var Dh = /* @__PURE__ */ new Set([
+var jh = /* @__PURE__ */ new Set([
 	"push_handoff",
 	"open_mr",
 	"full"
 ]);
-function Oh(e) {
+function Mh(e) {
 	let t = e.waits.do;
-	return e.waits.who !== "you" || !t || t === "none" || t === "watch" ? null : e.waits.review && wo(e, "review") ? {
+	return e.waits.who !== "you" || !t || t === "none" || t === "watch" ? null : e.waits.review && To(e, "review") ? {
 		label: X.review,
 		review: {
 			repo: e.repo,
 			key: e.key,
-			slot: Ah(e.session_url),
+			slot: Ph(e.session_url),
 			worktree: e.worktree
 		}
 	} : (t === "reply" || t === "tool") && e.session_url ? {
@@ -23375,7 +23417,7 @@ function Oh(e) {
 			repo: e.repo,
 			reflect: e.key
 		}
-	} : Dh.has(t) ? {
+	} : jh.has(t) ? {
 		label: Y[t],
 		view: {
 			kind: "item",
@@ -23394,12 +23436,12 @@ function Oh(e) {
 		}
 	};
 }
-function kh(e, t) {
+function Nh(e, t) {
 	let n = e.waits.since;
 	return typeof n == "number" && Number.isFinite(n) ? `已等 ${G(t - n)}` : "";
 }
-var Ah = (e) => e ? new URLSearchParams(e.split("?")[1] ?? "").get("sid") : null;
-function jh({ step: e, onGo: t, primary: n = !0 }) {
+var Ph = (e) => e ? new URLSearchParams(e.split("?")[1] ?? "").get("sid") : null;
+function Fh({ step: e, onGo: t, primary: n = !0 }) {
 	let r = p(), i = `kt-btn is-small${n ? " is-primary" : ""} br-step`, a = (e) => e.stopPropagation();
 	if (e.review) {
 		let t = e.review;
@@ -23422,7 +23464,7 @@ function jh({ step: e, onGo: t, primary: n = !0 }) {
 		rel: "noopener noreferrer",
 		onClick: a,
 		"aria-label": `${e.label} ↗`,
-		children: /* @__PURE__ */ g(Mh, { text: e.label })
+		children: /* @__PURE__ */ g(Ih, { text: e.label })
 	}) : /* @__PURE__ */ g("button", {
 		type: "button",
 		className: i,
@@ -23430,10 +23472,10 @@ function jh({ step: e, onGo: t, primary: n = !0 }) {
 		onClick: (n) => {
 			a(n), e.session ? r(e.session) : e.view && t(e.view);
 		},
-		children: /* @__PURE__ */ g(Mh, { text: e.label })
+		children: /* @__PURE__ */ g(Ih, { text: e.label })
 	});
 }
-function Mh({ text: e }) {
+function Ih({ text: e }) {
 	let t = Qe[e] ?? 0;
 	return /* @__PURE__ */ _(h, { children: [t > 0 && /* @__PURE__ */ g("span", {
 		className: "br-nw",
@@ -23443,21 +23485,21 @@ function Mh({ text: e }) {
 		children: [e.slice(t), " ↗"]
 	})] });
 }
-var Nh = /* @__PURE__ */ new Set([
+var Lh = /* @__PURE__ */ new Set([
 	"overdue",
 	"stale",
 	"verify_fails"
 ]);
-function Ph(e) {
+function Rh(e) {
 	let t = /* @__PURE__ */ new Map();
 	for (let n of e.stuck) {
-		if (!Nh.has(n.kind)) continue;
+		if (!Lh.has(n.kind)) continue;
 		let e = `${n.repo}/${n.key}`;
 		t.set(e, [...t.get(e) ?? [], n]);
 	}
 	return t;
 }
-var Fh = (e, t) => e.kind === "verify_fails" ? `${ot.verify_fails} ${t.verify_fails} 次` : ot[e.kind], Ih = (e) => e.some((e) => e.family?.role === "parent" || e.family?.role === "child" || e.state === "unclaimed"), Lh = {
+var zh = (e, t) => e.kind === "verify_fails" ? `${ot.verify_fails} ${t.verify_fails} 次` : ot[e.kind], Bh = (e) => e.some((e) => e.family?.role === "parent" || e.family?.role === "child" || e.state === "unclaimed"), Vh = {
 	unclaimed: {
 		glyph: "◌",
 		tone: "idle",
@@ -23484,7 +23526,7 @@ var Fh = (e, t) => e.kind === "verify_fails" ? `${ot.verify_fails} ${t.verify_fa
 		seg: ""
 	}
 };
-function Rh(e) {
+function Hh(e) {
 	if (e.progress) return {
 		merged: e.progress.merged,
 		total: e.progress.total
@@ -23495,7 +23537,7 @@ function Rh(e) {
 		total: t.length
 	};
 }
-function zh(e) {
+function Uh(e) {
 	return e.blocked_by.map((t) => e.depends_on.find((e) => e.key === t) ?? {
 		key: t,
 		unit: null,
@@ -23505,14 +23547,14 @@ function zh(e) {
 		text: t
 	});
 }
-function Bh(e) {
+function Wh(e) {
 	let t = e.text || e.key;
 	return `等 ${t}${/[）)]$/.test(t) ? "" : " "}合进大需求`;
 }
-function Vh({ f: e }) {
-	let { merged: t, total: n } = Rh(e), r = e.children.filter((e) => e.state !== "closed"), i = r.length ? r.map((e) => ({
+function Gh({ f: e }) {
+	let { merged: t, total: n } = Hh(e), r = e.children.filter((e) => e.state !== "closed"), i = r.length ? r.map((e) => ({
 		key: e.key,
-		cls: Lh[e.state]?.seg ?? "",
+		cls: Vh[e.state]?.seg ?? "",
 		title: `${e.key}${e.unit ? ` ${e.unit}` : ""}：${e.state_label}`
 	})) : Array.from({ length: n }, (e, n) => ({
 		key: String(n),
@@ -23536,13 +23578,13 @@ function Vh({ f: e }) {
 		] })]
 	});
 }
-function Hh({ f: e }) {
+function Kh({ f: e }) {
 	let t = e.children.filter((e) => e.state !== "closed");
 	return /* @__PURE__ */ g("div", {
 		className: "br-fkids",
 		"data-testid": "flow-kids",
 		children: t.map((e) => {
-			let t = Lh[e.state] ?? Lh.claimed;
+			let t = Vh[e.state] ?? Vh.claimed;
 			return /* @__PURE__ */ _("span", {
 				className: `br-fkid tone-${t.tone}`,
 				"data-kid": e.key,
@@ -23566,8 +23608,8 @@ function Hh({ f: e }) {
 		})
 	});
 }
-function Uh({ r: e, at: t, hl: n, repoName: r, late: i = [], h: a }) {
-	let o = Eh(e), s = e.family, c = o === "you" || o === "people", l = o === "agent" || o === "runner", u = o === "unclaimed", d = s?.role === "child" ? s : null, f = s?.role === "parent" ? s : null, p = d ? zh(d) : [], m = Oh(e), h = (c ? kh(e, t) : "") || (e.updated_at === null ? "" : R(e.updated_at, t)), v = u ? "还没人认领" : e.waits.do === "merge" ? [e.owner, ur(e.waits.who, e.owner, !1, "merge")].filter(Boolean).join(" · ") : o === "people" && e.waits.who === "people" ? e.owner ? `等 ${e.owner}` : ze("people") : [e.owner, o === "people" ? ze(e.waits.who) : ""].filter(Boolean).join(" · "), y = e.waits.text || s?.state_label || e.state_label;
+function qh({ r: e, at: t, hl: n, repoName: r, late: i = [], h: a }) {
+	let o = Ah(e), s = e.family, c = o === "you" || o === "people", l = o === "agent" || o === "runner", u = o === "unclaimed", d = s?.role === "child" ? s : null, f = s?.role === "parent" ? s : null, p = d ? Uh(d) : [], m = Mh(e), h = (c ? Nh(e, t) : "") || (e.updated_at === null ? "" : R(e.updated_at, t)), v = u ? "还没人认领" : e.waits.do === "merge" ? [e.owner, ur(e.waits.who, e.owner, !1, "merge")].filter(Boolean).join(" · ") : o === "people" && e.waits.who === "people" ? e.owner ? `等 ${e.owner}` : ze("people") : [e.owner, o === "people" ? ze(e.waits.who) : ""].filter(Boolean).join(" · "), y = e.waits.text || s?.state_label || e.state_label;
 	return p.some((e) => y.includes(e.key)) && (y = d?.state_label || e.state_label), /* @__PURE__ */ _("div", {
 		className: `cto-kcard cto-pick${c ? " is-live is-wait" : l ? " is-live is-agent" : ""}${u ? " br-kfree" : ""}${i.length ? " is-late" : ""}${n === e.key ? " is-hl" : ""}`,
 		"data-key": e.key,
@@ -23598,7 +23640,7 @@ function Uh({ r: e, at: t, hl: n, repoName: r, late: i = [], h: a }) {
 					className: "br-chip tone-bad",
 					"data-testid": "late-mark",
 					title: t.text,
-					children: Fh(t, e)
+					children: zh(t, e)
 				}, t.kind))
 			}),
 			/* @__PURE__ */ g("div", {
@@ -23632,13 +23674,13 @@ function Uh({ r: e, at: t, hl: n, repoName: r, late: i = [], h: a }) {
 			p.map((e) => /* @__PURE__ */ g("div", {
 				className: "br-kblock",
 				"data-testid": "flow-blocked",
-				children: Bh(e)
+				children: Wh(e)
 			}, e.key)),
 			f && /* @__PURE__ */ _("div", {
 				className: "br-fam",
 				"data-testid": "flow-family",
 				title: f.family_label || void 0,
-				children: [/* @__PURE__ */ g(Vh, { f }), /* @__PURE__ */ g(Hh, { f })]
+				children: [/* @__PURE__ */ g(Gh, { f }), /* @__PURE__ */ g(Kh, { f })]
 			}),
 			/* @__PURE__ */ g("div", {
 				className: "cto-kmeta",
@@ -23648,29 +23690,29 @@ function Uh({ r: e, at: t, hl: n, repoName: r, late: i = [], h: a }) {
 					e.credits === null ? "" : `${e.credits_whole ? "" : "至少 "}${z(e.credits)} credits`
 				].filter(Boolean).join(" · ")
 			}),
-			m && /* @__PURE__ */ g(jh, {
+			m && /* @__PURE__ */ g(Fh, {
 				step: m,
 				onGo: a.onGo
 			})
 		]
 	});
 }
-var Wh = 3;
-function Gh({ rows: e, roster: t, partial: n = !1, at: r, hl: i, onNew: a, repoName: o, localOnly: s = !1, repos: l = 1, byPerson: u = !0, ...d }) {
-	let [f, p] = c("stage"), m = u ? f : "stage", v = e.filter((e) => wh(e) && wh(e) !== "已合并"), y = e.filter((e) => wh(e) === "已合并" && ((e.updated_at ?? 0) >= r - 1209600 || e.waits.who === "you")).sort((e, t) => Number(t.waits.who === "you") - Number(e.waits.who === "you")), b = (e, t) => v.filter((n) => wh(n) === e && t.has(n)).sort((e, t) => (e.waits.since ?? Infinity) - (t.waits.since ?? Infinity) || (t.updated_at ?? 0) - (e.updated_at ?? 0)), x = (e) => e === "已合并" ? y.length : v.filter((t) => wh(t) === e).length, S = (e) => v.filter((t) => Eh(t) === e), C = S("you"), w = y.filter((e) => Eh(e) === "you"), T = Object.entries(C.reduce((e, t) => {
+var Jh = 3;
+function Yh({ rows: e, roster: t, partial: n = !1, at: r, hl: i, onNew: a, repoName: o, localOnly: s = !1, repos: l = 1, byPerson: u = !0, ...d }) {
+	let [f, p] = c("stage"), m = u ? f : "stage", v = e.filter((e) => Oh(e) && Oh(e) !== "已合并"), y = e.filter((e) => Oh(e) === "已合并" && ((e.updated_at ?? 0) >= r - 1209600 || e.waits.who === "you")).sort((e, t) => Number(t.waits.who === "you") - Number(e.waits.who === "you")), b = (e, t) => v.filter((n) => Oh(n) === e && t.has(n)).sort((e, t) => (e.waits.since ?? Infinity) - (t.waits.since ?? Infinity) || (t.updated_at ?? 0) - (e.updated_at ?? 0)), x = (e) => e === "已合并" ? y.length : v.filter((t) => Oh(t) === e).length, S = (e) => v.filter((t) => Ah(t) === e), C = S("you"), w = y.filter((e) => Ah(e) === "you"), T = Object.entries(C.reduce((e, t) => {
 		let n = Ze(t.waits);
 		return n ? {
 			...e,
 			[n]: (e[n] ?? 0) + 1
 		} : e;
-	}, {})), E = C.map((e) => e.waits.since).filter((e) => typeof e == "number").sort((e, t) => e - t)[0], D = Ih(e), O = new Set(e.map(Th)).size > 1, k = yh.filter(([e]) => !(s && e === "runner") && (e !== "unclaimed" || D)).map(([e, t, n, r]) => ({
+	}, {})), E = C.map((e) => e.waits.since).filter((e) => typeof e == "number").sort((e, t) => e - t)[0], D = Bh(e), O = new Set(e.map(kh)).size > 1, k = Ch.filter(([e]) => !(s && e === "runner") && (e !== "unclaimed" || D)).map(([e, t, n, r]) => ({
 		id: e,
 		lane: e,
 		name: t,
 		icon: n,
 		wait: r,
 		cls: e === "you" ? " is-you" : e === "unclaimed" ? " br-lane-free" : "",
-		has: (t) => Eh(t) === e,
+		has: (t) => Ah(t) === e,
 		pick: (t) => d.onCell(t, e),
 		empty: (t) => e === "you" ? "此刻没有" : t === "交给运行机" && e === "agent" ? "交给运行机以后就不在本机做了" : t === "构建" && e === "unclaimed" ? "小需求都有人认领了" : ""
 	})), A = t.people.map((e) => ({
@@ -23707,7 +23749,7 @@ function Gh({ rows: e, roster: t, partial: n = !1, at: r, hl: i, onNew: a, repoN
 		has: () => !1,
 		empty: (e) => e === "需求" ? "此刻没有人手上有在做的需求：开需求认领一个，它就在认领人的那一行。" : ""
 	});
-	let j = m === "person" ? A : k, M = Ph(t), N = vh.filter(([e]) => e !== "已合并"), P = `136px ${N.map(([e]) => s && e === "交给运行机" ? "96px" : "minmax(0, 1fr)").join(" ")} minmax(0, 1fr)`;
+	let j = m === "person" ? A : k, M = Rh(t), N = Sh.filter(([e]) => e !== "已合并"), P = `136px ${N.map(([e]) => s && e === "交给运行机" ? "96px" : "minmax(0, 1fr)").join(" ")} minmax(0, 1fr)`;
 	return /* @__PURE__ */ _("section", {
 		className: "cto-card cto-flow",
 		"aria-label": "需求流动",
@@ -23803,7 +23845,7 @@ function Gh({ rows: e, roster: t, partial: n = !1, at: r, hl: i, onNew: a, repoN
 				style: { gridTemplateColumns: P },
 				children: [
 					/* @__PURE__ */ g("div", {}),
-					vh.map(([e, t, n]) => /* @__PURE__ */ g("div", {
+					Sh.map(([e, t, n]) => /* @__PURE__ */ g("div", {
 						className: `cto-kb-h${s && e === "交给运行机" ? " is-off" : ""}`,
 						children: /* @__PURE__ */ _("button", {
 							type: "button",
@@ -23821,7 +23863,7 @@ function Gh({ rows: e, roster: t, partial: n = !1, at: r, hl: i, onNew: a, repoN
 							})]
 						})
 					}, e)),
-					j.map((e, t) => /* @__PURE__ */ g(Kh, {
+					j.map((e, t) => /* @__PURE__ */ g(Xh, {
 						spec: e,
 						first: t === 0,
 						span: j.length,
@@ -23855,7 +23897,7 @@ function Gh({ rows: e, roster: t, partial: n = !1, at: r, hl: i, onNew: a, repoN
 		]
 	});
 }
-function Kh({ spec: e, first: t, span: n, cols: r, cell: i, at: a, hl: o, repoName: s, merged: c, localOnly: l, late: u, h: d }) {
+function Xh({ spec: e, first: t, span: n, cols: r, cell: i, at: a, hl: o, repoName: s, merged: c, localOnly: l, late: u, h: d }) {
 	let { name: f, wait: p, wip: m } = e, v = !!m && m.limit !== null && m.open >= m.limit;
 	return /* @__PURE__ */ _(h, { children: [
 		/* @__PURE__ */ _("div", {
@@ -23900,21 +23942,21 @@ function Kh({ spec: e, first: t, span: n, cols: r, cell: i, at: a, hl: o, repoNa
 						className: "cto-kempty",
 						children: f
 					}),
-					c.slice(0, Wh).map((e) => /* @__PURE__ */ g(Uh, {
+					c.slice(0, Jh).map((e) => /* @__PURE__ */ g(qh, {
 						r: e,
 						at: a,
 						hl: o,
-						repoName: s(Th(e)),
+						repoName: s(kh(e)),
 						late: u.get(`${e.repo}/${e.key}`),
 						h: d
 					}, `${e.repo}/${e.key}`)),
-					c.length > Wh && /* @__PURE__ */ _("button", {
+					c.length > Jh && /* @__PURE__ */ _("button", {
 						type: "button",
 						className: "cto-kmore cto-link",
 						onClick: () => e.pick?.(r),
 						children: [
 							"+",
-							c.length - Wh,
+							c.length - Jh,
 							" 个（见下方交付清单）"
 						]
 					})
@@ -23931,12 +23973,12 @@ function Kh({ spec: e, first: t, span: n, cols: r, cell: i, at: a, hl: o, repoNa
 					children: "近 14 天还没有合并的"
 				}),
 				c.slice(0, 5).map((e) => {
-					let t = e.family?.role === "parent" ? Rh(e.family) : null;
-					return Eh(e) === "you" ? /* @__PURE__ */ g(Uh, {
+					let t = e.family?.role === "parent" ? Hh(e.family) : null;
+					return Ah(e) === "you" ? /* @__PURE__ */ g(qh, {
 						r: e,
 						at: a,
 						hl: o,
-						repoName: s(Th(e)),
+						repoName: s(kh(e)),
 						h: d
 					}, `${e.repo}/${e.key}`) : /* @__PURE__ */ _("button", {
 						type: "button",
@@ -23983,7 +24025,7 @@ function Kh({ spec: e, first: t, span: n, cols: r, cell: i, at: a, hl: o, repoNa
 }
 //#endregion
 //#region src/views/Overview.tsx
-var qh = Object.keys(y), Jh = [
+var Zh = Object.keys(y), Qh = [
 	[
 		et.person,
 		["<化名> <凭证号>", "owner"],
@@ -24005,14 +24047,14 @@ var qh = Object.keys(y), Jh = [
 		""
 	]
 ];
-function Yh() {
+function $h() {
 	return /* @__PURE__ */ _("span", {
 		"data-testid": "who-syntax",
 		children: [
 			"决定表（decisions.md）里「谁定的」那一格（",
 			/* @__PURE__ */ g("code", { children: "Who" }),
 			" 列）这样写：",
-			Jh.map(([e, t, n], r) => /* @__PURE__ */ _("span", { children: [
+			Qh.map(([e, t, n], r) => /* @__PURE__ */ _("span", { children: [
 				r > 0 && "；",
 				"「",
 				e,
@@ -24023,40 +24065,40 @@ function Yh() {
 		]
 	});
 }
-var Xh = "\n.br-ov { container: brov / inline-size; --ov-person: #008300; --ov-ink: color-mix(in srgb, var(--text) 62%, var(--card)); --ov-ink-2: color-mix(in srgb, var(--text) 46%, var(--card));\n  --ov-ink-3: color-mix(in srgb, var(--text) 32%, var(--card)); --ov-ink-4: color-mix(in srgb, var(--text) 18%, var(--card)); --ov-warn: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); }\n.br-ov .cto-hero h2 { font-size: 30px; }\n.br-ov .cto-hero p b { color: var(--text-strong); }\n.br-ov .cto-hero p .br-link { margin-left: 6px; }\n.br-ov .cto-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }\n.br-ov .cto-value .cto-of { font-size: .5em; margin-left: 6px; }\n.br-ov .cto-value.is-word { font-size: 1.9em; color: var(--muted); }\n.br-ov .cto-link-value { font-size: 2.85em; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; margin: 6px 0 2px; }\n.br-ov .cto-foot .br-link { font-size: 13px; }\n.br-ov .cto-card.is-warn { border-color: var(--ov-warn); }\n.br-ov .cto-lines button span.is-you { color: var(--kt-approve); font-weight: 650; }\n.br-ov .br-refresh { display: inline-flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; justify-content: flex-end; }\n\n.br-ov .br-yours { display: grid; gap: 8px; }\n.br-ov .br-yours ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }\n.br-ov .br-yours li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 7px 10px; border-radius: 10px; background: color-mix(in srgb, var(--kt-approve) 6%, var(--cto-cell)); }\n.br-ov .br-yours .br-yt-title { color: var(--text-strong); font-weight: 600; }\n.br-ov .br-waited { color: var(--kt-approve); font-size: 12.5px; font-weight: 650; white-space: nowrap; }\n.br-ov .br-linecopy { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }\n.br-ov .br-linecopy code { white-space: nowrap; }\n.br-ov .br-linecopy code { padding: 1px 8px; border-radius: 6px; border: 1px dashed color-mix(in srgb, var(--kt-approve) 60%, var(--border)); color: var(--text-strong); font-weight: 700; user-select: all; }\n.br-ov .cto-duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--kit-gap-block); align-items: start; }\n.br-ov .cto-duo.is-one { grid-template-columns: minmax(0, 1fr); }\n.br-ov .br-stuck li { background: color-mix(in srgb, var(--kt-bad) 6%, var(--cto-cell)); }\n.br-ov .br-stuck li[data-kind=\"overlap\"] { background: color-mix(in srgb, var(--kt-warn) 7%, var(--cto-cell)); }\n.br-ov .br-stuck li .br-chip { padding: 0 8px; }\n.br-ov .cto-kcard.is-late { border-color: var(--kit-bad); box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-bad) 16%, transparent); }\n.br-ov .br-klate { display: flex; flex-wrap: wrap; gap: 4px; }\n.br-ov .br-klate .br-chip, .br-ov .cto-lane .br-chip { padding: 0 7px; font-size: 11.5px; }\n.br-ov .cto-lane.br-lane-person { flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; }\n.br-ov .br-wip { font-size: 12px; font-weight: 600; color: var(--muted); }\n.br-ov .br-flow-by button { padding: 3px 12px; font-size: 13px; }\n\n.br-ov .cto-lane { justify-content: flex-start; padding: 8px 10px; }\n.br-ov .cto-lane .br-lane-name { white-space: nowrap; font-weight: 650; }\n.br-ov .cto-lane.is-you { background: color-mix(in srgb, var(--kt-approve) 28%, var(--cto-cell)); }\n.br-ov .cto-lane:not(.is-wait) .kt-role-icon { color: var(--kt-run); }\n.br-ov .br-kwait { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; }\n.br-ov .cto-kcard.is-live.is-wait .br-kwait { color: var(--kt-approve); font-weight: 650; }\n.br-ov .cto-kcard .cto-gate { display: inline-flex; align-items: center; gap: 4px; }\n.br-ov .cto-kcard .br-step { justify-self: start; margin-top: 4px; max-width: 100%; white-space: normal; text-align: left; }\n.br-ov .br-review { display: inline-grid; gap: 4px; justify-items: start; }\n.br-ov .br-review .kt-btn { padding: 3px 10px; font-size: 13px; border-radius: 8px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }\n.br-ov .br-review .br-note, .br-ov .br-review .br-error { margin: 0; font-size: 12px; }\n.br-ov .cto-kcard .cto-ktop { flex-wrap: wrap; }\n.br-ov .cto-kmore.cto-link { text-align: left; padding: 0 4px; font-size: 12px; color: var(--accent); }\n.br-ov .cto-stats small { font-size: 14px; font-weight: 500; color: var(--text); margin-left: 4px; }\n.br-ov .cto-stats b { font-weight: inherit; white-space: nowrap; }\n.br-ov .cto-kb-h.is-off .cto-st { color: var(--muted); }\n.br-ov .br-kcell-off { display: grid; place-items: center; writing-mode: vertical-rl; letter-spacing: .2em; color: var(--muted); font-size: 12px; background: transparent; border: 1px dashed var(--border); }\n.br-ov .br-kband { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; padding: 6px 10px; border-radius: 10px; border: 1px dashed var(--border); color: var(--muted); font-size: 13px; }\n.br-ov .br-kband .br-lane-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 650; color: var(--text); }\n\n.br-ov .br-ledger td .br-hint { margin-top: 2px; }\n.br-ov .cto-seg { flex-wrap: wrap; }\n.br-ov .cto-seg button { white-space: nowrap; }\n.br-ov .br-ledger .br-col-req { min-width: 190px; }\n.br-ov .br-ledger .br-col-wait { min-width: 180px; }\n.br-ov .br-ledger .br-col-wait .br-step { margin-top: 4px; }\n.br-ov .br-ledger .br-col-nowrap { white-space: nowrap; }\n.br-ov .br-ledger .br-linecopy { margin-top: 4px; }\n.br-ov .br-lean { display: grid; gap: 3px; min-width: 116px; font-size: 12.5px; color: var(--text); }\n.br-ov .br-nw { white-space: nowrap; }\n.br-ov .br-prog > i.is-next { background: transparent; outline: 1.5px solid var(--kt-run); outline-offset: -1.5px; }\n.br-ov .br-sum code { font-size: .95em; padding: 0 4px; border-radius: 4px; background: var(--kt-glass); }\n.br-ov .br-empty-row td { color: var(--muted); padding: 18px 10px; }\n.br-ov .br-how { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 13px; }\n.br-ov .br-how i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }\n.br-ov .br-acts { display: flex; gap: 6px; align-items: center; white-space: nowrap; }\n.br-ov .br-overlap { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }\n.br-ov .br-funnel-rows { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 13px; }\n.br-ov .br-funnel-rows span { display: inline-flex; align-items: center; gap: 6px; }\n.br-ov .br-funnel-rows b { color: var(--text-strong); font-variant-numeric: tabular-nums; }\n.br-ov .br-funnel-vs { margin-top: 8px; font-size: 12.5px; line-height: 1.5; }\n.br-ov .cto-notes li { line-height: 1.6; }\n.br-ov .cto-notes code { font-size: .92em; padding: 0 4px; border-radius: 4px; background: var(--kt-glass); }\n.br-ov .cto-table tr.cto-row-pick.is-merged td { color: var(--text); }\n\n.br-ov .br-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 8px; margin-top: 10px; }\n.br-ov .br-metric { padding: 8px 12px; border-radius: 10px; background: var(--cto-cell); display: grid; gap: 2px; align-content: start; }\n.br-ov .br-metric > span { color: var(--text); font-size: 13px; }\n.br-ov .br-metric b { font-size: 18px; color: var(--text-strong); font-variant-numeric: tabular-nums; }\n.br-ov .br-metric b.is-none { font-size: 14px; color: var(--muted); font-weight: 600; }\n.br-ov .br-metric small { color: var(--muted); font-size: 12px; line-height: 1.4; }\n.br-ov .br-eval-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }\n.br-ov .br-eval-list li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }\n\n/* 大需求 and 小需求: nobody's yet is dashed (as the board's idle chips); its big one, dependencies and what blocks it */\n.br-ov .cto-kcard.br-kfree { border-style: dashed; border-color: var(--border-strong); }\n.br-ov .cto-lane.br-lane-free .kt-role-icon { color: var(--muted); }\n.br-ov .br-kfam { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.br-ov .br-kdeps { display: flex; flex-wrap: wrap; gap: 0 6px; font-size: 12px; color: var(--muted); }\n.br-ov .br-kdeps span { font-family: var(--mono, ui-monospace, monospace); color: var(--text); }\n.br-ov .br-kdeps span.is-merged { color: var(--kt-ok); }\n.br-ov .br-kblock { font-size: 12px; line-height: 1.4; color: var(--kt-warn); font-weight: 650; }\n.br-ov .br-fam { display: grid; gap: 4px; margin: 3px 0 1px; }\n.br-ov .br-fam-bar { display: flex; align-items: center; gap: 8px; }\n.br-ov .br-fam-bar .kt-segs { flex: 1; margin: 0; }\n.br-ov .br-fam-bar .kt-segs i { height: 7px; }\n.br-ov .br-fam-bar b { font-size: 12px; color: var(--text-strong); font-variant-numeric: tabular-nums; }\n.br-ov .br-segs i.is-claimed { background: color-mix(in srgb, var(--kt-info) 45%, transparent); }\n.br-ov .br-fkids { display: flex; flex-wrap: wrap; gap: 1px 9px; font-size: 12px; color: var(--text); }\n.br-ov .br-fkid { display: inline-flex; align-items: baseline; gap: 3px; white-space: nowrap; }\n.br-ov .br-fkid i { font-style: normal; font-size: 11px; color: var(--br-tone); }\n.br-ov .br-fkid-unit { color: var(--muted); }\n.br-ov .br-ledger tr.br-kid td { background: color-mix(in srgb, var(--text) 2.5%, transparent); }\n.br-ov .br-ledger tr.br-kid.cto-row-pick:hover td { background: var(--cto-glass); }\n.br-ov .br-ledger tr.br-kid td:first-child { padding-left: 14px; }\n.br-ov .br-tree { color: var(--muted); font-family: var(--mono, ui-monospace, monospace); width: 1.1em; flex: none; }\n.br-ov .br-fam-toggle { font-variant-numeric: tabular-nums; cursor: pointer; }\n.br-ov .br-fam-toggle[aria-expanded=\"false\"] { border-style: dashed; }\n.br-ov .br-how-cell { display: grid; gap: 1px; justify-items: start; }\n.br-ov .br-how .br-chip { padding: 0 7px; font-size: 11.5px; }\n.br-ov .br-eval-list .br-tag b { margin-left: 4px; color: var(--text-strong); font-variant-numeric: tabular-nums; }\n\n@container brov (max-width: 1180px) {\n  .br-ov .cto-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }\n  .br-ov .br-ledger { font-size: 13px; }\n  .br-ov .br-ledger th, .br-ov .br-ledger td { padding: 8px 6px; }\n  .br-ov .br-ledger .br-acts { flex-direction: column; align-items: stretch; }\n}\n/* a narrow 交付清单 gives each requirement two lines, three when narrower still: 交付方式, credits, MR and the buttons\n   go under it with their names, so no column is cut off at the right */\n@container brov (max-width: 1000px) {\n  .br-ov .br-ledger, .br-ov .br-ledger :is(thead, tbody) { display: block; }\n  .br-ov .br-ledger tr { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, .85fr) minmax(0, .9fr) minmax(0, 1.5fr); }\n  .br-ov .br-ledger :is(th, td) { min-width: 0; }\n  .br-ov .br-ledger th:nth-child(n+5) { display: none; }\n  .br-ov .br-ledger td:nth-child(-n+4) { border-bottom: 0; }\n  .br-ov .br-ledger td:nth-child(n+5) { grid-row: 2; padding-top: 0; text-align: left; }\n  .br-ov .br-ledger td:only-child { grid-column: 1 / -1; grid-row: auto; }\n  .br-ov .br-ledger td:nth-child(n+5)[data-label]::before { content: attr(data-label); display: block; font-size: 11.5px; color: var(--muted); }\n}\n@container brov (max-width: 680px) {\n  .br-ov .br-ledger tr { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); }\n  .br-ov .br-ledger th:nth-child(4) { display: none; }\n  .br-ov .br-ledger td:nth-child(4) { grid-row: 2; grid-column: 1 / 3; padding-top: 0; }\n  .br-ov .br-ledger td:nth-child(8) { grid-row: 2; grid-column: 3; }\n  .br-ov .br-ledger td:nth-child(n+5):not(:nth-child(8)) { grid-row: 3; }\n  .br-ov .br-ledger td:nth-child(8) { border-bottom: 0; }\n  .br-ov .br-ledger td:nth-child(4)[data-label]::before { content: attr(data-label); display: block; font-size: 11.5px; color: var(--muted); }\n}\n@container brov (max-width: 900px) {\n  .br-ov .cto-duo { grid-template-columns: minmax(0, 1fr); }\n  .br-ov .br-kanban { grid-template-columns: minmax(0, 1fr) !important; }\n  .br-ov .br-merged-cell, .br-ov .br-kcell-off { grid-row: auto !important; }\n  .br-ov .br-kcell-off { writing-mode: horizontal-tb; padding: 6px; }\n}\n@container brov (max-width: 640px) { .br-ov .cto-cards { grid-template-columns: minmax(0, 1fr); } }\n", Zh = (e) => e.state !== "merged" && e.state !== "merged_into_parent" && e.state !== "closed", Qh = {
+var eg = "\n.br-ov { container: brov / inline-size; --ov-person: #008300; --ov-ink: color-mix(in srgb, var(--text) 62%, var(--card)); --ov-ink-2: color-mix(in srgb, var(--text) 46%, var(--card));\n  --ov-ink-3: color-mix(in srgb, var(--text) 32%, var(--card)); --ov-ink-4: color-mix(in srgb, var(--text) 18%, var(--card)); --ov-warn: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); }\n.br-ov .cto-hero h2 { font-size: 30px; }\n.br-ov .cto-hero p b { color: var(--text-strong); }\n.br-ov .cto-hero p .br-link { margin-left: 6px; }\n.br-ov .cto-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }\n.br-ov .cto-value .cto-of { font-size: .5em; margin-left: 6px; }\n.br-ov .cto-value.is-word { font-size: 1.9em; color: var(--muted); }\n.br-ov .cto-link-value { font-size: 2.85em; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; margin: 6px 0 2px; }\n.br-ov .cto-foot .br-link { font-size: 13px; }\n.br-ov .cto-card.is-warn { border-color: var(--ov-warn); }\n.br-ov .cto-lines button span.is-you { color: var(--kt-approve); font-weight: 650; }\n.br-ov .br-refresh { display: inline-flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; justify-content: flex-end; }\n\n.br-ov .br-yours { display: grid; gap: 8px; }\n.br-ov .br-yours ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }\n.br-ov .br-yours li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 7px 10px; border-radius: 10px; background: color-mix(in srgb, var(--kt-approve) 6%, var(--cto-cell)); }\n.br-ov .br-yours .br-yt-title { color: var(--text-strong); font-weight: 600; }\n.br-ov .br-waited { color: var(--kt-approve); font-size: 12.5px; font-weight: 650; white-space: nowrap; }\n.br-ov .br-linecopy { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }\n.br-ov .br-linecopy code { white-space: nowrap; }\n.br-ov .br-linecopy code { padding: 1px 8px; border-radius: 6px; border: 1px dashed color-mix(in srgb, var(--kt-approve) 60%, var(--border)); color: var(--text-strong); font-weight: 700; user-select: all; }\n.br-ov .cto-duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--kit-gap-block); align-items: start; }\n.br-ov .cto-duo.is-one { grid-template-columns: minmax(0, 1fr); }\n.br-ov .br-stuck li { background: color-mix(in srgb, var(--kt-bad) 6%, var(--cto-cell)); }\n.br-ov .br-stuck li[data-kind=\"overlap\"] { background: color-mix(in srgb, var(--kt-warn) 7%, var(--cto-cell)); }\n.br-ov .br-stuck li .br-chip { padding: 0 8px; }\n.br-ov .cto-kcard.is-late { border-color: var(--kit-bad); box-shadow: 0 0 0 2px color-mix(in srgb, var(--kt-bad) 16%, transparent); }\n.br-ov .br-klate { display: flex; flex-wrap: wrap; gap: 4px; }\n.br-ov .br-klate .br-chip, .br-ov .cto-lane .br-chip { padding: 0 7px; font-size: 11.5px; }\n.br-ov .cto-lane.br-lane-person { flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; }\n.br-ov .br-wip { font-size: 12px; font-weight: 600; color: var(--muted); }\n.br-ov .br-flow-by button { padding: 3px 12px; font-size: 13px; }\n\n.br-ov .cto-lane { justify-content: flex-start; padding: 8px 10px; }\n.br-ov .cto-lane .br-lane-name { white-space: nowrap; font-weight: 650; }\n.br-ov .cto-lane.is-you { background: color-mix(in srgb, var(--kt-approve) 28%, var(--cto-cell)); }\n.br-ov .cto-lane:not(.is-wait) .kt-role-icon { color: var(--kt-run); }\n.br-ov .br-kwait { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; }\n.br-ov .cto-kcard.is-live.is-wait .br-kwait { color: var(--kt-approve); font-weight: 650; }\n.br-ov .cto-kcard .cto-gate { display: inline-flex; align-items: center; gap: 4px; }\n.br-ov .cto-kcard .br-step { justify-self: start; margin-top: 4px; max-width: 100%; white-space: normal; text-align: left; }\n.br-ov .br-review { display: inline-grid; gap: 4px; justify-items: start; }\n.br-ov .br-review .kt-btn { padding: 3px 10px; font-size: 13px; border-radius: 8px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }\n.br-ov .br-review .br-note, .br-ov .br-review .br-error { margin: 0; font-size: 12px; }\n.br-ov .cto-kcard .cto-ktop { flex-wrap: wrap; }\n.br-ov .cto-kmore.cto-link { text-align: left; padding: 0 4px; font-size: 12px; color: var(--accent); }\n.br-ov .cto-stats small { font-size: 14px; font-weight: 500; color: var(--text); margin-left: 4px; }\n.br-ov .cto-stats b { font-weight: inherit; white-space: nowrap; }\n.br-ov .cto-kb-h.is-off .cto-st { color: var(--muted); }\n.br-ov .br-kcell-off { display: grid; place-items: center; writing-mode: vertical-rl; letter-spacing: .2em; color: var(--muted); font-size: 12px; background: transparent; border: 1px dashed var(--border); }\n.br-ov .br-kband { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; padding: 6px 10px; border-radius: 10px; border: 1px dashed var(--border); color: var(--muted); font-size: 13px; }\n.br-ov .br-kband .br-lane-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 650; color: var(--text); }\n\n.br-ov .br-ledger td .br-hint { margin-top: 2px; }\n.br-ov .cto-seg { flex-wrap: wrap; }\n.br-ov .cto-seg button { white-space: nowrap; }\n.br-ov .br-ledger .br-col-req { min-width: 190px; }\n.br-ov .br-ledger .br-col-wait { min-width: 180px; }\n.br-ov .br-ledger .br-col-wait .br-step { margin-top: 4px; }\n.br-ov .br-ledger .br-col-nowrap { white-space: nowrap; }\n.br-ov .br-ledger .br-linecopy { margin-top: 4px; }\n.br-ov .br-lean { display: grid; gap: 3px; min-width: 116px; font-size: 12.5px; color: var(--text); }\n.br-ov .br-nw { white-space: nowrap; }\n.br-ov .br-prog > i.is-next { background: transparent; outline: 1.5px solid var(--kt-run); outline-offset: -1.5px; }\n.br-ov .br-sum code { font-size: .95em; padding: 0 4px; border-radius: 4px; background: var(--kt-glass); }\n.br-ov .br-empty-row td { color: var(--muted); padding: 18px 10px; }\n.br-ov .br-how { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 13px; }\n.br-ov .br-how i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }\n.br-ov .br-acts { display: flex; gap: 6px; align-items: center; white-space: nowrap; }\n.br-ov .br-overlap { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }\n.br-ov .br-funnel-rows { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 13px; }\n.br-ov .br-funnel-rows span { display: inline-flex; align-items: center; gap: 6px; }\n.br-ov .br-funnel-rows b { color: var(--text-strong); font-variant-numeric: tabular-nums; }\n.br-ov .br-funnel-vs { margin-top: 8px; font-size: 12.5px; line-height: 1.5; }\n.br-ov .cto-notes li { line-height: 1.6; }\n.br-ov .cto-notes code { font-size: .92em; padding: 0 4px; border-radius: 4px; background: var(--kt-glass); }\n.br-ov .cto-table tr.cto-row-pick.is-merged td { color: var(--text); }\n\n.br-ov .br-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 8px; margin-top: 10px; }\n.br-ov .br-metric { padding: 8px 12px; border-radius: 10px; background: var(--cto-cell); display: grid; gap: 2px; align-content: start; }\n.br-ov .br-metric > span { color: var(--text); font-size: 13px; }\n.br-ov .br-metric b { font-size: 18px; color: var(--text-strong); font-variant-numeric: tabular-nums; }\n.br-ov .br-metric b.is-none { font-size: 14px; color: var(--muted); font-weight: 600; }\n.br-ov .br-metric small { color: var(--muted); font-size: 12px; line-height: 1.4; }\n.br-ov .br-eval-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }\n.br-ov .br-eval-list li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }\n\n/* 大需求 and 小需求: nobody's yet is dashed (as the board's idle chips); its big one, dependencies and what blocks it */\n.br-ov .cto-kcard.br-kfree { border-style: dashed; border-color: var(--border-strong); }\n.br-ov .cto-lane.br-lane-free .kt-role-icon { color: var(--muted); }\n.br-ov .br-kfam { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.br-ov .br-kdeps { display: flex; flex-wrap: wrap; gap: 0 6px; font-size: 12px; color: var(--muted); }\n.br-ov .br-kdeps span { font-family: var(--mono, ui-monospace, monospace); color: var(--text); }\n.br-ov .br-kdeps span.is-merged { color: var(--kt-ok); }\n.br-ov .br-kblock { font-size: 12px; line-height: 1.4; color: var(--kt-warn); font-weight: 650; }\n.br-ov .br-fam { display: grid; gap: 4px; margin: 3px 0 1px; }\n.br-ov .br-fam-bar { display: flex; align-items: center; gap: 8px; }\n.br-ov .br-fam-bar .kt-segs { flex: 1; margin: 0; }\n.br-ov .br-fam-bar .kt-segs i { height: 7px; }\n.br-ov .br-fam-bar b { font-size: 12px; color: var(--text-strong); font-variant-numeric: tabular-nums; }\n.br-ov .br-segs i.is-claimed { background: color-mix(in srgb, var(--kt-info) 45%, transparent); }\n.br-ov .br-fkids { display: flex; flex-wrap: wrap; gap: 1px 9px; font-size: 12px; color: var(--text); }\n.br-ov .br-fkid { display: inline-flex; align-items: baseline; gap: 3px; white-space: nowrap; }\n.br-ov .br-fkid i { font-style: normal; font-size: 11px; color: var(--br-tone); }\n.br-ov .br-fkid-unit { color: var(--muted); }\n.br-ov .br-ledger tr.br-kid td { background: color-mix(in srgb, var(--text) 2.5%, transparent); }\n.br-ov .br-ledger tr.br-kid.cto-row-pick:hover td { background: var(--cto-glass); }\n.br-ov .br-ledger tr.br-kid td:first-child { padding-left: 14px; }\n.br-ov .br-tree { color: var(--muted); font-family: var(--mono, ui-monospace, monospace); width: 1.1em; flex: none; }\n.br-ov .br-fam-toggle { font-variant-numeric: tabular-nums; cursor: pointer; }\n.br-ov .br-fam-toggle[aria-expanded=\"false\"] { border-style: dashed; }\n.br-ov .br-how-cell { display: grid; gap: 1px; justify-items: start; }\n.br-ov .br-how .br-chip { padding: 0 7px; font-size: 11.5px; }\n.br-ov .br-eval-list .br-tag b { margin-left: 4px; color: var(--text-strong); font-variant-numeric: tabular-nums; }\n\n@container brov (max-width: 1180px) {\n  .br-ov .cto-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }\n  .br-ov .br-ledger { font-size: 13px; }\n  .br-ov .br-ledger th, .br-ov .br-ledger td { padding: 8px 6px; }\n  .br-ov .br-ledger .br-acts { flex-direction: column; align-items: stretch; }\n}\n/* a narrow 交付清单 gives each requirement two lines, three when narrower still: 交付方式, credits, MR and the buttons\n   go under it with their names, so no column is cut off at the right */\n@container brov (max-width: 1000px) {\n  .br-ov .br-ledger, .br-ov .br-ledger :is(thead, tbody) { display: block; }\n  .br-ov .br-ledger tr { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, .85fr) minmax(0, .9fr) minmax(0, 1.5fr); }\n  .br-ov .br-ledger :is(th, td) { min-width: 0; }\n  .br-ov .br-ledger th:nth-child(n+5) { display: none; }\n  .br-ov .br-ledger td:nth-child(-n+4) { border-bottom: 0; }\n  .br-ov .br-ledger td:nth-child(n+5) { grid-row: 2; padding-top: 0; text-align: left; }\n  .br-ov .br-ledger td:only-child { grid-column: 1 / -1; grid-row: auto; }\n  .br-ov .br-ledger td:nth-child(n+5)[data-label]::before { content: attr(data-label); display: block; font-size: 11.5px; color: var(--muted); }\n}\n@container brov (max-width: 680px) {\n  .br-ov .br-ledger tr { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); }\n  .br-ov .br-ledger th:nth-child(4) { display: none; }\n  .br-ov .br-ledger td:nth-child(4) { grid-row: 2; grid-column: 1 / 3; padding-top: 0; }\n  .br-ov .br-ledger td:nth-child(8) { grid-row: 2; grid-column: 3; }\n  .br-ov .br-ledger td:nth-child(n+5):not(:nth-child(8)) { grid-row: 3; }\n  .br-ov .br-ledger td:nth-child(8) { border-bottom: 0; }\n  .br-ov .br-ledger td:nth-child(4)[data-label]::before { content: attr(data-label); display: block; font-size: 11.5px; color: var(--muted); }\n}\n@container brov (max-width: 900px) {\n  .br-ov .cto-duo { grid-template-columns: minmax(0, 1fr); }\n  .br-ov .br-kanban { grid-template-columns: minmax(0, 1fr) !important; }\n  .br-ov .br-merged-cell, .br-ov .br-kcell-off { grid-row: auto !important; }\n  .br-ov .br-kcell-off { writing-mode: horizontal-tb; padding: 6px; }\n}\n@container brov (max-width: 640px) { .br-ov .cto-cards { grid-template-columns: minmax(0, 1fr); } }\n", tg = (e) => e.state !== "merged" && e.state !== "merged_into_parent" && e.state !== "closed", ng = {
 	id: "elsewhere",
 	label: "没导入的项目",
-	keep: (e) => Th(e) === "runner"
-}, $h = (e) => `${e.repo}/${e.key}`;
-function eg(e, t) {
+	keep: (e) => kh(e) === "runner"
+}, rg = (e) => `${e.repo}/${e.key}`;
+function ig(e, t) {
 	let n = Object.fromEntries(t.map((e) => [e, {
 		open: 0,
 		you: 0
 	}]));
-	for (let r of e) for (let e of t.includes("all") ? [Th(r), "all"] : [Th(r)]) {
+	for (let r of e) for (let e of t.includes("all") ? [kh(r), "all"] : [kh(r)]) {
 		let t = n[e] ??= {
 			open: 0,
 			you: 0
 		};
-		Zh(r) && (t.open += 1), r.waits.who === "you" && r.state !== "closed" && (t.you += 1);
+		tg(r) && (t.open += 1), r.waits.who === "you" && r.state !== "closed" && (t.you += 1);
 	}
 	return n;
 }
-function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d }) {
-	let [f, p] = c(t.repo ?? "all"), [m, v] = c(t.state), [y, b] = c(null), [x, S] = c(14), [C, w] = c({}), T = s(null), E = n?.repos ?? [], O = !!n && E.length === 0, k = n?.brainkit.ok === !1, A = F(O ? null : D.overview(f), d ?? 5e3), j = A.data, M = o(() => new Map((j?.cto.runs ?? []).map((e) => [$h(e), e])), [j]), N = o(() => j ? sg(j.rows.filter((e) => (!m || e.state === m) && (!y || y.keep(e, M.get($h(e)))))) : [], [
+function ag({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d }) {
+	let [f, p] = c(t.repo ?? "all"), [m, v] = c(t.state), [y, b] = c(null), [x, S] = c(14), [C, w] = c({}), T = s(null), E = n?.repos ?? [], O = !!n && E.length === 0, k = n?.brainkit.ok === !1, A = F(O ? null : D.overview(f), d ?? 5e3), j = A.data, M = o(() => new Map((j?.cto.runs ?? []).map((e) => [rg(e), e])), [j]), N = o(() => j ? dg(j.rows.filter((e) => (!m || e.state === m) && (!y || y.keep(e, M.get(rg(e)))))) : [], [
 		j,
 		m,
 		y,
 		M
-	]), [P, I] = c(() => /* @__PURE__ */ new Set()), L = o(() => cg(N), [N]), ee = (e) => I((t) => {
+	]), [P, I] = c(() => /* @__PURE__ */ new Set()), L = o(() => fg(N), [N]), ee = (e) => I((t) => {
 		let n = new Set(t);
 		return n.delete(e) || n.add(e), n;
-	}), R = (e) => 1 + (P.has($h(e.r)) ? 0 : e.kids.length), B = L.reduce((e, t) => e + R(t), 0), V = [];
+	}), R = (e) => 1 + (P.has(rg(e.r)) ? 0 : e.kids.length), B = L.reduce((e, t) => e + R(t), 0), V = [];
 	for (let e = 0, t = 0; t < L.length && e < x; t++) V.push(L[t]), e += R(L[t]);
 	let H = V.reduce((e, t) => e + R(t), 0);
 	i(() => {
 		if (!j) return;
-		let e = eg(j.rows, f === "all" ? ["all", ...E.filter((e) => e.ok).map((e) => e.id)] : [f]);
+		let e = ig(j.rows, f === "all" ? ["all", ...E.filter((e) => e.ok).map((e) => e.id)] : [f]);
 		w((t) => f === "all" ? e : {
 			...t,
 			...e
@@ -24065,7 +24107,7 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 	let U = u(), te = s(t.repo === void 0 || t.repo === "all"), ne = E.length > 1;
 	i(() => {
 		!te.current && ne && (te.current = !0, U.get(D.overview("all")).then((e) => w((t) => ({
-			...eg(e.rows, ["all", ...E.filter((e) => e.ok).map((e) => e.id)]),
+			...ig(e.rows, ["all", ...E.filter((e) => e.ok).map((e) => e.id)]),
 			...t
 		})), () => {}));
 	}, [ne]);
@@ -24124,12 +24166,12 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 	let q = j?.cto, Ce = !!j && !j.cto.available && !!j.eval.computing, we = !!j && j.rows.length === 0, Te = we && j.others > 0 && !k && !he, Ee = (j?.rows ?? []).filter((e) => e.credits !== null && e.credits > 0).map((e) => ({
 		key: e.key,
 		credits: e.credits
-	})), De = (j?.rows ?? []).filter((e) => e.waits.who === "you" && e.state !== "closed").sort((e, t) => (e.waits.since ?? Infinity) - (t.waits.since ?? Infinity) || (t.updated_at ?? 0) - (e.updated_at ?? 0)), Oe = j ? Ph(j.roster) : /* @__PURE__ */ new Map(), ke = pe.length > 1 ? "这些仓库" : "这个仓库";
+	})), De = (j?.rows ?? []).filter((e) => e.waits.who === "you" && e.state !== "closed").sort((e, t) => (e.waits.since ?? Infinity) - (t.waits.since ?? Infinity) || (t.updated_at ?? 0) - (e.updated_at ?? 0)), Oe = j ? Rh(j.roster) : /* @__PURE__ */ new Map(), ke = pe.length > 1 ? "这些仓库" : "这个仓库";
 	return /* @__PURE__ */ _("main", {
 		className: "kt-root br-view cto-root br-ov",
 		"data-testid": "overview",
 		children: [
-			/* @__PURE__ */ g("style", { children: Xh }),
+			/* @__PURE__ */ g("style", { children: eg }),
 			/* @__PURE__ */ _("header", {
 				className: "cto-top",
 				children: [
@@ -24157,7 +24199,7 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 						onClick: () => r({ kind: "team" }),
 						children: "全队交付在「团队运行机」里 ↗"
 					}),
-					/* @__PURE__ */ g(Pg, {
+					/* @__PURE__ */ g(Rg, {
 						repos: ge.filter((e) => e.remote !== !1),
 						onDone: A.reload
 					})
@@ -24229,6 +24271,10 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 				"data-testid": "ov-hero",
 				children: [/* @__PURE__ */ g("h2", { children: q.sentence }), /* @__PURE__ */ _("p", { children: [
 					q.available ? `数字来自 brain-kit 的评估（${oe("读的是", q.ref || "默认分支")}）和这个 app 开的会话` : Ce ? "brain-kit 正在算评估的数字，算好就出来：下面先看 credits 和合并" : "brain-kit 的评估还没给出数字：下面先看 credits 和合并",
+					q.mine && /* @__PURE__ */ _("span", {
+						"data-testid": "ov-mine",
+						children: [" · ", "只算这里列出的需求，整个仓库的在「brain-kit 的评估」里"]
+					}),
 					" · ",
 					"口径见末尾",
 					!q.available && n?.brainkit.modules.evaluate === !1 && /* @__PURE__ */ _(h, { children: ["。做什么：换一个带评估模块的 brain-kit", /* @__PURE__ */ g("button", {
@@ -24263,13 +24309,13 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 					}, e.id);
 				}), fe && fe.open + fe.you > 0 && /* @__PURE__ */ _("button", {
 					type: "button",
-					"aria-pressed": y?.id === Qh.id,
+					"aria-pressed": y?.id === ng.id,
 					"data-testid": "pill-elsewhere",
 					title: "运行机在做的、这台机器没导入的项目：点一下在全部的交付清单里看它们",
 					onClick: () => {
-						f !== "all" && W("all"), ie(Qh);
+						f !== "all" && W("all"), ie(ng);
 					},
-					children: [/* @__PURE__ */ g("b", { children: Qh.label }), /* @__PURE__ */ _("span", { children: [
+					children: [/* @__PURE__ */ g("b", { children: ng.label }), /* @__PURE__ */ _("span", { children: [
 						"进行中 ",
 						fe.open,
 						fe.you > 0 && /* @__PURE__ */ _("span", {
@@ -24287,7 +24333,7 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 					children: "brain-kit 读不到，这里的需求和数字要等它能读了才有：照最上面那条提示修。"
 				})
 			}),
-			j && he && !me?.pending && /* @__PURE__ */ g(ng, {
+			j && he && !me?.pending && /* @__PURE__ */ g(og, {
 				repo: me,
 				error: j.errors.find((e) => e.repo === f),
 				onImport: (e) => r({
@@ -24381,27 +24427,27 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 				(De.length > 0 || be) && /* @__PURE__ */ _("div", {
 					className: `cto-duo${De.length > 0 && be ? "" : " is-one"}`,
 					"data-testid": "ov-duo",
-					children: [De.length > 0 && /* @__PURE__ */ g(lg, {
+					children: [De.length > 0 && /* @__PURE__ */ g(pg, {
 						rows: De,
 						at: j.at,
 						repoName: K ? de : () => void 0,
 						onGo: r,
 						onOpen: (e) => ae(e),
-						onAll: () => ie(rg(void 0, "you"))
-					}), be && /* @__PURE__ */ g(ug, {
+						onAll: () => ie(sg(void 0, "you"))
+					}), be && /* @__PURE__ */ g(mg, {
 						roster: j.roster,
 						rows: j.rows,
 						partial: ve,
 						repoName: K ? de : () => void 0,
 						onOpen: ae,
-						onAll: () => ie(ag(j.roster))
+						onAll: () => ie(lg(j.roster))
 					})]
 				}),
 				/* @__PURE__ */ _("section", {
 					className: "cto-cards",
 					"data-testid": "ov-cards",
 					children: [
-						/* @__PURE__ */ g(pg, {
+						/* @__PURE__ */ g(_g, {
 							c: q,
 							localOnly: _e,
 							computing: Ce,
@@ -24409,7 +24455,7 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 							onPick: ie,
 							onKey: (e) => e.repo ? ae(e) : le(e.key)
 						}),
-						/* @__PURE__ */ g(mg, {
+						/* @__PURE__ */ g(vg, {
 							c: q,
 							computing: Ce,
 							onPick: ie
@@ -24451,14 +24497,14 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 										q.credits.cut ? `；${q.credits.cut} 个还有没算进来的，实际更多` : ""
 									]
 								}),
-								Ee.length > 0 && /* @__PURE__ */ g(df, {
+								Ee.length > 0 && /* @__PURE__ */ g(ff, {
 									rows: Ee,
 									avg: q.credits.per_req,
 									onKey: (e) => le(e)
 								})
 							] })]
 						}),
-						/* @__PURE__ */ g(hg, {
+						/* @__PURE__ */ g(yg, {
 							f: j.funnel,
 							team: ye,
 							steppedIn: q.stepped_in ? q.stepped_in.at_points + q.stepped_in.outside : null,
@@ -24467,19 +24513,19 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 						})
 					]
 				}),
-				/* @__PURE__ */ g(gf, {
+				/* @__PURE__ */ g(_f, {
 					weeks: q.weekly,
 					onWeek: (e) => ie({
 						id: `week:${e}`,
-						label: `${Qd(e)} 起的一周合并的`,
-						keep: (t, n) => og(t, n) === e
+						label: `${$d(e)} 起的一周合并的`,
+						keep: (t, n) => ug(t, n) === e
 					})
 				}),
-				j.overlaps.length > 0 && /* @__PURE__ */ g(gg, {
+				j.overlaps.length > 0 && /* @__PURE__ */ g(bg, {
 					data: j,
 					onKey: (e) => le(e)
 				}),
-				/* @__PURE__ */ g(Gh, {
+				/* @__PURE__ */ g(Yh, {
 					rows: j.rows,
 					roster: j.roster,
 					partial: ve,
@@ -24492,8 +24538,8 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 					onGo: r,
 					onNew: Se,
 					repoName: de,
-					onCell: (e, t) => ie(rg(e, t)),
-					onOwner: (e, t) => ie(ig(e, t, j.roster))
+					onCell: (e, t) => ie(sg(e, t)),
+					onOwner: (e, t) => ie(cg(e, t, j.roster))
 				}),
 				/* @__PURE__ */ _("section", {
 					className: "cto-card",
@@ -24506,7 +24552,7 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 							className: "cto-ledger-head",
 							children: [
 								/* @__PURE__ */ g("h3", { children: "交付清单" }),
-								/* @__PURE__ */ g(Ng, {
+								/* @__PURE__ */ g(Lg, {
 									counts: j.counts,
 									total: j.rows.length,
 									value: m,
@@ -24568,14 +24614,14 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 										]
 									})
 								}), V.map((t) => {
-									let n = $h(t.r), i = !P.has(n), a = (e, a) => /* @__PURE__ */ g(Dg, {
+									let n = rg(t.r), i = !P.has(n), a = (e, a) => /* @__PURE__ */ g(jg, {
 										r: e,
 										at: j.at,
-										run: M.get($h(e)),
+										run: M.get(rg(e)),
 										ev: j.eval,
-										repoName: K && !a ? de(Th(e)) : void 0,
+										repoName: K && !a ? de(kh(e)) : void 0,
 										tree: a,
-										late: Oe.get($h(e)) ?? [],
+										late: Oe.get(rg(e)) ?? [],
 										verifyLimit: j.roster.limits.verify_fail_limit,
 										fold: e === t.r && t.kids.length ? {
 											open: i,
@@ -24585,7 +24631,7 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 										onItem: () => se(e),
 										onReplay: () => ae(e, !0),
 										onGo: r
-									}, $h(e));
+									}, rg(e));
 									return /* @__PURE__ */ _(e, { children: [a(t.r), i && t.kids.map((e, n) => a(e, n === t.kids.length - 1 ? "last" : "mid"))] }, n);
 								})] })]
 							})
@@ -24604,7 +24650,7 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 					]
 				})
 			] }),
-			j && (!we || Te) && /* @__PURE__ */ g(Mg, {
+			j && (!we || Te) && /* @__PURE__ */ g(Ig, {
 				ev: j.eval,
 				noModule: n?.brainkit.modules.evaluate === !1,
 				onBoard: (e) => le(e),
@@ -24620,7 +24666,7 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 					/* @__PURE__ */ g("li", { children: "每个需求的 credits：这台机器上需求的 Kiro Crew 会话（本机开发、审查，运行机在这台机器上时也算它的）报的 credits 合计 ÷ 有 credits 的需求数；子代理、没报 credits 的回合和别的机器上的会话算不进来，需求现状的成本里写着。KiroCrew 只报 credits，没有别的用量数。" }),
 					/* @__PURE__ */ _("li", { children: [
 						"决定 · 谁定的：",
-						/* @__PURE__ */ g(Yh, {}),
+						/* @__PURE__ */ g($h, {}),
 						"。每个决定只算一次，写了别的就算「没归类」，列出在哪一行，不猜是谁。还在分支上、没合并的需求也算；评估里的「知识有用率」只看默认分支上的引用，所以两个数的范围不一样。"
 					] }),
 					/* @__PURE__ */ g("li", { children: "每周合并：合并进默认分支的那一周（周一起）；交付方式同上，没评估过的合并算「还没评」。" }),
@@ -24656,7 +24702,7 @@ function tg({ entry: t, status: n, go: r, replace: a, reloadStatus: l, pollMs: d
 		]
 	});
 }
-function ng({ repo: e, error: t, onImport: n, onAll: r }) {
+function og({ repo: e, error: t, onImport: n, onAll: r }) {
 	let i = t?.error || e?.error || "", a = /[\u3400-\u9fff]/.test(i), o = a ? t?.raw : i;
 	return /* @__PURE__ */ _(Jt, {
 		testid: "ov-unreadable",
@@ -24686,50 +24732,50 @@ function ng({ repo: e, error: t, onImport: n, onAll: r }) {
 		]
 	});
 }
-function rg(e, t) {
-	let n = [e ? `「${xh[e]}」这一列` : "", t ? `「${bh[t]}」` : ""].filter(Boolean).join("里");
+function sg(e, t) {
+	let n = [e ? `「${Th[e]}」这一列` : "", t ? `「${wh[t]}」` : ""].filter(Boolean).join("里");
 	return {
 		id: `cell:${e ?? ""}:${t ?? ""}`,
 		label: `需求流动 · ${n}`,
-		keep: (n) => (!e || wh(n) === e) && (!t || Eh(n) === t && Zh(n))
+		keep: (n) => (!e || Oh(n) === e) && (!t || Ah(n) === t && tg(n))
 	};
 }
-function ig(e, t, n) {
+function cg(e, t, n) {
 	let r = e === null ? "还没人认领的" : n.people.find((t) => t.owner === e)?.you ? "你在做的" : `${e} 在做的`;
 	return {
 		id: `owner:${e ?? ""}:${t ?? ""}`,
-		label: `需求流动 · ${t ? `「${xh[t]}」这一列里` : ""}${r}`,
-		keep: (n) => (n.owner ?? null) === e && Zh(n) && (!t || wh(n) === t)
+		label: `需求流动 · ${t ? `「${Th[t]}」这一列里` : ""}${r}`,
+		keep: (n) => (n.owner ?? null) === e && tg(n) && (!t || Oh(n) === t)
 	};
 }
-function ag(e) {
-	let t = new Set(e.stuck.flatMap((e) => [$h(e), ...e.other_key ? [$h({
+function lg(e) {
+	let t = new Set(e.stuck.flatMap((e) => [rg(e), ...e.other_key ? [rg({
 		repo: e.repo,
 		key: e.other_key
 	})] : []]));
 	return {
 		id: "stuck",
 		label: "全队卡点",
-		keep: (e) => t.has($h(e))
+		keep: (e) => t.has(rg(e))
 	};
 }
-function og(e, t) {
+function ug(e, t) {
 	let n = t?.merged_at ?? (e.state === "merged" ? e.updated_at : null);
 	if (n == null) return null;
 	let r = ((/* @__PURE__ */ new Date(n * 1e3)).getUTCDay() + 6) % 7, i = /* @__PURE__ */ new Date((n - r * 86400) * 1e3);
 	return `${i.getUTCFullYear()}-${String(i.getUTCMonth() + 1).padStart(2, "0")}-${String(i.getUTCDate()).padStart(2, "0")}`;
 }
-function sg(e) {
+function dg(e) {
 	let t = (e) => e.state === "merged" || e.state === "merged_into_parent" ? 1 : e.state === "closed" ? 2 : 0;
 	return e.slice().sort((e, n) => t(e) - t(n) || (n.updated_at ?? 0) - (e.updated_at ?? 0));
 }
-function cg(e) {
-	let t = new Set(e.filter((e) => e.family?.role === "parent").map($h)), n = (e) => {
+function fg(e) {
+	let t = new Set(e.filter((e) => e.family?.role === "parent").map(rg)), n = (e) => {
 		let n = e.family;
-		return n?.role === "child" && n.parent !== e.key && t.has($h({
+		return n?.role === "child" && n.parent !== e.key && t.has(rg({
 			repo: e.repo,
 			key: n.parent
-		})) ? $h({
+		})) ? rg({
 			repo: e.repo,
 			key: n.parent
 		}) : null;
@@ -24742,11 +24788,11 @@ function cg(e) {
 		let t = (e.family?.children ?? []).map((e) => e.key), n = (e) => t.includes(e) ? t.indexOf(e) : t.length;
 		return {
 			r: e,
-			kids: (r.get($h(e)) ?? []).sort((e, t) => n(e.key) - n(t.key))
+			kids: (r.get(rg(e)) ?? []).sort((e, t) => n(e.key) - n(t.key))
 		};
 	});
 }
-function lg({ rows: e, at: t, repoName: n, onGo: r, onOpen: i, onAll: a }) {
+function pg({ rows: e, at: t, repoName: n, onGo: r, onOpen: i, onAll: a }) {
 	let o = Object.entries(e.reduce((e, t) => {
 		let n = Ze(t.waits);
 		return n ? {
@@ -24771,11 +24817,11 @@ function lg({ rows: e, at: t, repoName: n, onGo: r, onOpen: i, onAll: a }) {
 				})]
 			}),
 			/* @__PURE__ */ g("ul", { children: e.slice(0, 5).map((e) => {
-				let a = Oh(e), o = kh(e, t), s = n(Th(e));
+				let a = Mh(e), o = Nh(e, t), s = n(kh(e));
 				return /* @__PURE__ */ _("li", {
 					"data-key": e.key,
 					children: [
-						a && /* @__PURE__ */ g(jh, {
+						a && /* @__PURE__ */ g(Fh, {
 							step: a,
 							onGo: r
 						}),
@@ -24799,12 +24845,12 @@ function lg({ rows: e, at: t, repoName: n, onGo: r, onOpen: i, onAll: a }) {
 							className: "br-waited",
 							children: o
 						}),
-						e.waits.line && /* @__PURE__ */ g(dg, {
+						e.waits.line && /* @__PURE__ */ g(hg, {
 							line: e.waits.line,
 							sessionUrl: e.session_url
 						})
 					]
-				}, $h(e));
+				}, rg(e));
 			}) }),
 			e.length > 5 && /* @__PURE__ */ _("button", {
 				type: "button",
@@ -24820,7 +24866,7 @@ function lg({ rows: e, at: t, repoName: n, onGo: r, onOpen: i, onAll: a }) {
 		]
 	});
 }
-function ug({ roster: e, rows: t, partial: n, repoName: r, onOpen: i, onAll: a }) {
+function mg({ roster: e, rows: t, partial: n, repoName: r, onOpen: i, onAll: a }) {
 	let o = Object.keys(e.counts).filter((t) => e.counts[t] > 0), s = e.stuck.some((e) => e.kind !== "overlap"), { wait_timeout_h: c, stale_after_h: l, verify_fail_limit: u } = e.limits, d = (e, t) => /* @__PURE__ */ g("button", {
 		type: "button",
 		className: "br-link br-key",
@@ -24857,7 +24903,7 @@ function ug({ roster: e, rows: t, partial: n, repoName: r, onOpen: i, onAll: a }
 					" 次没过的，都会列在这里。"
 				]
 			}) : /* @__PURE__ */ g("ul", { children: e.stuck.slice(0, 5).map((e) => {
-				let n = t.find((t) => t.repo === e.repo && t.key === e.key), i = n ? r(Th(n)) : void 0, a = e.other_key ? e.text.indexOf(e.other_key) : -1;
+				let n = t.find((t) => t.repo === e.repo && t.key === e.key), i = n ? r(kh(n)) : void 0, a = e.other_key ? e.text.indexOf(e.other_key) : -1;
 				return /* @__PURE__ */ _("li", {
 					"data-key": e.key,
 					"data-kind": e.kind,
@@ -24881,7 +24927,7 @@ function ug({ roster: e, rows: t, partial: n, repoName: r, onOpen: i, onAll: a }
 							e.text.slice(a + e.other_key.length)
 						] }) : e.text })
 					]
-				}, `${e.kind}:${$h(e)}:${e.other_key ?? ""}`);
+				}, `${e.kind}:${rg(e)}:${e.other_key ?? ""}`);
 			}) }),
 			e.stuck.length > 5 && /* @__PURE__ */ _("button", {
 				type: "button",
@@ -24897,7 +24943,7 @@ function ug({ roster: e, rows: t, partial: n, repoName: r, onOpen: i, onAll: a }
 		]
 	});
 }
-function dg({ line: e, sessionUrl: t }) {
+function hg({ line: e, sessionUrl: t }) {
 	let n = p(), [r, i] = c(""), a = async () => {
 		try {
 			await navigator.clipboard.writeText(e), i("ok");
@@ -24946,7 +24992,7 @@ function dg({ line: e, sessionUrl: t }) {
 		]
 	});
 }
-function fg({ testid: e, why: t, computing: n = !1 }) {
+function gg({ testid: e, why: t, computing: n = !1 }) {
 	return /* @__PURE__ */ _(h, { children: [/* @__PURE__ */ g("div", {
 		className: "cto-value is-word",
 		"data-testid": e,
@@ -24956,7 +25002,7 @@ function fg({ testid: e, why: t, computing: n = !1 }) {
 		children: n ? "brain-kit 正在算评估，算好就出来" : t
 	})] });
 }
-function pg({ c: e, localOnly: t, computing: n, pick: r, onPick: i, onKey: a }) {
+function _g({ c: e, localOnly: t, computing: n, pick: r, onPick: i, onKey: a }) {
 	let o = e.unattended, s = (t) => e.runs.filter((e) => e.how === t).length, c = e.runs.filter((e) => e.how === "ended"), l = (e, t) => ({
 		id: `how:${e.join(",")}`,
 		label: t,
@@ -24978,7 +25024,7 @@ function pg({ c: e, localOnly: t, computing: n, pick: r, onPick: i, onKey: a }) 
 			}), /* @__PURE__ */ g("div", {
 				className: "cto-desc",
 				children: "只在本机做的仓库不交给运行机；交给运行机、合并满 14 天的需求才算无人值守"
-			})] }) : o ? o[1] === 0 ? /* @__PURE__ */ g(fg, {
+			})] }) : o ? o[1] === 0 ? /* @__PURE__ */ g(gg, {
 				testid: "ov-unattended",
 				why: "还没有评完的交接：交给运行机、合并满 14 天的需求才评"
 			}) : /* @__PURE__ */ _(h, { children: [
@@ -24997,26 +25043,26 @@ function pg({ c: e, localOnly: t, computing: n, pick: r, onPick: i, onKey: a }) 
 					className: "cto-desc",
 					children: "交给运行机的需求里，交接以后没人插手就做完的"
 				}),
-				/* @__PURE__ */ g(lf, { c: e })
-			] }) : /* @__PURE__ */ g(fg, {
+				/* @__PURE__ */ g(uf, { c: e })
+			] }) : /* @__PURE__ */ g(gg, {
 				testid: "ov-unattended",
 				computing: n,
 				why: e.available ? "交给运行机的需求合并满 14 天以后才评" : "brain-kit 的评估给出数字以后才有"
 			}),
 			e.runs.length > 0 && !t && /* @__PURE__ */ g("div", {
 				className: "cto-legend",
-				children: [...$d, "ended"].filter((e) => s(e) > 0).map((e) => /* @__PURE__ */ _("button", {
+				children: [...ef, "ended"].filter((e) => s(e) > 0).map((e) => /* @__PURE__ */ _("button", {
 					type: "button",
 					"data-how": e,
 					"aria-pressed": r?.id === `how:${e}`,
-					title: e === "ended" ? wg : `在交付清单里看「${ef[e]}」的需求`,
-					onClick: () => i(l([e], `交付方式：${ef[e]}`)),
+					title: e === "ended" ? Og : `在交付清单里看「${tf[e]}」的需求`,
+					onClick: () => i(l([e], `交付方式：${tf[e]}`)),
 					children: [
 						/* @__PURE__ */ g("i", {
 							className: "cto-sw",
-							style: { background: tf[e] }
+							style: { background: nf[e] }
 						}),
-						ef[e],
+						tf[e],
 						/* @__PURE__ */ g("b", { children: s(e) })
 					]
 				}, e))
@@ -25034,15 +25080,15 @@ function pg({ c: e, localOnly: t, computing: n, pick: r, onPick: i, onKey: a }) 
 							onClick: () => a(e),
 							children: e.key
 						}),
-						Tg(e) && `（${Tg(e)}）`
-					] }, $h(e))),
+						kg(e) && `（${kg(e)}）`
+					] }, rg(e))),
 					c.length > 3 && ` 等 ${c.length} 个`
 				] })
 			})
 		]
 	});
 }
-function mg({ c: e, computing: t, onPick: n }) {
+function vg({ c: e, computing: t, onPick: n }) {
 	let r = e.stepped_in, i = r ? r.at_points + r.outside : 0;
 	return /* @__PURE__ */ _("article", {
 		className: `cto-card${r && r.outside ? " is-warn" : ""}`,
@@ -25051,7 +25097,7 @@ function mg({ c: e, computing: t, onPick: n }) {
 		children: [/* @__PURE__ */ g("div", {
 			className: "cto-eyebrow",
 			children: "人介入"
-		}), r ? i === 0 ? /* @__PURE__ */ g(fg, {
+		}), r ? i === 0 ? /* @__PURE__ */ g(gg, {
 			testid: "ov-people",
 			why: "人在判断点上批准、退回、回答以后才有"
 		}) : /* @__PURE__ */ _(h, { children: [
@@ -25079,7 +25125,7 @@ function mg({ c: e, computing: t, onPick: n }) {
 					" 次在判断点之外 · 本机做的也算"
 				]
 			}),
-			/* @__PURE__ */ g(uf, { c: e }),
+			/* @__PURE__ */ g(df, { c: e }),
 			r.outside > 0 && /* @__PURE__ */ g("div", {
 				className: "cto-foot",
 				children: /* @__PURE__ */ _("span", {
@@ -25087,14 +25133,14 @@ function mg({ c: e, computing: t, onPick: n }) {
 					children: ["判断点之外：", r.kinds.filter((e) => !e.point).map((e) => `${e.label} ${e.n}`).join("、")]
 				})
 			})
-		] }) : /* @__PURE__ */ g(fg, {
+		] }) : /* @__PURE__ */ g(gg, {
 			testid: "ov-people",
 			computing: t,
 			why: "brain-kit 的评估给出数字以后才有"
 		})]
 	});
 }
-function hg({ f: e, team: t, steppedIn: n, onDecision: r, computing: i }) {
+function yg({ f: e, team: t, steppedIn: n, onDecision: r, computing: i }) {
 	let a = e.rows.find((e) => e.id === "person")?.count ?? 0, o = e.rows.map((e) => ({
 		...e,
 		label: et[e.id] ?? e.label
@@ -25108,7 +25154,7 @@ function hg({ f: e, team: t, steppedIn: n, onDecision: r, computing: i }) {
 				className: "cto-eyebrow",
 				children: "决定 · 谁定的"
 			}),
-			i || e.total === 0 ? /* @__PURE__ */ g(fg, {
+			i || e.total === 0 ? /* @__PURE__ */ g(gg, {
 				testid: "funnel-total",
 				computing: i,
 				why: "需求的决定表里有了决定以后才有"
@@ -25131,7 +25177,7 @@ function hg({ f: e, team: t, steppedIn: n, onDecision: r, computing: i }) {
 						" · 没合并的需求也算"
 					]
 				}),
-				/* @__PURE__ */ g(ff, { rows: o }),
+				/* @__PURE__ */ g(pf, { rows: o }),
 				/* @__PURE__ */ g("div", {
 					className: "br-funnel-rows",
 					children: o.filter((e) => e.count > 0).map((e) => /* @__PURE__ */ _("span", {
@@ -25139,7 +25185,7 @@ function hg({ f: e, team: t, steppedIn: n, onDecision: r, computing: i }) {
 						children: [
 							/* @__PURE__ */ g("i", {
 								className: "cto-sw",
-								style: { background: pf[e.id] ?? "var(--ov-ink-3)" }
+								style: { background: mf[e.id] ?? "var(--ov-ink-3)" }
 							}),
 							e.label,
 							/* @__PURE__ */ g("b", { children: e.count })
@@ -25201,17 +25247,17 @@ function hg({ f: e, team: t, steppedIn: n, onDecision: r, computing: i }) {
 				"data-testid": "funnel-questions",
 				children: /* @__PURE__ */ _("span", { children: [
 					"问人 ",
-					Xd(e.questions.asked),
+					Zd(e.questions.asked),
 					" 次 · 答了 ",
-					Xd(e.questions.answered),
+					Zd(e.questions.answered),
 					" · 送回运行机 ",
-					Xd(e.questions.delivered)
+					Zd(e.questions.delivered)
 				] })
 			})
 		]
 	});
 }
-function gg({ data: e, onKey: t }) {
+function bg({ data: e, onKey: t }) {
 	let n = (t) => e.rows.find((e) => e.key === t)?.owner ?? null;
 	return /* @__PURE__ */ _("section", {
 		className: "cto-card is-warn br-overlaps",
@@ -25262,7 +25308,7 @@ function gg({ data: e, onKey: t }) {
 		})]
 	});
 }
-var _g = {
+var xg = {
 	small: "小",
 	s: "小",
 	xs: "很小",
@@ -25272,18 +25318,18 @@ var _g = {
 	l: "大",
 	xl: "很大"
 };
-function vg(e) {
+function Sg(e) {
 	let t = [];
 	return {
-		parts: e.split("现在：")[0].replace(/（([^（）]*#[^（）]*)）/g, (e, n) => (t.push(n), "")).replace(/（规模\s*([A-Za-z]+)）/g, (e, t) => _g[t.toLowerCase()] ? `（规模${_g[t.toLowerCase()]}）` : e).trim().split("`").map((e, t) => ({
+		parts: e.split("现在：")[0].replace(/（([^（）]*#[^（）]*)）/g, (e, n) => (t.push(n), "")).replace(/（规模\s*([A-Za-z]+)）/g, (e, t) => xg[t.toLowerCase()] ? `（规模${xg[t.toLowerCase()]}）` : e).trim().split("`").map((e, t) => ({
 			code: t % 2 == 1,
 			text: e
 		})).filter((e) => e.text),
 		ids: t.join("；")
 	};
 }
-function yg({ text: e }) {
-	let t = vg(e);
+function Cg({ text: e }) {
+	let t = Sg(e);
 	return /* @__PURE__ */ g("div", {
 		className: "br-hint br-sum",
 		"data-testid": "row-summary",
@@ -25291,7 +25337,7 @@ function yg({ text: e }) {
 		children: t.parts.map((e, t) => e.code ? /* @__PURE__ */ g("code", { children: e.text }, t) : /* @__PURE__ */ g("span", { children: e.text }, t))
 	});
 }
-function bg({ r: e }) {
+function wg({ r: e }) {
 	let t = e.lean, n = Je(e);
 	if (n === "还没开工") return /* @__PURE__ */ g("span", {
 		className: "cto-was",
@@ -25307,14 +25353,14 @@ function bg({ r: e }) {
 			className: "br-prog",
 			role: "img",
 			"aria-label": n,
-			children: Array.from({ length: t.total }, (n, r) => /* @__PURE__ */ g("i", { className: r < t.done_n ? "is-done" : r < t.done_n + t.skipped_n ? "is-skipped" : t.next && Zh(e) && r === t.done_n + t.skipped_n ? "is-next" : "" }, r))
+			children: Array.from({ length: t.total }, (n, r) => /* @__PURE__ */ g("i", { className: r < t.done_n ? "is-done" : r < t.done_n + t.skipped_n ? "is-skipped" : t.next && tg(e) && r === t.done_n + t.skipped_n ? "is-next" : "" }, r))
 		}), /* @__PURE__ */ g("span", { children: r.split(" · ").map((e, t) => /* @__PURE__ */ _("span", { children: [t > 0 && " · ", /* @__PURE__ */ g("span", {
 			className: "br-nw",
 			children: e
 		})] }, t)) })]
 	});
 }
-var xg = {
+var Tg = {
 	in_progress: "info",
 	ready_to_release: "wait",
 	done: "ok",
@@ -25324,14 +25370,14 @@ var xg = {
 	unknown: "warn",
 	merged_not_here: "warn"
 };
-function Sg({ r: e, f: t, nested: n, fold: r }) {
+function Eg({ r: e, f: t, nested: n, fold: r }) {
 	if (t.role === "big") return /* @__PURE__ */ g("span", {
 		className: "br-chip tone-info",
 		title: t.family_label || void 0,
 		children: "大需求"
 	});
 	if (t.role === "parent") {
-		let { merged: e, total: n } = Rh(t), i = xg[t.family_state ?? ""] ?? "info", a = t.family_label || void 0;
+		let { merged: e, total: n } = Hh(t), i = Tg[t.family_state ?? ""] ?? "info", a = t.family_label || void 0;
 		return r ? /* @__PURE__ */ _("button", {
 			type: "button",
 			className: `br-chip tone-${i} br-fam-toggle`,
@@ -25359,7 +25405,7 @@ function Sg({ r: e, f: t, nested: n, fold: r }) {
 			]
 		});
 	}
-	let i = zh(t).filter((t) => !e.waits.text.includes(t.key));
+	let i = Uh(t).filter((t) => !e.waits.text.includes(t.key));
 	return /* @__PURE__ */ _(h, { children: [
 		t.unit && /* @__PURE__ */ g("span", {
 			className: "br-tag",
@@ -25372,7 +25418,7 @@ function Sg({ r: e, f: t, nested: n, fold: r }) {
 		}),
 		i.length > 0 && /* @__PURE__ */ _("span", {
 			className: "br-chip tone-warn",
-			title: i.map(Bh).join("；"),
+			title: i.map(Wh).join("；"),
 			children: [
 				"等 ",
 				i.map((e) => e.key).join("、"),
@@ -25381,14 +25427,14 @@ function Sg({ r: e, f: t, nested: n, fold: r }) {
 		})
 	] });
 }
-var Cg = /* @__PURE__ */ new Set(["merged", "open"]), wg = "没交付就结束：运行机没能开始，或 MR 关了没合并", Tg = (e) => e.beyond.join("、") || e.state_label;
-function Eg({ r: e, run: t }) {
+var Dg = /* @__PURE__ */ new Set(["merged", "open"]), Og = "没交付就结束：运行机没能开始，或 MR 关了没合并", kg = (e) => e.beyond.join("、") || e.state_label;
+function Ag({ r: e, run: t }) {
 	if (!t) return /* @__PURE__ */ g("span", {
 		className: "cto-was",
 		children: "—"
 	});
-	let n = t.how === "ended", r = n ? Tg(t) : "", i = !!t.state_label && !Cg.has(t.state ?? "") && t.state_label !== r && !(n && t.beyond.length), a = [
-		n ? wg : "",
+	let n = t.how === "ended", r = n ? kg(t) : "", i = !!t.state_label && !Dg.has(t.state ?? "") && t.state_label !== r && !(n && t.beyond.length), a = [
+		n ? Og : "",
 		t.delivery_label ? `交付：${t.delivery_label}` : "",
 		!n && t.beyond.length ? `判断点之外：${t.beyond.join("、")}` : ""
 	].filter(Boolean).join(" · ");
@@ -25401,15 +25447,15 @@ function Eg({ r: e, run: t }) {
 				className: "br-how",
 				title: "只在这台机器上做，不交给运行机：合并以后算「只在本机」",
 				children: [
-					/* @__PURE__ */ g("i", { style: { background: tf.local } }),
-					ef.local,
+					/* @__PURE__ */ g("i", { style: { background: nf.local } }),
+					tf.local,
 					"（还没合并）"
 				]
 			}) : /* @__PURE__ */ _("span", {
 				className: "br-how",
 				children: [
-					/* @__PURE__ */ g("i", { style: { background: tf[t.how] } }),
-					ef[t.how],
+					/* @__PURE__ */ g("i", { style: { background: nf[t.how] } }),
+					tf[t.how],
 					t.stuck && /* @__PURE__ */ g("span", {
 						className: "br-chip tone-warn",
 						title: "好久没有新动静了（brain-kit 的 stuck_hours）",
@@ -25448,8 +25494,8 @@ function Eg({ r: e, run: t }) {
 		]
 	});
 }
-function Dg({ r: e, at: t, run: n, ev: r, repoName: i, tree: a, fold: o, late: s, verifyLimit: c, onOpen: l, onItem: u, onReplay: d, onGo: f }) {
-	let p = e.family, m = e.state === "merged" || e.state === "merged_into_parent", h = Oh(e), v = e.waits.who === "you" || e.waits.who !== "nobody" && Zh(e) ? kh(e, t) : "", y = r.queue.find((t) => t.key === e.key), b = r.skipped.find((t) => t.key === e.key);
+function jg({ r: e, at: t, run: n, ev: r, repoName: i, tree: a, fold: o, late: s, verifyLimit: c, onOpen: l, onItem: u, onReplay: d, onGo: f }) {
+	let p = e.family, m = e.state === "merged" || e.state === "merged_into_parent", h = Mh(e), v = e.waits.who === "you" || e.waits.who !== "nobody" && tg(e) ? Nh(e, t) : "", y = r.queue.find((t) => t.key === e.key), b = r.skipped.find((t) => t.key === e.key);
 	return /* @__PURE__ */ _("tr", {
 		"data-key": e.key,
 		"data-role": p?.role ?? void 0,
@@ -25475,7 +25521,7 @@ function Dg({ r: e, at: t, run: n, ev: r, repoName: i, tree: a, fold: o, late: s
 							children: e.key
 						}),
 						/* @__PURE__ */ g("span", { children: e.title }),
-						p && /* @__PURE__ */ g(Sg, {
+						p && /* @__PURE__ */ g(Eg, {
 							r: e,
 							f: p,
 							nested: !!a,
@@ -25526,7 +25572,7 @@ function Dg({ r: e, at: t, run: n, ev: r, repoName: i, tree: a, fold: o, late: s
 							children: "评估跳过了它"
 						})
 					]
-				}), e.summary && /* @__PURE__ */ g(yg, { text: e.summary })]
+				}), e.summary && /* @__PURE__ */ g(Cg, { text: e.summary })]
 			}),
 			/* @__PURE__ */ _("td", {
 				className: "br-col-nowrap",
@@ -25539,9 +25585,9 @@ function Dg({ r: e, at: t, run: n, ev: r, repoName: i, tree: a, fold: o, late: s
 					children: [R(e.updated_at, t), "更新"]
 				})]
 			}),
-			/* @__PURE__ */ g("td", { children: /* @__PURE__ */ g(Po, {
+			/* @__PURE__ */ g("td", { children: /* @__PURE__ */ g(Fo, {
 				r: e,
-				children: /* @__PURE__ */ g(bg, { r: e })
+				children: /* @__PURE__ */ g(wg, { r: e })
 			}) }),
 			/* @__PURE__ */ _("td", {
 				className: "br-col-wait",
@@ -25555,11 +25601,11 @@ function Dg({ r: e, at: t, run: n, ev: r, repoName: i, tree: a, fold: o, late: s
 						className: e.waits.who === "you" ? "br-waited" : "cto-was",
 						children: v
 					}),
-					e.waits.line && /* @__PURE__ */ g(dg, {
+					e.waits.line && /* @__PURE__ */ g(hg, {
 						line: e.waits.line,
 						sessionUrl: e.session_url
 					}),
-					h && /* @__PURE__ */ g(jh, {
+					h && /* @__PURE__ */ g(Fh, {
 						step: h,
 						onGo: f,
 						primary: !1
@@ -25568,7 +25614,7 @@ function Dg({ r: e, at: t, run: n, ev: r, repoName: i, tree: a, fold: o, late: s
 			}),
 			/* @__PURE__ */ g("td", {
 				"data-label": "交付方式",
-				children: /* @__PURE__ */ g(Eg, {
+				children: /* @__PURE__ */ g(Ag, {
 					r: e,
 					run: n
 				})
@@ -25606,7 +25652,7 @@ function Dg({ r: e, at: t, run: n, ev: r, repoName: i, tree: a, fold: o, late: s
 		]
 	});
 }
-var Og = {
+var Mg = {
 	autonomy: "交接以后没人插手、交付也正确的",
 	delivery: "一次过验收、合并后 14 天没出问题的",
 	judgment: "人做的事里，落在批准、退回、回答上的",
@@ -25617,7 +25663,7 @@ var Og = {
 	deploy_frequency: "每周上线几次（最近 28 天）",
 	lead_time: "合并以后多久上线（取中位）",
 	change_failure: "上线前灰度中止、或合并后 14 天出问题的"
-}, kg = {
+}, Ng = {
 	autonomy: "交接以后，除了必经的审批（需求、设计、计划、发布审批和验收），没有人做过任何事，而且交付正确",
 	delivery: "一次通过验收，合并后 14 天内没有回滚、修复提交，也没有新认领的缺陷",
 	judgment: "判断点是 Lean 的审批（批准、退回）和等人回答的问题（本机会话里的、MR 上的）",
@@ -25625,14 +25671,14 @@ var Og = {
 	useful: "被引用过的 Brain 条目 ÷ 现有的条目",
 	staleness: "过时的引用 + 同名的术语 + 这一期被覆盖或撤回的条目",
 	credits_per_success: "做完的运行花的 credits 合计 ÷ 交付正确的需求数；只用来看钱花在哪，不设上限"
-}, Ag = {
+}, Pg = {
 	lead_time: (e) => L(e * 3600),
 	deploy_frequency: (e) => String(Math.round(e * 10) / 10)
 };
-function jg({ id: e, value: t }) {
-	return t === null ? null : Array.isArray(t) ? t[1] > 0 ? `${t[0]}/${t[1]}` : null : Ag[e]?.(t) ?? String(t);
+function Fg({ id: e, value: t }) {
+	return t === null ? null : Array.isArray(t) ? t[1] > 0 ? `${t[0]}/${t[1]}` : null : Pg[e]?.(t) ?? String(t);
 }
-function Mg({ ev: e, noModule: t, onBoard: n, onItem: r, onSettings: i, onFamily: a }) {
+function Ig({ ev: e, noModule: t, onBoard: n, onItem: r, onSettings: i, onFamily: a }) {
 	let o = e.families ?? [], s = !e.available && !!e.computing, c = !s && (t || !e.error), l = e.note_rows, u = e.raw ?? (c ? e.error : "");
 	return /* @__PURE__ */ _("section", {
 		className: "cto-card br-eval",
@@ -25647,18 +25693,18 @@ function Mg({ ev: e, noModule: t, onBoard: n, onItem: r, onSettings: i, onFamily
 		}), e.available ? /* @__PURE__ */ _(h, { children: [/* @__PURE__ */ g("div", {
 			className: "br-metrics",
 			children: e.metrics.map((e) => {
-				let t = jg(e);
+				let t = Fg(e);
 				return /* @__PURE__ */ _("div", {
 					className: "br-metric",
 					"data-metric": e.id,
-					title: kg[e.id] ?? e.rule,
+					title: Ng[e.id] ?? e.rule,
 					children: [
 						/* @__PURE__ */ g("span", { children: e.label }),
 						/* @__PURE__ */ g("b", {
 							className: t === null ? "is-none" : void 0,
 							children: t ?? "还没有"
 						}),
-						/* @__PURE__ */ g("small", { children: Og[e.id] ?? e.rule })
+						/* @__PURE__ */ g("small", { children: Mg[e.id] ?? e.rule })
 					]
 				}, e.id);
 			})
@@ -25681,7 +25727,7 @@ function Mg({ ev: e, noModule: t, onBoard: n, onItem: r, onSettings: i, onFamily
 							children: [e.key, " ↗"]
 						}),
 						/* @__PURE__ */ g("span", {
-							className: `br-chip tone-${xg[e.state] ?? "idle"}`,
+							className: `br-chip tone-${Tg[e.state] ?? "idle"}`,
 							children: e.state_label || e.state
 						}),
 						/* @__PURE__ */ _("span", {
@@ -25816,8 +25862,8 @@ function Mg({ ev: e, noModule: t, onBoard: n, onItem: r, onSettings: i, onFamily
 		})]
 	});
 }
-function Ng({ counts: e, total: t, value: n, onPick: r }) {
-	let i = qh.filter((t) => (e[t] ?? 0) > 0 || t === n);
+function Lg({ counts: e, total: t, value: n, onPick: r }) {
+	let i = Zh.filter((t) => (e[t] ?? 0) > 0 || t === n);
 	return /* @__PURE__ */ _("div", {
 		className: "cto-seg",
 		role: "group",
@@ -25841,7 +25887,7 @@ function Ng({ counts: e, total: t, value: n, onPick: r }) {
 		}, t))]
 	});
 }
-function Pg({ repos: e, onDone: t }) {
+function Rg({ repos: e, onDone: t }) {
 	let n = u(), r = I(async () => {
 		let t = [];
 		for (let r of e) t.push({
@@ -25893,7 +25939,7 @@ function Pg({ repos: e, onDone: t }) {
 		]
 	});
 }
-var Fg = "这个仓库还没有团队运行机", Ig = (e) => `团队服务器可能停了：上次写状态是 ${e}前`, Lg = (e) => `这个项目的状态是 ${e}前写的：团队服务器可能没在写它，看它的「运行机」页`, Rg = "每个项目的状态写在它自己的 brain/status 分支上：你能看哪个项目，就读到哪个。团队服务器每 5 分钟最多写一次，没变化的 30 分钟写一次", zg = 300, Bg = {
+var zg = "这个仓库还没有团队运行机", Bg = (e) => `团队服务器可能停了：上次写状态是 ${e}前`, Vg = (e) => `这个项目的状态是 ${e}前写的：团队服务器可能没在写它，看它的「运行机」页`, Hg = "每个项目的状态写在它自己的 brain/status 分支上：你能看哪个项目，就读到哪个。团队服务器每 5 分钟最多写一次，没变化的 30 分钟写一次", Ug = 300, Wg = {
 	running: {
 		label: "在做",
 		tone: "run",
@@ -25904,11 +25950,12 @@ var Fg = "这个仓库还没有团队运行机", Ig = (e) => `团队服务器可
 		tone: "info",
 		hint: (e) => `MR 巡检最近 ${e} 小时在上面回复过`
 	}
-}, Vg = {
+}, Gg = {
 	"mr-handoff": "交接",
 	"mr-patrol": "巡检",
-	"staging-errors": "测试环境报错"
-}, Hg = {
+	"staging-errors": "测试环境报错",
+	"issue-label": "从 issue 接活"
+}, Kg = {
 	需求: "idle",
 	设计: "info",
 	构建: "run",
@@ -25917,11 +25964,11 @@ var Fg = "这个仓库还没有团队运行机", Ig = (e) => `团队服务器可
 	已合并: "ok",
 	已合进大需求: "ok",
 	已关闭: "idle"
-}, Ug = /* @__PURE__ */ new Set([
+}, qg = /* @__PURE__ */ new Set([
 	"merged",
 	"merged_into_parent",
 	"closed"
-]), Wg = {
+]), Jg = {
 	success: {
 		label: "通过",
 		tone: "ok"
@@ -25966,10 +26013,10 @@ var Fg = "这个仓库还没有团队运行机", Ig = (e) => `团队服务器可
 		label: "跳过了",
 		tone: "idle"
 	}
-}, Gg = (e) => Wg[e] ?? {
+}, Yg = (e) => Jg[e] ?? {
 	label: e,
 	tone: "idle"
-}, Kg = "\0nobody", qg = (e) => ({
+}, Xg = "\0nobody", Zg = (e) => ({
 	source: "mr",
 	id: e.id,
 	kind: e.kind,
@@ -25987,15 +26034,15 @@ var Fg = "这个仓库还没有团队运行机", Ig = (e) => `团队服务器可
 	at: e.at,
 	answerable_here: !1,
 	answer_via: null
-}), Jg = (e, t) => !!t && e.on.includes(t);
-function Yg({ pollMs: e, go: t }) {
+}), Qg = (e, t) => !!t && e.on.includes(t);
+function $g({ pollMs: e, go: t }) {
 	let n = F(D.teamStatus(), e ?? 3e4), r = n.data, i = r?.repos.filter((e) => !e.relay) ?? [];
 	return /* @__PURE__ */ _("main", {
 		className: "kt-root br-view tm-root",
 		"data-testid": "team-runner",
 		children: [
-			/* @__PURE__ */ g("style", { children: Cp }),
-			/* @__PURE__ */ g("style", { children: a_ }),
+			/* @__PURE__ */ g("style", { children: Ep }),
+			/* @__PURE__ */ g("style", { children: l_ }),
 			/* @__PURE__ */ _("header", {
 				className: "tm-top",
 				children: [/* @__PURE__ */ g(J, {
@@ -26020,13 +26067,13 @@ function Yg({ pollMs: e, go: t }) {
 				className: "br-note",
 				children: "团队运行机建好、它开的 kit.json MR 合并以后，这里就能看到它在做什么、在等你回答什么。"
 			}),
-			r?.relays.map((e) => /* @__PURE__ */ g(Xg, {
+			r?.relays.map((e) => /* @__PURE__ */ g(e_, {
 				relay: e,
 				at: r.at,
-				repos: r.repos.filter((t) => e.repos.includes(t.repo)),
+				repos: r.repos.filter((t) => t.relay && e.repos.includes(t.repo)),
 				go: t
 			}, e.repos.join(" "))),
-			i.map((e) => e.runner ? /* @__PURE__ */ g(i_, {
+			i.map((e) => e.runner ? /* @__PURE__ */ g(c_, {
 				repo: e.repo,
 				name: e.name,
 				runner: e.runner,
@@ -26043,37 +26090,37 @@ function Yg({ pollMs: e, go: t }) {
 					/* @__PURE__ */ g("h3", { children: e.name }),
 					/* @__PURE__ */ g("span", {
 						className: "br-dim",
-						children: Fg
+						children: zg
 					})
 				] })
 			}, e.repo))
 		]
 	});
 }
-function Xg({ relay: e, at: t, repos: n, go: r }) {
+function e_({ relay: e, at: t, repos: n, go: r }) {
 	let i = e.view;
 	return /* @__PURE__ */ _(h, { children: [
-		/* @__PURE__ */ g(Zg, {
+		/* @__PURE__ */ g(t_, {
 			relay: e,
 			at: t
 		}),
-		i && /* @__PURE__ */ g($g, {
+		i && /* @__PURE__ */ g(r_, {
 			view: i,
 			projects: e.projects,
 			me: e.me,
 			at: t
 		}),
-		i && /* @__PURE__ */ g(t_, {
+		i && /* @__PURE__ */ g(a_, {
 			view: i,
 			me: e.me,
 			repoOf: e.repo_of,
 			at: t,
 			go: r
 		}),
-		/* @__PURE__ */ g(r_, { repos: n })
+		/* @__PURE__ */ g(s_, { repos: n })
 	] });
 }
-function Zg({ relay: e, at: t }) {
+function t_({ relay: e, at: t }) {
 	let n = e.view, r = Array.from(new Set(e.projects.map((e) => e.version).filter((e) => !!e))), i = e.stale || e.projects.some((e) => e.problem || e.stale || e.state?.error);
 	return /* @__PURE__ */ _("section", {
 		className: `br-card rv-strip${i ? " is-bad" : ""}`,
@@ -26107,7 +26154,7 @@ function Zg({ relay: e, at: t }) {
 				"data-testid": "relay-stale",
 				children: [/* @__PURE__ */ g("p", {
 					className: "br-bad-text",
-					children: /* @__PURE__ */ g("b", { children: Ig(G(t - n.generated_at)) })
+					children: /* @__PURE__ */ g("b", { children: Bg(G(t - n.generated_at)) })
 				}), /* @__PURE__ */ _("span", {
 					className: "tm-do",
 					children: [/* @__PURE__ */ g("b", { children: "做什么" }), "请管团队服务器的人看一下：它开着没有，团队模式还在不在跑。下面是它上次写的。"]
@@ -26116,20 +26163,20 @@ function Zg({ relay: e, at: t }) {
 			/* @__PURE__ */ g("ul", {
 				className: "rv-projects",
 				"aria-label": "每个项目",
-				children: e.projects.map((e) => /* @__PURE__ */ g(Qg, {
+				children: e.projects.map((e) => /* @__PURE__ */ g(n_, {
 					p: e,
 					at: t
 				}, e.project))
 			}),
 			/* @__PURE__ */ g("p", {
 				className: "br-dim br-small rv-read",
-				children: Rg
+				children: Hg
 			})
 		]
 	});
 }
-function Qg({ p: e, at: t }) {
-	let n = e.state, r = e.problem || n?.error ? "bad" : n?.on ? "ok" : "idle", i = n ? n.error ? "有问题" : n.on ? "在接交接" : "不接交接" : "还没读到", a = e.delivery_at !== null && e.written_at !== null && e.written_at - e.delivery_at > zg;
+function n_({ p: e, at: t }) {
+	let n = e.state, r = e.problem || n?.error ? "bad" : n?.on ? "ok" : "idle", i = n ? n.error ? "有问题" : n.on ? "在接交接" : "不接交接" : "还没读到", a = e.delivery_at !== null && e.written_at !== null && e.written_at - e.delivery_at > Ug;
 	return /* @__PURE__ */ _("li", {
 		"data-project": e.project,
 		className: r === "bad" || e.stale ? "is-bad" : void 0,
@@ -26141,12 +26188,12 @@ function Qg({ p: e, at: t }) {
 			}),
 			n && n.sources.length > 0 && /* @__PURE__ */ g("span", {
 				className: "br-dim br-small",
-				children: n.sources.map((e) => Vg[e] ?? e).join(" · ")
+				children: n.sources.map((e) => Gg[e] ?? e).join(" · ")
 			}),
 			e.stale && e.written_at !== null && /* @__PURE__ */ g("span", {
 				className: "br-bad-text br-small rv-project-error",
 				"data-testid": "project-stale",
-				children: Lg(G(t - e.written_at))
+				children: Vg(G(t - e.written_at))
 			}),
 			n?.error && /* @__PURE__ */ g("span", {
 				className: "br-bad-text br-small rv-project-error",
@@ -26183,23 +26230,25 @@ function Qg({ p: e, at: t }) {
 		]
 	});
 }
-function $g({ view: e, projects: t, me: n, at: r }) {
-	let { handovers: i, patrol: a, staging: o } = e.runner, { cap: s, working: c, last_round_at: l } = e.server, u = (e) => t.some((t) => !!t.state?.sources.includes(e)), d = {
-		on: u("mr-patrol"),
-		cap: s,
-		working: a.filter((e) => e.state === "working").length,
-		last_at: l,
+function r_({ view: e, projects: t, me: n, at: r }) {
+	let { handovers: i, patrol: a, staging: o, issues: s, patrol_hidden: c, staging_hidden: l } = e.runner, { cap: u, working: d, held: f, last_round_at: p } = e.server, m = (e) => t.some((t) => !!t.state?.sources.includes(e)), v = {
+		on: m("mr-patrol"),
+		cap: u,
+		working: f?.patrol ?? a.filter((e) => e.state === "working").length,
+		hidden: c,
+		last_at: p,
 		projects: t.map((e) => ({
 			project: e.project,
 			on: !!e.state?.sources.includes("mr-patrol"),
 			error: ""
 		})),
 		items: a
-	}, f = {
-		on: u("staging-errors"),
-		cap: s,
-		working: o.filter((e) => e.state === "fixing").length,
-		last_at: l,
+	}, y = {
+		on: m("staging-errors"),
+		cap: u,
+		working: f?.staging ?? o.filter((e) => e.state === "fixing").length,
+		hidden: l,
+		last_at: p,
 		projects: t.map((e) => ({
 			project: e.project,
 			on: !!e.state?.sources.includes("staging-errors"),
@@ -26207,6 +26256,16 @@ function $g({ view: e, projects: t, me: n, at: r }) {
 			deployed_sha: ""
 		})),
 		items: o
+	}, b = {
+		on: m("issue-label"),
+		last_at: p,
+		projects: t.map((e) => ({
+			project: e.project,
+			on: !!e.state?.sources.includes("issue-label"),
+			label: e.state?.issue_label ?? "",
+			error: ""
+		})),
+		items: s
 	};
 	return /* @__PURE__ */ _(h, { children: [
 		/* @__PURE__ */ _("section", {
@@ -26233,9 +26292,9 @@ function $g({ view: e, projects: t, me: n, at: r }) {
 					title: "MR 巡检和测试环境报错一起用的 brain-patrol 会话",
 					children: [
 						"brain-patrol 会话在做 ",
-						/* @__PURE__ */ g("b", { children: c }),
+						/* @__PURE__ */ g("b", { children: d }),
 						"/",
-						s
+						u
 					]
 				})
 			] }), i.length === 0 ? /* @__PURE__ */ g("p", {
@@ -26251,7 +26310,7 @@ function $g({ view: e, projects: t, me: n, at: r }) {
 						/* @__PURE__ */ g("th", { children: "状态" }),
 						/* @__PURE__ */ g("th", { children: "在等" })
 					] }) }), /* @__PURE__ */ g("tbody", { children: i.map((e) => {
-						let t = Bf(e.state), i = Jg(e.waits, n);
+						let t = Hf(e.state), i = Qg(e.waits, n);
 						return /* @__PURE__ */ _("tr", {
 							"data-key": e.key,
 							"data-mine": i || void 0,
@@ -26285,7 +26344,7 @@ function $g({ view: e, projects: t, me: n, at: r }) {
 									title: t.hint,
 									children: t.label
 								}) }),
-								/* @__PURE__ */ g("td", { children: /* @__PURE__ */ g(e_, {
+								/* @__PURE__ */ g("td", { children: /* @__PURE__ */ g(i_, {
 									w: e.waits,
 									mine: i,
 									at: r
@@ -26296,11 +26355,16 @@ function $g({ view: e, projects: t, me: n, at: r }) {
 				})
 			})]
 		}),
-		/* @__PURE__ */ g(_p, { view: d }),
-		/* @__PURE__ */ g(Af, { view: f })
+		/* @__PURE__ */ g(bp, { view: v }),
+		/* @__PURE__ */ g(Mf, { view: y }),
+		b.on && /* @__PURE__ */ g(yp, {
+			view: b,
+			me: n,
+			waiting: !0
+		})
 	] });
 }
-function e_({ w: e, mine: t, at: n }) {
+function i_({ w: e, mine: t, at: n }) {
 	return /* @__PURE__ */ _("span", {
 		className: "rv-waits",
 		children: [
@@ -26317,13 +26381,13 @@ function e_({ w: e, mine: t, at: n }) {
 		]
 	});
 }
-function t_({ view: e, me: t, repoOf: n, at: r, go: i }) {
-	let [a, s] = c(""), [l, u] = c(""), d = o(() => Array.from(new Set(e.delivery.map((e) => e.owner ?? Kg))).sort((e, n) => e === t ? -1 : n === t ? 1 : e.localeCompare(n)), [e, t]), f = o(() => Array.from(new Set(e.delivery.map((e) => e.project))).sort(), [e]), p = o(() => e.delivery.filter((e) => (!a || (e.owner ?? Kg) === a) && (!l || e.project === l)).sort((e, n) => Number(Jg(n.waits, t)) - Number(Jg(e.waits, t)) || Number(Ug.has(e.state)) - Number(Ug.has(n.state)) || (n.updated_at ?? 0) - (e.updated_at ?? 0)), [
+function a_({ view: e, me: t, repoOf: n, at: r, go: i }) {
+	let [a, s] = c(""), [l, u] = c(""), d = o(() => Array.from(new Set(e.delivery.map((e) => e.owner ?? Xg))).sort((e, n) => e === t ? -1 : n === t ? 1 : e.localeCompare(n)), [e, t]), f = o(() => Array.from(new Set(e.delivery.map((e) => e.project))).sort(), [e]), p = o(() => e.delivery.filter((e) => (!a || (e.owner ?? Xg) === a) && (!l || e.project === l)).sort((e, n) => Number(Qg(n.waits, t)) - Number(Qg(e.waits, t)) || Number(qg.has(e.state)) - Number(qg.has(n.state)) || (n.updated_at ?? 0) - (e.updated_at ?? 0)), [
 		e,
 		a,
 		l,
 		t
-	]), m = e.delivery.filter((e) => Jg(e.waits, t)).length;
+	]), m = e.delivery.filter((e) => Qg(e.waits, t)).length;
 	return /* @__PURE__ */ _("section", {
 		className: "br-card",
 		"aria-label": "全队交付",
@@ -26356,7 +26420,7 @@ function t_({ view: e, me: t, repoOf: n, at: r, go: i }) {
 						children: "全部"
 					}), d.map((e) => /* @__PURE__ */ g("option", {
 						value: e,
-						children: e === Kg ? "没人认领" : e === t ? `你（${e}）` : e
+						children: e === Xg ? "没人认领" : e === t ? `你（${e}）` : e
 					}, e))]
 				})]
 			}),
@@ -26388,7 +26452,7 @@ function t_({ view: e, me: t, repoOf: n, at: r, go: i }) {
 					/* @__PURE__ */ g("th", { children: "阶段" }),
 					/* @__PURE__ */ g("th", { children: "MR · 部署" }),
 					/* @__PURE__ */ g("th", { children: "在等" })
-				] }) }), /* @__PURE__ */ g("tbody", { children: p.map((e) => /* @__PURE__ */ g(n_, {
+				] }) }), /* @__PURE__ */ g("tbody", { children: p.map((e) => /* @__PURE__ */ g(o_, {
 					r: e,
 					me: t,
 					repo: n[e.project],
@@ -26399,8 +26463,8 @@ function t_({ view: e, me: t, repoOf: n, at: r, go: i }) {
 		})]
 	});
 }
-function n_({ r: e, me: t, repo: n, at: r, go: i }) {
-	let a = Jg(e.waits, t), o = e.mr?.ci ? Gg(e.mr.ci) : null;
+function o_({ r: e, me: t, repo: n, at: r, go: i }) {
+	let a = Qg(e.waits, t), o = e.mr?.ci ? Yg(e.mr.ci) : null;
 	return /* @__PURE__ */ _("tr", {
 		"data-key": e.key,
 		"data-project": e.project,
@@ -26439,7 +26503,7 @@ function n_({ r: e, me: t, repo: n, at: r, go: i }) {
 				})]
 			}) }),
 			/* @__PURE__ */ g("td", { children: /* @__PURE__ */ g("span", {
-				className: `br-chip kt-pill tone-${Hg[e.stage] ?? "idle"}`,
+				className: `br-chip kt-pill tone-${Kg[e.stage] ?? "idle"}`,
 				"data-testid": "stage",
 				children: e.stage
 			}) }),
@@ -26471,7 +26535,7 @@ function n_({ r: e, me: t, repo: n, at: r, go: i }) {
 					})
 				})]
 			}) }),
-			/* @__PURE__ */ g("td", { children: /* @__PURE__ */ g(e_, {
+			/* @__PURE__ */ g("td", { children: /* @__PURE__ */ g(i_, {
 				w: e.waits,
 				mine: a,
 				at: r
@@ -26479,7 +26543,7 @@ function n_({ r: e, me: t, repo: n, at: r, go: i }) {
 		]
 	});
 }
-function r_({ repos: e }) {
+function s_({ repos: e }) {
 	let t = e.filter((e) => !!e.runner);
 	if (t.length === 0) return null;
 	let n = t.some((e) => !e.runner.me), r = t.flatMap((e) => (e.runner.seen?.waiting ?? []).map((t) => ({
@@ -26521,7 +26585,7 @@ function r_({ repos: e }) {
 						e.title
 					]
 				}), /* @__PURE__ */ g(vi, {
-					q: qg(e),
+					q: Zg(e),
 					repo: t.repo,
 					reqKey: e.id
 				})]
@@ -26539,7 +26603,7 @@ function r_({ repos: e }) {
 		]
 	});
 }
-function i_({ repo: e, name: t, runner: n, recentH: r }) {
+function c_({ repo: e, name: t, runner: n, recentH: r }) {
 	let { seen: i, problem: a } = n;
 	return /* @__PURE__ */ _("section", {
 		className: `br-card rv-repo${a ? " is-bad" : ""}`,
@@ -26631,11 +26695,11 @@ function i_({ repo: e, name: t, runner: n, recentH: r }) {
 									/* @__PURE__ */ g("td", { children: /* @__PURE__ */ _("span", {
 										className: "tm-state",
 										children: [/* @__PURE__ */ g("span", {
-											className: `br-chip kt-pill tone-${Bg[e.why].tone}${e.why === "running" ? " is-live" : ""}`,
-											children: Bg[e.why].label
+											className: `br-chip kt-pill tone-${Wg[e.why].tone}${e.why === "running" ? " is-live" : ""}`,
+											children: Wg[e.why].label
 										}), /* @__PURE__ */ g("span", {
 											className: "tm-state-hint",
-											children: Bg[e.why].hint(r)
+											children: Wg[e.why].hint(r)
 										})]
 									}) }),
 									/* @__PURE__ */ g("td", {
@@ -26663,7 +26727,7 @@ function i_({ repo: e, name: t, runner: n, recentH: r }) {
 								t.title
 							]
 						}), /* @__PURE__ */ g(vi, {
-							q: qg(t),
+							q: Zg(t),
 							repo: e,
 							reqKey: t.id
 						})]
@@ -26680,13 +26744,16 @@ function i_({ repo: e, name: t, runner: n, recentH: r }) {
 		]
 	});
 }
-var a_ = "\n.rv-repo { gap: .8em; }\n.rv-repo.is-bad, .rv-strip.is-bad { border-color: var(--kit-bad); }\n.rv-strong { color: var(--text-strong); font-weight: 650; }\n.rv-cols { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: var(--kit-gap-row, 12px) 1.4em; align-items: start; }\n@container br-app (max-width: 1050px) { .rv-cols { grid-template-columns: minmax(0, 1fr); } }\n.rv-col { display: grid; gap: .5em; min-width: 0; align-content: start; }\n.rv-col h4 { margin: 0; font-size: .93em; color: var(--text-strong); }\n.rv-q { display: grid; gap: .3em; }\n.rv-read { margin: 0; }\n.rv-projects { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .4em 1.2em; }\n.rv-projects li { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .45em; min-width: 0; }\n.rv-projects li b { color: var(--text-strong); font-weight: 650; }\n.rv-project-error { flex-basis: 100%; }\n.rv-problem { display: grid; gap: .2em; }\n.rv-filter { display: inline-flex; align-items: center; gap: .35em; font-size: .88em; color: var(--muted); }\n.rv-filter select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; max-width: 12em; }\n.rv-delivery td { vertical-align: top; }\n.rv-delivery td:first-child { min-width: 9.5em; }\n.rv-delivery tr[data-mine] td:first-child { box-shadow: inset 3px 0 0 var(--kt-approve, var(--kit-warn)); }\n.rv-title { color: var(--text-strong); }\n.rv-mr { display: inline-grid; gap: .2em; }\n.rv-mr .br-chip { margin-left: .4em; }\n.rv-ok { color: var(--kt-ok); }\n.rv-wait { color: var(--kt-approve, var(--kit-warn)); }\n.rv-waits { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .2em .45em; }\n", o_ = 1e3, s_ = "签名服务、app 和 AI 的会话都用这台机器的同一个系统用户：签名挡不住 app 自己，只适合试用。", c_ = "先填一次性 token：它只用这一次，不存", l_ = (e) => `上次跑到「${e}」就停了，没跑完（app 关了或者重启了）：再跑一次，接着把没做的建完`, u_ = {
+var l_ = "\n.rv-repo { gap: .8em; }\n.rv-repo.is-bad, .rv-strip.is-bad { border-color: var(--kit-bad); }\n.rv-strong { color: var(--text-strong); font-weight: 650; }\n.rv-cols { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: var(--kit-gap-row, 12px) 1.4em; align-items: start; }\n@container br-app (max-width: 1050px) { .rv-cols { grid-template-columns: minmax(0, 1fr); } }\n.rv-col { display: grid; gap: .5em; min-width: 0; align-content: start; }\n.rv-col h4 { margin: 0; font-size: .93em; color: var(--text-strong); }\n.rv-q { display: grid; gap: .3em; }\n.rv-read { margin: 0; }\n.rv-projects { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .4em 1.2em; }\n.rv-projects li { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .45em; min-width: 0; }\n.rv-projects li b { color: var(--text-strong); font-weight: 650; }\n.rv-project-error { flex-basis: 100%; }\n.rv-problem { display: grid; gap: .2em; }\n.rv-filter { display: inline-flex; align-items: center; gap: .35em; font-size: .88em; color: var(--muted); }\n.rv-filter select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; max-width: 12em; }\n.rv-delivery td { vertical-align: top; }\n.rv-delivery td:first-child { min-width: 9.5em; }\n.rv-delivery tr[data-mine] td:first-child { box-shadow: inset 3px 0 0 var(--kt-approve, var(--kit-warn)); }\n.rv-title { color: var(--text-strong); }\n.rv-mr { display: inline-grid; gap: .2em; }\n.rv-mr .br-chip { margin-left: .4em; }\n.rv-ok { color: var(--kt-ok); }\n.rv-wait { color: var(--kt-approve, var(--kit-warn)); }\n.rv-waits { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .2em .45em; }\n", u_ = 1e3, d_ = "签名服务、app 和 AI 的会话都用这台机器的同一个系统用户：签名挡不住 app 自己，只适合试用。", f_ = "先填一次性 token：它只用这一次，不存", p_ = (e) => `上次跑到「${e}」就停了，没跑完（app 关了或者重启了）：再跑一次，接着把没做的建完`, m_ = {
 	"project-token": "app 用你的一次性 token 给这个项目建两个项目令牌，桥和推送各用一个。项目令牌只看得到自己的项目，这台运行机就只管这一个。",
 	"bot-account": "先在 GitLab 上建一个专门给桥用的用户（比如 brain-bridge），把它加进每个项目，角色 Developer。运行机用它的个人令牌管下面所有项目，不建项目令牌。"
-}, d_ = "先填桥的账号的个人令牌：这台机器上还没有存", f_ = "先填机器人账号的个人令牌，或者推送选「这台机器的 SSH」", p_ = (e) => `空着就用这台机器上存的 ${e} 的令牌。`, m_ = {
+}, h_ = "先填桥的账号的个人令牌：这台机器上还没有存", g_ = "先填机器人账号的个人令牌，或者推送选「这台机器的 SSH」", __ = (e) => `空着就用这台机器上存的 ${e} 的令牌。`, v_ = {
+	bridge: "桥的令牌",
+	bot: "推送的令牌"
+}, y_ = (e) => e.kind === "project" ? `项目令牌 ${e.name}` : "个人令牌", b_ = (e) => e.expires_at === null || e.days_left === null ? "GitLab 没说它哪天到期" : e.days_left < 0 ? `${e.expires_at} 已经过期了` : `${e.expires_at} 到期，还有 ${e.days_left} 天`, x_ = (e) => e.kind === "project" ? "再跑一次：它给这个项目令牌换上新的值，账号不变" : `在 GitLab 上给 ${e.user} 换一个新的个人令牌，再跑一次填上`, S_ = {
 	"project-token": "填一次 GitLab 地址、项目和一个一次性 token，app 自己建好运行机要的一切：两个项目令牌、MR 标签、身份表、签名密钥、三份配置、brain-run 和 brain-patrol、签名服务，最后打开团队模式。你只要在 GitLab 上合并它开的 kit.json MR。",
 	"bot-account": "填 GitLab 地址、几个项目和桥的账号的个人令牌，app 给每个项目建好 MR 标签、开 kit.json 的 MR，再建好身份表、签名密钥、三份配置、brain-run 和 brain-patrol、签名服务，最后打开团队模式。你只要在 GitLab 上合并每个项目的 kit.json MR。"
-}, h_ = {
+}, C_ = {
 	done: {
 		glyph: "✓",
 		word: "好了",
@@ -26723,8 +26790,8 @@ var a_ = "\n.rv-repo { gap: .8em; }\n.rv-repo.is-bad, .rv-strip.is-bad { border-
 		tone: "idle",
 		look: "is-quiet"
 	}
-}, g_ = (e) => e.split(/[,，、\s]+/).map((e) => e.trim()).filter(Boolean);
-function __(e, t) {
+}, w_ = (e) => e.split(/[,，、\s]+/).map((e) => e.trim()).filter(Boolean);
+function T_(e, t) {
 	let n = t.flatMap((e) => e.kit?.gitlab_project ? [e.kit] : []), r = [...new Set(n.map((e) => e.gitlab_project))], i = e.input.projects;
 	return {
 		mode: e.input.mode,
@@ -26740,7 +26807,7 @@ function __(e, t) {
 		jenkinsUser: e.input.jenkins.user
 	};
 }
-function v_(e) {
+function E_(e) {
 	return e.running ? {
 		label: "正在建",
 		tone: "run"
@@ -26755,10 +26822,10 @@ function v_(e) {
 		tone: "ok"
 	};
 }
-function y_({ repos: e, onDone: t, pollMs: n = o_ }) {
+function D_({ repos: e, onDone: t, pollMs: n = u_ }) {
 	let r = u(), [a, o] = c(!1), l = F(D.teamSetup(), a ? n : 0), [d, f] = c(null), [p, m] = c(""), [v, y] = c(""), [b, S] = c(""), [C, w] = c(""), [T, E] = c(""), O = s(null), k = s(null), A = s(null), j = s(!1), M = I((e) => r.post(D.teamSetup(), e)), N = x(t), P = l.data;
 	i(() => {
-		P && !d && f(__(P, e));
+		P && !d && f(T_(P, e));
 	}, [P]), i(() => {
 		P && (o(P.running), P.running ? j.current = !0 : j.current && (j.current = !1, N.current?.()));
 	}, [P, N]);
@@ -26768,7 +26835,7 @@ function y_({ repos: e, onDone: t, pollMs: n = o_ }) {
 	}), ee = P?.accounts ?? {
 		bridge: "",
 		bot: ""
-	}, z = (e) => e.mode === "project-token" ? p.trim() ? null : [c_, O.current] : !v.trim() && !ee.bridge ? [d_, k.current] : e.push === "token" && !b.trim() && !ee.bot ? [f_, A.current] : null, B = (e) => {
+	}, z = (e) => e.mode === "project-token" ? p.trim() ? null : [f_, O.current] : !v.trim() && !ee.bridge ? [h_, k.current] : e.push === "token" && !b.trim() && !ee.bot ? [g_, A.current] : null, B = (e) => {
 		let t = e.jenkinsBase.trim() ? { jenkins: {
 			base: e.jenkinsBase.trim(),
 			user: e.jenkinsUser.trim(),
@@ -26776,8 +26843,8 @@ function y_({ repos: e, onDone: t, pollMs: n = o_ }) {
 		} } : {}, n = {
 			gitlab_base: e.base.trim(),
 			roles: {
-				product: g_(e.product),
-				builder: g_(e.builder)
+				product: w_(e.product),
+				builder: w_(e.builder)
 			},
 			patrol: e.patrol,
 			issues: e.issues,
@@ -26790,7 +26857,7 @@ function y_({ repos: e, onDone: t, pollMs: n = o_ }) {
 		} : {
 			...n,
 			mode: "bot-account",
-			projects: g_(e.projects),
+			projects: w_(e.projects),
 			push: e.push,
 			...p.trim() ? { admin_token: p.trim() } : {},
 			...v.trim() ? { bridge_token: v.trim() } : {},
@@ -26806,7 +26873,7 @@ function y_({ repos: e, onDone: t, pollMs: n = o_ }) {
 		E("");
 		let t = await M.run(B(d));
 		t && (j.current = !0, l.set(t));
-	}, H = P ? v_(P) : null, U = !!P && (!!P.cut_off || P.steps.some((e) => e.status !== "todo")), te = P?.cut_off ? P.steps.find((e) => e.id === P.cut_off)?.title ?? P.cut_off : null, ne = a || M.busy, W = d?.mode === "bot-account", re = /* @__PURE__ */ _(h, { children: [T && /* @__PURE__ */ g("span", {
+	}, H = P ? E_(P) : null, U = !!P && (!!P.cut_off || P.steps.some((e) => e.status !== "todo")), te = P?.cut_off ? P.steps.find((e) => e.id === P.cut_off)?.title ?? P.cut_off : null, ne = a || M.busy, W = d?.mode === "bot-account", re = /* @__PURE__ */ _(h, { children: [T && /* @__PURE__ */ g("span", {
 		className: "br-error",
 		role: "alert",
 		children: T
@@ -26846,7 +26913,7 @@ function y_({ repos: e, onDone: t, pollMs: n = o_ }) {
 		"aria-label": "一键建运行机",
 		"data-testid": "runner-setup",
 		children: [
-			/* @__PURE__ */ g("style", { children: w_ }),
+			/* @__PURE__ */ g("style", { children: N_ }),
 			/* @__PURE__ */ _("header", { children: [
 				/* @__PURE__ */ g(J, {
 					role: "runner",
@@ -26866,12 +26933,12 @@ function y_({ repos: e, onDone: t, pollMs: n = o_ }) {
 			] }),
 			/* @__PURE__ */ g("p", {
 				className: "rs-lead",
-				children: m_[d?.mode ?? "project-token"]
+				children: S_[d?.mode ?? "project-token"]
 			}),
 			/* @__PURE__ */ g("p", {
 				className: "br-banner br-small rs-note",
 				role: "note",
-				children: s_
+				children: d_
 			}),
 			/* @__PURE__ */ g(Kt, {
 				loading: l.loading,
@@ -26888,14 +26955,14 @@ function y_({ repos: e, onDone: t, pollMs: n = o_ }) {
 					className: "rs-fieldset",
 					disabled: ne,
 					children: [
-						/* @__PURE__ */ g(b_, {
+						/* @__PURE__ */ g(O_, {
 							name: "mode",
 							label: "账号",
 							value: d.mode,
 							onPick: (e) => {
 								L({ mode: e }), E("");
 							},
-							hint: u_[d.mode],
+							hint: m_[d.mode],
 							options: [["project-token", "项目令牌：一个项目"], ["bot-account", "机器人账号：几个项目"]]
 						}),
 						/* @__PURE__ */ _("div", {
@@ -26943,9 +27010,9 @@ function y_({ repos: e, onDone: t, pollMs: n = o_ }) {
 						}),
 						W && G("rs-bridge", "桥的账号的个人令牌", v, y, /* @__PURE__ */ _(h, { children: ["桥的账号的个人令牌，要有 api 权限。它存在这台机器上（只有你能读），桥和签名服务都用它。", ee.bridge && /* @__PURE__ */ g("b", {
 							className: "rs-kept",
-							children: p_(ee.bridge)
+							children: __(ee.bridge)
 						})] }), k),
-						W && /* @__PURE__ */ _(h, { children: [/* @__PURE__ */ g(b_, {
+						W && /* @__PURE__ */ _(h, { children: [/* @__PURE__ */ g(O_, {
 							name: "push",
 							label: "运行机怎么推送",
 							value: d.push,
@@ -26956,7 +27023,7 @@ function y_({ repos: e, onDone: t, pollMs: n = o_ }) {
 							options: [["ssh", "这台机器的 SSH"], ["token", "机器人账号"]]
 						}), d.push === "token" && G("rs-bot", "机器人账号的个人令牌", b, S, /* @__PURE__ */ _(h, { children: ["推代码的另一个专门用户（比如 brain-bot），每个项目里是 Developer；它的个人令牌要有 write_repository 和 read_user 权限，也存在这台机器上。", ee.bot && /* @__PURE__ */ g("b", {
 							className: "rs-kept",
-							children: p_(ee.bot)
+							children: __(ee.bot)
 						})] }), A)] }),
 						G("rs-token", W ? "一次性 token（可以不填）" : "一次性 token", p, m, W ? "可以不填。只用这一次：建 MR 标签、开 kit.json 的 MR，用完就丢，不存。不填就用桥的账号来建（它是 Developer 就够），下面的产品和开发就都要填。" : "只用这一次：建令牌、标签和 MR，用完就丢，不存到任何地方。要有 api 权限，你在项目里要是 Maintainer 或 Owner。", O),
 						/* @__PURE__ */ _("div", {
@@ -27098,13 +27165,14 @@ function y_({ repos: e, onDone: t, pollMs: n = o_ }) {
 					className: "br-banner br-small rs-note",
 					role: "status",
 					"data-testid": "setup-cut-off",
-					children: l_(te)
+					children: p_(te)
 				}),
 				/* @__PURE__ */ g("ol", {
 					className: "br-probs rs-steps",
 					"aria-label": "建运行机的每一步",
-					children: P.steps.map((e) => /* @__PURE__ */ g(x_, { s: e }, e.id))
+					children: P.steps.map((e) => /* @__PURE__ */ g(k_, { s: e }, e.id))
 				}),
+				P.tokens.length > 0 && /* @__PURE__ */ g(A_, { tokens: P.tokens }),
 				/* @__PURE__ */ _("div", {
 					className: "br-row",
 					children: [
@@ -27130,7 +27198,7 @@ function y_({ repos: e, onDone: t, pollMs: n = o_ }) {
 		]
 	});
 }
-function b_({ name: e, label: t, value: n, options: r, onPick: i, hint: a }) {
+function O_({ name: e, label: t, value: n, options: r, onPick: i, hint: a }) {
 	return /* @__PURE__ */ _("div", {
 		className: "br-field",
 		children: [
@@ -27163,8 +27231,8 @@ function b_({ name: e, label: t, value: n, options: r, onPick: i, hint: a }) {
 		]
 	});
 }
-function x_({ s: e }) {
-	let t = h_[e.status] ?? h_.todo;
+function k_({ s: e }) {
+	let t = C_[e.status] ?? C_.todo;
 	return /* @__PURE__ */ _("li", {
 		className: `br-prob rs-step ${t.look}`,
 		"data-step": e.id,
@@ -27187,7 +27255,7 @@ function x_({ s: e }) {
 				className: "br-prob-todo",
 				children: e.message
 			}),
-			/* @__PURE__ */ g(C_, {
+			/* @__PURE__ */ g(M_, {
 				status: e.status,
 				link: e.link,
 				detail: e.detail
@@ -27195,13 +27263,50 @@ function x_({ s: e }) {
 			e.projects.length > 0 && /* @__PURE__ */ g("ul", {
 				className: "rs-projects",
 				"aria-label": `${e.title}：每个项目`,
-				children: e.projects.map((e) => /* @__PURE__ */ g(S_, { p: e }, e.project))
+				children: e.projects.map((e) => /* @__PURE__ */ g(j_, { p: e }, e.project))
 			})
 		]
 	});
 }
-function S_({ p: e }) {
-	let t = h_[e.status] ?? h_.todo;
+function A_({ tokens: e }) {
+	return /* @__PURE__ */ g("ul", {
+		className: "br-probs rs-tokens",
+		"aria-label": "运行机的令牌",
+		children: e.map((e) => /* @__PURE__ */ _("li", {
+			className: `br-prob ${e.soon ? "is-WARN" : "is-OK"}`,
+			"data-token": e.key,
+			"data-soon": e.soon,
+			children: [
+				/* @__PURE__ */ g("span", {
+					className: `br-prob-glyph tone-${e.soon ? "warn" : "ok"}`,
+					role: "img",
+					"aria-label": e.soon ? "快到期了" : "没到期",
+					children: e.soon ? "!" : "✓"
+				}),
+				/* @__PURE__ */ _("span", {
+					className: "br-prob-text",
+					children: [
+						v_[e.key],
+						"：",
+						y_(e),
+						"，账号 ",
+						e.user
+					]
+				}),
+				/* @__PURE__ */ g("span", {
+					className: "br-prob-todo",
+					children: b_(e)
+				}),
+				e.soon && /* @__PURE__ */ _("span", {
+					className: "br-prob-todo",
+					children: [/* @__PURE__ */ g("b", { children: "做什么" }), x_(e)]
+				})
+			]
+		}, e.key))
+	});
+}
+function j_({ p: e }) {
+	let t = C_[e.status] ?? C_.todo;
 	return /* @__PURE__ */ _("li", {
 		className: "rs-project",
 		"data-project": e.project,
@@ -27221,7 +27326,7 @@ function S_({ p: e }) {
 				className: "rs-project-text",
 				children: e.message
 			}),
-			/* @__PURE__ */ g(C_, {
+			/* @__PURE__ */ g(M_, {
 				status: e.status,
 				link: e.link,
 				detail: e.detail
@@ -27229,7 +27334,7 @@ function S_({ p: e }) {
 		]
 	});
 }
-function C_({ status: e, link: t, detail: n }) {
+function M_({ status: e, link: t, detail: n }) {
 	return !t && !n ? null : /* @__PURE__ */ _("span", {
 		className: "br-prob-acts",
 		children: [t && /* @__PURE__ */ g($, {
@@ -27241,7 +27346,7 @@ function C_({ status: e, link: t, detail: n }) {
 		})]
 	});
 }
-var w_ = "\n.rs-card { gap: .8em; }\n.rs-lead { margin: 0; color: var(--text); max-width: 60em; }\n.rs-note { margin: 0; }\n.rs-fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: .8em; min-width: 0; }\n.rs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16em, 1fr)); gap: .8em 1.2em; align-items: start; }\n.rs-kept { margin-left: .4em; font-weight: 650; color: var(--text); }\n.rs-seg { display: flex; flex-wrap: wrap; gap: 6px; }\n.rs-opt { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 9px; border-radius: 999px; cursor: pointer; font-size: .92em; font-weight: 650;\n  border: 1px solid var(--border-strong, var(--border)); background: var(--card); color: var(--text); }\n.rs-opt input { margin: 0; accent-color: var(--accent); }\n.rs-opt:hover { border-color: var(--accent); }\n.rs-opt.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 17%, var(--card)); color: var(--text-strong); }\n.rs-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }\n.rs-fieldset:disabled .rs-opt { cursor: default; opacity: .7; }\n.rs-word { margin-left: .6em; font-size: .78em; vertical-align: 1px; }\n.rs-step.is-quiet { border-color: transparent; background: transparent; padding-top: 3px; padding-bottom: 3px; }\n.rs-step.is-quiet .br-prob-glyph { width: 20px; height: 20px; border-radius: 6px; font-size: 11px; border-width: 1.5px;\n  color: var(--muted); border-color: color-mix(in srgb, var(--muted) 50%, transparent); background: transparent; }\n.rs-step.is-quiet .br-prob-text { font-weight: 550; color: var(--muted); }\n.rs-step.is-running { border-color: var(--kit-run); background: color-mix(in srgb, var(--kt-run) 7%, transparent); }\n.rs-step.is-running .br-prob-glyph { animation: kt-blink 1.4s ease-in-out infinite; }\n.rs-projects { grid-column: 2; list-style: none; margin: 4px 0 0; padding: 6px 0 0; display: grid; gap: 5px; border-top: 1px dashed var(--border); }\n.rs-project { display: grid; grid-template-columns: 18px minmax(9em, max-content) minmax(0, 1fr); gap: 2px 10px; align-items: baseline; font-size: .93em; }\n.rs-project-glyph { align-self: center; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 5px; font-size: 10px; font-weight: 900;\n  color: var(--kt-tone); border: 1.5px solid var(--kt-tone); background: color-mix(in srgb, var(--kt-tone) 14%, transparent); }\n.rs-project-name { color: var(--text-strong); font-weight: 650; word-break: break-all; }\n.rs-project-text { color: var(--text); min-width: 0; }\n.rs-project .br-prob-acts { grid-column: 3; margin-top: 0; }\n", T_ = "bridge.json：带 \"signer\": {\"type\": \"spool\", \"spool_dir\", \"allowed_signers\"}，不写 signing_key", E_ = (e) => ({
+var N_ = "\n.rs-card { gap: .8em; }\n.rs-lead { margin: 0; color: var(--text); max-width: 60em; }\n.rs-note { margin: 0; }\n.rs-fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: .8em; min-width: 0; }\n.rs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16em, 1fr)); gap: .8em 1.2em; align-items: start; }\n.rs-kept { margin-left: .4em; font-weight: 650; color: var(--text); }\n.rs-seg { display: flex; flex-wrap: wrap; gap: 6px; }\n.rs-opt { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 9px; border-radius: 999px; cursor: pointer; font-size: .92em; font-weight: 650;\n  border: 1px solid var(--border-strong, var(--border)); background: var(--card); color: var(--text); }\n.rs-opt input { margin: 0; accent-color: var(--accent); }\n.rs-opt:hover { border-color: var(--accent); }\n.rs-opt.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 17%, var(--card)); color: var(--text-strong); }\n.rs-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }\n.rs-fieldset:disabled .rs-opt { cursor: default; opacity: .7; }\n.rs-word { margin-left: .6em; font-size: .78em; vertical-align: 1px; }\n.rs-step.is-quiet { border-color: transparent; background: transparent; padding-top: 3px; padding-bottom: 3px; }\n.rs-step.is-quiet .br-prob-glyph { width: 20px; height: 20px; border-radius: 6px; font-size: 11px; border-width: 1.5px;\n  color: var(--muted); border-color: color-mix(in srgb, var(--muted) 50%, transparent); background: transparent; }\n.rs-step.is-quiet .br-prob-text { font-weight: 550; color: var(--muted); }\n.rs-step.is-running { border-color: var(--kit-run); background: color-mix(in srgb, var(--kt-run) 7%, transparent); }\n.rs-step.is-running .br-prob-glyph { animation: kt-blink 1.4s ease-in-out infinite; }\n.rs-projects { grid-column: 2; list-style: none; margin: 4px 0 0; padding: 6px 0 0; display: grid; gap: 5px; border-top: 1px dashed var(--border); }\n.rs-project { display: grid; grid-template-columns: 18px minmax(9em, max-content) minmax(0, 1fr); gap: 2px 10px; align-items: baseline; font-size: .93em; }\n.rs-project-glyph { align-self: center; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 5px; font-size: 10px; font-weight: 900;\n  color: var(--kt-tone); border: 1.5px solid var(--kt-tone); background: color-mix(in srgb, var(--kt-tone) 14%, transparent); }\n.rs-project-name { color: var(--text-strong); font-weight: 650; word-break: break-all; }\n.rs-project-text { color: var(--text); min-width: 0; }\n.rs-project .br-prob-acts { grid-column: 3; margin-top: 0; }\n", P_ = "bridge.json：带 \"signer\": {\"type\": \"spool\", \"spool_dir\", \"allowed_signers\"}，不写 signing_key", F_ = (e) => ({
 	brainkit: e.brainkit,
 	work_root: e.work_root,
 	fetch_every_min: e.fetch_every_min,
@@ -27251,13 +27356,13 @@ var w_ = "\n.rs-card { gap: .8em; }\n.rs-lead { margin: 0; color: var(--text); m
 	wait_timeout_h: e.wait_timeout_h,
 	stale_after_h: e.stale_after_h,
 	verify_fail_limit: e.verify_fail_limit
-}), D_ = (e) => ({
+}), I_ = (e) => ({
 	...e,
 	brainkit: e.brainkit.trim(),
 	work_root: e.work_root.trim(),
 	auto_push: { ...e.auto_push },
 	team: { ...e.team }
-}), O_ = "队友推上去的进度，app 隔这么久自己取一次，交付总览里就能看到；填 0 就只在点「从远端取最新」时取。", k_ = "这台机器是团队运行机（服务器）", A_ = "团队只有一台团队运行机，装在团队的服务器上：它接手交接过来的需求、巡检 MR。只有那台服务器勾上；组员自己的电脑不勾，在「运行机」里看它在做什么。", j_ = "这台机器是个人电脑：团队运行机在团队的服务器上，在「运行机」里看它在做什么。", M_ = "Lean 每过一个关卡，就把你自己的 run 分支上已经提交的推到远端，队友就能看到你做到哪了；不交接，不开 MR。只在本机做的仓库不推，也不列在这里。", N_ = "关掉以后，开着的快速需求的 MR 再跑 CI 就过不了。", P_ = [[
+}), L_ = "队友推上去的进度，app 隔这么久自己取一次，交付总览里就能看到；填 0 就只在点「从远端取最新」时取。", R_ = "这台机器是团队运行机（服务器）", z_ = "团队只有一台团队运行机，装在团队的服务器上：它接手交接过来的需求、巡检 MR。只有那台服务器勾上；组员自己的电脑不勾，在「运行机」里看它在做什么。", B_ = "这台机器是个人电脑：团队运行机在团队的服务器上，在「运行机」里看它在做什么。", V_ = "Lean 每过一个关卡，就把你自己的 run 分支上已经提交的推到远端，队友就能看到你做到哪了；不交接，不开 MR。只在本机做的仓库不推，也不列在这里。", H_ = "关掉以后，开着的快速需求的 MR 再跑 CI 就过不了。", U_ = [[
 	"bridge_config",
 	"桥的配置文件",
 	"…/bridge.json"
@@ -27265,7 +27370,7 @@ var w_ = "\n.rs-card { gap: .8em; }\n.rs-lead { margin: 0; color: var(--text); m
 	"runnerd_config",
 	"运行机的配置文件",
 	"…/runnerd.json"
-]], F_ = [
+]], W_ = [
 	{
 		key: "wip_limit",
 		before: "每人同时在做的需求，最多",
@@ -27291,7 +27396,7 @@ var w_ = "\n.rs-card { gap: .8em; }\n.rs-lead { margin: 0; color: var(--text); m
 		max: 20
 	}
 ];
-function I_(e) {
+function G_(e) {
 	return e.ok ? {
 		word: "能用",
 		tone: "ok"
@@ -27315,12 +27420,12 @@ function I_(e) {
 		tone: "bad"
 	};
 }
-function L_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
+function K_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 	let a = u(), o = F(D.settings(), 0), [l, d] = c(null), [f, p] = c(!1), m = s(null), v = !!e && !e.brainkit.ok;
 	i(() => {
 		v && l && m.current?.focus();
 	}, [v, !!l]), i(() => {
-		o.data && !l && d(E_(o.data));
+		o.data && !l && d(F_(o.data));
 	}, [o.data]);
 	let y = I((e) => a.post(D.settings(), e)), b = (e) => {
 		p(!1), d((t) => t && {
@@ -27332,8 +27437,8 @@ function L_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 		...e
 	} }), S = async () => {
 		if (!l) return;
-		let e = await y.run(D_(l));
-		e && (d(E_(e.settings)), t(e.status), p(e.ok));
+		let e = await y.run(I_(l));
+		e && (d(F_(e.settings)), t(e.status), p(e.ok));
 	}, C = (e) => r({
 		kind: "import",
 		...e ? { path: e } : {}
@@ -27345,7 +27450,7 @@ function L_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 	}, E = async () => {
 		n();
 		try {
-			d(E_(await a.get(D.settings()))), p(!1);
+			d(F_(await a.get(D.settings()))), p(!1);
 		} catch {}
 	}, O = l && /* @__PURE__ */ _("div", {
 		className: "br-field",
@@ -27476,7 +27581,7 @@ function L_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 							]
 						})]
 					}),
-					/* @__PURE__ */ g(R_, {
+					/* @__PURE__ */ g(q_, {
 						form: l,
 						repos: e?.repos ?? [],
 						edit: b,
@@ -27486,7 +27591,7 @@ function L_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 						className: "br-fieldset",
 						children: [
 							/* @__PURE__ */ g("legend", { children: "全队视图" }),
-							F_.map(({ key: e, before: t, after: n, max: r }) => /* @__PURE__ */ _("label", {
+							W_.map(({ key: e, before: t, after: n, max: r }) => /* @__PURE__ */ _("label", {
 								className: "st-limit",
 								children: [
 									t,
@@ -27541,7 +27646,7 @@ function L_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 								/* @__PURE__ */ g("div", {
 									className: "st-fields",
 									"data-testid": "team-fields",
-									children: P_.map(([e, t, n]) => /* @__PURE__ */ _("div", {
+									children: U_.map(([e, t, n]) => /* @__PURE__ */ _("div", {
 										className: "br-field",
 										children: [
 											/* @__PURE__ */ g("label", {
@@ -27565,7 +27670,7 @@ function L_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 								}),
 								/* @__PURE__ */ _("details", {
 									className: "br-raw",
-									children: [/* @__PURE__ */ g("summary", { children: "细节：桥的配置文件里，签名服务那一段怎么写" }), /* @__PURE__ */ g("pre", { children: T_ })]
+									children: [/* @__PURE__ */ g("summary", { children: "细节：桥的配置文件里，签名服务那一段怎么写" }), /* @__PURE__ */ g("pre", { children: P_ })]
 								}),
 								/* @__PURE__ */ _("label", {
 									className: "br-check",
@@ -27593,7 +27698,7 @@ function L_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 		className: "kt-root br-view st-root",
 		"data-testid": "settings",
 		children: [
-			/* @__PURE__ */ g("style", { children: q_ }),
+			/* @__PURE__ */ g("style", { children: nv }),
 			/* @__PURE__ */ _("header", {
 				className: "st-top",
 				children: [/* @__PURE__ */ g(J, {
@@ -27610,7 +27715,7 @@ function L_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 				})]
 			}),
 			j,
-			e && /* @__PURE__ */ g(V_, {
+			e && /* @__PURE__ */ g(X_, {
 				status: e,
 				onTeam: () => r({ kind: "team" })
 			}),
@@ -27619,7 +27724,7 @@ function L_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 				children: [/* @__PURE__ */ _("div", {
 					className: "st-col",
 					children: [
-						e && /* @__PURE__ */ g(U_, {
+						e && /* @__PURE__ */ g(Q_, {
 							repos: e.repos,
 							idsProblem: e.repo_ids_problem,
 							kitOk: e.brainkit.ok,
@@ -27628,11 +27733,11 @@ function L_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 							onChanged: n
 						}),
 						M,
-						w && /* @__PURE__ */ g(y_, {
+						w && /* @__PURE__ */ g(D_, {
 							repos: e?.repos ?? [],
 							onDone: () => void E()
 						}),
-						e && /* @__PURE__ */ g(H_, {
+						e && /* @__PURE__ */ g(Z_, {
 							role: e.app.role,
 							teamOn: e.team.enabled,
 							onSaved: T
@@ -27640,7 +27745,7 @@ function L_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 					]
 				}), /* @__PURE__ */ g("div", {
 					className: "st-col",
-					children: e && /* @__PURE__ */ g(K_, {
+					children: e && /* @__PURE__ */ g(tv, {
 						crew: e.crew,
 						onFixed: n,
 						kitCard: A?.text
@@ -27650,7 +27755,7 @@ function L_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 		]
 	});
 }
-function R_({ form: e, repos: t, edit: n, onChanged: r }) {
+function q_({ form: e, repos: t, edit: n, onChanged: r }) {
 	let i = t.filter((e) => !!e.sync), a = i.filter((e) => e.sync.auto_push !== null), o = a.filter((e) => !!e.fast), s = i.filter((e) => e.sync.fetch && !e.sync.fetch.ok), c = i.filter((e) => e.sync.fetch?.ok), l = (t) => t.trim() === "" ? 0 : Number.isFinite(Number(t)) ? Number(t) : e.fetch_every_min;
 	return /* @__PURE__ */ _("fieldset", {
 		className: "br-fieldset st-sync",
@@ -27679,7 +27784,7 @@ function R_({ form: e, repos: t, edit: n, onChanged: r }) {
 					/* @__PURE__ */ g("p", {
 						className: "br-hint",
 						id: "set-fetch-hint",
-						children: O_
+						children: L_
 					}),
 					s.map((e) => /* @__PURE__ */ _("div", {
 						className: "st-ask",
@@ -27738,7 +27843,7 @@ function R_({ form: e, repos: t, edit: n, onChanged: r }) {
 					}),
 					/* @__PURE__ */ g("p", {
 						className: "br-hint",
-						children: M_
+						children: V_
 					})
 				]
 			}),
@@ -27752,7 +27857,7 @@ function R_({ form: e, repos: t, edit: n, onChanged: r }) {
 						id: "set-fast",
 						children: "允许快速模式"
 					}),
-					o.map((e) => /* @__PURE__ */ g(z_, {
+					o.map((e) => /* @__PURE__ */ g(J_, {
 						r: e,
 						onChanged: r
 					}, e.path)),
@@ -27765,7 +27870,7 @@ function R_({ form: e, repos: t, edit: n, onChanged: r }) {
 		]
 	});
 }
-function z_({ r: e, onChanged: t }) {
+function J_({ r: e, onChanged: t }) {
 	let n = u(), r = I((e) => n.post(D.fastMode(), e)), [i, a] = c(null), o = r.result?.fast ?? e.fast, s = o.pending, l = async (n) => {
 		await r.run({
 			repo: e.id,
@@ -27822,7 +27927,7 @@ function z_({ r: e, onChanged: t }) {
 					/* @__PURE__ */ g("p", { children: "这是团队规则：会在 .brain/kit.json 改 fast_mode 并开一个 MR，合并以后才生效。" }),
 					!i && /* @__PURE__ */ g("p", {
 						className: "br-warn-text",
-						children: N_
+						children: H_
 					}),
 					/* @__PURE__ */ _("div", {
 						className: "br-row",
@@ -27849,7 +27954,7 @@ function z_({ r: e, onChanged: t }) {
 					className: `br-pre br-small ${r.result.ok ? "br-ok-text" : "br-bad-text"}`,
 					role: "status",
 					children: r.result.text
-				}), /* @__PURE__ */ g(Ls, { r: r.result })]
+				}), /* @__PURE__ */ g(Rs, { r: r.result })]
 			}),
 			r.error && /* @__PURE__ */ g("p", {
 				className: "br-error",
@@ -27859,8 +27964,8 @@ function z_({ r: e, onChanged: t }) {
 		]
 	});
 }
-var B_ = (e) => e ? "有" : "没有";
-function V_({ status: e, onTeam: t }) {
+var Y_ = (e) => e ? "有" : "没有";
+function X_({ status: e, onTeam: t }) {
 	let n = e.app.role === "personal", r = n ? {
 		label: "在服务器上",
 		tone: "idle"
@@ -27924,7 +28029,7 @@ function V_({ status: e, onTeam: t }) {
 								}),
 								rt[e] ?? e,
 								" ",
-								B_(t)
+								Y_(t)
 							]
 						}, e))
 					}),
@@ -27976,7 +28081,7 @@ function V_({ status: e, onTeam: t }) {
 									children: e.me.token ? "✓" : "!"
 								}),
 								"GitLab 令牌 ",
-								B_(e.me.token)
+								Y_(e.me.token)
 							]
 						})
 					}),
@@ -28047,7 +28152,7 @@ function V_({ status: e, onTeam: t }) {
 						})
 					] }) : n ? /* @__PURE__ */ _(h, { children: [/* @__PURE__ */ g("div", {
 						className: "br-kpi-note st-how",
-						children: j_
+						children: B_
 					}), /* @__PURE__ */ g("div", {
 						className: "st-mods",
 						children: /* @__PURE__ */ g("button", {
@@ -28074,7 +28179,7 @@ function V_({ status: e, onTeam: t }) {
 		]
 	});
 }
-function H_({ role: e, teamOn: t, onSaved: n }) {
+function Z_({ role: e, teamOn: t, onSaved: n }) {
 	let r = u(), [i, a] = c(null), o = I((e) => r.post(D.settings(), { role: e })), s = async () => {
 		if (!i) return;
 		let e = await o.run(i);
@@ -28109,11 +28214,11 @@ function H_({ role: e, teamOn: t, onSaved: n }) {
 							let n = t.target.checked ? "team_server" : "personal";
 							a(n === e ? null : n);
 						}
-					}), /* @__PURE__ */ g("b", { children: k_ })]
+					}), /* @__PURE__ */ g("b", { children: R_ })]
 				}), /* @__PURE__ */ g("p", {
 					className: "br-hint",
 					id: "set-role-hint",
-					children: A_
+					children: z_
 				})]
 			}),
 			i && /* @__PURE__ */ _("div", {
@@ -28145,7 +28250,7 @@ function H_({ role: e, teamOn: t, onSaved: n }) {
 		]
 	});
 }
-function U_({ repos: e, idsProblem: t, kitOk: n, onImport: r, onRemoved: i, onChanged: a }) {
+function Q_({ repos: e, idsProblem: t, kitOk: n, onImport: r, onRemoved: i, onChanged: a }) {
 	let o = e.filter((e) => e.ok).length, [s, l] = c("");
 	return /* @__PURE__ */ _("section", {
 		className: "br-card",
@@ -28176,7 +28281,7 @@ function U_({ repos: e, idsProblem: t, kitOk: n, onImport: r, onRemoved: i, onCh
 					}), "导入仓库"]
 				})
 			] }),
-			t && /* @__PURE__ */ g(W_, {
+			t && /* @__PURE__ */ g($_, {
 				text: t,
 				onRebuilt: (e) => {
 					l(e.text), i(e.status);
@@ -28198,7 +28303,7 @@ function U_({ repos: e, idsProblem: t, kitOk: n, onImport: r, onRemoved: i, onCh
 				})]
 			}) : /* @__PURE__ */ g("ul", {
 				className: "st-repos",
-				children: e.map((e) => /* @__PURE__ */ g(G_, {
+				children: e.map((e) => /* @__PURE__ */ g(ev, {
 					r: e,
 					kitOk: n,
 					onImport: r,
@@ -28209,7 +28314,7 @@ function U_({ repos: e, idsProblem: t, kitOk: n, onImport: r, onRemoved: i, onCh
 		]
 	});
 }
-function W_({ text: e, onRebuilt: t }) {
+function $_({ text: e, onRebuilt: t }) {
 	let n = u(), r = I(() => n.post(D.repoIdsRebuild(), {})), i = async () => {
 		let e = await r.run();
 		e && t(e);
@@ -28230,11 +28335,11 @@ function W_({ text: e, onRebuilt: t }) {
 		]
 	});
 }
-function G_({ r: e, kitOk: t, onImport: n, onRemoved: r, onChanged: i }) {
+function ev({ r: e, kitOk: t, onImport: n, onRemoved: r, onChanged: i }) {
 	let a = u(), [o, s] = c(!1), l = I(() => a.post(D.repoRemove(), { path: e.path })), d = async () => {
 		let e = await l.run();
 		e && r(e.status);
-	}, { word: f, tone: p } = I_(e), m = e.ok ? "ok" : e.pending ? "wait" : p === "idle" ? "idle" : "bad", v = !t && p === "idle";
+	}, { word: f, tone: p } = G_(e), m = e.ok ? "ok" : e.pending ? "wait" : p === "idle" ? "idle" : "bad", v = !t && p === "idle";
 	return /* @__PURE__ */ _("li", {
 		className: `st-repo is-${m}`,
 		"data-repo": e.id,
@@ -28364,7 +28469,7 @@ function G_({ r: e, kitOk: t, onImport: n, onRemoved: r, onChanged: i }) {
 		]
 	});
 }
-function K_({ crew: e, onFixed: t, kitCard: n }) {
+function tv({ crew: e, onFixed: t, kitCard: n }) {
 	let r = n ? e.rows.map((e) => e.level === "FAIL" && !e.repo && !e.fix ? {
 		...e,
 		todo: `照最上面「${n}」那张卡做`
@@ -28414,7 +28519,7 @@ function K_({ crew: e, onFixed: t, kitCard: n }) {
 		]
 	});
 }
-var q_ = "\n.st-root { container: st / inline-size; }\n.st-top { display: flex; align-items: center; gap: .6em 1em; flex-wrap: wrap; }\n.st-top-icon { color: var(--accent); }\n.st-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }\n@container st (max-width: 900px) { .st-stats { grid-template-columns: minmax(0, 1fr); } }\n.st-stat { gap: .5em; }\n.st-stat.is-good { border-color: var(--kit-ok); }\n.st-stat.is-broken { border-color: var(--kit-bad); }\n.st-stat.is-warn { border-color: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); }\n.st-stat-head { display: flex; align-items: center; gap: .5em; }\n.st-stat-head .kt-role-icon { color: var(--muted); }\n.st-stat .br-kpi-big { font-size: 2.2em; }\n.st-user { word-break: break-all; }\n.st-path { display: block; font-size: .82em; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }\n.st-mods { display: flex; flex-wrap: wrap; gap: .35em; align-items: center; }\n.st-mods .br-chip { font-size: .8em; }\n.st-mods .br-chip i { font-style: normal; }\n.st-mods .br-chip.is-off { opacity: .75; border-style: dashed; }\n.st-how { white-space: normal; }\n.st-main { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: var(--kit-gap-block, 16px); align-items: start; }\n@container st (max-width: 1000px) { .st-main { grid-template-columns: minmax(0, 1fr); } }\n.st-col { display: grid; gap: var(--kit-gap-block, 16px); min-width: 0; align-content: start; }\n.st-repos { list-style: none; margin: 0; padding: 0; display: grid; gap: .6em; }\n.st-repo { display: grid; gap: .5em; padding: .75em .9em; border-radius: var(--kit-r-cell, 10px); border: 1px solid var(--border); background: var(--bg-elevated, var(--card));\n  box-shadow: inset 3px 0 0 var(--st-c, transparent); }\n.st-repo.is-ok { --st-c: var(--kt-ok); }\n.st-repo.is-wait { --st-c: var(--kt-approve); border-color: var(--kit-wait); }\n.st-repo.is-bad { --st-c: var(--kt-bad); border-color: var(--kit-bad); }\n.st-repo.is-idle { --st-c: var(--muted); }\n.st-repo-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: .2em .7em; min-width: 0; }\n.st-repo-icon { display: inline-grid; place-items: center; color: var(--st-c, var(--muted)); padding-top: .15em; }\n.st-repo-id { display: grid; gap: .15em; min-width: 0; }\n.st-repo-line { display: flex; align-items: center; gap: .4em .7em; flex-wrap: wrap; min-width: 0; }\n.st-repo-name { color: var(--text-strong); font-size: 1.05em; }\n.st-repo-rm { align-self: start; }\n.st-kitfix { gap: .7em; }\n.st-kitfix header h3 { color: var(--kt-bad); }\n.st-kitfix-todo { margin: 0; }\n.st-kitfix-todo b { color: var(--muted); font-weight: 650; margin-right: .5em; }\n.st-ask { display: grid; gap: .35em; justify-items: start; }\n.st-ask p { margin: 0; }\n.st-kit { display: flex; flex-wrap: wrap; gap: .35em; }\n.st-kit .br-tag { color: var(--muted); }\n.st-kit .br-tag b { color: var(--text-strong); font-weight: 650; margin-left: .3em; }\n.st-repo-why { display: flex; align-items: center; gap: .5em .8em; flex-wrap: wrap; font-size: .93em; }\n.st-me { display: flex; align-items: flex-start; gap: .4em .8em; flex-wrap: wrap; font-size: .93em; }\n.st-me > .br-dim { padding-top: .2em; }\n.st-norepo { display: grid; gap: .8em; }\n.st-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(18em, 1fr)); gap: .8em 1.2em; align-items: start; }\n.st-limit input { width: 5.2em; margin: 0 .4em; text-align: center; }\n.st-team { gap: .8em; }\n.st-sync { gap: .8em; }\n.st-minutes { display: inline-flex; align-items: center; gap: .5em; }\n.st-minutes input { width: 6em; }\n.st-label { font-weight: 650; color: var(--text-strong); }\n.st-push { display: grid; gap: .3em; }\n.st-team.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }\n.st-role { gap: .7em; }\n.st-toggle { display: grid; gap: .1em; }\n.st-toggle b { color: var(--text-strong); }\n.st-toggle .br-hint { padding-left: 1.6em; }\n.st-cells i.is-ok { background: var(--kt-ok); } .st-cells i.is-warn { background: var(--kt-warn); } .st-cells i.is-bad { background: var(--kt-bad); }\n", J_ = [
+var nv = "\n.st-root { container: st / inline-size; }\n.st-top { display: flex; align-items: center; gap: .6em 1em; flex-wrap: wrap; }\n.st-top-icon { color: var(--accent); }\n.st-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }\n@container st (max-width: 900px) { .st-stats { grid-template-columns: minmax(0, 1fr); } }\n.st-stat { gap: .5em; }\n.st-stat.is-good { border-color: var(--kit-ok); }\n.st-stat.is-broken { border-color: var(--kit-bad); }\n.st-stat.is-warn { border-color: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); }\n.st-stat-head { display: flex; align-items: center; gap: .5em; }\n.st-stat-head .kt-role-icon { color: var(--muted); }\n.st-stat .br-kpi-big { font-size: 2.2em; }\n.st-user { word-break: break-all; }\n.st-path { display: block; font-size: .82em; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }\n.st-mods { display: flex; flex-wrap: wrap; gap: .35em; align-items: center; }\n.st-mods .br-chip { font-size: .8em; }\n.st-mods .br-chip i { font-style: normal; }\n.st-mods .br-chip.is-off { opacity: .75; border-style: dashed; }\n.st-how { white-space: normal; }\n.st-main { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: var(--kit-gap-block, 16px); align-items: start; }\n@container st (max-width: 1000px) { .st-main { grid-template-columns: minmax(0, 1fr); } }\n.st-col { display: grid; gap: var(--kit-gap-block, 16px); min-width: 0; align-content: start; }\n.st-repos { list-style: none; margin: 0; padding: 0; display: grid; gap: .6em; }\n.st-repo { display: grid; gap: .5em; padding: .75em .9em; border-radius: var(--kit-r-cell, 10px); border: 1px solid var(--border); background: var(--bg-elevated, var(--card));\n  box-shadow: inset 3px 0 0 var(--st-c, transparent); }\n.st-repo.is-ok { --st-c: var(--kt-ok); }\n.st-repo.is-wait { --st-c: var(--kt-approve); border-color: var(--kit-wait); }\n.st-repo.is-bad { --st-c: var(--kt-bad); border-color: var(--kit-bad); }\n.st-repo.is-idle { --st-c: var(--muted); }\n.st-repo-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: .2em .7em; min-width: 0; }\n.st-repo-icon { display: inline-grid; place-items: center; color: var(--st-c, var(--muted)); padding-top: .15em; }\n.st-repo-id { display: grid; gap: .15em; min-width: 0; }\n.st-repo-line { display: flex; align-items: center; gap: .4em .7em; flex-wrap: wrap; min-width: 0; }\n.st-repo-name { color: var(--text-strong); font-size: 1.05em; }\n.st-repo-rm { align-self: start; }\n.st-kitfix { gap: .7em; }\n.st-kitfix header h3 { color: var(--kt-bad); }\n.st-kitfix-todo { margin: 0; }\n.st-kitfix-todo b { color: var(--muted); font-weight: 650; margin-right: .5em; }\n.st-ask { display: grid; gap: .35em; justify-items: start; }\n.st-ask p { margin: 0; }\n.st-kit { display: flex; flex-wrap: wrap; gap: .35em; }\n.st-kit .br-tag { color: var(--muted); }\n.st-kit .br-tag b { color: var(--text-strong); font-weight: 650; margin-left: .3em; }\n.st-repo-why { display: flex; align-items: center; gap: .5em .8em; flex-wrap: wrap; font-size: .93em; }\n.st-me { display: flex; align-items: flex-start; gap: .4em .8em; flex-wrap: wrap; font-size: .93em; }\n.st-me > .br-dim { padding-top: .2em; }\n.st-norepo { display: grid; gap: .8em; }\n.st-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(18em, 1fr)); gap: .8em 1.2em; align-items: start; }\n.st-limit input { width: 5.2em; margin: 0 .4em; text-align: center; }\n.st-team { gap: .8em; }\n.st-sync { gap: .8em; }\n.st-minutes { display: inline-flex; align-items: center; gap: .5em; }\n.st-minutes input { width: 6em; }\n.st-label { font-weight: 650; color: var(--text-strong); }\n.st-push { display: grid; gap: .3em; }\n.st-team.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }\n.st-role { gap: .7em; }\n.st-toggle { display: grid; gap: .1em; }\n.st-toggle b { color: var(--text-strong); }\n.st-toggle .br-hint { padding-left: 1.6em; }\n.st-cells i.is-ok { background: var(--kt-ok); } .st-cells i.is-warn { background: var(--kt-warn); } .st-cells i.is-bad { background: var(--kt-bad); }\n", rv = [
 	{
 		key: "reply",
 		heading: "会话在等你回话",
@@ -28548,14 +28653,14 @@ var q_ = "\n.st-root { container: st / inline-size; }\n.st-top { display: flex; 
 		tone: "bad",
 		hint: "修好了才能开会话（不开会话也能开工）"
 	}
-], Y_ = {
+], iv = {
 	wait: "等你",
 	bad: "被拒或卡住",
 	warn: "看一眼"
-}, X_ = {
+}, av = {
 	open_mr: X.openMr,
 	full: X.toFull
-}, Z_ = (e) => e.kind === "question" && !e.question ? "stuck" : e.kind === "reply" && e.review ? "review" : e.kind, Q_ = (e) => e && /DESIGN|PLAN|INCEPTION/i.test(e) ? "design" : "req", $_ = [
+}, ov = (e) => e.kind === "question" && !e.question ? "stuck" : e.kind === "reply" && e.review ? "review" : e.kind, sv = (e) => e && /DESIGN|PLAN|INCEPTION/i.test(e) ? "design" : "req", cv = [
 	{
 		icon: "laptop",
 		title: "会话等你",
@@ -28587,11 +28692,11 @@ var q_ = "\n.st-root { container: st / inline-size; }\n.st-top { display: flex; 
 		text: "运行机的问题、验收"
 	}
 ];
-function ev(e) {
+function lv(e) {
 	let t = F(D.todo(), e.pollMs ?? 1e4), n = t.data, r = () => {
 		t.reload(), e.reloadStatus();
-	}, a = Date.now() / 1e3, o = s(null), [l, u] = c(!1), [d, f] = c({}), p = (e) => `${e.repo}/${e.key}`, m = n ? J_.map((e) => {
-		let t = n.items.filter((t) => Z_(t) === e.key), r = e.key === "child_start" ? Object.values(d).filter((e) => !t.some((t) => p(t) === p(e.it))).map((e) => e.it) : [];
+	}, a = Date.now() / 1e3, o = s(null), [l, u] = c(!1), [d, f] = c({}), p = (e) => `${e.repo}/${e.key}`, m = n ? rv.map((e) => {
+		let t = n.items.filter((t) => ov(t) === e.key), r = e.key === "child_start" ? Object.values(d).filter((e) => !t.some((t) => p(t) === p(e.it))).map((e) => e.it) : [];
 		return {
 			...e,
 			items: t,
@@ -28616,7 +28721,7 @@ function ev(e) {
 		"data-testid": "br-todo",
 		ref: o,
 		children: [
-			/* @__PURE__ */ g("style", { children: av }),
+			/* @__PURE__ */ g("style", { children: mv }),
 			/* @__PURE__ */ g("style", { children: Rn }),
 			/* @__PURE__ */ _("header", {
 				className: "td-top",
@@ -28639,7 +28744,7 @@ function ev(e) {
 				title: "现在没有等你做的事",
 				text: ["需求走到要你动手的地方，就会出现在这里，按种类分好：会话等你回话、等你开会话审查、Lean 的审批、会话问你的澄清、认领了还没开工、交接被拒、MR 上的问题和验收，还有 KiroCrew 这边要修的；拆成小需求的，能开工的小需求、能发布的大需求，关了却留着分支的需求，还有没推上去的进度，也在这里。"],
 				punch: "这一页空着，就是没有谁在等你。",
-				flow: $_,
+				flow: cv,
 				children: /* @__PURE__ */ _("button", {
 					type: "button",
 					className: "br-btn",
@@ -28742,7 +28847,7 @@ function ev(e) {
 							})
 						}) : /* @__PURE__ */ g("div", {
 							className: "td-items",
-							children: [...t.items, ...t.kept].map((n, i) => /* @__PURE__ */ g(iv, {
+							children: [...t.items, ...t.kept].map((n, i) => /* @__PURE__ */ g(pv, {
 								it: n,
 								group: t,
 								now: a,
@@ -28758,8 +28863,8 @@ function ev(e) {
 		]
 	});
 }
-var tv = (e) => e.path || null;
-function nv({ path: t }) {
+var uv = (e) => e.path || null;
+function dv({ path: t }) {
 	return /* @__PURE__ */ _("p", {
 		className: "td-do td-read",
 		"data-testid": "todo-read",
@@ -28772,9 +28877,9 @@ function nv({ path: t }) {
 		})] }, t))]
 	});
 }
-var rv = (e) => `交接被拒了：${e.replace(/^(接手被拒|交接被拒)[：:]\s*/, "")}。请按这个原因改好，再交接一次。`;
-function iv({ it: e, group: t, now: n, go: r, onAnswered: i, started: a, onStarted: o }) {
-	let s = p(), c = u(), l = I((t) => c.post(D.childStart(e.repo, e.key), t)), d = e.kind === "lean_approval" ? Q_(e.approval) : t.icon, f = e.session?.url ?? null, m = e.kind === "handoff_rejected" && f ? rv(e.text) : e.line, h = e.question && (e.kind === "question" || e.kind === "clarify" || e.kind === "acceptance"), v = e.mr_url ?? e.question?.mr_url ?? null, y = t.key === "question" ? X.answerOnMr : t.key === "acceptance" ? X.acceptOnMr : t.key === "handoff_unlabelled" ? Y.label_handoff : X.viewMr, b = t.key === "question" || t.key === "acceptance" || t.key === "handoff_unlabelled" || t.key === "stuck", x = async () => {
+var fv = (e) => `交接被拒了：${e.replace(/^(接手被拒|交接被拒)[：:]\s*/, "")}。请按这个原因改好，再交接一次。`;
+function pv({ it: e, group: t, now: n, go: r, onAnswered: i, started: a, onStarted: o }) {
+	let s = p(), c = u(), l = I((t) => c.post(D.childStart(e.repo, e.key), t)), d = e.kind === "lean_approval" ? sv(e.approval) : t.icon, f = e.session?.url ?? null, m = e.kind === "handoff_rejected" && f ? fv(e.text) : e.line, h = e.question && (e.kind === "question" || e.kind === "clarify" || e.kind === "acceptance"), v = e.mr_url ?? e.question?.mr_url ?? null, y = t.key === "question" ? X.answerOnMr : t.key === "acceptance" ? X.acceptOnMr : t.key === "handoff_unlabelled" ? Y.label_handoff : X.viewMr, b = t.key === "question" || t.key === "acceptance" || t.key === "handoff_unlabelled" || t.key === "stuck", x = async () => {
 		let e = await l.run({ open_session: !0 });
 		e && o(e);
 	}, S = e.kind === "child_start" && !a?.ok;
@@ -28789,7 +28894,7 @@ function iv({ it: e, group: t, now: n, go: r, onAnswered: i, started: a, onStart
 				children: [
 					/* @__PURE__ */ g("span", {
 						className: "td-item-icon",
-						title: Y_[t.tone],
+						title: iv[t.tone],
 						children: /* @__PURE__ */ g(J, {
 							role: d,
 							size: 18
@@ -28827,7 +28932,7 @@ function iv({ it: e, group: t, now: n, go: r, onAnswered: i, started: a, onStart
 				className: "td-text",
 				children: e.text
 			}),
-			e.kind === "lean_approval" && tv(e) && /* @__PURE__ */ g(nv, { path: tv(e) }),
+			e.kind === "lean_approval" && uv(e) && /* @__PURE__ */ g(dv, { path: uv(e) }),
 			t.key === "stuck" && /* @__PURE__ */ _("p", {
 				className: "td-do",
 				children: [/* @__PURE__ */ g("b", { children: "做什么" }), "找这个需求的负责人，在 MR 上决定重开还是关掉它。"]
@@ -28904,10 +29009,10 @@ function iv({ it: e, group: t, now: n, go: r, onAnswered: i, started: a, onStart
 							size: 14
 						}), Y.push_handoff]
 					}),
-					X_[t.key] && e.key && /* @__PURE__ */ _("button", {
+					av[t.key] && e.key && /* @__PURE__ */ _("button", {
 						type: "button",
 						className: "br-btn is-small is-primary",
-						title: `在${X.openDetail}里点「${X_[t.key]}」`,
+						title: `在${X.openDetail}里点「${av[t.key]}」`,
 						onClick: () => r({
 							kind: "item",
 							repo: e.repo,
@@ -28978,12 +29083,12 @@ function iv({ it: e, group: t, now: n, go: r, onAnswered: i, started: a, onStart
 		]
 	});
 }
-var av = "\n.td-top { display: flex; align-items: center; gap: .6em 1em; flex-wrap: wrap; }\n.td-top-icon { color: var(--accent); }\n.td-root { --td-wait: var(--kt-approve); --td-bad: var(--kt-bad); --td-warn: var(--kt-warn); }\n.td-root .is-wait { --td-c: var(--td-wait); --td-b: var(--kit-wait); }\n.td-root .is-bad { --td-c: var(--td-bad); --td-b: var(--kit-bad); }\n.td-root .is-warn { --td-c: var(--td-warn); --td-b: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); }\n.td-kpi { gap: .6em; border-color: var(--kit-wait); }\n.td-kpi-row { display: flex; align-items: center; gap: .8em 1.6em; flex-wrap: wrap; }\n.td-cells { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 18em; }\n.td-cells i { width: 1.9em; height: 1.9em; border-radius: .5em; border: 2px solid var(--td-c); background: color-mix(in srgb, var(--td-c) 22%, transparent); }\n.td-cells i.is-wait { animation: kt-blink 2.4s ease-in-out infinite; }\n@media (prefers-reduced-motion: reduce) { .td-cells i.is-wait { animation: none; } }\n.td-jumps { display: flex; flex-wrap: wrap; gap: .4em; }\n.td-jump { appearance: none; font: inherit; font-size: .88em; display: inline-flex; align-items: center; gap: .4em; padding: .25em .8em; border-radius: 999px; cursor: pointer;\n  color: var(--text); background: color-mix(in srgb, var(--td-c) 10%, transparent); border: 1px solid color-mix(in srgb, var(--td-c) 45%, transparent); }\n.td-jump .kt-role-icon { color: var(--td-c); }\n.td-jump b { color: var(--text-strong); }\n.td-jump:hover { border-color: var(--td-c); }\n.td-groups { columns: 3 30em; column-gap: var(--kit-gap-block, 16px); }\n@container br-app (max-width: 1100px) { .td-groups { columns: 2 22em; } }\n@container br-app (max-width: 720px) { .td-groups { columns: 1; } }\n.td-group { display: grid; gap: .7em; break-inside: avoid; margin-bottom: 1.4em; }\n.td-group-head { display: flex; align-items: center; gap: .4em .7em; flex-wrap: wrap; }\n.td-group-head h3 { font-size: 1.1em; }\n.td-group-icon { display: grid; place-items: center; width: 2.1em; height: 2.1em; border-radius: .6em; color: var(--td-c);\n  border: 1px solid color-mix(in srgb, var(--td-c) 50%, var(--border)); background: color-mix(in srgb, var(--td-c) 12%, transparent); }\n.td-root span.td-badge { --kt-tone: var(--td-c); font-size: .8em; }\n.td-items { display: grid; gap: var(--kit-gap-row, 12px); }\n.td-item { display: grid; gap: .6em; align-content: start; padding: .9em 1.1em; border-radius: var(--kit-r, 16px); background: var(--card);\n  border: 1px solid var(--td-b, var(--border)); box-shadow: inset 3px 0 0 var(--td-c, transparent); }\n.td-item-top { display: flex; align-items: center; gap: .4em .6em; flex-wrap: wrap; }\n.td-item-icon { display: inline-grid; place-items: center; color: var(--td-c); }\n.td-title { color: var(--text-strong); font-weight: 700; }\n.td-text { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--text); }\n.td-do { margin: 0; font-size: .93em; color: var(--text); }\n.td-do b { color: var(--muted); font-weight: 650; margin-right: .5em; }\n.td-read b { margin-right: 0; }\n.td-read .td-seg { white-space: nowrap; }\n.td-acts { display: flex; align-items: center; gap: .5em; flex-wrap: wrap; }\n.td-acts a.br-btn { text-decoration: none; }\n.td-acts .kt-btn { padding: 4px 10px; font-size: .84em; border-radius: 8px; display: inline-flex; align-items: center; gap: 5px; }\n.td-acts .br-note, .td-acts .br-error { flex-basis: 100%; margin: 0; }\n.td-acts a.br-btn.is-primary { color: var(--accent-fg, #fff); }\n", ov = 3e4, sv = (e, t) => e.kind === "board" && t.kind === "board" && e.repo === t.repo && e.key === t.key;
-function cv({ pollMs: e } = {}) {
+var mv = "\n.td-top { display: flex; align-items: center; gap: .6em 1em; flex-wrap: wrap; }\n.td-top-icon { color: var(--accent); }\n.td-root { --td-wait: var(--kt-approve); --td-bad: var(--kt-bad); --td-warn: var(--kt-warn); }\n.td-root .is-wait { --td-c: var(--td-wait); --td-b: var(--kit-wait); }\n.td-root .is-bad { --td-c: var(--td-bad); --td-b: var(--kit-bad); }\n.td-root .is-warn { --td-c: var(--td-warn); --td-b: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); }\n.td-kpi { gap: .6em; border-color: var(--kit-wait); }\n.td-kpi-row { display: flex; align-items: center; gap: .8em 1.6em; flex-wrap: wrap; }\n.td-cells { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 18em; }\n.td-cells i { width: 1.9em; height: 1.9em; border-radius: .5em; border: 2px solid var(--td-c); background: color-mix(in srgb, var(--td-c) 22%, transparent); }\n.td-cells i.is-wait { animation: kt-blink 2.4s ease-in-out infinite; }\n@media (prefers-reduced-motion: reduce) { .td-cells i.is-wait { animation: none; } }\n.td-jumps { display: flex; flex-wrap: wrap; gap: .4em; }\n.td-jump { appearance: none; font: inherit; font-size: .88em; display: inline-flex; align-items: center; gap: .4em; padding: .25em .8em; border-radius: 999px; cursor: pointer;\n  color: var(--text); background: color-mix(in srgb, var(--td-c) 10%, transparent); border: 1px solid color-mix(in srgb, var(--td-c) 45%, transparent); }\n.td-jump .kt-role-icon { color: var(--td-c); }\n.td-jump b { color: var(--text-strong); }\n.td-jump:hover { border-color: var(--td-c); }\n.td-groups { columns: 3 30em; column-gap: var(--kit-gap-block, 16px); }\n@container br-app (max-width: 1100px) { .td-groups { columns: 2 22em; } }\n@container br-app (max-width: 720px) { .td-groups { columns: 1; } }\n.td-group { display: grid; gap: .7em; break-inside: avoid; margin-bottom: 1.4em; }\n.td-group-head { display: flex; align-items: center; gap: .4em .7em; flex-wrap: wrap; }\n.td-group-head h3 { font-size: 1.1em; }\n.td-group-icon { display: grid; place-items: center; width: 2.1em; height: 2.1em; border-radius: .6em; color: var(--td-c);\n  border: 1px solid color-mix(in srgb, var(--td-c) 50%, var(--border)); background: color-mix(in srgb, var(--td-c) 12%, transparent); }\n.td-root span.td-badge { --kt-tone: var(--td-c); font-size: .8em; }\n.td-items { display: grid; gap: var(--kit-gap-row, 12px); }\n.td-item { display: grid; gap: .6em; align-content: start; padding: .9em 1.1em; border-radius: var(--kit-r, 16px); background: var(--card);\n  border: 1px solid var(--td-b, var(--border)); box-shadow: inset 3px 0 0 var(--td-c, transparent); }\n.td-item-top { display: flex; align-items: center; gap: .4em .6em; flex-wrap: wrap; }\n.td-item-icon { display: inline-grid; place-items: center; color: var(--td-c); }\n.td-title { color: var(--text-strong); font-weight: 700; }\n.td-text { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--text); }\n.td-do { margin: 0; font-size: .93em; color: var(--text); }\n.td-do b { color: var(--muted); font-weight: 650; margin-right: .5em; }\n.td-read b { margin-right: 0; }\n.td-read .td-seg { white-space: nowrap; }\n.td-acts { display: flex; align-items: center; gap: .5em; flex-wrap: wrap; }\n.td-acts a.br-btn { text-decoration: none; }\n.td-acts .kt-btn { padding: 4px 10px; font-size: .84em; border-radius: 8px; display: inline-flex; align-items: center; gap: 5px; }\n.td-acts .br-note, .td-acts .br-error { flex-basis: 100%; margin: 0; }\n.td-acts a.br-btn.is-primary { color: var(--accent-fg, #fff); }\n", hv = 3e4, gv = (e, t) => e.kind === "board" && t.kind === "board" && e.repo === t.repo && e.key === t.key;
+function _v({ pollMs: e } = {}) {
 	let [t, r] = c(() => ({
 		...q(window.location.search),
 		n: 0
-	})), [a, o] = c(() => hv(q(window.location.search), fv())), l = u(), [d, m] = c(!1), [h, v] = c(null), y = n((e, t, n) => {
+	})), [a, o] = c(() => wv(q(window.location.search), xv())), l = u(), [d, m] = c(!1), [h, v] = c(null), y = n((e, t, n) => {
 		let r = `${e}/${t}`;
 		v((e) => n ? r : e === r ? null : e);
 	}, []), b = p(), x = f(), S = s(null), C = s(q(window.location.search)), w = s(C.current.kind === "overview" ? C.current : { kind: "overview" }), T = F(D.status(), e ?? 3e4), E = T.data?.counts.todo ?? 0;
@@ -28992,8 +29097,8 @@ function cv({ pollMs: e } = {}) {
 	}, [E, !!T.data]);
 	let O = n((e) => {
 		C.current = e, e.kind === "overview" && (w.current = e), o((t) => {
-			let n = hv(e, t);
-			return n !== t && pv(n), n;
+			let n = wv(e, t);
+			return n !== t && Sv(n), n;
 		});
 	}, []), k = (e) => `${window.location.pathname}${Ce(e)}`, A = () => Number(window.history.state?.brDepth ?? 0), M = n((e) => {
 		O(e);
@@ -29023,7 +29128,7 @@ function cv({ pollMs: e } = {}) {
 	i(() => {
 		let e = () => {
 			let e = q(window.location.search);
-			O(e), r((t) => sv(t, e) ? t : {
+			O(e), r((t) => gv(t, e) ? t : {
 				...e,
 				n: t.n + 1
 			});
@@ -29045,7 +29150,7 @@ function cv({ pollMs: e } = {}) {
 				...a
 			});
 			m(!0), l.get(D.overview("all")).then((t) => {
-				let n = mv(t.rows);
+				let n = Cv(t.rows);
 				P(n ? {
 					kind: e,
 					repo: n.repo,
@@ -29054,7 +29159,7 @@ function cv({ pollMs: e } = {}) {
 			}, () => P(w.current)).finally(() => m(!1));
 			return;
 		}
-		let t = gv(C.current);
+		let t = Tv(C.current);
 		if (e === "new") return P({
 			kind: "new",
 			...t ? { repo: t } : {}
@@ -29092,7 +29197,7 @@ function cv({ pollMs: e } = {}) {
 			repo: t.repo,
 			key: t.key
 		} : t.from === "team" ? { kind: "team" } : w.current, { decision: r, ...i } = t;
-		H = /* @__PURE__ */ g(Pp, {
+		H = /* @__PURE__ */ g(Rp, {
 			entry: t,
 			onBack: () => L(n),
 			onSwitch: (e, t) => I({
@@ -29110,7 +29215,7 @@ function cv({ pollMs: e } = {}) {
 			repo: t.repo,
 			key: t.key
 		} : w.current;
-		H = /* @__PURE__ */ g(ad, {
+		H = /* @__PURE__ */ g(od, {
 			entry: t,
 			onBack: t.from ? () => L(n) : void 0,
 			...z,
@@ -29125,28 +29230,28 @@ function cv({ pollMs: e } = {}) {
 		}, B);
 	} else if (V.kind === "new") {
 		let { kind: e, ...t } = V;
-		H = /* @__PURE__ */ g(dh, {
+		H = /* @__PURE__ */ g(hh, {
 			entry: t,
 			...z
 		}, B);
 	} else if (V.kind === "brain") {
 		let { kind: e, ...t } = V;
-		H = /* @__PURE__ */ g(Md, {
+		H = /* @__PURE__ */ g(Nd, {
 			entry: t,
 			...z
 		}, B);
-	} else if (V.kind === "todo") H = /* @__PURE__ */ g(ev, { ...z }, B);
-	else if (V.kind === "team") H = T.data?.app.role === "personal" ? /* @__PURE__ */ g(Yg, { ...z }, B) : /* @__PURE__ */ g(sp, { ...z }, B);
-	else if (V.kind === "settings") H = /* @__PURE__ */ g(L_, { ...z }, B);
+	} else if (V.kind === "todo") H = /* @__PURE__ */ g(lv, { ...z }, B);
+	else if (V.kind === "team") H = T.data?.app.role === "personal" ? /* @__PURE__ */ g($g, { ...z }, B) : /* @__PURE__ */ g(up, { ...z }, B);
+	else if (V.kind === "settings") H = /* @__PURE__ */ g(K_, { ...z }, B);
 	else if (V.kind === "import") {
 		let { kind: e, ...t } = V;
-		H = /* @__PURE__ */ g(Em, {
+		H = /* @__PURE__ */ g(Am, {
 			entry: t,
 			...z
 		}, B);
 	} else {
 		let { kind: e, ...t } = V;
-		H = /* @__PURE__ */ g(tg, {
+		H = /* @__PURE__ */ g(ag, {
 			entry: t,
 			...z
 		}, B);
@@ -29157,11 +29262,11 @@ function cv({ pollMs: e } = {}) {
 		className: "br-app",
 		"data-testid": "br-app",
 		children: [
-			/* @__PURE__ */ g("style", { children: sd }),
-			/* @__PURE__ */ g("style", { children: ud }),
-			/* @__PURE__ */ g("style", { children: gd }),
-			/* @__PURE__ */ g("style", { children: pd }),
-			/* @__PURE__ */ g("style", { children: lv }),
+			/* @__PURE__ */ g("style", { children: cd }),
+			/* @__PURE__ */ g("style", { children: dd }),
+			/* @__PURE__ */ g("style", { children: _d }),
+			/* @__PURE__ */ g("style", { children: md }),
+			/* @__PURE__ */ g("style", { children: vv }),
 			/* @__PURE__ */ g(an, {
 				view: V.kind,
 				onView: ee,
@@ -29175,7 +29280,7 @@ function cv({ pollMs: e } = {}) {
 				className: "br-banners",
 				"data-testid": "br-banners",
 				children: [
-					ne && /* @__PURE__ */ g(uv, {
+					ne && /* @__PURE__ */ g(yv, {
 						text: `${U ? "状态刷新没成：" : ""}${ne.text}`,
 						todo: ne.todo,
 						raw: T.raw,
@@ -29188,7 +29293,7 @@ function cv({ pollMs: e } = {}) {
 							children: "再试一次"
 						})
 					}),
-					W && /* @__PURE__ */ _(uv, {
+					W && /* @__PURE__ */ _(yv, {
 						text: W.text,
 						todo: W.todo,
 						raw: W.raw,
@@ -29201,7 +29306,7 @@ function cv({ pollMs: e } = {}) {
 							children: W.kind === "missing" ? "去填位置" : "去设置"
 						})]
 					}),
-					G && /* @__PURE__ */ g(uv, {
+					G && /* @__PURE__ */ g(yv, {
 						text: "仓库编号的记录坏了：这次没认仓库",
 						todo: "在设置里点「按记录重建编号」",
 						raw: G,
@@ -29255,8 +29360,8 @@ function cv({ pollMs: e } = {}) {
 		]
 	});
 }
-var lv = "\n.br-app { container: br-app / inline-size; width: 100%; }\n.br-tabs button.is-off { color: var(--muted); }\n.br-tabs button.is-off[aria-selected=\"true\"] { border-bottom-color: color-mix(in srgb, var(--muted) 70%, transparent); }\n.br-shell-row { display: flex; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; }\n.br-shell-row .br-prob-todo { display: inline-flex; gap: 6px; }\n.br-shell-row .br-prob-todo b { color: var(--muted); font-weight: 650; }\n";
-function uv({ text: e, todo: t, raw: n, bad: r, testid: i, children: a }) {
+var vv = "\n.br-app { container: br-app / inline-size; width: 100%; }\n.br-tabs button.is-off { color: var(--muted); }\n.br-tabs button.is-off[aria-selected=\"true\"] { border-bottom-color: color-mix(in srgb, var(--muted) 70%, transparent); }\n.br-shell-row { display: flex; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; }\n.br-shell-row .br-prob-todo { display: inline-flex; gap: 6px; }\n.br-shell-row .br-prob-todo b { color: var(--muted); font-weight: 650; }\n";
+function yv({ text: e, todo: t, raw: n, bad: r, testid: i, children: a }) {
 	return /* @__PURE__ */ g("div", {
 		className: `br-banner${r ? " is-error" : ""}`,
 		role: "alert",
@@ -29281,10 +29386,10 @@ function uv({ text: e, todo: t, raw: n, bad: r, testid: i, children: a }) {
 		})
 	});
 }
-var dv = "brain.app.held";
-function fv() {
+var bv = "brain.app.held";
+function xv() {
 	try {
-		let e = JSON.parse(window.localStorage.getItem(dv) || "null");
+		let e = JSON.parse(window.localStorage.getItem(bv) || "null");
 		return e && typeof e.repo == "string" && typeof e.key == "string" ? {
 			repo: e.repo,
 			key: e.key
@@ -29293,24 +29398,24 @@ function fv() {
 		return null;
 	}
 }
-function pv(e) {
+function Sv(e) {
 	try {
-		e && window.localStorage.setItem(dv, JSON.stringify(e));
+		e && window.localStorage.setItem(bv, JSON.stringify(e));
 	} catch {}
 }
-function mv(e) {
+function Cv(e) {
 	if (!e.length) return null;
 	let t = (e) => e.updated_at ?? 0, n = e.filter((e) => e.waits.who === "you");
 	return n.length ? [...n].sort((e, n) => t(n) - t(e))[0] : [...e].sort((e, n) => t(n) - t(e))[0];
 }
-function hv(e, t) {
+function wv(e, t) {
 	return e.kind !== "item" && e.kind !== "board" || t && t.repo === e.repo && t.key === e.key ? t : {
 		repo: e.repo,
 		key: e.key
 	};
 }
-function gv(e) {
+function Tv(e) {
 	return "repo" in e && e.repo && e.repo !== "runner" ? e.repo : void 0;
 }
 //#endregion
-export { ov as STATUS_POLL_MS, cv as default, mv as pickRequirement };
+export { hv as STATUS_POLL_MS, _v as default, Cv as pickRequirement };
