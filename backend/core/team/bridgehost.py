@@ -293,9 +293,8 @@ class TeamRuntime:
         host = self.host
         if host is None:
             raise RuntimeError(self.error or "运行机模式没有启动")
-        common = bk.m("common")
         summary: dict[str, int] = {}
-        errors = []
+        errors: list[str] = []
         with self._lock:
             for step in ("poll", "issues", "runnerd", "dispatch", "watch", "collect", "reconcile", "patrol", "staging"):
                 try:
@@ -321,15 +320,31 @@ class TeamRuntime:
                     n = getattr(host, step)()
                     if isinstance(n, int):
                         summary[step] = n
-                except (common.BrainError, OSError, ValueError, sqlite3.Error) as exc:
-                    errors.append("%s: %s" % (step, str(exc).split("\n", 1)[0][:200]))
-                    self._out("%s failed this round: %s" % (step, exc))
+                except Exception as exc:  # noqa: BLE001 - foreseen or a bug: it stops none of the other steps
+                    errors.append(self._failed(step, exc))
             self.last_loop_at = time.time()
             self.loop_error = "；".join(errors)
             if self.relay is not None:      # 状态中转, after the hand-over steps and bounded: what goes wrong is its own
-                summary["relay"] = self._relay_round()
+                try:
+                    summary["relay"] = self._relay_round()
+                except Exception as exc:  # noqa: BLE001 - a bug in it, said as a step's
+                    errors.append(self._failed("relay", exc))
+                    self.loop_error = "；".join(errors)
             self.last_summary = summary
         return summary
+
+    def _failed(self, step: str, exc: Exception) -> str:
+        """A step that failed this round, as loop_error says it. What brain-kit, GitLab, git or the ledger can raise is
+        said in its own words; anything else is a bug: its type goes with it and its traceback into the log."""
+        said = str(exc).split("\n", 1)[0][:200]
+        if isinstance(exc, (bk.m("common").BrainError, OSError, ValueError, sqlite3.Error)):
+            self._out("%s failed this round: %s" % (step, exc))
+            return "%s: %s" % (step, said)
+        said = "%s: %s" % (type(exc).__name__, said)
+        if self.log is not None:
+            self.log.error("brain bridge: %s failed this round", step, exc_info=exc)
+        self._out("%s failed this round: %s" % (step, said))
+        return "%s: %s" % (step, said)
 
     def _relay_round(self) -> int:
         """状态中转's part of the round (relay.Relay.round): each project's TeamSnapshot as snapshot_of makes it, what

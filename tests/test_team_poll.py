@@ -3,6 +3,7 @@ for brain-kit's Bridge: a project whose kit.json or labelled MRs cannot be read 
 projects after it, as in brain-kit's own poll; the round's error names it, and the status says, project by project,
 which one was not read and which one leaves mr-handoff out of its kit.json work_sources."""
 
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -56,3 +57,30 @@ def test_a_project_that_cannot_be_read_does_not_stop_the_hand_overs_of_the_other
     assert '["mr-handoff", "mr-patrol", "staging-errors", "issue-label"]' in c["todo"]
     assert processed[len(polled):] == [("grp/a", 7), ("grp/b", 7)] and fixed["loop_error"] == ""
     assert [x["text"] for x in fixed["checks"]] == [c["text"]]
+
+
+def test_a_step_that_fails_unexpectedly_is_logged_and_said_and_the_round_still_ends(bk, caplog):
+    """A bug in one step (watch raising KeyError, no BrainError): the steps after it run, the round's time, its
+    error and its summary are kept as for any other failure, and the log has the traceback."""
+    ran = []
+
+    def watch():
+        raise KeyError("run_id")
+
+    host = SimpleNamespace(cfg={"projects": ["grp/b"]}, kit=lambda p: HANDOFF, out=lambda *_: None,
+                           gl=SimpleNamespace(mrs_with_label=lambda p, label: []), process=lambda *_: "accepted",
+                           dispatch=lambda: ran.append("dispatch") or 0, watch=watch,
+                           collect=lambda: ran.append("collect") or 2, reconcile=lambda: ran.append("reconcile") or 0)
+    log = logging.getLogger("brain-test-round")
+    rt = mod("team.bridgehost").TeamRuntime({"enabled": True, "bridge_config": "/nonexistent"}, None, None, log)
+    rt.host = host
+    try:
+        with caplog.at_level(logging.ERROR, logger="brain-test-round"):
+            summary = rt.loop_once()
+        status = rt.status()
+    finally:
+        rt.executor.shutdown(wait=False)
+    assert ran == ["dispatch", "collect", "reconcile"]
+    assert summary["collect"] == 2 and rt.last_summary == summary
+    assert status["last_loop_at"] is not None and status["loop_error"] == "watch: KeyError: 'run_id'"
+    assert any(r.exc_info and r.exc_info[0] is KeyError for r in caplog.records)
