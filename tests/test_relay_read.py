@@ -188,10 +188,11 @@ def test_what_cannot_be_read_is_said_on_its_project_and_the_last_good_one_kept_r
              step(lambda: gl.put_status(PAY, snapshot.dump(snapshot.parse(a_snapshot(T0, project=WEB)))))]
     got = [g.body for g in statuses(svc, routes, *steps)]
     assert counted == [0, 1, 1, 2, 3, 4, 5, 6] and len(reads(gl)) == 7                 # one read a minute, none in between
-    assert [g["relays"] for g in got[:2]] == [[], []] and [g["repos"][0]["relay"] for g in got[:3]] == [False, False, True]
+    assert [g["relays"] for g in got[:2]] == [[], []] and [g["repos"][0]["relay"] for g in got[:4]] == [False] * 3 + [True]
     none = got[2]["relays"][0]["projects"][0]
     assert (none["written_at"], none["problem"]["text"]) == (None, "团队服务器还没在这个项目的 brain/status 上写过状态")
     assert got[2]["relays"][0]["view"] is None
+    assert got[2]["repos"][0]["runner"]["project"] == PAY, "no snapshot yet: the runner as GitLab shows it, until one is read"
     read = got[3]["relays"][0]
     assert read["view"]["delivery"] == good["snap"]["delivery"] and read["projects"][0]["problem"] is None
     for body, text in ((got[4], "这次没读到 GitLab"), (got[5], "团队服务器写的状态是第 2 版，这个 app 读不了"),

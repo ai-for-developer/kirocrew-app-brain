@@ -199,7 +199,7 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     expect(screen.getByTestId('team-delivery')).toBeInTheDocument()
   })
 
-  test('a read that did not work: why and what to do, on its project, the last snapshot kept; before any, only the strip and the questions', async () => {
+  test('a read that did not work: why and what to do, on its project, the last snapshot kept; before any, the strip says why and each repo keeps its card as GitLab shows it', async () => {
     const st = fx.teamStatus()
     st.relays[0].projects[1].problem = { text: '这次没读到 GitLab', todo: '过一会儿会再读；一直这样就看看网络，GitLab 要单点登录的先登录', raw: 'GET … -> HTTP 502' }
     installFixtureRoutes({ [`GET ${API}/team/status`]: () => st })
@@ -215,6 +215,7 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     first.view = null
     first.projects = first.projects.map((x) => ({ ...x, read_at: null, written_at: null, state: null, delivery_at: null, version: null,
       problem: { text: '团队服务器还没在这个项目的 brain/status 上写过状态', todo: '等团队服务器跑一轮', raw: '' } }))
+    none.repos = none.repos.map((r) => ({ ...r, relay: false }))      // the backend shows them from GitLab until one is read
     installFixtureRoutes({ [`GET ${API}/team/status`]: () => none })
     render(<RunnerStatusPage {...props()} />)
     const said = await screen.findAllByTestId('relay-problem')
@@ -223,7 +224,11 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     expect(screen.queryByTestId('relay-version')).toBeNull()
     expect(screen.queryByTestId('relay-runner')).toBeNull()
     expect(screen.queryByTestId('team-delivery')).toBeNull()
-    expect(screen.getByTestId('relay-waiting')).toBeInTheDocument()
+    const pay = screen.getByRole('region', { name: 'shop-pay' })
+    expect(within(pay).getByRole('region', { name: '在做的 MR' })).toBeInTheDocument()
+    expect(within(pay).getByRole('region', { name: '等你回答' })).toHaveTextContent('D-7')
+    expect(screen.getByRole('region', { name: 'shop-order' })).toBeInTheDocument()
+    expect(screen.queryByTestId('relay-waiting')).toBeNull()      // each card has its own 等你回答: said once
   })
 
   test('one project whose state is old says so on its line, and rows read rounds before say when', async () => {

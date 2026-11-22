@@ -1774,8 +1774,9 @@ export interface RunnerRepo {
   name: string
   /** null: its kit.json names no bridge_user, so it has no team runner */
   runner: TeamRunner | null
-  /** its GitLab project has brain/status: the team server writes the project's state there (状态中转), and this repo
-   * is shown from it; false: the runner as GitLab shows it (runner) alone */
+  /** its GitLab project has brain/status and a snapshot of it was read: the team server writes the project's state
+   * there (状态中转), and this repo is shown from it; false: the runner as GitLab shows it (runner) alone, also while
+   * brain/status has no snapshot this app could read yet */
   relay: boolean
 }
 /** GET /team/status: every listed repo, in the app's order, and per GitLab the projects on the relay put together. */

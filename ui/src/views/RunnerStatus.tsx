@@ -7,9 +7,10 @@
  * work (its hand-overs with what each waits on, MR 巡检, 测试环境报错, as the team server's 运行机 shows them, without
  * its sessions); 全队交付, every requirement of those projects (who, which project, its stage in 交付总览's words, MR and
  * CI, deployed, what it waits on), filtered by person and project, what waits on the person first; and the questions
- * waiting on the person, read from GitLab by this app. A repo whose project has no brain/status is a card of the
- * runner as GitLab shows it, as before an older team server: the MRs it works on, the questions waiting on the person,
- * when it last acted; one whose kit.json names no bridge_user is one line, 这个仓库还没有团队运行机.
+ * waiting on the person, read from GitLab by this app. A repo whose project has no brain/status, or no snapshot read
+ * from it yet (its project's line in the strip says why), is a card of the runner as GitLab shows it, as before an
+ * older team server: the MRs it works on, the questions waiting on the person, when it last acted; one whose kit.json
+ * names no bridge_user is one line, 这个仓库还没有团队运行机.
  */
 import { useMemo, useState } from 'react'
 import { paths, usePoll } from '../api'
@@ -84,7 +85,7 @@ export function RunnerStatusPage({ pollMs, go }: ViewProps) {
       {data && data.repos.length === 0 && <p className="br-empty">还没有仓库：先在「导入仓库」里导入一个。</p>}
       {data && data.repos.length > 0 && data.relays.length === 0 && data.repos.every((r) => !r.runner) && <p className="br-note">{NO_RUNNER_YET}</p>}
       {data?.relays.map((r) => (
-        <RelayGroup key={r.repos.join(' ')} relay={r} at={data.at} repos={data.repos.filter((x) => r.repos.includes(x.repo))} go={go} />
+        <RelayGroup key={r.repos.join(' ')} relay={r} at={data.at} repos={data.repos.filter((x) => x.relay && r.repos.includes(x.repo))} go={go} />
       ))}
       {alone.map((r) => (r.runner
         ? <RunnerCard key={r.repo} repo={r.repo} name={r.name} runner={r.runner} recentH={data?.recent_h ?? 24} />
