@@ -113,3 +113,48 @@ def test_credits_that_leave_something_out_are_said_to_be_more():
     c = D.cto_numbers([], rows, available=False, now=time.time())
     assert c["credits"] == {"per_req": 10.0, "total": 20.0, "reqs": 2, "cut": 1}
     assert c["sentence"] == "有 credits 的 2 个需求，平均每个 10.0 credits（1 个还有没算进来的，实际更多）。"
+
+
+def test_a_persons_numbers_count_the_runs_their_page_lists_run_by_run_as_brain_kit_counts_the_repos():
+    """A person's 交付总览 lists their own requirements (*mine*): 无人值守, 人介入 with its kinds, the weekly merges and the
+    runs count those alone, so 「无人值守 1/2」 filters its list to the two rows it counts. The team server's are the repo's."""
+    now = time.time()
+    part = D.cto_part(data())      # PAY-1 and PAY-2 ran unattended, a person stepped in on PAY-3 (once outside a point)
+    rows = [{"repo": "r1", "key": k, "state": "merged", "credits": None, "updated_at": now} for k in ("PAY-1", "PAY-3")]
+    whole = D.cto_numbers([("r1", part)], rows, available=True, now=now)
+    mine = D.cto_numbers([("r1", part)], rows, available=True, now=now, mine={("r1", "PAY-1"), ("r1", "PAY-3")})
+    assert (whole["unattended"], whole["mine"], mine["unattended"], mine["mine"]) == ([2, 3], False, [1, 2], True)
+    assert sorted(r["key"] for r in mine["runs"]) == ["PAY-1", "PAY-3"]
+    st = mine["stepped_in"]
+    assert (st["at_points"], st["outside"]) == (2, 1)
+    assert st["kinds"] == [{"label": "批准", "n": 2, "point": True}, {"label": "交接后推代码", "n": 1, "point": False}]
+    assert [sum(w[k] for w in mine["weekly"]) for k in ("unattended", "people", "pending")] == [1, 1, 0]
+    assert mine["sentence"].startswith("交给运行机的 2 个需求里，1 个交接以后没人插手就做完了。人介入了 3 次")
+
+
+def test_a_persons_funnel_adds_up_who_settled_their_own_runs_decisions():
+    parts = [("r1", {"decided": {"PAY-1": {"person": 2, "agent": 1}, "PAY-4": {"unclassified": 1, "agent": 3}}})]
+    funnel = {"source": "evaluate", "total": 7, "questions": {"asked": 0, "answered": 0, "delivered": 0},
+              "rows": [{"id": "person", "label": "人", "count": 2}, {"id": "agent", "label": "AI 自己定的", "count": 4},
+                       {"id": "unclassified", "label": "没归类", "count": 1}],
+              "unclassified": [{"key": "PAY-4", "id": "D-3", "src": "aidlc-docs/x/decisions.md#L10"}]}
+    got = D.own_funnel(funnel, parts, {("r1", "PAY-1")})
+    assert [(r["id"], r["count"]) for r in got["rows"]] == [("person", 2), ("agent", 1), ("unclassified", 0)]
+    assert (got["total"], got["unclassified"], got["source"]) == (3, [], "evaluate")
+
+
+def test_each_runs_decisions_are_counted_by_who_settled_them_as_brain_kits_funnel_counts_them():
+    from appkit import BRAINKIT
+    bk = mod("bk")
+    assert bk.load(str(BRAINKIT))["ok"]
+    try:
+        d = data()
+        d["traces"][0]["decisions"] = [{"source": "decisions.md", "by": "person", "cites": []},
+                                       {"source": "decisions.md", "by": "agent", "cites": []},
+                                       {"source": "decisions.md", "by": "", "cites": ["T-1"]},
+                                       {"source": "bridge", "by": "", "cites": [], "choice": None}]   # not answered
+        part = D.cto_part(d)
+    finally:
+        bk.unload()
+    assert part["decided"]["PAY-1"] == {"person": 1, "agent": 1, "brain": 1} and part["decided"]["PAY-2"] == {}
+    assert part["acts"]["PAY-3"] == [("批准", True), ("交接后推代码", False)]

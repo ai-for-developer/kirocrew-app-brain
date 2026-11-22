@@ -629,6 +629,14 @@ def questions_asked(f: dict[str, Any], mr: dict[str, Any] | None) -> dict[str, i
     return out
 
 
+def ledger_questions(decisions: list[dict[str, Any]]) -> dict[str, int]:
+    """Team mode: the questions the runner's ledger asked people about a run, {asked, answered, delivered}, as
+    questions_asked counts a person's run's on its MR: one not posted (yet), or that could not be asked, is not."""
+    on_mr = [d for d in decisions if d.get("state") != "invalid" and d.get("state") not in NOT_POSTED]
+    return {"asked": len(on_mr), "answered": sum(d.get("state") in ANSWERED for d in on_mr),
+            "delivered": sum(d.get("state") == "delivered" for d in on_mr)}
+
+
 def category(d: dict[str, Any]) -> str:
     """Who settled a decisions.md row (the app's fallback for brainkit.evaluate's funnel, the same order)."""
     if d.get("by") in ("person", "bridge"):
@@ -982,12 +990,15 @@ def eval_notes(cost_note: Any, wrong_open: list[str], unmerged: list[str]) -> li
 
 def cto_part(data: dict[str, Any]) -> dict[str, Any]:
     """One repo's part of the numbers, from brainkit.evaluate's data: each run (how it went, what a person did, its
-    credits, its merge), autonomy's [unattended, judged] and judgment's acts."""
+    credits, its merge), autonomy's [unattended, judged] and judgment's acts; and run by run (*acts*, *decided*: by
+    key) the acts by kind and who settled its decisions (brain-kit's evaluate.category), so a person's own runs add up
+    the way brain-kit adds up the repo's."""
     a = data.get("autonomy") if isinstance(data.get("autonomy"), dict) else {}
     rows = {str(r.get("key")): r for r in a.get("runs") or [] if isinstance(r, dict) and r.get("key")}
     # brain-kit 0d52e97: each run of the batch with its state, a split child's parent, what blocks its autonomy
     batch = {str(b.get("key")): b for b in data.get("batch") or [] if isinstance(b, dict) and b.get("key")}
-    runs = []
+    settled = getattr(bk.m("evaluate"), "category", None) if bk.has("evaluate") else None
+    runs, acts, decided = [], {}, {}
     for t in data.get("traces") or []:
         if not isinstance(t, dict) or not t.get("key"):
             continue
@@ -1009,6 +1020,12 @@ def cto_part(data: dict[str, Any]) -> dict[str, Any]:
         else:
             how = "pending"
         humans = [h for h in t.get("humans") or [] if isinstance(h, dict)]
+        acts[key] = [(act_label(str(h.get("kind") or "")), bool(h.get("judgment_point"))) for h in humans]
+        decided[key] = {}
+        for d in t.get("decisions") or [] if settled else []:
+            c = settled(d)      # brain-kit's funnel ran it over these very decisions
+            if c:
+                decided[key][c] = decided[key].get(c, 0) + 1
         beyond = sorted({act_label(str(x).split(" ", 1)[0]) for x in (r.get("beyond") or []) + (b.get("beyond") or [])})
         cost = t.get("cost") if isinstance(t.get("cost"), dict) else {}
         c = cost.get("credits")
@@ -1035,7 +1052,7 @@ def cto_part(data: dict[str, Any]) -> dict[str, Any]:
     cost = data.get("cost") if isinstance(data.get("cost"), dict) else {}
     return {"unattended": _pair(a.get("value")), "judgment": _pair(j.get("value")),
             "kinds": [{"label": lab, "n": n, "point": pt} for (lab, pt), n in sorted(kinds.items(), key=lambda kv: (not kv[0][1], -kv[1]))],
-            "runs": runs, "ref": data.get("ref"),
+            "runs": runs, "acts": acts, "decided": decided, "ref": data.get("ref"),
             # what 每个正确交付的 credits is made of, so several repos add up (an average does not)
             "credits_total": cost.get("credits_total") if isinstance(cost.get("credits_total"), (int, float)) else None,
             "correct": cost.get("correct_deliveries") if isinstance(cost.get("correct_deliveries"), int) else None,
@@ -1079,24 +1096,38 @@ def cto_credits(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def cto_numbers(parts: list[tuple[str, dict[str, Any]]], rows: list[dict[str, Any]], *, available: bool, now: float,
                 weeks: int = 12, names: dict[str, str] | None = None, local_repos: int = 0,
-                repos: int = 0) -> dict[str, Any]:
+                repos: int = 0, mine: set[tuple[str, str]] | None = None) -> dict[str, Any]:
     """CtoNumbers for the page: the repos' parts added up; credits per requirement from the rows (the sessions this
     app opened); the merges of the last *weeks* weeks, by how they went. Without brainkit.evaluate: the rows only.
-    *names*: repo id -> name (the ref is said with it); *local_repos* of *repos* are done only on this machine."""
+    *names*: repo id -> name (the ref is said with it); *local_repos* of *repos* are done only on this machine.
+    *mine*: (repo id, key) of the requirements a person's 交付总览 lists: every number counts those runs alone, added up
+    run by run the way brain-kit adds up a repo's (a run it judged unattended or not, its acts at and outside the
+    judgment points, by kind), so a number and the list it filters agree."""
     runs = []
     for rid, p in parts:
         for r in p.get("runs") or []:
-            runs.append(dict(r, repo=rid))
-    pairs = [p["unattended"] for _, p in parts if p.get("unattended")]
-    unattended = [sum(x[0] for x in pairs), sum(x[1] for x in pairs)] if pairs else None
-    js = [p["judgment"] for _, p in parts if p.get("judgment")]
+            if mine is None or (rid, r["key"]) in mine:
+                runs.append(dict(r, repo=rid))
+    if mine is None:
+        pairs = [p["unattended"] for _, p in parts if p.get("unattended")]
+        unattended = [sum(x[0] for x in pairs), sum(x[1] for x in pairs)] if pairs else None
+        js = [p["judgment"] for _, p in parts if p.get("judgment")]
+        judged = (sum(x[0] for x in js), sum(x[1] for x in js)) if js else None
+        acts = [(k["label"], k["point"], int(k["n"])) for _, p in parts for k in p.get("kinds") or []]
+    else:
+        counted = [r for r in runs if r["how"] in ("unattended", "people")]
+        unattended = [sum(r["how"] == "unattended" for r in counted), len(counted)] \
+            if any(p.get("unattended") for _, p in parts) else None
+        judged = (sum(r["at_points"] for r in runs), sum(r["at_points"] + r["outside"] for r in runs)) \
+            if any(p.get("judgment") for _, p in parts) else None
+        acts = [(lab, pt, 1) for rid, p in parts for key, did in (p.get("acts") or {}).items() if (rid, key) in mine
+                for lab, pt in did]
     kinds: dict[tuple, int] = {}
-    for _, p in parts:
-        for k in p.get("kinds") or []:
-            kinds[(k["label"], k["point"])] = kinds.get((k["label"], k["point"]), 0) + int(k["n"])
+    for lab, pt, n in acts:
+        kinds[(lab, pt)] = kinds.get((lab, pt), 0) + n
     stepped = None
-    if js:
-        at_points, all_ = sum(x[0] for x in js), sum(x[1] for x in js)
+    if judged is not None:
+        at_points, all_ = judged
         stepped = {"at_points": at_points, "outside": max(0, all_ - at_points),
                    "kinds": [{"label": lab, "n": n, "point": pt} for (lab, pt), n in
                              sorted(kinds.items(), key=lambda kv: (not kv[0][1], -kv[1]))]}
@@ -1126,7 +1157,23 @@ def cto_numbers(parts: list[tuple[str, dict[str, Any]]], rows: list[dict[str, An
     return {"available": bool(available and parts),
             "sentence": cto_sentence(unattended, stepped, credits, local_repos=local_repos, repos=repos),
             "ref": ref, "unattended": unattended, "stepped_in": stepped, "credits": credits, "runs": runs,
-            "weekly": list(weekly.values())}
+            "weekly": list(weekly.values()), "mine": mine is not None}
+
+
+def own_funnel(funnel: dict[str, Any], parts: list[tuple[str, dict[str, Any]]],
+               mine: set[tuple[str, str]]) -> dict[str, Any]:
+    """brain-kit's funnel over a person's own requirements (*mine*, as cto_numbers takes it): who settled their runs'
+    decisions, added up run by run (cto_part's decided), and the unclassified rows of theirs."""
+    counts: dict[str, int] = {}
+    for rid, p in parts:
+        for key, cats in (p.get("decided") or {}).items():
+            if (rid, key) in mine:
+                for c, n in cats.items():
+                    counts[c] = counts.get(c, 0) + n
+    keys = {key for _, key in mine}
+    out = [dict(r, count=counts.get(r["id"], 0)) for r in funnel.get("rows") or []]
+    return dict(funnel, rows=out, total=sum(r["count"] for r in out),
+                unclassified=[x for x in funnel.get("unclassified") or [] if x.get("key") in keys])
 
 
 def cto_sentence(unattended: list[int] | None, stepped: dict[str, Any] | None, credits: dict[str, Any], *,

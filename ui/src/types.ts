@@ -2770,6 +2770,9 @@ export interface CtoNumbers {
   runs: CtoRun[]
   /** merged per week (Monday, YYYY-MM-DD), by how: the last 12 weeks */
   weekly: { week: string; unattended: number; people: number; local: number; pending: number }[]
+  /** a person's 交付总览: every number counts the requirements the page lists (theirs, and the ones nobody has), so a
+   * click filters to as many as it says; the repo's numbers are brain-kit 的评估's */
+  mine: boolean
 }
 
 /** One of brain-kit's notes on the 交付评估 numbers: what it says, what to do, its own words (细节). */

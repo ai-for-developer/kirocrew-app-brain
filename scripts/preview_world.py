@@ -2009,11 +2009,20 @@ def world(scratch: Path) -> None:
     judged = [x for x in runs if x["how"] in ("unattended", "people")]
     at_points = sum(x["at_points"] for x in runs if x["merged_at"])
     outside = sum(x["outside"] for x in runs)
-    parts[0][1].update(unattended=[0, 1], judgment=[5, 5], kinds=[{"label": "批准", "n": 4, "point": True}, {"label": "回答问题", "n": 1, "point": True}])
+    # shop-pay's acts as brain-kit counts them, over every run of it (its runs' own counts add up to the same)
+    parts[0][1].update(unattended=[0, 1], judgment=[10, 10], kinds=[{"label": "批准", "n": 9, "point": True}, {"label": "回答问题", "n": 1, "point": True}])
     parts[1][1].update(unattended=[sum(1 for x in judged if x["repo"] == "r3" and x["how"] == "unattended"), sum(1 for x in judged if x["repo"] == "r3")],
                        judgment=[at_points - 5, at_points - 5 + outside],
                        kinds=[{"label": "批准", "n": at_points - 7, "point": True}, {"label": "回答问题", "n": 2, "point": True},
                               {"label": "交接后推代码", "n": outside, "point": False}])
+    # run by run, what brain-kit adds up into a repo's numbers (deliveries.cto_part's acts and decided), so a person's
+    # 交付总览 counts their own runs alone: each run's acts at and outside the judgment points, and who settled the
+    # decisions of shop-pay's funnel (PAY-4's are carol's: her run's agent default and the row outside the vocabulary)
+    for _, p_ in parts:
+        p_["acts"] = {x["key"]: [("批准", True)] * x["at_points"] + [("交接后推代码", False)] * x["outside"] for x in p_["runs"]}
+        p_["decided"] = {}
+    parts[0][1]["acts"]["PAY-2"] = [("批准", True)] * 4 + [("回答问题", True)]      # it answered its question on the MR
+    parts[0][1]["decided"] = {"PAY-2": {"person": 4, "check": 5, "brain": 3, "unknown": 1}, "PAY-4": {"agent": 1, "unclassified": 1}}
     names = {"r1": "shop-pay", "r2": "shop-web", "r3": "shop-order", "r4": "shop-tools"}
     local = {"r4"}      # no GitLab: done only on this machine (shop-web, r2, is not loaded)
 
@@ -2046,8 +2055,13 @@ def world(scratch: Path) -> None:
         o["counts"] = deliveries.counts(o["rows"])
         o["errors"] = [e for e in ov["errors"] if repo in ("all", e["repo"])]
         mine = [p_ for p_ in parts if p_[0] in ids] if evaluated else []
+        own = None if team else {(r_["home"] if r_["repo"] == "runner" else r_["repo"], r_["key"]) for r_ in o["rows"]}
         o["cto"] = deliveries.cto_numbers(mine, o["rows"], available=evaluated, now=T0, names=names, repos=len(ids),
-                                          local_repos=sum(1 for x in ids if x in local))
+                                          local_repos=sum(1 for x in ids if x in local), mine=own)
+        repo_cto = deliveries.cto_numbers(mine, o["rows"], available=evaluated, now=T0, names=names, repos=len(ids),
+                                          local_repos=sum(1 for x in ids if x in local))     # brain-kit 的评估's: the repo's
+        if own is not None and evaluated and "r1" in ids:
+            o["funnel"] = deliveries.own_funnel(o["funnel"], mine, own)
         keys = {r_["key"] for r_ in o["rows"]}
         if "r1" not in ids:     # brainkit.evaluate's numbers and the decisions here are shop-pay's: not this repo's
             o["eval"]["metrics"] = [dict(m, value=None) for m in o["eval"]["metrics"]]
@@ -2070,9 +2084,9 @@ def world(scratch: Path) -> None:
         o["eval"]["ref"] = o["cto"]["ref"]
         for m in o["eval"]["metrics"]:
             if m["id"] == "autonomy":
-                m["value"] = o["cto"]["unattended"]
+                m["value"] = repo_cto["unattended"]
             if m["id"] == "judgment":
-                st = o["cto"]["stepped_in"]
+                st = repo_cto["stepped_in"]
                 m["value"] = [st["at_points"], st["at_points"] + st["outside"]] if st else None
         return o
 

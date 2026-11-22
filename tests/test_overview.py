@@ -514,3 +514,53 @@ def test_a_run_started_from_an_issue_is_its_labelers_on_the_runner(tmp_path, hom
     assert (row["owner"], row["state"], row["waits"]["who"], row["waits"]["text"]) == ("alice", "running", "runner", "运行机在跑")
     assert (row["mr"]["iid"], row["mr"]["state"]) == (31, "opened")
     assert mod("deliveries").flow_stage(row) == "交给运行机"
+
+
+def test_a_persons_numbers_and_funnel_count_the_requirements_their_overview_lists(tmp_path, home, monkeypatch):
+    """On alice's machine 交付总览 lists her requirements, and its numbers count those alone: bob's run is in neither
+    无人值守, 人介入, the weekly merges, the runs nor who settled the decisions, so a number filters the list to as many
+    rows as it says. The team server lists both and counts both. brain-kit's evaluation is stood in for at the service's
+    eval cache (Service._eval_view) by shop-pay's part as brain-kit gives it: alice's PAY-1 ran unattended, bob's PAY-2
+    had a person step in after the hand-over."""
+    import copy
+    import time
+    from brainfix import person
+    repo = make_project(tmp_path, origin=True)
+    start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
+    sh("git", "-C", repo, "push", "-q", "origin", "refs/heads/claim/*:refs/heads/claim/*", "refs/heads/ai/*:refs/heads/ai/*")
+    bob = person(tmp_path, tmp_path / "pay-origin.git", "bob")
+    brain(bob, "start", "report", "--title", "报表")
+    sh("git", "-C", bob, "push", "-q", "origin", "refs/heads/claim/PAY-2", "refs/heads/ai/bob/PAY-2-report")
+    sh("git", "-C", repo, "fetch", "-q", "origin")
+    day = 86400
+    at = lambda t: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))  # noqa: E731
+
+    def trace(key, ago, humans, decided):
+        return {"key": key, "outcome": {"handed_over": {"value": True}, "merged_at": {"value": at(time.time() - ago * day)}},
+                "humans": [{"kind": k, "what": "RELEASE", "judgment_point": p} for k, p in humans],
+                "decisions": [{"source": "decisions.md", "by": by, "cites": []} for by in decided], "cost": {"credits": None}}
+    data = {"ref": "origin/main", "judgment": {"value": [2, 3], "by_kind": {"approval（判断点）": 2, "push_after_handover（判断点之外）": 1}},
+            "autonomy": {"value": [1, 2], "runs": [
+                {"key": "PAY-1", "status": "counted", "autonomous": True, "correct": "correct", "beyond": []},
+                {"key": "PAY-2", "status": "counted", "autonomous": False, "correct": "correct", "beyond": ["push_after_handover code"]}]},
+            "traces": [trace("PAY-1", 3, [("approval", True)], ["person", "agent"]),
+                       trace("PAY-2", 2, [("approval", True), ("push_after_handover", False)], ["person", "person"])]}
+    funnel = {"source": "evaluate", "total": 4, "questions": {"asked": 0, "answered": 0, "delivered": 0}, "unclassified": [],
+              "rows": [{"id": "person", "label": "人", "count": 3}, {"id": "agent", "label": "AI 自己定的", "count": 1}]}
+
+    def eval_view(self, which, snap, parts=None):
+        if parts is not None:
+            parts.append(("r1", mod("deliveries").cto_part(data)))
+        return {"available": True, "error": "", "raw": "", "ref": "origin/main", "metrics": [], "queue": [], "skipped": [],
+                "notes": [], "note_rows": [], "families": []}, copy.deepcopy(funnel)
+    monkeypatch.setattr(mod("service").Service, "_eval_view", eval_view)
+    mine = read_overview(make_service(tmp_path / "alice", [repo]))
+    team = read_overview(make_service(tmp_path / "server", [repo], role="team_server"))
+    assert sorted(rows_by_key(mine)) == ["PAY-1"] and sorted(rows_by_key(team)) == ["PAY-1", "PAY-2"]
+    assert (mine["cto"]["unattended"], team["cto"]["unattended"]) == ([1, 1], [1, 2]), "her one run, not the repo's two"
+    assert [r["key"] for r in mine["cto"]["runs"]] == ["PAY-1"] and len(team["cto"]["runs"]) == 2
+    assert (mine["cto"]["mine"], team["cto"]["mine"]) == (True, False)
+    assert (mine["cto"]["stepped_in"]["at_points"], mine["cto"]["stepped_in"]["outside"]) == (1, 0)
+    assert [sum(w["people"] for w in o["cto"]["weekly"]) for o in (mine, team)] == [0, 1]
+    assert [(r["id"], r["count"]) for r in mine["funnel"]["rows"]] == [("person", 1), ("agent", 1)] and mine["funnel"]["total"] == 2
+    assert [(r["id"], r["count"]) for r in team["funnel"]["rows"]] == [("person", 3), ("agent", 1)]

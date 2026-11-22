@@ -718,7 +718,7 @@ class Service:
         return self._desc_runner_job(path, cfg, key, row.get("credits"), row.get("run_ids") or [])
 
     def _overview_sync(self, which: str, snap: dict[str, Any]) -> dict[str, Any]:
-        rows, errors, all_decisions, q_counts = [], [], [], {"asked": 0, "answered": 0, "delivered": 0}
+        rows, errors, per_row = [], [], []   # each row's questions asked and decisions, added up over the rows listed
         team = self._team_on()
         mine = []
         for rid, repo in self.repos.items():
@@ -742,12 +742,10 @@ class Service:
             base, project = self._gitlab_of(repo)
             rows.append(row)
             mr = self.mr.get(project, f["branch"]) if base and project and f.get("branch") else None
-            for k, n in deliveries.questions_asked(f, mr).items():
-                q_counts[k] += n
             intent = (f.get("run") or {}).get("intent")
-            all_decisions += [dict(d, key=f["key"]) for d in detail.decisions(
+            per_row.append((row, deliveries.questions_asked(f, mr), [dict(d, key=f["key"]) for d in detail.decisions(
                 f.get("decisions_text"), "aidlc-docs/%s/decisions.md" % intent if intent else "decisions.md",
-                repo.cfg.get("bot_users") or [])]
+                repo.cfg.get("bot_users") or [])]))
         for rid, (path, err) in self.repo_errors.items():
             if which in ("all", rid):   # the app's own words say what to do; anything else is under 细节
                 said = re.search(r"[\u4e00-\u9fff]", err)
@@ -757,29 +755,28 @@ class Service:
         for row, f, decs in runner:   # a repo's view has what the runner does for it, as 全部 and the runner's do
             if which in ("all", "runner", row["home"]):
                 rows.append(row)
-                all_decisions += [dict(d, key=row["key"]) for d in detail.decisions(f.get("decisions_text"), "decisions.md", [])]
-                for d in decs:
-                    if d.get("state") == "invalid" or d.get("state") in deliveries.NOT_POSTED:   # not on the MR (yet)
-                        continue
-                    q_counts["asked"] += 1
-                    q_counts["answered"] += d.get("state") in ("answered", "delivered", "delivery_unknown", "refused")
-                    q_counts["delivered"] += d.get("state") == "delivered"
+                per_row.append((row, deliveries.ledger_questions(decs),
+                                [dict(d, key=row["key"]) for d in detail.decisions(f.get("decisions_text"), "decisions.md", [])]))
         overlaps = deliveries.overlaps(rows)     # over every row: a teammate's may share a path with one of mine
         listed = len(rows)
+        own = None      # a person's: (repo id, key) of the rows listed, which the numbers count
         if self.settings["role"] == settings_mod.PERSONAL:
             rows = deliveries.own_rows(rows, {rid: self.me_in(r) for rid, r in self.repos.items()})
             keys = {r["key"] for r in rows}
             overlaps = [o for o in overlaps if keys & set(o["keys"])]
+            own = {(r["home"] if r["repo"] == "runner" else r["repo"], r["key"]) for r in rows}
+        kept = {id(r) for r in rows}
+        q_counts = {k: sum(q[k] for row, q, _ in per_row if id(row) in kept) for k in ("asked", "answered", "delivered")}
         parts: list[tuple[str, dict[str, Any]]] = []
         view, funnel = self._eval_view(which, snap, parts)
         if funnel is None:
-            funnel = deliveries.funnel_app(all_decisions, q_counts)
+            funnel = deliveries.funnel_app([d for row, _, ds in per_row if id(row) in kept for d in ds], q_counts)
         else:
-            funnel["questions"] = q_counts
+            funnel = dict(deliveries.own_funnel(funnel, parts, own) if own is not None else funnel, questions=q_counts)
         scope = [r for rid, r in self.repos.items() if which in ("all", rid)]
         cto = deliveries.cto_numbers(parts, rows, available=bool(view.get("available")), now=self.now(),
                                      names={rid: r.name for rid, r in self.repos.items()}, repos=len(scope),
-                                     local_repos=sum(1 for r in scope if self._local_only(r)))
+                                     local_repos=sum(1 for r in scope if self._local_only(r)), mine=own)
         return {"at": self.now(), "rows": rows, "others": listed - len(rows), "overlaps": overlaps, "funnel": funnel,
                 "eval": view, "cto": cto, "counts": deliveries.counts(rows), "errors": errors,
                 "roster": roster.roster(rows, me=self.me(which), now=self.now(), settings=self.settings)}
