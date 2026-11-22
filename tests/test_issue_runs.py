@@ -145,7 +145,8 @@ def test_the_labelers_answer_goes_onto_the_mr(world, monkeypatch):
 def test_the_labelers_app_opens_no_session_of_it_and_hands_nothing_over(world, monkeypatch):
     w = world
     ran = []
-    monkeypatch.setattr(mod("handover"), "run", lambda *a, **kw: ran.append(a) or {})
+    monkeypatch.setattr(mod("handover"), "run", lambda *a, **kw: ran.append(a) or {
+        "ok": True, "state": "handed", "text": "交出去了", "todo": "", "mr": None, "warnings": [], "raw": "", "code": 0})
     got = refused(app_of(w, monkeypatch, "alice"), w.key, "open_session", "reopen_session", "handoff")
     assert got[:2] == [("not_local", 409), ("not_local", 409)], "the runner has its session, not her worktree"
     assert got[2] == ("on_runner", 409) and ran == [], "it was the runner's from its first commit: nothing to hand over"
