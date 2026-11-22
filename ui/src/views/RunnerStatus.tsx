@@ -171,18 +171,19 @@ function ProjectLine({ p, at }: { p: RelayProject; at: number }) {
 }
 
 /** The runner at work, as the team server's 运行机 shows it: its hand-overs (each with what it waits on), then MR 巡检 and
- * 测试环境报错 (their views as they are, without the sessions, which are the team server's), then the labelled issues
- * not started yet where a project takes issues. */
+ * 测试环境报错 (their views as they are, without the sessions, which are the team server's; each 在修 the team server's
+ * count of its sessions, with the ones no row here shows at work said under it, or from an older team server, which
+ * says no such count, its rows at work), then the labelled issues not started yet where a project takes issues. */
 function AtWork({ view, projects, me, at }: { view: RelayView; projects: RelayProject[]; me: string | null; at: number }) {
-  const { handovers, patrol, staging, issues } = view.runner
-  const { cap, working, last_round_at } = view.server
+  const { handovers, patrol, staging, issues, patrol_hidden, staging_hidden } = view.runner
+  const { cap, working, held, last_round_at } = view.server
   const on = (kind: string) => projects.some((p) => !!p.state?.sources.includes(kind))
   const patrolView: TeamPatrol = {
-    on: on('mr-patrol'), cap, working: patrol.filter((i) => i.state === 'working').length, last_at: last_round_at,
+    on: on('mr-patrol'), cap, working: held?.patrol ?? patrol.filter((i) => i.state === 'working').length, hidden: patrol_hidden, last_at: last_round_at,
     projects: projects.map((p) => ({ project: p.project, on: !!p.state?.sources.includes('mr-patrol'), error: '' })), items: patrol,
   }
   const stagingView: TeamStaging = {
-    on: on('staging-errors'), cap, working: staging.filter((i) => i.state === 'fixing').length, last_at: last_round_at,
+    on: on('staging-errors'), cap, working: held?.staging ?? staging.filter((i) => i.state === 'fixing').length, hidden: staging_hidden, last_at: last_round_at,
     projects: projects.map((p) => ({ project: p.project, on: !!p.state?.sources.includes('staging-errors'), error: '', deployed_sha: '' })), items: staging,
   }
   const issuesView: TeamIssues = {

@@ -1663,15 +1663,22 @@ export interface PatrolMr {
   slot: string | null
   updated_at: string | null
 }
+/** A brain-patrol session a work source holds that none of its rows shows at work: its project, and what holds it in
+ * words (a turn the MR's head moved past, a fix whose MR is open while its turn runs). */
+export interface HeldSlot {
+  project: string
+  text: string
+}
 export interface TeamPatrol {
   /** some project's kit.json switches work source mr-patrol on */
   on: boolean
   cap: number
-  /** the brain-patrol sessions it holds (sources.at_work counts the same): its MRs at work and the hidden ones */
+  /** the brain-patrol sessions it holds (sources.at_work counts the same): its MRs at work and the hidden ones; on a
+   * person's 团队运行机 the team server's count, when its snapshot says it */
   working: number
-  /** each session it holds that no MR below shows at work, with what holds it (a turn the MR's head moved past); a
-   * person's 团队运行机 has none */
-  hidden?: string[]
+  /** each session it holds that no MR below shows at work, with what holds it (a turn the MR's head moved past); on a
+   * person's 团队运行机 those of the projects read */
+  hidden: HeldSlot[]
   /** epoch seconds of the last round; null before the first */
   last_at: number | null
   projects: { project: string; on: boolean; error: string }[]
@@ -1721,11 +1728,12 @@ export interface TeamStaging {
   /** some project's kit.json switches work source staging-errors on */
   on: boolean
   cap: number
-  /** the brain-patrol sessions it holds (sources.at_work counts the same): its fixes at work and the hidden ones */
+  /** the brain-patrol sessions it holds (sources.at_work counts the same): its fixes at work and the hidden ones; on a
+   * person's 团队运行机 the team server's count, when its snapshot says it */
   working: number
   /** each session it holds that no error below shows at work, with what holds it (a fix whose MR is open, its turn
-   * not ended); a person's 团队运行机 has none */
-  hidden?: string[]
+   * not ended); on a person's 团队运行机 those of the projects read */
+  hidden: HeldSlot[]
   /** epoch seconds of the last round; null before the first */
   last_at: number | null
   projects: { project: string; on: boolean; error: string; deployed_sha: string }[]
@@ -1867,8 +1875,12 @@ export interface TeamSnapshot {
   /** the project it is the state of */
   project: string
   /** the team server, the same in every project's: brain-patrol sessions at once, MR 巡检's and 测试环境报错's
-   * together (cap), and how many work now */
-  server: { version: string; team_mode: boolean; last_round_at: number | null; cap: number; working: number }
+   * together (cap), how many work now, and how many of those each one holds, as its card on the team server counts
+   * them (held: null in an older team server's snapshot) */
+  server: {
+    version: string; team_mode: boolean; last_round_at: number | null; cap: number; working: number
+    held: { patrol: number; staging: number } | null
+  }
   /** on: the runner takes its hand-overs; sources: the work its kit.json switches on; error: what went wrong with it
    * last round, in words ('' none); issue_label: the label 从 issue 接活 takes there ('' where it is off, and in an
    * older team server's snapshot) */
@@ -1881,6 +1893,10 @@ export interface TeamSnapshot {
     /** the labelled issues 从 issue 接活 has not started a run of: on their way (note: why it waits this round) or
      * refused (reason); [] in an older team server's snapshot */
     issues: IssueItem[]
+    /** MR 巡检's and 测试环境报错's sessions in the project that no item shows at work, with what holds each; [] in
+     * an older team server's snapshot */
+    patrol_hidden: HeldSlot[]
+    staging_hidden: HeldSlot[]
   }
   /** every requirement of the project, open, or merged or closed in the last 14 days */
   delivery: SnapshotDelivery[]

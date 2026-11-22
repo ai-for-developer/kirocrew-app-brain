@@ -587,7 +587,7 @@ export function Patrol({ view, openSession }: { view: TeamPatrol; openSession?: 
         <span className="br-grow" />
         {view.on && <span className="br-small">在修 <b>{view.working}</b>/{view.cap}</span>}
       </header>
-      {view.on && <HeldHint hidden={view.hidden} />}
+      {view.on && <HeldHint hidden={view.hidden} unlisted={view.working - view.items.filter((i) => i.state === 'working').length} />}
       {!view.on ? <p className="br-empty">{PATROL_OFF}</p> : rows.length === 0 ? (
         <p className="br-empty">{view.last_at ? `上一轮（${ago(view.last_at)}）没有开着的 MR。` : '还没巡检过：下一轮就看。'}</p>
       ) : (

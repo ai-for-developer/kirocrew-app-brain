@@ -704,7 +704,7 @@ def test_the_page_counts_every_session_patrol_holds_and_says_what_holds_one_no_r
     view = w.patrol.view()
     assert [(i["iid"], i["state"]) for i in view["items"]] == [(3, "ok"), (4, "working"), (5, "queued")]
     assert view["working"] == w.patrol.busy() == 2
-    assert view["hidden"] == ["grp/repo!3 的会话还在做上一轮（MR 有了新的提交）"]
+    assert view["hidden"] == [{"project": P, "text": "grp/repo!3 的会话还在做上一轮（MR 有了新的提交）"}]
 
 
 def test_a_turn_the_head_moved_past_holds_the_session_until_it_ends(bk, tmp_path):

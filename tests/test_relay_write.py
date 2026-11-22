@@ -186,7 +186,7 @@ def test_a_quiet_team_whose_dismissed_error_keeps_coming_back_writes_the_heartbe
     snap["runner"]["staging"][0]["state"] = "issued"
     assert relay.content_key(snap) != relay.content_key(busy(clock.t, 1))                       # a real change is one
     elsewhere = busy(clock.t, 1)
-    elsewhere["server"]["working"] = 2          # a session started for another project: no news of this one
+    elsewhere["server"].update(working=2, held={"patrol": 2, "staging": 0})   # sessions of another project: no news here
     assert relay.content_key(elsewhere) == relay.content_key(busy(clock.t, 1))
 
 
@@ -392,6 +392,35 @@ def test_rows_not_read_whole_in_time_carry_the_last_read_with_when_and_why(world
     assert carried["state"]["error"] == "全队交付这一轮没读完（20 秒到了），下一轮接着读：下面是上次读完的"
     assert from_there["delivery"][0]["title"] == "写在分支上的" and from_there["delivery_at"] == last.at - 60
     assert snapshot.parse(json.loads(json.dumps(carried))) == carried
+
+
+@pytest.mark.skipif(subprocess.run(["which", "ssh-keygen"], capture_output=True).returncode, reason="ssh-keygen not found")
+def test_each_projects_snapshot_counts_each_sources_sessions_and_says_its_own_that_no_row_shows_at_work(world, tmp_path):
+    """The server's brain-patrol sessions in every project's snapshot come with each work source's (MR 巡检's and 测试环
+    境报错's, as the team server's cards count them), and the project's own sessions no row shows at work with what holds
+    each: so a person's 团队运行机 counts as the team server's page does. Another project's held sessions are not in it."""
+    patrol_mod, staging_mod = mod("team.patrol"), mod("team.staging")
+    svc, rg = relaying(world, tmp_path)
+    mine = {"project": "grp/repo", "text": "grp/repo!3 的会话还在做上一轮（MR 有了新的提交）"}
+    theirs = {"project": "grp/other", "text": "grp/other#2 的修复 MR !9 开了，会话还在收尾"}
+
+    async def go():
+        await svc.start()
+        try:
+            rt = svc.team
+            for _ in range(600):
+                if rt.last_summary:
+                    break
+                await asyncio.sleep(0.05)
+            rt.patrol_view = lambda: patrol_mod.view_of([], [], None, [mine])
+            rt.staging_view = lambda: staging_mod.view_of([], [], {}, None, [theirs])
+            return rt.snapshot_of("grp/repo", time.time(), time.monotonic() + 20, None, rt._shared())
+        finally:
+            await svc.stop()
+
+    snap = snapshot.parse(json.loads(json.dumps(run(go()))))
+    assert (snap["server"]["cap"], snap["server"]["working"], snap["server"]["held"]) == (2, 2, {"patrol": 1, "staging": 1})
+    assert (snap["runner"]["patrol_hidden"], snap["runner"]["staging_hidden"]) == ([mine], [])
 
 
 def test_a_labelled_mr_from_or_into_brain_status_is_never_taken_for_a_hand_over(status, tmp_path):

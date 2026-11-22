@@ -578,7 +578,7 @@ class StagingWatch:
         if self._kits and self._ledger_there():
             self._dispatch(now)
         rows = self.led.rows() if self._ledger_there() else []
-        hidden = ["%s#%d 的修复 MR !%d 开了，会话还在收尾" % (r.project, r.issue.iid, r.fix_mr.iid)
+        hidden = [{"project": r.project, "text": "%s#%d 的修复 MR !%d 开了，会话还在收尾" % (r.project, r.issue.iid, r.fix_mr.iid)}
                   for r in rows if r.state == FIX_MR and self._busy(r)]
         self.last = view_of(projects, rows, self._notes, now, hidden)
         if self._errors:
@@ -963,10 +963,10 @@ def _note(row: Row) -> str:
 
 
 def view_of(projects: list[dict[str, Any]], rows: list[Row], notes: Mapping[tuple[str, str], str],
-            at: float | None, hidden: list[str] | None = None) -> dict[str, Any]:
+            at: float | None, hidden: list[dict[str, str]] | None = None) -> dict[str, Any]:
     """GET /team/staging (TeamStaging in ui/src/types.ts): the projects and every error signature the ledger holds;
     working, the sessions it holds: the fixes at work and the *hidden* ones (a fix whose MR is open, its turn not
-    ended)."""
+    ended: project, text)."""
     items = [{"project": r.project, "signature": r.signature, "count": r.group.count, "state": r.state,
               "issue": _link(r.issue), "origin": _link(r.origin), "fix_mr": _link(r.fix_mr),
               "first_seen": r.group.first_seen, "last_seen": r.group.last_seen, "deployed_sha": r.group.deployed_sha,

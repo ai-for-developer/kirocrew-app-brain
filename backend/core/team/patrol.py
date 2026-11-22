@@ -1138,14 +1138,15 @@ class Patrol:
                     self.workspaces.drop(row.project_id, row.iid)
                 self.led.drop(row.project, row.iid)
 
-    def _hidden(self, entries: list[Entry]) -> list[str]:
-        """Its sessions in a turn now (_busy) whose MR no entry shows at work, each with what holds it: so the page's
-        count is every session it holds, as sources.at_work counts them."""
+    def _hidden(self, entries: list[Entry]) -> list[dict[str, str]]:
+        """Its sessions in a turn now (_busy) whose MR no entry shows at work, each its project's with what holds it: so
+        the page's count is every session it holds, as sources.at_work counts them."""
         if self._led is None and not os.path.exists(self.ledger_path):
             return []
         shown = {(e.project, int(e.mr["iid"])) for e in entries if e.standing == "working"}
-        return [("%s!%d 的会话还在做上一轮（MR 有了新的提交）" if r.state != WORKING else "%s!%d 的会话还在做（这一轮没看成这个 MR）")
-                % (r.project, r.iid) for r in self.led.rows() if self._busy(r) and (r.project, r.iid) not in shown]
+        return [{"project": r.project, "text": ("%s!%d 的会话还在做上一轮（MR 有了新的提交）" if r.state != WORKING
+                                                else "%s!%d 的会话还在做（这一轮没看成这个 MR）") % (r.project, r.iid)}
+                for r in self.led.rows() if self._busy(r) and (r.project, r.iid) not in shown]
 
     def _busy(self, row: MrRow) -> bool:
         """Its session is at work: a turn patrol waits on, or one the MR head moved past that has not ended yet."""
@@ -1275,9 +1276,9 @@ def _note(standing: str, row: MrRow | None) -> str:
 
 
 def view_of(projects: list[dict[str, Any]], entries: list[Entry], at: float | None,
-            hidden: list[str] | None = None) -> dict[str, Any]:
+            hidden: list[dict[str, str]] | None = None) -> dict[str, Any]:
     """GET /team/patrol (TeamPatrol in ui/src/types.ts): the projects and every open MR the last round saw; working,
-    the sessions it holds: those at work and the *hidden* ones (Patrol._hidden)."""
+    the sessions it holds: those at work and the *hidden* ones (Patrol._hidden: project, text)."""
     items = []
     for e in entries:
         row, item = e.row, e.item

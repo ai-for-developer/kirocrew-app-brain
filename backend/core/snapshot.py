@@ -12,13 +12,16 @@ within the same schema); a field missing or of another kind is Bad, and a schema
 parts:
   project    the project it is the status of (the one it is in)
   server     the team server, the same in every project's: the app's version, team mode, its last round, and the
-             brain-patrol sessions MR 巡检 and 测试环境报错 share (cap, working)
+             brain-patrol sessions MR 巡检 and 测试环境报错 share (cap, working), each one's (held: what its card on
+             运行机 counts)
   state      the project as the round left it: whether the runner takes its hand-overs (on), the work sources its
              kit.json switches on, the label 从 issue 接活 takes there ('' where it is off), and what went wrong with
              it, in words
   runner     its hand-over runs (the ledger's latest run of each requirement, as 运行机 lists them, with what each waits
-             on), MR 巡检's and 测试环境报错's items of the project as their views give them, and the labelled issues 从
-             issue 接活 has not started a run of yet, with why (its view's items: on their way, or refused)
+             on), MR 巡检's and 测试环境报错's items of the project as their views give them, each one's sessions in the
+             project that no item shows at work, with what holds each (patrol_hidden, staging_hidden: their views'
+             hidden), and the labelled issues 从 issue 接活 has not started a run of yet, with why (its view's items: on
+             their way, or refused)
   delivery   every requirement of the project, open or merged or closed in the last 14 days, from GitLab only: its stage
              in 交付总览's words, its MR with its CI, whether the staging VERSION holds its merge, what it waits on;
              delivery_at: when those rows were read from GitLab whole (a round that ran out of time carries the last)
@@ -74,7 +77,8 @@ class Added:
 
 
 WAITS = {"who": str, "do": str, "text": str, "since": Opt(float), "on": Many(str)}
-SERVER = {"version": str, "team_mode": bool, "last_round_at": Opt(float), "cap": int, "working": int}
+SERVER = {"version": str, "team_mode": bool, "last_round_at": Opt(float), "cap": int, "working": int,
+          "held": Added(Opt({"patrol": int, "staging": int}), None)}
 STATE = {"on": bool, "sources": Many(str), "error": str, "issue_label": Added(str, "")}
 HANDOVER = {"project": str, "iid": int, "mr_url": Opt(str), "key": str, "title": str, "run_id": str, "state": str,
             "owner": Opt(str), "waits": WAITS}
@@ -87,8 +91,10 @@ STAGING_ERROR = {"project": str, "signature": str, "count": int, "state": str, "
                  "slot": Opt(str), "note": str}
 ISSUE = {"project": str, "iid": int, "title": str, "url": Opt(str), "labeler": str, "role": str, "state": str,
          "key": Opt(str), "mr_iid": Opt(int), "mr_url": Opt(str), "run_id": Opt(str), "reason": str, "note": str}
+HELD = {"project": str, "text": str}
 RUNNER = {"handovers": Many(HANDOVER), "patrol": Many(PATROL_MR), "staging": Many(STAGING_ERROR),
-          "issues": Added(Many(ISSUE), [])}
+          "issues": Added(Many(ISSUE), []), "patrol_hidden": Added(Many(HELD), []),
+          "staging_hidden": Added(Many(HELD), [])}
 MR = {"iid": int, "url": Opt(str), "state": str, "ci": Opt(str)}
 DELIVERY = {"project": str, "key": str, "title": str, "owner": Opt(str), "stage": str, "state": str,
             "branch": Opt(str), "mr": Opt(MR), "deployed": Opt(bool), "waits": WAITS, "updated_at": Opt(float)}

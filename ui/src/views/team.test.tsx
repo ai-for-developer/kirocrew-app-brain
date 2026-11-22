@@ -471,7 +471,7 @@ describe('运行机', () => {
   test('MR 巡检 counts every session it holds: one whose MR no row shows at work is said under the count', async () => {
     const pv = fx.teamPatrol()
     pv.items = pv.items.map((i) => (i.iid === 50 ? { ...i, state: 'ok', problems: [], slot: 'patrol-12-50' } : i))
-    pv.hidden = ['shop/shop-pay!50 的会话还在做上一轮（MR 有了新的提交）']
+    pv.hidden = [{ project: 'shop/shop-pay', text: 'shop/shop-pay!50 的会话还在做上一轮（MR 有了新的提交）' }]
     installFixtureRoutes({ [`GET ${API}/team/patrol`]: () => pv })
     render(<TeamPage {...props()} />)
     const pt = await screen.findByRole('region', { name: 'MR 巡检' })

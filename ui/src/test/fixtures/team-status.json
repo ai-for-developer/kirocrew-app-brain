@@ -152,7 +152,11 @@
           "team_mode": true,
           "last_round_at": 1794146210.0,
           "cap": 2,
-          "working": 2
+          "working": 2,
+          "held": {
+            "patrol": 2,
+            "staging": 0
+          }
         },
         "runner": {
           "handovers": [
@@ -244,13 +248,8 @@
               "title": "退款页面改版",
               "url": "https://gitlab.example.com/shop/shop-pay/-/merge_requests/50",
               "author": "erin",
-              "state": "working",
-              "problems": [
-                {
-                  "kind": "conflict",
-                  "text": "和 main 有冲突"
-                }
-              ],
+              "state": "ok",
+              "problems": [],
               "skip": "",
               "skip_code": "",
               "note": "",
@@ -311,7 +310,7 @@
               "project": "shop/shop-pay",
               "signature": "app.pay: gateway timeout after <n>s (order <n>)",
               "count": 3,
-              "state": "fixing",
+              "state": "issued",
               "issue": {
                 "iid": 13,
                 "url": "https://gitlab.example.com/shop/shop-pay/-/issues/13",
@@ -327,8 +326,8 @@
               "last_seen": 1794145800.0,
               "deployed_sha": "3f2a9c1d0e4b5a6978c8d7e6f5a4b3c2d1e0f9a8",
               "attempts": 0,
-              "slot": "staging-12-13",
-              "note": ""
+              "slot": null,
+              "note": "排队：同时最多 2 个会话在修（MR 巡检的也算）"
             }
           ],
           "issues": [
@@ -362,7 +361,14 @@
               "labeler": "rita",
               "state": "refused"
             }
-          ]
+          ],
+          "patrol_hidden": [
+            {
+              "project": "shop/shop-pay",
+              "text": "shop/shop-pay!50 的会话还在做上一轮（MR 有了新的提交）"
+            }
+          ],
+          "staging_hidden": []
         },
         "delivery": [
           {

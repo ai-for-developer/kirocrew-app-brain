@@ -406,13 +406,14 @@ class TeamRuntime:
                 "runs": [(row, run) for row, _facts, _decs, run in self.runner_rows()
                          if run["state"] not in ("merged", "closed")],
                 "server": {"version": VERSION, "team_mode": True, "last_round_at": self.last_loop_at,
-                           "cap": int(patrol["cap"]), "working": int(patrol["working"]) + int(staging["working"])}}
+                           "cap": int(patrol["cap"]), "working": int(patrol["working"]) + int(staging["working"]),
+                           "held": {"patrol": int(patrol["working"]), "staging": int(staging["working"])}}}
 
     def snapshot_of(self, project: str, now: float, deadline: float, there: dict[str, Any] | None,
                     shared: Mapping[str, Any]) -> dict[str, Any]:
         """The TeamSnapshot of *project* this round relays (snapshot.py): the server as every project's says it; the
         project as the round left it; the runner's runs, MR 巡检's and 测试环境报错's items of the project, as 运行机
-        shows them, and the labelled issues 从 issue 接活 has not started yet (relay.waiting_issues); its 全队交付 from
+        shows them, with their sessions in it no item shows at work, and the labelled issues 从 issue 接活 has not started yet (relay.waiting_issues); its 全队交付 from
         GitLab (relay.Deliveries), or the last rows read, with when, when they could not be read whole by *deadline*
         (*there*: the one on its brain/status, for a project not read since the start). Scrubbed as the pages are."""
         try:
@@ -443,6 +444,8 @@ class TeamRuntime:
                 "runner": {"handovers": handovers,
                            "patrol": [i for i in shared["patrol"]["items"] if i["project"] == project],
                            "staging": [i for i in shared["staging"]["items"] if i["project"] == project],
+                           "patrol_hidden": [h for h in shared["patrol"]["hidden"] if h["project"] == project],
+                           "staging_hidden": [h for h in shared["staging"]["hidden"] if h["project"] == project],
                            "issues": relay_mod.waiting_issues(issues, project)},
                 "delivery": rows, "delivery_at": at}
         return scrub_tree(snap, self.scrub)

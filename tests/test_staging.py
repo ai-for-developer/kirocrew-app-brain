@@ -226,7 +226,7 @@ def test_the_page_counts_a_fix_whose_mr_is_open_while_its_turn_runs_and_says_wha
     view = w.watch.view()
     assert [(i["signature"], i["state"]) for i in view["items"]] == [(ZERO, "fix_mr"), (GATEWAY, "fixing")]
     assert view["working"] == w.watch.busy() == 2
-    assert view["hidden"] == ["grp/repo#1 的修复 MR !52 开了，会话还在收尾"]
+    assert view["hidden"] == [{"project": P, "text": "grp/repo#1 的修复 MR !52 开了，会话还在收尾"}]
 
 
 def test_two_failed_fix_attempts_stop_it_with_one_issue_comment(bk, tmp_path):

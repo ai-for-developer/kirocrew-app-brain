@@ -5,7 +5,7 @@
  * only: a person's 团队运行机 shows the team server's snapshot of it, without sessions).
  */
 import { ago } from '../format'
-import type { StagingLink, StagingState, TeamStaging } from '../types'
+import type { HeldSlot, StagingLink, StagingState, TeamStaging } from '../types'
 import { ExtLink, Icon, RoleIcon } from '../ui'
 import type { Tone } from '../styles'
 import { ACT } from '../vocab'
@@ -26,11 +26,15 @@ export const STAGING_OFF = '还没有项目打开测试环境报错：项目的 
 /** the most rows the list shows */
 export const STAGING_ROWS = 8
 
-/** The sessions a card counts in 在修 that none of its rows shows at work (a turn the MR's head moved past, a fix
- * whose MR is open), each with what holds it: why 排队 shows while fewer rows are at work than the count. */
-export function HeldHint({ hidden }: { hidden?: string[] }) {
-  if (!hidden || hidden.length === 0) return null
-  return <p className="br-dim br-small" data-testid="held-hint">在修的里有 {hidden.length} 个下面没列出：{hidden.join('；')}</p>
+/** The sessions a card counts in 在修 that none of its rows shows at work (*unlisted*: the count less the rows at work),
+ * each with what holds it (a turn the MR's head moved past, a fix whose MR is open), and on a person's 团队运行机 the
+ * ones in projects not listed there: why 排队 shows while fewer rows are at work than the count. */
+export function HeldHint({ hidden, unlisted }: { hidden: HeldSlot[]; unlisted: number }) {
+  const n = Math.max(unlisted, hidden.length)
+  if (n === 0) return null
+  const elsewhere = n - hidden.length
+  const said = hidden.map((h) => h.text).concat(elsewhere === 0 ? [] : hidden.length ? [`另外 ${elsewhere} 个在别的项目里`] : ['在别的项目里'])
+  return <p className="br-dim br-small" data-testid="held-hint">在修的里有 {n} 个下面没列出：{said.join('；')}</p>
 }
 
 function MrOf({ what, link }: { what: string; link: StagingLink }) {
@@ -53,7 +57,7 @@ export function StagingErrors({ view, openSession }: { view: TeamStaging; openSe
         <span className="br-grow" />
         {view.on && <span className="br-small">在修 <b>{view.working}</b>/{view.cap}</span>}
       </header>
-      {view.on && <HeldHint hidden={view.hidden} />}
+      {view.on && <HeldHint hidden={view.hidden} unlisted={view.working - view.items.filter((i) => i.state === 'fixing').length} />}
       {!view.on ? <p className="br-empty">{STAGING_OFF}</p> : rows.length === 0 ? (
         <p className="br-empty">{view.last_at ? `上一轮（${ago(view.last_at)}）测试环境的日志里没有报错。` : '还没看过测试环境：下一轮就看。'}</p>
       ) : (

@@ -64,7 +64,7 @@ describe('测试环境报错', () => {
   test('counts every session it holds: a fix whose MR is open while its turn runs is said under the count', async () => {
     const sv = fx.teamStaging()
     sv.working = 2
-    sv.hidden = ['shop/shop-pay#12 的修复 MR !53 开了，会话还在收尾']
+    sv.hidden = [{ project: 'shop/shop-pay', text: 'shop/shop-pay#12 的修复 MR !53 开了，会话还在收尾' }]
     installFixtureRoutes({ [`GET ${API}/team/staging`]: () => sv })
     render(<TeamPage {...props()} />)
     const st = await screen.findByRole('region', { name: '测试环境报错' })

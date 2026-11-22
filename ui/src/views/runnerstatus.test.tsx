@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { describe, expect, test, vi } from 'vitest'
 import { FIXTURE_AT, fx } from '../test/data'
 import { API, installFixtureRoutes } from '../test/routes'
@@ -211,6 +211,52 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     expect(screen.getByTestId('team-delivery')).toHaveTextContent('这个筛选下没有需求。')
     await user.selectOptions(screen.getByTestId('filter-project'), '')
     expect(keys(table())).toEqual(['PAY-6'])
+  })
+
+  test('MR 巡检 and 测试环境报错 count the sessions the team server counts, and say under the count what holds one no row shows at work', async () => {
+    installFixtureRoutes()
+    render(<RunnerStatusPage {...props()} />)
+    const runner = await screen.findByTestId('relay-runner')
+    expect(runner).toHaveTextContent('brain-patrol 会话在做 2/2')
+    const pt = screen.getByTestId('patrol')
+    expect(pt).toHaveTextContent('在修 2/2')
+    expect(pt.querySelectorAll('tbody tr[data-state="working"]')).toHaveLength(1)
+    expect(within(pt).getByTestId('held-hint')).toHaveTextContent('在修的里有 1 个下面没列出：shop/shop-pay!50 的会话还在做上一轮（MR 有了新的提交）')
+    const st = screen.getByTestId('staging')
+    expect(st).toHaveTextContent('在修 0/2')
+    expect(within(st).queryByTestId('held-hint')).toBeNull()
+  })
+
+  test('a session the team server holds in a project not listed here is counted, and said to be in another project', async () => {
+    const st = fx.teamStatus()
+    const view = st.relays[0].view!
+    view.runner.patrol = view.runner.patrol.map((i) => (i.iid === 52 ? { ...i, state: 'ok', problems: [] } : i))
+    installFixtureRoutes({ [`GET ${API}/team/status`]: () => st })
+    render(<RunnerStatusPage {...props()} />)
+    const pt = await screen.findByTestId('patrol')
+    expect(pt).toHaveTextContent('在修 2/2')
+    expect(pt.querySelectorAll('tbody tr[data-state="working"]')).toHaveLength(0)
+    expect(within(pt).getByTestId('held-hint')).toHaveTextContent('在修的里有 2 个下面没列出：shop/shop-pay!50 的会话还在做上一轮（MR 有了新的提交）；另外 1 个在别的项目里')
+    view.runner.patrol_hidden = []
+    installFixtureRoutes({ [`GET ${API}/team/status`]: () => st })
+    cleanup()
+    render(<RunnerStatusPage {...props()} />)
+    expect(within(await screen.findByTestId('patrol')).getByTestId('held-hint')).toHaveTextContent('在修的里有 2 个下面没列出：在别的项目里')
+  })
+
+  test('a snapshot of an older team server, without each source’s count: the cards count their rows at work, as before', async () => {
+    const st = fx.teamStatus()
+    const view = st.relays[0].view!
+    view.server.held = null
+    view.runner.patrol_hidden = []
+    view.runner.staging_hidden = []
+    installFixtureRoutes({ [`GET ${API}/team/status`]: () => st })
+    render(<RunnerStatusPage {...props()} />)
+    const runner = await screen.findByTestId('relay-runner')
+    expect(runner).toHaveTextContent('brain-patrol 会话在做 2/2')
+    expect(screen.getByTestId('patrol')).toHaveTextContent('在修 1/2')
+    expect(screen.getByTestId('staging')).toHaveTextContent('在修 0/2')
+    expect(screen.queryByTestId('held-hint')).toBeNull()
   })
 
   test('a snapshot two heartbeats old: the team server may have stopped, and what it last wrote is still shown', async () => {

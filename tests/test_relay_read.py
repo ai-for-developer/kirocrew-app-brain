@@ -107,13 +107,33 @@ def test_each_projects_state_is_read_with_my_token_from_its_own_branch_and_put_t
     view = relay["view"]
     assert (view["generated_at"], view["server"]) == (web["generated_at"], web["server"])
     assert view["delivery"] == pay["delivery"] + web["delivery"]
-    assert view["runner"] == {"handovers": [], "patrol": [], "staging": [], "issues": []}
+    assert view["runner"] == {"handovers": [], "patrol": [], "staging": [], "issues": [], "patrol_hidden": [],
+                              "staging_hidden": []}
+    assert view["server"]["held"] is None           # an older team server's: each source's sessions not said
     assert [(path, query, who) for _, path, query, who in reads(gl)] == [
         ("/api/v4/projects/%s/repository/files/snapshot.json/raw" % p, {"ref": "brain/status"}, "alice") for p in (PAY, WEB)]
     assert "alice-tok" not in got.text
     fix = fixture("team-status.json")
     assert diff_keys(fix, body, skip=(".relays[].repo_of",)) == []
     assert all(fix["relays"][0]["view"]["runner"][k] for k in ("handovers", "patrol", "staging", "issues"))
+
+
+def test_each_sources_sessions_and_the_held_ones_of_the_projects_read_are_on_the_page(tmp_path, home, monkeypatch):
+    """A team server that says each work source's brain-patrol sessions and, per project, the ones no row shows at work:
+    the page has the newest server's counts and the held sessions of the projects alice reads, none of another project
+    even when a snapshot names one (a writer's bug)."""
+    gl, svc, routes, clock, tick, snapshot = app(tmp_path, monkeypatch, listed=(PAY,))
+    mine = {"project": PAY, "text": "grp/pay!3 的会话还在做上一轮（MR 有了新的提交）"}
+    snap = a_snapshot(T0 - MIN, project=PAY)
+    snap["server"].update(working=2, held={"patrol": 1, "staging": 1})
+    snap["runner"]["patrol_hidden"] = [mine, {"project": HR, "text": "hr/payroll!4 的会话还在做上一轮（MR 有了新的提交）"}]
+    snap["runner"]["staging_hidden"] = []
+    gl.put_status(PAY, snapshot.dump(snapshot.parse(snap)))
+    got, = statuses(svc, routes, lambda: None)
+    view = got.body["relays"][0]["view"]
+    assert (view["server"]["working"], view["server"]["held"]) == (2, {"patrol": 1, "staging": 1})
+    assert (view["runner"]["patrol_hidden"], view["runner"]["staging_hidden"]) == ([mine], [])
+    assert "hr/payroll" not in got.text
 
 
 def test_a_person_sees_the_projects_gitlab_lets_them_read_and_nothing_of_any_other(tmp_path, home, monkeypatch):
