@@ -3,7 +3,7 @@
  * /team/loop); the ledger's counts as counter cards (runs by brain-kit's run states, questions by their states,
  * hand-overs, the messages into the runs' sessions by outbox state, the signer's pending and refused) with a segment bar
  * each; what the bridge said about each labelled MR in the last round as a conveyor (accepted, rejected, seen,
- * unlabelled, waiting, error) between its two ends, which stay in sight however many MRs there are; the runs as a ledger
+ * unlabelled, waiting, signing, error) between its two ends, which stay in sight however many MRs there are; the runs as a ledger
  * table with their MRs, sessions and what the bridge holds about each (its notes, a line under the run); the runner's
  * Lean hooks as brain-runnerd checks them; the signer's pending and refused requests and the vouchers it has not
  * answered yet (asked for again next round) as cards; the bridge.json and runnerd.json settings brain-kit reads, by
@@ -40,6 +40,8 @@ export const LOOP_STEP: Record<string, { name: string; did: string }> = {
   reconcile: { name: '对账', did: '对了账' },
   patrol: { name: '巡检 MR', did: '巡检了 MR' },
   staging: { name: '看测试环境', did: '看了测试环境' },
+  signin: { name: '重新接上 GitLab 的登录', did: '重新接上 GitLab 的登录' },
+  left: { name: '收起离开的项目的运行', did: '收起离开的项目的运行' },
 }
 /** what a signature is for (the signer spool's request kinds) */
 export const SIGN_KIND: Record<string, string> = { answer: '回答的凭证', handoff: '交接的合同' }
@@ -146,12 +148,13 @@ export const HANDOVER_RESULT: Record<HandoverResult, { label: string; tone: Tone
   seen: { label: '看过了', tone: 'idle', hint: '这个提交和这次打标签以前检查过，结果在账本里' },
   unlabelled: { label: '标签刚被拿掉', tone: 'warn', hint: '交接标签刚被拿掉（重新交接、再打一次标签时会这样）：下一轮再看' },
   waiting: { label: '正在别处签名', tone: 'hand', hint: '这份交接的合同正在别处签（另一个桥进程，或停下的桥留下的占位）：下一轮再看' },
+  signing: { label: '等签名服务', tone: 'hand', hint: '签名服务这一轮没来得及签这份合同（第一次签常常慢一些）：下一轮再问同一份，签好就接手' },
   skipped: { label: '没看：不在名单里', tone: 'idle', hint: '不在这个项目要接的 MR 名单里，桥没看它。要接它，把它的号加进桥的设置里这个项目的 MR 名单' },
   error: { label: '这一轮没查成', tone: 'warn', hint: '下一轮再试' },
 }
 export const handoverMeta = (result: string) => HANDOVER_RESULT[result as HandoverResult] ?? { label: result, tone: 'idle' as Tone, hint: '' }
 /** a belt chip's look: green taken, red refused, dashed looked at again next round, quiet seen before */
-const CHIP_CLASS: Record<string, string> = { rejected: 'is-conflict', waiting: 'is-pending', unlabelled: 'is-pending', error: 'is-pending', seen: 'is-seen', skipped: 'is-seen' }
+const CHIP_CLASS: Record<string, string> = { rejected: 'is-conflict', waiting: 'is-pending', signing: 'is-pending', unlabelled: 'is-pending', error: 'is-pending', seen: 'is-seen', skipped: 'is-seen' }
 
 type LedgerKey = keyof TeamView['ledger']
 /** A ledger count's state in words: runs by run state, decisions by question state, hand-overs and messages by their own. */
@@ -455,7 +458,7 @@ function SignerKpi({ signer }: { signer: TeamView['signer'] }) {
 function Handovers({ rows, at }: { rows: TeamHandover[]; at: number | null }) {
   const taken = rows.filter((h) => h.result === 'accepted').length
   const refused = rows.filter((h) => h.result === 'rejected').length
-  const again = rows.filter((h) => h.result === 'waiting' || h.result === 'unlabelled' || h.result === 'error').length
+  const again = rows.filter((h) => CHIP_CLASS[h.result] === 'is-pending').length
   return (
     <section className="kt-card tm-ho" aria-label="交接" data-testid="handovers">
       <header className="kt-card-head">

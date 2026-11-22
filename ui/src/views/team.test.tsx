@@ -317,6 +317,11 @@ describe('运行机', () => {
     expect(within(item('waiting')).getByRole('link', { name: /shop\/shop-pay!48/ })).toHaveAttribute('href', 'https://gitlab.example.com/shop/shop-pay/-/merge_requests/48')
     expect(item('unlabelled')).toHaveTextContent('标签刚被拿掉')
     expect(item('unlabelled')).toHaveTextContent('重新交接、再打一次标签时会这样')
+    // the signer did not answer in time: waiting for it, not an error, asked again next round
+    expect(within(item('signing')).getByText('等签名服务')).toHaveClass('kt-pill', 'tone-hand')
+    expect(item('signing')).toHaveTextContent('下一轮再问同一份，签好就接手')
+    expect(item('signing')).toHaveClass('kt-belt-chip', 'is-pending')
+    expect(ho.querySelector('header')).toHaveTextContent('下一轮再看 4')
     expect(item('error')).toHaveTextContent('这一轮没查成')
     expect(item('error')).toHaveTextContent(fx.team().handovers.find((h) => h.result === 'error')!.error) // its error instead of the hint
     expect(item('error')).not.toHaveTextContent('下一轮再试')
@@ -325,7 +330,7 @@ describe('运行机', () => {
     expect(within(item('waiting')).getByText('正在别处签名')).toHaveClass('kt-pill', 'tone-hand')
     expect(ho.querySelector('.kt-belt-end.is-head')).toHaveTextContent('运行机')
     expect(ho.querySelector('.kt-belt .kt-belt-end')).toBeNull()
-    expect(Object.keys(HANDOVER_RESULT).sort()).toEqual(['accepted', 'error', 'rejected', 'seen', 'skipped', 'unlabelled', 'waiting'])
+    expect(Object.keys(HANDOVER_RESULT).sort()).toEqual(['accepted', 'error', 'rejected', 'seen', 'signing', 'skipped', 'unlabelled', 'waiting'])
     expect(handoverMeta('later')).toEqual({ label: 'later', tone: 'idle', hint: '' })
     unmount()
     const tv = fx.team()
@@ -499,11 +504,11 @@ describe('运行机', () => {
 
   test('a round that failed a step says which, in words, what to do, and folds the error', async () => {
     const tv = fx.team()
-    tv.status.loop_error = 'poll: GitLab 401 Unauthorized；collect: [Errno 2] No such file or directory'
+    tv.status.loop_error = 'signin: ~/.brain/local_transport.py could not be loaded: x；left: database is locked；poll: GitLab 401 Unauthorized；collect: [Errno 2] No such file or directory'
     installFixtureRoutes({ [`GET ${API}/team`]: () => tv })
     render(<TeamPage {...props()} />)
     const err = await screen.findByTestId('loop-error')
-    expect(err).toHaveTextContent('上一轮有一步没成：看 MR、收结果')
+    expect(err).toHaveTextContent('上一轮有一步没成：重新接上 GitLab 的登录、收起离开的项目的运行、看 MR、收结果')
     expect(err).toHaveTextContent('做什么下一轮会自动再试')
     expect(within(err).getByText(tv.status.loop_error).closest('details')).not.toHaveAttribute('open')
   })

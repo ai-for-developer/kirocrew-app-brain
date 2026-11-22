@@ -14,6 +14,7 @@ import os
 import re
 import secrets
 import signal
+import sqlite3
 import subprocess
 import sys
 import time
@@ -360,7 +361,9 @@ def test_a_first_run_builds_the_runner_and_waits_for_the_kit_mr(world):
     b, r, s = (json.loads(p.read_text()) for p in (ps.bridge_json, ps.runnerd_json, ps.signer_json))
     assert b["projects"] == [P] and b["gitlab"] == {"base": BASE, "token_env": "BRAIN_TEAM_NO_TOKEN_ENV",
                                                      "token_file": str(ps.root / "bridge-gitlab-token")}
-    assert b["signer"] == {"type": "spool", "spool_dir": str(ps.root / "signer-spool"), "allowed_signers": str(ps.allowed)}
+    # the signer's first signature looks at GitLab for a while: brain-kit's SpoolSigner waits 90 s, not its own 30
+    assert b["signer"] == {"type": "spool", "spool_dir": str(ps.root / "signer-spool"), "allowed_signers": str(ps.allowed),
+                           "timeout": 90}
     assert b["publish_vouchers"] is False and "intake_dir" not in b and "signing_key" not in b
     assert re.fullmatch(r"[0-9a-f]{32}", b["pseudonym_salt"]) and s["pseudonym_salt"] == b["pseudonym_salt"]
     assert r["spool_dir"] == b["spool_dir"] and r["runs_root"] == b["runner_runs_root"] == str(ps.runs)
@@ -396,6 +399,10 @@ def test_a_first_run_builds_the_runner_and_waits_for_the_kit_mr(world):
     assert "合并以前" in by["team_mode"]["message"] and world["signer"][0] == s
     state = json.loads(ps.state.read_text())
     assert saved_tokens(state)["bridge"]["username"] == bot and state["projects"][0]["id"] == PID and not state["running"]
+    # the card: the bridge's token (the runner pushes over SSH: no other), its account and its last day
+    assert view["tokens"] == [{"key": "bridge", "kind": "project", "name": "brain-bridge", "user": bot,
+                               "expires_at": bridge[0]["expires_at"], "days_left": days_left(bridge[0]["expires_at"]),
+                               "soon": False}]
 
 
 def test_a_second_run_makes_nothing_new(world):
@@ -650,6 +657,20 @@ def test_a_protected_branch_rule_that_leaves_brain_status_to_developers_is_no_ho
     assert step(view, "status")["status"] == "done", step(view, "status")
 
 
+@pytest.mark.parametrize("status", [502, 500, 404])
+def test_gitlab_failing_to_show_the_protected_branches_is_a_warning_and_the_run_goes_on(world, status):
+    """Reading a project's protected branch rules fails on GitLab's side: the 状态中转 step warns (the team server's
+    first write finds out whether the bridge may push brain/status) and every step after it is done."""
+    world["gl"].fail.append(("GET", "%s/projects/%d/protected_branches" % (API, PID), status, None))
+    view, _ = build(world)
+    st = step(view, "status")
+    assert (st["status"], st["message"]) == (
+        "waiting", "这次没读成 grp/pay 的受保护分支（GitLab 出错了）：团队服务器第一次写 brain/status 时就知道能不能推，推不了会在它的运行机页上说；"
+        "想现在就确认，过一会儿再跑一次")
+    assert "HTTP %d" % status in st["detail"]
+    assert statuses(view) == dict({s["id"]: "done" for s in view["steps"]}, status="waiting", kit_mr="waiting")
+
+
 def test_protected_branches_the_token_may_not_read_are_said_and_the_run_goes_on(world):
     world["gl"].fail.append(("GET", "%s/projects/%d/protected_branches" % (API, PID), 403, None))
     view, _ = build(world)
@@ -717,6 +738,23 @@ def test_a_bot_token_git_cannot_clone_with_fails_the_push_step(world):
     world["https_down"] = False
     view, _ = build(world)
     assert everything_done(view) and len(world["gl"].made("brain-bot")) == 1
+
+
+@pytest.mark.parametrize("push", ["token", "auto"])
+def test_the_push_step_names_ssh_only_when_it_tried_ssh(world, push):
+    """--push token, or auto where GitLab gives the project no SSH address: SSH is not tried, so neither a token git
+    cannot clone with nor one that works is said to come after SSH; for auto, the 细节 says why SSH was left out."""
+    if push == "auto":
+        world["gl"].ssh_url = ""
+    world["https_down"] = True
+    view, _ = build(world, push=push)
+    failed = step(view, "push")
+    assert failed["status"] == "failed" and failed["message"] == "这台机器的 git 用项目令牌 brain-bot 连不上 gitlab.example.com：运行机拉不到代码"
+    assert ("GitLab 没给这个项目的 SSH 地址" in failed["detail"]) == (push == "auto")
+    world["https_down"] = False
+    view, _ = build(world, push=push)
+    done = step(view, "push")
+    assert done["status"] == "done" and done["message"].startswith("运行机用项目令牌拉取和推送。"), done["message"]
 
 
 def test_a_scope_gitlab_does_not_give_project_tokens_is_said_as_its_refusal(world, monkeypatch):
@@ -859,6 +897,51 @@ def test_kit_json_is_written_back_the_way_brain_kit_writes_it(tmp_path, home):
         bk.unload()
 
 
+def test_kit_json_keeps_its_own_layout_where_only_some_keys_change(tmp_path, home):
+    """A kit.json written by hand: the keys that do not change keep their text, a compact object or list stays on one
+    line, a new key comes last (in its place when the keys are sorted) in the file's own style; a one-line file stays one
+    line; a key taken out goes with its comma."""
+    bk, kitmr = mod("bk"), mod("kitmr")
+    assert bk.load(str(BRAINKIT))["ok"]
+    try:
+        hand = ('{\n  "req_prefix": "PAY",\n  "gitlab": {"base": "https://old.example.com", "project": "grp/old"},\n'
+                '  "bot_users": ["brain-bot"],\n  "work_sources": ["mr-handoff"]\n}\n')
+        doc = dict(json.loads(hand), gitlab={"base": BASE, "project": P}, work_sources=["mr-handoff", "mr-patrol"],
+                   bridge_user="brain-bridge", bot_emails=["brain-bot@noreply.invalid"])
+        assert kitmr.kit_text(doc, hand) == (
+            '{\n  "req_prefix": "PAY",\n  "gitlab": {"base": "%s", "project": "%s"},\n  "bot_users": ["brain-bot"],\n'
+            '  "work_sources": ["mr-handoff", "mr-patrol"],\n  "bridge_user": "brain-bridge",\n'
+            '  "bot_emails": ["brain-bot@noreply.invalid"]\n}\n' % (BASE, P))
+        one = '{"req_prefix": "PAY", "gitlab": {"base": "x", "project": "y"}}'
+        assert kitmr.kit_text(dict(json.loads(one), fast_mode=False), one) == \
+            '{"req_prefix": "PAY", "gitlab": {"base": "x", "project": "y"}, "fast_mode": false}'
+        dropped = {k: v for k, v in json.loads(hand).items() if k != "bot_users"}
+        assert kitmr.kit_text(dropped, hand) == (
+            '{\n  "req_prefix": "PAY",\n  "gitlab": {"base": "https://old.example.com", "project": "grp/old"},\n'
+            '  "work_sources": ["mr-handoff"]\n}\n')
+        flag = '{\n  "fast_mode": 1\n}\n'
+        assert kitmr.kit_text({"fast_mode": True}, flag) == '{\n  "fast_mode": true\n}\n'     # 1 is not true
+    finally:
+        bk.unload()
+
+
+def test_the_kit_json_mr_changes_only_the_lines_of_the_keys_it_sets(world):
+    """一键建运行机's kit.json MR on a kit.json written by hand (compact objects): the MR's file is that file with the
+    runner's keys set, its other lines as they were."""
+    gl = world["gl"]
+    kit = json.loads(gl.files["main"][KIT])
+    lines = ['  %s: %s' % (json.dumps(k), json.dumps(v, ensure_ascii=False)) for k, v in kit.items()]
+    gl.files["main"][KIT] = "{\n" + ",\n".join(lines) + "\n}\n"
+    view, _ = build(world)
+    assert everything_done(view)
+    old, new = gl.files["main"][KIT].splitlines(), gl.files["brain/runner-setup"][KIT].splitlines()
+    assert [x for x in old if x not in new] == ['  "bridge_user": "",', '  "gitlab": {"base": "", "project": ""},',
+                                                '  "version": 1']
+    assert [x for x in new if x not in old] == ['  "bridge_user": "%s",' % bridge_of(world),
+                                                '  "gitlab": {"base": "%s", "project": "%s"},' % (BASE, P),
+                                                '  "version": 1,', '  "work_sources": ["mr-handoff", "mr-patrol"]']
+
+
 def test_a_pid_file_naming_another_process_is_never_signalled(tmp_path):
     signerproc = mod("team.signerproc")
     cfg = tmp_path / "signer.json"
@@ -939,6 +1022,40 @@ def the_app(world, tmp_path):
         assert started.status == 200, started.body
         return await svc.wait_setup()
     return svc, routes, setup
+
+
+def test_brain_kit_going_away_right_after_the_lock_is_taken_leaves_the_root_free(world, tmp_path, monkeypatch):
+    """brain-kit is unloaded (设置 changed its place, say) just as POST /team/setup has taken the root's lock: however
+    that request ends, the root is not left locked: the page says no run is going on and the next run starts."""
+    bk, setup = mod("bk"), mod("team.setup")
+    svc, routes, run_setup = the_app(world, tmp_path)
+    real = setup.Lock
+
+    def lock_then_unload(root):
+        held = real(root)
+        bk.unload()
+        return held
+    monkeypatch.setattr(setup, "Lock", lock_then_unload)
+
+    async def go():
+        await svc.start()
+        try:
+            body = {"gitlab_base": BASE, "project": P, "admin_token": world["admin"], "roles": {"builder": "bob"}}
+            try:
+                await call(routes, "POST", "/team/setup", json_body=body)
+            except Exception:  # noqa: BLE001 - how it ends is not the point: the lock is
+                pass
+            await svc.wait_setup()
+            assert bk.load(str(BRAINKIT))["ok"]
+            monkeypatch.setattr(setup, "Lock", real)
+            view = await call(routes, "GET", "/team/setup")
+            return view, await run_setup()
+        finally:
+            await svc.stop()
+
+    view, end = run(go())
+    assert view.body["running"] is False
+    assert everything_done(end), [(s["id"], s["status"], s["message"], s["detail"][:300]) for s in end["steps"]]
 
 
 def test_a_rerun_starts_team_mode_again_once_a_file_it_read_has_changed(world, tmp_path):
@@ -1187,6 +1304,7 @@ def test_one_runner_serves_two_projects_as_gitlab_users_of_its_own(team):
         assert ps.token(key).read_text().strip() == team[key] and mode(ps.token(key)) == "0o600"
     b, r, s = (json.loads(p.read_text()) for p in (ps.bridge_json, ps.runnerd_json, ps.signer_json))
     assert b["projects"] == s["projects"] == ["grp/a", "grp/b"]
+    assert (b["max_inflight"], b["max_per_repo"]) == (2, 1)          # a run at a time in each project, both at once
     assert s["bridge_users"] == ["brain-bridge"] and s["gitlab"]["token_file"] == b["gitlab"]["token_file"] == str(ps.token("bridge"))
     assert r["clone_url"] == "https://oauth2:%s@gitlab.example.com/{project}.git" % team["bot"]
     assert (r["git_name"], r["git_email"]) == ("Brain-Bot", "brain-bot@example.com")
@@ -1214,6 +1332,19 @@ def test_one_runner_serves_two_projects_as_gitlab_users_of_its_own(team):
     assert team["admin"] not in state and team["bridge"] not in state and team["bot"] not in state
     from test_contract import diff_keys, fixture
     assert diff_keys(fixture("team-setup-bot.json"), json.loads(json.dumps(view))) == []
+
+
+def test_the_card_says_when_each_token_of_the_runner_ends_and_warns_two_weeks_before(team):
+    """bot-account, the runner pushing as brain-bot: the card lists the bridge's personal token, ending in 10 days (a
+    warning), with its account, its last day and the days left; and the bot's, whose last day GitLab does not show to a
+    token without read_api."""
+    team["bridge"] = team["gl"].pat(BRIDGE_ID, "brain-bridge", ["api"], days=10)
+    view, _ = build_team(team)
+    assert view["tokens"] == [
+        {"key": "bridge", "kind": "personal", "name": "", "user": "brain-bridge",
+         "expires_at": (utc_today() + timedelta(days=10)).isoformat(), "days_left": 10, "soon": True},
+        {"key": "bot", "kind": "personal", "name": "", "user": "brain-bot", "expires_at": None, "days_left": None,
+         "soon": False}]
 
 
 def test_jenkins_is_one_block_for_the_runner_whatever_its_projects(team):
@@ -1294,6 +1425,52 @@ def test_a_project_taken_out_leaves_the_runner_and_nothing_is_written(team):
     view, _ = build_team(team, projects=("grp/a", "grp/c"), roles={"product": "bob", "builder": "carol"})
     assert step(view, "identities")["message"] == \
         "这些人不是这几个项目里任何一个的成员：carol。先在 GitLab 上把他们加进项目，或者改填别人"
+
+
+def runs_in(path):
+    """{run_id: state} of the ledger file *path*, read as it is on disk."""
+    db = sqlite3.connect(str(path))
+    try:
+        return dict(db.execute("SELECT run_id, state FROM runs").fetchall())
+    finally:
+        db.close()
+
+
+def test_a_project_taken_out_has_its_open_runs_left_in_both_ledgers_after_a_copy_of_each(team):
+    """grp/b taken out while the bridge's ledger holds RUN-PAY-2-1 of it, dispatched with D-1 open, and the signer's
+    ledger that run too: the rerun marks it failed in the bridge's ledger, D-1 closed, and closed in the signer's, each
+    ledger copied first, grp/a's run left as it is; the 三份配置 step says so. Run again, it has nothing left to do."""
+    bk = mod("bk")
+    Ledger = bk.m("bridge.ledger").Ledger
+    roles = {"product": "bob", "builder": "bob"}
+    view, ps = build_team(team, roles=roles)
+    for name, state in (("bridge-ledger.sqlite", "dispatched"), ("signer-ledger.sqlite", "spooled")):
+        led = Ledger(str(ps.root / name))
+        for run_id, project, iid in (("RUN-PAY-1-1", "grp/a", 7), ("RUN-PAY-2-1", "grp/b", 9)):
+            led.add_run(run_id, project, run_id[4:9], iid, "a" * 40, "V-%d" % iid)
+            if state != "spooled":
+                assert led.set_run(run_id, "spooled", state)
+        if name.startswith("bridge"):
+            led.db.executescript(bk.m("bridge.decisions").SCHEMA)
+            led.db.execute("INSERT INTO decisions(id, run_id, project, iid, sha, park_hash, kind, state, created, updated) "
+                           "VALUES ('D-1', 'RUN-PAY-2-1', 'grp/b', 9, ?, 'p', 'clarify', 'open', 'x', 'x')", ("a" * 40,))
+        led.close()
+    view, ps = build_team(team, projects=("grp/a",), roles=roles)
+    assert everything_done(view), [(s["id"], s["status"], s["message"], s["detail"][:200]) for s in view["steps"]]
+    assert runs_in(ps.root / "bridge-ledger.sqlite") == {"RUN-PAY-1-1": "dispatched", "RUN-PAY-2-1": "failed"}
+    assert runs_in(ps.root / "signer-ledger.sqlite") == {"RUN-PAY-1-1": "spooled", "RUN-PAY-2-1": "closed"}
+    db = sqlite3.connect(str(ps.root / "bridge-ledger.sqlite"))
+    assert db.execute("SELECT id, state FROM decisions").fetchall() == [("D-1", "closed")]
+    db.close()
+    copies = sorted(p.name for p in ps.root.iterdir() if ".left-" in p.name)
+    assert [c.split(".left-")[0] for c in copies] == ["bridge-ledger.sqlite", "signer-ledger.sqlite"]
+    assert runs_in(ps.root / copies[0])["RUN-PAY-2-1"] == "dispatched" and mode(ps.root / copies[0]) == "0o600"
+    said = step(view, "configs")["message"]
+    assert "grp/b 不归这台运行机管了：账本里它没做完的 1 个运行（RUN-PAY-2-1）停了" in said, said
+    assert copies[0] in said and copies[1] in said
+    again, _ = build_team(team, projects=("grp/a",), roles=roles)
+    assert everything_done(again) and "不归这台运行机管了" not in step(again, "configs")["message"]
+    assert sorted(p.name for p in ps.root.iterdir() if ".left-" in p.name) == copies
 
 
 def test_a_project_gitlab_does_not_have_fails_its_own_row_and_the_others_are_still_looked_at(team):

@@ -20,6 +20,7 @@ import time
 
 import pytest
 
+import signinfix
 from appkit import sh
 from brainfix import needs_brainkit
 from teamfix import (BRANCH, P, PARK, answer_voucher, commit_push, hand_off, make_world, push_park, signer_ask,
@@ -645,6 +646,32 @@ def handoff_request(flow, run_id="RUN-PAY-1-1", **over):
                                       "expires_at": later(72)}, mr, f, "brain-bridge")
     v.update(over)
     return v, probs
+
+
+def test_a_new_sign_in_is_picked_up_by_the_running_signer(flow, monkeypatch):
+    """GitLab behind single sign-on, the sign-in helper's transports keeping the sign-in they were made with: the
+    session ends and the signer cannot check a hand-over (no answer: the bridge asks again). The person signs in again
+    on the machine, and the same signer process checks and signs it."""
+    w = flow.w
+    sso = signinfix.install(flow.gl, "new")
+    monkeypatch.setenv("TEST_SIGNER_TOKEN", "signer-tok")
+    signer = w["bs"].build({
+        "spool": str(w["sspool"]), "signing_key": str(w["key"]), "projects": [P], "identities": str(w["signer_ids"]),
+        "vouchers_dir": str(w["tmp"] / "signer-vouchers"), "publish_vouchers": False,
+        "ledger": str(w["tmp"] / "signer.sqlite"), "pseudonym_salt": "s", "contract_ttl_hours": 72,
+        "gitlab": {"base": "https://gl.example", "token_env": "TEST_SIGNER_TOKEN"}})
+    signer.out = lambda *_: None
+    v, probs = handoff_request(flow)
+    assert probs == []
+    v["voucher_id"] = "V-" + flow.sign.digest({k: x for k, x in v.items() if k != "voucher_id"})[:10]
+    sso.expire()
+    rid = spool_request(w["sspool"], v)
+    assert signer.once() == 0
+    assert not (w["sspool"] / "signed" / (rid + ".json")).exists() and not (w["sspool"] / "refused" / (rid + ".json")).exists()
+    sso.sign_in_again()
+    signer._failed.clear()                          # (it looks at a request again RETRY_S after it could not)
+    assert signer.once() == 1
+    assert json.loads((w["sspool"] / "signed" / (rid + ".json")).read_text())["voucher"] == v
 
 
 def test_a_push_after_the_owners_label_is_refused(flow):

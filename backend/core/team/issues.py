@@ -51,6 +51,9 @@ NEW, CLAIMED, PUSHED, OPENED, STARTED, REFUSED, DROPPED = (
     "new", "claimed", "pushed", "opened", "started", "refused", "dropped")
 UNDER_WAY = (CLAIMED, PUSHED, OPENED)
 FINAL = (STARTED, REFUSED, DROPPED)
+# the signer did not answer within brain-kit's SpoolSigner wait (bridge.json signer.timeout): not an error, the issue
+# stays opened and the next round asks for that very contract again (a late signature is used)
+SIGNING = "签名服务这一轮没来得及签开工合同（第一次签常常慢一些）：下一轮再问同一份，签好就开工"
 # what the run's agent does first: Lean's Session notes of the new intent, which the bridge's hand-over message points it
 # to (brain-run reads them as a hand-over note)
 NEXT = (
@@ -537,7 +540,8 @@ class IssueSource:
 
     def _start(self, e: Entry, row: IssueRow) -> IssueRow:
         """opened -> started: the start contract signed and spooled, the run in the bridge's ledger. A run the bridge
-        has for this MR already is the start; a contract being signed elsewhere waits for the next round."""
+        has for this MR already is the start; a contract being signed elsewhere, or one the signer has not answered in
+        time, waits for the next round."""
         host, sign = self.host, bk.m("sign")
         common, led = bk.m("common"), self.host.ledger
         RESERVED = bk.m("bridge.ledger").RESERVED
@@ -562,6 +566,10 @@ class IssueSource:
         except sign.SignerRefused as exc:
             led.release_run(run_id)
             raise Refusal(*["签名服务没签开工合同：%s" % x for x in exc.reasons]) from None
+        except sign.SignerUnavailable:          # no error: brain-kit asks for this voucher again next round
+            led.release_run(run_id)
+            e.note = SIGNING
+            return row
         except BaseException:
             led.release_run(run_id)
             raise

@@ -4,7 +4,10 @@ several repos add up the way each one is counted."""
 
 import time
 
-from appkit import mod
+import pytest
+
+import signinfix
+from appkit import BRAINKIT, mod
 from brainfix import make_project, make_service, needs_brainkit
 
 V = mod("deploys_view")
@@ -91,3 +94,24 @@ def test_several_repos_numbers_add_up_and_their_lead_time_is_one_median_over_all
     assert got["autonomy"] == [3, 6]
     assert (got["deploy_frequency"], got["change_failure"]) == (2.0, [1, 7])
     assert got["lead_time"] == 2.6, "the median of 0.1, 0.2, 5 and 10 hours"
+
+
+@needs_brainkit
+def test_the_client_kept_for_a_gitlab_takes_a_new_sign_in_without_a_restart(home, monkeypatch):
+    """A GitLab behind single sign-on, whose sign-in helper's transports keep the sign-in they were made with: the
+    client Clients keeps for it stops working when the session ends. The next one asked for after that is made again,
+    so the deploys are read once the person signs in again here, with no restart."""
+    bk = mod("bk")
+    assert bk.load(str(BRAINKIT))["ok"]
+    try:
+        monkeypatch.setenv("GITLAB_TOKEN", "fake-person-token")
+        sso = signinfix.install(lambda method, url, headers, body: (200, b'{"username": "alice"}'), "new")
+        clients = V.Clients()
+        assert clients.gitlab(GL).current_user() == {"username": "alice"}
+        sso.expire()
+        with pytest.raises(bk.m("common").BrainError, match="sign in again"):
+            clients.gitlab(GL).current_user()
+        sso.sign_in_again()
+        assert clients.gitlab(GL).current_user() == {"username": "alice"}
+    finally:
+        bk.unload()

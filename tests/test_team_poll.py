@@ -3,6 +3,7 @@ for brain-kit's Bridge: a project whose kit.json or labelled MRs cannot be read 
 projects after it, as in brain-kit's own poll; the round's error names it, and the status says, project by project,
 which one was not read and which one leaves mr-handoff out of its kit.json work_sources."""
 
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -22,7 +23,14 @@ def bk():
     b.unload()
 
 
-def test_a_project_that_cannot_be_read_does_not_stop_the_hand_overs_of_the_others(bk):
+def bridge(tmp_path, projects, **steps):
+    """A stand-in for brain-kit's Bridge with brain-kit's own ledger: its projects (bridge.json's), and *steps*."""
+    path = str(tmp_path / "ledger.sqlite")
+    return SimpleNamespace(cfg={"projects": projects, "ledger": path}, ledger=mod("bk").m("bridge.ledger").Ledger(path),
+                           kc=None, **steps)
+
+
+def test_a_project_that_cannot_be_read_does_not_stop_the_hand_overs_of_the_others(bk, tmp_path):
     common = bk.m("common")
     processed = []
     kits = {"grp/a": None, "grp/b": HANDOFF,
@@ -33,10 +41,10 @@ def test_a_project_that_cannot_be_read_does_not_stop_the_hand_overs_of_the_other
             raise common.BrainError("grp/a: kit config: default_branch 'main' but GitLab says 'trunk'")
         return kits[project]
 
-    host = SimpleNamespace(cfg={"projects": ["grp/a", {"project": "grp/b"}, "grp/c"]}, kit=kit, out=lambda *_: None,
-                           gl=SimpleNamespace(mrs_with_label=lambda p, label: [{"iid": 7, "sha": "a" * 40}]),
-                           process=lambda p, k, mr: processed.append((p, mr["iid"])) or "accepted",
-                           dispatch=lambda: 0, watch=lambda: 0, collect=lambda: 0, reconcile=lambda: 0)
+    host = bridge(tmp_path, ["grp/a", {"project": "grp/b"}, "grp/c"], kit=kit, out=lambda *_: None,
+                  gl=SimpleNamespace(mrs_with_label=lambda p, label: [{"iid": 7, "sha": "a" * 40}]),
+                  process=lambda p, k, mr: processed.append((p, mr["iid"])) or "accepted",
+                  dispatch=lambda: 0, watch=lambda: 0, collect=lambda: 0, reconcile=lambda: 0)
     rt = mod("team.bridgehost").TeamRuntime({"enabled": True, "bridge_config": "/nonexistent"}, None, None, None)
     rt.host = host
     try:
@@ -47,6 +55,7 @@ def test_a_project_that_cannot_be_read_does_not_stop_the_hand_overs_of_the_other
         fixed = rt.status()
     finally:
         rt.executor.shutdown(wait=False)
+        host.ledger.close()
     assert polled == [("grp/b", 7)] and [(h["project"], h["result"]) for h in handovers] == [("grp/b", "accepted")]
     assert status["loop_error"].startswith("poll: not done this round: grp/a: grp/a: kit config: default_branch")
     a, c = status["checks"]
@@ -56,3 +65,31 @@ def test_a_project_that_cannot_be_read_does_not_stop_the_hand_overs_of_the_other
     assert '["mr-handoff", "mr-patrol", "staging-errors", "issue-label"]' in c["todo"]
     assert processed[len(polled):] == [("grp/a", 7), ("grp/b", 7)] and fixed["loop_error"] == ""
     assert [x["text"] for x in fixed["checks"]] == [c["text"]]
+
+
+def test_a_step_that_fails_unexpectedly_is_logged_and_said_and_the_round_still_ends(bk, caplog, tmp_path):
+    """A bug in one step (watch raising KeyError, no BrainError): the steps after it run, the round's time, its
+    error and its summary are kept as for any other failure, and the log has the traceback."""
+    ran = []
+
+    def watch():
+        raise KeyError("run_id")
+
+    host = bridge(tmp_path, ["grp/b"], kit=lambda p: HANDOFF, out=lambda *_: None,
+                  gl=SimpleNamespace(mrs_with_label=lambda p, label: []), process=lambda *_: "accepted",
+                  dispatch=lambda: ran.append("dispatch") or 0, watch=watch,
+                  collect=lambda: ran.append("collect") or 2, reconcile=lambda: ran.append("reconcile") or 0)
+    log = logging.getLogger("brain-test-round")
+    rt = mod("team.bridgehost").TeamRuntime({"enabled": True, "bridge_config": "/nonexistent"}, None, None, log)
+    rt.host = host
+    try:
+        with caplog.at_level(logging.ERROR, logger="brain-test-round"):
+            summary = rt.loop_once()
+        status = rt.status()
+    finally:
+        rt.executor.shutdown(wait=False)
+        host.ledger.close()
+    assert ran == ["dispatch", "collect", "reconcile"]
+    assert summary["collect"] == 2 and rt.last_summary == summary
+    assert status["last_loop_at"] is not None and status["loop_error"] == "watch: KeyError: 'run_id'"
+    assert any(r.exc_info and r.exc_info[0] is KeyError for r in caplog.records)

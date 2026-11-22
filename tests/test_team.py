@@ -12,11 +12,14 @@ import asyncio
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import threading
+from urllib.parse import unquote, urlsplit
 
 import pytest
 
+import signinfix
 from appkit import mod, sh
 from brainfix import FakeGateway, make_service, needs_brainkit, run
 from teamfix import BRANCH, PARK, push_park, spool_request, world  # noqa: F401  (world: the fixture)
@@ -213,16 +216,18 @@ def test_a_push_after_the_owners_label_is_not_handed_over(world, tmp_path):
 
 def test_a_contract_signed_late_is_taken_the_next_round(world, tmp_path):
     """The signer is slow: brain-kit's SpoolSigner gives up, the run id it reserved is given back and its voucher waits
-    (the page lists it). The signer signs it late; the next round asks for that very voucher and takes the signature:
-    one contract, signed once, the run goes on."""
+    (the page lists it). The MR waits for the signer: no error, and the round is fine. The signer signs it late; the
+    next round asks for that very voucher and takes the signature: one contract, signed once, the run goes on."""
     on = []
     svc = service(world, tmp_path, kick=lambda: world["signer"].once() if on else None, sign_timeout=0.3)
 
     async def go():
         await svc.start()
         try:
-            await svc.team_loop()
+            looped = await svc.team_loop()
             first = await svc.team_view()
+            assert looped["ok"] and looped["error"] == "", looped
+            assert [(h["iid"], h["result"], h["error"]) for h in first["handovers"]] == [(5, "signing", "")]
             (pending,) = [json.loads(r[0]) for r in svc.team.host.ledger.db.execute(
                 "SELECT voucher FROM pending_vouchers")]
             spool_request(world["sspool"], pending)                       # what the signer had read: it answers now
@@ -241,6 +246,117 @@ def test_a_contract_signed_late_is_taken_the_next_round(world, tmp_path):
     assert signed == [pending["voucher_id"] + ".json"]
     assert os.listdir(tmp_path / "app-vouchers" / "RUN-PAY-1-1") == signed
     assert any(b.startswith("AI 已接手：RUN-PAY-1-1") for b in world["gl"].bodies())
+
+
+@pytest.mark.parametrize("kind, says", [("new", False), ("refresh", True), ("per-call", False)])
+def test_a_new_sign_in_is_picked_up_by_the_next_round_without_a_restart(world, tmp_path, kind, says):
+    """GitLab sits behind single sign-on and the session ends: the sign-in helper's transport gets the sign-in page
+    (or the helper says the session expired). Each round says so in plain words on the 运行机 page; the person signs in
+    again on the machine and the next round reads GitLab and takes the hand-over, with the same team mode: no restart,
+    设置 not saved. A helper whose transports keep their sign-in gets asked for a new one, one with refresh() is
+    refreshed, one that reads the sign-in on every call needs nothing."""
+    sso = signinfix.install(world["gl"], kind, says=says)
+    sso.expire()
+    svc = make_service(tmp_path / "app", [], team=world["team"], transport=None, kick=lambda: world["signer"].once())
+    svc.sign_timeout = 5
+
+    async def go():
+        await svc.start()
+        try:
+            rt = svc.team
+            assert rt is not None and rt.host is not None, rt and rt.error
+            out = [await svc.team_loop(), (await svc.status())["team"], await svc.team_loop()]
+            sso.sign_in_again()
+            out += [await svc.team_loop(), (await svc.status())["team"], await svc.team_view()]
+            return [rt is svc.team] + out
+        finally:
+            await svc.stop()
+
+    same, first, st1, again, second, st2, view = run(go())
+    assert not first["ok"] and not again["ok"]
+    (row,) = [c for c in st1["checks"] if "登录" in c["text"]]
+    assert (row["level"], row["text"]) == ("FAIL", "GitLab 的登录过期了：桥现在读不了 GitLab")
+    assert row["todo"] == "在这台机器上重新登录 GitLab（单点登录）：下一轮桥自己接上，不用重启，也不用再保存设置"
+    assert ("session expired" if says else "sign-in page") in row["raw"]
+    assert second["ok"], second
+    assert [(h["iid"], h["result"]) for h in view["handovers"]] == [(5, "accepted")]
+    assert not any("登录" in c["text"] for c in st2["checks"]) and same
+    assert any(b.startswith("AI 已接手：RUN-PAY-1-1") for b in world["gl"].bodies())
+
+
+class Repointed:
+    """GitLab once the runner serves grp/new instead of grp/repo: the bridge's account sees grp/new (its kit.json, no
+    MR) and no longer grp/repo (404, as GitLab answers for a project it does not show it), every request about
+    grp/repo kept in *old*; anything else is the world's GitLab."""
+
+    def __init__(self, gl, kit):
+        self.gl, self.kit, self.old = gl, kit, []
+
+    def __call__(self, method, url, headers, body):
+        path = unquote(urlsplit(url).path)
+        if path.startswith("/api/v4/projects/grp/repo"):
+            self.old.append((method, path))
+            return 404, b'{"message": "404 Project Not Found"}'
+        if path.startswith("/api/v4/projects/grp/new"):
+            rest = path[len("/api/v4/projects/grp/new"):]
+            got = {"": {"id": 8, "default_branch": "main", "path_with_namespace": "grp/new"},
+                   "/repository/files/.brain/kit.json/raw": self.kit, "/merge_requests": []}.get(rest)
+            if got is None:
+                return 404, b'{"message": "404 Not Found"}'
+            return 200, got if isinstance(got, bytes) else json.dumps(got).encode()
+        return self.gl(method, url, headers, body)
+
+
+def test_a_project_that_left_the_runner_is_not_looked_at_and_no_round_fails_on_it(world, tmp_path):
+    """The runner is pointed at grp/new while its ledger holds RUN-PAY-1-1 of grp/repo, dispatched with D-1 open, and
+    the bridge's account no longer sees grp/repo. Team mode takes that run as left: it is marked failed (the ledger
+    copied first), its question closed and its session stopped, GitLab is asked nothing about grp/repo, and no round
+    fails; the run is gone from the runs and from 交付总览, and one line on the 运行机 page says why."""
+    gw = FakeGateway()
+    svc = service(world, tmp_path, gw)
+
+    async def before():
+        await svc.start()
+        try:
+            await svc.team_loop()
+            push_park(world["runs_root"] / "RUN-PAY-1-1", PARK)
+            await svc.team_loop()                                   # D-1 asked on the MR
+        finally:
+            await svc.stop()
+    run(before())
+    cfg = json.loads(world["bridge_cfg"].read_text())
+    world["bridge_cfg"].write_text(json.dumps(dict(cfg, projects=["grp/new"])))
+    kit = json.loads(sh("git", "-C", world["tmp"] / "repo", "show", "main:.brain/kit.json").stdout)
+    moved = Repointed(world["gl"], json.dumps(dict(kit, gitlab=dict(kit["gitlab"], project="grp/new"),
+                                                   work_sources=["mr-handoff"])).encode())
+    svc = make_service(tmp_path / "app", [], gw=gw, team=world["team"], transport=moved,
+                       kick=lambda: world["signer"].once())
+
+    async def after():
+        await svc.start()
+        try:
+            looped = [await svc.team_loop(), await svc.team_loop()]
+            return looped, await svc.team_view(), await svc.overview("runner")
+        finally:
+            await svc.stop()
+
+    looped, view, overview = run(after())
+    assert [(x["ok"], x["error"]) for x in looped] == [(True, "")] * 2, looped
+    assert moved.old == []
+    (copy,) = [p for p in os.listdir(tmp_path) if p.startswith("ledger.sqlite.left-") and p.endswith(".bak")]
+    for path, run_state, question in ((cfg["ledger"], "failed", "closed"), (tmp_path / copy, "dispatched", "open")):
+        db = sqlite3.connect(path)
+        try:
+            assert db.execute("SELECT state FROM runs WHERE run_id='RUN-PAY-1-1'").fetchall() == [(run_state,)], path
+            assert db.execute("SELECT id, state FROM decisions").fetchall() == [("D-1", question)], path
+        finally:
+            db.close()
+    assert ("stop", "run-pay-1-1") in gw.calls
+    assert view["runs"] == [] and view["ledger"]["runs"] == {} and view["ledger"]["decisions"] == {}
+    assert overview["rows"] == []
+    (line,) = [c for c in view["status"]["checks"] if "grp/repo" in c["text"]]
+    assert (line["level"], line["text"]) == ("OK", "grp/repo 不归这台运行机管了（bridge.json 里没有它）：账本里它的 1 个运行，桥不再看")
+    assert "RUN-PAY-1-1" in line["raw"]
 
 
 def test_team_mode_never_holds_a_key(world, tmp_path):

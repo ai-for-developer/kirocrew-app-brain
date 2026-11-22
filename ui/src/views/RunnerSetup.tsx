@@ -21,7 +21,7 @@ import { paths, useAction, usePoll } from '../api'
 import { ago } from '../format'
 import { useLatest } from '../hooks'
 import type { Tone } from '../styles'
-import type { RepoInfo, SetupMode, SetupProjectRow, SetupStep, SetupStepStatus, TeamSetup, TeamSetupBody } from '../types'
+import type { RepoInfo, SetupMode, SetupProjectRow, SetupStep, SetupStepStatus, SetupToken, TeamSetup, TeamSetupBody } from '../types'
 import { ExtLink, LoadState, RoleIcon } from '../ui'
 
 export const SETUP_POLL_MS = 1000
@@ -45,6 +45,14 @@ export const ROLES_HINT_NO_TOKEN = '填 GitLab 用户名，几个人用逗号隔
 export const BRIDGE_FIRST = '先填桥的账号的个人令牌：这台机器上还没有存'
 export const BOT_FIRST = '先填机器人账号的个人令牌，或者推送选「这台机器的 SSH」'
 export const keptSaid = (name: string) => `空着就用这台机器上存的 ${name} 的令牌。`
+/** The runner's GitLab tokens (TeamSetup.tokens) in words: whose, which kind, when it ends, and what to do once it ends
+ * within two weeks: the next run gives a project token a new value, a personal token is its owner's to replace. */
+const TOKEN_WHAT: Record<SetupToken['key'], string> = { bridge: '桥的令牌', bot: '推送的令牌' }
+const tokenKind = (t: SetupToken) => (t.kind === 'project' ? `项目令牌 ${t.name}` : '个人令牌')
+const tokenEnd = (t: SetupToken) => (t.expires_at === null || t.days_left === null ? 'GitLab 没说它哪天到期'
+  : t.days_left < 0 ? `${t.expires_at} 已经过期了` : `${t.expires_at} 到期，还有 ${t.days_left} 天`)
+const tokenDo = (t: SetupToken) => (t.kind === 'project' ? '再跑一次：它给这个项目令牌换上新的值，账号不变'
+  : `在 GitLab 上给 ${t.user} 换一个新的个人令牌，再跑一次填上`)
 const LEAD: Record<SetupMode, string> = {
   'project-token': '填一次 GitLab 地址、项目和一个一次性 token，app 自己建好运行机要的一切：两个项目令牌、MR 标签、身份表、签名密钥、三份配置、brain-run 和 brain-patrol、签名服务，最后打开团队模式。你只要在 GitLab 上合并它开的 kit.json MR。',
   'bot-account': '填 GitLab 地址、几个项目和桥的账号的个人令牌，app 给每个项目建好 MR 标签、开 kit.json 的 MR，再建好身份表、签名密钥、三份配置、brain-run 和 brain-patrol、签名服务，最后打开团队模式。你只要在 GitLab 上合并每个项目的 kit.json MR。',
@@ -283,6 +291,7 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
           <ol className="br-probs rs-steps" aria-label="建运行机的每一步">
             {data.steps.map((s) => <StepRow key={s.id} s={s} />)}
           </ol>
+          {data.tokens.length > 0 && <Tokens tokens={data.tokens} />}
           <div className="br-row">
             <button type="button" className="br-btn is-primary" disabled={busy} onClick={() => void go()}>{busy ? '正在建…' : '再跑一次'}</button>
             {!running && data.ended_at && <span className="br-dim br-small">上次 {ago(data.ended_at)}跑完；再跑一次只补没做成的，已经有的不会再建一份</span>}
@@ -329,6 +338,22 @@ function StepRow({ s }: { s: SetupStep }) {
         </ul>
       )}
     </li>
+  )
+}
+
+/** The runner's GitLab tokens, each with its account and when it ends; one ending within two weeks warns, with 做什么. */
+function Tokens({ tokens }: { tokens: SetupToken[] }) {
+  return (
+    <ul className="br-probs rs-tokens" aria-label="运行机的令牌">
+      {tokens.map((t) => (
+        <li key={t.key} className={`br-prob ${t.soon ? 'is-WARN' : 'is-OK'}`} data-token={t.key} data-soon={t.soon}>
+          <span className={`br-prob-glyph tone-${t.soon ? 'warn' : 'ok'}`} role="img" aria-label={t.soon ? '快到期了' : '没到期'}>{t.soon ? '!' : '✓'}</span>
+          <span className="br-prob-text">{TOKEN_WHAT[t.key]}：{tokenKind(t)}，账号 {t.user}</span>
+          <span className="br-prob-todo">{tokenEnd(t)}</span>
+          {t.soon && <span className="br-prob-todo"><b>做什么</b>{tokenDo(t)}</span>}
+        </li>
+      ))}
+    </ul>
   )
 }
 

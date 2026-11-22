@@ -72,6 +72,32 @@ describe('一键建运行机', () => {
     expect(within(card).getByRole('button', { name: '再跑一次' })).toBeEnabled()
   })
 
+  test('the runner’s tokens: whose each is, its account and the day it ends; one ending within two weeks warns and says what to do', async () => {
+    const bots = fx.teamSetupBot()
+    installFixtureRoutes({ [`GET ${API}/team/setup`]: () => bots })
+    const { unmount } = render(<RunnerSetupCard repos={fx.status().repos} pollMs={60_000} />)
+    const list = await screen.findByRole('list', { name: '运行机的令牌' })
+    const bridge = list.querySelector('[data-token="bridge"]') as HTMLElement
+    expect(bridge).toHaveClass('br-prob', 'is-WARN')
+    expect(within(bridge).getByRole('img', { name: '快到期了' })).toHaveTextContent('!')
+    expect(bridge).toHaveTextContent('桥的令牌：个人令牌，账号 brain-bridge2026-11-18 到期，还有 10 天')
+    expect(bridge).toHaveTextContent('做什么在 GitLab 上给 brain-bridge 换一个新的个人令牌，再跑一次填上')
+    const bot = list.querySelector('[data-token="bot"]') as HTMLElement
+    expect(bot).toHaveClass('is-OK')
+    expect(bot).toHaveTextContent('推送的令牌：个人令牌，账号 brain-bot2027-06-30 到期，还有 234 天')
+    expect(bot).not.toHaveTextContent('做什么')
+    unmount()
+    const one = fx.teamSetup()
+    one.tokens = [{ ...one.tokens[0], expires_at: '2026-11-01', days_left: -7, soon: true },
+      { key: 'bot', kind: 'project', name: 'brain-bot', user: 'project_12_bot_7d1e', expires_at: null, days_left: null, soon: false }]
+    installFixtureRoutes({ [`GET ${API}/team/setup`]: () => one })
+    render(<RunnerSetupCard repos={fx.status().repos} pollMs={60_000} />)
+    const again = await screen.findByRole('list', { name: '运行机的令牌' })
+    expect(again.querySelector('[data-token="bridge"]')).toHaveTextContent(
+      '桥的令牌：项目令牌 brain-bridge，账号 project_12_bot_5f0c2a9e2026-11-01 已经过期了做什么再跑一次：它给这个项目令牌换上新的值，账号不变')
+    expect(again.querySelector('[data-token="bot"]')).toHaveTextContent('推送的令牌：项目令牌 brain-bot，账号 project_12_bot_7d1eGitLab 没说它哪天到期')
+  })
+
   test('巡检所有开着的 MR is ticked unless the last run left it off, says what it does, and goes in the post', async () => {
     const user = userEvent.setup()
     const off = never()

@@ -22,6 +22,9 @@
     "bridge": "",
     "bot": ""
   },
+  "tokens": [
+    { "key": "bridge", "kind": "project", "name": "brain-bridge", "user": "project_12_bot_5f0c2a9e", "expires_at": "2027-11-07", "days_left": 364, "soon": false }
+  ],
   "steps": [
     {
       "id": "project",

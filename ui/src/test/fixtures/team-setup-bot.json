@@ -33,6 +33,10 @@
     "bridge": "brain-bridge",
     "bot": "brain-bot"
   },
+  "tokens": [
+    { "key": "bridge", "kind": "personal", "name": "", "user": "brain-bridge", "expires_at": "2026-11-18", "days_left": 10, "soon": true },
+    { "key": "bot", "kind": "personal", "name": "", "user": "brain-bot", "expires_at": "2027-06-30", "days_left": 234, "soon": false }
+  ],
   "steps": [
     {
       "id": "project",
@@ -69,7 +73,7 @@
       "id": "bridge_token",
       "title": "桥的令牌",
       "status": "done",
-      "message": "桥的账号是 brain-bridge：用你填的个人令牌，2027-06-30 到期",
+      "message": "桥的账号是 brain-bridge：用你填的个人令牌，2026-11-18 到期；它快到期了：在 GitLab 上给 brain-bridge 换一个新令牌，再跑一次填上",
       "link": null,
       "detail": "",
       "projects": []
