@@ -52,7 +52,7 @@ from typing import Any, Callable, ClassVar, Mapping, Union
 
 from .. import bk, snapshot
 from . import sources
-from .jenkins import Jenkins, build_path
+from .jenkins import Jenkins, Logs, build_path
 
 KIND = sources.PATROL
 AGENT = "brain-patrol"
@@ -93,6 +93,7 @@ class FailedCheck:
     url: str                    # its target_url (a Jenkins build's: at the address the runner reaches Jenkins at)
     log: str | None             # the last LOG_LINES lines of its log; None: not read, *why* says why
     why: str = ""
+    later: bool = False         # not read yet: the round's time for Jenkins ran out (jenkins.Logs); read next round
 
 
 @dataclass(frozen=True)
@@ -280,7 +281,7 @@ def plain_comments(discussions: list[dict[str, Any]], own: set[str], bots: set[s
     return out
 
 
-def read_mr(gl: Any, jenkins: Jenkins, project: str, mr: Mapping[str, Any], own: set[str], bots: set[str],
+def read_mr(gl: Any, jenkins: Logs, project: str, mr: Mapping[str, Any], own: set[str], bots: set[str],
             since: float, before: Read | None = None) -> Read:
     """GitLab's MR (its head pipeline, at_head); when that pipeline failed, its failed jobs with their logs, its child
     pipelines' too (pipeline_failures), and the failed checks external CI reported into it (failed_checks); its
@@ -384,12 +385,12 @@ def downstream_failures(gl: Any, project: Any, trigger: Mapping[str, Any], depth
     return found or [FailedJob(name, "（它触发的流水线 #%d 没过，里面没有没过的任务）" % int(down["id"]))]
 
 
-def failed_checks(gl: Any, jenkins: Jenkins, project: str, sha: str, pipeline_id: int, jobs: set[int],
+def failed_checks(gl: Any, jenkins: Logs, project: str, sha: str, pipeline_id: int, jobs: set[int],
                   known: tuple[FailedCheck, ...]) -> tuple[FailedCheck, ...]:
     """The pipeline's failed commit statuses that none of its GitLab *jobs* (their ids, trigger jobs too: GitLab lists
     both as statuses) stands for, the newest of each name, with the tail of each one's Jenkins log. *known*: the checks
-    read before, whose logs are kept; one whose log was not read is tried again. No checks when GitLab does not show
-    the statuses (403, 404)."""
+    read before, whose logs are kept; one whose log was not read is asked of *jenkins* again, which says when it reads
+    it again. No checks when GitLab does not show the statuses (403, 404)."""
     rest = bk.m("rest")
     try:
         rows = gl.call("GET", "/projects/%s/repository/commits/%s/statuses" % (rest.q(project), rest.q(sha)),
@@ -414,8 +415,9 @@ def failed_checks(gl: Any, jenkins: Jenkins, project: str, sha: str, pipeline_id
         if sid in kept:
             out.append(kept[sid])
             continue
-        url, raw, why = jenkins.console(str(s.get("target_url") or ""))
-        out.append(FailedCheck(sid, name, url, log_tail(raw) if raw is not None else None, why))
+        got = jenkins.console(str(s.get("target_url") or ""))
+        out.append(FailedCheck(sid, name, got.page, log_tail(got.raw) if got.raw is not None else None, got.why,
+                               got.later))
     return tuple(out)
 
 
@@ -799,7 +801,8 @@ class Patrol:
                  claims: Callable[[], list[sources.Claim]], jenkins: Jenkins = Jenkins(),
                  shared: Callable[[], int] = lambda: 0,
                  now: Callable[[], float] = time.time, out: Callable[[str], None] = print) -> None:
-        self.gl, self.jenkins, self.sessions, self.kit, self.projects = gl, jenkins, sessions, kit, list(projects)
+        self.gl, self.sessions, self.kit, self.projects = gl, sessions, kit, list(projects)
+        self.jenkins = Logs(jenkins, now)
         self.ledger_path, self.workspaces, self.helper, self.claims = ledger_path, workspaces, helper, claims
         self.now, self.out, self.shared = now, out, shared
         self._led: Ledger | None = None
@@ -842,6 +845,7 @@ class Patrol:
         the end (BrainError)."""
         common = bk.m("common")
         now, self._turns = self.now(), {}
+        self.jenkins.round()
         others = [c for c in self.claims() if c["kind"] != KIND]
         errors, projects, entries, open_mrs, listed, off = [], [], [], set(), [], set()
         for project in self.projects:
@@ -915,7 +919,7 @@ class Patrol:
             row = replace(row, read=read_mr(self.gl, self.jenkins, e.project, mr, *self._who(kit), e.since,
                                             before=row.read), seen=_seen(mr), read_at=now)
             for c in row.read.checks:
-                if c.log is None and c not in old:
+                if c.log is None and not c.later and c not in old:
                     self.out("%s!%s: %s: no log: %s" % (e.project, mr["iid"], c.name, c.why))
         item = item_of(e.project, mr, row.read, row.answered)
         row = self._watched(e, replace(row, project_id=item.project_id), item)
@@ -933,6 +937,8 @@ class Patrol:
         e.row, e.item, e.standing = row, item, standing(row, item)
         if e.standing == "ok" and row.read.bot_notes:
             e.skip, e.standing = Skip("bots_only", "只有机器人写的评论，没有要修的"), "skipped"
+        if e.standing == "todo" and any(c.later for c in row.read.checks):
+            e.standing, e.note = "waiting", "Jenkins 的日志这一轮没读完：下一轮读完再派"
 
     def _watched(self, e: Entry, row: MrRow, item: PatrolItem) -> MrRow:
         """*row*, its streak over when a person commented or pushed since its last dispatch (a pause lifts with it). A
@@ -951,10 +957,12 @@ class Patrol:
         return {x.strip().lower() for x in named if x.strip()}
 
     def _stale(self, row: MrRow, mr: Mapping[str, Any], now: float) -> bool:
-        """Whether the MR is read in detail again: never read, changed since, being worked, its pipeline not over (or
-        none yet, just after a change), or not read for RECHECK_S."""
+        """Whether the MR is read in detail again: never read, changed since, being worked, a check's log left for this
+        round, its pipeline not over (or none yet, just after a change), or not read for RECHECK_S."""
         r = row.read
         if r is None or row.seen != _seen(mr) or row.state == WORKING or now - row.read_at >= RECHECK_S:
+            return True
+        if any(c.later for c in r.checks):
             return True
         if r.pipeline_status:
             return r.pipeline_status not in FINAL_PIPELINE

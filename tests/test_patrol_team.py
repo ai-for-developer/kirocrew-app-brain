@@ -152,7 +152,7 @@ def test_bridge_json_s_jenkins_is_read_where_team_mode_starts_and_a_new_jenkins_
     assert loop.body["ok"] and loop.body["summary"]["patrol"] == 1, loop.body
     told = [m["content"] for m in gw.msgs["patrol-42-7"] if m["role"] == "user"]
     assert "   - unit-tests（Jenkins 构建 %s/job/orders/2/）：\n     > FAILED test_discount\n" % JENKINS_BASE in told[0]
-    assert jk.calls == [("GET", JENKINS_BASE + "/job/orders/2/consoleText", "brain-reader")]
+    assert jk.reads() == ["/job/orders/2/logText/progressiveText?start=0"]
     assert (same, rotated) == (False, True)
 
 

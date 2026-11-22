@@ -49,7 +49,7 @@ class World:
     def __init__(self, tmp_path, kits=None, claims=None):
         self.tmp, self.clock = tmp_path, Clock()
         self.gl = PatrolGitLab(self.clock)
-        self.gl.jenkins = self.jk = FakeJenkins()
+        self.gl.jenkins = self.jk = FakeJenkins(clock=self.clock)
         self.jenkins = mod("team.jenkins").Jenkins.of(None)
         self.kits = kits or {P: kit()}
         for n, path in enumerate(self.kits):
@@ -222,18 +222,19 @@ def test_a_check_jenkins_reported_goes_out_with_the_tail_of_its_console_read_whe
     both = w.sessions.messages("patrol-42-8")[0]
     assert "   - test：\n     > FAILED test_discount\n" in both
     assert "   - it（Jenkins 构建 %s/job/shop/job/orders-it/12/）：\n     > BUILD FAILURE\n" % JENKINS_BASE in both
-    assert jk.calls == [("GET", JENKINS_BASE + "/job/orders/2/consoleText", "brain-reader"),
-                        ("GET", JENKINS_BASE + "/job/shop/job/orders-it/12/consoleText", "brain-reader")]
+    assert jk.calls == [("GET", JENKINS_BASE + "/job/orders/2/logText/progressiveText?start=0", "brain-reader"),
+                        ("GET", JENKINS_BASE + "/job/shop/job/orders-it/12/logText/progressiveText?start=0",
+                         "brain-reader")]
 
 
 NO_LOG = {
     "no jenkins in bridge.json": ("Jenkins 构建 %s/job/orders/2/display/redirect" % JENKINS_ROOT_URL,
                                   "运行机没配 Jenkins（bridge.json 里没有 jenkins）", 0),
     "jenkins refuses (no Overall/Read)": ("Jenkins 构建 %s/job/orders/2/" % JENKINS_BASE,
-                                          "Jenkins 不让 brain-reader 读这个构建（HTTP 403）：只读用户要有 Overall/Read 和 Job/Read", 2),
+                                          "Jenkins 不让 brain-reader 读这个构建（HTTP 403）：只读用户要有 Overall/Read 和 Job/Read", 1),
     "jenkins hides the job (no Job/Read)": ("Jenkins 构建 %s/job/orders/2/" % JENKINS_BASE,
                                             "Jenkins 上找不到这个构建（HTTP 404）：只读用户没有它的 Job/Read，或者构建删掉了，"
-                                            "或者 bridge.json 的 jenkins.base 不对", 2),
+                                            "或者 bridge.json 的 jenkins.base 不对", 1),
     "a link to no jenkins build": ("外部 CI 报给 GitLab 的，https://ci.example.com/builds/77",
                                    "这个链接不是 Jenkins 构建的地址", 0),
 }
@@ -241,7 +242,8 @@ NO_LOG = {
 
 @pytest.mark.parametrize("case", list(NO_LOG))
 def test_a_check_whose_log_is_not_read_goes_out_with_its_link_and_one_line_why(bk, tmp_path, case):
-    """It goes out all the same, the app's log says why once, and a refusal is asked about again on the next read."""
+    """It goes out all the same, the app's log says why once, and a refusal is not asked about again on the next read
+    (jenkins.RETRY_S)."""
     w = World(tmp_path)
     gl, jk = w.gl, w.jk
     if case != "no jenkins in bridge.json":
@@ -260,7 +262,7 @@ def test_a_check_whose_log_is_not_read_goes_out_with_its_link_and_one_line_why(b
     assert w.item(7)["problems"] == [{"kind": "ci_failed", "text": "流水线 #%d 没过：unit-tests" % pid}]
     assert "   - unit-tests（%s）：\n     没读到日志：%s\n" % (where, why) in msg and "FAILED test_discount" not in msg
     assert [s for s in w.said if "no log" in s] == ["grp/repo!7: unit-tests: no log: " + why]
-    assert [c[1] for c in jk.calls] == [JENKINS_BASE + "/job/orders/2/consoleText"] * asked
+    assert jk.reads() == ["/job/orders/2/logText/progressiveText?start=0"] * asked
 
 
 @pytest.mark.parametrize("own", [False, True])
@@ -294,7 +296,85 @@ def test_a_new_jenkins_build_on_the_same_head_is_dispatched_again_and_each_build
     again = w.sessions.messages()[-1]
     assert "Jenkins 构建 %s/job/orders/3/）：\n     > FAILED test_two\n" % JENKINS_BASE in again and "test_one" not in again
     assert ("> FAILED test_gitlab" in again) is own and gl.asked(r"/jobs/\d+/trace$") == (1 if own else 0)
-    assert [c[1] for c in jk.calls] == [JENKINS_BASE + "/job/orders/%d/consoleText" % n for n in (2, 3)]
+    assert jk.reads() == ["/job/orders/%d/logText/progressiveText?start=0" % n for n in (2, 3)]
+
+
+def test_a_build_s_log_is_read_once_and_only_its_end_however_often_its_mr_is_read(bk, tmp_path):
+    """A long console: Jenkins says how long it is, and only its end is asked for, once, while its MR is read every
+    round as it is worked, and again when Jenkins posts that build's status anew (a new status: dispatched again)."""
+    patrol, jenkins = mod("team.patrol"), mod("team.jenkins")
+    w = World(tmp_path)
+    w.with_jenkins()
+    gl, jk = w.gl, w.jk
+    console = b"".join(b"[INFO] step %d of the build\n" % i for i in range(1, 20001))
+    url = jk.build("/job/orders/2", console)
+    gl.mr(P, 7)
+    gl.check(P, 7, "unit-tests", "failed", url)
+    for _ in range(6):
+        w.round()
+        w.later()
+    w.sessions.end()
+    gl.check(P, 7, "unit-tests", "failed", url)
+    w.later(patrol.RECHECK_S)
+    w.round()
+    assert len(jk.calls) == 2 and len(w.sessions.sent) == 2
+    head, end = jk.reads()
+    assert head == "/job/orders/2/logText/progressiveText?start=0"
+    assert end == "/job/orders/2/logText/progressiveText?start=%d" % (len(console) - jenkins.TAIL_BYTES)
+    for msg in w.sessions.messages():
+        assert "     > [INFO] step 19921 of the build\n" in msg and msg.endswith("然后停下。")
+        assert "     > [INFO] step 20000 of the build\n" in msg and "step 19920 of" not in msg
+
+
+def test_a_jenkins_the_runner_cannot_reach_costs_one_try_a_round_and_three_in_all_ten_minutes_apart(bk, tmp_path):
+    """Every request to it times out: the round's first one says so for every build of the round, its MR goes out at
+    once with why, and a build is asked for again RETRY_S later, MAX_TRIES times in all."""
+    jenkins = mod("team.jenkins")
+    w = World(tmp_path)
+    w.with_jenkins()
+    gl, jk = w.gl, w.jk
+    jk.down = True
+    gl.mr(P, 7)
+    for n in (1, 2, 3):
+        gl.check(P, 7, "check-%d" % n, "failed", jk.build("/job/orders/%d" % n, b"FAILED\n"))
+    start = w.clock.t
+    w.round()
+    assert len(jk.calls) == 1 and w.clock.t - start == jenkins.TIMEOUT_S
+    assert w.sessions.messages("patrol-42-7")[0].count("     没读到日志：连不上 Jenkins：") == 3
+    calls = []
+    for _ in range(25):                 # worked, so read every round, for 25 minutes
+        w.later()
+        w.round()
+        calls.append(len(jk.calls))
+    assert calls == [1] * 9 + [2] * 10 + [3] * 6
+    w.later(jenkins.RETRY_S)
+    w.round()
+    assert len(jk.calls) == 3
+    assert all(c.why.endswith("（试了 3 次都没读到，不再读）") for c in w.patrol.led.get(P, 7).read.checks)
+
+
+def test_jenkins_reads_stop_when_the_round_s_time_for_them_is_up_and_their_mr_waits_for_the_next_round(bk, tmp_path):
+    """A slow Jenkins (6 s a request): a round's reads take ROUND_S at most, so the next round's hand-over steps wait no
+    longer; the builds left are read the next round, and their MR goes out once it has every log."""
+    jenkins = mod("team.jenkins")
+    w = World(tmp_path)
+    w.with_jenkins()
+    gl, jk = w.gl, w.jk
+    jk.wait = 6.0
+    gl.mr(P, 7)
+    for n in range(1, 6):
+        gl.check(P, 7, "check-%d" % n, "failed", jk.build("/job/orders/%d" % n, b"FAILED test_%d\n" % n))
+    start = w.clock.t
+    w.round()
+    assert len(jk.calls) == 4
+    assert w.clock.t - start == jenkins.ROUND_S
+    assert w.sessions.sent == [] and w.item(7)["state"] == "waiting"
+    assert w.item(7)["note"] == "Jenkins 的日志这一轮没读完：下一轮读完再派"
+    w.later()
+    w.round()
+    assert len(jk.calls) == 6 and len(w.sessions.sent) == 1
+    assert all("     > FAILED test_%d\n" % n in w.sessions.messages()[0] for n in range(1, 6))
+    assert not [s for s in w.said if "no log" in s]
 
 
 def test_a_failed_trigger_job_is_the_pipeline_s_own_not_a_check_external_ci_reported(bk, tmp_path):

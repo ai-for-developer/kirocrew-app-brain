@@ -46,14 +46,14 @@ class StagingGitLab(PatrolGitLab):
 
     # ---- GitLab ---------------------------------------------------------------------------------------------- #
 
-    def __call__(self, method, url, headers, body):
+    def __call__(self, method, url, headers, body, timeout=None):
         u = urlsplit(url)
         path, q = unquote(u.path), dict(parse_qsl(u.query))
         m = re.fullmatch(API + r"/projects/(.+?)/(issues(?:/\d+(?:/notes)?)?|repository/commits/[0-9a-f]+/merge_requests"
                                r"|repository/branches/.+|merge_requests)", path)
         hit = self._project(m.group(1)) if m and headers.get("PRIVATE-TOKEN") in self.who else None
         if hit is None or (m.group(2) == "merge_requests" and method == "GET" and "source_branch" not in q):
-            return super().__call__(method, url, headers, body)
+            return super().__call__(method, url, headers, body, timeout)
         data = json.loads(body.decode()) if body else None
         self.calls.append((method, path, q, data))
         ok = lambda o, s=200: (s, json.dumps(o).encode())  # noqa: E731

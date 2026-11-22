@@ -31,35 +31,51 @@ JENKINS_ROOT_URL = "http://jenkins:8080"
 
 
 class FakeJenkins:
-    """Jenkins at JENKINS_BASE, its root URL configured as JENKINS_ROOT_URL: a build's consoleText for its read-only
-    user signed in with its token (basic auth); 401 to a wrong token; 403 to no one signed in (anonymous read off, as
-    measured) and to a user without Overall/Read; 404 to one without Job/Read (Jenkins hides the job from it) and to a
-    build it does not have. Every request is kept in calls: (method, url, user)."""
+    """Jenkins at JENKINS_BASE, its root URL configured as JENKINS_ROOT_URL: a build's log from a byte on
+    (logText/progressiveText?start=, its length in X-Text-Size; a start past its end gives all of it, as Jenkins does)
+    for its read-only user signed in with its token (basic auth); 401 to a wrong token; 403 to no one signed in
+    (anonymous read off, as measured) and to a user without Overall/Read; 404 to one without Job/Read (Jenkins hides the
+    job from it) and to a build it does not have. Called as jenkins.urllib_fetch is. Every request is kept in calls:
+    (method, url, user). *wait*: each request takes this long on *clock* (a timeout cuts it short); *down*: no request
+    gets through, each one taking its whole timeout."""
 
-    def __init__(self, user: str = "brain-reader") -> None:
+    def __init__(self, user: str = "brain-reader", clock: "Clock | None" = None) -> None:
         self.user, self.token = user, "fake-" + secrets.token_hex(8)
         self.overall_read = self.job_read = True
         self.logs: dict[str, bytes] = {}
         self.calls: list[tuple[str, str, str]] = []
+        self.clock, self.wait, self.down = clock, 0.0, False
 
     def build(self, path: str, log: bytes) -> str:
         """A build at *path* (/job/<…>/<number>) with its console. -> its link, as the GitLab plugin posts it."""
         self.logs[path] = log
         return JENKINS_ROOT_URL + path + "/display/redirect"
 
-    def __call__(self, method, url, headers, body):
+    def __call__(self, method, url, headers, cap, timeout):
         auth = str(headers.get("Authorization") or "")
         signed = base64.b64decode(auth[6:]).decode() if auth.startswith("Basic ") else ""
         user, _, token = signed.partition(":")
         self.calls.append((method, url, user))
+        took = timeout if self.down else min(self.wait, timeout)
+        if self.clock is not None:
+            self.clock.t += took
+        if self.down or self.wait > timeout:
+            raise mod("bk").brain_error()("cannot reach %s: timed out" % urlsplit(url).netloc)
         if user and (user, token) != (self.user, self.token):
-            return 401, b"Unauthorized"
+            return 401, b"Unauthorized", {}
         if not user or not self.overall_read:
-            return 403, b"<html><body>Access Denied: missing the Overall/Read permission</body></html>"
-        m = re.fullmatch(r"(/job/.+/\d+)/consoleText", urlsplit(url).path)
+            return 403, b"<html><body>Access Denied: missing the Overall/Read permission</body></html>", {}
+        u = urlsplit(url)
+        m = re.fullmatch(r"(/job/.+/\d+)/logText/progressiveText", u.path)
         if method != "GET" or m is None or m.group(1) not in self.logs or not self.job_read:
-            return 404, b"Not Found"
-        return 200, self.logs[m.group(1)]
+            return 404, b"Not Found", {}
+        log = self.logs[m.group(1)]
+        start = int(dict(parse_qsl(u.query)).get("start") or 0)
+        return 200, log[start if start <= len(log) else 0:][:cap], {"X-Text-Size": str(len(log))}
+
+    def reads(self) -> list[str]:
+        """The path and query of every request, in order."""
+        return [urlsplit(url).path + "?" + urlsplit(url).query for _, url, _ in self.calls]
 
 
 class Clock:
@@ -281,9 +297,9 @@ class PatrolGitLab:
     def shown(m: dict) -> dict:
         return {k: v for k, v in m.items() if not k.startswith("_")}
 
-    def __call__(self, method, url, headers, body):
+    def __call__(self, method, url, headers, body, timeout=None):
         if self.jenkins is not None and url.startswith(JENKINS_BASE + "/"):
-            return self.jenkins(method, url, headers, body)
+            return self.jenkins(method, url, headers, body, timeout)
         u = urlsplit(url)
         path, q = unquote(u.path), dict(parse_qsl(u.query))
         data = json.loads(body.decode()) if body else None
