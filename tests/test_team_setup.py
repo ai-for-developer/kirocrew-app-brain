@@ -652,6 +652,20 @@ def test_a_protected_branch_rule_that_leaves_brain_status_to_developers_is_no_ho
     assert step(view, "status")["status"] == "done", step(view, "status")
 
 
+@pytest.mark.parametrize("status", [502, 500, 404])
+def test_gitlab_failing_to_show_the_protected_branches_is_a_warning_and_the_run_goes_on(world, status):
+    """Reading a project's protected branch rules fails on GitLab's side: the 状态中转 step warns (the team server's
+    first write finds out whether the bridge may push brain/status) and every step after it is done."""
+    world["gl"].fail.append(("GET", "%s/projects/%d/protected_branches" % (API, PID), status, None))
+    view, _ = build(world)
+    st = step(view, "status")
+    assert (st["status"], st["message"]) == (
+        "waiting", "这次没读成 grp/pay 的受保护分支（GitLab 出错了）：团队服务器第一次写 brain/status 时就知道能不能推，推不了会在它的运行机页上说；"
+        "想现在就确认，过一会儿再跑一次")
+    assert "HTTP %d" % status in st["detail"]
+    assert statuses(view) == dict({s["id"]: "done" for s in view["steps"]}, status="waiting", kit_mr="waiting")
+
+
 def test_protected_branches_the_token_may_not_read_are_said_and_the_run_goes_on(world):
     world["gl"].fail.append(("GET", "%s/projects/%d/protected_branches" % (API, PID), 403, None))
     view, _ = build(world)
@@ -1189,6 +1203,7 @@ def test_one_runner_serves_two_projects_as_gitlab_users_of_its_own(team):
         assert ps.token(key).read_text().strip() == team[key] and mode(ps.token(key)) == "0o600"
     b, r, s = (json.loads(p.read_text()) for p in (ps.bridge_json, ps.runnerd_json, ps.signer_json))
     assert b["projects"] == s["projects"] == ["grp/a", "grp/b"]
+    assert (b["max_inflight"], b["max_per_repo"]) == (2, 1)          # a run at a time in each project, both at once
     assert s["bridge_users"] == ["brain-bridge"] and s["gitlab"]["token_file"] == b["gitlab"]["token_file"] == str(ps.token("bridge"))
     assert r["clone_url"] == "https://oauth2:%s@gitlab.example.com/{project}.git" % team["bot"]
     assert (r["git_name"], r["git_email"]) == ("Brain-Bot", "brain-bot@example.com")
@@ -1203,7 +1218,6 @@ def test_one_runner_serves_two_projects_as_gitlab_users_of_its_own(team):
         assert (kit["bridge_user"], kit["bot_users"], kit["bot_emails"]) == ("brain-bridge", ["brain-bot"], ["brain-bot@example.com"])
         assert kit["gitlab"]["project"] == row["project"] and sorted(repo.labels) == LABELS4
     assert rows(view, "labels") == rows(view, "project") == [("grp/a", "done"), ("grp/b", "done")]
-    assert (b["max_inflight"], b["max_per_repo"]) == (2, 1)          # a run at a time in each project, both at once
     assert json.loads(ps.identities.read_text()) == {
         "users": {"alice": {}, "bob": {}, "carol": {}},
         "roles": {"product": ["bob"], "builder": ["carol"], "security": ["alice"], "data": ["alice"]}}

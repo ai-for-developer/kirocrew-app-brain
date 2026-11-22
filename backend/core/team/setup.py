@@ -107,6 +107,7 @@ REACH_WAIT_S = 20
 SIGN_WAIT_S = 90
 BRANCH = "brain/runner-setup"
 STATUS_BRANCH = snapshot.BRANCH     # where the team server writes each project's status (状态中转, team/relay.py)
+FIRST_WRITE = "团队服务器第一次写 %s 时就知道能不能推，推不了会在它的运行机页上说" % STATUS_BRANCH
 MR_TITLE = "运行机：更新 .brain/kit.json"
 MR_TEXT = ("一键建运行机开的 MR：运行机要 kit.json 写上 bridge_user（桥的账号）、bot_users 和 bot_emails（运行机推送用的账号和邮箱）、"
            "gitlab 和 default_branch。合并以前，签名服务不签交接。")
@@ -1161,23 +1162,24 @@ def step_status(ctx: Ctx) -> StepResult:
     """状态中转 (team/relay.py): the team server writes each project's status into the project itself, on its branch
     brain/status, so GitLab lets whoever can read the project read its status, and nobody else. The bridge's account
     pushes it (it is a Developer or more in every project); here each project's protected branches are checked for a
-    rule that keeps it from pushing brain/status, which waits for a person to lift. Nothing is made: the team server's
+    rule that keeps it from pushing brain/status, which waits for a person to lift. Rules GitLab does not show this
+    time are no reason to stop the run: the team server's first write finds out too, and says so. Nothing is made: that
     first write makes the branch."""
     ctx.state.pop("status_project", None)       # an earlier run's status project of its own: left as it is, unused
     rows = each(ctx, of_found(ctx), lambda p: project_status(ctx, p))
     return summed(rows, "%d 个项目的 brain/status 桥的账号都能推" % len(rows),
-                  "有的项目的 brain/status 受保护，桥的账号推不了：看每个项目那一行")
+                  "有的项目的 brain/status 桥的账号推不了，或者这次没查成：看每个项目那一行")
 
 
 def project_status(ctx: Ctx, p: Proj) -> StepResult:
     name, uid, level = bridge_in(ctx, p)
     try:
         rules = ctx.gl.call("GET", "/projects/%d/protected_branches" % p.id, {"per_page": 100}) or []
-    except Exception as exc:  # noqa: BLE001 - a token that may not read the rules: said; anything else as every step says it
-        if _gitlab_status(exc) not in (401, 403):
-            raise
-        return done("看不了 %s 的受保护分支（这个 token 不够）：团队服务器第一次写 %s 时就知道能不能推，推不了会在它的运行机页上说"
-                    % (p.path, STATUS_BRANCH))
+    except Exception as exc:  # noqa: BLE001 - only a check: the team server's first write finds out as well
+        if _gitlab_status(exc) in (401, 403):
+            return done("看不了 %s 的受保护分支（这个 token 不够）：%s" % (p.path, FIRST_WRITE))
+        return waiting("这次没读成 %s 的受保护分支（GitLab 出错了）：%s；想现在就确认，过一会儿再跑一次" % (p.path, FIRST_WRITE),
+                       detail=str(exc))
     held = [r for r in rules if isinstance(r, dict) and branch_matches(str(r.get("name") or ""), STATUS_BRANCH)]
     if held and not any(may_push(a, uid, level) for r in held for a in r.get("push_access_levels") or []
                         if isinstance(a, dict)):
