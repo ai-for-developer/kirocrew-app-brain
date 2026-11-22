@@ -2435,12 +2435,8 @@ class Service:
         if not bk.ok():
             raise AppError("brain-kit 没装载：先在设置里写对 brain-kit 的位置", "no_brainkit", 409)
         paths = self._setup_paths()
-        try:
-            lock = await asyncio.to_thread(setup_mod.Lock, paths.root)
-        except setup_mod.Busy as exc:
-            raise AppError(str(exc), "setup_busy", 409)
         loop = asyncio.get_running_loop()
-        rest, transport = bk.m("rest"), self.transport
+        rest, transport = bk.m("rest"), self.transport      # brain-kit before the root's lock: a failure holds nothing
 
         def team_mode(want: dict[str, Any]) -> dict[str, Any]:
             return asyncio.run_coroutine_threadsafe(self._setup_team_mode(want), loop).result(600)
@@ -2448,10 +2444,9 @@ class Service:
         ctx = setup_mod.Ctx(inp, paths, gitlab=lambda tok: rest.GitLab(inp.gitlab_base, tok, transport),
                              team_mode=team_mode, stop=KiroCrewAdapter(loop, self.sessions, bk.brain_error()).stop)
         try:
-            await asyncio.to_thread(setup_mod.begin, ctx)
-        except BaseException:
-            lock.release()
-            raise
+            lock = await asyncio.to_thread(setup_mod.Lock, paths.root)
+        except setup_mod.Busy as exc:
+            raise AppError(str(exc), "setup_busy", 409)
 
         async def go() -> None:
             try:
@@ -2461,7 +2456,12 @@ class Service:
             finally:
                 lock.release()
 
-        self._setup_task = loop.create_task(go())
+        try:            # until the run's task holds it, the lock is this request's to give back
+            await asyncio.to_thread(setup_mod.begin, ctx)
+            self._setup_task = loop.create_task(go())
+        except BaseException:
+            lock.release()
+            raise
         return await self.team_setup_view()
 
     async def wait_setup(self) -> dict[str, Any]:

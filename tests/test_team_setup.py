@@ -957,6 +957,40 @@ def the_app(world, tmp_path):
     return svc, routes, setup
 
 
+def test_brain_kit_going_away_right_after_the_lock_is_taken_leaves_the_root_free(world, tmp_path, monkeypatch):
+    """brain-kit is unloaded (设置 changed its place, say) just as POST /team/setup has taken the root's lock: however
+    that request ends, the root is not left locked: the page says no run is going on and the next run starts."""
+    bk, setup = mod("bk"), mod("team.setup")
+    svc, routes, run_setup = the_app(world, tmp_path)
+    real = setup.Lock
+
+    def lock_then_unload(root):
+        held = real(root)
+        bk.unload()
+        return held
+    monkeypatch.setattr(setup, "Lock", lock_then_unload)
+
+    async def go():
+        await svc.start()
+        try:
+            body = {"gitlab_base": BASE, "project": P, "admin_token": world["admin"], "roles": {"builder": "bob"}}
+            try:
+                await call(routes, "POST", "/team/setup", json_body=body)
+            except Exception:  # noqa: BLE001 - how it ends is not the point: the lock is
+                pass
+            await svc.wait_setup()
+            assert bk.load(str(BRAINKIT))["ok"]
+            monkeypatch.setattr(setup, "Lock", real)
+            view = await call(routes, "GET", "/team/setup")
+            return view, await run_setup()
+        finally:
+            await svc.stop()
+
+    view, end = run(go())
+    assert view.body["running"] is False
+    assert everything_done(end), [(s["id"], s["status"], s["message"], s["detail"][:300]) for s in end["steps"]]
+
+
 def test_a_rerun_starts_team_mode_again_once_a_file_it_read_has_changed(world, tmp_path):
     """The review's runs through the app. A builds the runner: team mode and the signer start on the bridge's token T1.
     B finds the token file gone, gets a new value of that token (T1 no longer signs in) and stops at brain-run's setup,
