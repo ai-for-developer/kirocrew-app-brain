@@ -30,7 +30,10 @@ The ledger, <root>/patrol.sqlite, has one row per open MR of the projects patrol
   working -> blocked  the MAX_ATTEMPTS-th failed attempt on one fingerprint: left alone until its fingerprint changes
   idle -> paused      dispatched MAX_STREAK times in a row with no person pushing or commenting in between (each push
                       of the runner's makes a new fingerprint): left alone until a person does
-One comment on the MR says why it is blocked or paused, and what is not fixed. A row is forgotten, its turn stopped and
+  any -> rules        brain-kit's brain-push-rules failed the head pipeline for commits of the runner's (it lets the
+                      bot commit on run branches only): any it pushes would be refused too, so the MR is left alone for
+                      good (its turn stopped)
+One comment on the MR says why it is blocked, paused or refused, and what is not fixed (for rules: what a person does). A row is forgotten, its turn stopped and
 its clone deleted, once its MR is merged or closed, or patrol is no longer on in its project.
 A round lists each project's open MRs once. It reads an MR's pipeline and threads only when the MR changed since, is
 being worked, its pipeline had not finished, or RECHECK_S went by: GitLab does not move an MR's updated_at when a
@@ -78,7 +81,9 @@ UNSURE_MERGE = ("checking", "unchecked", "preparing")      # detailed_merge_stat
 BOT_RE = re.compile(r"^(?:project|group)_\d+_bot(?:_[0-9a-f]+)?\d*$")
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 SECTION_RE = re.compile(r"^section_(?:start|end):\d+:")
-IDLE, WORKING, BLOCKED, PAUSED = "idle", "working", "blocked", "paused"
+IDLE, WORKING, BLOCKED, PAUSED, RULES = "idle", "working", "blocked", "paused", "rules"
+# the last line of brain-kit's `brain-ci push-rules` (its CI job brain-push-rules) when it refuses an MR
+RULES_RE = re.compile(r"^brain-ci push-rules: \S+ by \S+ FAILED$", re.M)
 
 
 # ---- what an MR has ------------------------------------------------------------------------------------------- #
@@ -448,6 +453,24 @@ def pushed_by_people(gl: Any, project: str, old: str, new: str, bots: set[str]) 
     return not commits or any(str(c.get("committer_email") or "").lower() not in bots for c in commits)
 
 
+def rules_said(jobs: tuple[FailedJob, ...] | list[FailedJob]) -> list[str]:
+    """What brain-kit's push rules said (their FAIL lines) when one of a failed pipeline's failed *jobs* is
+    `brain-ci push-rules` refusing it (RULES_RE ends its log); [] when none is."""
+    for j in jobs:
+        if RULES_RE.search(j.log):
+            return [x[len("FAIL "):] for x in j.log.split("\n") if x.startswith("FAIL ")] or [j.log.split("\n")[-1]]
+    return []
+
+
+def runner_commits(gl: Any, project: str, iid: int, bots: set[str]) -> list[str]:
+    """The short ids of the MR's commits the runner made (authored or committed as one of *bots*, its git emails),
+    newest first, as GitLab lists them."""
+    rows = gl.pages("/projects/%s/merge_requests/%d/commits" % (bk.m("rest").q(project), iid), {}, 100, 10,
+                    "commits of !%d" % iid)
+    return [str(c.get("short_id") or str(c["id"])[:8]) for c in rows if isinstance(c, dict) and c.get("id") and
+            {str(c.get(k) or "").lower() for k in ("author_email", "committer_email")} & bots]
+
+
 def item_of(project: str, mr: Mapping[str, Any], read: Read, answered: tuple[int, ...]) -> PatrolItem:
     target = str(mr.get("target_branch") or "")
     unsure = mr.get("detailed_merge_status") in UNSURE_MERGE
@@ -507,6 +530,8 @@ class MrRow:
     told: bool = False                  # it is blocked or paused, and the MR was told so
     ws_fp: str = ""                     # the fingerprint its clone was last not ready for ("": it was ready)
     ws_error: str = ""                  # ... and why
+    rules: tuple[str, ...] = ()         # rules: the runner's commits brain-push-rules refused (short ids, newest first)
+    rules_said: tuple[str, ...] = ()    # ... and what it said (its FAIL lines)
     claim: dict = field(default_factory=dict)
     seen: str = ""                      # the MR's updated_at and head when it was last read in detail
     read: Read | None = None
@@ -515,7 +540,7 @@ class MrRow:
     @classmethod
     def of(cls, d: Mapping[str, Any]) -> "MrRow":
         d = dict(d)
-        for k in ("sent_notes", "answered", "marks", "status_ids"):
+        for k in ("sent_notes", "answered", "marks", "status_ids", "rules", "rules_said"):
             d[k] = tuple(d.get(k) or ())
         d["read"] = Read.of(d["read"]) if isinstance(d.get("read"), dict) else None
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
@@ -595,11 +620,14 @@ def settle(row: MrRow, head: str, turn: str, now: float) -> tuple[MrRow, bool]:
 
 
 def standing(row: MrRow, item: PatrolItem) -> str:
-    """ok (nothing to fix) | working | blocked | done (this fingerprint was worked to the end of a turn) | todo."""
+    """ok (nothing to fix) | working | blocked | rules (brain-push-rules refused the runner's commits: left alone) |
+    done (this fingerprint was worked to the end of a turn) | todo."""
     if row.state == WORKING:
         return "working"
     if not item.problems:
         return "ok"
+    if row.state == RULES:
+        return "rules"
     if row.state == PAUSED or (row.state == BLOCKED and row.fingerprint == item.fingerprint):
         return "blocked"
     if row.done_fp == item.fingerprint:
@@ -795,11 +823,13 @@ def slot_name(project_id: int, iid: int, gen: int) -> str:
 
 
 # the first line of every blocked_text: a person's machine reads it as patrol having left the MR alone (runner_view.py)
-STOPPED_RE = re.compile(r"^MR 巡检：运行机(?:连着修了|派了|试了) \d+ 次")
+STOPPED_RE = re.compile(r"^MR 巡检：(?:运行机(?:连着修了|派了|试了) \d+ 次|brain-push-rules 不让运行机)")
 
 
 def blocked_text(row: MrRow, item: PatrolItem) -> str:
     what = "\n".join("- " + problem_text(p) for p in item.problems)
+    if row.state == RULES:
+        return rules_text(row, item)
     if row.state == PAUSED:
         return ("MR 巡检：运行机连着修了 %d 次，中间没有人推送或评论，这些还没修好：\n%s\n\n运行机先停下，不管这个 MR；有人推送"
                 "或评论以后再看。" % (MAX_STREAK, what))
@@ -811,6 +841,21 @@ def blocked_text(row: MrRow, item: PatrolItem) -> str:
                 "的人看一下运行机页面上这个 MR 的说明。运行机先不管这个 MR；它有新的提交、新的流水线或新的评审意见以后再看。" % (MAX_ATTEMPTS, what))
     return ("MR 巡检：运行机试了 %d 次，没修好这些：\n%s\n\n运行机先不管这个 MR；它有新的提交、新的流水线或新的评审意见以后再看。"
             % (MAX_ATTEMPTS, what))
+
+
+def rules_text(row: MrRow, item: PatrolItem) -> str:
+    """What a person does once brain-push-rules refused the runner's commits on the MR's branch: those commits made
+    theirs (rewritten with their name: a revert leaves them in the MR), or dropped."""
+    br, first = item.source_branch, row.rules[-1]
+    return "\n".join([
+        "MR 巡检：brain-push-rules 不让运行机在分支 %s 上提交（机器人只能推 run 分支）。运行机的提交 %s 让这个 MR 的流水线过不了，"
+        "这个 MR 合并不了。运行机不再修这个 MR。" % (br, "、".join(row.rules)), "",
+        "要留下这些改动，把从 %s 起的提交改成你自己的（会把它们都记成你的），再推上去：" % first, "",
+        "```", "git fetch origin", "git checkout -B %s origin/%s" % (br, br),
+        "git rebase %s~1 --exec 'git commit --amend --no-edit --reset-author'" % first,
+        "git push --force-with-lease origin %s" % br, "```", "",
+        "不要这些改动：git rebase -i %s~1，删掉运行机的提交，再推上去。只 revert 不行：brain-push-rules 查 MR 里所有的提交。" % first,
+        "", "brain-push-rules 说：", "", *["> " + x for x in row.rules_said]])
 
 
 # ---- the round ------------------------------------------------------------------------------------------------ #
@@ -872,7 +917,7 @@ class Patrol:
         """The MRs patrol is working on or gave up on: their claims."""
         if self._led is None and not os.path.exists(self.ledger_path):
             return []
-        return [r.claim for r in self.led.rows() if r.state in (WORKING, BLOCKED, PAUSED) and r.claim]
+        return [r.claim for r in self.led.rows() if r.state in (WORKING, BLOCKED, PAUSED, RULES) and r.claim]
 
     def busy(self) -> int:
         """Its sessions in a turn now, as its ledger says (_busy), every project's: also one this round could not
@@ -968,6 +1013,7 @@ class Patrol:
             for c in row.read.checks:
                 if c.log is None and not c.later and c not in old:
                     self.out("%s!%s: %s: no log: %s" % (e.project, mr["iid"], c.name, c.why))
+            row = self._push_rules(e, row)
         item = item_of(e.project, mr, row.read, row.answered)
         row = self._watched(e, replace(row, project_id=item.project_id), item)
         if row.state == BLOCKED and row.fingerprint != item.fingerprint:
@@ -982,10 +1028,23 @@ class Patrol:
         if e.standing == "todo" and any(c.later for c in row.read.checks):
             e.standing, e.note = "waiting", "Jenkins 的日志这一轮没读完：下一轮读完再派"
 
+    def _push_rules(self, e: Entry, row: MrRow) -> MrRow:
+        """*row* in state rules for good when brain-push-rules refused the MR for commits of the runner's: any commit
+        it pushes to a branch that is not a run branch is refused, so it does not try again (its turn is stopped)."""
+        said = rules_said(row.read.jobs) if row.state != RULES and row.read.pipeline_status == "failed" else []
+        mine = runner_commits(self.gl, e.project, row.iid, self._bot_emails(e.kit)) if said else []
+        if not mine:
+            return row
+        if self._busy(row):
+            self._stop(row)
+        self.out("%s!%d: brain-push-rules refused the runner's commits %s: left to people" % (e.project, row.iid,
+                                                                                             ", ".join(mine)))
+        return replace(row, state=RULES, rules=tuple(mine), rules_said=tuple(said), told=False)
+
     def _told(self, e: Entry, row: MrRow, item: PatrolItem) -> MrRow:
-        """*row*, its MR told once that it is blocked or paused (blocked_text): told again next round when GitLab did
-        not take it."""
-        if row.state not in (BLOCKED, PAUSED) or row.told:
+        """*row*, its MR told once that it is blocked, paused or refused by brain-push-rules (blocked_text): told
+        again next round when GitLab did not take it."""
+        if row.state not in (BLOCKED, PAUSED, RULES) or row.told:
             return row
         try:
             self.gl.comment(e.project, item.iid, blocked_text(row, item))
@@ -1177,6 +1236,9 @@ def _seen(mr: Mapping[str, Any]) -> str:
 
 
 def _note(standing: str, row: MrRow | None) -> str:
+    if standing == "rules" and row is not None:
+        return ("brain-push-rules 不让运行机在这个分支上提交（运行机的提交 %s）：在 MR 上说了怎么改成人的；运行机不再修这个 MR"
+                % "、".join(row.rules))
     if standing == "blocked" and row is not None and row.state == PAUSED:
         return "连着派了 %d 次，中间没有人推送或评论，在 MR 上说了：等人推送或评论" % MAX_STREAK
     if standing == "blocked" and row is not None and row.outcome == "workspace":

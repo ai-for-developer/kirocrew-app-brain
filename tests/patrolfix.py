@@ -354,6 +354,9 @@ class PatrolGitLab:
             return ok(dict(self.shown(mr), head_pipeline=mr["_pipeline"]))
         if sub == "/discussions" and method == "GET":
             return ok(self.page(self.discussions[(name, mr["iid"])], q))
+        if sub == "/commits" and method == "GET":
+            return ok(self.page([{"id": c, "short_id": c[:8], "author_email": self.commits[(name, c)][1],
+                                  "committer_email": self.commits[(name, c)][1]} for c in self._line(name, mr["sha"])], q))
         if sub == "/notes" and method == "GET":
             notes = sorted((n for x in self.discussions[(name, mr["iid"])] for n in x["notes"]),
                            key=lambda n: (_when(n["created_at"]), n["id"]))

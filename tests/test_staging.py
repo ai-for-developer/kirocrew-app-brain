@@ -298,6 +298,34 @@ def test_the_fix_mr_is_followed_to_its_merge_and_a_recurrence_on_a_newer_deploy_
     assert "git checkout -B %s-2（" % branch in w.sessions.messages("staging-42-1-2")[0]
 
 
+def test_a_fix_mr_brain_push_rules_refuses_has_its_issue_told_once_what_a_person_does(bk, tmp_path):
+    """brain-kit's push rules, on in the project, refuse the bot's commits on a branch that is not a run branch: the fix
+    MR's pipeline fails on them and it cannot be merged as it is. Its Issue is told once, with the commands, and the page
+    says so until a pipeline passes (a person made the commits theirs); each pipeline is asked about once it is over."""
+    sl = mod("team.stagelog")
+    w = started(tmp_path)
+    w.write(zero())
+    w.round()
+    branch = "fix/staging-" + sl.short_id(ZERO)
+    w.gl.mr(P, 52, sha=SHA[3], source=branch, title="修复：" + ZERO)
+    w.gl.fail(P, 52, {"brain-push-rules": b"FAIL %s: the bot made commits in this MR (%s), but bot accounts push only "
+                                          b"ai/<owner>/<JIRA>-<slug> run branches\nbrain-ci push-rules: %s by brain-bot "
+                                          b"FAILED\n" % (branch.encode(), SHA[3][:12].encode(), branch.encode())})
+    for _ in range(3):
+        w.round()
+    assert w.item(ZERO)["state"] == "fix_mr" and w.item(ZERO)["note"] == (
+        "修复 MR 过不了 brain-push-rules（机器人只能推 run 分支）：在 Issue 上说了，要人把它的提交改成自己的才能合并")
+    told, = w.gl.notes(P, 1)
+    assert told.startswith("修复 MR !52 的流水线过不了 brain-push-rules：机器人只能推 run 分支，运行机的修复提交在分支 %s 上" % branch)
+    assert "git rebase origin/main --exec 'git commit --amend --no-edit --reset-author'\n" in told
+    assert "> %s: the bot made commits in this MR (%s)" % (branch, SHA[3][:12]) in told
+    assert w.gl.asked(r"/pipelines/\d+/jobs$") == 1
+    w.gl.push(P, 52, SHA[4], by="alice@example.com")
+    w.gl.pipeline(P, 52, "success")
+    w.round()
+    assert (w.item(ZERO)["state"], w.item(ZERO)["note"]) == ("fix_mr", "") and len(w.gl.notes(P, 1)) == 1
+
+
 def test_a_fix_mr_closed_without_merging_leaves_the_error_to_people(bk, tmp_path):
     w = started(tmp_path)
     w.write(zero())

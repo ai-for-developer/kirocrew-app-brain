@@ -111,6 +111,7 @@ export const PATROL_STATE: Record<PatrolState, { label: string; tone: Tone }> = 
   queued: { label: '排队', tone: 'idle' },
   error: { label: '这一轮没成', tone: 'warn' },
   blocked: { label: '没修好', tone: 'bad' },
+  rules: { label: '推送规则不让修', tone: 'bad' },
   done: { label: '修过一轮', tone: 'info' },
   ok: { label: '没问题', tone: 'ok' },
   skipped: { label: '不管', tone: 'idle' },

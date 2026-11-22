@@ -763,6 +763,45 @@ def test_work_sources_switch_kinds_on_per_project_and_default_to_the_hand_over(b
     assert w.gl.asked(r"^/api/v4/projects/grp/repo/merge_requests") == 0 and w.slots() == ["patrol-43-1"]
 
 
+REFUSED = (b"FAIL feature: the bot made commits in this MR (%s), but bot accounts push only ai/<owner>/<JIRA>-<slug> "
+           b"run branches: the bot's work comes through its run branch's MR\nbrain-ci push-rules: feature by %s FAILED\n")
+
+
+def test_brain_push_rules_refusing_the_runner_s_commit_leaves_the_mr_to_people_with_one_comment(bk, tmp_path):
+    """The runner pushed its fix to the MR's own branch, and brain-kit's push rules, on in the project, fail the new
+    pipeline for that commit: any commit it pushes there is refused, so the MR is never dispatched again, its MR is told
+    once what a person does, and the page says so. One push-rules fails for a person's commit is CI as any other."""
+    patrol = mod("team.patrol")
+    w = World(tmp_path)
+    gl = w.gl
+    gl.mr(P, 7)
+    gl.fail(P, 7, {"test": b"FAILED test_discount\n"})
+    w.round()
+    gl.push(P, 7, SHA[2])
+    gl.fail(P, 7, {"brain-push-rules": REFUSED % (SHA[2][:12].encode(), b"brain-bot")})
+    w.sessions.end()
+    for _ in range(3):
+        w.later()
+        w.round()
+    assert len(w.sessions.sent) == 1 and w.item(7)["state"] == "rules"
+    assert w.item(7)["note"] == ("brain-push-rules 不让运行机在这个分支上提交（运行机的提交 %s）：在 MR 上说了怎么改成人的；"
+                                 "运行机不再修这个 MR" % SHA[2][:8])
+    told, = gl.posted("notes")
+    assert patrol.STOPPED_RE.match(told["body"]) and "运行机的提交 %s 让这个 MR 的流水线过不了" % SHA[2][:8] in told["body"]
+    assert "git rebase %s~1 --exec 'git commit --amend --no-edit --reset-author'\n" % SHA[2][:8] in told["body"]
+    assert "> feature: the bot made commits in this MR (%s)" % SHA[2][:12] in told["body"]
+    gl.thread(P, 7, "carol", "再试一下")
+    w.later()
+    w.round()
+    assert len(w.sessions.sent) == 1 and len(gl.posted("notes")) == 1 and w.patrol.held()[0]["key"].endswith("mr!7")
+    gl.mr(P, 8)
+    gl.push(P, 8, SHA[3], by="alice@example.com")
+    gl.fail(P, 8, {"brain-push-rules": REFUSED % (SHA[3][:12].encode(), b"alice")})
+    w.later()
+    w.round()
+    assert w.item(8)["state"] == "working" and "brain-ci push-rules: feature by alice FAILED" in w.sessions.messages()[-1]
+
+
 def test_a_merged_mr_is_forgotten_its_turn_stopped_and_its_clone_deleted(bk, tmp_path):
     w = World(tmp_path)
     w.gl.mr(P, 4, **conflicted())

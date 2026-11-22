@@ -101,6 +101,8 @@ class Row:
     fix_mr: Link | None = None
     said: bool = False                  # stopped, and its Issue was told
     ws_error: str = ""                  # why its clone was not ready at its last dispatch ("": it was)
+    rules_pid: int = 0                  # fix_mr: the head pipeline of it, over, last asked about brain-push-rules
+    rules: tuple[str, ...] = ()         # ... what brain-push-rules said refusing it (its Issue told so), else ()
 
     @property
     def signature(self) -> str:
@@ -115,6 +117,7 @@ class Row:
         d = dict(d, group=ErrorGroup.of(d["group"]))
         for k in ("issue", "origin", "fix_mr"):
             d[k] = Link.of(d.get(k))
+        d["rules"] = tuple(d.get("rules") or ())
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
@@ -137,7 +140,8 @@ def seen(row: Row | None, project: str, g: ErrorGroup, settled: bool = True) -> 
 
 def again(row: Row, state: str) -> Row:
     """*row* in *state* for another go at its fix: a new fix branch, no attempt yet."""
-    return replace(row, state=state, cycle=row.cycle + 1, attempts=0, outcome="", fix_mr=None, said=False)
+    return replace(row, state=state, cycle=row.cycle + 1, attempts=0, outcome="", fix_mr=None, said=False, rules_pid=0,
+                   rules=())
 
 
 def failed(row: Row, outcome: str) -> Row:
@@ -292,6 +296,20 @@ def jump_text(row: Row, web: str) -> str:
     g = row.group
     return "这个报错又出现了 %d 次，一共 %d 次；最近一次在 %s，部署的提交 %s。" % (g.count - row.told, g.count, _when(g.last_seen),
                                                                   _commit(web, row))
+
+
+def rules_text(row: Row, said: list[str], target: str) -> str:
+    """What a person does once brain-push-rules refused the fix MR (into *target*): the bot may commit on run branches
+    only, so the fix's commits are made theirs (rewritten with their name) before it can be merged."""
+    br = row.branch
+    return "\n".join([
+        "修复 MR !%d 的流水线过不了 brain-push-rules：机器人只能推 run 分支，运行机的修复提交在分支 %s 上，这个 MR 合并不了。"
+        "运行机不改 brain-push-rules，也不再动这个 MR。" % (row.fix_mr.iid, br), "",
+        "要这个修复：把 %s 上的提交改成你自己的（会把它们都记成你的），再推上去，流水线过了就能审、能合并：" % br, "",
+        "```", "git fetch origin", "git checkout -B %s origin/%s" % (br, br),
+        "git rebase origin/%s --exec 'git commit --amend --no-edit --reset-author'" % target,
+        "git push --force-with-lease origin %s" % br, "```", "",
+        "不要它：关掉修复 MR，运行机就把这个报错交给人。", "", "brain-push-rules 说：", "", *["> " + x for x in said]])
 
 
 def stopped_text(row: Row) -> str:
@@ -513,21 +531,37 @@ class StagingWatch:
                 row = failed(row, "timeout")
         elif row.state == FIX_MR:
             try:
-                state = (self.gl.mr(row.project, row.fix_mr.iid) or {}).get("state")
+                mr = self.gl.mr(row.project, row.fix_mr.iid) or {}
             except rest.HttpError as exc:
                 if exc.status != 404:
                     raise
-                state = "closed"                        # deleted: as one closed without merging
-            if state == "merged":
+                mr = {"state": "closed"}                # deleted: as one closed without merging
+            if mr.get("state") == "merged":
                 self._drop_clone(row)
                 row = closed(row)
-            elif state == "closed":
+            elif mr.get("state") == "closed":
                 row = replace(row, state=STOPPED, outcome="mr_closed", said=False)
+            else:
+                row = self._push_rules(row, mr)
         self.led.put(row)
         if row.state == STOPPED and not row.said:
             self.gl.call("POST", "/projects/%s/issues/%d/notes" % (rest.q(row.project), row.issue.iid),
                          body={"body": stopped_text(row)})
             self.led.put(replace(row, said=True))
+
+    def _push_rules(self, row: Row, mr: Mapping[str, Any]) -> Row:
+        """*row* (its fix MR open: *mr*) as brain-push-rules sees its fix MR, once a head pipeline of it is over:
+        refused, because the rules refuse the bot's commits on a branch that is not a run branch, it cannot be merged
+        as it is, and its Issue is told once what a person does."""
+        hp = mr.get("head_pipeline") if isinstance(mr.get("head_pipeline"), dict) else {}
+        status, pid = str(hp.get("status") or ""), int(hp.get("id") or 0)
+        if status not in patrol.FINAL_PIPELINE or pid == row.rules_pid:
+            return row
+        said = patrol.rules_said(patrol.pipeline_failures(self.gl, row.project, pid)[0]) if status == "failed" else []
+        if said and not row.rules:
+            self.gl.call("POST", "/projects/%s/issues/%d/notes" % (bk.m("rest").q(row.project), row.issue.iid),
+                         body={"body": rules_text(row, said, str(mr.get("target_branch") or "main"))})
+        return replace(row, rules_pid=pid, rules=tuple(said))
 
     def _tell(self, row: Row) -> None:
         """An open row's Issue told when its count jumped; a dismissed one's when its error came back on another deploy,
@@ -774,6 +808,8 @@ def _note(row: Row) -> str:
         return "修复 MR 被关了，没有合并，在 Issue 上说了：交给人"
     if row.state == STOPPED:
         return "试了 %d 次没修好（最后一次：%s），在 Issue 上说了：交给人" % (row.attempts, OUTCOME.get(row.outcome, row.outcome))
+    if row.state == FIX_MR and row.rules:
+        return "修复 MR 过不了 brain-push-rules（机器人只能推 run 分支）：在 Issue 上说了，要人把它的提交改成自己的才能合并"
     if row.state == ISSUED and row.attempts:
         return "上一次没修好（%s）：再派一次" % OUTCOME.get(row.outcome, row.outcome)
     if row.state == NEW and row.issue is not None:
