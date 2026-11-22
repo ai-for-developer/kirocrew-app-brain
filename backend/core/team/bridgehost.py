@@ -61,6 +61,7 @@ from ..constants import APP_ROOT, PYTHON_BIN, VERSION
 from ..repo import Git, Source, read_claim, read_facts
 from ..scrub import scrub_tree
 from . import issues as issues_mod
+from . import left as left_mod
 from . import patrol as patrol_mod
 from . import relay as relay_mod
 from . import signerproc, sources
@@ -74,6 +75,7 @@ NO_PUSH = ("这台机器不推代码（没有 runnerd.json）：在 GitLab 上�
 OUT_OF_TIME = "全队交付这一轮没读完（%d 秒到了），下一轮接着读：下面是上次读完的" % relay_mod.BUDGET_S
 SIGN_IN_TEXT = "GitLab 的登录过期了：桥现在读不了 GitLab"
 SIGN_IN_TODO = "在这台机器上重新登录 GitLab（单点登录）：下一轮桥自己接上，不用重启，也不用再保存设置"
+LEFT_TEXT = "%s 不归这台运行机管了（bridge.json 里没有%s）：账本里%s的 %d 个运行，桥不再看"
 MAX_SPOOL_FILE = 64 * 1024
 PENDING_WINDOW_S = 3600   # brain-kit's Ledger.pending_voucher(newer_than=3600): older ones are not asked for again
 LEDGER_TABLES = ("runs", "decisions", "handoffs", "outbox", "notices")
@@ -157,6 +159,7 @@ class TeamRuntime:
         self.last_handovers: list[dict[str, Any]] = []   # what Bridge.process said for each labelled MR, last round
         self.poll_checks: list[dict[str, Any]] = []      # CheckRows: the projects the last poll did not read or poll
         self.poll_projects: list[dict[str, Any]] = []    # each project as the last poll left it (relay.project_state)
+        self.left: list[dict[str, Any]] = []             # the ledger's runs of projects bridge.json leaves out (left.py)
         self.relay: relay_mod.Relay | None = None        # 状态中转: each project's brain/status
         self.deliveries: relay_mod.Deliveries | None = None
         self.lines: deque = deque(maxlen=200)
@@ -309,6 +312,10 @@ class TeamRuntime:
                     self.gl.renew()
                 except Exception as exc:  # noqa: BLE001 - the helper cannot be loaded, or says to sign in
                     errors.append(self._failed("signin", exc))
+            try:
+                self._leave(host)
+            except Exception as exc:  # noqa: BLE001 - said as a step's; the round goes on
+                errors.append(self._failed("left", exc))
             for step in ("poll", "issues", "runnerd", "dispatch", "watch", "collect", "reconcile", "patrol", "staging"):
                 try:
                     if step == "issues":
@@ -345,6 +352,20 @@ class TeamRuntime:
                     self.loop_error = "；".join(errors)
             self.last_summary = summary
         return summary
+
+    def _leave(self, host: Any) -> None:
+        """The open runs of projects bridge.json leaves out marked left (left.py: failed, their questions closed,
+        their sessions stopped), before brain-kit's steps would ask GitLab about them; what the ledger holds of such
+        projects is kept for the page."""
+        keep = left_mod.kept(host.cfg["projects"])
+        runs, copy = left_mod.leave(host.ledger, host.cfg["ledger"], keep, left_mod.BRIDGE_TO,
+                                    stop=host.kc.stop if host.kc is not None else None)
+        if runs:
+            self._out("%s: not in bridge.json, left: %s (the ledger before: %s)" % (
+                "、".join(sorted({str(r["project"]) for r in runs})), ", ".join(r["run_id"] for r in runs), copy))
+        with host.ledger.lock:
+            rows = host.ledger.db.execute("SELECT run_id, project, state FROM runs ORDER BY created").fetchall()
+        self.left = [dict(r) for r in rows if str(r["project"]).lower() not in keep]
 
     def _failed(self, step: str, exc: Exception) -> str:
         """A step that failed this round, as loop_error says it. What brain-kit, GitLab, git or the ledger can raise is
@@ -539,7 +560,8 @@ class TeamRuntime:
     def ledger(self) -> dict[str, Any]:
         """{runs, decisions, handoffs, outbox, notices}: read from the bridge's own Ledger (any thread), under its
         lock so the tables are one moment's. outbox and notices are brain-kit 0d52e97's (QA rounds 3 and 4: every
-        message into a run's session, and what the bridge told an MR once); [] with an older brain-kit."""
+        message into a run's session, and what the bridge told an MR once); [] with an older brain-kit. Only what is
+        of the projects bridge.json lists: the rest is of projects that left the runner (left_checks says so)."""
         out: dict[str, Any] = {k: [] for k in LEDGER_TABLES}
         host = self.host
         if host is None:
@@ -568,6 +590,13 @@ class TeamRuntime:
                         "SELECT key, run_id, project, iid, state, count, created, updated FROM notices ORDER BY created")]
         except sqlite3.Error:  # closed by stop() meanwhile
             return {k: [] for k in LEDGER_TABLES}
+        keep = left_mod.kept(host.cfg["projects"])
+        mine = lambda r: str(r["project"]).lower() in keep  # noqa: E731
+        for k in ("runs", "decisions", "handoffs"):
+            out[k] = [r for r in out[k] if mine(r)]
+        ids = {r["run_id"] for r in out["runs"]}
+        out["outbox"] = [r for r in out["outbox"] if r["run_id"] in ids]
+        out["notices"] = [r for r in out["notices"] if (r["run_id"] in ids if r["run_id"] else not r["project"] or mine(r))]
         return out
 
     def hook_rows(self) -> list[dict[str, Any]]:
@@ -659,7 +688,7 @@ class TeamRuntime:
         return {"enabled": bool(self.team.get("enabled")), "ok": self.host is not None and not self.error,
                 "error": why["text"], "error_todo": why["todo"], "error_raw": why["raw"],
                 "last_loop_at": self.last_loop_at, "loop_error": self.loop_error,
-                "checks": list(self.poll_checks) + self.signin_checks(),
+                "checks": list(self.poll_checks) + self.signin_checks() + self.left_checks(),
                 "same_user": self.same_user,
                 "signer": {"pending": len(sig["pending"]), "refused": len(sig["refused"])},
                 "relay": self.relay.view() if self.relay is not None else None}
@@ -671,6 +700,17 @@ class TeamRuntime:
         if gl is None or not gl.expired:
             return []
         return [problems.mk("FAIL", SIGN_IN_TEXT, SIGN_IN_TODO, raw=self.scrub(gl.expired))]
+
+    def left_checks(self) -> list[dict[str, Any]]:
+        """One line for the runs of projects that left the runner (_leave): the ledger keeps them, nothing looks at
+        them any more, and they are not among the runs the page lists."""
+        if not self.left:
+            return []
+        projects = list(dict.fromkeys(str(r["project"]) for r in self.left))
+        one = len(projects) == 1
+        return [problems.mk("OK", LEFT_TEXT % ("、".join(projects), "它" if one else "它们", "它" if one else "它们",
+                                               len(self.left)),
+                            raw="\n".join("%s %s (%s)" % (r["project"], r["run_id"], r["state"]) for r in self.left))]
 
     def signer_view(self) -> dict[str, Any]:
         return spool_view(self.spool) if self.host is not None and self.spool else {"pending": [], "refused": []}

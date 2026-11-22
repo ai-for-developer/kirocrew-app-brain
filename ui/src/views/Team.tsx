@@ -41,6 +41,7 @@ export const LOOP_STEP: Record<string, { name: string; did: string }> = {
   patrol: { name: '巡检 MR', did: '巡检了 MR' },
   staging: { name: '看测试环境', did: '看了测试环境' },
   signin: { name: '重新接上 GitLab 的登录', did: '重新接上 GitLab 的登录' },
+  left: { name: '收起离开的项目的运行', did: '收起离开的项目的运行' },
 }
 /** what a signature is for (the signer spool's request kinds) */
 export const SIGN_KIND: Record<string, string> = { answer: '回答的凭证', handoff: '交接的合同' }

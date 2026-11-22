@@ -43,6 +43,7 @@ from .team import patrol as patrol_mod
 from .team import setup as setup_mod
 from .team import signerproc
 from .team import staging as staging_mod
+from .team.crewadapter import KiroCrewAdapter
 
 _REGISTRY: dict[str, "Service"] = {}
 EVAL_TTL_S = 120.0
@@ -2445,7 +2446,7 @@ class Service:
             return asyncio.run_coroutine_threadsafe(self._setup_team_mode(want), loop).result(600)
 
         ctx = setup_mod.Ctx(inp, paths, gitlab=lambda tok: rest.GitLab(inp.gitlab_base, tok, transport),
-                             team_mode=team_mode)
+                             team_mode=team_mode, stop=KiroCrewAdapter(loop, self.sessions, bk.brain_error()).stop)
         try:
             await asyncio.to_thread(setup_mod.begin, ctx)
         except BaseException:

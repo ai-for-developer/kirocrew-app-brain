@@ -1298,6 +1298,54 @@ def test_a_project_taken_out_leaves_the_runner_and_nothing_is_written(team):
         "这些人不是这几个项目里任何一个的成员：carol。先在 GitLab 上把他们加进项目，或者改填别人"
 
 
+def runs_in(path):
+    """{run_id: state} of the ledger file *path*, read as it is on disk."""
+    import sqlite3
+    db = sqlite3.connect(str(path))
+    try:
+        return dict(db.execute("SELECT run_id, state FROM runs").fetchall())
+    finally:
+        db.close()
+
+
+def test_a_project_taken_out_has_its_open_runs_left_in_both_ledgers_after_a_copy_of_each(team):
+    """grp/b taken out while the bridge's ledger holds RUN-PAY-2-1 of it, dispatched with D-1 open, and the signer's
+    ledger that run too: the rerun marks it failed in the bridge's ledger, D-1 closed, and closed in the signer's, each
+    ledger copied first, grp/a's run left as it is; the 三份配置 step says so. Run again, it has nothing left to do."""
+    bk = mod("bk")
+    Ledger = bk.m("bridge.ledger").Ledger
+    roles = {"product": "bob", "builder": "bob"}
+    view, ps = build_team(team, roles=roles)
+    for name, state in (("bridge-ledger.sqlite", "dispatched"), ("signer-ledger.sqlite", "spooled")):
+        led = Ledger(str(ps.root / name))
+        for run_id, project, iid in (("RUN-PAY-1-1", "grp/a", 7), ("RUN-PAY-2-1", "grp/b", 9)):
+            led.add_run(run_id, project, run_id[4:9], iid, "a" * 40, "V-%d" % iid)
+            if state != "spooled":
+                assert led.set_run(run_id, "spooled", state)
+        if name.startswith("bridge"):
+            led.db.executescript(bk.m("bridge.decisions").SCHEMA)
+            led.db.execute("INSERT INTO decisions(id, run_id, project, iid, sha, park_hash, kind, state, created, updated) "
+                           "VALUES ('D-1', 'RUN-PAY-2-1', 'grp/b', 9, ?, 'p', 'clarify', 'open', 'x', 'x')", ("a" * 40,))
+        led.close()
+    view, ps = build_team(team, projects=("grp/a",), roles=roles)
+    assert everything_done(view), [(s["id"], s["status"], s["message"], s["detail"][:200]) for s in view["steps"]]
+    assert runs_in(ps.root / "bridge-ledger.sqlite") == {"RUN-PAY-1-1": "dispatched", "RUN-PAY-2-1": "failed"}
+    assert runs_in(ps.root / "signer-ledger.sqlite") == {"RUN-PAY-1-1": "spooled", "RUN-PAY-2-1": "closed"}
+    import sqlite3
+    db = sqlite3.connect(str(ps.root / "bridge-ledger.sqlite"))
+    assert db.execute("SELECT id, state FROM decisions").fetchall() == [("D-1", "closed")]
+    db.close()
+    copies = sorted(p.name for p in ps.root.iterdir() if ".left-" in p.name)
+    assert [c.split(".left-")[0] for c in copies] == ["bridge-ledger.sqlite", "signer-ledger.sqlite"]
+    assert runs_in(ps.root / copies[0])["RUN-PAY-2-1"] == "dispatched" and mode(ps.root / copies[0]) == "0o600"
+    said = step(view, "configs")["message"]
+    assert "grp/b 不归这台运行机管了：账本里它没做完的 1 个运行（RUN-PAY-2-1）停了" in said, said
+    assert copies[0] in said and copies[1] in said
+    again, _ = build_team(team, projects=("grp/a",), roles=roles)
+    assert everything_done(again) and "不归这台运行机管了" not in step(again, "configs")["message"]
+    assert sorted(p.name for p in ps.root.iterdir() if ".left-" in p.name) == copies
+
+
 def test_a_project_gitlab_does_not_have_fails_its_own_row_and_the_others_are_still_looked_at(team):
     view, ps = build_team(team, projects=("grp/a", "grp/nope", "grp/b"))
     found = step(view, "project")

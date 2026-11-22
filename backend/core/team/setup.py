@@ -62,6 +62,7 @@ from typing import Any, Callable, Mapping
 from .. import bk, kitmr, snapshot
 from ..constants import APP_ROOT, PYTHON_BIN
 from . import issues as issues_mod
+from . import left as left_mod
 from . import patrol as patrol_mod
 from . import signerproc, sources
 
@@ -137,6 +138,8 @@ FORBIDDEN = {PROJECT_TOKEN: "这个 token 做不了这一步：要有 api 权限
 SIGN_IN = "GitLab 回的是登录页：这个 GitLab 要单点登录，先放好它的登录辅助文件（~/.brain/local_transport.py），再跑一次"
 # a step's result from those of its projects: the first of these one of them has
 WORST = ("failed", "waiting", "done", "skipped")
+LEFT_SAID = ("；%s 不归这台运行机管了：账本里%s没做完的 %d 个运行（%s）停了，桥的账本里记成没做完，签名服务的账本里关了；"
+             "改之前的账本另存在 %s")
 
 
 class SetupRefused(ValueError):
@@ -364,6 +367,8 @@ class Paths:
     vouchers = _under("root", "vouchers")
     signer_vouchers = _under("root", "signer-vouchers")
     bridge_json = _under("root", "bridge.json")
+    bridge_ledger = _under("root", "bridge-ledger.sqlite")
+    signer_ledger = _under("root", "signer-ledger.sqlite")
     runnerd_json = _under("root", "runnerd.json")
     signer_json = _under("root", "signer.json")
     jenkins_token = _under("root", "jenkins-token")
@@ -381,6 +386,7 @@ class Ctx:
     gitlab: Callable[[str], Any]                                # token -> brain-kit's rest.GitLab for inp.gitlab_base
     team_mode: Callable[[dict], dict] | None = None             # settings team -> TeamStatus; None: not here
     signer: Callable[[Paths], tuple[int, bool]] | None = None   # -> (pid, started now); None: signerproc.ensure
+    stop: Callable[[str], Any] | None = None                    # a runner session's slot -> stopped; None: not here
     reach: Callable[[str], tuple[bool, str]] | None = None      # clone URL -> (git reaches it, what git said)
     state: dict = field(default_factory=dict)
     results: list = field(default_factory=list)
@@ -1322,14 +1328,32 @@ def step_configs(ctx: Ctx) -> StepResult:
     """bridge.json, runnerd.json and signer.json in the shapes of MIGRATE 第三部分 7, for one OS user and every project:
     no MR filter, no brain-intake, vouchers not published, the signer on the bridge's token with its account as
     bridge_users, one pseudonym_salt for both (made once, kept on every run). A file is written only when its content
-    changes."""
+    changes. The open runs the ledgers under the root hold of a project this run leaves out are left first
+    (leave_runner)."""
     ps = ctx.paths
     salt = old_salt(ps) or secrets.token_hex(16)
     ctx.remember(salt)
+    left = leave_runner(ctx)
     docs = ((ps.bridge_json, bridge_doc(ctx, salt)), (ps.runnerd_json, runnerd_doc(ctx)),
             (ps.signer_json, signer_doc(ctx, salt)))
     wrote = [path.name for path, doc in docs if write_file(path, dumps(doc))]
-    return done("写了 %s" % "、".join(wrote) if wrote else "三份配置都没变")
+    return done(("写了 %s" % "、".join(wrote) if wrote else "三份配置都没变") + left)
+
+
+def leave_runner(ctx: Ctx) -> str:
+    """The open runs that the bridge's and the signer's ledgers under the root hold of projects this run does not
+    serve (the runner was pointed at other ones), left (left.py): failed in the bridge's, their questions closed, their
+    sessions stopped when the app can (Ctx.stop); closed in the signer's; each ledger copied first. -> what the step
+    says of it ('' when there was none)."""
+    ps, keep = ctx.paths, left_mod.kept(p.path for p in ctx.found)
+    bridge, bcopy = left_mod.leave_file(str(ps.bridge_ledger), keep, left_mod.BRIDGE_TO, stop=ctx.stop)
+    signer, scopy = left_mod.leave_file(str(ps.signer_ledger), keep, left_mod.SIGNER_TO, signer=True)
+    runs = {r["run_id"]: r["project"] for r in bridge + signer}
+    if not runs:
+        return ""
+    projects = list(dict.fromkeys(runs.values()))
+    return LEFT_SAID % ("、".join(projects), "它" if len(projects) == 1 else "它们", len(runs), "、".join(sorted(runs)),
+                        "、".join(Path(c).name for c in (bcopy, scopy) if c))
 
 
 def old_salt(ps: Paths) -> str:
@@ -1358,7 +1382,7 @@ def bridge_doc(ctx: Ctx, salt: str) -> dict[str, Any]:
         "projects": kept_entries(ps.bridge_json, [p.path for p in ctx.found]),
         "gitlab": {"base": ctx.inp.gitlab_base, "token_env": NO_TOKEN_ENV["bridge"], "token_file": str(ps.token("bridge"))},
         "identities": str(ps.identities),
-        "ledger": str(ps.root / "bridge-ledger.sqlite"),
+        "ledger": str(ps.bridge_ledger),
         "spool_dir": str(ps.spool),
         "vouchers_dir": str(ps.vouchers),
         "runner_runs_root": str(ps.runs),
@@ -1442,7 +1466,7 @@ def signer_doc(ctx: Ctx, salt: str) -> dict[str, Any]:
         "identities": str(ps.identities),
         "vouchers_dir": str(ps.signer_vouchers),
         "publish_vouchers": False,
-        "ledger": str(ps.root / "signer-ledger.sqlite"),
+        "ledger": str(ps.signer_ledger),
         "pseudonym_salt": salt,
         "bridge_users": [ctx.state["bridge_user"]],
     }
