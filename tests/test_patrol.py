@@ -297,6 +297,22 @@ def test_a_new_jenkins_build_on_the_same_head_is_dispatched_again_and_each_build
     assert [c[1] for c in jk.calls] == [JENKINS_BASE + "/job/orders/%d/consoleText" % n for n in (2, 3)]
 
 
+def test_a_failed_trigger_job_is_the_pipeline_s_own_not_a_check_external_ci_reported(bk, tmp_path):
+    """GitLab lists a pipeline's trigger jobs (bridges) among its commit statuses, not among its jobs: one that failed is
+    not named as a check external CI reported, with a Jenkins reason, nor asked of Jenkins, nor in the fingerprint."""
+    w = World(tmp_path)
+    w.with_jenkins()
+    gl = w.gl
+    gl.mr(P, 7)
+    pid = gl.fail(P, 7, {"test": b"FAILED test_discount\n"})
+    gl.trigger(P, pid, "deploy-review", reason="downstream_pipeline_creation_failed")
+    w.round()
+    msg = w.sessions.messages("patrol-42-7")[0]
+    assert "   - test：\n     > FAILED test_discount\n" in msg
+    assert "deploy-review（" not in msg and "外部 CI 报给 GitLab 的" not in msg and "不是 Jenkins 构建" not in msg
+    assert w.jk.calls == [] and w.patrol.led.get(P, 7).status_ids == ()
+
+
 def test_a_ledger_from_before_failed_checks_counted_keeps_the_mrs_it_worked_worked(bk, tmp_path):
     """A row as a runner without them wrote it (no status_ids, its fingerprints of the head, the pipeline, the conflict
     and the notes alone) reads as before: the failed pipeline its turn ended on is not sent again."""

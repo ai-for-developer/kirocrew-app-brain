@@ -300,7 +300,8 @@ def read_mr(gl: Any, jenkins: Jenkins, project: str, mr: Mapping[str, Any], own:
         jobs = before.jobs if same else tuple(
             FailedJob(str(j.get("name") or j["id"]), log_tail(gl.job_trace(project, int(j["id"]))))
             for j in [j for j in listed if not j.get("allow_failure")][:MAX_JOBS])
-        checks = failed_checks(gl, jenkins, project, str(mr.get("sha") or ""), pid, {int(j["id"]) for j in listed},
+        own = {int(j["id"]) for j in listed + ([] if external else bridges_of(gl, project, pid))}
+        checks = failed_checks(gl, jenkins, project, str(mr.get("sha") or ""), pid, own,
                                before.checks if before is not None else ())
     threads = gl.pages("/projects/%s/merge_requests/%d/discussions" % (rest.q(project), iid), {}, 100, 20,
                        "discussions on !%d" % iid)
@@ -311,10 +312,24 @@ def read_mr(gl: Any, jenkins: Jenkins, project: str, mr: Mapping[str, Any], own:
                 tuple(plain_comments(threads, own, bots, since)), checks)
 
 
+def bridges_of(gl: Any, project: str, pipeline_id: int) -> list[dict[str, Any]]:
+    """The pipeline's failed trigger jobs (GitLab's bridges: pipelines/:id/jobs leaves them out); none when GitLab does
+    not show them (403, 404)."""
+    rest = bk.m("rest")
+    try:
+        rows = gl.call("GET", "/projects/%s/pipelines/%d/bridges" % (rest.q(project), pipeline_id),
+                       {"scope[]": "failed", "per_page": 100})
+    except rest.HttpError as exc:
+        if exc.status not in (403, 404):
+            raise
+        return []
+    return [b for b in rows or [] if isinstance(b, dict) and b.get("id")]
+
+
 def failed_checks(gl: Any, jenkins: Jenkins, project: str, sha: str, pipeline_id: int, jobs: set[int],
                   known: tuple[FailedCheck, ...]) -> tuple[FailedCheck, ...]:
-    """The pipeline's failed commit statuses that none of its GitLab *jobs* (their ids: GitLab lists its jobs as
-    statuses too) stands for, the newest of each name, with the tail of each one's Jenkins log. *known*: the checks
+    """The pipeline's failed commit statuses that none of its GitLab *jobs* (their ids, trigger jobs too: GitLab lists
+    both as statuses) stands for, the newest of each name, with the tail of each one's Jenkins log. *known*: the checks
     read before, whose logs are kept; one whose log was not read is tried again. No checks when GitLab does not show
     the statuses (403, 404)."""
     rest = bk.m("rest")

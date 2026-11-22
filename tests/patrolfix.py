@@ -80,6 +80,7 @@ class PatrolGitLab:
         self.mrs: dict[tuple[str, int], dict] = {}
         self.discussions: dict[tuple[str, int], list[dict]] = {}
         self.jobs: dict[int, list[dict]] = {}
+        self.bridges: dict[int, list[dict]] = {}       # a pipeline's trigger jobs (GitLab's bridges)
         self.pipes: dict[int, dict] = {}
         self.external_statuses: dict[int, list[dict]] = {}
         self.jenkins: FakeJenkins | None = None
@@ -131,6 +132,34 @@ class PatrolGitLab:
         m["_pipeline"] = self.pipes[pid] = {"id": pid, "status": status, "sha": m["sha"]}
         return pid
 
+    def trigger(self, path: str, pid: int, name: str, status: str = "failed", child: int | None = None,
+                allow_failure: bool = False, reason: str = "") -> int:
+        """A trigger job in pipeline *pid*, as GitLab has it: a bridge (pipelines/:id/bridges lists it, pipelines/:id/jobs
+        does not) and a commit status of that pipeline; *child*: the pipeline it started (None: GitLab started none,
+        *reason* its failure_reason). A failed one that may not fail fails the pipeline (strategy: depend). -> its id."""
+        bid = next(self.ids)
+        down = self.pipes[child] if child is not None else None
+        self.bridges.setdefault(pid, []).append({
+            "id": bid, "name": name, "status": status, "allow_failure": allow_failure, "failure_reason": reason or None,
+            "pipeline": {"id": pid}, "downstream_pipeline": {"id": down["id"], "project_id": down["project_id"],
+                                                             "sha": down["sha"], "status": down["status"]} if down else None})
+        if status == "failed" and not allow_failure:
+            self.pipes[pid]["status"] = "failed"
+        return bid
+
+    def child(self, path: str, sha: str, jobs: dict[str, bytes]) -> int:
+        """A pipeline a trigger job started in *path* (a child pipeline: source parent_pipeline) on *sha*, whose jobs all
+        failed with these logs. -> its id."""
+        pid = next(self.ids)
+        self.jobs[pid] = []
+        for name, log in jobs.items():
+            jid = next(self.ids)
+            self.jobs[pid].append({"id": jid, "name": name, "status": "failed", "allow_failure": False})
+            self.traces[jid] = log
+        self.pipes[pid] = {"id": pid, "status": "failed", "sha": sha, "source": "parent_pipeline",
+                           "project_id": self.projects[path]["id"]}
+        return pid
+
     def check(self, path: str, iid: int, name: str, status: str, target_url: str) -> int:
         """External CI (Jenkins' GitLab plugin) posts commit status *name* on the MR head, as GitLab takes it: into the
         head's pipeline (one of source external made when the head has none); the status of that name that is still
@@ -159,14 +188,14 @@ class PatrolGitLab:
         return last["id"]
 
     def commit_statuses(self, path: str, sha: str, pipeline_id: str | None) -> list[dict]:
-        """GET …/repository/commits/:sha/statuses, its latest ones: each pipeline's jobs as statuses (GitLab lists them
-        so, with the job's id), then what external CI posted."""
+        """GET …/repository/commits/:sha/statuses, its latest ones: each pipeline's jobs and trigger jobs as statuses
+        (GitLab lists them so, with the job's id), then what external CI posted."""
         out = []
         for pid, pipe in sorted(self.pipes.items()):
             if pipe["sha"] == sha and pipeline_id in (None, str(pid)):
                 out += [{"id": j["id"], "sha": sha, "name": j["name"], "status": j["status"],
                          "target_url": "%s/%s/-/jobs/%d" % (BASE, path, j["id"]), "allow_failure": j["allow_failure"],
-                         "pipeline_id": pid} for j in self.jobs[pid]]
+                         "pipeline_id": pid} for j in self.jobs[pid] + self.bridges.get(pid, [])]
                 out += [{k: v for k, v in r.items() if k != "retried"}
                         for r in self.external_statuses.get(pid, []) if not r["retried"]]
         return out
@@ -308,10 +337,11 @@ class PatrolGitLab:
             if thread is None:
                 return ok({"message": "404 Discussion Not Found"}, 404)
             return ok(self.reply(name, mr["iid"], thread, self.who[tok], data["body"]), 201)
-        j = re.fullmatch(r"/pipelines/(\d+)/jobs", rest)
+        j = re.fullmatch(r"/pipelines/(\d+)/(jobs|bridges)", rest)
         if j and method == "GET":
             want = q.get("scope[]")
-            return ok([x for x in self.jobs.get(int(j.group(1)), []) if not want or x["status"] == want])
+            rows = (self.jobs if j.group(2) == "jobs" else self.bridges).get(int(j.group(1)), [])
+            return ok([x for x in rows if not want or x["status"] == want])
         t = re.fullmatch(r"/jobs/(\d+)/trace", rest)
         if t and method == "GET":
             raw = self.traces.get(int(t.group(1)))
