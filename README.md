@@ -99,7 +99,10 @@ instead) and answers `{paths}`, absolute, `[]` for a cancel; one dialog at a tim
 worktree, mr_url, pushed}`. `POST /settings` takes any part of the settings: a key left out keeps its value (the 设置
 form sends no `repos`; the list is changed by `POST /import/add` and `POST /repos/remove` only; nor `role`, which only
 这台机器 sends: `personal` or `team_server`; from `team_server` back to `personal` team mode goes off, team mode on a
-personal install is refused, and so is `POST /team/setup`, 409 `not_team_server`). `GET /status`'s `app.role` says
+personal install is refused, and so is `POST /team/setup`, 409 `not_team_server`). A save starts team mode again when it
+is on (一键建运行机's last step and 导入仓库 save the same way; two saves at once, one after the other): the loop of
+rounds that ran stops with it, and the new one has its first round at once, then one every bridge.json `interval`
+(60 s). `GET /status`'s `app.role` says
 which one this install is. `GET /team/status` answers `RunnerStatus`: per listed repo its `runner` (null without
 `bridge_user`), with `seen` (the last read: `at_work`, `waiting`, `last_at`) and `problem` (why the last read did not
 work, in words) and `relay` (its GitLab project has `brain/status` and a snapshot of it was read; until then the repo keeps its `runner` card); `relays` has, per GitLab with projects on the

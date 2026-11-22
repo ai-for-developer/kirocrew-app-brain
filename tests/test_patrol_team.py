@@ -5,9 +5,11 @@ the in-memory GitLab of the patrol tests, and the app's own session runner on an
 A round ends with patrol. An MR with an open review thread gets a brain-patrol session of its own in the runner folder,
 working in a real clone at the MR head, told the thread and the reply commands; GET /team/patrol says so, with the
 page's keys. Its turn ends: the thread is answered. A new comment goes to the same session. A project whose kit.json
-leaves mr-handoff out is not polled for hand-overs, and one that does not name work_sources is not patrolled.
+leaves mr-handoff out is not polled for hand-overs, and one that does not name work_sources is not patrolled. A
+设置 save starts team mode again with one loop of rounds, not a second one beside the first.
 """
 
+import asyncio
 import json
 import os
 import time
@@ -261,3 +263,56 @@ def test_work_sources_decide_which_rounds_look_at_a_project(tmp_path, home, monk
     assert view.body["projects"] == [{"project": P, "on": patrolled, "error": ""}]
     assert ("patrol-42-4" in gw.slot_rows) is patrolled
     assert os.path.isdir(w.work / "patrol" / "42-4") is patrolled
+
+
+async def a_save(svc, team):
+    await svc.save_settings({"team": team})
+
+
+async def off_then_on(svc, team):
+    await svc.save_settings({"team": dict(team, enabled=False)})
+    await svc.save_settings({"team": team})
+
+
+async def two_saves_at_once(svc, team):
+    await asyncio.gather(svc.save_settings({"team": team}), svc.save_settings({"team": team}))
+
+
+@pytest.mark.parametrize("restart", [a_save, off_then_on, two_saves_at_once])
+def test_team_mode_started_again_by_settings_saves_runs_its_rounds_one_interval_apart(tmp_path, home, monkeypatch,
+                                                                                    restart):
+    """设置 saves start team mode again (一键建运行机's last step and 导入仓库 save the same way): between two rounds,
+    as a person's save comes, a save, team mode switched off and on again, or two saves at once (保存 clicked twice, or
+    while 一键建运行机 saves). Once saved, its rounds come one interval apart as before, not twice as often from a second
+    loop beside the first. Each round lists the project's open MRs once for MR 巡检; bridge.json's interval is made short
+    here."""
+    gap = 1.0
+    monkeypatch.setattr(mod("team.bridgehost").TeamRuntime, "interval", lambda self: gap)
+    w = light_world(tmp_path, home, monkeypatch, {"work_sources": ["mr-handoff", "mr-patrol"]})
+    rounds = []
+
+    def gitlab(method, url, headers, body, timeout=None):
+        if "with_merge_status_recheck=true" in url:
+            rounds.append(time.monotonic())
+        return w.gl(method, url, headers, body, timeout)
+
+    svc = make_service(tmp_path / "app", [], gw=FakeGateway(), team=w.team, transport=gitlab)
+
+    async def go():
+        await svc.start()
+        try:
+            for _ in range(250):
+                if rounds:
+                    break
+                await asyncio.sleep(0.02)
+            await asyncio.sleep(gap / 2)
+            await restart(svc, w.team)
+            saved = len(rounds)
+            await asyncio.sleep(3.5 * gap)
+            return rounds[saved:]
+        finally:
+            await svc.stop()
+
+    after = run(go())
+    spacing = [round(b - a, 2) for a, b in zip(after, after[1:])]
+    assert len(after) >= 3 and min(spacing) >= 0.9 * gap, spacing

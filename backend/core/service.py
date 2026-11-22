@@ -142,6 +142,8 @@ class Service:
         self.jobs = importer.Jobs(now)                                      # clone / install in the background
         self.crew: dict[str, Any] = {"rows": [], "fix": {"agent": False, "engine": False}, "checked_at": None}
         self.team: Any = None
+        self._team_loop: asyncio.Task | None = None     # the rounds of self.team, started and stopped with it
+        self._team_lock = asyncio.Lock()                # team mode started again (or stopped) one at a time
         self._setup_task: asyncio.Task | None = None    # 一键建运行机's run (team/setup.py), in a worker thread
         self._tasks: list[asyncio.Task] = []
         self._mr_wanted: dict[tuple, tuple[str, str]] = {}   # (base, project, branch) -> (scope, kit bridge_user)
@@ -191,10 +193,7 @@ class Service:
         self.started = True
         loop = asyncio.get_running_loop()
         self._tasks = [loop.create_task(self._forever()), loop.create_task(self._slow()),
-                       loop.create_task(self._sync_forever())]
-        if self.team is not None:
-            self._tasks.append(loop.create_task(self._team_forever()))
-        self._tasks.append(loop.create_task(self._regroup_soon()))
+                       loop.create_task(self._sync_forever()), loop.create_task(self._regroup_soon())]
         self.log.info("brain: started, brain-kit %s, %d repos, team %s", bk.info().get("version"), len(self.repos),
                       "on" if self.team is not None else "off")
 
@@ -204,7 +203,8 @@ class Service:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks = []
-        await self._stop_team()
+        async with self._team_lock:
+            await self._stop_team()
         if hasattr(self.sessions.gw, "close"):
             await self.sessions.gw.close()
         bk.unload()
@@ -261,27 +261,35 @@ class Service:
         return crewcheck.checks([r.path for r in self.repos.values()], team_paths=self.team_paths())
 
     async def _start_team(self) -> None:
-        """Team mode from the settings: brain-kit's bridge and runnerd in a TeamRuntime, and, for the same-user trial
-        一键建运行机 made, the signer beside its bridge.json as a child process (team/signerproc.py)."""
-        team = self.settings["team"]
-        await self._stop_team()
-        if not team.get("enabled") or not bk.ok():
-            return
-        from .team.bridgehost import TeamRuntime
-        loop = asyncio.get_running_loop()
-        rt = TeamRuntime(team, loop, self.sessions, self.log, transport=self.transport, kick=self.signer_kick,
-                         sign_timeout=self.sign_timeout, scrub=self.scrub)
-        await loop.run_in_executor(rt.executor, rt.start)
-        signer = signerproc.config_for(team) if rt.host is not None else None
-        if signer is not None:
-            try:
-                await asyncio.to_thread(signerproc.ensure, signer, APP_ROOT, PYTHON_BIN)
-            except signerproc.SignerFailed as exc:
-                rt.error = exc.team_error()
-        self.team = rt
+        """Team mode from the settings: brain-kit's bridge and runnerd in a TeamRuntime with its loop of rounds, and,
+        for the same-user trial 一键建运行机 made, the signer beside its bridge.json as a child process
+        (team/signerproc.py). Team mode that ran is stopped first, its loop with it, and two saves at once start it one
+        after the other: one loop runs at most."""
+        async with self._team_lock:
+            team = self.settings["team"]
+            await self._stop_team()
+            if not team.get("enabled") or not bk.ok():
+                return
+            from .team.bridgehost import TeamRuntime
+            loop = asyncio.get_running_loop()
+            rt = TeamRuntime(team, loop, self.sessions, self.log, transport=self.transport, kick=self.signer_kick,
+                             sign_timeout=self.sign_timeout, scrub=self.scrub)
+            await loop.run_in_executor(rt.executor, rt.start)
+            signer = signerproc.config_for(team) if rt.host is not None else None
+            if signer is not None:
+                try:
+                    await asyncio.to_thread(signerproc.ensure, signer, APP_ROOT, PYTHON_BIN)
+                except signerproc.SignerFailed as exc:
+                    rt.error = exc.team_error()
+            self.team = rt
+            self._team_loop = loop.create_task(self._team_forever(rt))
 
     async def _stop_team(self) -> None:
-        """Team mode stops: its TeamRuntime after the round in progress, and the signer started with it."""
+        """Team mode stops: its loop, its TeamRuntime after the round in progress, and the signer started with it."""
+        task, self._team_loop = self._team_loop, None
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
         rt, self.team = self.team, None
         if rt is None:
             return
@@ -423,17 +431,17 @@ class Service:
         """The install and upgrade records nothing waits for any more, cleared (landing.sweep): the repo tops."""
         return landing.sweep(self.imports, "install") + landing.sweep(self.upgrades, "upgrade")
 
-    async def _team_forever(self) -> None:
+    async def _team_forever(self, rt: Any) -> None:
+        """The rounds of *rt*, one interval apart, until _stop_team cancels them."""
         while True:
             try:
-                rt = self.team
-                if rt is not None and rt.host is not None:
+                if rt.host is not None:
                     await self._in_team(lambda: self._team_round(rt))
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001
                 self.log.exception("brain: the bridge loop failed")
-            await asyncio.sleep(self.team.interval() if self.team is not None else 60)
+            await asyncio.sleep(rt.interval())
 
     def _team_round(self, rt: Any) -> dict[str, int]:
         """One round of team mode on its worker (blocking): the signer 一键建运行机 set up started again when its process
@@ -1993,10 +2001,6 @@ class Service:
         await asyncio.to_thread(self.reload_sync)
         if self.started:
             await self._start_team()
-            if self.team is not None and not any(getattr(t, "_brain_team", False) for t in self._tasks if not t.done()):
-                t = asyncio.get_running_loop().create_task(self._team_forever())
-                t._brain_team = True  # type: ignore[attr-defined]
-                self._tasks.append(t)
         return {"ok": True, "settings": self.settings_view(), "status": await self.status()}
 
     # ---- 导入仓库 ------------------------------------------------------------------------------------- #

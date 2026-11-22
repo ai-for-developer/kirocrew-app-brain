@@ -629,7 +629,7 @@ sudo systemctl enable --now brain-signer
 
 原话在「看运行机」里的「细节」下面。
 
-kit.json 或身份表以后改了，要重启签名服务（`sudo systemctl restart brain-signer`），并在 app 里把团队模式关掉再打开。
+kit.json 或身份表以后改了，要重启签名服务（`sudo systemctl restart brain-signer`），并在 app 里把团队模式关掉再打开。每次保存设置，团队模式都会重新开始：旧的那一路轮次先停下，新的马上跑一轮，以后还是每 60 秒一轮（bridge.json 的 `interval`）。0.5.3 以前，团队模式开着时保存一次设置会多出一路轮次，变成每 30 秒一轮；0.5.3 起不会了。
 
 ### 11. 试交接一次（判断能不能用）
 
