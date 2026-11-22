@@ -317,9 +317,9 @@ def read_mr(gl: Any, logs: Logs, project: str, mr: Mapping[str, Any], own: set[s
     if status == "failed" and pid and same and not external and not before.checks:
         jobs = before.jobs
     elif status == "failed" and pid:
-        found, own = ([], set()) if external else pipeline_failures(gl, project, pid, logs=not same)
+        found, job_ids = ([], set()) if external else pipeline_failures(gl, project, pid, logs=not same)
         jobs = before.jobs if same else tuple(found)
-        checks = failed_checks(gl, logs, project, str(hp.get("sha") or mr.get("sha") or ""), pid, own,
+        checks = failed_checks(gl, logs, project, str(hp.get("sha") or mr.get("sha") or ""), pid, job_ids,
                                before.checks if before is not None else ())
     threads = gl.pages("/projects/%s/merge_requests/%d/discussions" % (rest.q(project), iid), {}, 100, 20,
                        "discussions on !%d" % iid)

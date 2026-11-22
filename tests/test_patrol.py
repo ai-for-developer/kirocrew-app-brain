@@ -1205,3 +1205,29 @@ def test_the_adapter_says_refused_only_when_kiro_crew_answered_no(bk):
         loop.call_soon_threadsafe(loop.stop)
         thread.join(5)
     assert refused == [True] * 4 + [False] * 6
+
+
+def test_patrol_s_own_reply_answers_a_review_thread_while_the_mr_s_pipeline_failed(bk, tmp_path):
+    """The session replies in a review thread and its turn fails; the pipeline is run again and fails again. The next
+    dispatch is about the pipeline only: patrol's reply answered the note, a failed pipeline or not."""
+    w = World(tmp_path)
+    gl = w.gl
+    gl.mr(P, 7)
+    gl.fail(P, 7)
+    d = gl.thread(P, 7, "carol", "百分比要限制在 0-100", "src/discount.py", 12)
+    w.round()
+    assert "百分比要限制在 0-100" in w.sessions.messages()[-1]
+    w.later()
+    gl.reply(P, 7, d, "brain-bridge", "改了：加了 0-100 的检查")
+    w.sessions.end("failed")
+    w.later()
+    w.round()
+    assert [p["kind"] for p in w.item(7)["problems"]] == ["ci_failed"]
+    gl.fail(P, 7)
+    gl.touch(P, 7)
+    w.later()
+    w.sessions.end("failed")
+    w.later()
+    w.round()
+    assert [p["kind"] for p in w.item(7)["problems"]] == ["ci_failed"]
+    assert "百分比要限制在 0-100" not in w.sessions.messages()[-1]
