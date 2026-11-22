@@ -1340,13 +1340,14 @@ def old_salt(ps: Paths) -> str:
 
 def kept_entries(path: Path, wanted: list[str]) -> list[Any]:
     """bridge.json's project entries for these paths: an entry written as an object (a person's `staging` block) is
-    kept as it is, the others are the plain path."""
+    kept, under the path wanted (GitLab's paths are not case-sensitive: a hand may write one in another case), the
+    others are the plain path."""
     try:
         rows = json.loads(path.read_text(encoding="utf-8")).get("projects") or []
     except (OSError, ValueError, AttributeError):
         rows = []
-    old = {r["project"]: r for r in rows if isinstance(r, dict) and isinstance(r.get("project"), str)}
-    return [old.get(w, w) for w in wanted]
+    old = {r["project"].lower(): r for r in rows if isinstance(r, dict) and isinstance(r.get("project"), str)}
+    return [dict(old[w.lower()], project=w) if w.lower() in old else w for w in wanted]
 
 
 def bridge_doc(ctx: Ctx, salt: str) -> dict[str, Any]:

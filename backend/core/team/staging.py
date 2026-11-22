@@ -29,7 +29,9 @@ A row is a state machine (Row.state):
 Every open state whose Issue was closed, deleted or labelled so is closed or dismissed (its turn stopped). An open Issue
 gets a comment when its count jumps: doubled, and up by JUMP or more, since the Issue last said it.
 A project the source is no longer on, or bridge.json no longer names, is forgotten: its turns stopped, its clones
-deleted, its rows and cursor gone. Its Issues stay; an open one is found again when its error comes back.
+deleted, its rows and cursor gone. Its Issues stay; an open one is found again when its error comes back. One that
+bridge.json names again in another case (GitLab's paths are not case-sensitive) is the same project: its rows and cursor
+move to the new spelling (Ledger.respell).
 """
 
 from __future__ import annotations
@@ -227,6 +229,19 @@ class Ledger:
 
     def projects(self) -> set[str]:
         return {r[0] for r in self.db.execute("SELECT project FROM errors UNION SELECT project FROM cursors")}
+
+    def respell(self, projects: list[str]) -> None:
+        """The rows, cursor and deploy of a project kept under another spelling than *projects* has for it (GitLab's
+        paths are not case-sensitive: 一键建运行机 writes GitLab's own) moved to that spelling, as the same project's."""
+        named = {p.lower(): p for p in projects}
+        for old in self.projects() | {r[0] for r in self.db.execute("SELECT project FROM deploys")}:
+            new = named.get(old.lower(), old)
+            if new != old:
+                for row in self.rows(old):
+                    self.put(replace(row, project=new))
+                    self.drop(row)
+                for table in ("cursors", "deploys"):
+                    self.db.execute("UPDATE OR REPLACE %s SET project=? WHERE project=?" % table, (new, old))
 
     def forget(self, project: str) -> None:
         for table in ("errors", "cursors", "deploys"):
@@ -441,6 +456,8 @@ class StagingWatch:
         common = bk.m("common")
         now = self.now()
         self._kits, self._notes, self._errors = {}, {}, []
+        if self._ledger_there():
+            self.led.respell(self.projects)
         projects, off, read = [], set(), 0
         for project in self.projects:
             try:

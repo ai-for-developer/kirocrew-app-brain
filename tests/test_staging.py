@@ -396,6 +396,25 @@ def test_work_sources_without_staging_errors_do_nothing(bk, tmp_path):
     assert not [c for c in w.gl.calls if "/issues" in c[1] or "/repository/" in c[1]]
 
 
+def test_a_project_bridge_json_now_spells_with_other_case_keeps_its_errors_issues_and_cursor(bk, tmp_path):
+    """一键建运行机 run again writes a hand-written entry with GitLab's own path, which may differ in case from what the
+    hand wrote (GitLab's paths are not case-sensitive): it is the same project, so its rows and its log's cursor move to
+    that spelling. Nothing of it is forgotten: no Issue opened twice, no line read twice, its fix's turn not stopped."""
+    w = started(tmp_path)
+    w.write(zero(), gateway())
+    w.round()
+    assert [s for s, _, _ in w.sessions.sent] == ["staging-42-1", "staging-42-2"]
+    w.kits = {"Grp/Repo": w.kits[P]}
+    w.watch.close()
+    w.watch = w.start()
+    w.write(zero())
+    w.round()
+    assert {(i["project"], i["signature"], i["count"], i["issue"]["iid"], i["state"]) for i in w.watch.view()["items"]} == {
+        ("Grp/Repo", ZERO, 2, 1, "fixing"), ("Grp/Repo", GATEWAY, 1, 2, "fixing")}
+    assert len(w.gl.opened(P)) == 2 and w.sessions.stopped == [] and w.ws.dropped == []
+    assert [c["key"] for c in w.watch.held()] == ["staging-errors:Grp/Repo:issue!1", "staging-errors:Grp/Repo:issue!2"]
+
+
 def test_a_project_without_a_staging_block_says_so_and_one_switched_off_is_forgotten(bk, tmp_path):
     bare = World(tmp_path / "bare", staged=False)
     with pytest.raises(bk.brain_error(), match="没写 staging"):

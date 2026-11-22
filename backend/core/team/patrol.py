@@ -34,7 +34,8 @@ The ledger, <root>/patrol.sqlite, has one row per open MR of the projects patrol
                       bot commit on run branches only): any it pushes would be refused too, so the MR is left alone for
                       good (its turn stopped)
 One comment on the MR says why it is blocked, paused or refused, and what is not fixed (for rules: what a person does). A row is forgotten, its turn stopped and
-its clone deleted, once its MR is merged or closed, or patrol is no longer on in its project.
+its clone deleted, once its MR is merged or closed, or patrol is no longer on in its project; one of a project
+bridge.json now names in another case (GitLab's paths are not case-sensitive) moves to that spelling (Ledger.respell).
 A round lists each project's open MRs once. It reads an MR's pipeline and threads only when the MR changed since, is
 being worked, its pipeline had not finished, or RECHECK_S went by: GitLab does not move an MR's updated_at when a
 pipeline ends, or when one runs again on the same head. A Jenkins build run again on the same head lands in the same
@@ -580,6 +581,18 @@ class Ledger:
         self.db.execute("INSERT OR IGNORE INTO projects (project, since) VALUES (?, ?)", (project, now))
         return float(self.db.execute("SELECT since FROM projects WHERE project=?", (project,)).fetchone()[0])
 
+    def respell(self, projects: list[str]) -> None:
+        """The rows and start of a project kept under another spelling than *projects* has for it (GitLab's paths are
+        not case-sensitive: 一键建运行机 writes GitLab's own) moved to that spelling, as the same project's."""
+        named = {p.lower(): p for p in projects}
+        for old in {r[0] for r in self.db.execute("SELECT project FROM mrs UNION SELECT project FROM projects")}:
+            new = named.get(old.lower(), old)
+            if new != old:
+                for row in [r for r in self.rows() if r.project == old]:
+                    self.put(replace(row, project=new))
+                    self.drop(old, row.iid)
+                self.db.execute("UPDATE OR REPLACE projects SET project=? WHERE project=?", (new, old))
+
     def keep_projects(self, keep: list[str]) -> None:
         """Forget when patrol started in every project but *keep*: it starts again there when it is on again."""
         self.db.execute("DELETE FROM projects WHERE project NOT IN (%s)" % ",".join("?" * len(keep)), tuple(keep))
@@ -938,6 +951,8 @@ class Patrol:
         common = bk.m("common")
         now, self._turns = self.now(), {}
         self.jenkins.round()
+        if self._led is not None or os.path.exists(self.ledger_path):
+            self.led.respell(self.projects)
         others = [c for c in self.claims() if c["kind"] != KIND]
         errors, projects, entries, open_mrs, listed, off = [], [], [], set(), [], set()
         for project in self.projects:

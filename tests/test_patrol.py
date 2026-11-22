@@ -813,6 +813,23 @@ def test_a_merged_mr_is_forgotten_its_turn_stopped_and_its_clone_deleted(bk, tmp
     assert w.patrol.view()["items"] == [] and w.patrol.held() == [] and w.patrol.led.rows() == []
 
 
+def test_a_project_bridge_json_now_spells_with_other_case_keeps_its_rows_and_sessions(bk, tmp_path):
+    """bridge.json's project, written again with GitLab's own path in another case (一键建运行机 run again): the same
+    project, so its rows move to that spelling: its turn at work is not stopped, its clone not deleted, and nothing is
+    dispatched twice."""
+    w = World(tmp_path)
+    w.gl.mr(P, 1, **conflicted())
+    w.round()
+    w.kits = {"Grp/Repo": w.kits[P]}
+    w.patrol.close()
+    w.patrol = w.start(["Grp/Repo"])
+    w.later()
+    w.round()
+    assert w.sessions.stopped == [] and w.ws.dropped == [] and w.slots() == ["patrol-42-1"]
+    assert [(r.project, r.iid, r.state, r.slot) for r in w.patrol.led.rows()] == [("Grp/Repo", 1, "working", "patrol-42-1")]
+    assert w.item(1, "Grp/Repo")["state"] == "working"
+
+
 def test_a_project_patrol_is_no_longer_on_has_its_turns_stopped_its_clones_deleted_and_holds_no_session(bk, tmp_path):
     w = World(tmp_path, kits={P: kit(), "grp/other": kit(), "grp/third": kit()})
     w.gl.mr(P, 1, **conflicted())

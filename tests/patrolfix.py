@@ -290,8 +290,9 @@ class PatrolGitLab:
         return rows[(p - 1) * n: p * n]
 
     def _project(self, key: str) -> tuple[str, dict] | None:
+        """The project *key* names: by its id, or by its path in any case (GitLab's paths are not case-sensitive)."""
         for path, p in self.projects.items():
-            if key in (path, str(p["id"])):
+            if key.lower() in (path.lower(), str(p["id"])):
                 return path, p
         return None
 
