@@ -656,6 +656,35 @@ def test_three_dispatches_with_no_person_pushing_or_commenting_in_between_pause_
     assert gl.asked(r"/repository/commits/[0-9a-f]+$") == (0 if ranges else 9)
 
 
+def test_a_person_s_follow_up_written_while_the_session_works_is_a_new_problem_after_its_reply(bk, tmp_path):
+    """The session was told one note of the thread; the person adds to the thread while it works, and its reply lands
+    after that: the reply answers the note it was told, not the one it never saw, which goes out next, and stays open
+    when that next turn fails without a reply."""
+    w = World(tmp_path)
+    gl = w.gl
+    gl.mr(P, 7)
+    d = gl.thread(P, 7, "carol", "百分比要限制在 0-100", "src/discount.py", 12)
+    w.round()
+    w.later()
+    more = gl.reply(P, 7, d, "carol", "还有：超出范围要报错，不要截断")
+    gl.reply(P, 7, d, "brain-bridge", "改了：加了 0-100 的检查")
+    w.sessions.end()
+    w.round()
+    assert w.item(7)["problems"] == [{"kind": "review", "text": "@carol 的评审意见（src/discount.py:12）"}]
+    assert len(w.sessions.sent) == 2
+    again = w.sessions.messages()[-1]
+    assert "评论 #%d" % more["id"] in again and "超出范围要报错" in again and "百分比要限制在 0-100" not in again
+    w.sessions.end("failed")
+    w.later()
+    w.round()
+    assert len(w.sessions.sent) == 3 and "评论 #%d" % more["id"] in w.sessions.messages()[-1]
+    gl.reply(P, 7, d, "brain-bridge", "也改了：超出就报错")
+    w.sessions.end()
+    w.later()
+    w.round()
+    assert w.item(7)["state"] == "ok" and len(w.sessions.sent) == 3
+
+
 def test_a_turn_the_head_moved_past_holds_the_session_until_it_ends(bk, tmp_path):
     w = World(tmp_path)
     gl = w.gl

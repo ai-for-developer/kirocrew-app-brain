@@ -8,11 +8,12 @@ results): its failed jobs, each with the last LOG_LINES lines of its log, those 
 started (child pipelines), and the failed checks external CI reported into it as commit statuses (Jenkins' GitLab
 plugin: a pipeline of source external has nothing else), which GitLab has no job or trigger job of: each with its link
 and the last lines of its log from Jenkins (jenkins.py), or why there is none. A person left a review thread open:
-unresolved and resolvable, with no reply of patrol's own after it, and not named in a turn that ended. A person wrote a
-plain comment on the MR (no thread, so nothing marks it resolved) since patrol started in the project, not named in a
-turn that ended: the session answers it with a note on the MR that quotes it. Or the MR conflicts with its target
-branch. The MR's problems make a PatrolItem. Its fingerprint moves with the head, a failed pipeline, a new build of a
-failed check, the conflict and the open review notes and comments, and nothing else.
+unresolved and resolvable, with no reply of patrol's own after it written by a session that could have been told it
+(open_reviews: a note added while a session worked is not answered by its reply), and not named in a turn that ended. A
+person wrote a plain comment on the MR (no thread, so nothing marks it resolved) since patrol started in the project,
+not named in a turn that ended: the session answers it with a note on the MR that quotes it. Or the MR conflicts with
+its target branch. The MR's problems make a PatrolItem. Its fingerprint moves with the head, a failed pipeline, a new
+build of a failed check, the conflict and the open review notes and comments, and nothing else.
 
 The ledger, <root>/patrol.sqlite, has one row per open MR of the projects patrol is on (MrRow). It is a state machine
 (settle, Patrol._look and Patrol._send):
@@ -183,6 +184,7 @@ class Read:
     people_note: int = 0                        # the newest note a person wrote on the MR, anywhere (its id)
     comments: tuple[Comment, ...] = ()          # people's plain comments since patrol started in the project
     checks: tuple[FailedCheck, ...] = ()        # the failed checks external CI reported, of a failed pipeline
+    last_note: int = 0                          # the newest note on the MR, anyone's (its id: GitLab's ids only grow)
 
     @classmethod
     def of(cls, d: Mapping[str, Any]) -> "Read":
@@ -190,7 +192,7 @@ class Read:
                    tuple(FailedJob(**j) for j in d.get("jobs") or ()),
                    tuple(Review(**r) for r in d.get("reviews") or ()), int(d.get("bot_notes") or 0),
                    int(d.get("people_note") or 0), tuple(Comment(**c) for c in d.get("comments") or ()),
-                   tuple(FailedCheck(**c) for c in d.get("checks") or ()))
+                   tuple(FailedCheck(**c) for c in d.get("checks") or ()), int(d.get("last_note") or 0))
 
 
 @dataclass(frozen=True)
@@ -243,10 +245,13 @@ def notes_of(discussions: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     return [[n for n in d.get("notes") or [] if isinstance(n, dict) and not n.get("system")] for d in discussions]
 
 
-def open_reviews(discussions: list[dict[str, Any]], own: set[str], bots: set[str]) -> tuple[list[Review], int]:
+def open_reviews(discussions: list[dict[str, Any]], own: set[str], bots: set[str],
+                 marks: tuple[int, ...] = ()) -> tuple[list[Review], int]:
     """(people's open review notes, open threads only bots wrote in). A thread counts while it is resolvable and not
-    resolved. In it, a note of patrol's own account (*own*) answers every note before it; a bot's note is never a
-    problem."""
+    resolved. In it, a note of patrol's own account (*own*) answers the notes before it its session could have been
+    told: those up to the newest of *marks* (the newest note before each dispatch, MrRow.marks) below its own id, every
+    one before it when none is (a reply from before patrol's ledger). So a person's note added while the session
+    worked is still open after its reply. A bot's note is never a problem."""
     out, bot_threads = [], 0
     for d, notes in zip(discussions, notes_of(discussions)):
         mine = [n for n in notes if n.get("resolvable")]
@@ -256,7 +261,8 @@ def open_reviews(discussions: list[dict[str, Any]], own: set[str], bots: set[str
         for n in notes:
             by = written_by(n, own, bots)
             if by == "own":
-                tail, bot_said = [], False
+                told = max((m for m in marks if m < int(n["id"])), default=None)
+                tail, bot_said = [x for x in tail if told is not None and int(x["id"]) > told], False
             elif by == "bot":
                 bot_said = True
             else:
@@ -282,7 +288,7 @@ def plain_comments(discussions: list[dict[str, Any]], own: set[str], bots: set[s
 
 
 def read_mr(gl: Any, jenkins: Logs, project: str, mr: Mapping[str, Any], own: set[str], bots: set[str],
-            since: float, before: Read | None = None) -> Read:
+            since: float, before: Read | None = None, marks: tuple[int, ...] = ()) -> Read:
     """GitLab's MR (its head pipeline, at_head); when that pipeline failed, its failed jobs with their logs, its child
     pipelines' too (pipeline_failures), and the failed checks external CI reported into it (failed_checks); its
     threads, and its plain comments written *since* (patrol started in the project). *before*'s jobs while it is the
@@ -307,10 +313,11 @@ def read_mr(gl: Any, jenkins: Logs, project: str, mr: Mapping[str, Any], own: se
     threads = gl.pages("/projects/%s/merge_requests/%d/discussions" % (rest.q(project), iid), {}, 100, 20,
                        "discussions on !%d" % iid)
     threads = [d for d in threads if isinstance(d, dict)]
-    reviews, bot_threads = open_reviews(threads, own, bots)
+    reviews, bot_threads = open_reviews(threads, own, bots, marks)
     people = [int(n["id"]) for notes in notes_of(threads) for n in notes if written_by(n, own, bots) == "person"]
     return Read(pid, status, jobs, tuple(reviews), bot_threads, max(people, default=0),
-                tuple(plain_comments(threads, own, bots, since)), checks)
+                tuple(plain_comments(threads, own, bots, since)), checks,
+                max((int(n["id"]) for notes in notes_of(threads) for n in notes), default=0))
 
 
 def at_head(gl: Any, project: Any, mr: Mapping[str, Any], hp: Mapping[str, Any]) -> bool:
@@ -491,6 +498,7 @@ class MrRow:
     outcome: str = ""                   # how the last attempt ended: ended | moved | failed | timeout | refused | taken
     done_fp: str = ""                   # the fingerprint a turn ended on (its notes answered)
     answered: tuple[int, ...] = ()
+    marks: tuple[int, ...] = ()         # Read.last_note at each dispatch: what its session could know (open_reviews)
     told: bool = False                  # it is blocked or paused, and the MR was told so
     claim: dict = field(default_factory=dict)
     seen: str = ""                      # the MR's updated_at and head when it was last read in detail
@@ -500,7 +508,7 @@ class MrRow:
     @classmethod
     def of(cls, d: Mapping[str, Any]) -> "MrRow":
         d = dict(d)
-        for k in ("sent_notes", "answered", "status_ids"):
+        for k in ("sent_notes", "answered", "marks", "status_ids"):
             d[k] = tuple(d.get(k) or ())
         d["read"] = Read.of(d["read"]) if isinstance(d.get("read"), dict) else None
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
@@ -917,7 +925,7 @@ class Patrol:
         if self._stale(row, mr, now):
             old = set(row.read.checks) if row.read is not None else set()
             row = replace(row, read=read_mr(self.gl, self.jenkins, e.project, mr, *self._who(kit), e.since,
-                                            before=row.read), seen=_seen(mr), read_at=now)
+                                            before=row.read, marks=row.marks), seen=_seen(mr), read_at=now)
             for c in row.read.checks:
                 if c.log is None and not c.later and c not in old:
                     self.out("%s!%s: %s: no log: %s" % (e.project, mr["iid"], c.name, c.why))
@@ -1066,7 +1074,7 @@ class Patrol:
                        status_ids=item.status_ids, conflict=item.conflict,
                        fingerprint=item.fingerprint, attempts=attempts, streak=row.streak + 1,
                        people_note=row.read.people_note, checked_head=item.head_sha, dispatched_at=now, send_id=sid,
-                       sent_notes=item.note_ids, outcome="")
+                       sent_notes=item.note_ids, marks=row.marks + (row.read.last_note,), outcome="")
         try:
             self.sessions.patrol_project(row.slot, path)
         except Refused as exc:

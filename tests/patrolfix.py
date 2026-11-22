@@ -241,7 +241,9 @@ class PatrolGitLab:
         return d
 
     def reply(self, path: str, iid: int, d: dict, author: str, body: str) -> dict:
+        """A note in thread *d*: a diff thread's is a DiffNote on the same place, as GitLab has it."""
         n = self._note(author, body, d["notes"][0]["resolvable"], False)
+        n.update({k: d["notes"][0][k] for k in ("type", "position") if k in d["notes"][0]})
         d["notes"].append(n)
         self.touch(path, iid)
         return n
