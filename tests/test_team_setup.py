@@ -739,6 +739,23 @@ def test_a_bot_token_git_cannot_clone_with_fails_the_push_step(world):
     assert everything_done(view) and len(world["gl"].made("brain-bot")) == 1
 
 
+@pytest.mark.parametrize("push", ["token", "auto"])
+def test_the_push_step_names_ssh_only_when_it_tried_ssh(world, push):
+    """--push token, or auto where GitLab gives the project no SSH address: SSH is not tried, so neither a token git
+    cannot clone with nor one that works is said to come after SSH; for auto, the 细节 says why SSH was left out."""
+    if push == "auto":
+        world["gl"].ssh_url = ""
+    world["https_down"] = True
+    view, _ = build(world, push=push)
+    failed = step(view, "push")
+    assert failed["status"] == "failed" and failed["message"] == "这台机器的 git 用项目令牌 brain-bot 连不上 gitlab.example.com：运行机拉不到代码"
+    assert ("GitLab 没给这个项目的 SSH 地址" in failed["detail"]) == (push == "auto")
+    world["https_down"] = False
+    view, _ = build(world, push=push)
+    done = step(view, "push")
+    assert done["status"] == "done" and done["message"].startswith("运行机用项目令牌拉取和推送。"), done["message"]
+
+
 def test_a_scope_gitlab_does_not_give_project_tokens_is_said_as_its_refusal(world, monkeypatch):
     """GitLab answers 400 to a project token asked with a scope project tokens cannot have: the step says GitLab
     refused the request, which running again does not change, and GitLab's words are under 细节."""

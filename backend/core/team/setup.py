@@ -997,9 +997,10 @@ def step_push(ctx: Ctx) -> StepResult:
     project token brain-bot (project-token), the bot user's personal token (bot-account); ssh or token: that one only."""
     host = urllib.parse.urlsplit(ctx.inp.gitlab_base).hostname or ""
     reach = ctx.reach or (lambda url: git_reaches(ctx, url))
-    why = ""
+    why, ssh = "", False            # ssh: git was run over SSH (only then do the words name it)
     if ctx.inp.push != "token":
         template, why = common_template(ctx, "ssh_url")
+        ssh = bool(template)
         missed, said = unreached(ctx, reach, lambda p: p.ssh_url) if template else ([], "")
         why = "\n".join(x for x in (why, said) if x)
         if template and not missed:
@@ -1022,7 +1023,7 @@ def step_push(ctx: Ctx) -> StepResult:
         try:
             tok, me = account(ctx, "bot")
         except StepFailed as exc:
-            return failed(exc.message + ("，或者让这台机器的 SSH 能用" if ctx.inp.push == "auto" else ""), detail=why)
+            return failed(exc.message + ("，或者让这台机器的 SSH 能用" if ssh else ""), detail=why)
         if me.get("id") == account(ctx, "bridge")[1].get("id"):
             return failed("机器人账号和桥的账号是同一个 GitLab 用户 %s：要两个不同的用户，运行机不能替桥说话" % me.get("username"))
         if ctx.inp.admin_token and str(me.get("username") or "").lower() == ctx.owner:
@@ -1035,13 +1036,13 @@ def step_push(ctx: Ctx) -> StepResult:
     missed, git_said = unreached(ctx, reach, lambda p: with_token(template, tok).format(project=p.path))
     if missed:
         where = host if len(ctx.found) == 1 else "%s 上的 %s" % (host, "、".join(missed))
-        how = " SSH 和%s 都连不上" % who if ctx.inp.push == "auto" else "%s 连不上" % who
+        how = " SSH 和%s 都连不上" % who if ssh else "%s 连不上" % who
         return failed("这台机器的 git 用%s %s：运行机拉不到代码" % (how, where), detail="\n".join(x for x in (why, git_said) if x))
     email = rec.get("email") or "%s@noreply.%s" % (rec["username"], host)
     ctx.state["push"] = {"mode": "token", "clone_url": template, "git_name": rec.get("display") or "brain-bot",
                          "git_email": email, "bot_user": rec["username"]}
     return done("%s运行机用%s拉取和推送。%s"
-                % ("这台机器的 SSH 连不上 GitLab，" if ctx.inp.push == "auto" else "",
+                % ("这台机器的 SSH 连不上 GitLab，" if ssh else "",
                    "项目令牌" if ctx.inp.mode == PROJECT_TOKEN else "机器人账号的个人令牌", said), detail=why)
 
 
