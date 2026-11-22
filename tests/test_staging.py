@@ -21,6 +21,7 @@ P, PID = "grp/repo", 42
 ZERO = "ZeroDivisionError at orders/discount.py in apply"
 GATEWAY = "app.pay: gateway timeout after <n>s (order <n>)"
 STOCK = "app.stock: warehouse aaa is gone"
+LABEL = "staging-error"
 HELPER = ("/usr/bin/python3 -I /app/backend/core/team/patrol_reply.py --config /setup/bridge.json --brainkit /kit "
           "--project grp/repo --issue %d")
 
@@ -571,6 +572,51 @@ def test_one_error_logged_with_a_new_e_mail_each_time_is_one_issue(bk, tmp_path)
     assert issue["title"] == "测试环境报错：app.auth: no account for <email>"
     assert w.item("app.auth: no account for <email>")["count"] == 60
     assert len(w.gl.asked_staging("GET", r"/issues$")) - lists == 1
+
+
+OLD_BOB = "app.users: no user 'bob<n>' at /srv/app/users/bob<n>.json"        # the normalizer before 9d78742 made these
+OLD_CAROL = "app.users: no user 'carol<n>' at /srv/app/users/carol<n>.json"
+USERS = "app.users: no user <str> at <path>"
+
+
+def users(name):
+    return ["2026-11-21 10:00:04,000 ERROR app.users: no user '%s' at /srv/app/users/%s.json" % (name, name)]
+
+
+def test_a_ledger_keyed_by_the_old_normalizer_is_keyed_again_on_first_read_keeping_its_issue(bk, tmp_path):
+    """A ledger of a build from before 0.5.1's normalizer: its rows' signatures kept quoted values, e-mails and paths.
+    Read the first time, each row is keyed again from its own sample, and rows that now share a signature are one: the
+    oldest Issue kept, with its fix branch's name, the counts added. So the error read again counts into that Issue
+    instead of opening another; a row 0.5.x made for it, with its own Issue, is one with them."""
+    staging, sl = mod("team.staging"), mod("team.stagelog")
+    w = started(tmp_path)
+    t = w.clock.t
+
+    def row(sig, name, count, first, issue=0):
+        if issue:
+            w.gl.issues[(P, issue)] = {"iid": issue, "project_id": PID, "title": "测试环境报错：" + sig, "labels": [LABEL],
+                                       "description": "", "state": "opened", "_notes": [],
+                                       "web_url": "%s/grp/repo/-/issues/%d" % (BASE, issue)}
+            w.gl.last_iid[P] = issue
+        return staging.Row(P, sl.ErrorGroup(sig, first, first + 60, count, tuple(users(name)), SHA[1]),
+                           state="issued" if issue else "new", project_id=PID if issue else 0, told=count,
+                           issue=staging.Link(issue, "%s/grp/repo/-/issues/%d" % (BASE, issue)) if issue else None)
+    for r in (row(OLD_BOB, "bob42", 3, t - 3600, issue=5), row(OLD_CAROL, "carol7", 2, t - 1800),
+              row(USERS, "dave9", 1, t - 600, issue=6)):
+        w.watch.led.put(r)
+    w.watch.led.db.execute("PRAGMA user_version = 0")
+    w.watch.close()
+    w.watch = w.start()
+    w.write(users("erin3"))
+    w.round()
+    assert [(i["signature"], i["count"], i["issue"]["iid"], i["first_seen"]) for i in w.watch.view()["items"]] == [
+        (USERS, 7, 5, t - 3600)]
+    assert sorted(w.gl.issues) == [(P, 5), (P, 6)]
+    assert "git checkout -B fix/staging-%s（" % sl.short_id(OLD_BOB) in w.sessions.messages("staging-42-5")[0]
+    w.watch.close()
+    w.watch = w.start()
+    w.round()
+    assert [(i["signature"], i["count"]) for i in w.watch.view()["items"]] == [(USERS, 7)]
 
 
 def test_new_issues_open_three_a_round_and_twenty_at_most_per_project_and_the_rest_say_why_they_wait(bk, tmp_path):

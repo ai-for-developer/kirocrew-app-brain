@@ -63,6 +63,7 @@ NEW_PER_ROUND = 3                   # Issues opened (or opened again) in a proje
 OPEN_CAP = 20                       # open staging-error Issues of a project: no more are opened then
 SKIP_LABELS = ("wontfix", "aiskip")  # an Issue labelled so (any case, spaces and marks aside: Won't Fix, ai-skip)
 MARK = "staging-error-id: %s"       # in an Issue's description: the signature it is about
+SIGNATURES = 1                      # the signatures a ledger's rows are keyed by: 0 before 9d78742 (rekeyed), 1 since
 NEW, ISSUED, FIXING, FIX_MR, STOPPED, CLOSED, DISMISSED = (
     "new", "issued", "fixing", "fix_mr", "stopped", "closed", "dismissed")
 OPEN = (ISSUED, FIXING, FIX_MR, STOPPED)
@@ -105,14 +106,20 @@ class Row:
     ws_error: str = ""                  # why its clone was not ready at its last dispatch ("": it was)
     rules_pid: int = 0                  # fix_mr: the head pipeline of it, over, last asked about brain-push-rules
     rules: tuple[str, ...] = ()         # ... what brain-push-rules said refusing it (its Issue told so), else ()
+    filed_as: str = ""                  # the short id its Issue's mark and fix branches have, when its signature is not
+                                        # the one they were made for any more (keyed again: Ledger)
 
     @property
     def signature(self) -> str:
         return self.group.signature
 
     @property
+    def short_id(self) -> str:
+        return self.filed_as or stagelog.short_id(self.signature)
+
+    @property
     def branch(self) -> str:
-        return "fix/staging-%s%s" % (stagelog.short_id(self.signature), "-%d" % self.cycle if self.cycle > 1 else "")
+        return "fix/staging-%s%s" % (self.short_id, "-%d" % self.cycle if self.cycle > 1 else "")
 
     @classmethod
     def of(cls, d: Mapping[str, Any]) -> "Row":
@@ -179,13 +186,51 @@ CREATE TABLE IF NOT EXISTS deploys (project TEXT PRIMARY KEY, sha TEXT NOT NULL,
 """
 
 
+def rekeyed(rows: list[Row]) -> list[Row]:
+    """*rows* (of one project) keyed by the signatures stagelog gives now: a row whose sample, read with the
+    normalizer of the builds before (OLD_VARYING), gives back its signature has the signature the same lines give now;
+    rows that then share one are one, the counts added, first and last seen as the earliest and the latest, the newest
+    one's sample. Of those the row kept, with its state and its Issue, is the one with an open Issue, else any Issue,
+    the earliest seen first; it keeps the short id its Issue's mark and branch were made with (filed_as)."""
+    by: dict[str, list[Row]] = {}
+    for r in rows:
+        old = [e.signature for e in stagelog.errors_in(r.group.sample, stagelog.OLD_VARYING)[0]]
+        now = [e.signature for e in stagelog.errors_in(r.group.sample)[0]]
+        sig = now[old.index(r.signature)] if r.signature in old and len(old) == len(now) else r.signature
+        by.setdefault(sig, []).append(r)
+    out = []
+    for sig, same in by.items():
+        keep = min(same, key=lambda r: (r.issue is None, r.state not in OPEN, r.group.first_seen))
+        newest = max(same, key=lambda r: r.group.last_seen)
+        group = replace(newest.group, signature=sig, first_seen=min(r.group.first_seen for r in same),
+                        count=sum(r.group.count for r in same))
+        out.append(replace(keep, group=group, filed_as=keep.short_id if keep.issue is not None and sig != keep.signature
+                           else keep.filed_as))
+    return out
+
+
 class Ledger:
     """<root>/staging.sqlite: a row per error signature (Row as JSON), each project's log cursor and its deployed
-    commit with when a round first read it. Only the bridge's worker thread uses it."""
+    commit with when a round first read it. Only the bridge's worker thread uses it. One read the first time by a build
+    whose signatures are newer than the ones it was keyed by (PRAGMA user_version < SIGNATURES) is keyed again: rekeyed."""
 
     def __init__(self, path: str) -> None:
         self.db = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
         self.db.executescript(SCHEMA)
+        if self.db.execute("PRAGMA user_version").fetchone()[0] < SIGNATURES:
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                for project in {r.project for r in self.rows()}:
+                    old = self.rows(project)
+                    for r in old:
+                        self.drop(r)
+                    for r in rekeyed(old):
+                        self.put(r)
+                self.db.execute("PRAGMA user_version = %d" % SIGNATURES)
+                self.db.execute("COMMIT")
+            except BaseException:
+                self.db.execute("ROLLBACK")
+                raise
 
     def rows(self, project: str | None = None) -> list[Row]:
         q = "SELECT doc FROM errors" + (" WHERE project=?" if project is not None else "") + " ORDER BY project, signature"
@@ -289,7 +334,7 @@ def issue_text(row: Row, origin: Link | None, web: str, base: str) -> str:
         "日志（最近的一次，最多 %d 行）：" % stagelog.SAMPLE_LINES, "", *_fenced(g.sample), "",
         "运行机会从 %s 开分支 %s 去修，修好以后开 MR（写着 Closes 这个 Issue），等人审、人合并。" % (base, row.branch),
         "不要它修：关掉这个 Issue，或者打上 wontfix 标签。", "",
-        "<!-- %s -->" % (MARK % stagelog.short_id(g.signature))])
+        "<!-- %s -->" % (MARK % row.short_id)])
 
 
 def reopen_text(row: Row, origin: Link | None, web: str) -> str:
@@ -620,7 +665,7 @@ class StagingWatch:
             self.out("staging: %s#%d %s" % (row.project, row.issue.iid, issue_title(row)))
 
         def file(row: Row) -> None:
-            key, mark = (row.project, row.signature), MARK % stagelog.short_id(row.signature)
+            key, mark = (row.project, row.signature), MARK % row.short_id
             found = None if row.issue is not None else next(
                 (i for i in issues if mark in str(i.get("description") or "")), None)
             if found is not None:
