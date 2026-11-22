@@ -243,6 +243,28 @@ def test_messages_kiro_crew_refuses_are_failed_attempts_too(bk, tmp_path):
     assert len(w.gl.notes(P, 1)) == 1 and "（最后一次：KiroCrew 没收下消息）" in w.gl.notes(P, 1)[0]
 
 
+def test_a_fix_whose_workspace_git_keeps_failing_is_an_attempt_from_its_second_time_and_a_fresh_git_lock_waits(
+        bk, tmp_path):
+    """A clone git fails in is said and prepared again next round; each time again is a failed attempt, and
+    MAX_ATTEMPTS stop the fix with one comment on the Issue. A git lock younger than LOCK_STALE_S only waits."""
+    w = started(tmp_path)
+    w.write(zero(), gateway())
+    w.ws.broken[(P, 1)] = "git checkout: fatal: bad object HEAD"
+    w.ws.locked.add((P, 2))
+    seen = []
+    for _ in range(4):
+        w.round()
+        seen.append((w.item(ZERO)["state"], w.item(ZERO)["attempts"], w.item(GATEWAY)["attempts"]))
+    assert seen == [("issued", 0, 0), ("issued", 1, 0), ("stopped", 2, 0), ("stopped", 2, 0)]
+    assert w.gl.notes(P, 1) == ["运行机试了 2 次，没修好这个报错（最后一次：工作区一直没准备好）：它不再自己修，交给人。"
+                                "人修好了或者不修了，就关掉这个 Issue：运行机不会再打开它，以后新的部署里又出现，只在这里说一次。"]
+    assert w.item(GATEWAY)["note"] == "工作区里有 git 没做完留下的锁（.git/index.lock（30 秒前））：没有会话在用它，满 5 分钟就删掉"
+    assert w.sessions.sent == []
+    w.ws.locked.clear()
+    w.round()
+    assert [s for s, _, _ in w.sessions.sent] == ["staging-42-2"]
+
+
 def test_the_fix_mr_is_followed_to_its_merge_and_a_recurrence_on_a_newer_deploy_opens_the_issue_again(bk, tmp_path):
     sl = mod("team.stagelog")
     w = started(tmp_path)

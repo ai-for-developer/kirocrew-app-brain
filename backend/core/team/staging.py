@@ -14,6 +14,7 @@ A row is a state machine (Row.state):
              <project id>-<issue>) at the default branch's head: a branch fix/staging-<id> from it, a test that shows the
              error if it can, the fix, the tests, a push, an MR 「修复：…」 that says Closes #<issue>, a reply on the
              Issue. The row is fixing before its message goes, so a message KiroCrew did not answer is never sent again.
+             Its clone not ready a round again is a failed attempt (a git lock is waited for: patrol.Workspaces).
   fixing     an MR from the fix branch is there: fix_mr. A failed attempt: the turn ended without one, ended with
              KiroCrew's error, or neither within TIMEOUT_S (the turn is stopped), or KiroCrew refused the message;
              issued again, or stopped on the MAX_ATTEMPTS-th.
@@ -64,7 +65,7 @@ NEW, ISSUED, FIXING, FIX_MR, STOPPED, CLOSED, DISMISSED = (
     "new", "issued", "fixing", "fix_mr", "stopped", "closed", "dismissed")
 OPEN = (ISSUED, FIXING, FIX_MR, STOPPED)
 OUTCOME = {"ended": "会话结束了，没开 MR", "failed": "会话报错停了", "timeout": "30 分钟没做完，停掉了",
-           "refused": "KiroCrew 没收下消息"}
+           "refused": "KiroCrew 没收下消息", "workspace": "工作区一直没准备好"}
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,7 @@ class Row:
     outcome: str = ""                   # how the last one ended: OUTCOME's, or mr_closed
     fix_mr: Link | None = None
     said: bool = False                  # stopped, and its Issue was told
+    ws_error: str = ""                  # why its clone was not ready at its last dispatch ("": it was)
 
     @property
     def signature(self) -> str:
@@ -690,9 +692,17 @@ class StagingWatch:
             except patrol.Moved:
                 self._notes[key] = "主分支刚有新的提交：下一轮再派"
                 continue
-            except (common.BrainError, OSError) as exc:
-                self._notes[key] = "工作区没准备好：%s" % _said(exc)
+            except patrol.Locked as exc:
+                self._notes[key] = patrol.locked_note(exc)
+                continue
+            except (common.BrainError, OSError) as exc:     # prepared again next round, a failed attempt when it repeats
                 self.out("%s: its workspace is not ready: %s" % (issue_title(row), _said(exc)))
+                again = bool(row.ws_error)
+                row = replace(failed(row, "workspace") if again else row, ws_error=_said(exc))
+                self.led.put(row)
+                if row.state != STOPPED:
+                    self._notes[key] = "工作区没准备好%s：%s" % ("（第 %d 次，算一次没修好）" % row.attempts if again else "",
+                                                          row.ws_error)
                 continue
             busy += 1
             try:
@@ -728,7 +738,7 @@ class StagingWatch:
             self.led.put(row)
         sid = "S-" + hashlib.sha256(("%s\n%s\n%d\n%r" % (row.slot, row.signature, row.attempts, now)).encode()
                                     ).hexdigest()[:20]
-        went = replace(row, state=FIXING, send_id=sid, dispatched_at=now)
+        went = replace(row, state=FIXING, send_id=sid, dispatched_at=now, ws_error="")
         try:
             self.sessions.patrol_project(row.slot, path)
         except patrol.Refused as exc:

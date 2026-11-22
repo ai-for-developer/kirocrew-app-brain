@@ -442,17 +442,26 @@ class FakeSessions:
 
 
 class FakeWorkspaces:
-    """Workspaces without git: a path per MR; *moved*: the MRs whose origin head is not the one read; *dropped*: the
-    clones deleted, (project id, iid)."""
+    """Workspaces without git: a path per MR (an Issue, for 测试环境报错); *moved*: the MRs whose origin head is not the
+    one read; *locked*: those whose clone holds a young git lock; *broken*: those whose git fails, with what it says;
+    *tried*: every prepare asked for; *dropped*: the clones deleted, (project id, iid)."""
 
     ident = (("user.name", "brain-bot"), ("user.email", RUNNER))
 
     def __init__(self, root: str = "/Users/alice/workplace/brain-team/patrol") -> None:
         self.root, self.prepared, self.moved, self.dropped = root, [], set(), []
+        self.locked: set[tuple[str, int]] = set()
+        self.broken: dict[tuple[str, int], str] = {}
+        self.tried: list[tuple[str, int]] = []
 
     def prepare(self, item):
+        self.tried.append((item.project, item.iid))
         if (item.project, item.iid) in self.moved:
             raise mod("team.patrol").Moved("origin moved")
+        if (item.project, item.iid) in self.locked:
+            raise mod("team.patrol").Locked(".git/index.lock（30 秒前）")
+        if (item.project, item.iid) in self.broken:
+            raise mod("bk").brain_error()(self.broken[(item.project, item.iid)])
         self.prepared.append((item.project, item.iid, item.head_sha))
         return "%s/%d-%d" % (self.root, item.project_id, item.iid)
 

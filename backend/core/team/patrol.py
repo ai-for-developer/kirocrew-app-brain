@@ -24,7 +24,9 @@ The ledger, <root>/patrol.sqlite, has one row per open MR of the projects patrol
                       sent again.
   working -> idle     the turn ended (the review notes it named count as answered then), or the MR head moved
   working -> idle     a failed attempt: TIMEOUT_S without either (the turn is stopped), or a turn that ended without a
-                      reply or with KiroCrew's error. A message KiroCrew refused is a failed attempt as well.
+                      reply or with KiroCrew's error. A message KiroCrew refused is a failed attempt as well, and so is
+                      its clone not ready for the same fingerprint a round again (a git lock a stopped turn left in it
+                      is removed once LOCK_STALE_S old, and waited for until then)
   working -> blocked  the MAX_ATTEMPTS-th failed attempt on one fingerprint: left alone until its fingerprint changes
   idle -> paused      dispatched MAX_STREAK times in a row with no person pushing or commenting in between (each push
                       of the runner's makes a new fingerprint): left alone until a person does
@@ -40,6 +42,7 @@ by another work source, and those whose only problems are bots' comments.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -68,6 +71,7 @@ MAX_DEPTH = 2               # trigger jobs followed down from the MR's pipeline:
 BODY_CHARS = 3000
 NO_PIPELINE_S = 600         # an MR changed this recently with no pipeline at its head yet: read again next round
 RECHECK_S = 600             # an MR that did not change is read again this often (a pipeline run again on its head)
+LOCK_STALE_S = 5 * 60       # a git lock this old in a clone no turn works in was left by a turn stopped mid-commit
 SKIP_LABEL = "ai-skip"
 FINAL_PIPELINE = ("success", "failed", "canceled", "skipped", "manual")
 UNSURE_MERGE = ("checking", "unchecked", "preparing")      # detailed_merge_status before GitLab knows
@@ -496,10 +500,13 @@ class MrRow:
     send_id: str = ""
     sent_notes: tuple[int, ...] = ()    # the review notes and comments that dispatch named
     outcome: str = ""                   # how the last attempt ended: ended | moved | failed | timeout | refused | taken
+                                        # | workspace (its clone was not ready, again: _unready)
     done_fp: str = ""                   # the fingerprint a turn ended on (its notes answered)
     answered: tuple[int, ...] = ()
     marks: tuple[int, ...] = ()         # Read.last_note at each dispatch: what its session could know (open_reviews)
     told: bool = False                  # it is blocked or paused, and the MR was told so
+    ws_fp: str = ""                     # the fingerprint its clone was last not ready for ("": it was ready)
+    ws_error: str = ""                  # ... and why
     claim: dict = field(default_factory=dict)
     seen: str = ""                      # the MR's updated_at and head when it was last read in detail
     read: Read | None = None
@@ -700,9 +707,16 @@ class Refused(Exception):
     in. Its BrainError means no answer: a message may then have landed."""
 
 
+class Locked(Exception):
+    """A git lock in the clone younger than LOCK_STALE_S: the git of a turn just stopped may still be at it. Nothing was
+    touched; the clone is prepared again next round."""
+
+
 @dataclass(frozen=True)
 class Workspaces:
-    """A clone per MR under *root*, made once; before each dispatch fetched and reset to the source branch on origin."""
+    """A clone per MR under *root*, made once; before each dispatch fetched and reset to the source branch on origin.
+    Its callers prepare a clone only while no turn works in it: a git lock a turn stopped mid-commit left there is
+    removed once it is LOCK_STALE_S old."""
     root: str
     clone_url: str                                  # runnerd.json's, {project} in it
     ident: tuple[tuple[str, str], ...] = ()         # git config the commits are made with (runnerd.json's bot)
@@ -739,6 +753,7 @@ class Workspaces:
                 os.rename(tmp, path)
             finally:
                 shutil.rmtree(tmp, ignore_errors=True)
+        unlock(os.path.join(path, ".git"))
         common.git_net(path, "fetch", "-q", "--prune", "origin", timeout=self.git_timeout)
         for args in (("merge", "--abort"), ("rebase", "--abort")):      # what a cut-off turn left half-done
             common.git(path, *args, check=False)
@@ -752,6 +767,27 @@ class Workspaces:
         if head != item.head_sha:
             raise Moved("origin/%s is at %s, the MR at %s" % (branch, head[:12], item.head_sha[:12]))
         return path
+
+
+def locked_note(exc: Locked) -> str:
+    return "工作区里有 git 没做完留下的锁（%s）：没有会话在用它，满 %d 分钟就删掉" % (exc, LOCK_STALE_S // 60)
+
+
+def unlock(git_dir: str) -> None:
+    """The clone's git locks (*.lock in .git and under .git/refs) removed when every one is LOCK_STALE_S old: none of
+    them can be a live git's then, as no turn works in the clone. Locked while one is younger."""
+    locks = [os.path.join(git_dir, n) for n in os.listdir(git_dir) if n.endswith(".lock")]
+    for top, _, names in os.walk(os.path.join(git_dir, "refs")):
+        locks += [os.path.join(top, n) for n in names if n.endswith(".lock")]
+    now = time.time()
+    for lock in locks:
+        with contextlib.suppress(FileNotFoundError):
+            age = now - os.stat(lock).st_mtime
+            if age < LOCK_STALE_S:
+                raise Locked("%s（%d 秒前）" % (os.path.relpath(lock, os.path.dirname(git_dir)), max(0, age)))
+    for lock in locks:
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(lock)
 
 
 def slot_name(project_id: int, iid: int, gen: int) -> str:
@@ -770,6 +806,9 @@ def blocked_text(row: MrRow, item: PatrolItem) -> str:
     if row.outcome == "refused":
         return ("MR 巡检：运行机派了 %d 次，它的会话都没收下，这些还没修：\n%s\n\n请管运行机的人看一下它的 KiroCrew。运行机先不管"
                 "这个 MR；它有新的提交、新的流水线或新的评审意见以后再看。" % (MAX_ATTEMPTS, what))
+    if row.outcome == "workspace":
+        return ("MR 巡检：运行机试了 %d 次，都没能开始修：运行机上这个 MR 的工作区（它的克隆）准备不好。这些还没修：\n%s\n\n请管运行机"
+                "的人看一下运行机页面上这个 MR 的说明。运行机先不管这个 MR；它有新的提交、新的流水线或新的评审意见以后再看。" % (MAX_ATTEMPTS, what))
     return ("MR 巡检：运行机试了 %d 次，没修好这些：\n%s\n\n运行机先不管这个 MR；它有新的提交、新的流水线或新的评审意见以后再看。"
             % (MAX_ATTEMPTS, what))
 
@@ -935,18 +974,25 @@ class Patrol:
             row = replace(row, state=IDLE)
         if standing(row, item) == "todo" and row.streak >= MAX_STREAK:
             row = replace(row, state=PAUSED, told=False)
-        if row.state in (BLOCKED, PAUSED) and not row.told:
-            try:
-                self.gl.comment(e.project, item.iid, blocked_text(row, item))
-                row = replace(row, told=True)
-            except bk.m("common").BrainError as exc:    # told next round
-                self.out("%s!%d: the blocked comment is not posted yet: %s" % (e.project, item.iid, _said(exc)))
+        row = self._told(e, row, item)
         led.put(row)
         e.row, e.item, e.standing = row, item, standing(row, item)
         if e.standing == "ok" and row.read.bot_notes:
             e.skip, e.standing = Skip("bots_only", "只有机器人写的评论，没有要修的"), "skipped"
         if e.standing == "todo" and any(c.later for c in row.read.checks):
             e.standing, e.note = "waiting", "Jenkins 的日志这一轮没读完：下一轮读完再派"
+
+    def _told(self, e: Entry, row: MrRow, item: PatrolItem) -> MrRow:
+        """*row*, its MR told once that it is blocked or paused (blocked_text): told again next round when GitLab did
+        not take it."""
+        if row.state not in (BLOCKED, PAUSED) or row.told:
+            return row
+        try:
+            self.gl.comment(e.project, item.iid, blocked_text(row, item))
+        except bk.m("common").BrainError as exc:
+            self.out("%s!%d: the blocked comment is not posted yet: %s" % (e.project, item.iid, _said(exc)))
+            return row
+        return replace(row, told=True)
 
     def _watched(self, e: Entry, row: MrRow, item: PatrolItem) -> MrRow:
         """*row*, its streak over when a person commented or pushed since its last dispatch (a pause lifts with it). A
@@ -1041,9 +1087,12 @@ class Patrol:
             except Moved:
                 e.standing, e.note = "waiting", "MR 刚有新的提交：下一轮再看"
                 continue
-            except (common.BrainError, OSError) as exc:     # git: tried again next round
-                e.standing, e.note = "error", "工作区没准备好：%s" % _said(exc)
+            except Locked as exc:
+                e.standing, e.note = "waiting", locked_note(exc)
+                continue
+            except (common.BrainError, OSError) as exc:     # git: tried again next round, an attempt when it repeats
                 self.out("%s!%s: its workspace is not ready: %s" % (e.project, e.mr.get("iid"), _said(exc)))
+                self._unready(e, _said(exc))
                 continue
             busy += 1
             try:
@@ -1051,6 +1100,23 @@ class Patrol:
             except common.BrainError as exc:                # its session not opened or set up: nothing was sent
                 e.standing, e.note = "error", "没派出去：%s" % _said(exc)
                 self.out("%s!%s: not dispatched: %s" % (e.project, e.mr.get("iid"), _said(exc)))
+
+    def _unready(self, e: Entry, why: str) -> None:
+        """*e*'s clone not ready: prepared again next round. When it was not ready for this fingerprint the round before
+        either, a failed attempt, as a turn that failed: MAX_ATTEMPTS block the MR, with one comment."""
+        item, row = e.item, replace(e.row, ws_error=why)
+        if row.ws_fp != item.fingerprint:
+            row = replace(row, ws_fp=item.fingerprint)
+        else:
+            row = _failed(replace(row, head_sha=item.head_sha, pipeline_id=item.pipeline_id, status_ids=item.status_ids,
+                                  conflict=item.conflict, fingerprint=item.fingerprint,
+                                  attempts=row.attempts + 1 if row.fingerprint == item.fingerprint else 1), "workspace")
+            row = self._told(e, row, item)
+        self.led.put(row)
+        e.row, e.standing = row, standing(row, item)
+        if e.standing != "blocked":
+            e.standing, e.note = "error", "工作区没准备好%s：%s" % ("（第 %d 次，算一次没修好）" % row.attempts
+                                                           if row.outcome == "workspace" else "", why)
 
     def _send(self, e: Entry, path: str, now: float) -> None:
         """e's problems to its MR's session, which is opened the first time and kept for as long as the MR is open.
@@ -1074,6 +1140,7 @@ class Patrol:
                        status_ids=item.status_ids, conflict=item.conflict,
                        fingerprint=item.fingerprint, attempts=attempts, streak=row.streak + 1,
                        people_note=row.read.people_note, checked_head=item.head_sha, dispatched_at=now, send_id=sid,
+                       ws_fp="", ws_error="",
                        sent_notes=item.note_ids, marks=row.marks + (row.read.last_note,), outcome="")
         try:
             self.sessions.patrol_project(row.slot, path)
@@ -1112,6 +1179,8 @@ def _seen(mr: Mapping[str, Any]) -> str:
 def _note(standing: str, row: MrRow | None) -> str:
     if standing == "blocked" and row is not None and row.state == PAUSED:
         return "连着派了 %d 次，中间没有人推送或评论，在 MR 上说了：等人推送或评论" % MAX_STREAK
+    if standing == "blocked" and row is not None and row.outcome == "workspace":
+        return "工作区一直没准备好（%s），在 MR 上说了：等它有新变化" % row.ws_error
     if standing == "blocked" and row is not None:
         tried = "派了 %d 次，会话都没收下" if row.outcome == "refused" else "试了 %d 次没修好"
         return (tried % row.attempts) + "，在 MR 上说了：等它有新变化"

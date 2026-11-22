@@ -12,9 +12,11 @@ import hashlib
 import importlib.util
 import json
 import logging
+import os
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -793,6 +795,33 @@ def test_a_project_patrol_is_no_longer_on_has_its_turns_stopped_its_clones_delet
     assert [(r.project, r.iid, r.state) for r in w.patrol.led.rows()] == [("grp/third", 1, "working")]
 
 
+def test_a_workspace_git_keeps_failing_on_is_an_attempt_from_its_second_time_and_a_fresh_git_lock_waits(bk, tmp_path):
+    """A clone git fails in (a corrupt clone, say) is said and prepared again next round; failing again for the same
+    fingerprint, each time is a failed attempt, and MAX_ATTEMPTS block the MR with one comment. A git lock younger than
+    LOCK_STALE_S only waits: no attempt however long; once it is gone the MR goes out."""
+    patrol = mod("team.patrol")
+    w = World(tmp_path)
+    gl, ws = w.gl, w.ws
+    gl.mr(P, 1, **conflicted())
+    gl.mr(P, 2, **conflicted())
+    ws.broken[(P, 1)] = "git checkout: fatal: bad object HEAD"
+    ws.locked.add((P, 2))
+    seen = []
+    for _ in range(5):
+        w.round()
+        w.later()
+        seen.append((w.item(1)["state"], w.item(1)["attempts"], w.item(2)["state"], w.item(2)["attempts"]))
+    assert seen == [("error", 0, "waiting", 0), ("error", 1, "waiting", 0)] + [("blocked", 2, "waiting", 0)] * 3
+    assert ws.tried.count((P, 1)) == 3 and w.slots() == []
+    told, = gl.posted("notes")
+    assert patrol.STOPPED_RE.match(told["body"]) and "工作区" in told["body"] and "bad object" not in told["body"]
+    assert w.item(1)["note"] == "工作区一直没准备好（git checkout: fatal: bad object HEAD），在 MR 上说了：等它有新变化"
+    assert w.item(2)["note"] == "工作区里有 git 没做完留下的锁（.git/index.lock（30 秒前））：没有会话在用它，满 5 分钟就删掉"
+    ws.locked.clear()
+    w.round()
+    assert w.slots() == ["patrol-42-2"] and w.item(2)["attempts"] == 1
+
+
 def test_a_message_kiro_crew_refuses_is_an_attempt_on_the_mr_s_one_session_and_two_block_it_with_one_comment(
         bk, tmp_path):
     w = World(tmp_path)
@@ -878,6 +907,37 @@ def test_a_workspace_is_cloned_once_then_reset_to_the_source_branch_on_origin(bk
     assert (path / "b.txt").read_text() == "2\n" and not (path / "junk.txt").exists()
     with pytest.raises(patrol.Moved):
         ws.prepare(item)                # origin moved past the head the round read
+
+
+def test_a_git_lock_a_turn_stopped_mid_commit_left_is_removed_once_it_is_stale(bk, home, tmp_path):
+    """No turn works in the clone when it is prepared: a git lock younger than LOCK_STALE_S may still be a git of a turn
+    just stopped, so the clone waits (Locked) and nothing is touched; once older, every lock goes and the clone is reset
+    as ever."""
+    patrol = mod("team.patrol")
+    origin = tmp_path / "origin" / "grp" / "repo.git"
+    origin.parent.mkdir(parents=True)
+    sh("git", "init", "-q", "--bare", origin)
+    src = git_repo(tmp_path / "src")
+    commit_file(src, "a.txt", "1\n", "one")
+    sh("git", "-C", src, "checkout", "-q", "-b", "feature")
+    head = commit_file(src, "b.txt", "2\n", "two")
+    sh("git", "-C", src, "push", "-q", origin, "main", "feature")
+    ws = patrol.Workspaces(str(home / "workplace" / "brain-team" / "patrol"), str(tmp_path / "origin") + "/{project}.git",
+                           (("user.name", "brain-bot"), ("user.email", "brain-bot@noreply.invalid")))
+    item = patrol.PatrolItem(P, PID, 7, "t", None, "feature", "main", head, ())
+    path = Path(ws.prepare(item))
+    (path / "b.txt").write_text("a turn stopped half-way through its commit\n")
+    locks = [path / ".git" / "index.lock", path / ".git" / "refs" / "heads" / "feature.lock"]
+    for lock in locks:
+        lock.write_text("")
+    with pytest.raises(patrol.Locked, match="index.lock"):
+        ws.prepare(item)
+    assert all(lock.exists() for lock in locks) and (path / "b.txt").read_text().startswith("a turn")
+    stale = time.time() - patrol.LOCK_STALE_S - 1
+    for lock in locks:
+        os.utime(lock, (stale, stale))
+    assert ws.prepare(item) == str(path)
+    assert not any(lock.exists() for lock in locks) and (path / "b.txt").read_text() == "2\n"
 
 
 def reply_tool():
