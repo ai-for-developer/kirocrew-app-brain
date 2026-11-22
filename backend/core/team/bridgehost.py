@@ -13,6 +13,9 @@ patched or subclassed. What the app changes:
   (brain-intake gets its copy from the signer, its only writer);
 - bridge.json must not name a ``signing_key``; ``kirocrew.base/app/secret_file`` are not used (the app talks to its
   own gateway);
+- GitLab: every part holds one client (signin.Renewing); when a call finds that the sign-in of a GitLab behind single
+  sign-on ended, the next round makes the client again, so a new sign-in on this machine is used without a restart,
+  and the status says so until then;
 - poll: the app runs ``Bridge.poll``'s loop itself (every project, every MR with the hand-over label,
   ``Bridge.process``) to keep what process() said for each MR for the page: accepted, rejected, seen (that head and
   label event were checked before), and brain-kit 72b278e's unlabelled (the newest event on the label takes it off:
@@ -53,7 +56,7 @@ from collections import deque
 from datetime import timedelta
 from typing import Any, Mapping
 
-from .. import bk, deliveries, flowview, lean_view, problems, snapshot
+from .. import bk, deliveries, flowview, lean_view, problems, signin, snapshot
 from ..constants import APP_ROOT, PYTHON_BIN, VERSION
 from ..repo import Git, Source, read_claim, read_facts
 from ..scrub import scrub_tree
@@ -69,6 +72,8 @@ REQ_RE = re.compile(r"^[a-z]+-[A-Za-z0-9-]{1,80}-[0-9a-f]{12}\.json$")
 NO_PUSH = ("这台机器不推代码（没有 runnerd.json）：在 GitLab 上先建好 brain/status，一个没有父提交的分支（git push 一个孤立提交），"
            "团队服务器就往里写")
 OUT_OF_TIME = "全队交付这一轮没读完（%d 秒到了），下一轮接着读：下面是上次读完的" % relay_mod.BUDGET_S
+SIGN_IN_TEXT = "GitLab 的登录过期了：桥现在读不了 GitLab"
+SIGN_IN_TODO = "在这台机器上重新登录 GitLab（单点登录）：下一轮桥自己接上，不用重启，也不用再保存设置"
 MAX_SPOOL_FILE = 64 * 1024
 PENDING_WINDOW_S = 3600   # brain-kit's Ledger.pending_voucher(newer_than=3600): older ones are not asked for again
 LEDGER_TABLES = ("runs", "decisions", "handoffs", "outbox", "notices")
@@ -137,6 +142,7 @@ class TeamRuntime:
         # kick (tests): run the signer while the SpoolSigner waits; sign_timeout: instead of bridge.json's
         self.transport, self.kick, self.sign_timeout = transport, kick, sign_timeout
         self.host: Any = None
+        self.gl: signin.Renewing | None = None     # the GitLab client every part of it holds (signin.py)
         self.patrol: patrol_mod.Patrol | None = None
         self.staging: staging_mod.StagingWatch | None = None
         self.issues: issues_mod.IssueSource | None = None
@@ -199,7 +205,7 @@ class TeamRuntime:
             if not gcfg.get("base") or not tok:
                 raise common.BrainError("bridge.json 的 gitlab.base 没写，或者读不到 GitLab token（%s / %s）"
                                         % (gcfg.get("token_env", "BRIDGE_GITLAB_TOKEN"), gcfg.get("token_file", rest.DEFAULT_TOKEN_FILE)))
-            gl = rest.GitLab(gcfg["base"], tok, self.transport)
+            gl = signin.Renewing(lambda: rest.GitLab(gcfg["base"], tok, self.transport))
             jc = cfg.get("jira") or {}
             jira = None
             if jc.get("base"):
@@ -238,12 +244,12 @@ class TeamRuntime:
                 clones=issues_mod.Clones.of(rcfg) if rcfg and rcfg.get("runs_root") and rcfg.get("clone_url") else None,
                 claims=lambda: sources.held(self), out=self._out)
             self.relay, self.deliveries = self._relay(cfg, gl, rcfg, config)
-            self.cfg, self.runnerd_cfg, self.spool, self.allowed_signers = cfg, rcfg, spool, allowed
+            self.cfg, self.runnerd_cfg, self.spool, self.allowed_signers, self.gl = cfg, rcfg, spool, allowed, gl
             self.error = ""
             return True
         except Exception as exc:  # noqa: BLE001
             self.error = str(exc).split("\n", 1)[0][:400]
-            self.host = self.patrol = self.staging = self.issues = self.relay = self.deliveries = None
+            self.host = self.patrol = self.staging = self.issues = self.relay = self.deliveries = self.gl = None
             return False
 
     def _relay(self, cfg: dict[str, Any], gl: Any, rcfg: dict[str, Any] | None,
@@ -298,6 +304,11 @@ class TeamRuntime:
         summary: dict[str, int] = {}
         errors: list[str] = []
         with self._lock:
+            if self.gl is not None and self.gl.expired:     # the sign-in ended last round: a new sign-in is used now
+                try:
+                    self.gl.renew()
+                except Exception as exc:  # noqa: BLE001 - the helper cannot be loaded, or says to sign in
+                    errors.append(self._failed("signin", exc))
             for step in ("poll", "issues", "runnerd", "dispatch", "watch", "collect", "reconcile", "patrol", "staging"):
                 try:
                     if step == "issues":
@@ -647,10 +658,19 @@ class TeamRuntime:
         why = problems.team_start(self.error)   # the start error in words; as it was (file names, keys) for 细节
         return {"enabled": bool(self.team.get("enabled")), "ok": self.host is not None and not self.error,
                 "error": why["text"], "error_todo": why["todo"], "error_raw": why["raw"],
-                "last_loop_at": self.last_loop_at, "loop_error": self.loop_error, "checks": list(self.poll_checks),
+                "last_loop_at": self.last_loop_at, "loop_error": self.loop_error,
+                "checks": list(self.poll_checks) + self.signin_checks(),
                 "same_user": self.same_user,
                 "signer": {"pending": len(sig["pending"]), "refused": len(sig["refused"])},
                 "relay": self.relay.view() if self.relay is not None else None}
+
+    def signin_checks(self) -> list[dict[str, Any]]:
+        """The sign-in of a GitLab behind single sign-on ended (signin.py): in plain words until a call goes through
+        again, which is the round after the person signs in again on this machine."""
+        gl = self.gl
+        if gl is None or not gl.expired:
+            return []
+        return [problems.mk("FAIL", SIGN_IN_TEXT, SIGN_IN_TODO, raw=self.scrub(gl.expired))]
 
     def signer_view(self) -> dict[str, Any]:
         return spool_view(self.spool) if self.host is not None and self.spool else {"pending": [], "refused": []}

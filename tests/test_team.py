@@ -17,6 +17,7 @@ import threading
 
 import pytest
 
+import signinfix
 from appkit import mod, sh
 from brainfix import FakeGateway, make_service, needs_brainkit, run
 from teamfix import BRANCH, PARK, push_park, spool_request, world  # noqa: F401  (world: the fixture)
@@ -242,6 +243,42 @@ def test_a_contract_signed_late_is_taken_the_next_round(world, tmp_path):
     signed = os.listdir(tmp_path / "signer-vouchers" / "RUN-PAY-1-1")
     assert signed == [pending["voucher_id"] + ".json"]
     assert os.listdir(tmp_path / "app-vouchers" / "RUN-PAY-1-1") == signed
+    assert any(b.startswith("AI 已接手：RUN-PAY-1-1") for b in world["gl"].bodies())
+
+
+@pytest.mark.parametrize("kind, says", [("new", False), ("refresh", True), ("per-call", False)])
+def test_a_new_sign_in_is_picked_up_by_the_next_round_without_a_restart(world, tmp_path, kind, says):
+    """GitLab sits behind single sign-on and the session ends: the sign-in helper's transport gets the sign-in page
+    (or the helper says the session expired). Each round says so in plain words on the 运行机 page; the person signs in
+    again on the machine and the next round reads GitLab and takes the hand-over, with the same team mode: no restart,
+    设置 not saved. A helper whose transports keep their sign-in gets asked for a new one, one with refresh() is
+    refreshed, one that reads the sign-in on every call needs nothing."""
+    sso = signinfix.install(world["gl"], kind, says=says)
+    sso.expire()
+    svc = make_service(tmp_path / "app", [], team=world["team"], transport=None, kick=lambda: world["signer"].once())
+    svc.sign_timeout = 5
+
+    async def go():
+        await svc.start()
+        try:
+            rt = svc.team
+            assert rt is not None and rt.host is not None, rt and rt.error
+            out = [await svc.team_loop(), (await svc.status())["team"], await svc.team_loop()]
+            sso.sign_in_again()
+            out += [await svc.team_loop(), (await svc.status())["team"], await svc.team_view()]
+            return [rt is svc.team] + out
+        finally:
+            await svc.stop()
+
+    same, first, st1, again, second, st2, view = run(go())
+    assert not first["ok"] and not again["ok"]
+    (row,) = [c for c in st1["checks"] if "登录" in c["text"]]
+    assert (row["level"], row["text"]) == ("FAIL", "GitLab 的登录过期了：桥现在读不了 GitLab")
+    assert row["todo"] == "在这台机器上重新登录 GitLab（单点登录）：下一轮桥自己接上，不用重启，也不用再保存设置"
+    assert ("session expired" if says else "sign-in page") in row["raw"]
+    assert second["ok"], second
+    assert [(h["iid"], h["result"]) for h in view["handovers"]] == [(5, "accepted")]
+    assert not any("登录" in c["text"] for c in st2["checks"]) and same
     assert any(b.startswith("AI 已接手：RUN-PAY-1-1") for b in world["gl"].bodies())
 
 
