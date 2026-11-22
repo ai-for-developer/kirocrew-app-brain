@@ -313,6 +313,48 @@ def test_a_failed_trigger_job_is_the_pipeline_s_own_not_a_check_external_ci_repo
     assert w.jk.calls == [] and w.patrol.led.get(P, 7).status_ids == ()
 
 
+def test_a_merged_results_pipeline_is_the_mr_s_own_and_one_of_an_older_head_is_not(bk, tmp_path):
+    """GitLab runs an MR's pipeline on the merge of its head into the target branch (merged results): its sha is that
+    merge commit's, not the head's. It is the MR's head pipeline while a parent of that commit is the head; one an older
+    head left behind (an older GitLab keeps it as head_pipeline after a push) is not."""
+    w = World(tmp_path)
+    gl = w.gl
+    gl.mr(P, 7)
+    pid = gl.merged_result(P, 7, {"test": b"FAILED test_discount\n"})
+    w.round()
+    assert w.item(7)["problems"] == [{"kind": "ci_failed", "text": "流水线 #%d 没过：test" % pid}]
+    assert "   - test：\n     > FAILED test_discount\n" in w.sessions.messages("patrol-42-7")[0]
+    w.sessions.end()
+    gl.push(P, 7, SHA[2], by="alice@example.com")
+    gl.mrs[(P, 7)]["_pipeline"] = gl.pipes[pid]
+    w.later()
+    w.round()
+    assert (w.item(7)["state"], w.item(7)["problems"]) == ("ok", []) and len(w.sessions.sent) == 1
+
+
+def test_a_child_pipeline_s_failed_jobs_go_out_through_the_trigger_job_that_started_it(bk, tmp_path):
+    """A pipeline fails because one its trigger job started failed (strategy: depend), with no failed job of its own:
+    the session gets that pipeline's failed jobs and their logs, each named by the trigger job, a child's child too;
+    a trigger job whose pipeline GitLab never made says why. None of them is a check external CI reported."""
+    w = World(tmp_path)
+    gl = w.gl
+    gl.mr(P, 7)
+    pid = gl.pipeline(P, 7, "success")
+    inner = gl.child(P, SHA[1], {"e2e": b"FAILED test_checkout\n"})
+    kid = gl.child(P, SHA[1], {"unit": b"FAILED test_child\n"})
+    gl.trigger(P, kid, "browser", child=inner)
+    gl.trigger(P, pid, "frontend", child=kid)
+    gl.trigger(P, pid, "deploy-review", reason="downstream_pipeline_creation_failed")
+    w.round()
+    assert w.item(7)["problems"] == [{"kind": "ci_failed", "text": "流水线 #%d 没过：frontend › unit、frontend › browser › "
+                                                                     "e2e、deploy-review" % pid}]
+    msg = w.sessions.messages("patrol-42-7")[0]
+    assert "   - frontend › unit：\n     > FAILED test_child\n" in msg
+    assert "   - frontend › browser › e2e：\n     > FAILED test_checkout\n" in msg
+    assert "   - deploy-review：\n     > （它要触发的流水线没建成：downstream_pipeline_creation_failed）\n" in msg
+    assert "外部 CI" not in msg and w.patrol.led.get(P, 7).status_ids == ()
+
+
 def test_a_ledger_from_before_failed_checks_counted_keeps_the_mrs_it_worked_worked(bk, tmp_path):
     """A row as a runner without them wrote it (no status_ids, its fingerprints of the head, the pipeline, the conflict
     and the notes alone) reads as before: the failed pipeline its turn ended on is not sent again."""

@@ -3,15 +3,16 @@ whose kit.json switches it on. An MR with a problem the runner can fix goes to a
 patrol-<project id>-<iid>), working in a clone of its own (<work>/patrol/<project id>-<iid>: KiroCrew lets agents work
 only under ~/workplace). Later problems of that MR go to the same session.
 
-A problem is one of four. The MR head's pipeline failed: its failed jobs, each with the last LOG_LINES lines of its
-log, and the failed checks external CI reported into it as commit statuses (Jenkins' GitLab plugin: a pipeline of
-source external has nothing else), which GitLab has no job of: each with its link and the last lines of its log from
-Jenkins (jenkins.py), or why there is none. A person left a review thread open: unresolved and resolvable, with no
-reply of patrol's own after it, and not named in a turn that ended. A person wrote a plain comment on the MR (no
-thread, so nothing marks it resolved) since patrol started in the project, not named in a turn that ended: the session
-answers it with a note on the MR that quotes it. Or the MR conflicts with its target branch. The MR's problems make a
-PatrolItem. Its fingerprint moves with the head, a failed pipeline, a new build of a failed check, the conflict and
-the open review notes and comments, and nothing else.
+A problem is one of four. The MR head's pipeline failed (one on the head, or on its merge into the target branch: merged
+results): its failed jobs, each with the last LOG_LINES lines of its log, those of the pipelines its failed trigger jobs
+started (child pipelines), and the failed checks external CI reported into it as commit statuses (Jenkins' GitLab
+plugin: a pipeline of source external has nothing else), which GitLab has no job or trigger job of: each with its link
+and the last lines of its log from Jenkins (jenkins.py), or why there is none. A person left a review thread open:
+unresolved and resolvable, with no reply of patrol's own after it, and not named in a turn that ended. A person wrote a
+plain comment on the MR (no thread, so nothing marks it resolved) since patrol started in the project, not named in a
+turn that ended: the session answers it with a note on the MR that quotes it. Or the MR conflicts with its target
+branch. The MR's problems make a PatrolItem. Its fingerprint moves with the head, a failed pipeline, a new build of a
+failed check, the conflict and the open review notes and comments, and nothing else.
 
 The ledger, <root>/patrol.sqlite, has one row per open MR of the projects patrol is on (MrRow). It is a state machine
 (settle, Patrol._look and Patrol._send):
@@ -62,6 +63,7 @@ MAX_STREAK = 3              # dispatches in a row with no person pushing or comm
 LOG_LINES = 80              # of each failed job's log
 LOG_LINE_CHARS = 300
 MAX_JOBS = 5
+MAX_DEPTH = 2               # trigger jobs followed down from the MR's pipeline: to a child's child, no further
 BODY_CHARS = 3000
 NO_PIPELINE_S = 600         # an MR changed this recently with no pipeline at its head yet: read again next round
 RECHECK_S = 600             # an MR that did not change is read again this often (a pipeline run again on its head)
@@ -280,14 +282,15 @@ def plain_comments(discussions: list[dict[str, Any]], own: set[str], bots: set[s
 
 def read_mr(gl: Any, jenkins: Jenkins, project: str, mr: Mapping[str, Any], own: set[str], bots: set[str],
             since: float, before: Read | None = None) -> Read:
-    """GitLab's MR (its head pipeline); when that pipeline failed, its failed jobs with their logs and the failed
-    checks external CI reported into it (failed_checks); its threads, and its plain comments written *since* (patrol
-    started in the project). *before*'s jobs while it is the same failed pipeline; its checks are read again unless it
-    is GitLab's own and had none: a Jenkins build run again lands in the same pipeline."""
+    """GitLab's MR (its head pipeline, at_head); when that pipeline failed, its failed jobs with their logs, its child
+    pipelines' too (pipeline_failures), and the failed checks external CI reported into it (failed_checks); its
+    threads, and its plain comments written *since* (patrol started in the project). *before*'s jobs while it is the
+    same failed pipeline; its checks are read again unless it is GitLab's own and had none: a Jenkins build run again
+    lands in the same pipeline."""
     rest = bk.m("rest")
     iid = int(mr["iid"])
     hp = (gl.mr(project, iid) or {}).get("head_pipeline")
-    hp = hp if isinstance(hp, dict) and hp.get("id") and hp.get("sha") in (None, mr.get("sha")) else None
+    hp = hp if isinstance(hp, dict) and hp.get("id") and at_head(gl, project, mr, hp) else None
     pid, status = (int(hp["id"]), str(hp.get("status") or "")) if hp else (None, "")
     external = bool(hp) and hp.get("source") == "external"
     same = before is not None and (before.pipeline_id, before.pipeline_status) == (pid, status)
@@ -296,12 +299,9 @@ def read_mr(gl: Any, jenkins: Jenkins, project: str, mr: Mapping[str, Any], own:
     if status == "failed" and pid and same and not external and not before.checks:
         jobs = before.jobs
     elif status == "failed" and pid:
-        listed = [] if external else [j for j in gl.pipeline_jobs(project, pid) if isinstance(j, dict) and j.get("id")]
-        jobs = before.jobs if same else tuple(
-            FailedJob(str(j.get("name") or j["id"]), log_tail(gl.job_trace(project, int(j["id"]))))
-            for j in [j for j in listed if not j.get("allow_failure")][:MAX_JOBS])
-        own = {int(j["id"]) for j in listed + ([] if external else bridges_of(gl, project, pid))}
-        checks = failed_checks(gl, jenkins, project, str(mr.get("sha") or ""), pid, own,
+        found, own = ([], set()) if external else pipeline_failures(gl, project, pid, logs=not same)
+        jobs = before.jobs if same else tuple(found)
+        checks = failed_checks(gl, jenkins, project, str(hp.get("sha") or mr.get("sha") or ""), pid, own,
                                before.checks if before is not None else ())
     threads = gl.pages("/projects/%s/merge_requests/%d/discussions" % (rest.q(project), iid), {}, 100, 20,
                        "discussions on !%d" % iid)
@@ -312,7 +312,26 @@ def read_mr(gl: Any, jenkins: Jenkins, project: str, mr: Mapping[str, Any], own:
                 tuple(plain_comments(threads, own, bots, since)), checks)
 
 
-def bridges_of(gl: Any, project: str, pipeline_id: int) -> list[dict[str, Any]]:
+def at_head(gl: Any, project: Any, mr: Mapping[str, Any], hp: Mapping[str, Any]) -> bool:
+    """Whether *hp*, GitLab's head pipeline of the MR, ran for its head: on the head itself, or on the merge of the head
+    into the target branch (merged results, a merge train: ref refs/merge-requests/<iid>/merge or /train, on a merge
+    commit one of whose parents is the head). An older GitLab keeps an older head's pipeline there for a while."""
+    sha, head = hp.get("sha"), str(mr.get("sha") or "")
+    if sha in (None, head):
+        return True
+    if hp.get("ref") not in ["refs/merge-requests/%d/%s" % (int(mr["iid"]), r) for r in ("merge", "train")]:
+        return False
+    rest = bk.m("rest")
+    try:
+        merge = gl.call("GET", "/projects/%s/repository/commits/%s" % (rest.q(project), rest.q(sha))) or {}
+    except rest.HttpError as exc:
+        if exc.status != 404:
+            raise
+        return False
+    return head in (merge.get("parent_ids") or ())
+
+
+def bridges_of(gl: Any, project: Any, pipeline_id: int) -> list[dict[str, Any]]:
     """The pipeline's failed trigger jobs (GitLab's bridges: pipelines/:id/jobs leaves them out); none when GitLab does
     not show them (403, 404)."""
     rest = bk.m("rest")
@@ -324,6 +343,45 @@ def bridges_of(gl: Any, project: str, pipeline_id: int) -> list[dict[str, Any]]:
             raise
         return []
     return [b for b in rows or [] if isinstance(b, dict) and b.get("id")]
+
+
+def pipeline_failures(gl: Any, project: Any, pipeline_id: int, logs: bool = True, depth: int = 0,
+                      prefix: str = "") -> tuple[list[FailedJob], set[int]]:
+    """(the failed jobs of the pipeline, each with the last lines of its log, then through each failed trigger job the
+    failed jobs of the pipeline it started: a child pipeline, or another project's, named by the trigger job, MAX_DEPTH
+    down; the ids of its failed jobs and trigger jobs, which GitLab lists among its commit statuses too). *logs* False:
+    the ids alone. Jobs allowed to fail are left out, MAX_JOBS at most."""
+    listed = [j for j in gl.pipeline_jobs(project, pipeline_id) if isinstance(j, dict) and j.get("id")]
+    triggers = bridges_of(gl, project, pipeline_id)
+    ids = {int(j["id"]) for j in listed + triggers}
+    if not logs:
+        return [], ids
+    out = [FailedJob(prefix + str(j.get("name") or j["id"]), log_tail(gl.job_trace(project, int(j["id"]))))
+           for j in listed if not j.get("allow_failure")][:MAX_JOBS]
+    for b in triggers:
+        if len(out) < MAX_JOBS and not b.get("allow_failure"):
+            out += downstream_failures(gl, project, b, depth, prefix + str(b.get("name") or b["id"]))
+    return out[:MAX_JOBS], ids
+
+
+def downstream_failures(gl: Any, project: Any, trigger: Mapping[str, Any], depth: int, name: str) -> list[FailedJob]:
+    """The failed jobs of the pipeline the failed *trigger* job started, each named *name* › its own; when there are
+    none to show, the trigger job itself with why in place of its log."""
+    rest = bk.m("rest")
+    down = trigger.get("downstream_pipeline") if isinstance(trigger.get("downstream_pipeline"), dict) else {}
+    if not down.get("id"):
+        why = str(trigger.get("failure_reason") or "")
+        return [FailedJob(name, "（它要触发的流水线没建成%s）" % ("：" + why if why else ""))]
+    if depth >= MAX_DEPTH:
+        return [FailedJob(name, "（它触发的流水线 #%d 没过：再往下的没读）" % int(down["id"]))]
+    try:
+        found, _ = pipeline_failures(gl, down.get("project_id") or project, int(down["id"]), True, depth + 1,
+                                     name + " › ")
+    except rest.HttpError as exc:
+        if exc.status not in (403, 404):
+            raise
+        return [FailedJob(name, "（它触发的流水线 #%d 运行机读不到：HTTP %d）" % (int(down["id"]), exc.status))]
+    return found or [FailedJob(name, "（它触发的流水线 #%d 没过，里面没有没过的任务）" % int(down["id"]))]
 
 
 def failed_checks(gl: Any, jenkins: Jenkins, project: str, sha: str, pipeline_id: int, jobs: set[int],

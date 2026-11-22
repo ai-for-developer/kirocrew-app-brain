@@ -85,6 +85,7 @@ class PatrolGitLab:
         self.external_statuses: dict[int, list[dict]] = {}
         self.jenkins: FakeJenkins | None = None
         self.commits: dict[tuple[str, str], tuple[str, str]] = {}    # (project, sha) -> (its parent, its committer)
+        self.merges: dict[tuple[str, str], list[str]] = {}           # (project, merge commit) -> its parents
         self.ranges = True          # False: GitLab will not list a range of commits (ref_name old..new is a 400)
         self.traces: dict[int, bytes] = {}
         self.calls: list[tuple] = []
@@ -130,6 +131,17 @@ class PatrolGitLab:
         pid = next(self.ids)
         self.jobs[pid] = []
         m["_pipeline"] = self.pipes[pid] = {"id": pid, "status": status, "sha": m["sha"]}
+        return pid
+
+    def merged_result(self, path: str, iid: int, jobs: dict[str, bytes]) -> int:
+        """A failed pipeline GitLab ran for the MR on the merge of its head into the target branch (merged results): on
+        a merge commit of its own, whose parents are the target's head and the MR's, ref refs/merge-requests/<iid>/merge,
+        its failed jobs with these logs. -> its id."""
+        m = self.mrs[(path, iid)]
+        merge = "%040x" % next(self.ids)
+        self.merges[(path, merge)] = [SHA[9], m["sha"]]
+        pid = self.fail(path, iid, jobs)
+        m["_pipeline"].update(sha=merge, ref="refs/merge-requests/%d/merge" % iid, source="merge_request_event")
         return pid
 
     def trigger(self, path: str, pid: int, name: str, status: str = "failed", child: int | None = None,
@@ -296,8 +308,11 @@ class PatrolGitLab:
         if s and method == "GET":
             return ok(self.page(self.commit_statuses(name, s.group(1), q.get("pipeline_id")), q))
         c = re.fullmatch(r"/repository/commits/([0-9a-f]{40})", rest)
+        if c and method == "GET" and (name, c.group(1)) in self.merges:
+            return ok({"id": c.group(1), "parent_ids": self.merges[(name, c.group(1))], "committer_email": ""})
         if c and method == "GET" and (name, c.group(1)) in self.commits:
-            return ok({"id": c.group(1), "committer_email": self.commits[(name, c.group(1))][1]})
+            parent, by = self.commits[(name, c.group(1))]
+            return ok({"id": c.group(1), "parent_ids": [parent], "committer_email": by})
         if rest == "/repository/commits" and method == "GET" and ".." in q.get("ref_name", ""):
             if not self.ranges:
                 return ok({"message": "400 Bad request - ref_name is invalid"}, 400)
