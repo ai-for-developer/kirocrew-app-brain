@@ -489,7 +489,10 @@ class StagingWatch:
         it waits on, and one whose MR is open while its turn has not ended (its reply on the Issue)."""
         if not self._ledger_there():
             return 0
-        return sum(1 for r in self.led.rows() if r.state == FIXING or (r.state == FIX_MR and self._turn(r) == "running"))
+        return sum(1 for r in self.led.rows() if self._busy(r))
+
+    def _busy(self, row: Row) -> bool:
+        return row.state == FIXING or (row.state == FIX_MR and self._turn(row) == "running")
 
     def view(self) -> dict[str, Any]:
         return self.last
@@ -530,7 +533,10 @@ class StagingWatch:
                     self._forget(project)
         if self._kits and self._ledger_there():
             self._dispatch(now)
-        self.last = view_of(projects, self.led.rows() if self._ledger_there() else [], self._notes, now)
+        rows = self.led.rows() if self._ledger_there() else []
+        hidden = ["%s#%d 的修复 MR !%d 开了，会话还在收尾" % (r.project, r.issue.iid, r.fix_mr.iid)
+                  for r in rows if r.state == FIX_MR and self._busy(r)]
+        self.last = view_of(projects, rows, self._notes, now, hidden)
         if self._errors:
             raise common.BrainError("not done this round: " + "; ".join(self._errors))
         return read
@@ -886,12 +892,16 @@ def _note(row: Row) -> str:
 
 
 def view_of(projects: list[dict[str, Any]], rows: list[Row], notes: Mapping[tuple[str, str], str],
-            at: float | None) -> dict[str, Any]:
-    """GET /team/staging (TeamStaging in ui/src/types.ts): the projects and every error signature the ledger holds."""
+            at: float | None, hidden: list[str] | None = None) -> dict[str, Any]:
+    """GET /team/staging (TeamStaging in ui/src/types.ts): the projects and every error signature the ledger holds;
+    working, the sessions it holds: the fixes at work and the *hidden* ones (a fix whose MR is open, its turn not
+    ended)."""
     items = [{"project": r.project, "signature": r.signature, "count": r.group.count, "state": r.state,
               "issue": _link(r.issue), "origin": _link(r.origin), "fix_mr": _link(r.fix_mr),
               "first_seen": r.group.first_seen, "last_seen": r.group.last_seen, "deployed_sha": r.group.deployed_sha,
               "attempts": r.attempts, "slot": r.slot or None, "note": notes.get((r.project, r.signature)) or _note(r)}
              for r in rows]
-    return {"on": any(p["on"] for p in projects), "cap": CAP, "working": sum(1 for r in rows if r.state == FIXING),
+    hidden = list(hidden or ())
+    return {"on": any(p["on"] for p in projects), "cap": CAP,
+            "working": sum(1 for r in rows if r.state == FIXING) + len(hidden), "hidden": hidden,
             "last_at": at, "projects": projects, "items": items}

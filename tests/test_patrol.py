@@ -687,6 +687,26 @@ def test_a_person_s_follow_up_written_while_the_session_works_is_a_new_problem_a
     assert w.item(7)["state"] == "ok" and len(w.sessions.sent) == 3
 
 
+def test_the_page_counts_every_session_patrol_holds_and_says_what_holds_one_no_row_shows_at_work(bk, tmp_path):
+    """A turn the MR head moved past holds its session until it ends while its MR is no longer shown at work: the page
+    counts every session patrol holds, as sources.at_work does, and says what holds the one no row shows."""
+    w = World(tmp_path)
+    gl = w.gl
+    gl.mr(P, 3)
+    gl.fail(P, 3)
+    gl.mr(P, 4, **conflicted())
+    w.round()
+    gl.push(P, 3, SHA[2])
+    gl.pipeline(P, 3, "running")
+    gl.mr(P, 5, **conflicted())
+    w.later()
+    w.round()
+    view = w.patrol.view()
+    assert [(i["iid"], i["state"]) for i in view["items"]] == [(3, "ok"), (4, "working"), (5, "queued")]
+    assert view["working"] == w.patrol.busy() == 2
+    assert view["hidden"] == ["grp/repo!3 的会话还在做上一轮（MR 有了新的提交）"]
+
+
 def test_a_turn_the_head_moved_past_holds_the_session_until_it_ends(bk, tmp_path):
     w = World(tmp_path)
     gl = w.gl

@@ -1666,7 +1666,11 @@ export interface TeamPatrol {
   /** some project's kit.json switches work source mr-patrol on */
   on: boolean
   cap: number
+  /** the brain-patrol sessions it holds (sources.at_work counts the same): its MRs at work and the hidden ones */
   working: number
+  /** each session it holds that no MR below shows at work, with what holds it (a turn the MR's head moved past); a
+   * person's 团队运行机 has none */
+  hidden?: string[]
   /** epoch seconds of the last round; null before the first */
   last_at: number | null
   projects: { project: string; on: boolean; error: string }[]
@@ -1716,7 +1720,11 @@ export interface TeamStaging {
   /** some project's kit.json switches work source staging-errors on */
   on: boolean
   cap: number
+  /** the brain-patrol sessions it holds (sources.at_work counts the same): its fixes at work and the hidden ones */
   working: number
+  /** each session it holds that no error below shows at work, with what holds it (a fix whose MR is open, its turn
+   * not ended); a person's 团队运行机 has none */
+  hidden?: string[]
   /** epoch seconds of the last round; null before the first */
   last_at: number | null
   projects: { project: string; on: boolean; error: string; deployed_sha: string }[]

@@ -213,6 +213,21 @@ def test_a_fix_goes_to_a_brain_patrol_session_of_its_own_two_at_a_time_counting_
     assert sources.SOURCES["staging-errors"].held(type("Rt", (), {"staging": w.watch})()) == held
 
 
+def test_the_page_counts_a_fix_whose_mr_is_open_while_its_turn_runs_and_says_what_holds_it(bk, tmp_path):
+    """The session opened its fix's MR and still writes its reply on the Issue: its session is held, though its row is
+    no longer at work. The page counts it, as sources.at_work does, and says what holds it."""
+    sl = mod("team.stagelog")
+    w = started(tmp_path)
+    w.write(zero(), gateway())
+    w.round()
+    w.gl.mr(P, 52, sha=SHA[3], source="fix/staging-" + sl.short_id(ZERO), title="修复：" + ZERO)
+    w.round()
+    view = w.watch.view()
+    assert [(i["signature"], i["state"]) for i in view["items"]] == [(ZERO, "fix_mr"), (GATEWAY, "fixing")]
+    assert view["working"] == w.watch.busy() == 2
+    assert view["hidden"] == ["grp/repo#1 的修复 MR !52 开了，会话还在收尾"]
+
+
 def test_two_failed_fix_attempts_stop_it_with_one_issue_comment(bk, tmp_path):
     staging = mod("team.staging")
     w = started(tmp_path)

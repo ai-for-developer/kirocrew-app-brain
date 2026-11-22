@@ -22,7 +22,7 @@ import { CheckRows, EmptyHero, ExtLink, Icon, LEVEL_LABEL, LoadState, RoleIcon, 
 import type { Tone } from '../styles'
 import { ACT } from '../vocab'
 import type { ViewProps } from './props'
-import { StagingErrors } from './StagingErrors'
+import { HeldHint, StagingErrors } from './StagingErrors'
 
 export const TEAM_POLL_MS = 10_000
 export const SIGNER_SAME_USER = '签名服务和 app 是同一个系统用户：它签不签都由 app 说了算，只适合本机试用'
@@ -580,6 +580,7 @@ export function Patrol({ view, openSession }: { view: TeamPatrol; openSession?: 
         <span className="br-grow" />
         {view.on && <span className="br-small">在修 <b>{view.working}</b>/{view.cap}</span>}
       </header>
+      {view.on && <HeldHint hidden={view.hidden} />}
       {!view.on ? <p className="br-empty">{PATROL_OFF}</p> : rows.length === 0 ? (
         <p className="br-empty">{view.last_at ? `上一轮（${ago(view.last_at)}）没有开着的 MR。` : '还没巡检过：下一轮就看。'}</p>
       ) : (
