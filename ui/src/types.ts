@@ -1971,6 +1971,20 @@ export interface SetupStep {
   /** a step about two projects or more: each one's own result; [] otherwise (the step's words say it) */
   projects: SetupProjectRow[]
 }
+/** One of the runner's GitLab tokens (setup.py tokens_view): key, the bridge's or the one the runner pushes with; kind,
+ * a project token this setup made (name: brain-bridge, brain-bot; the next run gives it a new value when it ends soon)
+ * or a personal token kept on this machine (its owner replaces it); user: its GitLab account; expires_at: its last
+ * day as GitLab said it (null: GitLab did not say); days_left: from today in UTC, negative once it ended; soon: 14
+ * days or fewer to go (or ended). */
+export interface SetupToken {
+  key: 'bridge' | 'bot'
+  kind: 'project' | 'personal'
+  name: string
+  user: string
+  expires_at: string | null
+  days_left: number | null
+  soon: boolean
+}
 /** The same-user team runner the app builds itself (backend/core/team/setup.py), as the last run left it. */
 export interface TeamSetup {
   /** a run holds the setup now (poll until it is false) */
@@ -1985,6 +1999,8 @@ export interface TeamSetup {
   /** bot-account: the GitLab users whose personal tokens an earlier run kept on this machine ('' none); a run may
    * leave such a token out */
   accounts: { bridge: string; bot: string }
+  /** the GitLab tokens the runner works with, the bridge's and (pushing with a token) the bot's, with when each ends */
+  tokens: SetupToken[]
   /** every step of the table, in order */
   steps: SetupStep[]
   /** where its configs, tokens and keys are */

@@ -398,6 +398,10 @@ def test_a_first_run_builds_the_runner_and_waits_for_the_kit_mr(world):
     assert "合并以前" in by["team_mode"]["message"] and world["signer"][0] == s
     state = json.loads(ps.state.read_text())
     assert saved_tokens(state)["bridge"]["username"] == bot and state["projects"][0]["id"] == PID and not state["running"]
+    # the card: the bridge's token (the runner pushes over SSH: no other), its account and its last day
+    assert view["tokens"] == [{"key": "bridge", "kind": "project", "name": "brain-bridge", "user": bot,
+                               "expires_at": bridge[0]["expires_at"], "days_left": days_left(bridge[0]["expires_at"]),
+                               "soon": False}]
 
 
 def test_a_second_run_makes_nothing_new(world):
@@ -1310,6 +1314,19 @@ def test_one_runner_serves_two_projects_as_gitlab_users_of_its_own(team):
     assert team["admin"] not in state and team["bridge"] not in state and team["bot"] not in state
     from test_contract import diff_keys, fixture
     assert diff_keys(fixture("team-setup-bot.json"), json.loads(json.dumps(view))) == []
+
+
+def test_the_card_says_when_each_token_of_the_runner_ends_and_warns_two_weeks_before(team):
+    """bot-account, the runner pushing as brain-bot: the card lists the bridge's personal token, ending in 10 days (a
+    warning), with its account, its last day and the days left; and the bot's, whose last day GitLab does not show to a
+    token without read_api."""
+    team["bridge"] = team["gl"].pat(BRIDGE_ID, "brain-bridge", ["api"], days=10)
+    view, _ = build_team(team)
+    assert view["tokens"] == [
+        {"key": "bridge", "kind": "personal", "name": "", "user": "brain-bridge",
+         "expires_at": (utc_today() + timedelta(days=10)).isoformat(), "days_left": 10, "soon": True},
+        {"key": "bot", "kind": "personal", "name": "", "user": "brain-bot", "expires_at": None, "days_left": None,
+         "soon": False}]
 
 
 def test_jenkins_is_one_block_for_the_runner_whatever_its_projects(team):

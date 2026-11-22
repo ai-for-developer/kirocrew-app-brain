@@ -619,7 +619,8 @@ def _said(exc: BaseException, mode: str = PROJECT_TOKEN) -> tuple[str, str]:
 def view(state: Mapping[str, Any], paths: Paths, running: bool | None = None) -> dict[str, Any]:
     """GET /team/setup (TeamSetup in ui/src/types.ts): every step of the table with the last run's result (and its
     projects' when there were two or more), the one in progress, or todo; that run's input without the tokens; the
-    accounts of the personal tokens kept here (bot-account). *running*: whether a run holds the root now. A run cut off
+    accounts of the personal tokens kept here (bot-account); when each token of the runner ends (tokens_view).
+    *running*: whether a run holds the root now. A run cut off
     part-way (the app or the command stopped) left running in its file with no one holding the root: cut_off is the
     step it had not finished."""
     on = bool(state.get("running")) if running is None else bool(running)
@@ -651,7 +652,37 @@ def view(state: Mapping[str, Any], paths: Paths, running: bool | None = None) ->
                       "jenkins": {"base": str(jenkins.get("base") or ""), "user": str(jenkins.get("user") or "")}},
             "accounts": {k: str((kept.get(k) if isinstance(kept.get(k), dict) else {}).get("username") or "")
                          for k in ("bridge", "bot")},
-            "steps": steps, "root": str(paths.root)}
+            "tokens": tokens_view(state), "steps": steps, "root": str(paths.root)}
+
+
+def tokens_view(state: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """TeamSetup.tokens: the GitLab tokens the runner works with as the last run left them, the bridge's and, when the
+    runner pushes with a token, the bot's: a project token this setup made, or a personal token kept here; its account,
+    its last day as GitLab said it, the days left from today in UTC and whether that is RENEW_DAYS or fewer (ends_soon:
+    a project token gets a new value on the next run then, a personal token is its owner's to replace)."""
+    inp = state.get("input") if isinstance(state.get("input"), dict) else {}
+    push = state.get("push") if isinstance(state.get("push"), dict) else {}
+    keys = ("bridge", "bot") if push.get("mode") == "token" else ("bridge",)
+    if inp.get("mode") == BOT_ACCOUNT:
+        kind, recs = "personal", state.get("accounts")
+    else:
+        found = state.get("projects") if isinstance(state.get("projects"), list) else []
+        pid = found[0].get("id") if found and isinstance(found[0], dict) else None
+        kind, recs = "project", (state.get("tokens") or {}).get("%s/projects/%s" % (inp.get("gitlab_base"), pid))
+    out = []
+    for key in keys:
+        rec = recs.get(key) if isinstance(recs, dict) else None
+        if not isinstance(rec, dict):
+            continue
+        try:
+            end: str | None = date.fromisoformat(str(rec.get("expires_at"))[:10]).isoformat()
+        except ValueError:
+            end = None
+        out.append({"key": key, "kind": kind, "name": str(rec.get("name") or "") if kind == "project" else "",
+                    "user": str(rec.get("username") or ""), "expires_at": end,
+                    "days_left": (date.fromisoformat(end) - utc_today()).days if end else None,
+                    "soon": bool(end) and ends_soon(end)})
+    return out
 
 
 def _shown(r: Mapping[str, Any], status: str) -> dict[str, Any]:
