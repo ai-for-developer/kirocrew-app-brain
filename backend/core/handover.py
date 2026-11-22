@@ -36,7 +36,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional, Union
 
-from . import family, mrinfo, problems
+from . import deliveries, family, mrinfo, problems
 
 try:
     import fcntl
@@ -259,9 +259,11 @@ def why_not(f: dict[str, Any], row: dict[str, Any], *, me: Optional[str], local_
                 "is_child", 409)
     if local_only:
         return "这个仓库只在本机做（没有 GitLab 或没有远端）：不交给运行机，做完在本机合并", "local_only", 409
+    said = (row.get("waits") or {}).get("text") or row.get("state_label")
+    if deliveries.started_on_runner(run) and (row.get("waits") or {}).get("do") not in AGAIN_DO:
+        return "它从 issue 开工，一开始就是运行机在做（%s）：不用交接" % said, "on_runner", 409
     if run.get("handoff") and pushed and (row.get("waits") or {}).get("do") not in AGAIN_DO:
-        return "已经交接过了（%s）：不用再交接" % ((row.get("waits") or {}).get("text") or row.get("state_label")), \
-            "handed_over", 409
+        return "已经交接过了（%s）：不用再交接" % said, "handed_over", 409
     if me and me != f.get("owner"):
         return "只有需求负责人本人能交接（按你在这个仓库的名字认人，在「设置」的「仓库」里填）", "not_owner", 403
     if not f.get("worktree"):

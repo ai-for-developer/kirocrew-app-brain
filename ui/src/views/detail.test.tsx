@@ -745,6 +745,19 @@ describe('需求现状', () => {
     noLineSent()
   })
 
+  test('a run the runner started (从 issue 接活: origin remote, no hand-over) offers no 开会话 here, whatever its row says; 开工 says it started there', async () => {
+    withDetail((d) => {
+      d.sessions = []
+      d.run!.origin = 'remote'
+      d.run!.handoff = null
+      d.row.waits = { ...d.row.waits, who: 'you', do: 'none', where: null, line: null, text: '这个运行方式 brain-kit 不认识：先更新 brain-kit' }
+    })
+    renderDetail()
+    expect(await screen.findByText(/在运行机上开工/)).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: '开会话' })).toBeNull()
+    expect(screen.queryByText(/来自remote/)).toBeNull()
+  })
+
   test('开会话 answered with the session already there (its first message did not go in): the card says so, not 会话开好了', async () => {
     const user = userEvent.setup()
     const said = '这个需求已经有一个会话，只是它的第一条消息没发进去：打开它，在里面说一句接着做；要换一个新的，点「重开一个会话」'

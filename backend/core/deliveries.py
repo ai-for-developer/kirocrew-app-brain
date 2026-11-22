@@ -152,11 +152,17 @@ def owns(me: str | None, owner: str | None) -> bool:
     return not owner or owner == me
 
 
+def started_on_runner(run: dict[str, Any] | None) -> bool:
+    """The run started on the team runner (run.json origin remote: 从 issue 接活's start commit): it has no local half,
+    the runner has it from its first commit."""
+    return (run or {}).get("origin") == "remote"
+
+
 def on_runner(run: dict[str, Any] | None) -> bool:
-    """The team runner has the run: a person handed it over (run.json's handoff), or it started there (origin remote:
-    从 issue 接活's start commit). No person's machine has a session of it; its MR says where it is."""
-    run = run or {}
-    return bool(run.get("handoff")) or run.get("origin") == "remote"
+    """The team runner has the run: a person handed it over (run.json's handoff), or it started there
+    (started_on_runner). No person's machine has a session of it, pushes to its branch or hands it over; its MR says
+    where it is, and its questions are asked and answered there."""
+    return bool((run or {}).get("handoff")) or started_on_runner(run)
 
 
 def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | None, slot: dict[str, Any] | None,

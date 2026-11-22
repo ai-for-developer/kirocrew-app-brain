@@ -53,6 +53,7 @@ CREW_EVERY_S = 300.0
 FOLD_TTL_S = 10.0     # the 产出 drawer reads the board's last fold; the board polls every 2 s while it is open
 FAILED_TRACE_S = 15.0  # a trace brain-kit could not make (git timed out under load) is made again this soon
 RUNNER_ELSEWHERE = "交接以后，运行机上的会话这台机器读不到，没算进来"
+RUNNER_STARTED = "它在运行机上开工，运行机上的会话这台机器读不到，没算进来"
 LOCAL_ELSEWHERE = "交接以前，开发者机器上的会话这台机器读不到，没算进来"
 RUNNER_TOOK = ("running", "parked", "acceptance", "merged", "closed")   # a hand-over's states once the runner has it
 
@@ -520,8 +521,9 @@ class Service:
         left out."""
         runs = sorted((k for k in snap["by"] if re.fullmatch(r"RUN-%s-[1-9][0-9]*" % re.escape(f["key"]), k)),
                       key=lambda k: int(k.rsplit("-", 1)[1]))
-        took = (f.get("run") or {}).get("handoff") and state in RUNNER_TOOK
-        gone = RUNNER_ELSEWHERE if took and not runs and not self._team_on() else None
+        run = f.get("run") or {}
+        took = deliveries.on_runner(run) and state in RUNNER_TOOK
+        gone = None if not took or runs or self._team_on() else RUNNER_ELSEWHERE if run.get("handoff") else RUNNER_STARTED
         return self._req_credits(snap, [scope] + runs, gone)
 
     def _team_credits(self, snap: dict[str, Any], key: str, run_ids: list[str], project: Any
@@ -915,7 +917,7 @@ class Service:
         mr = self.mr.get(project, f["branch"]) if (base and project and f.get("branch")) else None
         can_post = own and bool(base and project) and self._token_present()
         questions = []
-        handed = bool(run.get("handoff"))
+        handed = deliveries.on_runner(run)
         pq = detail.park_question(f.get("park"), answerable=own and not handed and bool(
             self._live(snap["by"].get(scope, []))), via="session", handed=handed,
             mr_url=(row.get("mr") or {}).get("url"))
@@ -949,7 +951,7 @@ class Service:
             "questions": questions,
             "timeline": {"source": tl["source"], "items": tl["items"], "error": tl["error"],
                          "missing": board_mod.missing_sources(tl["missing"], local_only=row["local_only"],
-                                                              handed=bool(run.get("handoff")), ci_read=board_mod.pipelines_read(mr)),
+                                                              handed=handed, ci_read=board_mod.pipelines_read(mr)),
                          "other_runs": tl.get("other_runs") or []},
             "sessions": [{k: s[k] for k in ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting",
                                              "last_activity", "opened_at", "project", "url", "error", "missing")}
@@ -1331,7 +1333,7 @@ class Service:
         repo = self._repo(rid)
         f = await asyncio.to_thread(self._facts, repo, key)
         run = f.get("run") or {}
-        if not run or run.get("handoff") or f.get("merged"):
+        if not run or deliveries.on_runner(run) or f.get("merged"):
             raise AppError("只有本地开发中的需求能在这里开会话", "not_local", 409)
         if not f.get("worktree"):
             raise AppError("这台机器上没有检出 %s 的分支：先在开需求里开工" % f.get("branch"), "no_worktree", 409)
@@ -1433,7 +1435,7 @@ class Service:
         repo = self._repo(rid)
         f = await asyncio.to_thread(self._facts, repo, key)
         run = f.get("run") or {}
-        if not run or run.get("handoff") or f.get("merged"):
+        if not run or deliveries.on_runner(run) or f.get("merged"):
             raise AppError("只有本地开发中的需求能在这里开会话", "not_local", 409)
         if not f.get("worktree"):
             raise AppError("这台机器上没有检出 %s 的分支：先在开需求里开工" % f.get("branch"), "no_worktree", 409)
@@ -1473,7 +1475,7 @@ class Service:
         run = f.get("run") or {}
         scope = scope_of(rid, key)
         park = f.get("park")
-        if not run.get("handoff"):
+        if not deliveries.on_runner(run):
             if not deliveries.park_waiting(park) or park.get("kind") != "clarify" or park.get("lean_request"):
                 raise AppError("这个需求没有等你回答的澄清问题", "no_question", 409)
             if choice not in answer_choices([str(o.get("id")) for o in park.get("options") or [] if isinstance(o, dict)]):
@@ -1695,7 +1697,7 @@ class Service:
                     except Exception as exc:  # noqa: BLE001 - a token file others can read: brain-kit says so itself
                         self.log.info("brain: reading the MR of %s: %s", branch, exc)
 
-                if (f.get("run") or {}).get("handoff") and branch and base and project and self.mr.due(project, branch):
+                if deliveries.on_runner(f.get("run")) and branch and base and project and self.mr.due(project, branch):
                     await asyncio.to_thread(mr_now)
                 why = f.get("flow_error") or flowview.action_problem(f["flow"], "handoff")
                 if why:
