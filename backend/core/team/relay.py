@@ -390,8 +390,6 @@ class Deliveries:
         row["family"] = fam
         family.classify(row, fam, f, None)
         row["mr"] = info and {"iid": info["iid"], "url": info["url"], "state": info["state"]}
-        if bk.m("claims").unowned(g.claim) and row["state"] == "claimed":    # filed for others: anyone may take it
-            row["state"], row["state_label"] = "unclaimed", deliveries.STATE_LABEL["unclaimed"]
         into = f.get("merged_into")
         if into and fam is None and row["state"] != "closed":
             if row["state"] == "merged":
