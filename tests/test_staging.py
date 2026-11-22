@@ -274,7 +274,7 @@ def test_a_fix_whose_workspace_git_keeps_failing_is_an_attempt_from_its_second_t
     assert seen == [("issued", 0, 0), ("issued", 1, 0), ("stopped", 2, 0), ("stopped", 2, 0)]
     assert w.gl.notes(P, 1) == ["运行机试了 2 次，没修好这个报错（最后一次：工作区一直没准备好）：它不再自己修，交给人。"
                                 "人修好了或者不修了，就关掉这个 Issue：运行机不会再打开它，以后新的部署里又出现，只在这里说一次。"]
-    assert w.item(GATEWAY)["note"] == "工作区里有 git 没做完留下的锁（.git/index.lock（30 秒前））：没有会话在用它，满 5 分钟就删掉"
+    assert w.item(GATEWAY)["note"] == "工作区里有 git 没做完留下的锁 .git/index.lock（30 秒前留下的）：没有会话在用它，满 5 分钟就删掉"
     assert w.sessions.sent == []
     w.ws.locked.clear()
     w.round()

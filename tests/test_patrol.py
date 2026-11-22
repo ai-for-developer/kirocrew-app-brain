@@ -892,7 +892,7 @@ def test_a_workspace_git_keeps_failing_on_is_an_attempt_from_its_second_time_and
     told, = gl.posted("notes")
     assert patrol.STOPPED_RE.match(told["body"]) and "工作区" in told["body"] and "bad object" not in told["body"]
     assert w.item(1)["note"] == "工作区一直没准备好（git checkout: fatal: bad object HEAD），在 MR 上说了：等它有新变化"
-    assert w.item(2)["note"] == "工作区里有 git 没做完留下的锁（.git/index.lock（30 秒前））：没有会话在用它，满 5 分钟就删掉"
+    assert w.item(2)["note"] == "工作区里有 git 没做完留下的锁 .git/index.lock（30 秒前留下的）：没有会话在用它，满 5 分钟就删掉"
     ws.locked.clear()
     w.round()
     assert w.slots() == ["patrol-42-2"] and w.item(2)["attempts"] == 1

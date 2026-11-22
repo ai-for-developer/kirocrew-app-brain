@@ -297,7 +297,7 @@ def plain_comments(discussions: list[dict[str, Any]], own: set[str], bots: set[s
     return out
 
 
-def read_mr(gl: Any, jenkins: Logs, project: str, mr: Mapping[str, Any], own: set[str], bots: set[str],
+def read_mr(gl: Any, logs: Logs, project: str, mr: Mapping[str, Any], own: set[str], bots: set[str],
             since: float, before: Read | None = None, marks: tuple[int, ...] = ()) -> Read:
     """GitLab's MR (its head pipeline, at_head); when that pipeline failed, its failed jobs with their logs, its child
     pipelines' too (pipeline_failures), and the failed checks external CI reported into it (failed_checks); its
@@ -318,7 +318,7 @@ def read_mr(gl: Any, jenkins: Logs, project: str, mr: Mapping[str, Any], own: se
     elif status == "failed" and pid:
         found, own = ([], set()) if external else pipeline_failures(gl, project, pid, logs=not same)
         jobs = before.jobs if same else tuple(found)
-        checks = failed_checks(gl, jenkins, project, str(hp.get("sha") or mr.get("sha") or ""), pid, own,
+        checks = failed_checks(gl, logs, project, str(hp.get("sha") or mr.get("sha") or ""), pid, own,
                                before.checks if before is not None else ())
     threads = gl.pages("/projects/%s/merge_requests/%d/discussions" % (rest.q(project), iid), {}, 100, 20,
                        "discussions on !%d" % iid)
@@ -402,11 +402,11 @@ def downstream_failures(gl: Any, project: Any, trigger: Mapping[str, Any], depth
     return found or [FailedJob(name, "（它触发的流水线 #%d 没过，里面没有没过的任务）" % int(down["id"]))]
 
 
-def failed_checks(gl: Any, jenkins: Logs, project: str, sha: str, pipeline_id: int, jobs: set[int],
+def failed_checks(gl: Any, logs: Logs, project: str, sha: str, pipeline_id: int, jobs: set[int],
                   known: tuple[FailedCheck, ...]) -> tuple[FailedCheck, ...]:
     """The pipeline's failed commit statuses that none of its GitLab *jobs* (their ids, trigger jobs too: GitLab lists
     both as statuses) stands for, the newest of each name, with the tail of each one's Jenkins log. *known*: the checks
-    read before, whose logs are kept; one whose log was not read is asked of *jenkins* again, which says when it reads
+    read before, whose logs are kept; one whose log was not read is asked of *logs* again, which says when it reads
     it again. No checks when GitLab does not show the statuses (403, 404)."""
     rest = bk.m("rest")
     try:
@@ -432,7 +432,7 @@ def failed_checks(gl: Any, jenkins: Logs, project: str, sha: str, pipeline_id: i
         if sid in kept:
             out.append(kept[sid])
             continue
-        got = jenkins.console(str(s.get("target_url") or ""))
+        got = logs.console(str(s.get("target_url") or ""))
         out.append(FailedCheck(sid, name, got.page, log_tail(got.raw) if got.raw is not None else None, got.why,
                                got.later))
     return tuple(out)
@@ -811,7 +811,7 @@ class Workspaces:
 
 
 def locked_note(exc: Locked) -> str:
-    return "工作区里有 git 没做完留下的锁（%s）：没有会话在用它，满 %d 分钟就删掉" % (exc, LOCK_STALE_S // 60)
+    return "工作区里有 git 没做完留下的锁 %s：没有会话在用它，满 %d 分钟就删掉" % (exc, LOCK_STALE_S // 60)
 
 
 def unlock(git_dir: str) -> None:
@@ -825,7 +825,7 @@ def unlock(git_dir: str) -> None:
         with contextlib.suppress(FileNotFoundError):
             age = now - os.stat(lock).st_mtime
             if age < LOCK_STALE_S:
-                raise Locked("%s（%d 秒前）" % (os.path.relpath(lock, os.path.dirname(git_dir)), max(0, age)))
+                raise Locked("%s（%d 秒前留下的）" % (os.path.relpath(lock, os.path.dirname(git_dir)), max(0, age)))
     for lock in locks:
         with contextlib.suppress(FileNotFoundError):
             os.remove(lock)
@@ -907,7 +907,7 @@ class Patrol:
                  shared: Callable[[], int] = lambda: 0,
                  now: Callable[[], float] = time.time, out: Callable[[str], None] = print) -> None:
         self.gl, self.sessions, self.kit, self.projects = gl, sessions, kit, list(projects)
-        self.jenkins = Logs(jenkins, now)
+        self.logs = Logs(jenkins, now)
         self.ledger_path, self.workspaces, self.helper, self.claims = ledger_path, workspaces, helper, claims
         self.now, self.out, self.shared = now, out, shared
         self._led: Ledger | None = None
@@ -950,7 +950,7 @@ class Patrol:
         the end (BrainError)."""
         common = bk.m("common")
         now, self._turns = self.now(), {}
-        self.jenkins.round()
+        self.logs.round()
         if self._led is not None or os.path.exists(self.ledger_path):
             self.led.respell(self.projects)
         others = [c for c in self.claims() if c["kind"] != KIND]
@@ -1023,7 +1023,7 @@ class Patrol:
                 self._stop(row)
         if self._stale(row, mr, now):
             old = set(row.read.checks) if row.read is not None else set()
-            row = replace(row, read=read_mr(self.gl, self.jenkins, e.project, mr, *self._who(kit), e.since,
+            row = replace(row, read=read_mr(self.gl, self.logs, e.project, mr, *self._who(kit), e.since,
                                             before=row.read, marks=row.marks), seen=_seen(mr), read_at=now)
             for c in row.read.checks:
                 if c.log is None and not c.later and c not in old:
@@ -1198,8 +1198,8 @@ class Patrol:
         self.led.put(row)
         e.row, e.standing = row, standing(row, item)
         if e.standing != "blocked":
-            e.standing, e.note = "error", "工作区没准备好%s：%s" % ("（第 %d 次，算一次没修好）" % row.attempts
-                                                           if row.outcome == "workspace" else "", why)
+            e.standing, e.note = "error", ("工作区又没准备好，算一次没修好（第 %d 次）：%s" % (row.attempts, why)
+                                           if row.outcome == "workspace" else "工作区没准备好：%s" % why)
 
     def _send(self, e: Entry, path: str, now: float) -> None:
         """e's problems to its MR's session, which is opened the first time and kept for as long as the MR is open.

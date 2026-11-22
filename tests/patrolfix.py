@@ -463,7 +463,7 @@ class FakeWorkspaces:
         if (item.project, item.iid) in self.moved:
             raise mod("team.patrol").Moved("origin moved")
         if (item.project, item.iid) in self.locked:
-            raise mod("team.patrol").Locked(".git/index.lock（30 秒前）")
+            raise mod("team.patrol").Locked(".git/index.lock（30 秒前留下的）")
         if (item.project, item.iid) in self.broken:
             raise mod("bk").brain_error()(self.broken[(item.project, item.iid)])
         self.prepared.append((item.project, item.iid, item.head_sha))

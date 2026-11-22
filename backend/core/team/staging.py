@@ -149,8 +149,8 @@ def seen(row: Row | None, project: str, g: ErrorGroup, settled: bool = True) -> 
 
 def again(row: Row, state: str) -> Row:
     """*row* in *state* for another go at its fix: a new fix branch, no attempt yet."""
-    return replace(row, state=state, cycle=row.cycle + 1, attempts=0, outcome="", fix_mr=None, said=False, rules_pid=0,
-                   rules=())
+    return replace(row, state=state, cycle=row.cycle + 1, attempts=0, outcome="", fix_mr=None, said=False, ws_error="",
+                   rules_pid=0, rules=())
 
 
 def failed(row: Row, outcome: str) -> Row:
@@ -625,7 +625,12 @@ class StagingWatch:
         status, pid = str(hp.get("status") or ""), int(hp.get("id") or 0)
         if status not in patrol.FINAL_PIPELINE or pid == row.rules_pid:
             return row
-        said = patrol.rules_said(patrol.pipeline_failures(self.gl, row.project, pid)[0]) if status == "failed" else []
+        try:
+            said = patrol.rules_said(patrol.pipeline_failures(self.gl, row.project, pid)[0]) if status == "failed" else []
+        except bk.m("rest").HttpError as exc:
+            if exc.status not in (403, 404):
+                raise
+            said = []                               # its jobs not shown: nothing to tell from
         if said and not row.rules:
             self.gl.call("POST", "/projects/%s/issues/%d/notes" % (bk.m("rest").q(row.project), row.issue.iid),
                          body={"body": rules_text(row, said, str(mr.get("target_branch") or "main"))})
@@ -803,8 +808,8 @@ class StagingWatch:
                 row = replace(failed(row, "workspace") if again else row, ws_error=_said(exc))
                 self.led.put(row)
                 if row.state != STOPPED:
-                    self._notes[key] = "工作区没准备好%s：%s" % ("（第 %d 次，算一次没修好）" % row.attempts if again else "",
-                                                          row.ws_error)
+                    self._notes[key] = ("工作区又没准备好，算一次没修好（第 %d 次）：%s" % (row.attempts, row.ws_error) if again
+                                        else "工作区没准备好：%s" % row.ws_error)
                 continue
             busy += 1
             try:
