@@ -307,7 +307,7 @@ export function DetailView({ entry, onBack, onSwitch, onMissing, ...props }: {
           <b>{entry.key}</b>
         </nav>
         <span className="cto-grow" />
-        <ReqSwitch repo={entry.repo} reqKey={entry.key} status={props.status} pollMs={props.pollMs} onPick={pick} />
+        <ReqSwitch repo={entry.repo} reqKey={entry.key} status={props.status} pollMs={props.pollMs} onPick={pick} owner={x?.row.owner} />
         <div className="cto-item-act">
           {x && <button type="button" className="kt-btn is-primary" onClick={() => toBoard()}>运行过程 ↗</button>}
           {x && x.row.state === 'merged' && <button type="button" className="kt-btn" onClick={() => toBoard({ replay: true })}>▶ 回放 ↗</button>}

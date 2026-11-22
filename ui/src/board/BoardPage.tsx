@@ -323,7 +323,7 @@ export function BoardPage({ entry, onBack, onSwitch, onMissing, go, replace, pus
             <b>运行过程{looked ? ` · ${looked.title}` : ''}{rp.on ? ' · 回放' : ''}</b>
           </nav>
           <span className="cto-grow" />
-          {!rp.on && <ReqSwitch repo={entry.repo} reqKey={entry.key} status={status} pollMs={pollMs} onPick={pick} />}
+          {!rp.on && <ReqSwitch repo={entry.repo} reqKey={entry.key} status={status} pollMs={pollMs} onPick={pick} owner={board?.row.owner} />}
           {onBack && <button type="button" className="kt-btn" onClick={onBack}>← 返回{fromName}</button>}
         </div>
         {onRunner && !rp.on && <OnRunner reqKey={entry.key} what="运行过程" onOpen={() => pick('runner', entry.key)} />}

@@ -75,6 +75,15 @@ describe('切换需求', () => {
     expect(runnerRow(rows, 'r1', 'PAY-99')).toBeNull()
   })
 
+  test('a teammate’s requirement opened here (from 全队交付) says whose it is, not that its repo does not have it', async () => {
+    installFixtureRoutes()
+    render(<ReqSwitch repo="r1" reqKey="PAY-21" status={fx.status()} onPick={vi.fn()} owner="bob" />)
+    const pick = await screen.findByRole('combobox', { name: '切换需求' })
+    expect(pick).toHaveValue('r1\u0001PAY-21')
+    expect(within(pick).getAllByRole('option')[0]).toHaveTextContent(/^PAY-21 · bob 的（不在你的交付总览里）$/)
+    expect(pick).not.toHaveTextContent('里没有')
+  })
+
   test('a key its repo does not have says so, with the repo’s name', async () => {
     installFixtureRoutes()
     render(<ReqSwitch repo="r1" reqKey="PAY-1" status={fx.status()} onPick={vi.fn()} />)
