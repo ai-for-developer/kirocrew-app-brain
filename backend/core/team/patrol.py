@@ -33,9 +33,10 @@ The ledger, <root>/patrol.sqlite, has one row per open MR of the projects patrol
   any -> rules        brain-kit's brain-push-rules failed the head pipeline for commits of the runner's (it lets the
                       bot commit on run branches only): any it pushes would be refused too, so the MR is left alone for
                       good (its turn stopped)
-One comment on the MR says why it is blocked, paused or refused, and what is not fixed (for rules: what a person does). A row is forgotten, its turn stopped and
-its clone deleted, once its MR is merged or closed, or patrol is no longer on in its project; one of a project
-bridge.json now names in another case (GitLab's paths are not case-sensitive) moves to that spelling (Ledger.respell).
+One comment on the MR says why it is blocked, paused or refused, and what is not fixed (for rules: what a person
+does). A row is forgotten, its turn stopped and its clone deleted, once its MR is merged or closed, or patrol is no
+longer on in its project; one of a project bridge.json now names in another case (GitLab's paths are not
+case-sensitive) moves to that spelling (Ledger.respell).
 A round lists each project's open MRs once. It reads an MR's pipeline and threads only when the MR changed since, is
 being worked, its pipeline had not finished, or RECHECK_S went by: GitLab does not move an MR's updated_at when a
 pipeline ends, or when one runs again on the same head. A Jenkins build run again on the same head lands in the same
