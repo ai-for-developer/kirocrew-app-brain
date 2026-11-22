@@ -64,10 +64,9 @@ def leave(ledger: Any, path: str, keep: set[str], to: str, *, signer: bool = Fal
         if not ledger.set_run(r["run_id"], r["state"], to):
             continue                                    # it moved meanwhile (a round of the bridge): left as it is
         marked.append(r)
-        with ledger.lock:
-            if ledger.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='decisions'").fetchone():
-                ledger.db.execute("UPDATE decisions SET state='closed', updated=? WHERE run_id=? AND state IN (%s)"
-                                  % ",".join("?" * len(QUESTIONS)), (now, r["run_id"]) + QUESTIONS)
+        if ledger.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='decisions'").fetchone():
+            ledger.db.execute("UPDATE decisions SET state='closed', updated=? WHERE run_id=? AND state IN (%s)"
+                              % ",".join("?" * len(QUESTIONS)), (now, r["run_id"]) + QUESTIONS)
         if stop is not None and r.get("slot") and r["state"] in ("dispatched", "send_unknown"):
             try:
                 stop(str(r["slot"]))

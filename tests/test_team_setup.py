@@ -14,6 +14,7 @@ import os
 import re
 import secrets
 import signal
+import sqlite3
 import subprocess
 import sys
 import time
@@ -1428,7 +1429,6 @@ def test_a_project_taken_out_leaves_the_runner_and_nothing_is_written(team):
 
 def runs_in(path):
     """{run_id: state} of the ledger file *path*, read as it is on disk."""
-    import sqlite3
     db = sqlite3.connect(str(path))
     try:
         return dict(db.execute("SELECT run_id, state FROM runs").fetchall())
@@ -1459,7 +1459,6 @@ def test_a_project_taken_out_has_its_open_runs_left_in_both_ledgers_after_a_copy
     assert everything_done(view), [(s["id"], s["status"], s["message"], s["detail"][:200]) for s in view["steps"]]
     assert runs_in(ps.root / "bridge-ledger.sqlite") == {"RUN-PAY-1-1": "dispatched", "RUN-PAY-2-1": "failed"}
     assert runs_in(ps.root / "signer-ledger.sqlite") == {"RUN-PAY-1-1": "spooled", "RUN-PAY-2-1": "closed"}
-    import sqlite3
     db = sqlite3.connect(str(ps.root / "bridge-ledger.sqlite"))
     assert db.execute("SELECT id, state FROM decisions").fetchall() == [("D-1", "closed")]
     db.close()

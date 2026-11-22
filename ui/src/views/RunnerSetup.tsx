@@ -47,11 +47,11 @@ export const BOT_FIRST = '先填机器人账号的个人令牌，或者推送选
 export const keptSaid = (name: string) => `空着就用这台机器上存的 ${name} 的令牌。`
 /** The runner's GitLab tokens (TeamSetup.tokens) in words: whose, which kind, when it ends, and what to do once it ends
  * within two weeks: the next run gives a project token a new value, a personal token is its owner's to replace. */
-export const TOKEN_WHAT: Record<SetupToken['key'], string> = { bridge: '桥的令牌', bot: '推送的令牌' }
-export const tokenKind = (t: SetupToken) => (t.kind === 'project' ? `项目令牌 ${t.name}` : '个人令牌')
-export const tokenEnd = (t: SetupToken) => (t.expires_at === null || t.days_left === null ? 'GitLab 没说它哪天到期'
+const TOKEN_WHAT: Record<SetupToken['key'], string> = { bridge: '桥的令牌', bot: '推送的令牌' }
+const tokenKind = (t: SetupToken) => (t.kind === 'project' ? `项目令牌 ${t.name}` : '个人令牌')
+const tokenEnd = (t: SetupToken) => (t.expires_at === null || t.days_left === null ? 'GitLab 没说它哪天到期'
   : t.days_left < 0 ? `${t.expires_at} 已经过期了` : `${t.expires_at} 到期，还有 ${t.days_left} 天`)
-export const tokenDo = (t: SetupToken) => (t.kind === 'project' ? '再跑一次：它给这个项目令牌换上新的值，账号不变'
+const tokenDo = (t: SetupToken) => (t.kind === 'project' ? '再跑一次：它给这个项目令牌换上新的值，账号不变'
   : `在 GitLab 上给 ${t.user} 换一个新的个人令牌，再跑一次填上`)
 const LEAD: Record<SetupMode, string> = {
   'project-token': '填一次 GitLab 地址、项目和一个一次性 token，app 自己建好运行机要的一切：两个项目令牌、MR 标签、身份表、签名密钥、三份配置、brain-run 和 brain-patrol、签名服务，最后打开团队模式。你只要在 GitLab 上合并它开的 kit.json MR。',

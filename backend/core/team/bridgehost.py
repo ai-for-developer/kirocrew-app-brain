@@ -363,8 +363,7 @@ class TeamRuntime:
         if runs:
             self._out("%s: not in bridge.json, left: %s (the ledger before: %s)" % (
                 "、".join(sorted({str(r["project"]) for r in runs})), ", ".join(r["run_id"] for r in runs), copy))
-        with host.ledger.lock:
-            rows = host.ledger.db.execute("SELECT run_id, project, state FROM runs ORDER BY created").fetchall()
+        rows = host.ledger.db.execute("SELECT run_id, project, state FROM runs ORDER BY created").fetchall()
         self.left = [dict(r) for r in rows if str(r["project"]).lower() not in keep]
 
     def _failed(self, step: str, exc: Exception) -> str:
@@ -591,12 +590,10 @@ class TeamRuntime:
         except sqlite3.Error:  # closed by stop() meanwhile
             return {k: [] for k in LEDGER_TABLES}
         keep = left_mod.kept(host.cfg["projects"])
-        mine = lambda r: str(r["project"]).lower() in keep  # noqa: E731
         for k in ("runs", "decisions", "handoffs"):
-            out[k] = [r for r in out[k] if mine(r)]
+            out[k] = [r for r in out[k] if str(r["project"]).lower() in keep]
         ids = {r["run_id"] for r in out["runs"]}
         out["outbox"] = [r for r in out["outbox"] if r["run_id"] in ids]
-        out["notices"] = [r for r in out["notices"] if (r["run_id"] in ids if r["run_id"] else not r["project"] or mine(r))]
         return out
 
     def hook_rows(self) -> list[dict[str, Any]]:
@@ -707,9 +704,8 @@ class TeamRuntime:
         if not self.left:
             return []
         projects = list(dict.fromkeys(str(r["project"]) for r in self.left))
-        one = len(projects) == 1
-        return [problems.mk("OK", LEFT_TEXT % ("、".join(projects), "它" if one else "它们", "它" if one else "它们",
-                                               len(self.left)),
+        it = "它" if len(projects) == 1 else "它们"
+        return [problems.mk("OK", LEFT_TEXT % ("、".join(projects), it, it, len(self.left)),
                             raw="\n".join("%s %s (%s)" % (r["project"], r["run_id"], r["state"]) for r in self.left))]
 
     def signer_view(self) -> dict[str, Any]:
