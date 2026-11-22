@@ -13,10 +13,13 @@ patrol_stop): a turn runs until a test ends it.
 from __future__ import annotations
 
 import base64
+import gzip
 import itertools
 import json
+import random
 import re
 import secrets
+import struct
 from datetime import datetime, timezone
 from urllib.parse import parse_qsl, unquote, urlsplit
 
@@ -30,10 +33,53 @@ JENKINS_BASE = "https://jenkins.example.com"
 JENKINS_ROOT_URL = "http://jenkins:8080"
 
 
+def note(n: int) -> bytes:
+    """Console note *n* as a Jenkins build's log keeps it (ConsoleNote.encode): ESC[8mha:, the base64 of its MAC, its
+    length first and negative (the "////4" every note starts with, as measured), and of its gzipped object, then ESC[0m.
+    Pipeline writes one before each [Pipeline] line, a link one before the text it links."""
+    rnd = random.Random(n)
+    obj = gzip.compress(bytes(rnd.randrange(256) for _ in range(140)), mtime=0)
+    mac = bytes(rnd.randrange(256) for _ in range(32))
+    payload = struct.pack(">i", -32) + mac + struct.pack(">i", len(obj)) + obj
+    return b"\x1b[8mha:" + base64.b64encode(payload) + b"\x1b[0m"
+
+
+NOTE = b"\x00"     # in pipeline_lines: where Jenkins put a console note
+
+
+def pipeline_lines(output: list[bytes]) -> list[tuple[bytes, bytes]]:
+    """A failed Pipeline build's log, line by line: (as Jenkins keeps it, console notes in it; as its consoleText reads,
+    without them). An upstream build's two links on one line, the node's link, each [Pipeline] line after its step's
+    note, *output* the sh step's, its exit code failing the build. Its end is the one measured on the test server's
+    Jenkins (orders build 15: nine [Pipeline] lines, each after a note); the upstream line is UpstreamCause's."""
+    step = [NOTE + b"[Pipeline] " + s for s in (b"Start of Pipeline", b"node")]
+    step.append(b"Running on " + NOTE + b"Jenkins in /var/jenkins_home/workspace/orders")
+    step += [NOTE + b"[Pipeline] " + s for s in (b"{", b"withEnv", b"{", b"stage", b"{ (unit-tests)",
+                                                 b"gitlabCommitStatus", b"{", b"sh")]
+    lines = [b'Started by upstream project "' + NOTE + b'orders-ci" build number ' + NOTE + b"14",
+             b"originally caused by:", b" Started by GitLab push by alice",
+             b"Obtained Jenkinsfile from git http://gitlab:8929/team/orders.git", *step, b"+ python3 -m unittest -v",
+             *output, *[NOTE + b"[Pipeline] " + s for s in (b"}", b"// gitlabCommitStatus", b"}", b"// stage", b"}",
+                                                          b"// withEnv", b"}", b"// node", b"End of Pipeline")],
+             b"ERROR: script returned exit code 1", b"Finished: FAILURE"]
+    n = itertools.count(1)
+    return [(re.sub(re.escape(NOTE), lambda _m: note(next(n)), line) + b"\n", line.replace(NOTE, b"") + b"\n")
+            for line in lines]
+
+
+def pipeline(output: list[bytes]) -> tuple[bytes, bytes]:
+    """pipeline_lines put together: (the log as Jenkins keeps it, its consoleText)."""
+    rows = pipeline_lines(output)
+    return b"".join(k for k, _ in rows), b"".join(p for _, p in rows)
+
+
 class FakeJenkins:
     """Jenkins at JENKINS_BASE, its root URL configured as JENKINS_ROOT_URL: a build's log from a byte on
     (logText/progressiveText?start=, its length in X-Text-Size; a start past its end gives all of it, as Jenkins does)
-    for its read-only user signed in with its token (basic auth); 401 to a wrong token; 403 to no one signed in
+    as progressiveText sends it, unlike consoleText: the console notes the log keeps are in it (note()), and each line
+    end comes as CRLF (Jenkins' LineEndNormalizingWriter: measured, a CR before every LF), so N bytes of the log come
+    as N bytes and one more per line; for its read-only user signed in with its token (basic auth); 401 to a
+    wrong token; 403 to no one signed in
     (anonymous read off, as measured) and to a user without Overall/Read; 404 to one without Job/Read (Jenkins hides the
     job from it) and to a build it does not have. Called as jenkins.urllib_fetch is. Every request is kept in calls:
     (method, url, user). *wait*: each request takes this long on *clock* (a timeout cuts it short); *down*: no request
@@ -71,7 +117,8 @@ class FakeJenkins:
             return 404, b"Not Found", {}
         log = self.logs[m.group(1)]
         start = int(dict(parse_qsl(u.query)).get("start") or 0)
-        return 200, log[start if start <= len(log) else 0:][:cap], {"X-Text-Size": str(len(log))}
+        sent = re.sub(rb"(?<!\r)\n", b"\r\n", log[start if start <= len(log) else 0:])
+        return 200, sent[:cap], {"X-Text-Size": str(len(log))}
 
     def reads(self) -> list[str]:
         """The path and query of every request, in order."""

@@ -26,7 +26,7 @@ import pytest
 from appkit import BRAINKIT, ROOT, FakeGateway, GatewayError, commit_file, git_repo, mod, sh
 from brainfix import needs_brainkit
 from patrolfix import (BASE, JENKINS_BASE, JENKINS_ROOT_URL, SHA, Clock, FakeJenkins, FakeSessions, FakeWorkspaces,
-                       PatrolGitLab)
+                       PatrolGitLab, NOTE, note, pipeline, pipeline_lines)
 
 pytestmark = needs_brainkit
 P, PID = "grp/repo", 42
@@ -326,6 +326,96 @@ def test_a_build_s_log_is_read_once_and_only_its_end_however_often_its_mr_is_rea
     for msg in w.sessions.messages():
         assert "     > [INFO] step 19921 of the build\n" in msg and msg.endswith("然后停下。")
         assert "     > [INFO] step 20000 of the build\n" in msg and "step 19920 of" not in msg
+
+
+def quoted(msg, head):
+    """The log lines the message quotes under *head*."""
+    lines = msg.split("\n")
+    out = []
+    for line in lines[lines.index(head) + 1:]:
+        if not line.startswith("     "):
+            break
+        out.append(line)
+    return out
+
+
+def test_a_pipeline_build_s_log_goes_out_as_its_console_text_reads(bk, tmp_path):
+    """progressiveText keeps the console notes consoleText leaves out (one before each [Pipeline] line, two on the
+    upstream line) and sends every line end as CRLF: the session gets the last lines as consoleText has them. Build 15
+    of the test server, its log 136 KB: the end of its tail (the closing [Pipeline] lines, the exit code, the result)
+    went out as notes, then nothing."""
+    w = World(tmp_path)
+    w.with_jenkins()
+    gl, jk = w.gl, w.jk
+    short, short_console = pipeline([b"FAIL: test_small_amount (tests.test_parse.ParseYuanTest.test_small_amount)",
+                                     b"AssertionError: 28 != 29", b"FAILED (failures=1)"])
+    debug = [b"debug roundtrip %d %d.%02d %d" % (i, i // 100, i % 100, i) for i in range(4000)]
+    long, long_console = pipeline([b"FAILED (failures=1)"] + debug)
+    assert 130_000 < len(long) < 140_000 and long.count(b"\x1b[8mha:////4") == 22
+    gl.mr(P, 7)
+    gl.check(P, 7, "unit-tests", "failed", jk.build("/job/orders/14", short))
+    gl.mr(P, 8)
+    gl.check(P, 8, "unit-tests", "failed", jk.build("/job/orders/15", long))
+    w.round()
+    for iid, n, console in ((7, 14, short_console), (8, 15, long_console)):
+        msg = w.sessions.messages("patrol-42-%d" % iid)[0]
+        head = "   - unit-tests（Jenkins 构建 %s/job/orders/%d/）：" % (JENKINS_BASE, n)
+        assert quoted(msg, head) == ["     > " + line for line in console.decode().split("\n")[:-1][-80:]]
+    assert '     > Started by upstream project "orders-ci" build number 14\n' in w.sessions.messages("patrol-42-7")[0]
+    end = w.sessions.messages("patrol-42-8")[0]
+    assert "     > [Pipeline] // gitlabCommitStatus\n" in end
+    assert "     > ERROR: script returned exit code 1\n     > Finished: FAILURE\n" in end
+
+
+def reader(tmp_path, jk):
+    """bridge.json's jenkins: the read-only user at JENKINS_BASE, its token in a file only its owner reads."""
+    token = tmp_path / "jenkins-token"
+    token.write_text(jk.token + "\n")
+    token.chmod(0o600)
+    return mod("team.jenkins").Jenkins.of({"base": JENKINS_BASE, "user": jk.user, "token_file": str(token)}, jk)
+
+
+def window_in_a_note():
+    """A log of two sh steps whose last 64 KiB (TAIL_BYTES) start 100 bytes into the note of the second one's
+    [Pipeline] sh line: (the log, the consoleText of the lines after it)."""
+    tail = mod("team.jenkins").TAIL_BYTES
+
+    def rows(pad):
+        return pipeline_lines([b"build line %04d " % i + b"x" * 980 for i in range(30)] + [NOTE + b"[Pipeline] sh"]
+                              + [b"test line %04d " % i + b"x" * 980 for i in range(60)] + [b"y" * pad])
+
+    first = rows(0)
+    cut = max(i for i, (_, plain) in enumerate(first) if plain == b"[Pipeline] sh\n")
+    pad = tail - len(first[cut][0]) + 100 - sum(len(k) for k, _ in first[cut + 1:])
+    got = rows(pad)
+    raw = b"".join(k for k, _ in got)
+    assert len(raw) - tail == sum(len(k) for k, _ in got[:cut]) + 100 and got[cut][0].index(b"\x1b[0m") > 100
+    return raw, b"".join(p for _, p in got[cut + 1:])
+
+
+def still_writing_a_note():
+    """A log Jenkins is still writing, 150 bytes into a note at its end: (the log, the consoleText of its whole
+    lines)."""
+    rows = pipeline_lines([b"FAILED (failures=1)"])[:-3]
+    return b"".join(k for k, _ in rows) + note(99)[:150], b"".join(p for _, p in rows)
+
+
+def just_under_the_window():
+    """A plain log just under 64 KiB whose 2200 line ends take what progressiveText sends over it: (the log, the
+    log)."""
+    raw = b"".join(b"[INFO] step %04d of it......\n" % i for i in range(2200))
+    assert len(raw) < mod("team.jenkins").TAIL_BYTES < len(raw) + 2200
+    return raw, raw
+
+
+@pytest.mark.parametrize("case", [window_in_a_note, still_writing_a_note, just_under_the_window])
+def test_a_build_s_tail_reads_as_its_console_text_from_the_start_of_a_line_to_the_end_of_one(bk, tmp_path, case):
+    """What Jenkins.tail gives is consoleText's end: no console note, LF line ends, and a line the window cuts (a note
+    in it too) left out at either end, whatever more bytes than the log progressiveText sends."""
+    jk = FakeJenkins()
+    raw, console = case()
+    jk.build("/job/orders/2", raw)
+    assert reader(tmp_path, jk).tail("/job/orders/2", 10.0) == console
 
 
 def test_a_jenkins_the_runner_cannot_reach_costs_one_try_a_round_and_three_in_all_ten_minutes_apart(bk, tmp_path):

@@ -10,11 +10,11 @@ in one line.
 
 The bridge's rounds run one at a time on one worker thread, so a read of Jenkins holds up the next round's hand-over
 steps. Logs keeps that short: a build's log is read once and kept by the build's address while the app runs; only its
-end, TAIL_BYTES (Jenkins' progressiveText from a byte on); TIMEOUT_S a request at most; no read starts once ROUND_S
-went by since the round's first one, and none is given longer than what is left of it (one it cuts short is left for
-the next round, as the rest are); after a Jenkins that cannot be reached none is tried that round (the other builds fail
-the same way); a build not read is asked for again RETRY_S later, MAX_TRIES times in all. A start of team mode starts
-with none read.
+end, TAIL_BYTES (Jenkins' progressiveText from a byte on, read as consoleText reads: Jenkins.tail); TIMEOUT_S a request
+at most; no read starts once ROUND_S went by since the round's first one, and none is given longer than what is left of
+it (one it cuts short is left for the next round, as the rest are); after a Jenkins that cannot be reached none is tried
+that round (the other builds fail the same way); a build not read is asked for again RETRY_S later, MAX_TRIES times in
+all. A start of team mode starts with none read.
 """
 
 from __future__ import annotations
@@ -34,6 +34,9 @@ from .. import bk
 
 # one /job/<name> or more (folders, multibranch), then the build's number: what a Jenkins build's address holds
 BUILD_RE = re.compile(r"((?:/job/[^/]+)+)/(\d+)(?:/|$)")
+# a console note as the log keeps it (ConsoleNote's PREAMBLE, its base64, its POSTAMBLE): Pipeline puts one before
+# each [Pipeline] line, a link one before the text it links; consoleText leaves them out
+NOTE_RE = re.compile(rb"\x1b\[8mha:[A-Za-z0-9+/=]*\x1b\[0m")
 NOT_SET = "运行机没配 Jenkins（bridge.json 里没有 jenkins）"
 NOT_A_BUILD = "这个链接不是 Jenkins 构建的地址"
 TAIL_BYTES = 64 * 1024      # of a build's log, its end: far more than patrol's LOG_LINES lines
@@ -126,25 +129,32 @@ class Jenkins:
         return self.base + build + "/" if self.base else target_url
 
     def tail(self, build: str, timeout: float) -> bytes:
-        """The end of the build's log at *base*, TAIL_BYTES at most, from the start of a line: Jenkins' progressiveText
-        gives a log from a byte on and says how long it is (X-Text-Size), so a longer one is asked for again from
-        TAIL_BYTES before its end. rest.HttpError when Jenkins refuses, BrainError when it cannot be reached."""
-        body, size = self._from(build, 0, timeout)
-        if size > len(body):
+        """The end of the build's log at *base* as its consoleText reads, TAIL_BYTES of the log at most, from the start
+        of a line to the end of one. Jenkins' progressiveText gives a log from a byte on and says how long it is
+        (X-Text-Size), so a longer one is asked for again from TAIL_BYTES before its end. It sends what consoleText does
+        not: the console notes (NOTE_RE), and each line end as CRLF, so those bytes come as up to twice as many. A line
+        the window cuts, at its start or at a log's end Jenkins is still writing, is left out with any note in it.
+        rest.HttpError when Jenkins refuses, BrainError when it cannot be reached."""
+        body, size, cut = self._from(build, 0, TAIL_BYTES, timeout)
+        start = 0
+        if cut:
             start = max(0, size - TAIL_BYTES)
-            body, _ = self._from(build, start, timeout)
-            body = body[body.find(b"\n") + 1:] if start else body
-        return body
+            body, _, _ = self._from(build, start, 2 * TAIL_BYTES, timeout)
+        body = body.replace(b"\r\n", b"\n")
+        if start:
+            body = body[body.find(b"\n") + 1:]
+        return NOTE_RE.sub(b"", body[:body.rfind(b"\n") + 1])
 
-    def _from(self, build: str, start: int, timeout: float) -> tuple[bytes, int]:
-        """(the log from byte *start*, TAIL_BYTES at most, its whole length; -1: Jenkins did not say)."""
+    def _from(self, build: str, start: int, cap: int, timeout: float) -> tuple[bytes, int, bool]:
+        """(the log from byte *start* as Jenkins sends it, *cap* bytes at most, its whole length (-1: Jenkins did not
+        say), whether Jenkins sent more than *cap*)."""
         url = "%s%s/logText/progressiveText?start=%d" % (self.base, build, start)
         status, body, headers = (self.transport or urllib_fetch)(
-            "GET", url, {"Authorization": self.auth} if self.auth else {}, TAIL_BYTES, timeout)
+            "GET", url, {"Authorization": self.auth} if self.auth else {}, cap + 1, timeout)
         if status != 200:
             raise bk.m("rest").HttpError(status, "GET %s -> HTTP %d" % (url, status))
         size = str({k.lower(): v for k, v in headers.items()}.get("x-text-size") or "")
-        return body[:TAIL_BYTES], int(size) if size.isdigit() else -1
+        return body[:cap], int(size) if size.isdigit() else -1, len(body) > cap
 
 
 class Log(NamedTuple):
