@@ -20,6 +20,7 @@ from . import bk, flowview
 from .installer import new_mr_link
 
 KIT = ".brain/kit.json"
+WS_RE = re.compile(r"[ \t\n\r]*")         # JSON's whitespace
 FAST_BRANCH = "brain/fast-mode"
 FAST_TITLE = {True: "设置：允许快速模式（.brain/kit.json fast_mode）", False: "设置：关掉快速模式（.brain/kit.json fast_mode）"}
 FAST_TEXT = {
@@ -38,15 +39,92 @@ def _parsed(text: str) -> Any:
 
 
 def kit_text(doc: Any, like: str) -> str:
-    """*doc* as JSON written the way *like*, the text it replaces, is: its indent, its key order (sorted when its keys
-    were), whether it escaped non-ASCII, its final newline. So the MR shows only the keys that changed."""
+    """*doc* as JSON written the way *like*, the text it replaces, is, so the MR shows only the keys that changed: the
+    text of each key whose value stays is kept as it is; a changed value, or a new key's, is written the way that
+    value was (an object or list on one line stays on one line), a new key last (where it sorts, when the keys are
+    sorted); whether non-ASCII was escaped and the final newline stay. A *like* that is not one JSON object is written
+    whole in its indent and key order."""
+    old = _parsed(like)
+    if isinstance(doc, dict) and isinstance(old, dict) and old:
+        try:
+            return _edited(doc, old, like)
+        except ValueError:          # a key twice, nothing left: written whole
+            pass
+    return _whole(doc, like)
+
+
+def _escaped(like: str) -> bool:
+    return bool(re.search(r"\\u[0-9a-fA-F]{4}", like)) and not re.search(r"[^\x00-\x7f]", like)
+
+
+def _whole(doc: Any, like: str) -> str:
+    """*doc* in *like*'s indent, key order (sorted when its keys were) and final newline."""
     m = re.search(r"\n([ \t]+)\S", like)
     indent: Any = (m.group(1) if "\t" in m.group(1) else len(m.group(1))) if m else None
     old = _parsed(like)
     keys = list(old) if isinstance(old, dict) else []
-    escaped = bool(re.search(r"\\u[0-9a-fA-F]{4}", like)) and not re.search(r"[^\x00-\x7f]", like)
-    text = json.dumps(doc, indent=indent, sort_keys=len(keys) > 1 and keys == sorted(keys), ensure_ascii=escaped)
+    text = json.dumps(doc, indent=indent, sort_keys=len(keys) > 1 and keys == sorted(keys), ensure_ascii=_escaped(like))
     return text + ("\n" if like.endswith("\n") or not like else "")
+
+
+def _members(text: str) -> tuple[int, list[tuple[str, int, int, int, int]], int]:
+    """The JSON object *text* is: (where its { is, its members as (key, key start, key end, value start, value end),
+    where its } is). ValueError when it names a key twice."""
+    dec = json.JSONDecoder()
+    start = WS_RE.match(text, 0).end()
+    i, out = WS_RE.match(text, start + 1).end(), []
+    while text[i:i + 1] != "}":
+        key, ke = json.decoder.scanstring(text, i + 1)
+        vs = WS_RE.match(text, WS_RE.match(text, ke).end() + 1).end()
+        _, ve = dec.raw_decode(text, vs)
+        out.append((key, i, ke, vs, ve))
+        i = WS_RE.match(text, ve).end()
+        if text[i:i + 1] == ",":
+            i = WS_RE.match(text, i + 1).end()
+    if len({m[0] for m in out}) != len(out):
+        raise ValueError("a key twice")
+    return start, out, i
+
+
+def _edited(doc: dict, old: dict, like: str) -> str:
+    """kit_text of an object *like* that has members (*old*, parsed), member by member."""
+    start, members, end = _members(like)
+    keys, by_key = [m[0] for m in members], {m[0]: m for m in members}
+    escaped, sort = _escaped(like), len(keys) > 1 and keys == sorted(keys)
+    lead = like[start + 1:members[0][1]]
+    pad = lead.rsplit("\n", 1)[1] if "\n" in lead else ""           # a member's indent: one level
+    colon = like[members[0][2]:members[0][3]]
+    seps = (",", ":") if colon.strip() == ":" and not colon.endswith(" ") else (", ", ": ")
+    nested = [like[m[3]:m[4]] for m in members if isinstance(old[m[0]], (dict, list)) and old[m[0]]]
+    flat = sum("\n" not in t for t in nested) * 2 > len(nested) if nested else "\n" not in like[start:end]
+
+    def value(v: Any, was: str | None) -> str:
+        if (("\n" not in was) if was is not None else flat) or not pad or not isinstance(v, (dict, list)) or not v:
+            return json.dumps(v, ensure_ascii=escaped, separators=seps, sort_keys=sort)
+        return json.dumps(v, ensure_ascii=escaped, indent=pad if "\t" in pad else len(pad),
+                          sort_keys=sort).replace("\n", "\n" + pad)
+
+    order = [k for k in keys if k in doc]
+    for k in [k for k in doc if k not in by_key]:
+        order.insert(next((n for n, o in enumerate(order) if o > k), len(order)) if sort else len(order), k)
+    if not order:
+        raise ValueError("no key left")
+    sep = like[members[0][4]:members[1][1]] if len(members) > 1 else "," + (lead or " ")
+    parts: list[str] = []
+    for n, k in enumerate(order):
+        m = by_key.get(k)
+        if m is None:
+            text = json.dumps(k, ensure_ascii=escaped) + colon + value(doc[k], None)
+        elif json.dumps(doc[k], sort_keys=True) == json.dumps(old[k], sort_keys=True):      # 1 is not true
+            text = like[m[1]:m[4]]
+        else:
+            text = like[m[1]:m[3]] + value(doc[k], like[m[3]:m[4]])
+        if n:
+            i = keys.index(order[n - 1]) if order[n - 1] in by_key else -1
+            parts.append(like[members[i][4]:m[1]] if m is not None and 0 <= i and i + 1 < len(members)
+                         and members[i + 1][0] == k else sep)
+        parts.append(text)
+    return like[:start + 1] + lead + "".join(parts) + like[members[-1][4]:end] + like[end:]
 
 
 def _project(project: Any) -> str:

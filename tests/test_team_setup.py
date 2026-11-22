@@ -875,6 +875,51 @@ def test_kit_json_is_written_back_the_way_brain_kit_writes_it(tmp_path, home):
         bk.unload()
 
 
+def test_kit_json_keeps_its_own_layout_where_only_some_keys_change(tmp_path, home):
+    """A kit.json written by hand: the keys that do not change keep their text, a compact object or list stays on one
+    line, a new key comes last (in its place when the keys are sorted) in the file's own style; a one-line file stays one
+    line; a key taken out goes with its comma."""
+    bk, kitmr = mod("bk"), mod("kitmr")
+    assert bk.load(str(BRAINKIT))["ok"]
+    try:
+        hand = ('{\n  "req_prefix": "PAY",\n  "gitlab": {"base": "https://old.example.com", "project": "grp/old"},\n'
+                '  "bot_users": ["brain-bot"],\n  "work_sources": ["mr-handoff"]\n}\n')
+        doc = dict(json.loads(hand), gitlab={"base": BASE, "project": P}, work_sources=["mr-handoff", "mr-patrol"],
+                   bridge_user="brain-bridge", bot_emails=["brain-bot@noreply.invalid"])
+        assert kitmr.kit_text(doc, hand) == (
+            '{\n  "req_prefix": "PAY",\n  "gitlab": {"base": "%s", "project": "%s"},\n  "bot_users": ["brain-bot"],\n'
+            '  "work_sources": ["mr-handoff", "mr-patrol"],\n  "bridge_user": "brain-bridge",\n'
+            '  "bot_emails": ["brain-bot@noreply.invalid"]\n}\n' % (BASE, P))
+        one = '{"req_prefix": "PAY", "gitlab": {"base": "x", "project": "y"}}'
+        assert kitmr.kit_text(dict(json.loads(one), fast_mode=False), one) == \
+            '{"req_prefix": "PAY", "gitlab": {"base": "x", "project": "y"}, "fast_mode": false}'
+        dropped = {k: v for k, v in json.loads(hand).items() if k != "bot_users"}
+        assert kitmr.kit_text(dropped, hand) == (
+            '{\n  "req_prefix": "PAY",\n  "gitlab": {"base": "https://old.example.com", "project": "grp/old"},\n'
+            '  "work_sources": ["mr-handoff"]\n}\n')
+        flag = '{\n  "fast_mode": 1\n}\n'
+        assert kitmr.kit_text({"fast_mode": True}, flag) == '{\n  "fast_mode": true\n}\n'     # 1 is not true
+    finally:
+        bk.unload()
+
+
+def test_the_kit_json_mr_changes_only_the_lines_of_the_keys_it_sets(world):
+    """一键建运行机's kit.json MR on a kit.json written by hand (compact objects): the MR's file is that file with the
+    runner's keys set, its other lines as they were."""
+    gl = world["gl"]
+    kit = json.loads(gl.files["main"][KIT])
+    lines = ['  %s: %s' % (json.dumps(k), json.dumps(v, ensure_ascii=False)) for k, v in kit.items()]
+    gl.files["main"][KIT] = "{\n" + ",\n".join(lines) + "\n}\n"
+    view, _ = build(world)
+    assert everything_done(view)
+    old, new = gl.files["main"][KIT].splitlines(), gl.files["brain/runner-setup"][KIT].splitlines()
+    assert [x for x in old if x not in new] == ['  "bridge_user": "",', '  "gitlab": {"base": "", "project": ""},',
+                                                '  "version": 1']
+    assert [x for x in new if x not in old] == ['  "bridge_user": "%s",' % bridge_of(world),
+                                                '  "gitlab": {"base": "%s", "project": "%s"},' % (BASE, P),
+                                                '  "version": 1,', '  "work_sources": ["mr-handoff", "mr-patrol"]']
+
+
 def test_a_pid_file_naming_another_process_is_never_signalled(tmp_path):
     signerproc = mod("team.signerproc")
     cfg = tmp_path / "signer.json"
