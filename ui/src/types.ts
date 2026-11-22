@@ -1819,7 +1819,7 @@ export interface RelayProject {
   /** older than stale_after_s */
   stale: boolean
   /** as its snapshot says: whether the runner takes its hand-overs, the work its kit.json switches on, what went wrong */
-  state: { on: boolean; sources: string[]; error: string } | null
+  state: TeamSnapshot['state'] | null
   /** when its 全队交付 rows were read from GitLab whole */
   delivery_at: number | null
   /** the team server's version that wrote it */
@@ -1859,13 +1859,17 @@ export interface TeamSnapshot {
    * together (cap), and how many work now */
   server: { version: string; team_mode: boolean; last_round_at: number | null; cap: number; working: number }
   /** on: the runner takes its hand-overs; sources: the work its kit.json switches on; error: what went wrong with it
-   * last round, in words ('' none) */
-  state: { on: boolean; sources: string[]; error: string }
+   * last round, in words ('' none); issue_label: the label 从 issue 接活 takes there ('' where it is off, and in an
+   * older team server's snapshot) */
+  state: { on: boolean; sources: string[]; error: string; issue_label: string }
   runner: {
     /** the ledger's latest run of each requirement, still open */
     handovers: SnapshotHandover[]
     patrol: PatrolMr[]
     staging: StagingError[]
+    /** the labelled issues 从 issue 接活 has not started a run of: on their way (note: why it waits this round) or
+     * refused (reason); [] in an older team server's snapshot */
+    issues: IssueItem[]
   }
   /** every requirement of the project, open, or merged or closed in the last 14 days */
   delivery: SnapshotDelivery[]

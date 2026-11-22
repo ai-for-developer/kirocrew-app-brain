@@ -245,6 +245,31 @@ def test_a_reporters_label_starts_nothing_and_says_why(w):
         rt.stop()
 
 
+def test_each_projects_snapshot_carries_its_labelled_issues_not_started_yet_and_why(w):
+    """团队运行机 on a person's machine reads 从 issue 接活's issues from each project's snapshot: a Reporter's label is
+    there, refused, with why, and the label the project takes is said; once a Developer's label starts its run the
+    issue is the runner's (its hand-overs, 全队交付) and no longer listed."""
+    import time
+    snapshot = mod("snapshot")
+    gl = w["gl"]
+    gl.label("rita")
+    rt = runtime(w)
+    try:
+        def snap():
+            return snapshot.parse(rt.snapshot_of(P, time.time(), time.monotonic() + 20, None, rt._shared()))
+        assert rounds(rt) == [None]
+        got = snap()
+        item, = got["runner"]["issues"]
+        assert (item["project"], item["iid"], item["state"], item["labeler"]) == (P, IID, "refused", "rita")
+        assert "Reporter" in item["reason"] and got["state"]["issue_label"] == "brain"
+        gl.label("alice", action="remove")
+        gl.label("alice")
+        assert rounds(rt) == [None] and rt.issues.led.get(P, IID).state == "started"
+        assert snap()["runner"]["issues"] == []
+    finally:
+        rt.stop()
+
+
 @pytest.mark.parametrize("body, why", [
     (BODY + "\n联系人手机 13812345678\n", "personal data"),
     (BODY + "\n退款上限 ¥50000\n", "amount"),

@@ -71,6 +71,22 @@ def test_what_a_newer_server_adds_is_left_out_and_what_one_lacks_is_said_where()
         snapshot.parse(lacking)
 
 
+def test_what_an_older_server_did_not_write_reads_as_none_of_it_and_a_newer_ones_waiting_issues_are_kept():
+    older = snapshot.parse(a_snapshot())        # 0.5.2's: no issues of 从 issue 接活 and no label in it
+    assert (older["runner"]["issues"], older["state"]["issue_label"]) == ([], "")
+    issue = {"project": "shop/pay", "iid": 7, "title": "订单列表：按状态筛选", "url": "https://gitlab.example.com/shop/pay/-/issues/7",
+             "labeler": "rita", "role": "", "state": "refused", "key": None, "mr_iid": None, "mr_url": None, "run_id": None,
+             "reason": "- @rita 在项目里是 Reporter：要 Developer 以上才能让 Brain 接 issue", "note": ""}
+    newer = a_snapshot()
+    newer["state"]["issue_label"] = "brain"
+    newer["runner"]["issues"] = [issue]
+    got = snapshot.parse(newer)
+    assert (got["runner"]["issues"], got["state"]["issue_label"]) == ([issue], "brain")
+    newer["runner"]["issues"][0]["iid"] = "7"
+    with pytest.raises(snapshot.Bad, match=r"^runner\.issues\[0\]\.iid: want a whole number$"):
+        snapshot.parse(newer)
+
+
 @pytest.mark.parametrize("schema", [2, 0, "1", True, None])
 def test_another_schema_is_not_read_as_this_one(schema):
     other = dict(a_snapshot(), schema=schema)

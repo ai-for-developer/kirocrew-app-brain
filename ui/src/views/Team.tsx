@@ -131,6 +131,8 @@ export const ISSUE_STATE: Record<IssueState, { label: string; tone: Tone }> = {
 export const issueMeta = (state: string) => ISSUE_STATE[state as IssueState] ?? { label: state, tone: 'idle' as Tone }
 const issueRank = (state: string) => { const i = Object.keys(ISSUE_STATE).indexOf(state); return i < 0 ? 99 : i }
 export const ISSUES_OFF = '还没有项目从 issue 接活：项目的 .brain/kit.json 里 work_sources 写全，比如 ["mr-handoff", "issue-label"]（只写 issue-label 会把交接关掉）就开始。一键建运行机勾上「从打了标签的 issue 接活」，它开的 kit.json MR 会写好。'
+/** a person's 团队运行机 lists the issues not started yet: none left */
+export const ISSUES_ALL_STARTED = '没有还没开工的 issue：打了标签的都开工了，在上面「运行机在做」和下面的全队交付里。'
 export const PATROL_OFF = '还没有项目打开巡检：项目的 .brain/kit.json 里 work_sources 写全，比如 ["mr-handoff", "mr-patrol"]（只写 mr-patrol 会把交接关掉）就开始。一键建运行机勾上「巡检所有开着的 MR」，它开的 kit.json MR 会写好。'
 
 /** The config files brain-kit reads on a team runner, in this order, and what each is for. */
@@ -503,8 +505,10 @@ function Handovers({ rows, at }: { rows: TeamHandover[]; at: number | null }) {
 }
 
 /** 从 issue 接活: every issue labelled for Brain its last round looked at, the ones on their way first: who labelled it
- * (their role), its requirement and MR, its state in words, and why one was not taken (what the issue was told). */
-function Issues({ view }: { view: TeamIssues }) {
+ * (their role), its requirement and MR, its state in words, and why one was not taken (what the issue was told).
+ * *waiting*: the ones not started yet only (a person's 团队运行机, from the snapshots: a started one is the runner's
+ * run); *me*: whose labels are said as 你. */
+export function Issues({ view, me = null, waiting = false }: { view: TeamIssues; me?: string | null; waiting?: boolean }) {
   const rows = [...view.items].sort((a, b) => issueRank(a.state) - issueRank(b.state))
   const on = view.projects.filter((p) => p.on)
   const labels = Array.from(new Set(on.map((p) => p.label)))
@@ -514,11 +518,11 @@ function Issues({ view }: { view: TeamIssues }) {
         <RoleIcon role="product" size={18} />
         <h3>从 issue 接活</h3>
         <span className="br-dim br-small">
-          {view.on ? `${on.map((p) => p.project).join('、')}：Developer 以上的人给 issue 打上标签 ${labels.join('、')}，运行机就认领成需求、开 MR、开工` : '没打开'}
+          {view.on ? `${on.map((p) => p.project).join('、')}：Developer 以上的人给 issue 打上标签 ${labels.join('、')}，运行机就认领成需求、开 MR、开工${waiting ? '；这里是还没开工的' : ''}` : '没打开'}
         </span>
       </header>
       {!view.on ? <p className="br-empty">{ISSUES_OFF}</p> : rows.length === 0 ? (
-        <p className="br-empty">{view.last_at ? `上一轮（${ago(view.last_at)}）没有打了标签的 issue。` : '还没看过：下一轮就看。'}</p>
+        <p className="br-empty">{waiting ? ISSUES_ALL_STARTED : view.last_at ? `上一轮（${ago(view.last_at)}）没有打了标签的 issue。` : '还没看过：下一轮就看。'}</p>
       ) : (
         <div className="br-scroll">
           <table className="cto-table tm-runs">
@@ -535,7 +539,7 @@ function Issues({ view }: { view: TeamIssues }) {
                         <span className="tm-pt-title">{i.title}</span>
                       </span>
                     </td>
-                    <td>@{i.labeler}{i.role && <span className="br-dim br-small">（{i.role}）</span>}</td>
+                    <td>{me && i.labeler === me ? `你（@${i.labeler}）` : `@${i.labeler}`}{i.role && <span className="br-dim br-small">（{i.role}）</span>}</td>
                     <td>
                       {i.key ? <b className="br-mono">{i.key}</b> : <span className="br-dim">—</span>}
                       {i.mr_iid && <> <ExtLink href={i.mr_url} className="tm-mr">!{i.mr_iid}</ExtLink></>}

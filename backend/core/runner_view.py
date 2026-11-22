@@ -354,7 +354,7 @@ def together(base: str, xs: list[Listed], listed: list[Listed], reads: Mapping[s
             snaps.append(snap)
     newest = max(snaps, key=lambda s: s["generated_at"]) if snaps else None
     view = newest and {"generated_at": newest["generated_at"], "server": newest["server"],
-                       "runner": {k: [i for s in snaps for i in s["runner"][k]] for k in ("handovers", "patrol", "staging")},
+                       "runner": {k: [i for s in snaps for i in s["runner"][k]] for k in snapshot.RUNNER},
                        "delivery": [r for s in snaps for r in s["delivery"]]}
     return {"repos": [x.repo for x in xs], "me": next((x.me for x in xs if x.me), None),
             "repo_of": {x.project: x.repo for x in listed if x.base == base and x.project},

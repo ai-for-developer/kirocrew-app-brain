@@ -114,9 +114,11 @@
             "sources": [
               "mr-handoff",
               "mr-patrol",
-              "staging-errors"
+              "staging-errors",
+              "issue-label"
             ],
-            "error": ""
+            "error": "",
+            "issue_label": "brain"
           },
           "delivery_at": 1794146220.0,
           "version": "0.4.2",
@@ -134,7 +136,8 @@
               "mr-handoff",
               "mr-patrol"
             ],
-            "error": ""
+            "error": "",
+            "issue_label": ""
           },
           "delivery_at": 1794145980.0,
           "version": "0.4.2",
@@ -326,6 +329,38 @@
               "attempts": 0,
               "slot": "staging-12-13",
               "note": ""
+            }
+          ],
+          "issues": [
+            {
+              "project": "shop/shop-pay",
+              "role": "",
+              "key": null,
+              "mr_iid": null,
+              "mr_url": null,
+              "run_id": null,
+              "reason": "",
+              "note": "这一轮没做完：GET /projects/shop%2Fshop-pay/issues/23/resource_label_events -> HTTP 502",
+              "iid": 23,
+              "title": "退款单导出加上退款原因",
+              "url": "https://gitlab.example.com/shop/shop-pay/-/issues/23",
+              "labeler": "alice",
+              "state": "new"
+            },
+            {
+              "project": "shop/shop-pay",
+              "role": "",
+              "key": null,
+              "mr_iid": null,
+              "mr_url": null,
+              "run_id": null,
+              "reason": "- @rita 在项目里是 Reporter：要 Developer 以上才能让 Brain 接 issue",
+              "note": "",
+              "iid": 25,
+              "title": "退款按钮改成红色",
+              "url": "https://gitlab.example.com/shop/shop-pay/-/issues/25",
+              "labeler": "rita",
+              "state": "refused"
             }
           ]
         },

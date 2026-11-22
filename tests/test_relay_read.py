@@ -106,13 +106,14 @@ def test_each_projects_state_is_read_with_my_token_from_its_own_branch_and_put_t
     assert relay["projects"][0]["state"] == pay["state"] and relay["projects"][0]["version"] == "0.4.2"
     view = relay["view"]
     assert (view["generated_at"], view["server"]) == (web["generated_at"], web["server"])
-    assert view["delivery"] == pay["delivery"] + web["delivery"] and view["runner"] == {"handovers": [], "patrol": [], "staging": []}
+    assert view["delivery"] == pay["delivery"] + web["delivery"]
+    assert view["runner"] == {"handovers": [], "patrol": [], "staging": [], "issues": []}
     assert [(path, query, who) for _, path, query, who in reads(gl)] == [
         ("/api/v4/projects/%s/repository/files/snapshot.json/raw" % p, {"ref": "brain/status"}, "alice") for p in (PAY, WEB)]
     assert "alice-tok" not in got.text
     fix = fixture("team-status.json")
     assert diff_keys(fix, body, skip=(".relays[].repo_of",)) == []
-    assert all(fix["relays"][0]["view"]["runner"][k] for k in ("handovers", "patrol", "staging"))
+    assert all(fix["relays"][0]["view"]["runner"][k] for k in ("handovers", "patrol", "staging", "issues"))
 
 
 def test_a_person_sees_the_projects_gitlab_lets_them_read_and_nothing_of_any_other(tmp_path, home, monkeypatch):

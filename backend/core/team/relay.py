@@ -52,6 +52,7 @@ from .. import bk, deliveries, family, fastrow, lean_view, mrinfo, snapshot
 from ..constants import KEY_RE
 from ..repo import MAX_FILE, REFLECT_RE, Source, empty_facts, parse_branch, read_facts
 from . import sources
+from .issues import NEW, REFUSED, UNDER_WAY
 
 FILE, BRANCH = snapshot.FILE, snapshot.BRANCH
 FLOOR_S, HEARTBEAT_S = snapshot.FLOOR_S, snapshot.HEARTBEAT_S
@@ -713,15 +714,26 @@ def masked(text: str) -> str:
 # ---- what the snapshot says of the server and the project -------------------------------------------------------- #
 
 def project_state(project: str, polled: list[Mapping[str, Any]], patrol: Mapping[str, Any],
-                  staging: Mapping[str, Any], delivery: str) -> dict[str, Any]:
+                  staging: Mapping[str, Any], delivery: str, issues: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """*project* as the round left it (the snapshot's state): whether the runner takes its hand-overs, the work sources
-    its kit.json switches on, and what went wrong with it this round, each part in words (*delivery*: what reading its
-    rows said)."""
+    its kit.json switches on, the label 从 issue 接活 takes there, and what went wrong with it this round, each part in
+    words (*delivery*: what reading its rows said)."""
     poll = next((x for x in polled if x["project"] == project), {})
     pat = next((x.get("error") or "" for x in patrol.get("projects") or [] if x["project"] == project), "")
     sta = next((x.get("error") or "" for x in staging.get("projects") or [] if x["project"] == project), "")
-    said = [poll.get("error") or "", delivery, "MR 巡检：%s" % pat if pat else "", "测试环境报错：%s" % sta if sta else ""]
-    return {"on": bool(poll.get("on")), "sources": list(poll.get("sources") or []), "error": "；".join(x for x in said if x)}
+    iss = next((x for x in (issues or {}).get("projects") or [] if x["project"] == project), {})
+    said = [poll.get("error") or "", delivery, "MR 巡检：%s" % pat if pat else "", "测试环境报错：%s" % sta if sta else "",
+            "从 issue 接活：%s" % iss["error"] if iss.get("error") else ""]
+    return {"on": bool(poll.get("on")), "sources": list(poll.get("sources") or []), "error": "；".join(x for x in said if x),
+            "issue_label": str(iss.get("label") or "") if iss.get("on") else ""}
+
+
+def waiting_issues(issues: Mapping[str, Any], project: str) -> list[dict[str, Any]]:
+    """The labelled issues of *project* 从 issue 接活 has not started a run of, as its view gives them (issues.view_of):
+    on their way (new, claimed, pushed, opened, with this round's word on why each waits) or refused (and why). A started
+    one is the runner's (its hand-overs and 全队交付), one whose label went is no longer labelled."""
+    waiting = (NEW, REFUSED) + UNDER_WAY
+    return [dict(i) for i in issues.get("items") or [] if i["project"] == project and i["state"] in waiting]
 
 
 def identity_roles(path: Any) -> dict[str, list[str]]:
