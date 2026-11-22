@@ -213,3 +213,14 @@ def test_a_staging_fix_whose_mr_is_open_counts_while_its_turn_runs(tmp_path, hom
     assert fixing == "fix_mr" and loop.body["ok"], loop.body
     assert len(running(gw)) == 2 and "staging-42-1" in running(gw), running(gw)
     assert sorted(i["state"] for i in patrolled.body["items"] if i["iid"] in (1, 2)) == ["queued", "working"]
+
+
+def test_a_rerun_keeps_a_hand_written_staging_block_whose_path_differs_in_case_from_gitlab_s(tmp_path):
+    """一键建运行机 run again lists the projects by GitLab's paths: a hand-written entry naming its project in another
+    case (GitLab's paths are not case-sensitive) is the same project, kept with its staging block, under GitLab's path."""
+    setup = mod("team.setup")
+    block = {"log": {"kind": "file", "path": "/srv/staging/pay/app.log"},
+             "version": {"kind": "file", "path": "/srv/staging/pay/VERSION"}}
+    path = tmp_path / "bridge.json"
+    path.write_text(json.dumps({"projects": [{"project": "Grp/Pay", "staging": block}, "grp/old"]}))
+    assert setup.kept_entries(path, ["grp/pay", "grp/new"]) == [{"project": "grp/pay", "staging": block}, "grp/new"]

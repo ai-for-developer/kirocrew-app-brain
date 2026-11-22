@@ -12,9 +12,11 @@ import hashlib
 import importlib.util
 import json
 import logging
+import os
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -49,7 +51,7 @@ class World:
     def __init__(self, tmp_path, kits=None, claims=None):
         self.tmp, self.clock = tmp_path, Clock()
         self.gl = PatrolGitLab(self.clock)
-        self.gl.jenkins = self.jk = FakeJenkins()
+        self.gl.jenkins = self.jk = FakeJenkins(clock=self.clock)
         self.jenkins = mod("team.jenkins").Jenkins.of(None)
         self.kits = kits or {P: kit()}
         for n, path in enumerate(self.kits):
@@ -222,18 +224,19 @@ def test_a_check_jenkins_reported_goes_out_with_the_tail_of_its_console_read_whe
     both = w.sessions.messages("patrol-42-8")[0]
     assert "   - test：\n     > FAILED test_discount\n" in both
     assert "   - it（Jenkins 构建 %s/job/shop/job/orders-it/12/）：\n     > BUILD FAILURE\n" % JENKINS_BASE in both
-    assert jk.calls == [("GET", JENKINS_BASE + "/job/orders/2/consoleText", "brain-reader"),
-                        ("GET", JENKINS_BASE + "/job/shop/job/orders-it/12/consoleText", "brain-reader")]
+    assert jk.calls == [("GET", JENKINS_BASE + "/job/orders/2/logText/progressiveText?start=0", "brain-reader"),
+                        ("GET", JENKINS_BASE + "/job/shop/job/orders-it/12/logText/progressiveText?start=0",
+                         "brain-reader")]
 
 
 NO_LOG = {
     "no jenkins in bridge.json": ("Jenkins 构建 %s/job/orders/2/display/redirect" % JENKINS_ROOT_URL,
                                   "运行机没配 Jenkins（bridge.json 里没有 jenkins）", 0),
     "jenkins refuses (no Overall/Read)": ("Jenkins 构建 %s/job/orders/2/" % JENKINS_BASE,
-                                          "Jenkins 不让 brain-reader 读这个构建（HTTP 403）：只读用户要有 Overall/Read 和 Job/Read", 2),
+                                          "Jenkins 不让 brain-reader 读这个构建（HTTP 403）：只读用户要有 Overall/Read 和 Job/Read", 1),
     "jenkins hides the job (no Job/Read)": ("Jenkins 构建 %s/job/orders/2/" % JENKINS_BASE,
                                             "Jenkins 上找不到这个构建（HTTP 404）：只读用户没有它的 Job/Read，或者构建删掉了，"
-                                            "或者 bridge.json 的 jenkins.base 不对", 2),
+                                            "或者 bridge.json 的 jenkins.base 不对", 1),
     "a link to no jenkins build": ("外部 CI 报给 GitLab 的，https://ci.example.com/builds/77",
                                    "这个链接不是 Jenkins 构建的地址", 0),
 }
@@ -241,7 +244,8 @@ NO_LOG = {
 
 @pytest.mark.parametrize("case", list(NO_LOG))
 def test_a_check_whose_log_is_not_read_goes_out_with_its_link_and_one_line_why(bk, tmp_path, case):
-    """It goes out all the same, the app's log says why once, and a refusal is asked about again on the next read."""
+    """It goes out all the same, the app's log says why once, and a refusal is not asked about again on the next read
+    (jenkins.RETRY_S)."""
     w = World(tmp_path)
     gl, jk = w.gl, w.jk
     if case != "no jenkins in bridge.json":
@@ -260,7 +264,7 @@ def test_a_check_whose_log_is_not_read_goes_out_with_its_link_and_one_line_why(b
     assert w.item(7)["problems"] == [{"kind": "ci_failed", "text": "流水线 #%d 没过：unit-tests" % pid}]
     assert "   - unit-tests（%s）：\n     没读到日志：%s\n" % (where, why) in msg and "FAILED test_discount" not in msg
     assert [s for s in w.said if "no log" in s] == ["grp/repo!7: unit-tests: no log: " + why]
-    assert [c[1] for c in jk.calls] == [JENKINS_BASE + "/job/orders/2/consoleText"] * asked
+    assert jk.reads() == ["/job/orders/2/logText/progressiveText?start=0"] * asked
 
 
 @pytest.mark.parametrize("own", [False, True])
@@ -294,7 +298,143 @@ def test_a_new_jenkins_build_on_the_same_head_is_dispatched_again_and_each_build
     again = w.sessions.messages()[-1]
     assert "Jenkins 构建 %s/job/orders/3/）：\n     > FAILED test_two\n" % JENKINS_BASE in again and "test_one" not in again
     assert ("> FAILED test_gitlab" in again) is own and gl.asked(r"/jobs/\d+/trace$") == (1 if own else 0)
-    assert [c[1] for c in jk.calls] == [JENKINS_BASE + "/job/orders/%d/consoleText" % n for n in (2, 3)]
+    assert jk.reads() == ["/job/orders/%d/logText/progressiveText?start=0" % n for n in (2, 3)]
+
+
+def test_a_build_s_log_is_read_once_and_only_its_end_however_often_its_mr_is_read(bk, tmp_path):
+    """A long console: Jenkins says how long it is, and only its end is asked for, once, while its MR is read every
+    round as it is worked, and again when Jenkins posts that build's status anew (a new status: dispatched again)."""
+    patrol, jenkins = mod("team.patrol"), mod("team.jenkins")
+    w = World(tmp_path)
+    w.with_jenkins()
+    gl, jk = w.gl, w.jk
+    console = b"".join(b"[INFO] step %d of the build\n" % i for i in range(1, 20001))
+    url = jk.build("/job/orders/2", console)
+    gl.mr(P, 7)
+    gl.check(P, 7, "unit-tests", "failed", url)
+    for _ in range(6):
+        w.round()
+        w.later()
+    w.sessions.end()
+    gl.check(P, 7, "unit-tests", "failed", url)
+    w.later(patrol.RECHECK_S)
+    w.round()
+    assert len(jk.calls) == 2 and len(w.sessions.sent) == 2
+    head, end = jk.reads()
+    assert head == "/job/orders/2/logText/progressiveText?start=0"
+    assert end == "/job/orders/2/logText/progressiveText?start=%d" % (len(console) - jenkins.TAIL_BYTES)
+    for msg in w.sessions.messages():
+        assert "     > [INFO] step 19921 of the build\n" in msg and msg.endswith("然后停下。")
+        assert "     > [INFO] step 20000 of the build\n" in msg and "step 19920 of" not in msg
+
+
+def test_a_jenkins_the_runner_cannot_reach_costs_one_try_a_round_and_three_in_all_ten_minutes_apart(bk, tmp_path):
+    """Every request to it times out: the round's first one says so for every build of the round, its MR goes out at
+    once with why, and a build is asked for again RETRY_S later, MAX_TRIES times in all."""
+    jenkins = mod("team.jenkins")
+    w = World(tmp_path)
+    w.with_jenkins()
+    gl, jk = w.gl, w.jk
+    jk.down = True
+    gl.mr(P, 7)
+    for n in (1, 2, 3):
+        gl.check(P, 7, "check-%d" % n, "failed", jk.build("/job/orders/%d" % n, b"FAILED\n"))
+    start = w.clock.t
+    w.round()
+    assert len(jk.calls) == 1 and w.clock.t - start == jenkins.TIMEOUT_S
+    assert w.sessions.messages("patrol-42-7")[0].count("     没读到日志：连不上 Jenkins：") == 3
+    calls = []
+    for _ in range(25):                 # worked, so read every round, for 25 minutes
+        w.later()
+        w.round()
+        calls.append(len(jk.calls))
+    assert calls == [1] * 9 + [2] * 10 + [3] * 6
+    w.later(jenkins.RETRY_S)
+    w.round()
+    assert len(jk.calls) == 3
+    assert all(c.why.endswith("（试了 3 次都没读到，不再读）") for c in w.patrol.led.get(P, 7).read.checks)
+
+
+def test_jenkins_reads_stop_when_the_round_s_time_for_them_is_up_and_their_mr_waits_for_the_next_round(bk, tmp_path):
+    """A slow Jenkins (6 s a request): a round's reads take ROUND_S at most, so the next round's hand-over steps wait no
+    longer; the builds left are read the next round, and their MR goes out once it has every log."""
+    jenkins = mod("team.jenkins")
+    w = World(tmp_path)
+    w.with_jenkins()
+    gl, jk = w.gl, w.jk
+    jk.wait = 6.0
+    gl.mr(P, 7)
+    for n in range(1, 6):
+        gl.check(P, 7, "check-%d" % n, "failed", jk.build("/job/orders/%d" % n, b"FAILED test_%d\n" % n))
+    start = w.clock.t
+    w.round()
+    assert len(jk.calls) == 4
+    assert w.clock.t - start == jenkins.ROUND_S
+    assert w.sessions.sent == [] and w.item(7)["state"] == "waiting"
+    assert w.item(7)["note"] == "Jenkins 的日志这一轮没读完：下一轮读完再派"
+    w.later()
+    w.round()
+    assert len(jk.calls) == 6 and len(w.sessions.sent) == 1
+    assert all("     > FAILED test_%d\n" % n in w.sessions.messages()[0] for n in range(1, 6))
+    assert not [s for s in w.said if "no log" in s]
+
+
+def test_a_failed_trigger_job_is_the_pipeline_s_own_not_a_check_external_ci_reported(bk, tmp_path):
+    """GitLab lists a pipeline's trigger jobs (bridges) among its commit statuses, not among its jobs: one that failed is
+    not named as a check external CI reported, with a Jenkins reason, nor asked of Jenkins, nor in the fingerprint."""
+    w = World(tmp_path)
+    w.with_jenkins()
+    gl = w.gl
+    gl.mr(P, 7)
+    pid = gl.fail(P, 7, {"test": b"FAILED test_discount\n"})
+    gl.trigger(P, pid, "deploy-review", reason="downstream_pipeline_creation_failed")
+    w.round()
+    msg = w.sessions.messages("patrol-42-7")[0]
+    assert "   - test：\n     > FAILED test_discount\n" in msg
+    assert "deploy-review（" not in msg and "外部 CI 报给 GitLab 的" not in msg and "不是 Jenkins 构建" not in msg
+    assert w.jk.calls == [] and w.patrol.led.get(P, 7).status_ids == ()
+
+
+def test_a_merged_results_pipeline_is_the_mr_s_own_and_one_of_an_older_head_is_not(bk, tmp_path):
+    """GitLab runs an MR's pipeline on the merge of its head into the target branch (merged results): its sha is that
+    merge commit's, not the head's. It is the MR's head pipeline while a parent of that commit is the head; one an older
+    head left behind (an older GitLab keeps it as head_pipeline after a push) is not."""
+    w = World(tmp_path)
+    gl = w.gl
+    gl.mr(P, 7)
+    pid = gl.merged_result(P, 7, {"test": b"FAILED test_discount\n"})
+    w.round()
+    assert w.item(7)["problems"] == [{"kind": "ci_failed", "text": "流水线 #%d 没过：test" % pid}]
+    assert "   - test：\n     > FAILED test_discount\n" in w.sessions.messages("patrol-42-7")[0]
+    w.sessions.end()
+    gl.push(P, 7, SHA[2], by="alice@example.com")
+    gl.mrs[(P, 7)]["_pipeline"] = gl.pipes[pid]
+    w.later()
+    w.round()
+    assert (w.item(7)["state"], w.item(7)["problems"]) == ("ok", []) and len(w.sessions.sent) == 1
+
+
+def test_a_child_pipeline_s_failed_jobs_go_out_through_the_trigger_job_that_started_it(bk, tmp_path):
+    """A pipeline fails because one its trigger job started failed (strategy: depend), with no failed job of its own:
+    the session gets that pipeline's failed jobs and their logs, each named by the trigger job, a child's child too;
+    a trigger job whose pipeline GitLab never made says why. None of them is a check external CI reported."""
+    w = World(tmp_path)
+    gl = w.gl
+    gl.mr(P, 7)
+    pid = gl.pipeline(P, 7, "success")
+    inner = gl.child(P, SHA[1], {"e2e": b"FAILED test_checkout\n"})
+    kid = gl.child(P, SHA[1], {"unit": b"FAILED test_child\n"})
+    gl.trigger(P, kid, "browser", child=inner)
+    gl.trigger(P, pid, "frontend", child=kid)
+    gl.trigger(P, pid, "deploy-review", reason="downstream_pipeline_creation_failed")
+    w.round()
+    assert w.item(7)["problems"] == [{"kind": "ci_failed", "text": "流水线 #%d 没过：frontend › unit、frontend › browser › "
+                                                                     "e2e、deploy-review" % pid}]
+    msg = w.sessions.messages("patrol-42-7")[0]
+    assert "   - frontend › unit：\n     > FAILED test_child\n" in msg
+    assert "   - frontend › browser › e2e：\n     > FAILED test_checkout\n" in msg
+    assert "   - deploy-review：\n     > （它要触发的流水线没建成：downstream_pipeline_creation_failed）\n" in msg
+    assert "外部 CI" not in msg and w.patrol.led.get(P, 7).status_ids == ()
 
 
 def test_a_ledger_from_before_failed_checks_counted_keeps_the_mrs_it_worked_worked(bk, tmp_path):
@@ -518,6 +658,55 @@ def test_three_dispatches_with_no_person_pushing_or_commenting_in_between_pause_
     assert gl.asked(r"/repository/commits/[0-9a-f]+$") == (0 if ranges else 9)
 
 
+def test_a_person_s_follow_up_written_while_the_session_works_is_a_new_problem_after_its_reply(bk, tmp_path):
+    """The session was told one note of the thread; the person adds to the thread while it works, and its reply lands
+    after that: the reply answers the note it was told, not the one it never saw, which goes out next, and stays open
+    when that next turn fails without a reply."""
+    w = World(tmp_path)
+    gl = w.gl
+    gl.mr(P, 7)
+    d = gl.thread(P, 7, "carol", "百分比要限制在 0-100", "src/discount.py", 12)
+    w.round()
+    w.later()
+    more = gl.reply(P, 7, d, "carol", "还有：超出范围要报错，不要截断")
+    gl.reply(P, 7, d, "brain-bridge", "改了：加了 0-100 的检查")
+    w.sessions.end()
+    w.round()
+    assert w.item(7)["problems"] == [{"kind": "review", "text": "@carol 的评审意见（src/discount.py:12）"}]
+    assert len(w.sessions.sent) == 2
+    again = w.sessions.messages()[-1]
+    assert "评论 #%d" % more["id"] in again and "超出范围要报错" in again and "百分比要限制在 0-100" not in again
+    w.sessions.end("failed")
+    w.later()
+    w.round()
+    assert len(w.sessions.sent) == 3 and "评论 #%d" % more["id"] in w.sessions.messages()[-1]
+    gl.reply(P, 7, d, "brain-bridge", "也改了：超出就报错")
+    w.sessions.end()
+    w.later()
+    w.round()
+    assert w.item(7)["state"] == "ok" and len(w.sessions.sent) == 3
+
+
+def test_the_page_counts_every_session_patrol_holds_and_says_what_holds_one_no_row_shows_at_work(bk, tmp_path):
+    """A turn the MR head moved past holds its session until it ends while its MR is no longer shown at work: the page
+    counts every session patrol holds, as sources.at_work does, and says what holds the one no row shows."""
+    w = World(tmp_path)
+    gl = w.gl
+    gl.mr(P, 3)
+    gl.fail(P, 3)
+    gl.mr(P, 4, **conflicted())
+    w.round()
+    gl.push(P, 3, SHA[2])
+    gl.pipeline(P, 3, "running")
+    gl.mr(P, 5, **conflicted())
+    w.later()
+    w.round()
+    view = w.patrol.view()
+    assert [(i["iid"], i["state"]) for i in view["items"]] == [(3, "ok"), (4, "working"), (5, "queued")]
+    assert view["working"] == w.patrol.busy() == 2
+    assert view["hidden"] == ["grp/repo!3 的会话还在做上一轮（MR 有了新的提交）"]
+
+
 def test_a_turn_the_head_moved_past_holds_the_session_until_it_ends(bk, tmp_path):
     w = World(tmp_path)
     gl = w.gl
@@ -594,6 +783,45 @@ def test_work_sources_switch_kinds_on_per_project_and_default_to_the_hand_over(b
     assert w.gl.asked(r"^/api/v4/projects/grp/repo/merge_requests") == 0 and w.slots() == ["patrol-43-1"]
 
 
+REFUSED = (b"FAIL feature: the bot made commits in this MR (%s), but bot accounts push only ai/<owner>/<JIRA>-<slug> "
+           b"run branches: the bot's work comes through its run branch's MR\nbrain-ci push-rules: feature by %s FAILED\n")
+
+
+def test_brain_push_rules_refusing_the_runner_s_commit_leaves_the_mr_to_people_with_one_comment(bk, tmp_path):
+    """The runner pushed its fix to the MR's own branch, and brain-kit's push rules, on in the project, fail the new
+    pipeline for that commit: any commit it pushes there is refused, so the MR is never dispatched again, its MR is told
+    once what a person does, and the page says so. One push-rules fails for a person's commit is CI as any other."""
+    patrol = mod("team.patrol")
+    w = World(tmp_path)
+    gl = w.gl
+    gl.mr(P, 7)
+    gl.fail(P, 7, {"test": b"FAILED test_discount\n"})
+    w.round()
+    gl.push(P, 7, SHA[2])
+    gl.fail(P, 7, {"brain-push-rules": REFUSED % (SHA[2][:12].encode(), b"brain-bot")})
+    w.sessions.end()
+    for _ in range(3):
+        w.later()
+        w.round()
+    assert len(w.sessions.sent) == 1 and w.item(7)["state"] == "rules"
+    assert w.item(7)["note"] == ("brain-push-rules 不让运行机在这个分支上提交（运行机的提交 %s）：在 MR 上说了怎么改成人的；"
+                                 "运行机不再修这个 MR" % SHA[2][:8])
+    told, = gl.posted("notes")
+    assert patrol.STOPPED_RE.match(told["body"]) and "运行机的提交 %s 让这个 MR 的流水线过不了" % SHA[2][:8] in told["body"]
+    assert "git rebase %s~1 --exec 'git commit --amend --no-edit --reset-author'\n" % SHA[2][:8] in told["body"]
+    assert "> feature: the bot made commits in this MR (%s)" % SHA[2][:12] in told["body"]
+    gl.thread(P, 7, "carol", "再试一下")
+    w.later()
+    w.round()
+    assert len(w.sessions.sent) == 1 and len(gl.posted("notes")) == 1 and w.patrol.held()[0]["key"].endswith("mr!7")
+    gl.mr(P, 8)
+    gl.push(P, 8, SHA[3], by="alice@example.com")
+    gl.fail(P, 8, {"brain-push-rules": REFUSED % (SHA[3][:12].encode(), b"alice")})
+    w.later()
+    w.round()
+    assert w.item(8)["state"] == "working" and "brain-ci push-rules: feature by alice FAILED" in w.sessions.messages()[-1]
+
+
 def test_a_merged_mr_is_forgotten_its_turn_stopped_and_its_clone_deleted(bk, tmp_path):
     w = World(tmp_path)
     w.gl.mr(P, 4, **conflicted())
@@ -603,6 +831,23 @@ def test_a_merged_mr_is_forgotten_its_turn_stopped_and_its_clone_deleted(bk, tmp
     w.round()
     assert w.sessions.stopped == ["patrol-42-4"] and w.ws.dropped == [(42, 4)]
     assert w.patrol.view()["items"] == [] and w.patrol.held() == [] and w.patrol.led.rows() == []
+
+
+def test_a_project_bridge_json_now_spells_with_other_case_keeps_its_rows_and_sessions(bk, tmp_path):
+    """bridge.json's project, written again with GitLab's own path in another case (一键建运行机 run again): the same
+    project, so its rows move to that spelling: its turn at work is not stopped, its clone not deleted, and nothing is
+    dispatched twice."""
+    w = World(tmp_path)
+    w.gl.mr(P, 1, **conflicted())
+    w.round()
+    w.kits = {"Grp/Repo": w.kits[P]}
+    w.patrol.close()
+    w.patrol = w.start(["Grp/Repo"])
+    w.later()
+    w.round()
+    assert w.sessions.stopped == [] and w.ws.dropped == [] and w.slots() == ["patrol-42-1"]
+    assert [(r.project, r.iid, r.state, r.slot) for r in w.patrol.led.rows()] == [("Grp/Repo", 1, "working", "patrol-42-1")]
+    assert w.item(1, "Grp/Repo")["state"] == "working"
 
 
 def test_a_project_patrol_is_no_longer_on_has_its_turns_stopped_its_clones_deleted_and_holds_no_session(bk, tmp_path):
@@ -624,6 +869,33 @@ def test_a_project_patrol_is_no_longer_on_has_its_turns_stopped_its_clones_delet
     w.round()
     assert w.sessions.stopped[2:] == ["patrol-43-1"] and w.ws.dropped[2:] == [(43, 1)]
     assert [(r.project, r.iid, r.state) for r in w.patrol.led.rows()] == [("grp/third", 1, "working")]
+
+
+def test_a_workspace_git_keeps_failing_on_is_an_attempt_from_its_second_time_and_a_fresh_git_lock_waits(bk, tmp_path):
+    """A clone git fails in (a corrupt clone, say) is said and prepared again next round; failing again for the same
+    fingerprint, each time is a failed attempt, and MAX_ATTEMPTS block the MR with one comment. A git lock younger than
+    LOCK_STALE_S only waits: no attempt however long; once it is gone the MR goes out."""
+    patrol = mod("team.patrol")
+    w = World(tmp_path)
+    gl, ws = w.gl, w.ws
+    gl.mr(P, 1, **conflicted())
+    gl.mr(P, 2, **conflicted())
+    ws.broken[(P, 1)] = "git checkout: fatal: bad object HEAD"
+    ws.locked.add((P, 2))
+    seen = []
+    for _ in range(5):
+        w.round()
+        w.later()
+        seen.append((w.item(1)["state"], w.item(1)["attempts"], w.item(2)["state"], w.item(2)["attempts"]))
+    assert seen == [("error", 0, "waiting", 0), ("error", 1, "waiting", 0)] + [("blocked", 2, "waiting", 0)] * 3
+    assert ws.tried.count((P, 1)) == 3 and w.slots() == []
+    told, = gl.posted("notes")
+    assert patrol.STOPPED_RE.match(told["body"]) and "工作区" in told["body"] and "bad object" not in told["body"]
+    assert w.item(1)["note"] == "工作区一直没准备好（git checkout: fatal: bad object HEAD），在 MR 上说了：等它有新变化"
+    assert w.item(2)["note"] == "工作区里有 git 没做完留下的锁 .git/index.lock（30 秒前留下的）：没有会话在用它，满 5 分钟就删掉"
+    ws.locked.clear()
+    w.round()
+    assert w.slots() == ["patrol-42-2"] and w.item(2)["attempts"] == 1
 
 
 def test_a_message_kiro_crew_refuses_is_an_attempt_on_the_mr_s_one_session_and_two_block_it_with_one_comment(
@@ -711,6 +983,37 @@ def test_a_workspace_is_cloned_once_then_reset_to_the_source_branch_on_origin(bk
     assert (path / "b.txt").read_text() == "2\n" and not (path / "junk.txt").exists()
     with pytest.raises(patrol.Moved):
         ws.prepare(item)                # origin moved past the head the round read
+
+
+def test_a_git_lock_a_turn_stopped_mid_commit_left_is_removed_once_it_is_stale(bk, home, tmp_path):
+    """No turn works in the clone when it is prepared: a git lock younger than LOCK_STALE_S may still be a git of a turn
+    just stopped, so the clone waits (Locked) and nothing is touched; once older, every lock goes and the clone is reset
+    as ever."""
+    patrol = mod("team.patrol")
+    origin = tmp_path / "origin" / "grp" / "repo.git"
+    origin.parent.mkdir(parents=True)
+    sh("git", "init", "-q", "--bare", origin)
+    src = git_repo(tmp_path / "src")
+    commit_file(src, "a.txt", "1\n", "one")
+    sh("git", "-C", src, "checkout", "-q", "-b", "feature")
+    head = commit_file(src, "b.txt", "2\n", "two")
+    sh("git", "-C", src, "push", "-q", origin, "main", "feature")
+    ws = patrol.Workspaces(str(home / "workplace" / "brain-team" / "patrol"), str(tmp_path / "origin") + "/{project}.git",
+                           (("user.name", "brain-bot"), ("user.email", "brain-bot@noreply.invalid")))
+    item = patrol.PatrolItem(P, PID, 7, "t", None, "feature", "main", head, ())
+    path = Path(ws.prepare(item))
+    (path / "b.txt").write_text("a turn stopped half-way through its commit\n")
+    locks = [path / ".git" / "index.lock", path / ".git" / "refs" / "heads" / "feature.lock"]
+    for lock in locks:
+        lock.write_text("")
+    with pytest.raises(patrol.Locked, match="index.lock"):
+        ws.prepare(item)
+    assert all(lock.exists() for lock in locks) and (path / "b.txt").read_text().startswith("a turn")
+    stale = time.time() - patrol.LOCK_STALE_S - 1
+    for lock in locks:
+        os.utime(lock, (stale, stale))
+    assert ws.prepare(item) == str(path)
+    assert not any(lock.exists() for lock in locks) and (path / "b.txt").read_text() == "2\n"
 
 
 def reply_tool():

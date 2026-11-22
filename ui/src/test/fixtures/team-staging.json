@@ -2,6 +2,7 @@
   "on": true,
   "cap": 2,
   "working": 1,
+  "hidden": [],
   "last_at": 1794146400,
   "projects": [
     { "project": "shop/shop-pay", "on": true, "error": "", "deployed_sha": "3f2a9c1d0e4b5a6978c8d7e6f5a4b3c2d1e0f9a8" },

@@ -14,6 +14,7 @@ A row is a state machine (Row.state):
              <project id>-<issue>) at the default branch's head: a branch fix/staging-<id> from it, a test that shows the
              error if it can, the fix, the tests, a push, an MR 「修复：…」 that says Closes #<issue>, a reply on the
              Issue. The row is fixing before its message goes, so a message KiroCrew did not answer is never sent again.
+             Its clone not ready a round again is a failed attempt (a git lock is waited for: patrol.Workspaces).
   fixing     an MR from the fix branch is there: fix_mr. A failed attempt: the turn ended without one, ended with
              KiroCrew's error, or neither within TIMEOUT_S (the turn is stopped), or KiroCrew refused the message;
              issued again, or stopped on the MAX_ATTEMPTS-th.
@@ -28,7 +29,9 @@ A row is a state machine (Row.state):
 Every open state whose Issue was closed, deleted or labelled so is closed or dismissed (its turn stopped). An open Issue
 gets a comment when its count jumps: doubled, and up by JUMP or more, since the Issue last said it.
 A project the source is no longer on, or bridge.json no longer names, is forgotten: its turns stopped, its clones
-deleted, its rows and cursor gone. Its Issues stay; an open one is found again when its error comes back.
+deleted, its rows and cursor gone. Its Issues stay; an open one is found again when its error comes back. One that
+bridge.json names again in another case (GitLab's paths are not case-sensitive) is the same project: its rows and cursor
+move to the new spelling (Ledger.respell).
 """
 
 from __future__ import annotations
@@ -60,11 +63,12 @@ NEW_PER_ROUND = 3                   # Issues opened (or opened again) in a proje
 OPEN_CAP = 20                       # open staging-error Issues of a project: no more are opened then
 SKIP_LABELS = ("wontfix", "aiskip")  # an Issue labelled so (any case, spaces and marks aside: Won't Fix, ai-skip)
 MARK = "staging-error-id: %s"       # in an Issue's description: the signature it is about
+SIGNATURES = 1                      # the signatures a ledger's rows are keyed by: 0 before 9d78742 (rekeyed), 1 since
 NEW, ISSUED, FIXING, FIX_MR, STOPPED, CLOSED, DISMISSED = (
     "new", "issued", "fixing", "fix_mr", "stopped", "closed", "dismissed")
 OPEN = (ISSUED, FIXING, FIX_MR, STOPPED)
 OUTCOME = {"ended": "会话结束了，没开 MR", "failed": "会话报错停了", "timeout": "30 分钟没做完，停掉了",
-           "refused": "KiroCrew 没收下消息"}
+           "refused": "KiroCrew 没收下消息", "workspace": "工作区一直没准备好"}
 
 
 @dataclass(frozen=True)
@@ -99,20 +103,30 @@ class Row:
     outcome: str = ""                   # how the last one ended: OUTCOME's, or mr_closed
     fix_mr: Link | None = None
     said: bool = False                  # stopped, and its Issue was told
+    ws_error: str = ""                  # why its clone was not ready at its last dispatch ("": it was)
+    rules_pid: int = 0                  # fix_mr: the head pipeline of it, over, last asked about brain-push-rules
+    rules: tuple[str, ...] = ()         # ... what brain-push-rules said refusing it (its Issue told so), else ()
+    filed_as: str = ""                  # the short id its Issue's mark and fix branches have, when its signature is not
+                                        # the one they were made for any more (keyed again: Ledger)
 
     @property
     def signature(self) -> str:
         return self.group.signature
 
     @property
+    def short_id(self) -> str:
+        return self.filed_as or stagelog.short_id(self.signature)
+
+    @property
     def branch(self) -> str:
-        return "fix/staging-%s%s" % (stagelog.short_id(self.signature), "-%d" % self.cycle if self.cycle > 1 else "")
+        return "fix/staging-%s%s" % (self.short_id, "-%d" % self.cycle if self.cycle > 1 else "")
 
     @classmethod
     def of(cls, d: Mapping[str, Any]) -> "Row":
         d = dict(d, group=ErrorGroup.of(d["group"]))
         for k in ("issue", "origin", "fix_mr"):
             d[k] = Link.of(d.get(k))
+        d["rules"] = tuple(d.get("rules") or ())
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
@@ -135,7 +149,8 @@ def seen(row: Row | None, project: str, g: ErrorGroup, settled: bool = True) -> 
 
 def again(row: Row, state: str) -> Row:
     """*row* in *state* for another go at its fix: a new fix branch, no attempt yet."""
-    return replace(row, state=state, cycle=row.cycle + 1, attempts=0, outcome="", fix_mr=None, said=False)
+    return replace(row, state=state, cycle=row.cycle + 1, attempts=0, outcome="", fix_mr=None, said=False, ws_error="",
+                   rules_pid=0, rules=())
 
 
 def failed(row: Row, outcome: str) -> Row:
@@ -171,13 +186,51 @@ CREATE TABLE IF NOT EXISTS deploys (project TEXT PRIMARY KEY, sha TEXT NOT NULL,
 """
 
 
+def rekeyed(rows: list[Row]) -> list[Row]:
+    """*rows* (of one project) keyed by the signatures stagelog gives now: a row whose sample, read with the
+    normalizer of the builds before (OLD_VARYING), gives back its signature has the signature the same lines give now;
+    rows that then share one are one, the counts added, first and last seen as the earliest and the latest, the newest
+    one's sample. Of those the row kept, with its state and its Issue, is the one with an open Issue, else any Issue,
+    the earliest seen first; it keeps the short id its Issue's mark and branch were made with (filed_as)."""
+    by: dict[str, list[Row]] = {}
+    for r in rows:
+        old = [e.signature for e in stagelog.errors_in(r.group.sample, stagelog.OLD_VARYING)[0]]
+        now = [e.signature for e in stagelog.errors_in(r.group.sample)[0]]
+        sig = now[old.index(r.signature)] if r.signature in old and len(old) == len(now) else r.signature
+        by.setdefault(sig, []).append(r)
+    out = []
+    for sig, same in by.items():
+        keep = min(same, key=lambda r: (r.issue is None, r.state not in OPEN, r.group.first_seen))
+        newest = max(same, key=lambda r: r.group.last_seen)
+        group = replace(newest.group, signature=sig, first_seen=min(r.group.first_seen for r in same),
+                        count=sum(r.group.count for r in same))
+        out.append(replace(keep, group=group, filed_as=keep.short_id if keep.issue is not None and sig != keep.signature
+                           else keep.filed_as))
+    return out
+
+
 class Ledger:
     """<root>/staging.sqlite: a row per error signature (Row as JSON), each project's log cursor and its deployed
-    commit with when a round first read it. Only the bridge's worker thread uses it."""
+    commit with when a round first read it. Only the bridge's worker thread uses it. One read the first time by a build
+    whose signatures are newer than the ones it was keyed by (PRAGMA user_version < SIGNATURES) is keyed again: rekeyed."""
 
     def __init__(self, path: str) -> None:
         self.db = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
         self.db.executescript(SCHEMA)
+        if self.db.execute("PRAGMA user_version").fetchone()[0] < SIGNATURES:
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                for project in {r.project for r in self.rows()}:
+                    old = self.rows(project)
+                    for r in old:
+                        self.drop(r)
+                    for r in rekeyed(old):
+                        self.put(r)
+                self.db.execute("PRAGMA user_version = %d" % SIGNATURES)
+                self.db.execute("COMMIT")
+            except BaseException:
+                self.db.execute("ROLLBACK")
+                raise
 
     def rows(self, project: str | None = None) -> list[Row]:
         q = "SELECT doc FROM errors" + (" WHERE project=?" if project is not None else "") + " ORDER BY project, signature"
@@ -221,6 +274,19 @@ class Ledger:
 
     def projects(self) -> set[str]:
         return {r[0] for r in self.db.execute("SELECT project FROM errors UNION SELECT project FROM cursors")}
+
+    def respell(self, projects: list[str]) -> None:
+        """The rows, cursor and deploy of a project kept under another spelling than *projects* has for it (GitLab's
+        paths are not case-sensitive: 一键建运行机 writes GitLab's own) moved to that spelling, as the same project's."""
+        named = {p.lower(): p for p in projects}
+        for old in self.projects() | {r[0] for r in self.db.execute("SELECT project FROM deploys")}:
+            new = named.get(old.lower(), old)
+            if new != old:
+                for row in self.rows(old):
+                    self.put(replace(row, project=new))
+                    self.drop(row)
+                for table in ("cursors", "deploys"):
+                    self.db.execute("UPDATE OR REPLACE %s SET project=? WHERE project=?" % table, (new, old))
 
     def forget(self, project: str) -> None:
         for table in ("errors", "cursors", "deploys"):
@@ -268,7 +334,7 @@ def issue_text(row: Row, origin: Link | None, web: str, base: str) -> str:
         "日志（最近的一次，最多 %d 行）：" % stagelog.SAMPLE_LINES, "", *_fenced(g.sample), "",
         "运行机会从 %s 开分支 %s 去修，修好以后开 MR（写着 Closes 这个 Issue），等人审、人合并。" % (base, row.branch),
         "不要它修：关掉这个 Issue，或者打上 wontfix 标签。", "",
-        "<!-- %s -->" % (MARK % stagelog.short_id(g.signature))])
+        "<!-- %s -->" % (MARK % row.short_id)])
 
 
 def reopen_text(row: Row, origin: Link | None, web: str) -> str:
@@ -290,6 +356,20 @@ def jump_text(row: Row, web: str) -> str:
     g = row.group
     return "这个报错又出现了 %d 次，一共 %d 次；最近一次在 %s，部署的提交 %s。" % (g.count - row.told, g.count, _when(g.last_seen),
                                                                   _commit(web, row))
+
+
+def rules_text(row: Row, said: list[str], target: str) -> str:
+    """What a person does once brain-push-rules refused the fix MR (into *target*): the bot may commit on run branches
+    only, so the fix's commits are made theirs (rewritten with their name) before it can be merged."""
+    br = row.branch
+    return "\n".join([
+        "修复 MR !%d 的流水线过不了 brain-push-rules：机器人只能推 run 分支，运行机的修复提交在分支 %s 上，这个 MR 合并不了。"
+        "运行机不改 brain-push-rules，也不再动这个 MR。" % (row.fix_mr.iid, br), "",
+        "要这个修复：把 %s 上的提交改成你自己的（会把它们都记成你的），再推上去，流水线过了就能审、能合并：" % br, "",
+        "```", "git fetch origin", "git checkout -B %s origin/%s" % (br, br),
+        "git rebase origin/%s --exec 'git commit --amend --no-edit --reset-author'" % target,
+        "git push --force-with-lease origin %s" % br, "```", "",
+        "不要它：关掉修复 MR，运行机就把这个报错交给人。", "", "brain-push-rules 说：", "", *["> " + x for x in said]])
 
 
 def stopped_text(row: Row) -> str:
@@ -409,7 +489,10 @@ class StagingWatch:
         it waits on, and one whose MR is open while its turn has not ended (its reply on the Issue)."""
         if not self._ledger_there():
             return 0
-        return sum(1 for r in self.led.rows() if r.state == FIXING or (r.state == FIX_MR and self._turn(r) == "running"))
+        return sum(1 for r in self.led.rows() if self._busy(r))
+
+    def _busy(self, row: Row) -> bool:
+        return row.state == FIXING or (row.state == FIX_MR and self._turn(row) == "running")
 
     def view(self) -> dict[str, Any]:
         return self.last
@@ -421,6 +504,8 @@ class StagingWatch:
         common = bk.m("common")
         now = self.now()
         self._kits, self._notes, self._errors = {}, {}, []
+        if self._ledger_there():
+            self.led.respell(self.projects)
         projects, off, read = [], set(), 0
         for project in self.projects:
             try:
@@ -448,7 +533,10 @@ class StagingWatch:
                     self._forget(project)
         if self._kits and self._ledger_there():
             self._dispatch(now)
-        self.last = view_of(projects, self.led.rows() if self._ledger_there() else [], self._notes, now)
+        rows = self.led.rows() if self._ledger_there() else []
+        hidden = ["%s#%d 的修复 MR !%d 开了，会话还在收尾" % (r.project, r.issue.iid, r.fix_mr.iid)
+                  for r in rows if r.state == FIX_MR and self._busy(r)]
+        self.last = view_of(projects, rows, self._notes, now, hidden)
         if self._errors:
             raise common.BrainError("not done this round: " + "; ".join(self._errors))
         return read
@@ -511,21 +599,42 @@ class StagingWatch:
                 row = failed(row, "timeout")
         elif row.state == FIX_MR:
             try:
-                state = (self.gl.mr(row.project, row.fix_mr.iid) or {}).get("state")
+                mr = self.gl.mr(row.project, row.fix_mr.iid) or {}
             except rest.HttpError as exc:
                 if exc.status != 404:
                     raise
-                state = "closed"                        # deleted: as one closed without merging
-            if state == "merged":
+                mr = {"state": "closed"}                # deleted: as one closed without merging
+            if mr.get("state") == "merged":
                 self._drop_clone(row)
                 row = closed(row)
-            elif state == "closed":
+            elif mr.get("state") == "closed":
                 row = replace(row, state=STOPPED, outcome="mr_closed", said=False)
+            else:
+                row = self._push_rules(row, mr)
         self.led.put(row)
         if row.state == STOPPED and not row.said:
             self.gl.call("POST", "/projects/%s/issues/%d/notes" % (rest.q(row.project), row.issue.iid),
                          body={"body": stopped_text(row)})
             self.led.put(replace(row, said=True))
+
+    def _push_rules(self, row: Row, mr: Mapping[str, Any]) -> Row:
+        """*row* (its fix MR open: *mr*) as brain-push-rules sees its fix MR, once a head pipeline of it is over:
+        refused, because the rules refuse the bot's commits on a branch that is not a run branch, it cannot be merged
+        as it is, and its Issue is told once what a person does."""
+        hp = mr.get("head_pipeline") if isinstance(mr.get("head_pipeline"), dict) else {}
+        status, pid = str(hp.get("status") or ""), int(hp.get("id") or 0)
+        if status not in patrol.FINAL_PIPELINE or pid == row.rules_pid:
+            return row
+        try:
+            said = patrol.rules_said(patrol.pipeline_failures(self.gl, row.project, pid)[0]) if status == "failed" else []
+        except bk.m("rest").HttpError as exc:
+            if exc.status not in (403, 404):
+                raise
+            said = []                               # its jobs not shown: nothing to tell from
+        if said and not row.rules:
+            self.gl.call("POST", "/projects/%s/issues/%d/notes" % (bk.m("rest").q(row.project), row.issue.iid),
+                         body={"body": rules_text(row, said, str(mr.get("target_branch") or "main"))})
+        return replace(row, rules_pid=pid, rules=tuple(said))
 
     def _tell(self, row: Row) -> None:
         """An open row's Issue told when its count jumped; a dismissed one's when its error came back on another deploy,
@@ -567,7 +676,7 @@ class StagingWatch:
             self.out("staging: %s#%d %s" % (row.project, row.issue.iid, issue_title(row)))
 
         def file(row: Row) -> None:
-            key, mark = (row.project, row.signature), MARK % stagelog.short_id(row.signature)
+            key, mark = (row.project, row.signature), MARK % row.short_id
             found = None if row.issue is not None else next(
                 (i for i in issues if mark in str(i.get("description") or "")), None)
             if found is not None:
@@ -690,9 +799,17 @@ class StagingWatch:
             except patrol.Moved:
                 self._notes[key] = "主分支刚有新的提交：下一轮再派"
                 continue
-            except (common.BrainError, OSError) as exc:
-                self._notes[key] = "工作区没准备好：%s" % _said(exc)
+            except patrol.Locked as exc:
+                self._notes[key] = patrol.locked_note(exc)
+                continue
+            except (common.BrainError, OSError) as exc:     # prepared again next round, a failed attempt when it repeats
                 self.out("%s: its workspace is not ready: %s" % (issue_title(row), _said(exc)))
+                again = bool(row.ws_error)
+                row = replace(failed(row, "workspace") if again else row, ws_error=_said(exc))
+                self.led.put(row)
+                if row.state != STOPPED:
+                    self._notes[key] = ("工作区又没准备好，算一次没修好（第 %d 次）：%s" % (row.attempts, row.ws_error) if again
+                                        else "工作区没准备好：%s" % row.ws_error)
                 continue
             busy += 1
             try:
@@ -728,7 +845,7 @@ class StagingWatch:
             self.led.put(row)
         sid = "S-" + hashlib.sha256(("%s\n%s\n%d\n%r" % (row.slot, row.signature, row.attempts, now)).encode()
                                     ).hexdigest()[:20]
-        went = replace(row, state=FIXING, send_id=sid, dispatched_at=now)
+        went = replace(row, state=FIXING, send_id=sid, dispatched_at=now, ws_error="")
         try:
             self.sessions.patrol_project(row.slot, path)
         except patrol.Refused as exc:
@@ -764,6 +881,8 @@ def _note(row: Row) -> str:
         return "修复 MR 被关了，没有合并，在 Issue 上说了：交给人"
     if row.state == STOPPED:
         return "试了 %d 次没修好（最后一次：%s），在 Issue 上说了：交给人" % (row.attempts, OUTCOME.get(row.outcome, row.outcome))
+    if row.state == FIX_MR and row.rules:
+        return "修复 MR 过不了 brain-push-rules（机器人只能推 run 分支）：在 Issue 上说了，要人把它的提交改成自己的才能合并"
     if row.state == ISSUED and row.attempts:
         return "上一次没修好（%s）：再派一次" % OUTCOME.get(row.outcome, row.outcome)
     if row.state == NEW and row.issue is not None:
@@ -778,12 +897,16 @@ def _note(row: Row) -> str:
 
 
 def view_of(projects: list[dict[str, Any]], rows: list[Row], notes: Mapping[tuple[str, str], str],
-            at: float | None) -> dict[str, Any]:
-    """GET /team/staging (TeamStaging in ui/src/types.ts): the projects and every error signature the ledger holds."""
+            at: float | None, hidden: list[str] | None = None) -> dict[str, Any]:
+    """GET /team/staging (TeamStaging in ui/src/types.ts): the projects and every error signature the ledger holds;
+    working, the sessions it holds: the fixes at work and the *hidden* ones (a fix whose MR is open, its turn not
+    ended)."""
     items = [{"project": r.project, "signature": r.signature, "count": r.group.count, "state": r.state,
               "issue": _link(r.issue), "origin": _link(r.origin), "fix_mr": _link(r.fix_mr),
               "first_seen": r.group.first_seen, "last_seen": r.group.last_seen, "deployed_sha": r.group.deployed_sha,
               "attempts": r.attempts, "slot": r.slot or None, "note": notes.get((r.project, r.signature)) or _note(r)}
              for r in rows]
-    return {"on": any(p["on"] for p in projects), "cap": CAP, "working": sum(1 for r in rows if r.state == FIXING),
+    hidden = list(hidden or ())
+    return {"on": any(p["on"] for p in projects), "cap": CAP,
+            "working": sum(1 for r in rows if r.state == FIXING) + len(hidden), "hidden": hidden,
             "last_at": at, "projects": projects, "items": items}

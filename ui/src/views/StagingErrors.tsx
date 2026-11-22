@@ -26,6 +26,13 @@ export const STAGING_OFF = '还没有项目打开测试环境报错：项目的 
 /** the most rows the list shows */
 export const STAGING_ROWS = 8
 
+/** The sessions a card counts in 在修 that none of its rows shows at work (a turn the MR's head moved past, a fix
+ * whose MR is open), each with what holds it: why 排队 shows while fewer rows are at work than the count. */
+export function HeldHint({ hidden }: { hidden?: string[] }) {
+  if (!hidden || hidden.length === 0) return null
+  return <p className="br-dim br-small" data-testid="held-hint">在修的里有 {hidden.length} 个下面没列出：{hidden.join('；')}</p>
+}
+
 function MrOf({ what, link }: { what: string; link: StagingLink }) {
   return <span title={link.title || undefined}>{what} <ExtLink href={link.url} className="tm-mr">!{link.iid}</ExtLink></span>
 }
@@ -46,6 +53,7 @@ export function StagingErrors({ view, openSession }: { view: TeamStaging; openSe
         <span className="br-grow" />
         {view.on && <span className="br-small">在修 <b>{view.working}</b>/{view.cap}</span>}
       </header>
+      {view.on && <HeldHint hidden={view.hidden} />}
       {!view.on ? <p className="br-empty">{STAGING_OFF}</p> : rows.length === 0 ? (
         <p className="br-empty">{view.last_at ? `上一轮（${ago(view.last_at)}）测试环境的日志里没有报错。` : '还没看过测试环境：下一轮就看。'}</p>
       ) : (

@@ -31,35 +31,51 @@ JENKINS_ROOT_URL = "http://jenkins:8080"
 
 
 class FakeJenkins:
-    """Jenkins at JENKINS_BASE, its root URL configured as JENKINS_ROOT_URL: a build's consoleText for its read-only
-    user signed in with its token (basic auth); 401 to a wrong token; 403 to no one signed in (anonymous read off, as
-    measured) and to a user without Overall/Read; 404 to one without Job/Read (Jenkins hides the job from it) and to a
-    build it does not have. Every request is kept in calls: (method, url, user)."""
+    """Jenkins at JENKINS_BASE, its root URL configured as JENKINS_ROOT_URL: a build's log from a byte on
+    (logText/progressiveText?start=, its length in X-Text-Size; a start past its end gives all of it, as Jenkins does)
+    for its read-only user signed in with its token (basic auth); 401 to a wrong token; 403 to no one signed in
+    (anonymous read off, as measured) and to a user without Overall/Read; 404 to one without Job/Read (Jenkins hides the
+    job from it) and to a build it does not have. Called as jenkins.urllib_fetch is. Every request is kept in calls:
+    (method, url, user). *wait*: each request takes this long on *clock* (a timeout cuts it short); *down*: no request
+    gets through, each one taking its whole timeout."""
 
-    def __init__(self, user: str = "brain-reader") -> None:
+    def __init__(self, user: str = "brain-reader", clock: "Clock | None" = None) -> None:
         self.user, self.token = user, "fake-" + secrets.token_hex(8)
         self.overall_read = self.job_read = True
         self.logs: dict[str, bytes] = {}
         self.calls: list[tuple[str, str, str]] = []
+        self.clock, self.wait, self.down = clock, 0.0, False
 
     def build(self, path: str, log: bytes) -> str:
         """A build at *path* (/job/<…>/<number>) with its console. -> its link, as the GitLab plugin posts it."""
         self.logs[path] = log
         return JENKINS_ROOT_URL + path + "/display/redirect"
 
-    def __call__(self, method, url, headers, body):
+    def __call__(self, method, url, headers, cap, timeout):
         auth = str(headers.get("Authorization") or "")
         signed = base64.b64decode(auth[6:]).decode() if auth.startswith("Basic ") else ""
         user, _, token = signed.partition(":")
         self.calls.append((method, url, user))
+        took = timeout if self.down else min(self.wait, timeout)
+        if self.clock is not None:
+            self.clock.t += took
+        if self.down or self.wait > timeout:
+            raise mod("bk").brain_error()("cannot reach %s: timed out" % urlsplit(url).netloc)
         if user and (user, token) != (self.user, self.token):
-            return 401, b"Unauthorized"
+            return 401, b"Unauthorized", {}
         if not user or not self.overall_read:
-            return 403, b"<html><body>Access Denied: missing the Overall/Read permission</body></html>"
-        m = re.fullmatch(r"(/job/.+/\d+)/consoleText", urlsplit(url).path)
+            return 403, b"<html><body>Access Denied: missing the Overall/Read permission</body></html>", {}
+        u = urlsplit(url)
+        m = re.fullmatch(r"(/job/.+/\d+)/logText/progressiveText", u.path)
         if method != "GET" or m is None or m.group(1) not in self.logs or not self.job_read:
-            return 404, b"Not Found"
-        return 200, self.logs[m.group(1)]
+            return 404, b"Not Found", {}
+        log = self.logs[m.group(1)]
+        start = int(dict(parse_qsl(u.query)).get("start") or 0)
+        return 200, log[start if start <= len(log) else 0:][:cap], {"X-Text-Size": str(len(log))}
+
+    def reads(self) -> list[str]:
+        """The path and query of every request, in order."""
+        return [urlsplit(url).path + "?" + urlsplit(url).query for _, url, _ in self.calls]
 
 
 class Clock:
@@ -80,10 +96,12 @@ class PatrolGitLab:
         self.mrs: dict[tuple[str, int], dict] = {}
         self.discussions: dict[tuple[str, int], list[dict]] = {}
         self.jobs: dict[int, list[dict]] = {}
+        self.bridges: dict[int, list[dict]] = {}       # a pipeline's trigger jobs (GitLab's bridges)
         self.pipes: dict[int, dict] = {}
         self.external_statuses: dict[int, list[dict]] = {}
         self.jenkins: FakeJenkins | None = None
         self.commits: dict[tuple[str, str], tuple[str, str]] = {}    # (project, sha) -> (its parent, its committer)
+        self.merges: dict[tuple[str, str], list[str]] = {}           # (project, merge commit) -> its parents
         self.ranges = True          # False: GitLab will not list a range of commits (ref_name old..new is a 400)
         self.traces: dict[int, bytes] = {}
         self.calls: list[tuple] = []
@@ -131,6 +149,45 @@ class PatrolGitLab:
         m["_pipeline"] = self.pipes[pid] = {"id": pid, "status": status, "sha": m["sha"]}
         return pid
 
+    def merged_result(self, path: str, iid: int, jobs: dict[str, bytes]) -> int:
+        """A failed pipeline GitLab ran for the MR on the merge of its head into the target branch (merged results): on
+        a merge commit of its own, whose parents are the target's head and the MR's, ref refs/merge-requests/<iid>/merge,
+        its failed jobs with these logs. -> its id."""
+        m = self.mrs[(path, iid)]
+        merge = "%040x" % next(self.ids)
+        self.merges[(path, merge)] = [SHA[9], m["sha"]]
+        pid = self.fail(path, iid, jobs)
+        m["_pipeline"].update(sha=merge, ref="refs/merge-requests/%d/merge" % iid, source="merge_request_event")
+        return pid
+
+    def trigger(self, path: str, pid: int, name: str, status: str = "failed", child: int | None = None,
+                allow_failure: bool = False, reason: str = "") -> int:
+        """A trigger job in pipeline *pid*, as GitLab has it: a bridge (pipelines/:id/bridges lists it, pipelines/:id/jobs
+        does not) and a commit status of that pipeline; *child*: the pipeline it started (None: GitLab started none,
+        *reason* its failure_reason). A failed one that may not fail fails the pipeline (strategy: depend). -> its id."""
+        bid = next(self.ids)
+        down = self.pipes[child] if child is not None else None
+        self.bridges.setdefault(pid, []).append({
+            "id": bid, "name": name, "status": status, "allow_failure": allow_failure, "failure_reason": reason or None,
+            "pipeline": {"id": pid}, "downstream_pipeline": {"id": down["id"], "project_id": down["project_id"],
+                                                             "sha": down["sha"], "status": down["status"]} if down else None})
+        if status == "failed" and not allow_failure:
+            self.pipes[pid]["status"] = "failed"
+        return bid
+
+    def child(self, path: str, sha: str, jobs: dict[str, bytes]) -> int:
+        """A pipeline a trigger job started in *path* (a child pipeline: source parent_pipeline) on *sha*, whose jobs all
+        failed with these logs. -> its id."""
+        pid = next(self.ids)
+        self.jobs[pid] = []
+        for name, log in jobs.items():
+            jid = next(self.ids)
+            self.jobs[pid].append({"id": jid, "name": name, "status": "failed", "allow_failure": False})
+            self.traces[jid] = log
+        self.pipes[pid] = {"id": pid, "status": "failed", "sha": sha, "source": "parent_pipeline",
+                           "project_id": self.projects[path]["id"]}
+        return pid
+
     def check(self, path: str, iid: int, name: str, status: str, target_url: str) -> int:
         """External CI (Jenkins' GitLab plugin) posts commit status *name* on the MR head, as GitLab takes it: into the
         head's pipeline (one of source external made when the head has none); the status of that name that is still
@@ -159,14 +216,14 @@ class PatrolGitLab:
         return last["id"]
 
     def commit_statuses(self, path: str, sha: str, pipeline_id: str | None) -> list[dict]:
-        """GET …/repository/commits/:sha/statuses, its latest ones: each pipeline's jobs as statuses (GitLab lists them
-        so, with the job's id), then what external CI posted."""
+        """GET …/repository/commits/:sha/statuses, its latest ones: each pipeline's jobs and trigger jobs as statuses
+        (GitLab lists them so, with the job's id), then what external CI posted."""
         out = []
         for pid, pipe in sorted(self.pipes.items()):
             if pipe["sha"] == sha and pipeline_id in (None, str(pid)):
                 out += [{"id": j["id"], "sha": sha, "name": j["name"], "status": j["status"],
                          "target_url": "%s/%s/-/jobs/%d" % (BASE, path, j["id"]), "allow_failure": j["allow_failure"],
-                         "pipeline_id": pid} for j in self.jobs[pid]]
+                         "pipeline_id": pid} for j in self.jobs[pid] + self.bridges.get(pid, [])]
                 out += [{k: v for k, v in r.items() if k != "retried"}
                         for r in self.external_statuses.get(pid, []) if not r["retried"]]
         return out
@@ -184,7 +241,9 @@ class PatrolGitLab:
         return d
 
     def reply(self, path: str, iid: int, d: dict, author: str, body: str) -> dict:
+        """A note in thread *d*: a diff thread's is a DiffNote on the same place, as GitLab has it."""
         n = self._note(author, body, d["notes"][0]["resolvable"], False)
+        n.update({k: d["notes"][0][k] for k in ("type", "position") if k in d["notes"][0]})
         d["notes"].append(n)
         self.touch(path, iid)
         return n
@@ -231,8 +290,9 @@ class PatrolGitLab:
         return rows[(p - 1) * n: p * n]
 
     def _project(self, key: str) -> tuple[str, dict] | None:
+        """The project *key* names: by its id, or by its path in any case (GitLab's paths are not case-sensitive)."""
         for path, p in self.projects.items():
-            if key in (path, str(p["id"])):
+            if key.lower() in (path.lower(), str(p["id"])):
                 return path, p
         return None
 
@@ -240,9 +300,9 @@ class PatrolGitLab:
     def shown(m: dict) -> dict:
         return {k: v for k, v in m.items() if not k.startswith("_")}
 
-    def __call__(self, method, url, headers, body):
+    def __call__(self, method, url, headers, body, timeout=None):
         if self.jenkins is not None and url.startswith(JENKINS_BASE + "/"):
-            return self.jenkins(method, url, headers, body)
+            return self.jenkins(method, url, headers, body, timeout)
         u = urlsplit(url)
         path, q = unquote(u.path), dict(parse_qsl(u.query))
         data = json.loads(body.decode()) if body else None
@@ -267,8 +327,11 @@ class PatrolGitLab:
         if s and method == "GET":
             return ok(self.page(self.commit_statuses(name, s.group(1), q.get("pipeline_id")), q))
         c = re.fullmatch(r"/repository/commits/([0-9a-f]{40})", rest)
+        if c and method == "GET" and (name, c.group(1)) in self.merges:
+            return ok({"id": c.group(1), "parent_ids": self.merges[(name, c.group(1))], "committer_email": ""})
         if c and method == "GET" and (name, c.group(1)) in self.commits:
-            return ok({"id": c.group(1), "committer_email": self.commits[(name, c.group(1))][1]})
+            parent, by = self.commits[(name, c.group(1))]
+            return ok({"id": c.group(1), "parent_ids": [parent], "committer_email": by})
         if rest == "/repository/commits" and method == "GET" and ".." in q.get("ref_name", ""):
             if not self.ranges:
                 return ok({"message": "400 Bad request - ref_name is invalid"}, 400)
@@ -292,6 +355,9 @@ class PatrolGitLab:
             return ok(dict(self.shown(mr), head_pipeline=mr["_pipeline"]))
         if sub == "/discussions" and method == "GET":
             return ok(self.page(self.discussions[(name, mr["iid"])], q))
+        if sub == "/commits" and method == "GET":
+            return ok(self.page([{"id": c, "short_id": c[:8], "author_email": self.commits[(name, c)][1],
+                                  "committer_email": self.commits[(name, c)][1]} for c in self._line(name, mr["sha"])], q))
         if sub == "/notes" and method == "GET":
             notes = sorted((n for x in self.discussions[(name, mr["iid"])] for n in x["notes"]),
                            key=lambda n: (_when(n["created_at"]), n["id"]))
@@ -308,10 +374,11 @@ class PatrolGitLab:
             if thread is None:
                 return ok({"message": "404 Discussion Not Found"}, 404)
             return ok(self.reply(name, mr["iid"], thread, self.who[tok], data["body"]), 201)
-        j = re.fullmatch(r"/pipelines/(\d+)/jobs", rest)
+        j = re.fullmatch(r"/pipelines/(\d+)/(jobs|bridges)", rest)
         if j and method == "GET":
             want = q.get("scope[]")
-            return ok([x for x in self.jobs.get(int(j.group(1)), []) if not want or x["status"] == want])
+            rows = (self.jobs if j.group(2) == "jobs" else self.bridges).get(int(j.group(1)), [])
+            return ok([x for x in rows if not want or x["status"] == want])
         t = re.fullmatch(r"/jobs/(\d+)/trace", rest)
         if t and method == "GET":
             raw = self.traces.get(int(t.group(1)))
@@ -379,17 +446,26 @@ class FakeSessions:
 
 
 class FakeWorkspaces:
-    """Workspaces without git: a path per MR; *moved*: the MRs whose origin head is not the one read; *dropped*: the
-    clones deleted, (project id, iid)."""
+    """Workspaces without git: a path per MR (an Issue, for 测试环境报错); *moved*: the MRs whose origin head is not the
+    one read; *locked*: those whose clone holds a young git lock; *broken*: those whose git fails, with what it says;
+    *tried*: every prepare asked for; *dropped*: the clones deleted, (project id, iid)."""
 
     ident = (("user.name", "brain-bot"), ("user.email", RUNNER))
 
     def __init__(self, root: str = "/Users/alice/workplace/brain-team/patrol") -> None:
         self.root, self.prepared, self.moved, self.dropped = root, [], set(), []
+        self.locked: set[tuple[str, int]] = set()
+        self.broken: dict[tuple[str, int], str] = {}
+        self.tried: list[tuple[str, int]] = []
 
     def prepare(self, item):
+        self.tried.append((item.project, item.iid))
         if (item.project, item.iid) in self.moved:
             raise mod("team.patrol").Moved("origin moved")
+        if (item.project, item.iid) in self.locked:
+            raise mod("team.patrol").Locked(".git/index.lock（30 秒前留下的）")
+        if (item.project, item.iid) in self.broken:
+            raise mod("bk").brain_error()(self.broken[(item.project, item.iid)])
         self.prepared.append((item.project, item.iid, item.head_sha))
         return "%s/%d-%d" % (self.root, item.project_id, item.iid)
 

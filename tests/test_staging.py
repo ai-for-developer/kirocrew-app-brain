@@ -21,6 +21,7 @@ P, PID = "grp/repo", 42
 ZERO = "ZeroDivisionError at orders/discount.py in apply"
 GATEWAY = "app.pay: gateway timeout after <n>s (order <n>)"
 STOCK = "app.stock: warehouse aaa is gone"
+LABEL = "staging-error"
 HELPER = ("/usr/bin/python3 -I /app/backend/core/team/patrol_reply.py --config /setup/bridge.json --brainkit /kit "
           "--project grp/repo --issue %d")
 
@@ -212,6 +213,21 @@ def test_a_fix_goes_to_a_brain_patrol_session_of_its_own_two_at_a_time_counting_
     assert sources.SOURCES["staging-errors"].held(type("Rt", (), {"staging": w.watch})()) == held
 
 
+def test_the_page_counts_a_fix_whose_mr_is_open_while_its_turn_runs_and_says_what_holds_it(bk, tmp_path):
+    """The session opened its fix's MR and still writes its reply on the Issue: its session is held, though its row is
+    no longer at work. The page counts it, as sources.at_work does, and says what holds it."""
+    sl = mod("team.stagelog")
+    w = started(tmp_path)
+    w.write(zero(), gateway())
+    w.round()
+    w.gl.mr(P, 52, sha=SHA[3], source="fix/staging-" + sl.short_id(ZERO), title="修复：" + ZERO)
+    w.round()
+    view = w.watch.view()
+    assert [(i["signature"], i["state"]) for i in view["items"]] == [(ZERO, "fix_mr"), (GATEWAY, "fixing")]
+    assert view["working"] == w.watch.busy() == 2
+    assert view["hidden"] == ["grp/repo#1 的修复 MR !52 开了，会话还在收尾"]
+
+
 def test_two_failed_fix_attempts_stop_it_with_one_issue_comment(bk, tmp_path):
     staging = mod("team.staging")
     w = started(tmp_path)
@@ -241,6 +257,28 @@ def test_messages_kiro_crew_refuses_are_failed_attempts_too(bk, tmp_path):
         w.round()
     assert w.sessions.asked == ["staging-42-1", "staging-42-1"] and w.item(ZERO)["state"] == "stopped"
     assert len(w.gl.notes(P, 1)) == 1 and "（最后一次：KiroCrew 没收下消息）" in w.gl.notes(P, 1)[0]
+
+
+def test_a_fix_whose_workspace_git_keeps_failing_is_an_attempt_from_its_second_time_and_a_fresh_git_lock_waits(
+        bk, tmp_path):
+    """A clone git fails in is said and prepared again next round; each time again is a failed attempt, and
+    MAX_ATTEMPTS stop the fix with one comment on the Issue. A git lock younger than LOCK_STALE_S only waits."""
+    w = started(tmp_path)
+    w.write(zero(), gateway())
+    w.ws.broken[(P, 1)] = "git checkout: fatal: bad object HEAD"
+    w.ws.locked.add((P, 2))
+    seen = []
+    for _ in range(4):
+        w.round()
+        seen.append((w.item(ZERO)["state"], w.item(ZERO)["attempts"], w.item(GATEWAY)["attempts"]))
+    assert seen == [("issued", 0, 0), ("issued", 1, 0), ("stopped", 2, 0), ("stopped", 2, 0)]
+    assert w.gl.notes(P, 1) == ["运行机试了 2 次，没修好这个报错（最后一次：工作区一直没准备好）：它不再自己修，交给人。"
+                                "人修好了或者不修了，就关掉这个 Issue：运行机不会再打开它，以后新的部署里又出现，只在这里说一次。"]
+    assert w.item(GATEWAY)["note"] == "工作区里有 git 没做完留下的锁 .git/index.lock（30 秒前留下的）：没有会话在用它，满 5 分钟就删掉"
+    assert w.sessions.sent == []
+    w.ws.locked.clear()
+    w.round()
+    assert [s for s, _, _ in w.sessions.sent] == ["staging-42-2"]
 
 
 def test_the_fix_mr_is_followed_to_its_merge_and_a_recurrence_on_a_newer_deploy_opens_the_issue_again(bk, tmp_path):
@@ -274,6 +312,34 @@ def test_the_fix_mr_is_followed_to_its_merge_and_a_recurrence_on_a_newer_deploy_
     assert "修复分支是 %s-2。" % branch in again and 'discount.py", line 13, in apply' in again
     assert (w.item(ZERO)["state"], w.item(ZERO)["slot"]) == ("fixing", "staging-42-1-2")
     assert "git checkout -B %s-2（" % branch in w.sessions.messages("staging-42-1-2")[0]
+
+
+def test_a_fix_mr_brain_push_rules_refuses_has_its_issue_told_once_what_a_person_does(bk, tmp_path):
+    """brain-kit's push rules, on in the project, refuse the bot's commits on a branch that is not a run branch: the fix
+    MR's pipeline fails on them and it cannot be merged as it is. Its Issue is told once, with the commands, and the page
+    says so until a pipeline passes (a person made the commits theirs); each pipeline is asked about once it is over."""
+    sl = mod("team.stagelog")
+    w = started(tmp_path)
+    w.write(zero())
+    w.round()
+    branch = "fix/staging-" + sl.short_id(ZERO)
+    w.gl.mr(P, 52, sha=SHA[3], source=branch, title="修复：" + ZERO)
+    w.gl.fail(P, 52, {"brain-push-rules": b"FAIL %s: the bot made commits in this MR (%s), but bot accounts push only "
+                                          b"ai/<owner>/<JIRA>-<slug> run branches\nbrain-ci push-rules: %s by brain-bot "
+                                          b"FAILED\n" % (branch.encode(), SHA[3][:12].encode(), branch.encode())})
+    for _ in range(3):
+        w.round()
+    assert w.item(ZERO)["state"] == "fix_mr" and w.item(ZERO)["note"] == (
+        "修复 MR 过不了 brain-push-rules（机器人只能推 run 分支）：在 Issue 上说了，要人把它的提交改成自己的才能合并")
+    told, = w.gl.notes(P, 1)
+    assert told.startswith("修复 MR !52 的流水线过不了 brain-push-rules：机器人只能推 run 分支，运行机的修复提交在分支 %s 上" % branch)
+    assert "git rebase origin/main --exec 'git commit --amend --no-edit --reset-author'\n" in told
+    assert "> %s: the bot made commits in this MR (%s)" % (branch, SHA[3][:12]) in told
+    assert w.gl.asked(r"/pipelines/\d+/jobs$") == 1
+    w.gl.push(P, 52, SHA[4], by="alice@example.com")
+    w.gl.pipeline(P, 52, "success")
+    w.round()
+    assert (w.item(ZERO)["state"], w.item(ZERO)["note"]) == ("fix_mr", "") and len(w.gl.notes(P, 1)) == 1
 
 
 def test_a_fix_mr_closed_without_merging_leaves_the_error_to_people(bk, tmp_path):
@@ -344,6 +410,25 @@ def test_work_sources_without_staging_errors_do_nothing(bk, tmp_path):
     assert w.watch.view()["projects"] == [{"project": P, "on": False, "error": "", "deployed_sha": ""}]
     assert w.watch.view()["items"] == [] and not os.path.exists(w.ledger) and w.gl.issues == {}
     assert not [c for c in w.gl.calls if "/issues" in c[1] or "/repository/" in c[1]]
+
+
+def test_a_project_bridge_json_now_spells_with_other_case_keeps_its_errors_issues_and_cursor(bk, tmp_path):
+    """一键建运行机 run again writes a hand-written entry with GitLab's own path, which may differ in case from what the
+    hand wrote (GitLab's paths are not case-sensitive): it is the same project, so its rows and its log's cursor move to
+    that spelling. Nothing of it is forgotten: no Issue opened twice, no line read twice, its fix's turn not stopped."""
+    w = started(tmp_path)
+    w.write(zero(), gateway())
+    w.round()
+    assert [s for s, _, _ in w.sessions.sent] == ["staging-42-1", "staging-42-2"]
+    w.kits = {"Grp/Repo": w.kits[P]}
+    w.watch.close()
+    w.watch = w.start()
+    w.write(zero())
+    w.round()
+    assert {(i["project"], i["signature"], i["count"], i["issue"]["iid"], i["state"]) for i in w.watch.view()["items"]} == {
+        ("Grp/Repo", ZERO, 2, 1, "fixing"), ("Grp/Repo", GATEWAY, 1, 2, "fixing")}
+    assert len(w.gl.opened(P)) == 2 and w.sessions.stopped == [] and w.ws.dropped == []
+    assert [c["key"] for c in w.watch.held()] == ["staging-errors:Grp/Repo:issue!1", "staging-errors:Grp/Repo:issue!2"]
 
 
 def test_a_project_without_a_staging_block_says_so_and_one_switched_off_is_forgotten(bk, tmp_path):
@@ -502,6 +587,51 @@ def test_one_error_logged_with_a_new_e_mail_each_time_is_one_issue(bk, tmp_path)
     assert issue["title"] == "测试环境报错：app.auth: no account for <email>"
     assert w.item("app.auth: no account for <email>")["count"] == 60
     assert len(w.gl.asked_staging("GET", r"/issues$")) - lists == 1
+
+
+OLD_BOB = "app.users: no user 'bob<n>' at /srv/app/users/bob<n>.json"        # the normalizer before 9d78742 made these
+OLD_CAROL = "app.users: no user 'carol<n>' at /srv/app/users/carol<n>.json"
+USERS = "app.users: no user <str> at <path>"
+
+
+def users(name):
+    return ["2026-11-21 10:00:04,000 ERROR app.users: no user '%s' at /srv/app/users/%s.json" % (name, name)]
+
+
+def test_a_ledger_keyed_by_the_old_normalizer_is_keyed_again_on_first_read_keeping_its_issue(bk, tmp_path):
+    """A ledger of a build from before 0.5.1's normalizer: its rows' signatures kept quoted values, e-mails and paths.
+    Read the first time, each row is keyed again from its own sample, and rows that now share a signature are one: the
+    oldest Issue kept, with its fix branch's name, the counts added. So the error read again counts into that Issue
+    instead of opening another; a row 0.5.x made for it, with its own Issue, is one with them."""
+    staging, sl = mod("team.staging"), mod("team.stagelog")
+    w = started(tmp_path)
+    t = w.clock.t
+
+    def row(sig, name, count, first, issue=0):
+        if issue:
+            w.gl.issues[(P, issue)] = {"iid": issue, "project_id": PID, "title": "测试环境报错：" + sig, "labels": [LABEL],
+                                       "description": "", "state": "opened", "_notes": [],
+                                       "web_url": "%s/grp/repo/-/issues/%d" % (BASE, issue)}
+            w.gl.last_iid[P] = issue
+        return staging.Row(P, sl.ErrorGroup(sig, first, first + 60, count, tuple(users(name)), SHA[1]),
+                           state="issued" if issue else "new", project_id=PID if issue else 0, told=count,
+                           issue=staging.Link(issue, "%s/grp/repo/-/issues/%d" % (BASE, issue)) if issue else None)
+    for r in (row(OLD_BOB, "bob42", 3, t - 3600, issue=5), row(OLD_CAROL, "carol7", 2, t - 1800),
+              row(USERS, "dave9", 1, t - 600, issue=6)):
+        w.watch.led.put(r)
+    w.watch.led.db.execute("PRAGMA user_version = 0")
+    w.watch.close()
+    w.watch = w.start()
+    w.write(users("erin3"))
+    w.round()
+    assert [(i["signature"], i["count"], i["issue"]["iid"], i["first_seen"]) for i in w.watch.view()["items"]] == [
+        (USERS, 7, 5, t - 3600)]
+    assert sorted(w.gl.issues) == [(P, 5), (P, 6)]
+    assert "git checkout -B fix/staging-%s（" % sl.short_id(OLD_BOB) in w.sessions.messages("staging-42-5")[0]
+    w.watch.close()
+    w.watch = w.start()
+    w.round()
+    assert [(i["signature"], i["count"]) for i in w.watch.view()["items"]] == [(USERS, 7)]
 
 
 def test_new_issues_open_three_a_round_and_twenty_at_most_per_project_and_the_rest_say_why_they_wait(bk, tmp_path):

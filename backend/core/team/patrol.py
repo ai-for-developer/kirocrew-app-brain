@@ -3,15 +3,17 @@ whose kit.json switches it on. An MR with a problem the runner can fix goes to a
 patrol-<project id>-<iid>), working in a clone of its own (<work>/patrol/<project id>-<iid>: KiroCrew lets agents work
 only under ~/workplace). Later problems of that MR go to the same session.
 
-A problem is one of four. The MR head's pipeline failed: its failed jobs, each with the last LOG_LINES lines of its
-log, and the failed checks external CI reported into it as commit statuses (Jenkins' GitLab plugin: a pipeline of
-source external has nothing else), which GitLab has no job of: each with its link and the last lines of its log from
-Jenkins (jenkins.py), or why there is none. A person left a review thread open: unresolved and resolvable, with no
-reply of patrol's own after it, and not named in a turn that ended. A person wrote a plain comment on the MR (no
-thread, so nothing marks it resolved) since patrol started in the project, not named in a turn that ended: the session
-answers it with a note on the MR that quotes it. Or the MR conflicts with its target branch. The MR's problems make a
-PatrolItem. Its fingerprint moves with the head, a failed pipeline, a new build of a failed check, the conflict and
-the open review notes and comments, and nothing else.
+A problem is one of four. The MR head's pipeline failed (one on the head, or on its merge into the target branch: merged
+results): its failed jobs, each with the last LOG_LINES lines of its log, those of the pipelines its failed trigger jobs
+started (child pipelines), and the failed checks external CI reported into it as commit statuses (Jenkins' GitLab
+plugin: a pipeline of source external has nothing else), which GitLab has no job or trigger job of: each with its link
+and the last lines of its log from Jenkins (jenkins.py), or why there is none. A person left a review thread open:
+unresolved and resolvable, with no reply of patrol's own after it written by a session that could have been told it
+(open_reviews: a note added while a session worked is not answered by its reply), and not named in a turn that ended. A
+person wrote a plain comment on the MR (no thread, so nothing marks it resolved) since patrol started in the project,
+not named in a turn that ended: the session answers it with a note on the MR that quotes it. Or the MR conflicts with
+its target branch. The MR's problems make a PatrolItem. Its fingerprint moves with the head, a failed pipeline, a new
+build of a failed check, the conflict and the open review notes and comments, and nothing else.
 
 The ledger, <root>/patrol.sqlite, has one row per open MR of the projects patrol is on (MrRow). It is a state machine
 (settle, Patrol._look and Patrol._send):
@@ -22,12 +24,19 @@ The ledger, <root>/patrol.sqlite, has one row per open MR of the projects patrol
                       sent again.
   working -> idle     the turn ended (the review notes it named count as answered then), or the MR head moved
   working -> idle     a failed attempt: TIMEOUT_S without either (the turn is stopped), or a turn that ended without a
-                      reply or with KiroCrew's error. A message KiroCrew refused is a failed attempt as well.
+                      reply or with KiroCrew's error. A message KiroCrew refused is a failed attempt as well, and so is
+                      its clone not ready for the same fingerprint a round again (a git lock a stopped turn left in it
+                      is removed once LOCK_STALE_S old, and waited for until then)
   working -> blocked  the MAX_ATTEMPTS-th failed attempt on one fingerprint: left alone until its fingerprint changes
   idle -> paused      dispatched MAX_STREAK times in a row with no person pushing or commenting in between (each push
                       of the runner's makes a new fingerprint): left alone until a person does
-One comment on the MR says why it is blocked or paused, and what is not fixed. A row is forgotten, its turn stopped and
-its clone deleted, once its MR is merged or closed, or patrol is no longer on in its project.
+  any -> rules        brain-kit's brain-push-rules failed the head pipeline for commits of the runner's (it lets the
+                      bot commit on run branches only): any it pushes would be refused too, so the MR is left alone for
+                      good (its turn stopped)
+One comment on the MR says why it is blocked, paused or refused, and what is not fixed (for rules: what a person
+does). A row is forgotten, its turn stopped and its clone deleted, once its MR is merged or closed, or patrol is no
+longer on in its project; one of a project bridge.json now names in another case (GitLab's paths are not
+case-sensitive) moves to that spelling (Ledger.respell).
 A round lists each project's open MRs once. It reads an MR's pipeline and threads only when the MR changed since, is
 being worked, its pipeline had not finished, or RECHECK_S went by: GitLab does not move an MR's updated_at when a
 pipeline ends, or when one runs again on the same head. A Jenkins build run again on the same head lands in the same
@@ -38,6 +47,7 @@ by another work source, and those whose only problems are bots' comments.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -51,7 +61,7 @@ from typing import Any, Callable, ClassVar, Mapping, Union
 
 from .. import bk, snapshot
 from . import sources
-from .jenkins import Jenkins, build_path
+from .jenkins import Jenkins, Logs, build_path
 
 KIND = sources.PATROL
 AGENT = "brain-patrol"
@@ -62,16 +72,20 @@ MAX_STREAK = 3              # dispatches in a row with no person pushing or comm
 LOG_LINES = 80              # of each failed job's log
 LOG_LINE_CHARS = 300
 MAX_JOBS = 5
+MAX_DEPTH = 2               # trigger jobs followed down from the MR's pipeline: to a child's child, no further
 BODY_CHARS = 3000
 NO_PIPELINE_S = 600         # an MR changed this recently with no pipeline at its head yet: read again next round
 RECHECK_S = 600             # an MR that did not change is read again this often (a pipeline run again on its head)
+LOCK_STALE_S = 5 * 60       # a git lock this old in a clone no turn works in was left by a turn stopped mid-commit
 SKIP_LABEL = "ai-skip"
 FINAL_PIPELINE = ("success", "failed", "canceled", "skipped", "manual")
 UNSURE_MERGE = ("checking", "unchecked", "preparing")      # detailed_merge_status before GitLab knows
 BOT_RE = re.compile(r"^(?:project|group)_\d+_bot(?:_[0-9a-f]+)?\d*$")
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 SECTION_RE = re.compile(r"^section_(?:start|end):\d+:")
-IDLE, WORKING, BLOCKED, PAUSED = "idle", "working", "blocked", "paused"
+IDLE, WORKING, BLOCKED, PAUSED, RULES = "idle", "working", "blocked", "paused", "rules"
+# the last line of brain-kit's `brain-ci push-rules` (its CI job brain-push-rules) when it refuses an MR
+RULES_RE = re.compile(r"^brain-ci push-rules: \S+ by \S+ FAILED$", re.M)
 
 
 # ---- what an MR has ------------------------------------------------------------------------------------------- #
@@ -91,6 +105,7 @@ class FailedCheck:
     url: str                    # its target_url (a Jenkins build's: at the address the runner reaches Jenkins at)
     log: str | None             # the last LOG_LINES lines of its log; None: not read, *why* says why
     why: str = ""
+    later: bool = False         # not read yet: the round's time for Jenkins ran out (jenkins.Logs); read next round
 
 
 @dataclass(frozen=True)
@@ -180,6 +195,7 @@ class Read:
     people_note: int = 0                        # the newest note a person wrote on the MR, anywhere (its id)
     comments: tuple[Comment, ...] = ()          # people's plain comments since patrol started in the project
     checks: tuple[FailedCheck, ...] = ()        # the failed checks external CI reported, of a failed pipeline
+    last_note: int = 0                          # the newest note on the MR, anyone's (its id: GitLab's ids only grow)
 
     @classmethod
     def of(cls, d: Mapping[str, Any]) -> "Read":
@@ -187,7 +203,7 @@ class Read:
                    tuple(FailedJob(**j) for j in d.get("jobs") or ()),
                    tuple(Review(**r) for r in d.get("reviews") or ()), int(d.get("bot_notes") or 0),
                    int(d.get("people_note") or 0), tuple(Comment(**c) for c in d.get("comments") or ()),
-                   tuple(FailedCheck(**c) for c in d.get("checks") or ()))
+                   tuple(FailedCheck(**c) for c in d.get("checks") or ()), int(d.get("last_note") or 0))
 
 
 @dataclass(frozen=True)
@@ -240,10 +256,13 @@ def notes_of(discussions: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     return [[n for n in d.get("notes") or [] if isinstance(n, dict) and not n.get("system")] for d in discussions]
 
 
-def open_reviews(discussions: list[dict[str, Any]], own: set[str], bots: set[str]) -> tuple[list[Review], int]:
+def open_reviews(discussions: list[dict[str, Any]], own: set[str], bots: set[str],
+                 marks: tuple[int, ...] = ()) -> tuple[list[Review], int]:
     """(people's open review notes, open threads only bots wrote in). A thread counts while it is resolvable and not
-    resolved. In it, a note of patrol's own account (*own*) answers every note before it; a bot's note is never a
-    problem."""
+    resolved. In it, a note of patrol's own account (*own*) answers the notes before it its session could have been
+    told: those up to the newest of *marks* (the newest note before each dispatch, MrRow.marks) below its own id, every
+    one before it when none is (a reply from before patrol's ledger). So a person's note added while the session
+    worked is still open after its reply. A bot's note is never a problem."""
     out, bot_threads = [], 0
     for d, notes in zip(discussions, notes_of(discussions)):
         mine = [n for n in notes if n.get("resolvable")]
@@ -253,7 +272,8 @@ def open_reviews(discussions: list[dict[str, Any]], own: set[str], bots: set[str
         for n in notes:
             by = written_by(n, own, bots)
             if by == "own":
-                tail, bot_said = [], False
+                told = max((m for m in marks if m < int(n["id"])), default=None)
+                tail, bot_said = [x for x in tail if told is not None and int(x["id"]) > told], False
             elif by == "bot":
                 bot_said = True
             else:
@@ -278,16 +298,17 @@ def plain_comments(discussions: list[dict[str, Any]], own: set[str], bots: set[s
     return out
 
 
-def read_mr(gl: Any, jenkins: Jenkins, project: str, mr: Mapping[str, Any], own: set[str], bots: set[str],
-            since: float, before: Read | None = None) -> Read:
-    """GitLab's MR (its head pipeline); when that pipeline failed, its failed jobs with their logs and the failed
-    checks external CI reported into it (failed_checks); its threads, and its plain comments written *since* (patrol
-    started in the project). *before*'s jobs while it is the same failed pipeline; its checks are read again unless it
-    is GitLab's own and had none: a Jenkins build run again lands in the same pipeline."""
+def read_mr(gl: Any, logs: Logs, project: str, mr: Mapping[str, Any], own: set[str], bots: set[str],
+            since: float, before: Read | None = None, marks: tuple[int, ...] = ()) -> Read:
+    """GitLab's MR (its head pipeline, at_head); when that pipeline failed, its failed jobs with their logs, its child
+    pipelines' too (pipeline_failures), and the failed checks external CI reported into it (failed_checks); its
+    threads, and its plain comments written *since* (patrol started in the project). *before*'s jobs while it is the
+    same failed pipeline; its checks are read again unless it is GitLab's own and had none: a Jenkins build run again
+    lands in the same pipeline."""
     rest = bk.m("rest")
     iid = int(mr["iid"])
     hp = (gl.mr(project, iid) or {}).get("head_pipeline")
-    hp = hp if isinstance(hp, dict) and hp.get("id") and hp.get("sha") in (None, mr.get("sha")) else None
+    hp = hp if isinstance(hp, dict) and hp.get("id") and at_head(gl, project, mr, hp) else None
     pid, status = (int(hp["id"]), str(hp.get("status") or "")) if hp else (None, "")
     external = bool(hp) and hp.get("source") == "external"
     same = before is not None and (before.pipeline_id, before.pipeline_status) == (pid, status)
@@ -296,27 +317,98 @@ def read_mr(gl: Any, jenkins: Jenkins, project: str, mr: Mapping[str, Any], own:
     if status == "failed" and pid and same and not external and not before.checks:
         jobs = before.jobs
     elif status == "failed" and pid:
-        listed = [] if external else [j for j in gl.pipeline_jobs(project, pid) if isinstance(j, dict) and j.get("id")]
-        jobs = before.jobs if same else tuple(
-            FailedJob(str(j.get("name") or j["id"]), log_tail(gl.job_trace(project, int(j["id"]))))
-            for j in [j for j in listed if not j.get("allow_failure")][:MAX_JOBS])
-        checks = failed_checks(gl, jenkins, project, str(mr.get("sha") or ""), pid, {int(j["id"]) for j in listed},
+        found, own = ([], set()) if external else pipeline_failures(gl, project, pid, logs=not same)
+        jobs = before.jobs if same else tuple(found)
+        checks = failed_checks(gl, logs, project, str(hp.get("sha") or mr.get("sha") or ""), pid, own,
                                before.checks if before is not None else ())
     threads = gl.pages("/projects/%s/merge_requests/%d/discussions" % (rest.q(project), iid), {}, 100, 20,
                        "discussions on !%d" % iid)
     threads = [d for d in threads if isinstance(d, dict)]
-    reviews, bot_threads = open_reviews(threads, own, bots)
+    reviews, bot_threads = open_reviews(threads, own, bots, marks)
     people = [int(n["id"]) for notes in notes_of(threads) for n in notes if written_by(n, own, bots) == "person"]
     return Read(pid, status, jobs, tuple(reviews), bot_threads, max(people, default=0),
-                tuple(plain_comments(threads, own, bots, since)), checks)
+                tuple(plain_comments(threads, own, bots, since)), checks,
+                max((int(n["id"]) for notes in notes_of(threads) for n in notes), default=0))
 
 
-def failed_checks(gl: Any, jenkins: Jenkins, project: str, sha: str, pipeline_id: int, jobs: set[int],
+def at_head(gl: Any, project: Any, mr: Mapping[str, Any], hp: Mapping[str, Any]) -> bool:
+    """Whether *hp*, GitLab's head pipeline of the MR, ran for its head: on the head itself, or on the merge of the head
+    into the target branch (merged results, a merge train: ref refs/merge-requests/<iid>/merge or /train, on a merge
+    commit one of whose parents is the head). An older GitLab keeps an older head's pipeline there for a while."""
+    sha, head = hp.get("sha"), str(mr.get("sha") or "")
+    if sha in (None, head):
+        return True
+    if hp.get("ref") not in ["refs/merge-requests/%d/%s" % (int(mr["iid"]), r) for r in ("merge", "train")]:
+        return False
+    rest = bk.m("rest")
+    try:
+        merge = gl.call("GET", "/projects/%s/repository/commits/%s" % (rest.q(project), rest.q(sha))) or {}
+    except rest.HttpError as exc:
+        if exc.status != 404:
+            raise
+        return False
+    return head in (merge.get("parent_ids") or ())
+
+
+def bridges_of(gl: Any, project: Any, pipeline_id: int) -> list[dict[str, Any]]:
+    """The pipeline's failed trigger jobs (GitLab's bridges: pipelines/:id/jobs leaves them out); none when GitLab does
+    not show them (403, 404)."""
+    rest = bk.m("rest")
+    try:
+        rows = gl.call("GET", "/projects/%s/pipelines/%d/bridges" % (rest.q(project), pipeline_id),
+                       {"scope[]": "failed", "per_page": 100})
+    except rest.HttpError as exc:
+        if exc.status not in (403, 404):
+            raise
+        return []
+    return [b for b in rows or [] if isinstance(b, dict) and b.get("id")]
+
+
+def pipeline_failures(gl: Any, project: Any, pipeline_id: int, logs: bool = True, depth: int = 0,
+                      prefix: str = "") -> tuple[list[FailedJob], set[int]]:
+    """(the failed jobs of the pipeline, each with the last lines of its log, then through each failed trigger job the
+    failed jobs of the pipeline it started: a child pipeline, or another project's, named by the trigger job, MAX_DEPTH
+    down; the ids of its failed jobs and trigger jobs, which GitLab lists among its commit statuses too). *logs* False:
+    the ids alone. Jobs allowed to fail are left out, MAX_JOBS at most."""
+    listed = [j for j in gl.pipeline_jobs(project, pipeline_id) if isinstance(j, dict) and j.get("id")]
+    triggers = bridges_of(gl, project, pipeline_id)
+    ids = {int(j["id"]) for j in listed + triggers}
+    if not logs:
+        return [], ids
+    out = [FailedJob(prefix + str(j.get("name") or j["id"]), log_tail(gl.job_trace(project, int(j["id"]))))
+           for j in listed if not j.get("allow_failure")][:MAX_JOBS]
+    for b in triggers:
+        if len(out) < MAX_JOBS and not b.get("allow_failure"):
+            out += downstream_failures(gl, project, b, depth, prefix + str(b.get("name") or b["id"]))
+    return out[:MAX_JOBS], ids
+
+
+def downstream_failures(gl: Any, project: Any, trigger: Mapping[str, Any], depth: int, name: str) -> list[FailedJob]:
+    """The failed jobs of the pipeline the failed *trigger* job started, each named *name* › its own; when there are
+    none to show, the trigger job itself with why in place of its log."""
+    rest = bk.m("rest")
+    down = trigger.get("downstream_pipeline") if isinstance(trigger.get("downstream_pipeline"), dict) else {}
+    if not down.get("id"):
+        why = str(trigger.get("failure_reason") or "")
+        return [FailedJob(name, "（它要触发的流水线没建成%s）" % ("：" + why if why else ""))]
+    if depth >= MAX_DEPTH:
+        return [FailedJob(name, "（它触发的流水线 #%d 没过：再往下的没读）" % int(down["id"]))]
+    try:
+        found, _ = pipeline_failures(gl, down.get("project_id") or project, int(down["id"]), True, depth + 1,
+                                     name + " › ")
+    except rest.HttpError as exc:
+        if exc.status not in (403, 404):
+            raise
+        return [FailedJob(name, "（它触发的流水线 #%d 运行机读不到：HTTP %d）" % (int(down["id"]), exc.status))]
+    return found or [FailedJob(name, "（它触发的流水线 #%d 没过，里面没有没过的任务）" % int(down["id"]))]
+
+
+def failed_checks(gl: Any, logs: Logs, project: str, sha: str, pipeline_id: int, jobs: set[int],
                   known: tuple[FailedCheck, ...]) -> tuple[FailedCheck, ...]:
-    """The pipeline's failed commit statuses that none of its GitLab *jobs* (their ids: GitLab lists its jobs as
-    statuses too) stands for, the newest of each name, with the tail of each one's Jenkins log. *known*: the checks
-    read before, whose logs are kept; one whose log was not read is tried again. No checks when GitLab does not show
-    the statuses (403, 404)."""
+    """The pipeline's failed commit statuses that none of its GitLab *jobs* (their ids, trigger jobs too: GitLab lists
+    both as statuses) stands for, the newest of each name, with the tail of each one's Jenkins log. *known*: the checks
+    read before, whose logs are kept; one whose log was not read is asked of *logs* again, which says when it reads
+    it again. No checks when GitLab does not show the statuses (403, 404)."""
     rest = bk.m("rest")
     try:
         rows = gl.call("GET", "/projects/%s/repository/commits/%s/statuses" % (rest.q(project), rest.q(sha)),
@@ -341,8 +433,9 @@ def failed_checks(gl: Any, jenkins: Jenkins, project: str, sha: str, pipeline_id
         if sid in kept:
             out.append(kept[sid])
             continue
-        url, raw, why = jenkins.console(str(s.get("target_url") or ""))
-        out.append(FailedCheck(sid, name, url, log_tail(raw) if raw is not None else None, why))
+        got = logs.console(str(s.get("target_url") or ""))
+        out.append(FailedCheck(sid, name, got.page, log_tail(got.raw) if got.raw is not None else None, got.why,
+                               got.later))
     return tuple(out)
 
 
@@ -360,6 +453,24 @@ def pushed_by_people(gl: Any, project: str, old: str, new: str, bots: set[str]) 
         rows = [gl.call("GET", "%s/%s" % (path, new))]
     commits = [c for c in rows or [] if isinstance(c, dict)]
     return not commits or any(str(c.get("committer_email") or "").lower() not in bots for c in commits)
+
+
+def rules_said(jobs: tuple[FailedJob, ...] | list[FailedJob]) -> list[str]:
+    """What brain-kit's push rules said (their FAIL lines) when one of a failed pipeline's failed *jobs* is
+    `brain-ci push-rules` refusing it (RULES_RE ends its log); [] when none is."""
+    for j in jobs:
+        if RULES_RE.search(j.log):
+            return [x[len("FAIL "):] for x in j.log.split("\n") if x.startswith("FAIL ")] or [j.log.split("\n")[-1]]
+    return []
+
+
+def runner_commits(gl: Any, project: str, iid: int, bots: set[str]) -> list[str]:
+    """The short ids of the MR's commits the runner made (authored or committed as one of *bots*, its git emails),
+    newest first, as GitLab lists them."""
+    rows = gl.pages("/projects/%s/merge_requests/%d/commits" % (bk.m("rest").q(project), iid), {}, 100, 10,
+                    "commits of !%d" % iid)
+    return [str(c.get("short_id") or str(c["id"])[:8]) for c in rows if isinstance(c, dict) and c.get("id") and
+            {str(c.get(k) or "").lower() for k in ("author_email", "committer_email")} & bots]
 
 
 def item_of(project: str, mr: Mapping[str, Any], read: Read, answered: tuple[int, ...]) -> PatrolItem:
@@ -414,9 +525,15 @@ class MrRow:
     send_id: str = ""
     sent_notes: tuple[int, ...] = ()    # the review notes and comments that dispatch named
     outcome: str = ""                   # how the last attempt ended: ended | moved | failed | timeout | refused | taken
+                                        # | workspace (its clone was not ready, again: _unready)
     done_fp: str = ""                   # the fingerprint a turn ended on (its notes answered)
     answered: tuple[int, ...] = ()
+    marks: tuple[int, ...] = ()         # Read.last_note at each dispatch: what its session could know (open_reviews)
     told: bool = False                  # it is blocked or paused, and the MR was told so
+    ws_fp: str = ""                     # the fingerprint its clone was last not ready for ("": it was ready)
+    ws_error: str = ""                  # ... and why
+    rules: tuple[str, ...] = ()         # rules: the runner's commits brain-push-rules refused (short ids, newest first)
+    rules_said: tuple[str, ...] = ()    # ... and what it said (its FAIL lines)
     claim: dict = field(default_factory=dict)
     seen: str = ""                      # the MR's updated_at and head when it was last read in detail
     read: Read | None = None
@@ -425,7 +542,7 @@ class MrRow:
     @classmethod
     def of(cls, d: Mapping[str, Any]) -> "MrRow":
         d = dict(d)
-        for k in ("sent_notes", "answered", "status_ids"):
+        for k in ("sent_notes", "answered", "marks", "status_ids", "rules", "rules_said"):
             d[k] = tuple(d.get(k) or ())
         d["read"] = Read.of(d["read"]) if isinstance(d.get("read"), dict) else None
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
@@ -464,6 +581,18 @@ class Ledger:
         """When patrol first looked at *project* (now, the first time it is asked)."""
         self.db.execute("INSERT OR IGNORE INTO projects (project, since) VALUES (?, ?)", (project, now))
         return float(self.db.execute("SELECT since FROM projects WHERE project=?", (project,)).fetchone()[0])
+
+    def respell(self, projects: list[str]) -> None:
+        """The rows and start of a project kept under another spelling than *projects* has for it (GitLab's paths are
+        not case-sensitive: 一键建运行机 writes GitLab's own) moved to that spelling, as the same project's."""
+        named = {p.lower(): p for p in projects}
+        for old in {r[0] for r in self.db.execute("SELECT project FROM mrs UNION SELECT project FROM projects")}:
+            new = named.get(old.lower(), old)
+            if new != old:
+                for row in [r for r in self.rows() if r.project == old]:
+                    self.put(replace(row, project=new))
+                    self.drop(old, row.iid)
+                self.db.execute("UPDATE OR REPLACE projects SET project=? WHERE project=?", (new, old))
 
     def keep_projects(self, keep: list[str]) -> None:
         """Forget when patrol started in every project but *keep*: it starts again there when it is on again."""
@@ -505,11 +634,14 @@ def settle(row: MrRow, head: str, turn: str, now: float) -> tuple[MrRow, bool]:
 
 
 def standing(row: MrRow, item: PatrolItem) -> str:
-    """ok (nothing to fix) | working | blocked | done (this fingerprint was worked to the end of a turn) | todo."""
+    """ok (nothing to fix) | working | blocked | rules (brain-push-rules refused the runner's commits: left alone) |
+    done (this fingerprint was worked to the end of a turn) | todo."""
     if row.state == WORKING:
         return "working"
     if not item.problems:
         return "ok"
+    if row.state == RULES:
+        return "rules"
     if row.state == PAUSED or (row.state == BLOCKED and row.fingerprint == item.fingerprint):
         return "blocked"
     if row.done_fp == item.fingerprint:
@@ -617,9 +749,16 @@ class Refused(Exception):
     in. Its BrainError means no answer: a message may then have landed."""
 
 
+class Locked(Exception):
+    """A git lock in the clone younger than LOCK_STALE_S: the git of a turn just stopped may still be at it. Nothing was
+    touched; the clone is prepared again next round."""
+
+
 @dataclass(frozen=True)
 class Workspaces:
-    """A clone per MR under *root*, made once; before each dispatch fetched and reset to the source branch on origin."""
+    """A clone per MR under *root*, made once; before each dispatch fetched and reset to the source branch on origin.
+    Its callers prepare a clone only while no turn works in it: a git lock a turn stopped mid-commit left there is
+    removed once it is LOCK_STALE_S old."""
     root: str
     clone_url: str                                  # runnerd.json's, {project} in it
     ident: tuple[tuple[str, str], ...] = ()         # git config the commits are made with (runnerd.json's bot)
@@ -656,6 +795,7 @@ class Workspaces:
                 os.rename(tmp, path)
             finally:
                 shutil.rmtree(tmp, ignore_errors=True)
+        unlock(os.path.join(path, ".git"))
         common.git_net(path, "fetch", "-q", "--prune", "origin", timeout=self.git_timeout)
         for args in (("merge", "--abort"), ("rebase", "--abort")):      # what a cut-off turn left half-done
             common.git(path, *args, check=False)
@@ -671,24 +811,65 @@ class Workspaces:
         return path
 
 
+def locked_note(exc: Locked) -> str:
+    return "工作区里有 git 没做完留下的锁 %s：没有会话在用它，满 %d 分钟就删掉" % (exc, LOCK_STALE_S // 60)
+
+
+def unlock(git_dir: str) -> None:
+    """The clone's git locks (*.lock in .git and under .git/refs) removed when every one is LOCK_STALE_S old: none of
+    them can be a live git's then, as no turn works in the clone. Locked while one is younger."""
+    locks = [os.path.join(git_dir, n) for n in os.listdir(git_dir) if n.endswith(".lock")]
+    for top, _, names in os.walk(os.path.join(git_dir, "refs")):
+        locks += [os.path.join(top, n) for n in names if n.endswith(".lock")]
+    now = time.time()
+    for lock in locks:
+        with contextlib.suppress(FileNotFoundError):
+            age = now - os.stat(lock).st_mtime
+            if age < LOCK_STALE_S:
+                raise Locked("%s（%d 秒前留下的）" % (os.path.relpath(lock, os.path.dirname(git_dir)), max(0, age)))
+    for lock in locks:
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(lock)
+
+
 def slot_name(project_id: int, iid: int, gen: int) -> str:
     return "patrol-%d-%d" % (project_id, iid) + ("-%d" % gen if gen > 1 else "")
 
 
 # the first line of every blocked_text: a person's machine reads it as patrol having left the MR alone (runner_view.py)
-STOPPED_RE = re.compile(r"^MR 巡检：运行机(?:连着修了|派了|试了) \d+ 次")
+STOPPED_RE = re.compile(r"^MR 巡检：(?:运行机(?:连着修了|派了|试了) \d+ 次|brain-push-rules 不让运行机)")
 
 
 def blocked_text(row: MrRow, item: PatrolItem) -> str:
     what = "\n".join("- " + problem_text(p) for p in item.problems)
+    if row.state == RULES:
+        return rules_text(row, item)
     if row.state == PAUSED:
         return ("MR 巡检：运行机连着修了 %d 次，中间没有人推送或评论，这些还没修好：\n%s\n\n运行机先停下，不管这个 MR；有人推送"
                 "或评论以后再看。" % (MAX_STREAK, what))
     if row.outcome == "refused":
         return ("MR 巡检：运行机派了 %d 次，它的会话都没收下，这些还没修：\n%s\n\n请管运行机的人看一下它的 KiroCrew。运行机先不管"
                 "这个 MR；它有新的提交、新的流水线或新的评审意见以后再看。" % (MAX_ATTEMPTS, what))
+    if row.outcome == "workspace":
+        return ("MR 巡检：运行机试了 %d 次，都没能开始修：运行机上这个 MR 的工作区（它的克隆）准备不好。这些还没修：\n%s\n\n请管运行机"
+                "的人看一下运行机页面上这个 MR 的说明。运行机先不管这个 MR；它有新的提交、新的流水线或新的评审意见以后再看。" % (MAX_ATTEMPTS, what))
     return ("MR 巡检：运行机试了 %d 次，没修好这些：\n%s\n\n运行机先不管这个 MR；它有新的提交、新的流水线或新的评审意见以后再看。"
             % (MAX_ATTEMPTS, what))
+
+
+def rules_text(row: MrRow, item: PatrolItem) -> str:
+    """What a person does once brain-push-rules refused the runner's commits on the MR's branch: those commits made
+    theirs (rewritten with their name: a revert leaves them in the MR), or dropped."""
+    br, first = item.source_branch, row.rules[-1]
+    return "\n".join([
+        "MR 巡检：brain-push-rules 不让运行机在分支 %s 上提交（机器人只能推 run 分支）。运行机的提交 %s 让这个 MR 的流水线过不了，"
+        "这个 MR 合并不了。运行机不再修这个 MR。" % (br, "、".join(row.rules)), "",
+        "要留下这些改动，把从 %s 起的提交改成你自己的（会把它们都记成你的），再推上去：" % first, "",
+        "```", "git fetch origin", "git checkout -B %s origin/%s" % (br, br),
+        "git rebase %s~1 --exec 'git commit --amend --no-edit --reset-author'" % first,
+        "git push --force-with-lease origin %s" % br, "```", "",
+        "不要这些改动：git rebase -i %s~1，删掉运行机的提交，再推上去。只 revert 不行：brain-push-rules 查 MR 里所有的提交。" % first,
+        "", "brain-push-rules 说：", "", *["> " + x for x in row.rules_said]])
 
 
 # ---- the round ------------------------------------------------------------------------------------------------ #
@@ -726,7 +907,8 @@ class Patrol:
                  claims: Callable[[], list[sources.Claim]], jenkins: Jenkins = Jenkins(),
                  shared: Callable[[], int] = lambda: 0,
                  now: Callable[[], float] = time.time, out: Callable[[str], None] = print) -> None:
-        self.gl, self.jenkins, self.sessions, self.kit, self.projects = gl, jenkins, sessions, kit, list(projects)
+        self.gl, self.sessions, self.kit, self.projects = gl, sessions, kit, list(projects)
+        self.logs = Logs(jenkins, now)
         self.ledger_path, self.workspaces, self.helper, self.claims = ledger_path, workspaces, helper, claims
         self.now, self.out, self.shared = now, out, shared
         self._led: Ledger | None = None
@@ -749,7 +931,7 @@ class Patrol:
         """The MRs patrol is working on or gave up on: their claims."""
         if self._led is None and not os.path.exists(self.ledger_path):
             return []
-        return [r.claim for r in self.led.rows() if r.state in (WORKING, BLOCKED, PAUSED) and r.claim]
+        return [r.claim for r in self.led.rows() if r.state in (WORKING, BLOCKED, PAUSED, RULES) and r.claim]
 
     def busy(self) -> int:
         """Its sessions in a turn now, as its ledger says (_busy), every project's: also one this round could not
@@ -769,6 +951,9 @@ class Patrol:
         the end (BrainError)."""
         common = bk.m("common")
         now, self._turns = self.now(), {}
+        self.logs.round()
+        if self._led is not None or os.path.exists(self.ledger_path):
+            self.led.respell(self.projects)
         others = [c for c in self.claims() if c["kind"] != KIND]
         errors, projects, entries, open_mrs, listed, off = [], [], [], set(), [], set()
         for project in self.projects:
@@ -812,7 +997,7 @@ class Patrol:
             self.led.keep_projects(keep)
         if listed:
             self._dispatch(entries, now)
-        self.last = view_of(projects, entries, now)
+        self.last = view_of(projects, entries, now, self._hidden(entries))
         if errors:
             raise common.BrainError("not done this round: " + "; ".join(errors))
         return len(entries)
@@ -839,27 +1024,50 @@ class Patrol:
                 self._stop(row)
         if self._stale(row, mr, now):
             old = set(row.read.checks) if row.read is not None else set()
-            row = replace(row, read=read_mr(self.gl, self.jenkins, e.project, mr, *self._who(kit), e.since,
-                                            before=row.read), seen=_seen(mr), read_at=now)
+            row = replace(row, read=read_mr(self.gl, self.logs, e.project, mr, *self._who(kit), e.since,
+                                            before=row.read, marks=row.marks), seen=_seen(mr), read_at=now)
             for c in row.read.checks:
-                if c.log is None and c not in old:
+                if c.log is None and not c.later and c not in old:
                     self.out("%s!%s: %s: no log: %s" % (e.project, mr["iid"], c.name, c.why))
+            row = self._push_rules(e, row)
         item = item_of(e.project, mr, row.read, row.answered)
         row = self._watched(e, replace(row, project_id=item.project_id), item)
         if row.state == BLOCKED and row.fingerprint != item.fingerprint:
             row = replace(row, state=IDLE)
         if standing(row, item) == "todo" and row.streak >= MAX_STREAK:
             row = replace(row, state=PAUSED, told=False)
-        if row.state in (BLOCKED, PAUSED) and not row.told:
-            try:
-                self.gl.comment(e.project, item.iid, blocked_text(row, item))
-                row = replace(row, told=True)
-            except bk.m("common").BrainError as exc:    # told next round
-                self.out("%s!%d: the blocked comment is not posted yet: %s" % (e.project, item.iid, _said(exc)))
+        row = self._told(e, row, item)
         led.put(row)
         e.row, e.item, e.standing = row, item, standing(row, item)
         if e.standing == "ok" and row.read.bot_notes:
             e.skip, e.standing = Skip("bots_only", "只有机器人写的评论，没有要修的"), "skipped"
+        if e.standing == "todo" and any(c.later for c in row.read.checks):
+            e.standing, e.note = "waiting", "Jenkins 的日志这一轮没读完：下一轮读完再派"
+
+    def _push_rules(self, e: Entry, row: MrRow) -> MrRow:
+        """*row* in state rules for good when brain-push-rules refused the MR for commits of the runner's: any commit
+        it pushes to a branch that is not a run branch is refused, so it does not try again (its turn is stopped)."""
+        said = rules_said(row.read.jobs) if row.state != RULES and row.read.pipeline_status == "failed" else []
+        mine = runner_commits(self.gl, e.project, row.iid, self._bot_emails(e.kit)) if said else []
+        if not mine:
+            return row
+        if self._busy(row):
+            self._stop(row)
+        self.out("%s!%d: brain-push-rules refused the runner's commits %s: left to people" % (e.project, row.iid,
+                                                                                             ", ".join(mine)))
+        return replace(row, state=RULES, rules=tuple(mine), rules_said=tuple(said), told=False)
+
+    def _told(self, e: Entry, row: MrRow, item: PatrolItem) -> MrRow:
+        """*row*, its MR told once that it is blocked, paused or refused by brain-push-rules (blocked_text): told
+        again next round when GitLab did not take it."""
+        if row.state not in (BLOCKED, PAUSED, RULES) or row.told:
+            return row
+        try:
+            self.gl.comment(e.project, item.iid, blocked_text(row, item))
+        except bk.m("common").BrainError as exc:
+            self.out("%s!%d: the blocked comment is not posted yet: %s" % (e.project, item.iid, _said(exc)))
+            return row
+        return replace(row, told=True)
 
     def _watched(self, e: Entry, row: MrRow, item: PatrolItem) -> MrRow:
         """*row*, its streak over when a person commented or pushed since its last dispatch (a pause lifts with it). A
@@ -878,10 +1086,12 @@ class Patrol:
         return {x.strip().lower() for x in named if x.strip()}
 
     def _stale(self, row: MrRow, mr: Mapping[str, Any], now: float) -> bool:
-        """Whether the MR is read in detail again: never read, changed since, being worked, its pipeline not over (or
-        none yet, just after a change), or not read for RECHECK_S."""
+        """Whether the MR is read in detail again: never read, changed since, being worked, a check's log left for this
+        round, its pipeline not over (or none yet, just after a change), or not read for RECHECK_S."""
         r = row.read
         if r is None or row.seen != _seen(mr) or row.state == WORKING or now - row.read_at >= RECHECK_S:
+            return True
+        if any(c.later for c in r.checks):
             return True
         if r.pipeline_status:
             return r.pipeline_status not in FINAL_PIPELINE
@@ -928,6 +1138,15 @@ class Patrol:
                     self.workspaces.drop(row.project_id, row.iid)
                 self.led.drop(row.project, row.iid)
 
+    def _hidden(self, entries: list[Entry]) -> list[str]:
+        """Its sessions in a turn now (_busy) whose MR no entry shows at work, each with what holds it: so the page's
+        count is every session it holds, as sources.at_work counts them."""
+        if self._led is None and not os.path.exists(self.ledger_path):
+            return []
+        shown = {(e.project, int(e.mr["iid"])) for e in entries if e.standing == "working"}
+        return [("%s!%d 的会话还在做上一轮（MR 有了新的提交）" if r.state != WORKING else "%s!%d 的会话还在做（这一轮没看成这个 MR）")
+                % (r.project, r.iid) for r in self.led.rows() if self._busy(r) and (r.project, r.iid) not in shown]
+
     def _busy(self, row: MrRow) -> bool:
         """Its session is at work: a turn patrol waits on, or one the MR head moved past that has not ended yet."""
         return row.state == WORKING or (row.outcome == "moved" and self._turn(row) == "running")
@@ -952,9 +1171,12 @@ class Patrol:
             except Moved:
                 e.standing, e.note = "waiting", "MR 刚有新的提交：下一轮再看"
                 continue
-            except (common.BrainError, OSError) as exc:     # git: tried again next round
-                e.standing, e.note = "error", "工作区没准备好：%s" % _said(exc)
+            except Locked as exc:
+                e.standing, e.note = "waiting", locked_note(exc)
+                continue
+            except (common.BrainError, OSError) as exc:     # git: tried again next round, an attempt when it repeats
                 self.out("%s!%s: its workspace is not ready: %s" % (e.project, e.mr.get("iid"), _said(exc)))
+                self._unready(e, _said(exc))
                 continue
             busy += 1
             try:
@@ -962,6 +1184,23 @@ class Patrol:
             except common.BrainError as exc:                # its session not opened or set up: nothing was sent
                 e.standing, e.note = "error", "没派出去：%s" % _said(exc)
                 self.out("%s!%s: not dispatched: %s" % (e.project, e.mr.get("iid"), _said(exc)))
+
+    def _unready(self, e: Entry, why: str) -> None:
+        """*e*'s clone not ready: prepared again next round. When it was not ready for this fingerprint the round before
+        either, a failed attempt, as a turn that failed: MAX_ATTEMPTS block the MR, with one comment."""
+        item, row = e.item, replace(e.row, ws_error=why)
+        if row.ws_fp != item.fingerprint:
+            row = replace(row, ws_fp=item.fingerprint)
+        else:
+            row = _failed(replace(row, head_sha=item.head_sha, pipeline_id=item.pipeline_id, status_ids=item.status_ids,
+                                  conflict=item.conflict, fingerprint=item.fingerprint,
+                                  attempts=row.attempts + 1 if row.fingerprint == item.fingerprint else 1), "workspace")
+            row = self._told(e, row, item)
+        self.led.put(row)
+        e.row, e.standing = row, standing(row, item)
+        if e.standing != "blocked":
+            e.standing, e.note = "error", ("工作区又没准备好，算一次没修好（第 %d 次）：%s" % (row.attempts, why)
+                                           if row.outcome == "workspace" else "工作区没准备好：%s" % why)
 
     def _send(self, e: Entry, path: str, now: float) -> None:
         """e's problems to its MR's session, which is opened the first time and kept for as long as the MR is open.
@@ -985,7 +1224,8 @@ class Patrol:
                        status_ids=item.status_ids, conflict=item.conflict,
                        fingerprint=item.fingerprint, attempts=attempts, streak=row.streak + 1,
                        people_note=row.read.people_note, checked_head=item.head_sha, dispatched_at=now, send_id=sid,
-                       sent_notes=item.note_ids, outcome="")
+                       ws_fp="", ws_error="",
+                       sent_notes=item.note_ids, marks=row.marks + (row.read.last_note,), outcome="")
         try:
             self.sessions.patrol_project(row.slot, path)
         except Refused as exc:
@@ -1021,16 +1261,23 @@ def _seen(mr: Mapping[str, Any]) -> str:
 
 
 def _note(standing: str, row: MrRow | None) -> str:
+    if standing == "rules" and row is not None:
+        return ("brain-push-rules 不让运行机在这个分支上提交（运行机的提交 %s）：在 MR 上说了怎么改成人的；运行机不再修这个 MR"
+                % "、".join(row.rules))
     if standing == "blocked" and row is not None and row.state == PAUSED:
         return "连着派了 %d 次，中间没有人推送或评论，在 MR 上说了：等人推送或评论" % MAX_STREAK
+    if standing == "blocked" and row is not None and row.outcome == "workspace":
+        return "工作区一直没准备好（%s），在 MR 上说了：等它有新变化" % row.ws_error
     if standing == "blocked" and row is not None:
         tried = "派了 %d 次，会话都没收下" if row.outcome == "refused" else "试了 %d 次没修好"
         return (tried % row.attempts) + "，在 MR 上说了：等它有新变化"
     return "这些已经交给会话做过一轮：等 MR 有新变化" if standing == "done" else ""
 
 
-def view_of(projects: list[dict[str, Any]], entries: list[Entry], at: float | None) -> dict[str, Any]:
-    """GET /team/patrol (TeamPatrol in ui/src/types.ts): the projects and every open MR the last round saw."""
+def view_of(projects: list[dict[str, Any]], entries: list[Entry], at: float | None,
+            hidden: list[str] | None = None) -> dict[str, Any]:
+    """GET /team/patrol (TeamPatrol in ui/src/types.ts): the projects and every open MR the last round saw; working,
+    the sessions it holds: those at work and the *hidden* ones (Patrol._hidden)."""
     items = []
     for e in entries:
         row, item = e.row, e.item
@@ -1043,5 +1290,7 @@ def view_of(projects: list[dict[str, Any]], entries: list[Entry], at: float | No
                       "skip": e.skip.text if e.skip else "", "skip_code": e.skip.code if e.skip else "",
                       "note": note, "attempts": row.attempts if row else 0, "slot": (row.slot or None) if row else None,
                       "updated_at": str(e.mr.get("updated_at") or "") or None})
-    return {"on": any(p["on"] for p in projects), "cap": CAP, "working": sum(1 for i in items if i["state"] == "working"),
+    hidden = list(hidden or ())
+    return {"on": any(p["on"] for p in projects), "cap": CAP,
+            "working": sum(1 for i in items if i["state"] == "working") + len(hidden), "hidden": hidden,
             "last_at": at, "projects": projects, "items": items}

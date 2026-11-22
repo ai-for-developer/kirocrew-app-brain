@@ -1636,11 +1636,13 @@ export interface TeamLoopResult { ok: boolean; summary: Record<string, number>; 
 
 /** What one open MR is to MR 巡检 (backend/core/team/patrol.py) as its last round left it: working (a brain-patrol
  * session is on it), queued (waiting for one of the sessions, at most cap at once), waiting (its session is still on an
- * earlier turn, or the MR just moved), done (these problems were given to a session that ended its turn: waiting for
- * the MR to change), blocked (two attempts failed, or three dispatches in a row with no person pushing or commenting in
- * between: it said so on the MR, note says which), ok (nothing to fix), skipped (skip says why), error (this round
- * could not look at it or dispatch it: note says why). Another value is shown as it is. */
-export type PatrolState = 'working' | 'queued' | 'waiting' | 'done' | 'blocked' | 'ok' | 'skipped' | 'error'
+ * earlier turn, the MR just moved, a Jenkins log is still to be read or a git lock to go: note says which), done (these
+ * problems were given to a session that ended its turn: waiting for the MR to change), blocked (two attempts failed, or
+ * three dispatches in a row with no person pushing or commenting in between: it said so on the MR, note says which),
+ * rules (brain-push-rules refused the runner's commits on the MR's branch: it said on the MR what a person does, and is
+ * not dispatched again), ok (nothing to fix), skipped (skip says why), error (this round could not look at it or
+ * dispatch it: note says why). Another value is shown as it is. */
+export type PatrolState = 'working' | 'queued' | 'waiting' | 'done' | 'blocked' | 'rules' | 'ok' | 'skipped' | 'error'
 export type PatrolSkip = '' | 'handoff' | 'opt_out' | 'fork' | 'claimed' | 'bots_only' | 'status'
 export interface PatrolMr {
   project: string
@@ -1665,7 +1667,11 @@ export interface TeamPatrol {
   /** some project's kit.json switches work source mr-patrol on */
   on: boolean
   cap: number
+  /** the brain-patrol sessions it holds (sources.at_work counts the same): its MRs at work and the hidden ones */
   working: number
+  /** each session it holds that no MR below shows at work, with what holds it (a turn the MR's head moved past); a
+   * person's 团队运行机 has none */
+  hidden?: string[]
   /** epoch seconds of the last round; null before the first */
   last_at: number | null
   projects: { project: string; on: boolean; error: string }[]
@@ -1715,7 +1721,11 @@ export interface TeamStaging {
   /** some project's kit.json switches work source staging-errors on */
   on: boolean
   cap: number
+  /** the brain-patrol sessions it holds (sources.at_work counts the same): its fixes at work and the hidden ones */
   working: number
+  /** each session it holds that no error below shows at work, with what holds it (a fix whose MR is open, its turn
+   * not ended); a person's 团队运行机 has none */
+  hidden?: string[]
   /** epoch seconds of the last round; null before the first */
   last_at: number | null
   projects: { project: string; on: boolean; error: string; deployed_sha: string }[]

@@ -425,7 +425,7 @@ describe('运行机', () => {
     await user.click(within(row(52)).getByRole('button', { name: '打开会话' }))
     expect(navigations).toEqual(['/chat?sid=patrol-12-52'])
     // every state patrol.py answers has words; another one is shown as it is
-    expect(Object.keys(PATROL_STATE).sort()).toEqual(['blocked', 'done', 'error', 'ok', 'queued', 'skipped', 'waiting', 'working'])
+    expect(Object.keys(PATROL_STATE).sort()).toEqual(['blocked', 'done', 'error', 'ok', 'queued', 'rules', 'skipped', 'waiting', 'working'])
     expect(patrolMeta('later')).toEqual({ label: 'later', tone: 'idle' })
   })
 
@@ -466,6 +466,31 @@ describe('运行机', () => {
     render(<TeamPage {...props()} />)
     const again = await screen.findByRole('region', { name: '从 issue 接活' })
     expect(within(again).getByRole('alert')).toHaveTextContent('shop/shop-pay 这一轮没看成 issue：GitLab 401 Unauthorized')
+  })
+
+  test('MR 巡检 counts every session it holds: one whose MR no row shows at work is said under the count', async () => {
+    const pv = fx.teamPatrol()
+    pv.items = pv.items.map((i) => (i.iid === 50 ? { ...i, state: 'ok', problems: [], slot: 'patrol-12-50' } : i))
+    pv.hidden = ['shop/shop-pay!50 的会话还在做上一轮（MR 有了新的提交）']
+    installFixtureRoutes({ [`GET ${API}/team/patrol`]: () => pv })
+    render(<TeamPage {...props()} />)
+    const pt = await screen.findByRole('region', { name: 'MR 巡检' })
+    expect(pt).toHaveTextContent('在修 2/2')
+    expect(pt.querySelectorAll('tbody tr[data-state="working"]')).toHaveLength(1)
+    expect(within(pt).getByTestId('held-hint')).toHaveTextContent('在修的里有 1 个下面没列出：shop/shop-pay!50 的会话还在做上一轮（MR 有了新的提交）')
+    expect(within(pt).getByRole('link', { name: 'shop/shop-pay!47' }).closest('tr')).toHaveTextContent('排队')
+  })
+
+  test('MR 巡检: an MR brain-push-rules refused the runner\'s commits on says so, and is not at work', async () => {
+    const pv = fx.teamPatrol()
+    const note = 'brain-push-rules 不让运行机在这个分支上提交（运行机的提交 2222abcd）：在 MR 上说了怎么改成人的；运行机不再修这个 MR'
+    pv.items = pv.items.map((i) => (i.iid === 44 ? { ...i, state: 'rules', note } : i))
+    installFixtureRoutes({ [`GET ${API}/team/patrol`]: () => pv })
+    render(<TeamPage {...props()} />)
+    const pt = await screen.findByRole('region', { name: 'MR 巡检' })
+    const row = within(pt).getByRole('link', { name: 'shop/shop-pay!44' }).closest('tr') as HTMLElement
+    expect(within(row).getByText('推送规则不让修')).toHaveClass('tone-bad')
+    expect(row).toHaveTextContent(note)
   })
 
   test('MR 巡检 off: says how to switch it on; a project it could not read says so', async () => {
