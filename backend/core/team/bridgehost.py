@@ -409,9 +409,9 @@ class TeamRuntime:
                     shared: Mapping[str, Any]) -> dict[str, Any]:
         """The TeamSnapshot of *project* this round relays (snapshot.py): the server as every project's says it; the
         project as the round left it; the runner's runs, MR 巡检's and 测试环境报错's items of the project, as 运行机
-        shows them; its 全队交付 from GitLab (relay.Deliveries), or the last rows read, with when, when they could not
-        be read whole by *deadline* (*there*: the one on its brain/status, for a project not read since the start).
-        Scrubbed as the pages are."""
+        shows them, and the labelled issues 从 issue 接活 has not started yet (relay.waiting_issues); its 全队交付 from
+        GitLab (relay.Deliveries), or the last rows read, with when, when they could not be read whole by *deadline*
+        (*there*: the one on its brain/status, for a project not read since the start). Scrubbed as the pages are."""
         try:
             got = self.deliveries.read(project, deployed=shared["deployed"].get(project, ""), roles=shared["roles"],
                                        deadline=deadline)
@@ -433,11 +433,14 @@ class TeamRuntime:
                               "key": row["key"], "title": row["title"], "run_id": str(run["run_id"]),
                               "state": str(run["state"]), "owner": run.get("owner") or None,
                               "waits": relay_mod.waits_of(row, on)})
+        issues = self.issues_view()
         snap = {"schema": snapshot.SCHEMA, "generated_at": now, "project": project, "server": dict(shared["server"]),
-                "state": relay_mod.project_state(project, self.poll_projects, shared["patrol"], shared["staging"], said),
+                "state": relay_mod.project_state(project, self.poll_projects, shared["patrol"], shared["staging"], said,
+                                                 issues),
                 "runner": {"handovers": handovers,
                            "patrol": [i for i in shared["patrol"]["items"] if i["project"] == project],
-                           "staging": [i for i in shared["staging"]["items"] if i["project"] == project]},
+                           "staging": [i for i in shared["staging"]["items"] if i["project"] == project],
+                           "issues": relay_mod.waiting_issues(issues, project)},
                 "delivery": rows, "delivery_at": at}
         return scrub_tree(snap, self.scrub)
 

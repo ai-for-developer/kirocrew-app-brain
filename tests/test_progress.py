@@ -97,7 +97,7 @@ CTX = progress.Ctx(me="alice", prefix="ai", default_branch="main", team_repo=Tru
 
 def branch(**kw):
     base = dict(name=BRANCH, owner="alice", worktree="/w/refund", local_sha="b" * 40, origin_sha="a" * 40, merged=False,
-                closed=False, handed_over=False, checkpoint=lambda: "c2", behind=lambda: False)
+                closed=False, on_runner=False, checkpoint=lambda: "c2", behind=lambda: False)
     base.update(kw)
     return progress.Branch(**base)
 
@@ -117,7 +117,7 @@ def never():
     ("MERGED", branch(merged=True), None, CTX),
     ("CLOSED", branch(closed=True), None, CTX),
     ("NOT_HERE", branch(worktree=None), None, CTX),
-    ("HANDED_OVER", branch(handed_over=True), None, CTX),
+    ("ON_RUNNER", branch(on_runner=True), None, CTX),
     ("NOT_ON_ORIGIN", branch(origin_sha=None), None, CTX),
     ("UP_TO_DATE", branch(origin_sha="b" * 40, checkpoint=never, behind=never), None, CTX),
     ("NO_CHECKPOINT", branch(checkpoint=lambda: None), None, CTX),

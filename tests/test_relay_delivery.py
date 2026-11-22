@@ -205,9 +205,9 @@ def test_every_open_or_lately_merged_requirement_is_a_row_in_the_overviews_words
         end = time.strftime("%m-%d", time.localtime(merged_at + 14 * DAY))
         assert (r["waits"]["who"], r["waits"]["do"], r["waits"]["text"], r["waits"]["on"]) == (
             "nobody", "watch", "已合并，在观察合并后的 14 天（到 %s）" % end, [])
-    free = got["PAY-6"]
-    assert (free["title"], free["owner"], free["stage"], free["state"], free["branch"]) == ("对账单导出", None, "构建", "unclaimed", None)
-    assert (free["waits"]["do"], free["waits"]["on"]) == ("start", [])
+    free = got["PAY-6"]       # filed for anyone, not started: claimed and in 需求, as 交付总览 says it (a split's is 待认领)
+    assert (free["title"], free["owner"], free["stage"], free["state"], free["branch"]) == ("对账单导出", None, "需求", "claimed", None)
+    assert (free["waits"]["do"], free["waits"]["text"], free["waits"]["on"]) == ("start", "待认领：谁开工就归谁", [])
     bob = got["PAY-7"]
     assert (bob["owner"], bob["stage"], bob["state"], bob["waits"]["text"], bob["waits"]["on"]) == (
         "bob", "需求", "local", "bob 在自己的机器上做", [])

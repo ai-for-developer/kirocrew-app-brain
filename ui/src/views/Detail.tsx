@@ -157,10 +157,14 @@ export const DETAIL_CSS = `
 
 // ------------------------------------------------------------------ what the page reads off the records
 
+/** The team runner has the run (backend deliveries.on_runner): handed over, or started there (从 issue 接活: run.json
+ * origin remote, the runner's from its first commit). This machine has no session of it. */
+export const runnerHolds = (run: RequirementDetail['run']): boolean => !!run?.handoff || run?.origin === 'remote'
+
 /** The requirement went to the team runner: its questions and approvals are answered on the MR from then on. A
  * hand-over commit whose push failed (push_handoff) went nowhere. */
 function handedOver(x: RequirementDetail): boolean {
-  return x.row.waits.do !== 'push_handoff' && (!!x.run?.handoff || ['handed_over', 'running', 'parked', 'acceptance'].includes(x.row.state))
+  return x.row.waits.do !== 'push_handoff' && (runnerHolds(x.run) || ['handed_over', 'running', 'parked', 'acceptance'].includes(x.row.state))
 }
 
 /** Lean's stages on the way, the ones its progress counts (vocab.leanProgress, backend lean_view.summary): those of a
@@ -303,7 +307,7 @@ export function DetailView({ entry, onBack, onSwitch, onMissing, ...props }: {
           <b>{entry.key}</b>
         </nav>
         <span className="cto-grow" />
-        <ReqSwitch repo={entry.repo} reqKey={entry.key} status={props.status} pollMs={props.pollMs} onPick={pick} />
+        <ReqSwitch repo={entry.repo} reqKey={entry.key} status={props.status} pollMs={props.pollMs} onPick={pick} owner={x?.row.owner} />
         <div className="cto-item-act">
           {x && <button type="button" className="kt-btn is-primary" onClick={() => toBoard()}>运行过程 ↗</button>}
           {x && x.row.state === 'merged' && <button type="button" className="kt-btn" onClick={() => toBoard({ replay: true })}>▶ 回放 ↗</button>}
@@ -351,9 +355,9 @@ function Page({ x, board, live, entry, props, opened, localOnly, onOpened, after
       </>
     )
   }
-  // the backend opens sessions for a run here not handed over (service.open_session): a hand-over commit whose push
-  // failed reads 本地开发中 too, and its next step is 交接给运行机 again
-  const sessionsHere = x.row.state === 'local' && !x.run?.handoff
+  // the backend opens sessions for a run here that the runner does not have (service.open_session): a hand-over
+  // commit whose push failed reads 本地开发中 too, and its next step is 交接给运行机 again
+  const sessionsHere = x.row.state === 'local' && !runnerHolds(x.run)
   // and only in the branch's checkout on this machine (open_session refuses with no_worktree)
   const canOpen = sessionsHere && !live && !!x.row.worktree
   const toAt = (t: number | null) => toBoard(t ? { at: Math.round(t) } : {})
@@ -455,7 +459,7 @@ function Facts({ x, start, localOnly }: { x: RequirementDetail; start: number | 
           <dt>开工</dt>
           <dd>
             {start ? fmtTime(start) : fmtIso(run.created_at)}
-            {run.origin && <> · <span className="br-nowrap">{run.origin === 'local' ? '在本机开工' : `来自${sourceName(run.origin)}`}</span></>}
+            {run.origin && <> · <span className="br-nowrap">{run.origin === 'local' ? '在本机开工' : run.origin === 'remote' ? '在运行机上开工' : `来自${sourceName(run.origin)}`}</span></>}
             {run.brain_commit && <> · <span className="br-nowrap">Brain 版本 <code title={run.brain_commit}>{run.brain_commit.slice(0, 8)}</code></span></>}
           </dd>
         </div>

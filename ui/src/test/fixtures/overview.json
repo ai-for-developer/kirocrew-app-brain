@@ -633,19 +633,19 @@
   ],
   "cto": {
     "available": true,
-    "sentence": "交给运行机的 1 个需求里，0 个交接以后没人插手就做完了。人介入了 5 次（本机做的也算），5 次落在判断点上。有 credits 的 5 个需求，平均每个 13.2 credits（1 个还有没算进来的，实际更多）。",
+    "sentence": "交给运行机的 1 个需求里，0 个交接以后没人插手就做完了。人介入了 10 次（本机做的也算），10 次落在判断点上。有 credits 的 5 个需求，平均每个 13.2 credits（1 个还有没算进来的，实际更多）。",
     "ref": "远端的 main 分支",
     "unattended": [
       0,
       1
     ],
     "stepped_in": {
-      "at_points": 5,
+      "at_points": 10,
       "outside": 0,
       "kinds": [
         {
           "label": "批准",
-          "n": 4,
+          "n": 9,
           "point": true
         },
         {
@@ -830,7 +830,8 @@
         "local": 0,
         "pending": 0
       }
-    ]
+    ],
+    "mine": false
   },
   "roster": {
     "people": [

@@ -3,7 +3,7 @@ writes them, and each person's app reads them.
 
 A code project's branches (search ^prefix, one by name, each with its head's id, parent_ids and committed_date), files
 at any ref (raw) and blobs by id, trees (recursive or not; 404 for a folder not there), the newest commit touching a
-path, and merge bases come from its bare repo with git. Commits are taken as GitLab's commits API takes them: onto an
+path, the commits of a ref or a range with their author's email, and merge bases come from its bare repo with git. Commits are taken as GitLab's commits API takes them: onto an
 existing branch, or a new one from start_branch or start_sha, a branch not there without either refused (400, "You can
 only create or edit files when you are on a branch") in a project that has commits; a create of a file there or an
 update of one that is not is 400; a protected branch (protect()) is 403. Its MRs, their notes and pipelines are in
@@ -184,6 +184,12 @@ class RepoGitLab:
                 mode, kind, oid = meta.split()
                 full = "%s/%s" % (where, rel) if where else rel
                 rows.append({"id": oid, "name": rel.rsplit("/", 1)[-1], "type": kind, "path": full, "mode": mode})
+            return ok(self.page(rows, q))
+        if sub == "/repository/commits" and method == "GET" and "path" not in q:     # a ref or a range, newest first
+            p = git(bare, "log", "--format=%H%x00%cI%x00%ae", q["ref_name"], check=False)
+            if p.returncode:
+                return ok({"message": "404 Not Found"}, 404)
+            rows = [dict(zip(("id", "committed_date", "author_email"), line.split("\0"))) for line in p.stdout.splitlines()]
             return ok(self.page(rows, q))
         if sub == "/repository/commits" and method == "GET":
             p = git(bare, "log", "-1", "--format=%H%x00%cI", q["ref_name"], "--", q.get("path", "."), check=False)

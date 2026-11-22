@@ -106,13 +106,14 @@ def test_each_projects_state_is_read_with_my_token_from_its_own_branch_and_put_t
     assert relay["projects"][0]["state"] == pay["state"] and relay["projects"][0]["version"] == "0.4.2"
     view = relay["view"]
     assert (view["generated_at"], view["server"]) == (web["generated_at"], web["server"])
-    assert view["delivery"] == pay["delivery"] + web["delivery"] and view["runner"] == {"handovers": [], "patrol": [], "staging": []}
+    assert view["delivery"] == pay["delivery"] + web["delivery"]
+    assert view["runner"] == {"handovers": [], "patrol": [], "staging": [], "issues": []}
     assert [(path, query, who) for _, path, query, who in reads(gl)] == [
         ("/api/v4/projects/%s/repository/files/snapshot.json/raw" % p, {"ref": "brain/status"}, "alice") for p in (PAY, WEB)]
     assert "alice-tok" not in got.text
     fix = fixture("team-status.json")
     assert diff_keys(fix, body, skip=(".relays[].repo_of",)) == []
-    assert all(fix["relays"][0]["view"]["runner"][k] for k in ("handovers", "patrol", "staging"))
+    assert all(fix["relays"][0]["view"]["runner"][k] for k in ("handovers", "patrol", "staging", "issues"))
 
 
 def test_a_person_sees_the_projects_gitlab_lets_them_read_and_nothing_of_any_other(tmp_path, home, monkeypatch):
@@ -188,10 +189,11 @@ def test_what_cannot_be_read_is_said_on_its_project_and_the_last_good_one_kept_r
              step(lambda: gl.put_status(PAY, snapshot.dump(snapshot.parse(a_snapshot(T0, project=WEB)))))]
     got = [g.body for g in statuses(svc, routes, *steps)]
     assert counted == [0, 1, 1, 2, 3, 4, 5, 6] and len(reads(gl)) == 7                 # one read a minute, none in between
-    assert [g["relays"] for g in got[:2]] == [[], []] and [g["repos"][0]["relay"] for g in got[:3]] == [False, False, True]
+    assert [g["relays"] for g in got[:2]] == [[], []] and [g["repos"][0]["relay"] for g in got[:4]] == [False] * 3 + [True]
     none = got[2]["relays"][0]["projects"][0]
     assert (none["written_at"], none["problem"]["text"]) == (None, "团队服务器还没在这个项目的 brain/status 上写过状态")
     assert got[2]["relays"][0]["view"] is None
+    assert got[2]["repos"][0]["runner"]["project"] == PAY, "no snapshot yet: the runner as GitLab shows it, until one is read"
     read = got[3]["relays"][0]
     assert read["view"]["delivery"] == good["snap"]["delivery"] and read["projects"][0]["problem"] is None
     for body, text in ((got[4], "这次没读到 GitLab"), (got[5], "团队服务器写的状态是第 2 版，这个 app 读不了"),

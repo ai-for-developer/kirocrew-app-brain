@@ -21,6 +21,9 @@ from . import lean_view, problems
 from .stages import GATE_WORDS, Node, Outcome, RunKey, _line, _name
 
 LOCAL: RunKey = "local"
+# when the team runner took a run it started itself (从 issue 接活): before every record, as the first bound of its runs;
+# no hand-over, so never a relay
+FROM_START = float("-inf")
 FileRole = Literal["own", "child", "parent"]
 CLONE_RE = re.compile(r"^[0-9a-f]{6}$")                                    # runrec: lean_clone
 RUN_ID_RE = re.compile(r"^RUN-[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}-([1-9][0-9]{0,5})$")

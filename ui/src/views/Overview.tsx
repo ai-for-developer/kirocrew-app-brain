@@ -396,6 +396,7 @@ export function OverviewView({ entry, status, go, replace, reloadStatus, pollMs 
             {c.available
               ? `数字来自 brain-kit 的评估（${spaced('读的是', c.ref || '默认分支')}）和这个 app 开的会话`
               : computing ? 'brain-kit 正在算评估的数字，算好就出来：下面先看 credits 和合并' : 'brain-kit 的评估还没给出数字：下面先看 credits 和合并'}
+            {c.mine && <span data-testid="ov-mine">{' · '}只算这里列出的需求，整个仓库的在「brain-kit 的评估」里</span>}
             {' · '}口径见末尾
             {!c.available && status?.brainkit.modules.evaluate === false && (
               <>。做什么：换一个带评估模块的 brain-kit<button type="button" className="br-link" onClick={() => go({ kind: 'settings' })}>去设置 ↗</button></>

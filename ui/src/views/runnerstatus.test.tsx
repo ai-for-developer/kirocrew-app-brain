@@ -6,6 +6,7 @@ import { apiCalls } from '../test/stubs/app-sdk'
 import type { RunnerStatus } from '../types'
 import type { ViewProps } from './props'
 import { NO_RUNNER, NO_RUNNER_YET, READ_FROM, RunnerStatusPage, WHO_UNKNOWN } from './RunnerStatus'
+import { ISSUES_ALL_STARTED } from './Team'
 
 const props = (over: Partial<ViewProps> = {}): ViewProps => ({
   status: fx.status(), go: vi.fn(), replace: vi.fn(), reloadStatus: vi.fn(), setStatus: vi.fn(), pollMs: 60_000, ...over,
@@ -112,7 +113,7 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     expect(within(strip).getByTestId('relay-written')).toHaveTextContent('状态写于 3 分钟前')
     expect(within(strip).queryByTestId('relay-stale')).toBeNull()
     const projects = within(strip).getAllByRole('listitem').map((li) => li.textContent)
-    expect(projects).toEqual(['shop/shop-pay在接交接交接 · 巡检 · 测试环境报错', 'shop/shop-order在接交接交接 · 巡检'])
+    expect(projects).toEqual(['shop/shop-pay在接交接交接 · 巡检 · 测试环境报错 · 从 issue 接活', 'shop/shop-order在接交接交接 · 巡检'])
     expect(strip).toHaveTextContent(READ_FROM)
     expect(within(strip).queryByTestId('project-stale')).toBeNull()
     expect(within(strip).queryByTestId('delivery-lag')).toBeNull()
@@ -138,12 +139,12 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     expect(rowOf(table, 'PAY-4')).toHaveTextContent('你（alice） · shop/shop-pay发布 · 验收!41CI 通过等产品在 MR 上验收 D-7')
     expect(within(rowOf(table, 'PAY-9')).getByTestId('ci')).toHaveTextContent('CI 在跑')
     expect(within(rowOf(table, 'PAY-12')).getByTestId('ci')).toHaveTextContent('CI 没过')
-    expect(rowOf(table, 'PAY-6')).toHaveTextContent('PAY-6 对账单导出没人认领 · shop/shop-pay构建没开 MR待认领：谁开工就归谁')
+    expect(rowOf(table, 'PAY-6')).toHaveTextContent('PAY-6 对账单导出没人认领 · shop/shop-pay需求没开 MR待认领：谁开工就归谁')
     expect(within(rowOf(table, 'PAY-2')).getByTestId('deployed')).toHaveTextContent('已部署到测试环境')
     expect(within(rowOf(table, 'ORD-1')).getByTestId('deployed')).toHaveTextContent('还没部署到测试环境')
     expect(within(rowOf(table, 'PAY-11')).queryByTestId('deployed')).toBeNull()
     expect(Array.from(table.querySelectorAll('[data-testid="stage"]')).map((x) => x.textContent))
-      .toEqual(['交给运行机', '交给运行机', '设计', '发布 · 验收', '交给运行机', '构建', '构建', '已合进大需求', '已合并', '已关闭', '已合并'])
+      .toEqual(['交给运行机', '交给运行机', '设计', '发布 · 验收', '交给运行机', '构建', '需求', '已合进大需求', '已合并', '已关闭', '已合并'])
     // a small requirement merged into its big one's branch, and a hand-over whose MR was closed: done, waiting on nobody
     expect(rowOf(table, 'ORD-6')).toHaveTextContent('ORD-6 导出接口carol · shop/shop-order已合进大需求!15CI 通过已合进大需求 ORD-3 的分支：等它评审、发布')
     expect(rowOf(table, 'PAY-10')).toHaveTextContent('PAY-10 退款对账你（alice） · shop/shop-pay已关闭!45CI 没过MR 已关闭')
@@ -163,6 +164,34 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     expect(screen.getByRole('region', { name: 'shop-tools' })).toHaveTextContent(`shop-tools${NO_RUNNER}`)
     expect(screen.queryByRole('region', { name: 'shop-pay' })).toBeNull()
     expect(apiCalls.filter((c) => c.method !== 'GET')).toEqual([])
+  })
+
+  test('从 issue 接活: the labelled issues not started yet, mine said as 你, why each waits or was not taken; none left says where they went', async () => {
+    installFixtureRoutes()
+    const { unmount } = render(<RunnerStatusPage {...props()} />)
+    const card = await screen.findByTestId('issues')
+    expect(card).toHaveTextContent('shop/shop-pay：Developer 以上的人给 issue 打上标签 brain，运行机就认领成需求、开 MR、开工；这里是还没开工的')
+    const rows = within(card).getAllByRole('row').slice(1)
+    expect(rows.map((r) => r.getAttribute('data-state'))).toEqual(['new', 'refused'])
+    expect(within(rows[0]).getByRole('link', { name: 'shop/shop-pay#23' })).toHaveAttribute('href', 'https://gitlab.example.com/shop/shop-pay/-/issues/23')
+    expect(rows[0]).toHaveTextContent('退款单导出加上退款原因你（@alice）')
+    expect(rows[0]).toHaveTextContent('刚打上标签这一轮没做完：GET /projects/shop%2Fshop-pay/issues/23/resource_label_events -> HTTP 502')
+    expect(rows[1]).toHaveTextContent('退款按钮改成红色@rita')
+    expect(rows[1]).toHaveTextContent('没接@rita 在项目里是 Reporter：要 Developer 以上才能让 Brain 接 issue')
+    unmount()
+    const started = fx.teamStatus()
+    started.relays[0].view!.runner.issues = []
+    installFixtureRoutes({ [`GET ${API}/team/status`]: () => started })
+    const again = render(<RunnerStatusPage {...props()} />)
+    expect(await screen.findByTestId('issues')).toHaveTextContent(ISSUES_ALL_STARTED)
+    again.unmount()
+    const none = fx.teamStatus()
+    for (const p of none.relays[0].projects) p.state = { ...p.state!, sources: p.state!.sources.filter((x) => x !== 'issue-label'), issue_label: '' }
+    none.relays[0].view!.runner.issues = []
+    installFixtureRoutes({ [`GET ${API}/team/status`]: () => none })
+    render(<RunnerStatusPage {...props()} />)
+    await screen.findByTestId('relay-runner')
+    expect(screen.queryByTestId('issues')).toBeNull()
   })
 
   test('全队交付 by person and by project', async () => {
@@ -199,7 +228,7 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     expect(screen.getByTestId('team-delivery')).toBeInTheDocument()
   })
 
-  test('a read that did not work: why and what to do, on its project, the last snapshot kept; before any, only the strip and the questions', async () => {
+  test('a read that did not work: why and what to do, on its project, the last snapshot kept; before any, the strip says why and each repo keeps its card as GitLab shows it', async () => {
     const st = fx.teamStatus()
     st.relays[0].projects[1].problem = { text: '这次没读到 GitLab', todo: '过一会儿会再读；一直这样就看看网络，GitLab 要单点登录的先登录', raw: 'GET … -> HTTP 502' }
     installFixtureRoutes({ [`GET ${API}/team/status`]: () => st })
@@ -215,6 +244,7 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     first.view = null
     first.projects = first.projects.map((x) => ({ ...x, read_at: null, written_at: null, state: null, delivery_at: null, version: null,
       problem: { text: '团队服务器还没在这个项目的 brain/status 上写过状态', todo: '等团队服务器跑一轮', raw: '' } }))
+    none.repos = none.repos.map((r) => ({ ...r, relay: false }))      // the backend shows them from GitLab until one is read
     installFixtureRoutes({ [`GET ${API}/team/status`]: () => none })
     render(<RunnerStatusPage {...props()} />)
     const said = await screen.findAllByTestId('relay-problem')
@@ -223,7 +253,11 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     expect(screen.queryByTestId('relay-version')).toBeNull()
     expect(screen.queryByTestId('relay-runner')).toBeNull()
     expect(screen.queryByTestId('team-delivery')).toBeNull()
-    expect(screen.getByTestId('relay-waiting')).toBeInTheDocument()
+    const pay = screen.getByRole('region', { name: 'shop-pay' })
+    expect(within(pay).getByRole('region', { name: '在做的 MR' })).toBeInTheDocument()
+    expect(within(pay).getByRole('region', { name: '等你回答' })).toHaveTextContent('D-7')
+    expect(screen.getByRole('region', { name: 'shop-order' })).toBeInTheDocument()
+    expect(screen.queryByTestId('relay-waiting')).toBeNull()      // each card has its own 等你回答: said once
   })
 
   test('one project whose state is old says so on its line, and rows read rounds before say when', async () => {

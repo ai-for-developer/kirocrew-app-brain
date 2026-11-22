@@ -5,23 +5,25 @@
  * can read and no other. A strip with the server's version, when it last wrote, and each project (what it does, what
  * went wrong, how old its state is), 「团队服务器可能停了」 once the newest is older than stale_after_s; the runner at
  * work (its hand-overs with what each waits on, MR 巡检, 测试环境报错, as the team server's 运行机 shows them, without
- * its sessions); 全队交付, every requirement of those projects (who, which project, its stage in 交付总览's words, MR and
- * CI, deployed, what it waits on), filtered by person and project, what waits on the person first; and the questions
- * waiting on the person, read from GitLab by this app. A repo whose project has no brain/status is a card of the
- * runner as GitLab shows it, as before an older team server: the MRs it works on, the questions waiting on the person,
- * when it last acted; one whose kit.json names no bridge_user is one line, 这个仓库还没有团队运行机.
+ * its sessions; 从 issue 接活's labelled issues not started yet, with why, where a project takes issues); 全队交付,
+ * every requirement of those projects (who, which project, its stage in 交付总览's words, MR and CI, deployed, what it
+ * waits on), filtered by person and project, what waits on the person first; and the questions waiting on the person,
+ * read from GitLab by this app. A repo whose project has no brain/status, or no snapshot read from it yet (its
+ * project's line in the strip says why), is a card of the runner as GitLab shows it, as before an older team server:
+ * the MRs it works on, the questions waiting on the person, when it last acted; one whose kit.json names no
+ * bridge_user is one line, 这个仓库还没有团队运行机.
  */
 import { useMemo, useState } from 'react'
 import { paths, usePoll } from '../api'
 import { ago, fmtWaited } from '../format'
-import type { Question, RelayProject, RelayRead, RunnerMr, RunnerQuestion, RunnerRepo, RunnerStatus, RelayView, SnapshotDelivery, SnapshotWaits, TeamPatrol, TeamRunner, TeamStaging } from '../types'
+import type { Question, RelayProject, RelayRead, RunnerMr, RunnerQuestion, RunnerRepo, RunnerStatus, RelayView, SnapshotDelivery, SnapshotWaits, TeamIssues, TeamPatrol, TeamRunner, TeamStaging } from '../types'
 import { ExtLink, LoadState, RoleIcon } from '../ui'
 import type { View } from '../nav'
 import type { Tone } from '../styles'
 import type { ViewProps } from './props'
 import { QuestionCard } from './Question'
 import { StagingErrors } from './StagingErrors'
-import { Patrol, TM_CSS, runStateMeta } from './Team'
+import { Issues, Patrol, TM_CSS, runStateMeta } from './Team'
 
 export const RUNNER_POLL_MS = 30_000
 export const NO_RUNNER = '这个仓库还没有团队运行机'
@@ -40,7 +42,7 @@ export const WHY: Record<RunnerMr['why'], { label: string; tone: Tone; hint: (h:
   patrol: { label: '巡检', tone: 'info', hint: (h) => `MR 巡检最近 ${h} 小时在上面回复过` },
 }
 /** the work sources a project's kit.json switches on, in words */
-export const SOURCE_NAME: Record<string, string> = { 'mr-handoff': '交接', 'mr-patrol': '巡检', 'staging-errors': '测试环境报错' }
+export const SOURCE_NAME: Record<string, string> = { 'mr-handoff': '交接', 'mr-patrol': '巡检', 'staging-errors': '测试环境报错', 'issue-label': '从 issue 接活' }
 /** 交付总览's stages (deliveries.FLOW_STAGES), each with its tone; a closed one and a small one merged into its big one
  * are in no column there, their state's words stand for the stage */
 export const STAGE_TONE: Record<string, Tone> = { 需求: 'idle', 设计: 'info', 构建: 'run', 交给运行机: 'hand', '发布 · 验收': 'wait', 已合并: 'ok', 已合进大需求: 'ok', 已关闭: 'idle' }
@@ -84,7 +86,7 @@ export function RunnerStatusPage({ pollMs, go }: ViewProps) {
       {data && data.repos.length === 0 && <p className="br-empty">还没有仓库：先在「导入仓库」里导入一个。</p>}
       {data && data.repos.length > 0 && data.relays.length === 0 && data.repos.every((r) => !r.runner) && <p className="br-note">{NO_RUNNER_YET}</p>}
       {data?.relays.map((r) => (
-        <RelayGroup key={r.repos.join(' ')} relay={r} at={data.at} repos={data.repos.filter((x) => r.repos.includes(x.repo))} go={go} />
+        <RelayGroup key={r.repos.join(' ')} relay={r} at={data.at} repos={data.repos.filter((x) => x.relay && r.repos.includes(x.repo))} go={go} />
       ))}
       {alone.map((r) => (r.runner
         ? <RunnerCard key={r.repo} repo={r.repo} name={r.name} runner={r.runner} recentH={data?.recent_h ?? 24} />
@@ -169,9 +171,10 @@ function ProjectLine({ p, at }: { p: RelayProject; at: number }) {
 }
 
 /** The runner at work, as the team server's 运行机 shows it: its hand-overs (each with what it waits on), then MR 巡检 and
- * 测试环境报错 (their views as they are, without the sessions, which are the team server's). */
+ * 测试环境报错 (their views as they are, without the sessions, which are the team server's), then the labelled issues
+ * not started yet where a project takes issues. */
 function AtWork({ view, projects, me, at }: { view: RelayView; projects: RelayProject[]; me: string | null; at: number }) {
-  const { handovers, patrol, staging } = view.runner
+  const { handovers, patrol, staging, issues } = view.runner
   const { cap, working, last_round_at } = view.server
   const on = (kind: string) => projects.some((p) => !!p.state?.sources.includes(kind))
   const patrolView: TeamPatrol = {
@@ -181,6 +184,10 @@ function AtWork({ view, projects, me, at }: { view: RelayView; projects: RelayPr
   const stagingView: TeamStaging = {
     on: on('staging-errors'), cap, working: staging.filter((i) => i.state === 'fixing').length, last_at: last_round_at,
     projects: projects.map((p) => ({ project: p.project, on: !!p.state?.sources.includes('staging-errors'), error: '', deployed_sha: '' })), items: staging,
+  }
+  const issuesView: TeamIssues = {
+    on: on('issue-label'), last_at: last_round_at,
+    projects: projects.map((p) => ({ project: p.project, on: !!p.state?.sources.includes('issue-label'), label: p.state?.issue_label ?? '', error: '' })), items: issues,
   }
   return (
     <>
@@ -220,6 +227,7 @@ function AtWork({ view, projects, me, at }: { view: RelayView; projects: RelayPr
       </section>
       <Patrol view={patrolView} />
       <StagingErrors view={stagingView} />
+      {issuesView.on && <Issues view={issuesView} me={me} waiting />}
     </>
   )
 }

@@ -57,15 +57,16 @@ describe('交付总览', () => {
     const cards = within(screen.getByTestId('ov-cards')).getAllByRole('article').map((a) => a.getAttribute('aria-label'))
     expect(cards).toEqual(['无人值守', '人介入', '每个需求的 credits', '决定 · 谁定的'])
     expect(screen.getByTestId('ov-unattended')).toHaveTextContent(/^0\/1$/)
-    expect(screen.getByTestId('ov-people')).toHaveTextContent(/^5次$/)
-    expect(screen.getByRole('article', { name: '人介入' })).toHaveTextContent('5 次落在判断点上（批准、退回、回答），0 次在判断点之外 · 本机做的也算')
+    expect(screen.getByTestId('ov-people')).toHaveTextContent(/^10次$/)
+    expect(screen.getByRole('article', { name: '人介入' })).toHaveTextContent('10 次落在判断点上（批准、退回、回答），0 次在判断点之外 · 本机做的也算')
     // PAY-2's and PAY-4's runner sessions are on this machine too; PAY-2's reviewer subagent reports nothing (E2E-14)
     expect(screen.getByTestId('ov-credits')).toHaveTextContent(/^13\.2$/)
     expect(screen.getByRole('article', { name: '每个需求的 credits' })).toHaveTextContent('有 credits 的 5 个需求，合计 66.2；1 个还有没算进来的，实际更多')
     expect(screen.getByRole('article', { name: '每个需求的 credits' })).not.toHaveTextContent('token')
     const n = (h: CtoRun['how']) => c.runs.filter((r) => r.how === h).length
     expect(screen.getByRole('img', { name: `评估过的需求，按交付方式：无人值守 ${n('unattended')}，有人插手 ${n('people')}，只在本机 ${n('local')}，还没评 ${n('pending')}${n('ended') ? `，没交付就结束 ${n('ended')}` : ''}` })).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: '人介入：判断点上 5 次，判断点之外 0 次' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: '人介入：判断点上 10 次，判断点之外 0 次' })).toBeInTheDocument()
+    expect(screen.queryByTestId('ov-mine')).toBeNull()     // the team server's: the repo's numbers
     const notes = screen.getByText('口径').closest('details') as HTMLDetailsElement
     expect(notes.open).toBe(false)
     // how 「谁定的」 is written: what to type for each, typed as brain-kit reads it
@@ -75,6 +76,25 @@ describe('交付总览', () => {
     expect(within(syntax).getByText('brain <条目号>').tagName).toBe('CODE')
     expect(notes).not.toHaveTextContent('token')
     expect(screen.queryByText('实测 · brain-kit')).toBeNull()
+  })
+
+  test('a person’s 交付总览 says its numbers count the requirements it lists, the repo’s being brain-kit 的评估’s', async () => {
+    const ov = fx.overview()
+    ov.cto = { ...ov.cto, mine: true }
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
+    render(<OverviewView entry={{}} {...props()} />)
+    expect(await screen.findByTestId('ov-mine')).toHaveTextContent('只算这里列出的需求，整个仓库的在「brain-kit 的评估」里')
+  })
+
+  test('on alice’s machine 无人值守 filters her list to as many requirements as it says (the world’s 全部 there)', async () => {
+    const ov = clone(world.overviews.eval.all) as unknown as Overview
+    installFixtureRoutes({ [`GET ${API}/overview*`]: () => ov })
+    const user = userEvent.setup()
+    render(<OverviewView entry={{}} {...props()} />)
+    const judged = ov.cto.unattended![1]
+    await user.click(await screen.findByTestId('ov-unattended'))
+    expect(screen.getByTestId('ledger-count')).toHaveTextContent(`共 ${judged} 个`)
+    expect(ov.cto.runs.every((r) => ov.rows.some((x) => x.repo === r.repo && x.key === r.key))).toBe(true)
   })
 
   test('the branch read is joined with a space before a Latin repo name (real data: 读的是 demo 的 main 分支)', async () => {
@@ -762,8 +782,8 @@ describe('交付总览', () => {
     const card = await screen.findByTestId('funnel-card')
     expect(card).toHaveTextContent('15个决定')
     expect(card).toHaveTextContent('人定了 4 个 · 数字来自 brain-kit 的评估 · 没合并的需求也算')
-    // beside 人介入 5 次, 人定了 4 个 says it counts something else
-    expect(within(card).getByTestId('funnel-vs-people')).toHaveTextContent('人定的 4 个是决定表里的条数；「人介入 5 次」数的是人做的动作（批准、退回、回答），所以两个数不一样')
+    // beside 人介入 10 次, 人定了 4 个 says it counts something else
+    expect(within(card).getByTestId('funnel-vs-people')).toHaveTextContent('人定的 4 个是决定表里的条数；「人介入 10 次」数的是人做的动作（批准、退回、回答），所以两个数不一样')
     expect(Array.from(card.querySelectorAll('[data-row]')).map((r) => r.getAttribute('data-row'))).toEqual(['person', 'check', 'brain', 'unclassified', 'unknown'])
     expect(card.querySelector('[data-row="person"]')).toHaveTextContent(/^人4$/)
     expect(within(card).getByRole('img', { name: /^决定：人 4，检查定的 5，照 Brain 3，AI 自己定的 0，/ })).toBeInTheDocument()

@@ -1785,8 +1785,9 @@ export interface RunnerRepo {
   name: string
   /** null: its kit.json names no bridge_user, so it has no team runner */
   runner: TeamRunner | null
-  /** its GitLab project has brain/status: the team server writes the project's state there (状态中转), and this repo
-   * is shown from it; false: the runner as GitLab shows it (runner) alone */
+  /** its GitLab project has brain/status and a snapshot of it was read: the team server writes the project's state
+   * there (状态中转), and this repo is shown from it; false: the runner as GitLab shows it (runner) alone, also while
+   * brain/status has no snapshot this app could read yet */
   relay: boolean
 }
 /** GET /team/status: every listed repo, in the app's order, and per GitLab the projects on the relay put together. */
@@ -1829,7 +1830,7 @@ export interface RelayProject {
   /** older than stale_after_s */
   stale: boolean
   /** as its snapshot says: whether the runner takes its hand-overs, the work its kit.json switches on, what went wrong */
-  state: { on: boolean; sources: string[]; error: string } | null
+  state: TeamSnapshot['state'] | null
   /** when its 全队交付 rows were read from GitLab whole */
   delivery_at: number | null
   /** the team server's version that wrote it */
@@ -1869,13 +1870,17 @@ export interface TeamSnapshot {
    * together (cap), and how many work now */
   server: { version: string; team_mode: boolean; last_round_at: number | null; cap: number; working: number }
   /** on: the runner takes its hand-overs; sources: the work its kit.json switches on; error: what went wrong with it
-   * last round, in words ('' none) */
-  state: { on: boolean; sources: string[]; error: string }
+   * last round, in words ('' none); issue_label: the label 从 issue 接活 takes there ('' where it is off, and in an
+   * older team server's snapshot) */
+  state: { on: boolean; sources: string[]; error: string; issue_label: string }
   runner: {
     /** the ledger's latest run of each requirement, still open */
     handovers: SnapshotHandover[]
     patrol: PatrolMr[]
     staging: StagingError[]
+    /** the labelled issues 从 issue 接活 has not started a run of: on their way (note: why it waits this round) or
+     * refused (reason); [] in an older team server's snapshot */
+    issues: IssueItem[]
   }
   /** every requirement of the project, open, or merged or closed in the last 14 days */
   delivery: SnapshotDelivery[]
@@ -2792,6 +2797,9 @@ export interface CtoNumbers {
   runs: CtoRun[]
   /** merged per week (Monday, YYYY-MM-DD), by how: the last 12 weeks */
   weekly: { week: string; unattended: number; people: number; local: number; pending: number }[]
+  /** a person's 交付总览: every number counts the requirements the page lists (theirs, and the ones nobody has), so a
+   * click filters to as many as it says; the repo's numbers are brain-kit 的评估's */
+  mine: boolean
 }
 
 /** One of brain-kit's notes on the 交付评估 numbers: what it says, what to do, its own words (细节). */

@@ -54,6 +54,7 @@ CREW_EVERY_S = 300.0
 FOLD_TTL_S = 10.0     # the 产出 drawer reads the board's last fold; the board polls every 2 s while it is open
 FAILED_TRACE_S = 15.0  # a trace brain-kit could not make (git timed out under load) is made again this soon
 RUNNER_ELSEWHERE = "交接以后，运行机上的会话这台机器读不到，没算进来"
+RUNNER_STARTED = "它在运行机上开工，运行机上的会话这台机器读不到，没算进来"
 LOCAL_ELSEWHERE = "交接以前，开发者机器上的会话这台机器读不到，没算进来"
 RUNNER_TOOK = ("running", "parked", "acceptance", "merged", "closed")   # a hand-over's states once the runner has it
 
@@ -521,8 +522,9 @@ class Service:
         left out."""
         runs = sorted((k for k in snap["by"] if re.fullmatch(r"RUN-%s-[1-9][0-9]*" % re.escape(f["key"]), k)),
                       key=lambda k: int(k.rsplit("-", 1)[1]))
-        took = (f.get("run") or {}).get("handoff") and state in RUNNER_TOOK
-        gone = RUNNER_ELSEWHERE if took and not runs and not self._team_on() else None
+        run = f.get("run") or {}
+        took = deliveries.on_runner(run) and state in RUNNER_TOOK
+        gone = None if not took or runs or self._team_on() else RUNNER_ELSEWHERE if run.get("handoff") else RUNNER_STARTED
         return self._req_credits(snap, [scope] + runs, gone)
 
     def _team_credits(self, snap: dict[str, Any], key: str, run_ids: list[str], project: Any
@@ -593,9 +595,8 @@ class Service:
                                      bridge_user=str(repo.cfg.get("bridge_user") or "") or None)
         elif f.get("branch") and base and project:     # a fast run switched to the full flow reads no MR of its own
             self._mr_wanted.pop((base, project, f["branch"]), None)
-        bot = 0
-        if run.get("handoff") and not mr:
-            bot = repo.bot_commits_since((run.get("handoff") or {}).get("local_head"), f.get("origin_sha"))
+        since = deliveries.runner_commits_from(run, mr, repo.cfg)
+        bot = repo.bot_commits_since(since, f.get("origin_sha")) if since else 0
         merged = bool(f.get("merged") or (mr or {}).get("state") == "merged")
         fast = self._fast_of(repo, f, git=mine and not merged and (mr or {}).get("state") != "closed")
         deliveries.classify(row, f, mr=mr, slot=live, cfg=repo.cfg, bot_commits=bot,
@@ -718,7 +719,7 @@ class Service:
         return self._desc_runner_job(path, cfg, key, row.get("credits"), row.get("run_ids") or [])
 
     def _overview_sync(self, which: str, snap: dict[str, Any]) -> dict[str, Any]:
-        rows, errors, all_decisions, q_counts = [], [], [], {"asked": 0, "answered": 0, "delivered": 0}
+        rows, errors, per_row = [], [], []   # each row's questions asked and decisions, added up over the rows listed
         team = self._team_on()
         mine = []
         for rid, repo in self.repos.items():
@@ -742,12 +743,10 @@ class Service:
             base, project = self._gitlab_of(repo)
             rows.append(row)
             mr = self.mr.get(project, f["branch"]) if base and project and f.get("branch") else None
-            for k, n in deliveries.questions_asked(f, mr).items():
-                q_counts[k] += n
             intent = (f.get("run") or {}).get("intent")
-            all_decisions += [dict(d, key=f["key"]) for d in detail.decisions(
+            per_row.append((row, deliveries.questions_asked(f, mr), [dict(d, key=f["key"]) for d in detail.decisions(
                 f.get("decisions_text"), "aidlc-docs/%s/decisions.md" % intent if intent else "decisions.md",
-                repo.cfg.get("bot_users") or [])]
+                repo.cfg.get("bot_users") or [])]))
         for rid, (path, err) in self.repo_errors.items():
             if which in ("all", rid):   # the app's own words say what to do; anything else is under 细节
                 said = re.search(r"[\u4e00-\u9fff]", err)
@@ -757,29 +756,28 @@ class Service:
         for row, f, decs in runner:   # a repo's view has what the runner does for it, as 全部 and the runner's do
             if which in ("all", "runner", row["home"]):
                 rows.append(row)
-                all_decisions += [dict(d, key=row["key"]) for d in detail.decisions(f.get("decisions_text"), "decisions.md", [])]
-                for d in decs:
-                    if d.get("state") == "invalid" or d.get("state") in deliveries.NOT_POSTED:   # not on the MR (yet)
-                        continue
-                    q_counts["asked"] += 1
-                    q_counts["answered"] += d.get("state") in ("answered", "delivered", "delivery_unknown", "refused")
-                    q_counts["delivered"] += d.get("state") == "delivered"
+                per_row.append((row, deliveries.ledger_questions(decs),
+                                [dict(d, key=row["key"]) for d in detail.decisions(f.get("decisions_text"), "decisions.md", [])]))
         overlaps = deliveries.overlaps(rows)     # over every row: a teammate's may share a path with one of mine
         listed = len(rows)
+        own = None      # a person's: (repo id, key) of the rows listed, which the numbers count
         if self.settings["role"] == settings_mod.PERSONAL:
             rows = deliveries.own_rows(rows, {rid: self.me_in(r) for rid, r in self.repos.items()})
             keys = {r["key"] for r in rows}
             overlaps = [o for o in overlaps if keys & set(o["keys"])]
+            own = {(r["home"] if r["repo"] == "runner" else r["repo"], r["key"]) for r in rows}
+        kept = {id(r) for r in rows}
+        q_counts = {k: sum(q[k] for row, q, _ in per_row if id(row) in kept) for k in ("asked", "answered", "delivered")}
         parts: list[tuple[str, dict[str, Any]]] = []
         view, funnel = self._eval_view(which, snap, parts)
         if funnel is None:
-            funnel = deliveries.funnel_app(all_decisions, q_counts)
+            funnel = deliveries.funnel_app([d for row, _, ds in per_row if id(row) in kept for d in ds], q_counts)
         else:
-            funnel["questions"] = q_counts
+            funnel = dict(deliveries.own_funnel(funnel, parts, own) if own is not None else funnel, questions=q_counts)
         scope = [r for rid, r in self.repos.items() if which in ("all", rid)]
         cto = deliveries.cto_numbers(parts, rows, available=bool(view.get("available")), now=self.now(),
                                      names={rid: r.name for rid, r in self.repos.items()}, repos=len(scope),
-                                     local_repos=sum(1 for r in scope if self._local_only(r)))
+                                     local_repos=sum(1 for r in scope if self._local_only(r)), mine=own)
         return {"at": self.now(), "rows": rows, "others": listed - len(rows), "overlaps": overlaps, "funnel": funnel,
                 "eval": view, "cto": cto, "counts": deliveries.counts(rows), "errors": errors,
                 "roster": roster.roster(rows, me=self.me(which), now=self.now(), settings=self.settings)}
@@ -916,7 +914,7 @@ class Service:
         mr = self.mr.get(project, f["branch"]) if (base and project and f.get("branch")) else None
         can_post = own and bool(base and project) and self._token_present()
         questions = []
-        handed = bool(run.get("handoff"))
+        handed = deliveries.on_runner(run)
         pq = detail.park_question(f.get("park"), answerable=own and not handed and bool(
             self._live(snap["by"].get(scope, []))), via="session", handed=handed,
             mr_url=(row.get("mr") or {}).get("url"))
@@ -950,7 +948,7 @@ class Service:
             "questions": questions,
             "timeline": {"source": tl["source"], "items": tl["items"], "error": tl["error"],
                          "missing": board_mod.missing_sources(tl["missing"], local_only=row["local_only"],
-                                                              handed=bool(run.get("handoff")), ci_read=board_mod.pipelines_read(mr)),
+                                                              handed=handed, ci_read=board_mod.pipelines_read(mr)),
                          "other_runs": tl.get("other_runs") or []},
             "sessions": [{k: s[k] for k in ("slot", "title", "agent", "kind", "credits", "turns", "busy", "awaiting",
                                              "last_activity", "opened_at", "project", "url", "error", "missing")}
@@ -1332,7 +1330,7 @@ class Service:
         repo = self._repo(rid)
         f = await asyncio.to_thread(self._facts, repo, key)
         run = f.get("run") or {}
-        if not run or run.get("handoff") or f.get("merged"):
+        if not run or deliveries.on_runner(run) or f.get("merged"):
             raise AppError("只有本地开发中的需求能在这里开会话", "not_local", 409)
         if not f.get("worktree"):
             raise AppError("这台机器上没有检出 %s 的分支：先在开需求里开工" % f.get("branch"), "no_worktree", 409)
@@ -1434,7 +1432,7 @@ class Service:
         repo = self._repo(rid)
         f = await asyncio.to_thread(self._facts, repo, key)
         run = f.get("run") or {}
-        if not run or run.get("handoff") or f.get("merged"):
+        if not run or deliveries.on_runner(run) or f.get("merged"):
             raise AppError("只有本地开发中的需求能在这里开会话", "not_local", 409)
         if not f.get("worktree"):
             raise AppError("这台机器上没有检出 %s 的分支：先在开需求里开工" % f.get("branch"), "no_worktree", 409)
@@ -1474,7 +1472,7 @@ class Service:
         run = f.get("run") or {}
         scope = scope_of(rid, key)
         park = f.get("park")
-        if not run.get("handoff"):
+        if not deliveries.on_runner(run):
             if not deliveries.park_waiting(park) or park.get("kind") != "clarify" or park.get("lean_request"):
                 raise AppError("这个需求没有等你回答的澄清问题", "no_question", 409)
             if choice not in answer_choices([str(o.get("id")) for o in park.get("options") or [] if isinstance(o, dict)]):
@@ -1696,7 +1694,7 @@ class Service:
                     except Exception as exc:  # noqa: BLE001 - a token file others can read: brain-kit says so itself
                         self.log.info("brain: reading the MR of %s: %s", branch, exc)
 
-                if (f.get("run") or {}).get("handoff") and branch and base and project and self.mr.due(project, branch):
+                if deliveries.on_runner(f.get("run")) and branch and base and project and self.mr.due(project, branch):
                     await asyncio.to_thread(mr_now)
                 why = f.get("flow_error") or flowview.action_problem(f["flow"], "handoff")
                 if why:

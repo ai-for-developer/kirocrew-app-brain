@@ -2,7 +2,9 @@
  * 切换需求: the select on 需求现状 and 运行过程 (the sample board's 选择运行) that opens another requirement in the same
  * view, so neither view is stuck on the one first opened. It lists what 交付总览 lists (GET /overview?repo=all, read
  * again every 30 s): grouped by repo when there is more than one, the newest activity first, and 「等你」 on the ones
- * that wait on the person. Nothing to switch to (one requirement, or the list did not come): it is not shown.
+ * that wait on the person. Nothing to switch to (one requirement, or the list did not come): it is not shown. A
+ * teammate's requirement opened here (from 全队交付, an overlap) is on this machine but not on the person's own list:
+ * the select says whose it is.
  */
 import { paths, usePoll } from '../api'
 import type { Overview, Requirement, Status } from '../types'
@@ -19,6 +21,11 @@ export function optionText(r: Requirement): string {
 /** The one shown that its repo does not have (closed, or a key from elsewhere): 「PAY-1（shop-pay 里没有）」. */
 export function missingText(key: string, repoName: string): string {
   return `${key}（${repoName}${/[\x21-\x7e]$/.test(repoName) ? ' ' : ''}里没有）`
+}
+
+/** The one shown that is a teammate's (a person's 交付总览 lists their own): 「PAY-7 · bob 的（不在你的交付总览里）」. */
+export function theirsText(key: string, owner: string): string {
+  return `${key} · ${owner} 的（不在你的交付总览里）`
 }
 
 /** Team mode lists a handed-over requirement once, under 运行机 (its facts win): that row, when *repo*'s rows lack *key*. */
@@ -47,12 +54,14 @@ export function OnRunner({ reqKey, what, onOpen }: { reqKey: string; what: '需�
   )
 }
 
-export function ReqSwitch({ repo, reqKey, status, onPick, pollMs }: {
+export function ReqSwitch({ repo, reqKey, status, onPick, pollMs, owner }: {
   repo: string
   reqKey: string
   status: Status | null
   onPick: (repo: string, key: string) => void
   pollMs?: number
+  /** whose the requirement shown is, as its page read it (undefined: not read, or not there) */
+  owner?: string | null
 }) {
   const o = usePoll<Overview>(paths.overview('all'), Math.max(pollMs ?? 0, SWITCH_POLL_MS))
   const rows = o.data?.rows ?? []
@@ -66,6 +75,9 @@ export function ReqSwitch({ repo, reqKey, status, onPick, pollMs }: {
     groups.set(r.repo, [...(groups.get(r.repo) ?? []), r])
   }
   const nameOf = (id: string) => (id === 'runner' ? '运行机' : status?.repos.find((x) => x.id === id)?.name ?? id)
+  const me = status?.repos.find((x) => x.id === repo)?.me?.name
+  const shown = runnerRow(rows, repo, reqKey) ? `${reqKey}（已交给运行机）`
+    : owner && me && owner !== me ? theirsText(reqKey, owner) : missingText(reqKey, nameOf(repo))
   const options = (list: Requirement[]) => list.map((r) => <option key={idOf(r.repo, r.key)} value={idOf(r.repo, r.key)}>{optionText(r)}</option>)
   return (
     <label className="br-switch" title="换一个需求看：在这个视图里打开它">
@@ -75,7 +87,7 @@ export function ReqSwitch({ repo, reqKey, status, onPick, pollMs }: {
           const [r, k] = e.target.value.split(SEP)
           if (r && k && (r !== repo || k !== reqKey)) onPick(r, k)
         }}>
-        {!here && <option value={idOf(repo, reqKey)}>{runnerRow(rows, repo, reqKey) ? `${reqKey}（已交给运行机）` : missingText(reqKey, nameOf(repo))}</option>}
+        {!here && <option value={idOf(repo, reqKey)}>{shown}</option>}
         {groups.size > 1
           ? [...groups].map(([id, list]) => <optgroup key={id} label={nameOf(id)}>{options(list)}</optgroup>)
           : options([...groups.values()][0])}
