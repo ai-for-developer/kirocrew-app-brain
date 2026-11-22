@@ -1203,6 +1203,7 @@ def test_one_runner_serves_two_projects_as_gitlab_users_of_its_own(team):
         assert (kit["bridge_user"], kit["bot_users"], kit["bot_emails"]) == ("brain-bridge", ["brain-bot"], ["brain-bot@example.com"])
         assert kit["gitlab"]["project"] == row["project"] and sorted(repo.labels) == LABELS4
     assert rows(view, "labels") == rows(view, "project") == [("grp/a", "done"), ("grp/b", "done")]
+    assert (b["max_inflight"], b["max_per_repo"]) == (2, 1)          # a run at a time in each project, both at once
     assert json.loads(ps.identities.read_text()) == {
         "users": {"alice": {}, "bob": {}, "carol": {}},
         "roles": {"product": ["bob"], "builder": ["carol"], "security": ["alice"], "data": ["alice"]}}

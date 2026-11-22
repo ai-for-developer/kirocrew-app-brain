@@ -1387,7 +1387,7 @@ def bridge_doc(ctx: Ctx, salt: str) -> dict[str, Any]:
         "vouchers_dir": str(ps.vouchers),
         "runner_runs_root": str(ps.runs),
         "publish_vouchers": False,
-        "max_inflight": 1,
+        "max_inflight": len(ctx.found),     # each project one run at a time, every project at once
         "max_per_repo": 1,
         "pseudonym_salt": salt,
         "kirocrew": {"agent": "brain-run", "memory_mode": "incognito"},
