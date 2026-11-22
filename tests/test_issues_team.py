@@ -282,12 +282,34 @@ def test_an_issue_edited_after_its_label_waits_for_a_new_label(w):
         rt.stop()
 
 
+def test_a_signer_slower_than_brain_kits_wait_holds_the_start_without_an_error(w):
+    """The signer's first contract takes longer than brain-kit's SpoolSigner waits (its first look at GitLab is slow):
+    the round has no error, the issue waits for the signer and says so; the next round, the signer answering, starts
+    the run on that contract."""
+    gl = w["gl"]
+    gl.label("alice")
+    on = []
+    rt = mod("team.bridgehost").TeamRuntime(w["team"], None, None, None, transport=gl,
+                                            kick=lambda: w["signer"].once() if on else None, sign_timeout=0.3)
+    assert rt.start(), rt.error
+    try:
+        assert rounds(rt) == [None]
+        item, = rt.issues_view()["items"]
+        assert (item["state"], item["run_id"]) == ("opened", None) and "签名服务" in item["note"], item
+        assert requests(w) == [] and rt.host.ledger.runs_in("spooled", "signing") == []
+        on.append(True)
+        assert rounds(rt) == [None]
+        assert_started_once(w, rt)
+    finally:
+        rt.stop()
+
+
 def test_a_label_taken_off_before_the_contract_closes_the_mr_and_leaves_the_claim(w):
     gl = w["gl"]
     gl.label("alice")
     rt = runtime(w, kick=False, sign_timeout=0.2)        # the signer does not answer: no contract yet
     try:
-        assert rounds(rt)[0] is not None
+        assert rounds(rt) == [None]
         assert rt.issues.led.get(P, IID).state == "opened" and requests(w) == []
         gl.label("alice", action="remove")
         assert rounds(rt) == [None]

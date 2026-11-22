@@ -101,6 +101,9 @@ ACCOUNT_NEEDS = {"bridge": "没有 api 权限：桥要用它在 MR 上贴问题�
                  "bot": "没有 write_repository 权限：运行机要用它推代码。在 GitLab 上给 %s 换一个有 write_repository 的令牌"}
 SSH_BOT = ("brain-bot", "brain-bot@noreply.invalid")    # git_name, git_email of a runner pushing over this machine's SSH
 REACH_WAIT_S = 20
+# bridge.json signer.timeout: how long brain-kit's SpoolSigner waits for each signature (its own default, 30 s, is less
+# than the signer's first look at a GitLab behind single sign-on can take); one not answered by then is asked again
+SIGN_WAIT_S = 90
 BRANCH = "brain/runner-setup"
 STATUS_BRANCH = snapshot.BRANCH     # where the team server writes each project's status (状态中转, team/relay.py)
 MR_TITLE = "运行机：更新 .brain/kit.json"
@@ -1364,7 +1367,8 @@ def bridge_doc(ctx: Ctx, salt: str) -> dict[str, Any]:
         "max_per_repo": 1,
         "pseudonym_salt": salt,
         "kirocrew": {"agent": "brain-run", "memory_mode": "incognito"},
-        "signer": {"type": "spool", "spool_dir": str(ps.signer_spool), "allowed_signers": str(ps.allowed)},
+        "signer": {"type": "spool", "spool_dir": str(ps.signer_spool), "allowed_signers": str(ps.allowed),
+                   "timeout": SIGN_WAIT_S},
         **jenkins_doc(ctx),
     }
 

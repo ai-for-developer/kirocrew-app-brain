@@ -17,9 +17,11 @@ patched or subclassed. What the app changes:
   ``Bridge.process``) to keep what process() said for each MR for the page: accepted, rejected, seen (that head and
   label event were checked before), and brain-kit 72b278e's unlabelled (the newest event on the label takes it off:
   `brain handoff` re-adding it right now) and waiting (this very hand-over is being signed elsewhere: looked at again
-  next round). brain-kit's poll returns nothing (BRAINKIT_REQUESTS 27). A project whose kit.json work_sources leaves
-  mr-handoff out (sources.py) is not polled, and one that cannot be read holds up none after it: the status' checks
-  say which;
+  next round); and the app's signing: the signer did not answer within the SpoolSigner's wait (bridge.json
+  signer.timeout; a first signature looks at GitLab for a while), which is no error: the next round asks for that very
+  voucher, so its late signature is taken. brain-kit's poll returns nothing (BRAINKIT_REQUESTS 27). A project whose
+  kit.json work_sources leaves mr-handoff out (sources.py) is not polled, and one that cannot be read holds up none
+  after it: the status' checks say which;
 - issues: right after poll, the issues labelled for Brain (team/issues.py, work source issue-label) are claimed, given
   a start commit, an MR and a start contract, which the signer checks like a hand-over's and the bridge then runs as
   one: runnerd, dispatch and the questions in the same round;
@@ -413,7 +415,7 @@ class TeamRuntime:
         kit.json or labelled MRs cannot be read, or one MR that fails, does not stop the others, as in brain-kit: a
         project's error is raised at the end, an MR's is logged the same way. The projects not read and those whose
         kit.json leaves mr-handoff out are the status' checks. -> how many MRs were looked at."""
-        common = bk.m("common")
+        common, sign = bk.m("common"), bk.m("sign")
         seen: list[dict[str, Any]] = []
         checks: list[dict[str, Any]] = []
         errors: list[str] = []
@@ -450,6 +452,9 @@ class TeamRuntime:
                            "result": "error", "error": "", "at": time.time()}
                     try:
                         row["result"] = str(host.process(project, kit, mr) or "")
+                    except sign.SignerUnavailable as e:     # a slow signer: brain-kit asks for this voucher again
+                        host.out("%s!%s: waiting for the signer: %s" % (project, mr.get("iid"), e))
+                        row["result"] = "signing"
                     except common.BrainError as e:  # retried next round, as brain-kit's poll does
                         host.out("error on %s!%s: %s" % (project, mr.get("iid"), e))
                         row["error"] = self.scrub(str(e).split("\n", 1)[0][:300])

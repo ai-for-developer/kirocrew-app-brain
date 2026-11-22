@@ -213,16 +213,18 @@ def test_a_push_after_the_owners_label_is_not_handed_over(world, tmp_path):
 
 def test_a_contract_signed_late_is_taken_the_next_round(world, tmp_path):
     """The signer is slow: brain-kit's SpoolSigner gives up, the run id it reserved is given back and its voucher waits
-    (the page lists it). The signer signs it late; the next round asks for that very voucher and takes the signature:
-    one contract, signed once, the run goes on."""
+    (the page lists it). The MR waits for the signer: no error, and the round is fine. The signer signs it late; the
+    next round asks for that very voucher and takes the signature: one contract, signed once, the run goes on."""
     on = []
     svc = service(world, tmp_path, kick=lambda: world["signer"].once() if on else None, sign_timeout=0.3)
 
     async def go():
         await svc.start()
         try:
-            await svc.team_loop()
+            looped = await svc.team_loop()
             first = await svc.team_view()
+            assert looped["ok"] and looped["error"] == "", looped
+            assert [(h["iid"], h["result"], h["error"]) for h in first["handovers"]] == [(5, "signing", "")]
             (pending,) = [json.loads(r[0]) for r in svc.team.host.ledger.db.execute(
                 "SELECT voucher FROM pending_vouchers")]
             spool_request(world["sspool"], pending)                       # what the signer had read: it answers now

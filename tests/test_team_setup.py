@@ -360,7 +360,9 @@ def test_a_first_run_builds_the_runner_and_waits_for_the_kit_mr(world):
     b, r, s = (json.loads(p.read_text()) for p in (ps.bridge_json, ps.runnerd_json, ps.signer_json))
     assert b["projects"] == [P] and b["gitlab"] == {"base": BASE, "token_env": "BRAIN_TEAM_NO_TOKEN_ENV",
                                                      "token_file": str(ps.root / "bridge-gitlab-token")}
-    assert b["signer"] == {"type": "spool", "spool_dir": str(ps.root / "signer-spool"), "allowed_signers": str(ps.allowed)}
+    # the signer's first signature looks at GitLab for a while: brain-kit's SpoolSigner waits 90 s, not its own 30
+    assert b["signer"] == {"type": "spool", "spool_dir": str(ps.root / "signer-spool"), "allowed_signers": str(ps.allowed),
+                           "timeout": 90}
     assert b["publish_vouchers"] is False and "intake_dir" not in b and "signing_key" not in b
     assert re.fullmatch(r"[0-9a-f]{32}", b["pseudonym_salt"]) and s["pseudonym_salt"] == b["pseudonym_salt"]
     assert r["spool_dir"] == b["spool_dir"] and r["runs_root"] == b["runner_runs_root"] == str(ps.runs)

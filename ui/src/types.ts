@@ -1584,10 +1584,11 @@ export interface TeamConfigRow { file: 'bridge.json' | 'runnerd.json'; key: stri
 /**
  * What brain-kit's bridge said about one MR with the hand-over label in the last round (Bridge.process): accepted,
  * rejected, seen (that head and label event were checked before), unlabelled (the newest label event takes the label
- * off, as `brain handoff` does while it labels again), waiting (this very hand-over is being signed elsewhere), error
+ * off, as `brain handoff` does while it labels again), waiting (this very hand-over is being signed elsewhere), signing
+ * (the signer did not answer within the bridge's wait: no error, its contract is asked for again next round), error
  * (it could not be checked this round: error says why). Another value is shown as it is.
  */
-export type HandoverResult = 'accepted' | 'rejected' | 'seen' | 'unlabelled' | 'waiting' | 'skipped' | 'error'
+export type HandoverResult = 'accepted' | 'rejected' | 'seen' | 'unlabelled' | 'waiting' | 'signing' | 'skipped' | 'error'
 export interface TeamHandover {
   project: string
   iid: number
