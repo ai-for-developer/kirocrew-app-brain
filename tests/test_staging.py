@@ -8,6 +8,7 @@ twenty open, the log's cursor across restarts, and a project that does not switc
 """
 
 import os
+from dataclasses import replace
 
 import pytest
 
@@ -598,40 +599,81 @@ def users(name):
     return ["2026-11-21 10:00:04,000 ERROR app.users: no user '%s' at /srv/app/users/%s.json" % (name, name)]
 
 
-def test_a_ledger_keyed_by_the_old_normalizer_is_keyed_again_on_first_read_keeping_its_issue(bk, tmp_path):
-    """A ledger of a build from before 0.5.1's normalizer: its rows' signatures kept quoted values, e-mails and paths.
-    Read the first time, each row is keyed again from its own sample, and rows that now share a signature are one: the
-    oldest Issue kept, with its fix branch's name, the counts added. So the error read again counts into that Issue
-    instead of opening another; a row 0.5.x made for it, with its own Issue, is one with them."""
+def old_row(w, sig, name, count, first, issue=0, state=None, project=P):
+    """A row as a build before 0.5.1 kept it (keyed by *sig*), its Issue open on GitLab; *state* fixing: its session at
+    work."""
     staging, sl = mod("team.staging"), mod("team.stagelog")
-    w = started(tmp_path)
-    t = w.clock.t
+    if issue:
+        w.gl.issues[(P, issue)] = {"iid": issue, "project_id": PID, "title": "测试环境报错：" + sig, "labels": [LABEL],
+                                   "description": "", "state": "opened", "_notes": [],
+                                   "web_url": "%s/grp/repo/-/issues/%d" % (BASE, issue)}
+        w.gl.last_iid[P] = max(issue, w.gl.last_iid.get(P, 0))
+    r = staging.Row(project, sl.ErrorGroup(sig, first, first + 60, count, tuple(users(name)), SHA[1]),
+                    state="issued" if issue else "new", project_id=PID if issue else 0, told=count,
+                    issue=staging.Link(issue, "%s/grp/repo/-/issues/%d" % (BASE, issue)) if issue else None)
+    if state == "fixing":
+        r = replace(r, state="fixing", slot="staging-42-%d" % issue, gen=1, send_id="s-%d" % issue,
+                    dispatched_at=w.clock.t - 60)
+    return r
 
-    def row(sig, name, count, first, issue=0):
-        if issue:
-            w.gl.issues[(P, issue)] = {"iid": issue, "project_id": PID, "title": "测试环境报错：" + sig, "labels": [LABEL],
-                                       "description": "", "state": "opened", "_notes": [],
-                                       "web_url": "%s/grp/repo/-/issues/%d" % (BASE, issue)}
-            w.gl.last_iid[P] = issue
-        return staging.Row(P, sl.ErrorGroup(sig, first, first + 60, count, tuple(users(name)), SHA[1]),
-                           state="issued" if issue else "new", project_id=PID if issue else 0, told=count,
-                           issue=staging.Link(issue, "%s/grp/repo/-/issues/%d" % (BASE, issue)) if issue else None)
-    for r in (row(OLD_BOB, "bob42", 3, t - 3600, issue=5), row(OLD_CAROL, "carol7", 2, t - 1800),
-              row(USERS, "dave9", 1, t - 600, issue=6)):
+
+def from_before(w, *rows):
+    """The ledger holds *rows* and was keyed before 0.5.1 (user_version 0); the watch starts again, reading it."""
+    for r in rows:
         w.watch.led.put(r)
     w.watch.led.db.execute("PRAGMA user_version = 0")
     w.watch.close()
     w.watch = w.start()
+
+
+MERGED = "这个报错和 #5 是同一个：运行机现在认报错的方法把它们算成一个（引号里的值、邮箱、路径不再分开算）。以后在 #5 里跟进，这个 Issue 关掉。"
+
+
+def test_a_ledger_keyed_by_the_old_normalizer_is_keyed_again_on_first_read_keeping_its_issue(bk, tmp_path):
+    """A ledger of a build from before 0.5.1's normalizer: its rows' signatures kept quoted values, e-mails and paths.
+    Read the first time, each row is keyed again from its own sample, and rows that now share a signature are one: the
+    oldest Issue kept, with its fix branch's name, the counts added. So the error read again counts into that Issue
+    instead of opening another; a row 0.5.x made for it, with its own Issue, is one with them. That row's Issue is told
+    once which Issue the error is followed in now and closed, so it no longer counts among the open ones, and its fix
+    session, at work then, is stopped and its clone deleted, as a forgotten row's; a close GitLab refuses is tried again
+    the next round, without a second comment."""
+    sl = mod("team.stagelog")
+    w = started(tmp_path)
+    t = w.clock.t
+    from_before(w, old_row(w, OLD_BOB, "bob42", 3, t - 3600, issue=5), old_row(w, OLD_CAROL, "carol7", 2, t - 1800),
+                old_row(w, USERS, "dave9", 1, t - 600, issue=6, state="fixing"))
     w.write(users("erin3"))
-    w.round()
+    w.gl.close_fails = 1
+    with pytest.raises(bk.brain_error(), match="grp/repo#6"):
+        w.round()
     assert [(i["signature"], i["count"], i["issue"]["iid"], i["first_seen"]) for i in w.watch.view()["items"]] == [
         (USERS, 7, 5, t - 3600)]
     assert sorted(w.gl.issues) == [(P, 5), (P, 6)]
+    assert w.gl.notes(P, 6) == [MERGED] and w.issue(6)["state"] == "opened"
+    assert "staging-42-6" in w.sessions.stopped and (PID, 6) in w.ws.dropped
+    w.round()
+    assert w.gl.notes(P, 6) == [MERGED] and w.issue(6)["state"] == "closed"
+    assert (w.issue(5)["state"], w.gl.notes(P, 5)) == ("opened", [])
     assert "git checkout -B fix/staging-%s（" % sl.short_id(OLD_BOB) in w.sessions.messages("staging-42-5")[0]
+    stopped, dropped = list(w.sessions.stopped), list(w.ws.dropped)
     w.watch.close()
     w.watch = w.start()
     w.round()
     assert [(i["signature"], i["count"]) for i in w.watch.view()["items"]] == [(USERS, 7)]
+    assert w.gl.notes(P, 6) == [MERGED] and (w.sessions.stopped, w.ws.dropped) == (stopped, dropped)
+
+
+def test_a_ledger_keyed_again_under_another_spelling_of_its_project_lets_its_merged_row_go_under_the_new_one(bk, tmp_path):
+    """The ledger from before 0.5.1 spells the project as bridge.json did then (Grp/Repo): the rows the re-key made one
+    with another move to bridge.json's spelling with the rest, and their Issue is closed with its comment, not
+    forgotten."""
+    w = started(tmp_path)
+    t = w.clock.t
+    from_before(w, old_row(w, OLD_BOB, "bob42", 3, t - 3600, issue=5, project="Grp/Repo"),
+                old_row(w, USERS, "dave9", 1, t - 600, issue=6, project="Grp/Repo"))
+    w.round()
+    assert [(i["project"], i["signature"], i["issue"]["iid"]) for i in w.watch.view()["items"]] == [(P, USERS, 5)]
+    assert w.gl.notes(P, 6) == [MERGED] and w.issue(6)["state"] == "closed"
 
 
 def test_new_issues_open_three_a_round_and_twenty_at_most_per_project_and_the_rest_say_why_they_wait(bk, tmp_path):

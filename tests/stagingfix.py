@@ -4,6 +4,7 @@ StagingGitLab adds a project's Issues (opened, listed by label and state, read, 
 commented on; an iid is never given twice, a deleted Issue's included), the MRs GitLab lists for a commit
 (commits/:sha/merge_requests), a branch's head, the MRs from a source branch (state all, opened or merged) and an MR
 opened through the API. *lose_issue_answer*: GitLab makes the next Issue but its answer never comes back (a 502).
+*close_fails*: the next so many closes of an Issue GitLab answers with a 500, the Issue left open.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ class StagingGitLab(PatrolGitLab):
         self.heads: dict[tuple[str, str], str] = {}
         self.last_iid: dict[str, int] = {}
         self.lose_issue_answer = False
+        self.close_fails = 0
 
     # ---- the world ------------------------------------------------------------------------------------------- #
 
@@ -82,6 +84,9 @@ class StagingGitLab(PatrolGitLab):
                 note = {"id": next(self.ids), "body": data["body"], "author": {"username": self.who[headers["PRIVATE-TOKEN"]]}}
                 issue["_notes"].append(note)
                 return ok(note, 201)
+            if method == "PUT" and data.get("state_event") == "close" and self.close_fails:
+                self.close_fails -= 1
+                return ok({"message": "500 Internal Server Error"}, 500)
             if method == "PUT":
                 issue["state"] = {"close": "closed", "reopen": "opened"}.get(data.get("state_event"), issue["state"])
             return ok(self.shown(issue))

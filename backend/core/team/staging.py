@@ -130,6 +130,20 @@ class Row:
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
+@dataclass(frozen=True)
+class Merged:
+    """A row the re-key made one with another (rekeyed) whose Issue is not the kept row's, until a round lets it go
+    (StagingWatch._let_go): its turn stopped and its clone deleted, as a forgotten row's, and its Issue, while open, told
+    which Issue the error is followed in now (*told*, once) and closed."""
+    row: Row
+    into: int                           # the kept row's Issue
+    told: bool = False
+
+    @classmethod
+    def of(cls, d: Mapping[str, Any]) -> "Merged":
+        return cls(Row.of(d["row"]), int(d["into"]), bool(d.get("told")))
+
+
 # ---- the state machine ---------------------------------------------------------------------------------------- #
 
 def seen(row: Row | None, project: str, g: ErrorGroup, settled: bool = True) -> Row:
@@ -183,22 +197,25 @@ CREATE TABLE IF NOT EXISTS errors (project TEXT NOT NULL, signature TEXT NOT NUL
   doc TEXT NOT NULL, updated REAL NOT NULL, PRIMARY KEY (project, signature));
 CREATE TABLE IF NOT EXISTS cursors (project TEXT PRIMARY KEY, doc TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS deploys (project TEXT PRIMARY KEY, sha TEXT NOT NULL, since REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS merged (project TEXT NOT NULL, signature TEXT NOT NULL, doc TEXT NOT NULL,
+  PRIMARY KEY (project, signature));
 """
 
 
-def rekeyed(rows: list[Row]) -> list[Row]:
+def rekeyed(rows: list[Row]) -> tuple[list[Row], list[Merged]]:
     """*rows* (of one project) keyed by the signatures stagelog gives now: a row whose sample, read with the
     normalizer of the builds before (OLD_VARYING), gives back its signature has the signature the same lines give now;
     rows that then share one are one, the counts added, first and last seen as the earliest and the latest, the newest
     one's sample. Of those the row kept, with its state and its Issue, is the one with an open Issue, else any Issue,
-    the earliest seen first; it keeps the short id its Issue's mark and branch were made with (filed_as)."""
+    the earliest seen first; it keeps the short id its Issue's mark and branch were made with (filed_as). -> the rows
+    kept, and the others that have an Issue of their own, to be let go (Merged)."""
     by: dict[str, list[Row]] = {}
     for r in rows:
         old = [e.signature for e in stagelog.errors_in(r.group.sample, stagelog.OLD_VARYING)[0]]
         now = [e.signature for e in stagelog.errors_in(r.group.sample)[0]]
         sig = now[old.index(r.signature)] if r.signature in old and len(old) == len(now) else r.signature
         by.setdefault(sig, []).append(r)
-    out = []
+    out, gone = [], []
     for sig, same in by.items():
         keep = min(same, key=lambda r: (r.issue is None, r.state not in OPEN, r.group.first_seen))
         newest = max(same, key=lambda r: r.group.last_seen)
@@ -206,13 +223,16 @@ def rekeyed(rows: list[Row]) -> list[Row]:
                         count=sum(r.group.count for r in same))
         out.append(replace(keep, group=group, filed_as=keep.short_id if keep.issue is not None and sig != keep.signature
                            else keep.filed_as))
-    return out
+        gone += [Merged(r, keep.issue.iid) for r in same
+                 if r is not keep and r.issue is not None and r.issue.iid != keep.issue.iid]
+    return out, gone
 
 
 class Ledger:
     """<root>/staging.sqlite: a row per error signature (Row as JSON), each project's log cursor and its deployed
     commit with when a round first read it. Only the bridge's worker thread uses it. One read the first time by a build
-    whose signatures are newer than the ones it was keyed by (PRAGMA user_version < SIGNATURES) is keyed again: rekeyed."""
+    whose signatures are newer than the ones it was keyed by (PRAGMA user_version < SIGNATURES) is keyed again, once:
+    rekeyed, the rows it makes one with another kept in merged until a round lets them go."""
 
     def __init__(self, path: str) -> None:
         self.db = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
@@ -224,8 +244,11 @@ class Ledger:
                     old = self.rows(project)
                     for r in old:
                         self.drop(r)
-                    for r in rekeyed(old):
+                    kept, gone = rekeyed(old)
+                    for r in kept:
                         self.put(r)
+                    for m in gone:
+                        self.put_merged(m)
                 self.db.execute("PRAGMA user_version = %d" % SIGNATURES)
                 self.db.execute("COMMIT")
             except BaseException:
@@ -246,6 +269,17 @@ class Ledger:
 
     def drop(self, row: Row) -> None:
         self.db.execute("DELETE FROM errors WHERE project=? AND signature=?", (row.project, row.signature))
+
+    def merged(self, project: str) -> list[Merged]:
+        q = "SELECT doc FROM merged WHERE project=? ORDER BY signature"
+        return [Merged.of(json.loads(r[0])) for r in self.db.execute(q, (project,))]
+
+    def put_merged(self, m: Merged) -> None:
+        self.db.execute("INSERT OR REPLACE INTO merged (project, signature, doc) VALUES (?, ?, ?)",
+                        (m.row.project, m.row.signature, json.dumps(asdict(m), ensure_ascii=False)))
+
+    def drop_merged(self, m: Merged) -> None:
+        self.db.execute("DELETE FROM merged WHERE project=? AND signature=?", (m.row.project, m.row.signature))
 
     def cursor(self, project: str) -> dict[str, Any] | None:
         r = self.db.execute("SELECT doc FROM cursors WHERE project=?", (project,)).fetchone()
@@ -273,11 +307,13 @@ class Ledger:
             raise
 
     def projects(self) -> set[str]:
-        return {r[0] for r in self.db.execute("SELECT project FROM errors UNION SELECT project FROM cursors")}
+        return {r[0] for r in self.db.execute("SELECT project FROM errors UNION SELECT project FROM cursors "
+                                              "UNION SELECT project FROM merged")}
 
     def respell(self, projects: list[str]) -> None:
-        """The rows, cursor and deploy of a project kept under another spelling than *projects* has for it (GitLab's
-        paths are not case-sensitive: 一键建运行机 writes GitLab's own) moved to that spelling, as the same project's."""
+        """The rows (merged ones too), cursor and deploy of a project kept under another spelling than *projects* has
+        for it (GitLab's paths are not case-sensitive: 一键建运行机 writes GitLab's own) moved to that spelling, as the
+        same project's."""
         named = {p.lower(): p for p in projects}
         for old in self.projects() | {r[0] for r in self.db.execute("SELECT project FROM deploys")}:
             new = named.get(old.lower(), old)
@@ -285,11 +321,14 @@ class Ledger:
                 for row in self.rows(old):
                     self.put(replace(row, project=new))
                     self.drop(row)
+                for m in self.merged(old):
+                    self.put_merged(replace(m, row=replace(m.row, project=new)))
+                    self.drop_merged(m)
                 for table in ("cursors", "deploys"):
                     self.db.execute("UPDATE OR REPLACE %s SET project=? WHERE project=?" % table, (new, old))
 
     def forget(self, project: str) -> None:
-        for table in ("errors", "cursors", "deploys"):
+        for table in ("errors", "cursors", "deploys", "merged"):
             self.db.execute("DELETE FROM %s WHERE project=?" % table, (project,))
 
     def close(self) -> None:
@@ -370,6 +409,11 @@ def rules_text(row: Row, said: list[str], target: str) -> str:
         "git rebase origin/%s --exec 'git commit --amend --no-edit --reset-author'" % target,
         "git push --force-with-lease origin %s" % br, "```", "",
         "不要它：关掉修复 MR，运行机就把这个报错交给人。", "", "brain-push-rules 说：", "", *["> " + x for x in said]])
+
+
+def merged_text(m: Merged) -> str:
+    return ("这个报错和 #%d 是同一个：运行机现在认报错的方法把它们算成一个（引号里的值、邮箱、路径不再分开算）。以后在 #%d 里跟进，"
+            "这个 Issue 关掉。" % (m.into, m.into))
 
 
 def stopped_text(row: Row) -> str:
@@ -549,6 +593,11 @@ class StagingWatch:
             raise ValueError("bridge.json 的 projects 里 %s 没写 staging：测试环境的日志和 VERSION 文件在哪" % project)
         if isinstance(cfg, str):
             raise ValueError("bridge.json 里 %s 的 staging 用不了：%s" % (project, cfg))
+        for m in self.led.merged(project):
+            try:
+                self._let_go(m)
+            except bk.m("common").BrainError as exc:
+                self._errors.append("%s#%d: %s" % (project, m.row.issue.iid, _said(exc)))
         self._each([r for r in self.led.rows(project) if r.state in OPEN], lambda r: self._watch(r, now))
         sha = cfg.version.read()
         settled = now - self.led.deployed(project, sha, now) >= REOPEN_S
@@ -577,9 +626,7 @@ class StagingWatch:
         rest = bk.m("rest")
         issue = self._issue(row)
         if issue is None or issue.get("state") == "closed" or skipped(issue):
-            if row.state == FIXING:
-                self._stop(row)
-            self._drop_clone(row)
+            self._release(row)
             if issue is None:                           # deleted: a new one is opened when the error comes back
                 self.led.put(closed(replace(row, issue=None, fix_mr=None)))
             elif skipped(issue) or not self._fixed(row):
@@ -765,12 +812,31 @@ class StagingWatch:
         if self.workspaces is not None and row.issue is not None and row.project_id:
             self.workspaces.drop(row.project_id, row.issue.iid)
 
+    def _release(self, row: Row) -> None:
+        """Its turn stopped, when it is fixing, and its clone deleted: a row the ledger lets go of."""
+        if row.state == FIXING:
+            self._stop(row)
+        self._drop_clone(row)
+
     def _forget(self, project: str) -> None:
-        for row in self.led.rows(project):
-            if row.state == FIXING:
-                self._stop(row)
-            self._drop_clone(row)
+        for row in self.led.rows(project) + [m.row for m in self.led.merged(project)]:
+            self._release(row)
         self.led.forget(project)
+
+    def _let_go(self, m: Merged) -> None:
+        """A row the re-key made one with another (Merged), let go: its turn and clone as a forgotten row's, then its
+        Issue, while open, told once which Issue the error is followed in now, and closed."""
+        rest = bk.m("rest")
+        self._release(m.row)
+        issue = self._issue(m.row)
+        if issue is not None and issue.get("state") == "opened":
+            path = "/projects/%s/issues/%d" % (rest.q(m.row.project), m.row.issue.iid)
+            if not m.told:
+                self.gl.call("POST", path + "/notes", body={"body": merged_text(m)})
+                m = replace(m, told=True)
+                self.led.put_merged(m)
+            self.gl.call("PUT", path, body={"state_event": "close"})
+        self.led.drop_merged(m)
 
     # ---- the fixes ------------------------------------------------------------------------------------------ #
 
