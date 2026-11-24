@@ -38,6 +38,8 @@ export const LOOP_STEP: Record<string, { name: string; did: string }> = {
   watch: { name: '看会话', did: '看了会话' },
   collect: { name: '收结果', did: '收回结果' },
   reconcile: { name: '对账', did: '对了账' },
+  runs: { name: '照看派出去的运行', did: '照看了派出去的运行' },
+  resumed: { name: '让中断的会话接着做', did: '让中断的会话接着做' },
   patrol: { name: '巡检 MR', did: '巡检了 MR' },
   staging: { name: '看测试环境', did: '看了测试环境' },
   signin: { name: '重新接上 GitLab 的登录', did: '重新接上 GitLab 的登录' },

@@ -324,7 +324,10 @@ shown folded): `backend/core/problems.py`.
   BRAINKIT_REQUESTS 50; GitLab makes it the first time it is put on, until 一键建运行机 makes it with the others).
   From the ledger's note of that comment the runner's row is 等合并 (`to_merge`), waiting on the owner to merge, here,
   in the project's snapshot and on a person's machine, which reads the label. brain-kit's reconcile marks the run merged or closed and leaves the MR's labels: the round
-  after takes `ai-running` and `ai-ready-to-merge` off it, once (a run that ended within the last 14 days).
+  after takes `ai-running` and `ai-ready-to-merge` off it, once (a run that ended within the last 14 days). An MR
+  GitLab no longer shows (deleted: 404) or the bridge's account may not read (403) ends that too: the bridge's log
+  says so and no round fails on it. 运行机 says this step as 照看派出去的运行 when it fails, and a round's count of
+  sessions told to go on as 让中断的会话接着做 n 个.
 - **Team mode states**, brain-kit's: a run reserved while its contract is signed (`signing`) shows as handed over and
   waiting for the signer; a question being posted (`posting`, or 72b278e's `asking`: one bridge process posting it
   now) shows as parked, waiting for the bridge; a run whose latest question the signer refused, that is void or could

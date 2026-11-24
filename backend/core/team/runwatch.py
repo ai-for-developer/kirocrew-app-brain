@@ -158,7 +158,8 @@ class RunWatch:
                                run_id=rid)
 
     def _unlabel(self, run: dict[str, Any]) -> None:
-        """A run that ended (merged, closed): running_label and MERGE_LABEL off its MR, once."""
+        """A run that ended (merged, closed): running_label and MERGE_LABEL off its MR, once. An MR GitLab does not
+        show (deleted: 404) or will not let the bridge's account read (403) ends it too, said in the log."""
         project, iid, rid, led = run["project"], int(run["iid"]), run["run_id"], self.host.ledger
         key = UNLABELLED_KEY % rid
         if self._told(key) or not led.claim_notice(key, rid, project, iid):
@@ -168,6 +169,12 @@ class RunWatch:
             gone = [x for x in (str(self.host.kit(project).get("running_label") or ""), MERGE_LABEL) if x in labels]
             if gone:
                 self._labels(project, iid, [], gone)
+        except bk.m("rest").HttpError as exc:
+            if exc.status not in (403, 404):
+                led.release_notice(key)
+                raise
+            self.out("%s: %s!%d: labels not taken off, and not tried again: GitLab answers %d (the MR is gone, or the "
+                     "bridge's account may not read it)" % (rid, project, iid, exc.status))
         except BaseException:
             led.release_notice(key)
             raise
