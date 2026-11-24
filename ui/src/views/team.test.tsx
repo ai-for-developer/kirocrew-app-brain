@@ -157,6 +157,7 @@ describe('运行机', () => {
       note('queued', '在排队：运行机上的 run 满了，有空位就开始', null),
       note('ci_later', '以后的流水线说法'),
       note('something_new', '以后的别的说法'),
+      note('stopped', '会话停住了：桥让它接着做，它还是没推送：请负责人到 KiroCrew 看一下这个会话'),
     ]
     installFixtureRoutes({ [`GET ${API}/team`]: () => tv })
     render(<TeamPage {...props()} />)
@@ -176,9 +177,10 @@ describe('运行机', () => {
     expect(tones).toEqual([
       ['runnerd_silent', 'tone-bad'], ['runnerd_retry', 'tone-warn'], ['gaveup', 'tone-bad'], ['ci_red', 'tone-bad'],
       ['outbox_dropped', 'tone-bad'], ['queued', 'tone-idle'], ['ci_later', 'tone-warn'], ['something_new', 'tone-idle'],
+      ['stopped', 'tone-bad'],
     ])
     const glyphs = Array.from(under('RUN-PAY-5-1').querySelectorAll('.tm-note-glyph')).map((g) => g.textContent)
-    expect(glyphs).toEqual(['✕', '!', '✕', '✕', '✕', '·', '!', '·'])
+    expect(glyphs).toEqual(['✕', '!', '✕', '✕', '✕', '·', '!', '·', '✕'])
     // no time when the ledger has none
     const queued = under('RUN-PAY-5-1').querySelector('[data-kind="queued"]') as HTMLElement
     expect(queued).toHaveTextContent('在排队：运行机上的 run 满了，有空位就开始')

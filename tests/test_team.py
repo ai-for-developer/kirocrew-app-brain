@@ -217,6 +217,43 @@ def test_a_session_turn_cut_off_before_its_push_is_told_to_go_on_then_a_person_i
     assert told.startswith("RUN-PAY-1-1 的会话停住了") and SLOT in told and "2 次" in told, told
 
 
+def test_the_runner_page_says_a_session_stopped_on_its_run_until_the_next_push(world, tmp_path):
+    """Its turn cut off at one MR head, then each of the two turns told to go on: the MR hears 「…的会话停住了」. The
+    run's row on 运行机 says it under the run, and the requirement's row waits on people, for that head only: once the
+    branch has a new push the bridge read, neither says it."""
+    gw = FakeGateway()
+    gw.script = [cut(), cut(), cut()]
+    svc = service(world, tmp_path, gw)
+    seen = {}
+
+    def stopped_notes(view):
+        return [n["text"] for r in view["runs"] for n in r["notes"] if n["kind"] == "stopped"]
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # dispatched; its turn is cut off
+            for _ in range(3):                          # told to go on twice, each turn cut off: then the MR hears it
+                gw.finish(SLOT)
+                await rounds(svc)
+            seen["told"] = [b for b in world["gl"].bodies() if "会话停住了" in b]
+            seen["notes"] = stopped_notes(await svc.team_view())
+            seen["waits"] = (await svc.overview("runner"))["rows"][0]["waits"]
+            commit_push(world["runs_root"] / "RUN-PAY-1-1", {"src/refund.py": "LIMIT = 1\n"}, "PAY-1: go on")
+            await rounds(svc)
+            seen["after"] = stopped_notes(await svc.team_view())
+            seen["waits_after"] = (await svc.overview("runner"))["rows"][0]["waits"]
+        finally:
+            await svc.stop()
+
+    run(go())
+    assert len(seen["told"]) == 1 and len(resumes(gw)) >= 2
+    (note,) = seen["notes"]
+    assert note.startswith("会话停住了") and "KiroCrew" in note, note
+    assert (seen["waits"]["who"], seen["waits"]["text"]) == ("people", note)
+    assert seen["after"] == [] and seen["waits_after"]["text"] != note
+
+
 def test_a_session_that_parked_or_still_works_is_not_told_to_go_on(world, tmp_path):
     """Idle after it parked (its question on the MR waits for a person), or at work however long: no message. One at
     work and quiet for stall_minutes is brain-kit's watchdog's (delivery.tell_if_stalled, on once the slot's activity
