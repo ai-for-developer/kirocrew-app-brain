@@ -258,6 +258,19 @@ Lean timeline follow them when trace is missing), `decisions.USER` (the MR reade
     接口不报会话在不在跑」. Since the app's 549da74 (0.5.4) its KiroCrew adapter gives `slot_activity`, so brain-kit's
     stall watchdog runs in the app's team mode too. Wanted: that sentence taken out, or saying the app does it from
     0.5.4.
+54. **What the MR is told when KiroCrew will not set a run's session to trust** (new, b1ffe40; the app's
+    `crewadapter.send`). `delivery._tell_held` and the hand-over's `TrustRefused` branch post `TRUST_ADVICE`: 「请负责人
+    用 brain-kit 的 remote/kirocrew-app/brain-bridge 重新装这个 app（`kirocrew app install`）…」. In the brain app's team
+    mode the bridge runs inside the app named brain, so that advice installs another app and leaves brain as it was.
+    It is not always right for brain-bridge either: KiroCrew 0.13 answers `403 session_approval_not_granted` with a
+    `cause` (`not_declared`: the installed app.json lacks the flag, an update is needed; `consent_pending`: the owner
+    opens `/apps/detail/<app>` and clicks "Enable and allow chat control", turning the app off first if it is on;
+    `disabled`: the owner turns it on; `unavailable`: try again) and an `error` text that says that fix. The app can
+    change neither text without patching brain-kit, so since 0.5.4 it only makes sure the advice comes for that
+    refusal alone (a 409, 404 or 429 of the trust call is an ordinary error now). Wanted: `TrustRefused` carrying
+    KiroCrew's `cause` (brain-kit's client reads it from the body, the app's adapter from its GatewayError), the MR
+    note saying the fix for that cause and the app's name, and a client attribute for an app that is not
+    brain-bridge (`kc.trust_advice`, or the app's install page), so the brain app's note names the brain app.
 
 ### Nice-to-have
 

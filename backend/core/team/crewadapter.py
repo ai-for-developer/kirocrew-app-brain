@@ -36,6 +36,8 @@ from .patrol import Refused
 SEND_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 RUN_SLOT_RE = re.compile(r"^run-[a-z][a-z0-9]{0,9}-[1-9][0-9]{0,6}-[1-9][0-9]{0,5}$")
 PATROL_SLOT_RE = re.compile(r"^(?:patrol|staging)-[1-9][0-9]{0,11}-[1-9][0-9]{0,6}(?:-[2-9]|-[1-9][0-9]{1,3})?$")
+# KiroCrew's answer to an app without permissions.sessionApproval granted (or turned off) when it sets a slot to trust
+APPROVAL_REFUSED = (403, "session_approval_not_granted")
 # rows KiroCrew writes after a turn, not part of it: a compaction, the notice that its restart turned trust off
 AFTER_TURN = (("assistant", "compaction"), ("system", "trust_reset_notice"))
 
@@ -69,8 +71,9 @@ class KiroCrewAdapter:
         self.loop, self.mgr, self.BrainError, self.timeout = loop, mgr, brain_error, timeout
         self.app = getattr(mgr, "app", "brain")
 
-    def _run(self, coro: Any, refused: type[Exception] | None = None) -> Any:
-        """*coro*'s answer on the event loop; a failure as BrainError, or as *refused* when KiroCrew answered no."""
+    def _run(self, coro: Any, refused: type[Exception] | None = None, only: tuple[int, str] | None = None) -> Any:
+        """*coro*'s answer on the event loop; a failure as BrainError, or as *refused* when KiroCrew answered no (with
+        *only*: that answer alone, its status and code)."""
         fut = asyncio.run_coroutine_threadsafe(coro, self.loop)
         try:
             return fut.result(self.timeout)
@@ -80,7 +83,8 @@ class KiroCrewAdapter:
         except self.BrainError:
             raise
         except Exception as exc:  # noqa: BLE001 - GatewayError and friends: brain-kit only knows BrainError
-            if refused is not None and isinstance(exc, GatewayError) and exc.refused:
+            if refused is not None and isinstance(exc, GatewayError) and exc.refused \
+                    and only in (None, (exc.status, exc.code)):
                 raise refused("KiroCrew 没收下：%s" % str(exc)[:300]) from None
             raise self.BrainError("KiroCrew：%s" % str(exc)[:300]) from None
 
@@ -104,12 +108,14 @@ class KiroCrewAdapter:
         return self._run(self.mgr.adapter_set_project(name, path))
 
     def send(self, name: str, message: str, send_id: str) -> dict[str, Any]:
-        """Trust for the slot, then the message. KiroCrew refusing trust is brain-kit's TrustRefused: nothing was sent
-        (its delivery holds the message and tells the MR what to do)."""
+        """Trust for the slot, then the message. KiroCrew refusing the app sessionApproval (APPROVAL_REFUSED) is
+        brain-kit's TrustRefused: its delivery holds the message and tells the MR to grant it. Any other failure of the
+        trust call (a slot this app did not open for the bridge, one KiroCrew does not have, KiroCrew busy) is an
+        ordinary error, which the delivery settles by reading the slot. Nothing is sent after either."""
         if not SEND_ID_RE.match(send_id or ""):
             raise self.BrainError("sendId must match [A-Za-z0-9_-]{1,128}")
         self._ours(name)
-        self._run(self.mgr.adapter_trust(name), bk.m("bridge.kirocrew").TrustRefused)
+        self._run(self.mgr.adapter_trust(name), bk.m("bridge.kirocrew").TrustRefused, only=APPROVAL_REFUSED)
         return self._run(self.mgr.adapter_send(name, message, send_id))
 
     def slot(self, name: str) -> dict[str, Any]:

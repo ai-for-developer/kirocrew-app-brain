@@ -296,7 +296,10 @@ shown folded): `backend/core/problems.py`.
   client does (`activity`: KiroCrew's read of the slot with its newest row, `running` and the `queue`), so brain-kit's
   watchdog is on: a session at work, or waiting for a click, with no new row for bridge.json `stall_minutes` (15; 0
   turns it off) is said on its MR once. And it sets the slot to trust before every message, as brain-kit's client
-  does: KiroCrew keeps trust in memory, so a restart ends it. A turn KiroCrew stopped half-way (a restart, a provider
+  does: KiroCrew keeps trust in memory, so a restart ends it. Only KiroCrew's `403 session_approval_not_granted` to
+  that call holds the message (brain-kit's `TrustRefused`; what the MR is then told is brain-kit's text, which names
+  brain-kit's brain-bridge app: BRAINKIT_REQUESTS 54); a 409, 404 or 429 of it is an ordinary error, settled by
+  reading the slot. A turn KiroCrew stopped half-way (a restart, a provider
   shutdown) leaves an idle session brain-kit's watchdog does not look at, its work uncommitted in the workspace. So
   after brain-kit's steps each round reads every dispatched run's slot (its newest rows): idle, nothing queued or on
   its way to it (brain-kit's outbox), its newest turn cut off, no question at its MR head waiting for a person or the
