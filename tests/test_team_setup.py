@@ -227,9 +227,18 @@ class FakeGitLab:
             return ok([m for m in self.mrs if m["state"] == q.get("state") and m["source_branch"] == q.get("source_branch")])
         if rest == "/merge_requests" and method == "POST":
             iid = 7 + len(self.mrs)
-            mr = dict(data, iid=iid, state="opened", web_url="%s/%s/-/merge_requests/%d" % (BASE, self.path, iid))
+            mr = dict(data, iid=iid, state="opened", web_url="%s/%s/-/merge_requests/%d" % (BASE, self.path, iid),
+                      source_project_id=self.pid, target_project_id=self.pid, notes=[])
             self.mrs.append(mr)
             return ok(mr, 201)
+        m = re.fullmatch(r"/merge_requests/(\d+)(/notes)?", rest)
+        mr = m and next((x for x in self.mrs if x["iid"] == int(m.group(1))), None)
+        if mr and m.group(2) and method == "POST":
+            mr["notes"].append(data["body"])
+            return ok({"id": len(mr["notes"]), "body": data["body"]}, 201)
+        if mr and not m.group(2) and method == "PUT" and data.get("state_event") == "close":
+            mr["state"] = "closed"
+            return ok(mr)
         return ok({"message": "404 (fake)"}, 404)
 
 
@@ -617,6 +626,31 @@ def test_issues_on_switches_issue_label_on_in_the_kit_mr_and_makes_its_label(wor
     assert json.loads(branch_kit(world))["work_sources"] == ["mr-handoff"]
     assert gl.mrs[-1]["description"] == "一键建运行机开的 MR：" + mod("team.setup").MR_ISSUES[False]
     assert step(view, "team_mode")["message"] == "团队模式开了；上面那个 MR 合并以后，从 issue 接活才停"
+
+
+def test_a_rerun_that_unticks_issue_intake_closes_its_earlier_kit_mr_and_no_one_else_s(world):
+    """从 issue 接活 ticked: the kit.json MR that turns issue-label on waits. Run again with it unticked, main's kit.json
+    is what this run wants: that MR is setup's own (from brain/runner-setup, in this project) and merging it would turn
+    intake on against the setup, so it hears why in one line and is closed, and the step says so; an MR someone made
+    from a branch of the same name in a fork is left alone. Ticked again later, a new MR is opened."""
+    gl = world["gl"]
+    build(world, patrol=False)
+    gl.merge(gl.mrs[-1]["iid"])
+    build(world, patrol=False, issues=True)
+    stale = gl.mrs[-1]
+    fork = dict(stale, iid=99, source_project_id=PID + 1, web_url=BASE + "/bob/pay/-/merge_requests/99", notes=[])
+    gl.mrs.append(fork)
+    view, ps = build(world, patrol=False, issues=False)
+    by = {s["id"]: s for s in view["steps"]}
+    assert (stale["state"], len(stale["notes"])) == ("closed", 1)
+    (said,) = stale["notes"]
+    assert "\n" not in said and "过时" in said and "从 issue 接活" in said, said
+    assert (fork["state"], fork["notes"]) == ("opened", [])
+    assert by["kit_mr"]["status"] == "done" and "!%d" % stale["iid"] in by["kit_mr"]["message"], by["kit_mr"]
+    assert "关掉了" in by["kit_mr"]["message"] and "kit_mr" not in json.loads(ps.state.read_text())
+    gl.mrs.remove(fork)
+    view, _ = build(world, patrol=False, issues=True)
+    assert gl.mrs[-1]["iid"] != stale["iid"] and gl.mrs[-1]["state"] == "opened" and step(view, "kit_mr")["status"] == "waiting"
 
 
 def branch_kit(world):
