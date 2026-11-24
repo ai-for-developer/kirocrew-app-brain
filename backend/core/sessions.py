@@ -1156,9 +1156,12 @@ class SessionManager:
 
     async def adapter_activity(self, name: str) -> dict[str, Any]:
         """Runner slot *name* as KiroCrew reads it with its newest ACTIVITY_ROWS rows: whether a turn runs, what is
-        queued, how its newest turn ended (crewadapter.cut_off)."""
+        queued, how its newest turn ended (crewadapter.cut_off); and user_stopped: the app stopped the slot's newest
+        turn (a person's 停止, or the bridge's stop)."""
         self._runner_slot(name)
-        return await self.gw.slot(name, limit=ACTIVITY_ROWS)
+        data = await self.gw.slot(name, limit=ACTIVITY_ROWS)
+        last = next((i for i in reversed(list(self._infos.values())) if i.slot == name and i.task), None)
+        return dict(data, user_stopped=last is not None and last.user_stopped)
 
     async def adapter_trust(self, name: str) -> dict[str, Any]:
         """Trust for runner slot *name* again: KiroCrew keeps it in memory, so a restart ends it."""

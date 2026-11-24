@@ -227,7 +227,8 @@ Lean timeline follow them when trace is missing), `decisions.USER` (the MR reade
     wrote no end to it (the app's `crewadapter.cut_off`, over the slot's newest rows): a turn KiroCrew finished ends
     on a reply with `meta.turn_stats`, one someone stopped on a system row `{"kind": "stop_event"}`; a restart leaves
     whatever the turn wrote last (RUN-REQ-2-1: a tool call, then the empty assistant row KiroCrew writes when a turn
-    stops), an error a row of role `error`; a compaction or trust reset row after a turn is looked past. A session
+    stops), an error a row of role `error`; a compaction or trust reset row after a turn is looked past; a turn a
+    person stopped in the app (its session runner's user_stopped) is not cut off, whatever the rows end on. A session
     that ended its turn without a push (brain-run's 「…不继续」 and 「…等人处理」 lines) is not told to go on, and the MR
     does not hear it either: wanted too, a line on the MR for such an end. It sends 「会话中断：…」 as a notice about
     the head (`notice:resume:<head12>:<n>`) through `Delivery._send_once`, because `notify_run` refuses a text outside

@@ -119,13 +119,13 @@ class KiroCrewAdapter:
     def activity(self, name: str) -> dict[str, Any] | None:
         """brain-kit's slot_activity of the slot's newest row (running, last_at, last_role, last_id); queued: a
         message waits behind the turn, or a tool call for a click; cut: KiroCrew stopped its newest turn before it
-        ended (cut_off). None when KiroCrew's read does not say."""
+        ended (cut_off), and nobody stopped it in the app. None when KiroCrew's read does not say."""
         self._ours(name)
         data = self._run(self.mgr.adapter_activity(name))
         a = bk.m("bridge.kirocrew").slot_activity(data)
         if a is not None:
             a["queued"] = bool(data.get("queue") or data.get("queue_depth") or data.get("pending_approval"))
-            a["cut"] = cut_off(data.get("messages") or [])
+            a["cut"] = cut_off(data.get("messages") or []) and not data.get("user_stopped")
         return a
 
     def stop(self, name: str) -> dict[str, Any]:
