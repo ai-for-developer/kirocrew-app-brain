@@ -3,8 +3,8 @@
 **安装（中文）：见 [INSTALL.md](INSTALL.md)。** KiroCrew → Apps → Discover → 齿轮 Sources，添加 `https://github.com/ai-for-developer/kirocrew-app-brain`，分支填 `release`（`scripts/release.sh --push` 生成）。
 
 A Kiro Crew app for [brain-kit](../brain-kit): claim a requirement, take its documents through the five gates,
-develop it with AI-DLC Lean in a `brain-dev` session, hand it over to the team runner, follow its questions (D-n on
-the GitLab MR), and keep the team's in-repo Brain. On the team runner the same app hosts brain-kit's bridge loop and
+develop it with AI-DLC Lean in a `brain-dev` session, hand it over to the team runner, follow its questions (Q-n on
+the GitLab MR; D-n from a bridge before brain-kit 81380eb), and keep the team's in-repo Brain. On the team runner the same app hosts brain-kit's bridge loop and
 runnerd, and dispatches the runs into `brain-run` sessions.
 
 **Started from the aws-samples app.** This app was started from the sample app
@@ -62,13 +62,14 @@ be seen without a running session.
 The app never sends a Lean approval line: it shows it, copies it, and opens the session; the person types it. On the
 team runner's dashboard no question is answered (answers are made on GitLab, where the person is identified). On a
 person's machine, a clarify question of their own run may be answered in the app: into the local session (a local
-run), or as their own MR comment `answer D-n X` with their own token (a handed-over run; the bridge checks it as any
+run), or as their own MR comment `answer Q-n X` with their own token (a handed-over run; the bridge checks it as any
 other). X is one of the question's options, or `approve` / `reject` for a question without options (brain-kit counts
 nothing else). A question that carries a Lean request is never answerable in the app. After the hand-over a Lean
 approval is answered on the MR, never typed in a session: the runner's park.json is shown as the runner's question
-(named by its approval, 代码生成计划审批, not by the clarify it was asked as), and once the bridge posted it as D-n, 此刻,
-the Lean card and 运行过程's step give the comment to write there (`answer D-n approve`, 复制那一行; the app never
-posts it).
+(named by its approval, 代码生成计划审批, not by the clarify it was asked as), and once the bridge posted it as Q-n, 此刻,
+the Lean card and 运行过程's step give the comment to write there (`answer Q-n approve`, 复制那一行; the app never
+posts it). A question an older bridge asked as D-n keeps its id; `answer D-n` still answers Q-n (one ledger counts
+both: brain-kit's `decisions.same_question`), unless D-n is one of that acceptance question's review items.
 
 The routes' JSON is `ui/src/types.ts`. Every requirement (a row of `GET /overview`, the board's `row`, `GET
 /requirements/{repo}/{key}`) carries `waits`, the one judgment of whose turn it is that every view reads: `who` (`you`,
@@ -446,7 +447,7 @@ The app runs as the same OS user as the agent sessions, and agents have a shell.
   `remote`, intent.md as the claim renders it, the Lean intent and Lean's new ledger lines); an answer must pass `decisions.check_answer` bound to the question
   note the voucher names (`question_note`, the note id brain-kit's ledger recorded; a voucher without one is refused; a
   deleted question voids the decision): the question the bridge posts for park.json at that commit (ticking its review
-  checklist is fine), by kit.json `bridge_user`, posted after the push, the D-n bound to nothing else; the first valid
+  checklist is fine), by kit.json `bridge_user`, posted after the push, its id bound to nothing else; the first valid
   reply by an allowed person, never a bot or the bridge account, saying what its author wrote; approve / reject for a
   question without options; a batch review's item list whole; no conflict; the head unchanged). "What its author
   wrote" is check_answer's `edits`, made as brain-kit's own `collect` makes them: `DecisionLoop.reply_states` on the
@@ -463,8 +464,9 @@ The app runs as the same OS user as the agent sessions, and agents have a shell.
   adds is refused until the signer learns it); it serves only its projects, checks
   `issued_at` and the contract's TTL, reserves a contract's run id in brain-kit's `signing` state before checking it
   (one open run per requirement; the same hand-over asked again is signed again), signs an answer only for a run whose
-  contract it signed; and its own ledger keeps one answer per question and never binds a D-n to a second question or
-  question note, and it refuses a question note that an allowed person's reply to its D-n comes before (a copy posted
+  contract it signed; and its own ledger keeps one answer per question and never binds a question's number (Q-n, or an
+  older bridge's D-n: one number) to a second question or question note, and it refuses a question note that an
+  allowed person's reply to its number comes before (a copy posted
   later, with or without the first one deleted, would drop that reply), because the bridge account's token is
   readable by the agents' OS user, so the bridge's notes on the MR can be deleted, edited or posted again. A request must be written as
   brain-kit's SpoolSigner writes it, as a small regular file (no symlink or FIFO). Nothing in the app's private

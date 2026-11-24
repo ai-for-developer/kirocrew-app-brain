@@ -92,8 +92,8 @@ OLDER = [
 @pytest.mark.parametrize("path,cut,lacks", OLDER, ids=["9935b11", "72b278e"])
 def test_an_older_brainkit_is_refused(tmp_path, path, cut, lacks):
     """The app (and its signer) need brain-kit 72b278e's interfaces: a checkout without one of them is refused with a
-    message naming what it lacks and the commit needed (the app's: bk.VERSION_NEEDED), not half used. (A copy of the
-    checkout with one taken out.)"""
+    message naming what it lacks and the commit needed (the app's: bk.VERSION_NEEDED; the signer's: its own
+    BRAINKIT_NEEDED, 81380eb), not half used. (A copy of the checkout with one taken out.)"""
     import shutil
     from appkit import BRAINKIT, mod
     if not (BRAINKIT / "brainkit" / "__init__.py").is_file():
@@ -115,9 +115,32 @@ def test_an_older_brainkit_is_refused(tmp_path, path, cut, lacks):
     probe = "import sys; sys.path.insert(0, %r); import brain_signer; brain_signer.load_brainkit(sys.argv[1])" % str(
         ROOT / "signer")
     p = subprocess.run([sys.executable, "-I", "-c", probe, str(old)], capture_output=True, text=True)
-    assert p.returncode != 0 and lacks in p.stderr and "72b278e" in p.stderr, p.stderr
+    assert p.returncode != 0 and lacks in p.stderr and "81380eb" in p.stderr, p.stderr
     p = subprocess.run([sys.executable, "-I", "-c", probe, str(BRAINKIT)], capture_output=True, text=True)
     assert p.returncode == 0, p.stderr
+
+
+def test_the_signer_needs_the_brain_kit_that_asks_q_n(tmp_path):
+    """The signer reads which question a reply names by brain-kit 81380eb's decisions.same_question (its bridge asks
+    Q-<n>, and `answer D-<n>` still answers it): a checkout without it is refused, naming it and 81380eb. The app reads
+    the same rule itself (mrinfo.same_question) and still runs on that checkout."""
+    import shutil
+    import subprocess
+    import sys
+    from appkit import BRAINKIT, mod
+    old = tmp_path / "old-brain-kit"
+    shutil.copytree(BRAINKIT / "brainkit", old / "brainkit", ignore=shutil.ignore_patterns("__pycache__"))
+    f = old / "brainkit" / "bridge" / "decisions.py"
+    f.write_text(f.read_text(encoding="utf-8").replace("def same_question(", "def _same_question_gone("), encoding="utf-8")
+    probe = "import sys; sys.path.insert(0, %r); import brain_signer; brain_signer.load_brainkit(sys.argv[1])" % str(
+        ROOT / "signer")
+    p = subprocess.run([sys.executable, "-I", "-c", probe, str(old)], capture_output=True, text=True)
+    assert p.returncode != 0 and "bridge.decisions.same_question" in p.stderr and "81380eb" in p.stderr, p.stderr
+    bk = mod("bk")
+    try:
+        assert bk.load(str(old))["ok"] is True
+    finally:
+        bk.unload()
 
 
 def test_a_brainkit_without_flows_is_refused_as_too_old(tmp_path):

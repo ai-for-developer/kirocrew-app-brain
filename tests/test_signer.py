@@ -2,10 +2,11 @@
 (no app here): it signs exactly the vouchers brain-kit builds (9935b11: an answer names its question note), decides
 with brain-kit's Bridge.verify and decisions.check_answer, and refuses the attacks an agent with the app's OS user (and
 so the bridge account's token) can try: a replayed answer, an edited or made-up question, a question older than its
-push, a push after the owner's label, a head that is not the hand-over commit, a bot's commit as the head, a D-n bound
-again after its question was deleted, a question deleted and posted again, a reply edited by someone else (also before
-the first poll, and holding the round against another answer), a reply changed after the signer read it, a second
-answer to one question, look-alikes, the bridge account answering, requests that are not brain-kit's, and odd files in
+push, a push after the owner's label, a head that is not the hand-over commit, a bot's commit as the head, a question
+number bound again after its question was deleted (as Q-<n> or D-<n>: brain-kit 81380eb asks Q-<n>, and `answer D-<n>`
+still answers it), a question deleted and posted again, a reply edited by someone else (also before the first poll,
+and holding the round against another answer), a reply changed after the signer read it, a second answer to one
+question, look-alikes, the bridge account answering, requests that are not brain-kit's, and odd files in
 the spool. The edit signal (brain-kit 72b278e): check_answer's `edits` from brain-kit's DecisionLoop.reply_states on the
 signer's own ledger and GitLab GraphQL with the signer's own token; an award emoji does not make a reply edited; when
 GraphQL does not answer, nothing is signed or recorded. A late signature is used, not signed again; a hand-over's run
@@ -78,7 +79,7 @@ class Flow:
         assert self.bridge.process(P, self.bridge.kit(P), self.gl.mr()) == "accepted", self.gl.bodies()
         assert self.bridge.ledger.set_run("RUN-PAY-1-1", "spooled", "dispatched", slot="run-pay-1-1")
 
-    def ask(self, park=PARK, did="D-1"):
+    def ask(self, park=PARK, did="Q-1"):
         sha = push_park(self.w["wt"], park)
         assert self.bridge.watch() == 1, self.gl.bodies()
         q = [n for n in self.gl.notes if n["body"].startswith("**%s · " % did)][-1]
@@ -88,7 +89,7 @@ class Flow:
         return subprocess.run(["git", "-C", self.gl.bare, "show", "%s:runs/PAY-1/park.json" % sha],
                               capture_output=True).stdout
 
-    def decision(self, did="D-1"):
+    def decision(self, did="Q-1"):
         return self.bridge.ledger.db.execute("SELECT * FROM decisions WHERE id=?", (did,)).fetchone()
 
     def vouchers(self, where="signer-vouchers"):
@@ -117,24 +118,24 @@ def test_brainkits_bridge_and_the_signer_agree(flow):
     flow.gl.note("alice", "answer D-1 B 小额不审")
     assert flow.bridge.collect() == 1
     assert "：B。" in flow.kc.sent[-1]["message"]
-    sha2, q2 = flow.ask(ACCEPTANCE, did="D-2")
+    sha2, q2 = flow.ask(ACCEPTANCE, did="Q-2")
     assert "需要 @carol 回答" in q2["body"].split("\n")[0]
     flow.gl.note("carol", "answer D-2 reject A-3 上限太低")
     assert flow.bridge.collect() == 1
     signed = flow.vouchers()
     kinds = [x["voucher"]["kind"] for x in signed]
     assert sorted(kinds) == ["answer", "answer", "handoff"]
-    acc = next(x["voucher"] for x in signed if x["voucher"].get("decision") == "D-2")
+    acc = next(x["voucher"] for x in signed if x["voucher"].get("decision") == "Q-2")
     assert acc["lean_request"] == "RELEASE 1234abcd" and acc["review_items"] == ["D-7", "A-3"]
     assert acc["rejected_items"] == ["A-3"] and acc["decision_kind"] == "acceptance"
     # each answer names the question note brain-kit's ledger recorded: the one the bridge posted
-    assert acc["question_note"] == q2["id"] == flow.decision("D-2")["qnote_id"]
-    assert next(x["voucher"] for x in signed if x["voucher"].get("decision") == "D-1")["question_note"] == q["id"]
+    assert acc["question_note"] == q2["id"] == flow.decision("Q-2")["qnote_id"]
+    assert next(x["voucher"] for x in signed if x["voucher"].get("decision") == "Q-1")["question_note"] == q["id"]
     assert flow.vouchers("app-vouchers") == signed                       # the bridge's copies are the same vouchers
     for x in signed:
         assert flow.sign.verify(x["voucher"], x["sig"], str(flow.w["allowed"]))
     assert os.listdir(flow.w["sspool"] / "requests") == []               # brain-kit's SpoolSigner took them back
-    assert flow.decision("D-2")["state"] == "delivered"
+    assert flow.decision("Q-2")["state"] == "delivered"
     # the contract's run: reserved in brain-kit's `signing` state while it was checked, then the open run
     assert flow.signer.ledger.run("RUN-PAY-1-1")["state"] == "spooled"
     assert flow.signer.ledger.runs_in("signing") == [] and flow.bridge.ledger.runs_in("signing") == []
@@ -174,7 +175,7 @@ def test_the_signer_speaks_brainkits_spool_protocol(flow):
 # ---------------------------------------------------------------- answers: brain-kit's check_answer
 
 def test_a_replay_onto_a_later_push_is_refused(flow):
-    """D-1 was answered at S2. The run pushes S3 with the same park.json bytes: the answer is not D-1's at S3."""
+    """Q-1 was answered at S2. The run pushes S3 with the same park.json bytes: the answer is not Q-1's at S3."""
     flow.hand_over()
     s2, q = flow.ask()
     flow.gl.note("alice", "answer D-1 B")
@@ -182,22 +183,22 @@ def test_a_replay_onto_a_later_push_is_refused(flow):
     raw = flow.park_raw(s2)
     s3 = commit_push(flow.w["wt"], {"other.txt": "more\n"}, "more")
     assert flow.park_raw(s3) == raw
-    d, r = signer_ask(flow.w, answer_voucher(s3, raw, "D-1", "B", "alice", q["id"]))
+    d, r = signer_ask(flow.w, answer_voucher(s3, raw, "Q-1", "B", "alice", q["id"]))
     assert d == "refused" and "作废" in reasons(r) and "never bound twice" in reasons(r), r
 
 
 def test_an_edited_question_is_refused(flow):
-    """Whoever holds the bridge account's token edits D-1 after it was asked: no reply to it counts."""
+    """Whoever holds the bridge account's token edits Q-1 after it was asked: no reply to it counts."""
     flow.hand_over()
     sha, q = flow.ask()
     flow.gl.edit(q, q["body"].replace("A. 要", "A. 要（人工审核全部免掉）"), by="brain-bridge")
     flow.gl.note("alice", "answer D-1 A")
     assert flow.bridge.collect() == 0
-    assert flow.decision()["state"] == "void" and any(b.startswith("D-1 作废（") for b in flow.gl.bodies())
-    d, r = signer_ask(flow.w, answer_voucher(sha, flow.park_raw(sha), "D-1", "A", "alice", q["id"]))
+    assert flow.decision()["state"] == "void" and any(b.startswith("Q-1 作废（") for b in flow.gl.bodies())
+    d, r = signer_ask(flow.w, answer_voucher(sha, flow.park_raw(sha), "Q-1", "A", "alice", q["id"]))
     assert d == "refused" and "edited" in reasons(r), r
-    # nothing of the answer reaches the run; brain-kit 0d52e97 tells it (once) that D-1 is void, to ask again
-    assert len(flow.kc.sent) <= 1 and all(m["message"].startswith("问题作废：D-1 ") for m in flow.kc.sent), flow.kc.sent
+    # nothing of the answer reaches the run; brain-kit 0d52e97 tells it (once) that Q-1 is void, to ask again
+    assert len(flow.kc.sent) <= 1 and all(m["message"].startswith("问题作废：Q-1 ") for m in flow.kc.sent), flow.kc.sent
 
 
 # ---------------------------------------------------------------- answers: brain-kit 72b278e's edit signal
@@ -220,11 +221,11 @@ def test_a_reply_edited_by_someone_else_never_counts(flow):
     reply = flow.gl.note("alice", "answer D-1 A")
     flow.gl.edit(reply, "answer D-1 B 改主意了", by="mo")
     assert flow.bridge.collect() == 0 and flow.bridge.collect() == 0
-    told = [b for b in flow.gl.bodies() if b.startswith("D-1：") and "编辑过" in b]
+    told = [b for b in flow.gl.bodies() if b.startswith("Q-1：") and "编辑过" in b]
     assert flow.decision()["state"] == "open" and len(told) == 1, flow.gl.bodies()
     raw = flow.park_raw(sha)
     for choice in ("A", "B"):
-        d, r = signer_ask(flow.w, answer_voucher(sha, raw, "D-1", choice, "alice", q["id"]))
+        d, r = signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", choice, "alice", q["id"]))
         assert d == "refused" and "有效回答" in reasons(r), r
     assert replies(flow) == {reply["id"]: "edited"} and signer_graphql(flow) >= 1
     time.sleep(1.1)   # the bridge's voucher for B gets another issued_at: another request than the refused one
@@ -260,11 +261,11 @@ def test_a_reply_edited_by_someone_else_holds_the_round(flow):
     carol = flow.gl.note("carol", "answer D-1 B")
     flow.gl.edit(carol, "answer D-1 A", by="mo")
     raw = flow.park_raw(sha)
-    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "A", "alice", q["id"]))
+    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "A", "alice", q["id"]))
     assert d == "refused" and "被改过" in reasons(r) and "不同的回答" in reasons(r), r
     assert replies(flow)[carol["id"]] == "edited"
     assert flow.bridge.collect() == 0 and flow.decision()["state"] == "open"
-    conflict = [b for b in flow.gl.bodies() if b.startswith("D-1 收到不同的回答")]
+    conflict = [b for b in flow.gl.bodies() if b.startswith("Q-1 收到不同的回答")]
     assert conflict and "@carol=A（这条回复被改过，不算）" in conflict[0] and "@alice=A" in conflict[0], conflict
     assert not [x for x in flow.vouchers() if x["voucher"]["kind"] == "answer"]
     time.sleep(1.1)   # the bridge's voucher gets another issued_at than the one refused above: another request
@@ -295,9 +296,9 @@ def test_made_an_answer_by_someone_else_before_first_sight(flow):
     note = flow.gl.note("carol", "我明天看一下")
     flow.gl.edit(note, "answer D-1 A", by="mo")
     assert flow.bridge.collect() == 0 and flow.bridge.collect() == 0
-    told = [b for b in flow.gl.bodies() if b.startswith("D-1：") and "新的回复" in b]
+    told = [b for b in flow.gl.bodies() if b.startswith("Q-1：") and "新的回复" in b]
     assert len(told) == 1, flow.gl.bodies()
-    d, r = signer_ask(flow.w, answer_voucher(sha, flow.park_raw(sha), "D-1", "A", "carol", q["id"]))
+    d, r = signer_ask(flow.w, answer_voucher(sha, flow.park_raw(sha), "Q-1", "A", "carol", q["id"]))
     assert d == "refused" and "有效回答" in reasons(r), r
     assert replies(flow) == {note["id"]: "edited"}
     time.sleep(1.1)
@@ -314,11 +315,11 @@ def test_a_reply_changed_after_the_signer_read_it(flow):
     sha, q = flow.ask()
     reply = flow.gl.note("alice", "answer D-1 B")
     raw = flow.park_raw(sha)
-    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "A", "alice", q["id"]))   # not what alice said
+    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "A", "alice", q["id"]))   # not what alice said
     assert d == "refused" and "凭证和签名服务按 GitLab 重建的不一样" in reasons(r) and replies(flow) == {reply["id"]: "original"}
     flow.gl.edit(reply, "answer D-1 A", by="alice")
     time.sleep(1.1)
-    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "A", "alice", q["id"]))
+    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "A", "alice", q["id"]))
     assert d == "refused" and "有效回答" in reasons(r), r
     assert not [x for x in flow.vouchers() if x["voucher"]["kind"] == "answer"]
 
@@ -334,7 +335,7 @@ def test_graphql_down_signs_nothing_and_records_nothing(flow):
     flow.gl.graphql_down.add("signer-tok")
     flow.client.timeout = 0.5
     assert flow.bridge.collect() == 0 and flow.decision()["state"] == "open"   # SignerUnavailable: open again
-    late = flow.bridge.ledger.pending_voucher("answer D-1")
+    late = flow.bridge.ledger.pending_voucher("answer Q-1")
     assert late is not None and late["choice"] == "B"
     assert replies(flow) == {} and signer_graphql(flow) >= 1
     assert not [x for x in flow.vouchers() if x["voucher"]["kind"] == "answer"]
@@ -355,7 +356,7 @@ def holds_pending():
 
 def test_graphql_down_for_everyone_fails_closed(flow):
     """GraphQL answers nobody: fail closed, but not for good. brain-kit's bridge does not count alice's touched reply;
-    since 0d52e97 it holds D-1 (the reply is read again each round) and tells the MR once after edit_check_rounds
+    since 0d52e97 it holds Q-1 (the reply is read again each round) and tells the MR once after edit_check_rounds
     rounds (3 by default); the signer signs nothing and records nothing for it either. Once GraphQL answers, her
     reply counts as she wrote it: nobody replies again. (48b6b97 recorded it as "cannot tell" for good and told the
     MR at once: there she replied again.)"""
@@ -365,10 +366,10 @@ def test_graphql_down_for_everyone_fails_closed(flow):
     flow.gl.award(first)
     flow.gl.graphql_down.add("*")
     assert [flow.bridge.collect() for _ in range(3)] == [0, 0, 0]
-    told = [b for b in flow.gl.bodies() if b.startswith("D-1：") and "查不到" in b]
+    told = [b for b in flow.gl.bodies() if b.startswith("Q-1：") and "查不到" in b]
     assert len(told) == 1 and flow.decision()["state"] == "open", flow.gl.bodies()
-    assert flow.bridge.collect() == 0 and len([b for b in flow.gl.bodies() if b.startswith("D-1：")]) == 1  # told once
-    d, r = signer_ask(flow.w, answer_voucher(sha, flow.park_raw(sha), "D-1", "B", "alice", q["id"]))
+    assert flow.bridge.collect() == 0 and len([b for b in flow.gl.bodies() if b.startswith("Q-1：")]) == 1  # told once
+    d, r = signer_ask(flow.w, answer_voucher(sha, flow.park_raw(sha), "Q-1", "B", "alice", q["id"]))
     assert (d, r) == (None, None) and first["id"] not in replies(flow)
     if holds_pending():
         assert "不用重新回复" in told[0], told
@@ -403,12 +404,12 @@ def test_a_pending_verdict_is_no_refusal(flow):
 
     decisions.check_answer = held
     try:
-        assert signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "B", "alice", q["id"])) == (None, None)
+        assert signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "B", "alice", q["id"])) == (None, None)
     finally:
         decisions.check_answer = real
     assert not os.listdir(flow.w["sspool"] / "refused")
     flow.signer._failed.clear()
-    assert signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "B", "alice", q["id"]))[0] == "signed"
+    assert signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "B", "alice", q["id"]))[0] == "signed"
 
 
 def test_a_made_up_question_is_refused(flow):
@@ -431,7 +432,7 @@ def test_a_made_up_question_is_refused(flow):
 
 
 def test_a_question_older_than_its_push_is_refused(flow):
-    """The branch went away from S2 and came back: GitLab records S2 as pushed after D-1 was asked."""
+    """The branch went away from S2 and came back: GitLab records S2 as pushed after Q-1 was asked."""
     flow.hand_over()
     s2, q = flow.ask()
     wt = flow.w["wt"]
@@ -440,7 +441,7 @@ def test_a_question_older_than_its_push_is_refused(flow):
     sh("git", "-C", wt, "push", "-q", "-f", "origin", "%s:refs/heads/%s" % (s2, BRANCH))
     flow.gl.sync()
     flow.gl.note("alice", "answer D-1 B")
-    d, r = signer_ask(flow.w, answer_voucher(s2, flow.park_raw(s2), "D-1", "B", "alice", q["id"]))
+    d, r = signer_ask(flow.w, answer_voucher(s2, flow.park_raw(s2), "Q-1", "B", "alice", q["id"]))
     assert d == "refused" and "asked before" in reasons(r), r
     assert flow.bridge.collect() == 0 and flow.decision()["state"] == "void"
 
@@ -452,19 +453,19 @@ def test_an_answer_names_the_question_note_it_answers(flow):
     sha, q = flow.ask()
     reply = flow.gl.note("alice", "answer D-1 B")
     raw = flow.park_raw(sha)
-    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "B", "alice", None))
+    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "B", "alice", None))
     assert d == "refused" and "question_note" in reasons(r), r
-    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "B", "alice", str(q["id"])))
+    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "B", "alice", str(q["id"])))
     assert d == "refused" and "question_note" in reasons(r), r
-    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "B", "alice", reply["id"]))
+    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "B", "alice", reply["id"]))
     assert d == "refused" and "not by the bridge account" in reasons(r), r
     assert not [x for x in flow.vouchers() if x["voucher"]["kind"] == "answer"]
-    assert signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "B", "alice", q["id"]))[0] == "signed"
+    assert signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "B", "alice", q["id"]))[0] == "signed"
 
 
 def test_a_question_deleted_and_posted_again_binds_nothing(flow):
-    """alice answered D-1. Whoever holds the bridge account's token deletes the question and posts the same text again,
-    and carol answers differently after the copy. brain-kit's bridge is bound to the note it recorded: D-1 is void,
+    """alice answered Q-1. Whoever holds the bridge account's token deletes the question and posts the same text again,
+    and carol answers differently after the copy. brain-kit's bridge is bound to the note it recorded: Q-1 is void,
     nothing is delivered. The signer refuses the answer bound to the deleted note (void), and one bound to the copy:
     alice's reply comes before it, so the copy would drop her answer."""
     flow.hand_over()
@@ -475,17 +476,17 @@ def test_a_question_deleted_and_posted_again_binds_nothing(flow):
     flow.gl.note("carol", "answer D-1 A")
     assert flow.bridge.collect() == 0
     assert flow.decision()["state"] == "void" and flow.kc.sent == []
-    assert any(b.startswith("D-1 作废（") and "deleted" in b for b in flow.gl.bodies())
+    assert any(b.startswith("Q-1 作废（") and "deleted" in b for b in flow.gl.bodies())
     raw = flow.park_raw(sha)
-    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "B", "alice", q1["id"]))
+    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "B", "alice", q1["id"]))
     assert d == "refused" and "作废" in reasons(r) and "deleted" in reasons(r), r
-    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "A", "carol", q2["id"]))
+    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "A", "carol", q2["id"]))
     assert d == "refused" and "之前已经有人回答过" in reasons(r), r
     assert not [x for x in flow.vouchers() if x["voucher"]["kind"] == "answer"]
 
 
 def test_a_later_copy_of_a_question_does_not_drop_an_answer(flow):
-    """The same without the delete: alice answered D-1, then a copy of the question is posted with the bridge's token
+    """The same without the delete: alice answered Q-1, then a copy of the question is posted with the bridge's token
     and carol answers differently after it. Bound to the copy, check_answer would count only carol's reply; the signer
     refuses that binding (alice's reply comes before it). Bound to the question brain-kit recorded, both replies
     count: brain-kit's bridge sees two different answers and delivers neither."""
@@ -495,16 +496,16 @@ def test_a_later_copy_of_a_question_does_not_drop_an_answer(flow):
     copy = flow.gl.note("brain-bridge", q1["body"])
     flow.gl.note("carol", "answer D-1 A")
     raw = flow.park_raw(sha)
-    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "A", "carol", copy["id"]))
+    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "A", "carol", copy["id"]))
     assert d == "refused" and "之前已经有人回答过" in reasons(r), r
-    assert flow.bridge.collect() == 0 and any(b.startswith("D-1 收到不同的回答") for b in flow.gl.bodies())
+    assert flow.bridge.collect() == 0 and any(b.startswith("Q-1 收到不同的回答") for b in flow.gl.bodies())
     assert not [x for x in flow.vouchers() if x["voucher"]["kind"] == "answer"]
-    assert not any(m["message"].startswith("决策 D-1") for m in flow.kc.sent)
+    assert not any(m["message"].startswith("决策 Q-1") for m in flow.kc.sent)
 
 
 def test_a_decision_id_is_never_bound_twice_even_after_its_question_is_deleted(flow):
-    """What check_answer cannot see: the bridge account deletes D-1 (bound to S2, answered B), pushes S3 and asks a
-    new D-1 there. On the MR alone that is a clean question; the signer remembers D-1 is S2's."""
+    """What check_answer cannot see: the bridge account deletes Q-1 (bound to S2, answered B), pushes S3 and asks a
+    new Q-1 there. On the MR alone that is a clean question; the signer remembers Q-1 is S2's."""
     flow.hand_over()
     s2, q = flow.ask()
     flow.gl.note("alice", "answer D-1 B")
@@ -513,15 +514,59 @@ def test_a_decision_id_is_never_bound_twice_even_after_its_question_is_deleted(f
     flow.gl.delete(q)
     s3 = commit_push(flow.w["wt"], {"other.txt": "more\n"}, "more")
     from brainkit.bridge import decisions
-    q3 = flow.gl.note("brain-bridge", decisions.question_text("D-1", "RUN-PAY-1-1", PARK, ["alice", "carol"],
+    q3 = flow.gl.note("brain-bridge", decisions.question_text("Q-1", "RUN-PAY-1-1", PARK, ["alice", "carol"],
                                                               "clarify", s3, hashlib.sha256(raw).hexdigest()))
     flow.gl.note("alice", "answer D-1 A")
-    d, r = signer_ask(flow.w, answer_voucher(s3, raw, "D-1", "A", "alice", q3["id"]))
+    d, r = signer_ask(flow.w, answer_voucher(s3, raw, "Q-1", "A", "alice", q3["id"]))
     assert d == "refused" and "已经是另一个问题" in reasons(r), r
 
 
+def test_a_question_number_is_never_bound_twice_whatever_its_letter(flow):
+    """brain-kit 81380eb: one ledger counts D-<n> and Q-<n> alike, so a number is one question. An older bridge asked
+    D-1 at S2 and its answer was signed; the bridge account deletes that question, pushes S3 and asks Q-1 there. On the
+    MR alone Q-1 is a clean question; the signer remembers that number 1 is S2's."""
+    from brainkit.bridge import decisions
+    flow.hand_over()
+    s2 = push_park(flow.w["wt"], PARK)
+    raw = flow.park_raw(s2)
+    ph = hashlib.sha256(raw).hexdigest()
+    old = flow.gl.note("brain-bridge", decisions.question_text("D-1", "RUN-PAY-1-1", PARK, ["alice", "carol"], "clarify",
+                                                               s2, ph))
+    flow.gl.note("alice", "answer D-1 B")
+    assert signer_ask(flow.w, answer_voucher(s2, raw, "D-1", "B", "alice", old["id"]))[0] == "signed"
+    flow.gl.delete(old)
+    s3 = commit_push(flow.w["wt"], {"other.txt": "more\n"}, "more")
+    q3 = flow.gl.note("brain-bridge", decisions.question_text("Q-1", "RUN-PAY-1-1", PARK, ["alice", "carol"], "clarify",
+                                                              s3, ph))
+    flow.gl.note("alice", "answer Q-1 A")
+    d, r = signer_ask(flow.w, answer_voucher(s3, raw, "Q-1", "A", "alice", q3["id"]))
+    assert d == "refused" and "已经是另一个问题" in reasons(r), r
+
+
+def test_an_answer_the_old_way_before_a_later_copy_of_a_q_question_is_not_dropped(flow):
+    """`answer D-1` answers Q-1 (brain-kit's same_question). alice answered so, then a copy of Q-1 is posted with the
+    bridge's token and carol answers differently after it: bound to the copy, alice's reply would be dropped, so the
+    signer refuses that binding as it does when she wrote `answer Q-1`."""
+    flow.hand_over()
+    sha, q1 = flow.ask(did="Q-1")
+    flow.gl.note("alice", "answer D-1 B")
+    copy = flow.gl.note("brain-bridge", q1["body"])
+    flow.gl.note("carol", "answer Q-1 A")
+    d, r = signer_ask(flow.w, answer_voucher(sha, flow.park_raw(sha), "Q-1", "A", "carol", copy["id"]))
+    assert d == "refused" and "之前已经有人回答过" in reasons(r), r
+
+
+def test_an_answer_voucher_names_a_question_id(flow):
+    """A decision that is no question id (a review item's A-3) is refused, and the refusal says what an id is."""
+    flow.hand_over()
+    sha, q = flow.ask(did="Q-1")
+    flow.gl.note("alice", "answer Q-1 B")
+    d, r = signer_ask(flow.w, answer_voucher(sha, flow.park_raw(sha), "A-3", "B", "alice", q["id"]))
+    assert d == "refused" and "Q-<n>" in reasons(r), r
+
+
 def test_one_question_gets_one_answer(flow):
-    """After D-1=B was signed, a forged conflict note (bridge account) opens a new round and carol answers A: on the MR
+    """After Q-1=B was signed, a forged conflict note (bridge account) opens a new round and carol answers A: on the MR
     alone that is a valid answer; the signer has signed this question already. A copy of the question posted again
     binds nothing either."""
     flow.hand_over()
@@ -532,15 +577,15 @@ def test_one_question_gets_one_answer(flow):
     # the same answer in a newer voucher (brain-kit asks for a new one once its waiting voucher is an hour old) is
     # signed again
     time.sleep(1.1)
-    assert signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "B", "alice", q["id"]))[0] == "signed"
+    assert signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "B", "alice", q["id"]))[0] == "signed"
     from brainkit.bridge import decisions
-    flow.gl.note("brain-bridge", decisions.conflict_text("D-1", {"alice": ("B", "", 0, ()), "bob": ("A", "", 0, ())}))
+    flow.gl.note("brain-bridge", decisions.conflict_text("Q-1", {"alice": ("B", "", 0, ()), "bob": ("A", "", 0, ())}))
     flow.gl.note("carol", "answer D-1 A")
-    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "A", "carol", q["id"]))
+    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "A", "carol", q["id"]))
     assert d == "refused" and "已经签过另一个回答" in reasons(r), r
     copy = flow.gl.note("brain-bridge", q["body"])
     flow.gl.note("carol", "answer D-1 B")
-    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "B", "carol", copy["id"]))
+    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "B", "carol", copy["id"]))
     assert d == "refused" and "绑在问题评论 %d 上" % q["id"] in reasons(r), r
 
 
@@ -549,19 +594,19 @@ def test_conflicts_lookalikes_and_the_bridge_account(flow):
     sha, q = flow.ask()
     raw = flow.park_raw(sha)
     from brainkit.bridge import decisions
-    # a person's look-alike of D-1 bound elsewhere changes nothing (only kit.json bridge_user's notes are questions)
-    flow.gl.note("bob", decisions.question_text("D-1", "RUN-PAY-1-1", PARK, ["bob"], "clarify", "b" * 40, "c" * 64))
+    # a person's look-alike of Q-1 bound elsewhere changes nothing (only kit.json bridge_user's notes are questions)
+    flow.gl.note("bob", decisions.question_text("Q-1", "RUN-PAY-1-1", PARK, ["bob"], "clarify", "b" * 40, "c" * 64))
     # the bridge account answering, and a person not allowed, do not count
     flow.gl.note("brain-bridge", "answer D-1 A")
     flow.gl.note("bob", "answer D-1 A")
-    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "A", "brain-bridge", q["id"]))
+    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "A", "brain-bridge", q["id"]))
     assert d == "refused" and "有效回答" in reasons(r), r
     # two allowed people, two answers: nothing is signed
     flow.gl.note("alice", "answer D-1 A")
     flow.gl.note("carol", "answer D-1 B")
-    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "D-1", "A", "alice", q["id"]))
+    d, r = signer_ask(flow.w, answer_voucher(sha, raw, "Q-1", "A", "alice", q["id"]))
     assert d == "refused" and "不同的回答" in reasons(r), r
-    assert flow.bridge.collect() == 0 and any(b.startswith("D-1 收到不同的回答") for b in flow.gl.bodies())
+    assert flow.bridge.collect() == 0 and any(b.startswith("Q-1 收到不同的回答") for b in flow.gl.bodies())
     # after the bridge's conflict note a new round starts: carol settles it, the bridge and the signer agree
     flow.gl.note("carol", "answer D-1 A")
     assert flow.bridge.collect() == 1
@@ -574,10 +619,10 @@ def test_a_question_without_options_is_answered_approve_or_reject(flow):
     count. The bridge and the signer agree."""
     flow.hand_over()
     sha, q = flow.ask(dict(PARK, options=[], recommend=None, question="可以按这个口径上线吗？"))
-    assert "`answer D-1 approve` 或 `answer D-1 reject`" in q["body"]
+    assert "`answer Q-1 approve` 或 `answer Q-1 reject`" in q["body"]
     flow.gl.note("alice", "answer D-1 A")
     assert flow.bridge.collect() == 0
-    d, r = signer_ask(flow.w, answer_voucher(sha, flow.park_raw(sha), "D-1", "A", "alice", q["id"]))
+    d, r = signer_ask(flow.w, answer_voucher(sha, flow.park_raw(sha), "Q-1", "A", "alice", q["id"]))
     assert d == "refused" and "有效回答" in reasons(r), r
     flow.gl.note("alice", "answer D-1 approve 可以")
     assert flow.bridge.collect() == 1 and flow.decision()["answer"] == "approve"
@@ -592,7 +637,7 @@ def test_a_batch_review_with_item_ids_in_its_note_is_not_signed(flow):
     sha, q = flow.ask(ACCEPTANCE)
     flow.gl.note("carol", "answer D-1 reject A-3 上限太低，D-7 也不对")
     assert flow.bridge.collect() == 0 and any("说明里不要再写项号" in b for b in flow.gl.bodies())
-    d, r = signer_ask(flow.w, answer_voucher(sha, flow.park_raw(sha), "D-1", "reject", "carol", q["id"],
+    d, r = signer_ask(flow.w, answer_voucher(sha, flow.park_raw(sha), "Q-1", "reject", "carol", q["id"],
                                              kind="acceptance", lean_request="RELEASE 1234abcd",
                                              review_items=["D-7", "A-3"], rejected_items=["A-3"]))
     assert d == "refused" and "有效回答" in reasons(r), r
@@ -625,7 +670,7 @@ def test_a_pinned_bridge_account(tmp_path, home, monkeypatch):
 
 def test_an_answer_needs_the_signers_own_contract(flow):
     sha = push_park(flow.w["wt"])
-    d, r = signer_ask(flow.w, answer_voucher(sha, flow.park_raw(sha), "D-1", "B", "alice", 1000))
+    d, r = signer_ask(flow.w, answer_voucher(sha, flow.park_raw(sha), "Q-1", "B", "alice", 1000))
     assert d == "refused" and "没签过 RUN-PAY-1-1 的接手合同" in reasons(r)
 
 
@@ -803,7 +848,7 @@ def test_a_late_signature_is_used_not_signed_again(flow):
     flow.gl.note("alice", "answer D-1 B")
     client.sleep, client.clock = give_up, time.monotonic
     assert flow.bridge.collect() == 0 and flow.decision()["state"] == "open"
-    late = flow.bridge.ledger.pending_voucher("answer D-1")
+    late = flow.bridge.ledger.pending_voucher("answer Q-1")
     assert late["question_note"] == q["id"]
     spool_request(flow.w["sspool"], late)
     signer.once()
@@ -811,7 +856,7 @@ def test_a_late_signature_is_used_not_signed_again(flow):
     assert flow.bridge.collect() == 1 and flow.decision()["voucher_id"] == late["voucher_id"]
     answers = [x["voucher"] for x in flow.vouchers() if x["voucher"]["kind"] == "answer"]
     assert [a["voucher_id"] for a in answers] == [late["voucher_id"]]
-    assert flow.bridge.ledger.pending_voucher("answer D-1") is None
+    assert flow.bridge.ledger.pending_voucher("answer Q-1") is None
 
 
 def test_the_signer_checks_every_field_on_its_own(flow, world):

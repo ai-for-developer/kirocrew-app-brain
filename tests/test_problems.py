@@ -443,6 +443,15 @@ REASONS = [
     ("GET /projects/grp%2Fpay/merge_requests -> HTTP 401: {\"message\":\"401 Unauthorized\"}", "GitLab 不认桥的令牌"),
     ("D-2 作废：问题发出后分支又有了新推送（the MR head moved from 0123456789ab to ba9876543210 after the question）",
      "D-2 作废：分支又有了新推送"),
+    # brain-kit 81380eb: the bridge's questions are Q-<n>; the signer says them as it said D-<n>
+    ("Q-2 收到不同的回答，不签", "Q-2 收到了不同的回答"),
+    ("MR 上没有可以回答 Q-1 的人的有效回答（no valid answer by an allowed person）", "Q-1 还没有有效回答"),
+    ("Q-3 有能回答的人的回复被改过（或查不到是谁改的），看不出原来写的是什么，算一个不同的回答，不签", "Q-3 的回复被改过"),
+    ("Q-4 作废：问题发出后分支又有了新推送", "Q-4 作废：分支又有了新推送"),
+    ("Q-5 作废：问题没有绑在这次推送和 park.json 上（note 9 is not the question the bridge posts）",
+     "Q-5 作废：问题没绑上这次推送"),
+    ("Q-6 在问题评论 12 之前已经有人回答过（评论 9）：这条问题是后来又贴的一份（原来的被删了或还在），绑在它上面会丢掉之前的回答，不签",
+     "Q-6 的问题被重新贴过"),
 ]
 
 

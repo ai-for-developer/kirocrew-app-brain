@@ -196,14 +196,13 @@ def seen_of(mrs: list[Mr], notes: Mapping[int, list[Any]], *, kit: Mapping[str, 
 
 def asked_of(mr: Mr, raw: list[Any], ns: list[Note], bridge_user: str, me: str) -> list[Waiting]:
     """The bridge's open questions on *mr* that name *me* and that nobody answered after."""
-    answer = bk.m("bridge.decisions").ANSWER_RE
+    bodies = {n.get("id"): str(n.get("body") or "") for n in raw if isinstance(n, dict)}
     out = []
     for q in mrinfo.parse_notes(raw, bridge_user)["questions"]:
         if q["state"] != "open" or me not in q.get("who", ()):
             continue
         at = next((i for i, n in enumerate(ns) if n.id == q["note_id"]), -1)
-        answered = {m.group(1) for m in (answer.match(n.first) for n in ns[at + 1:]) if m}
-        if q["id"] in answered:
+        if any(mrinfo.answers(n.first, q, bodies.get(q["note_id"], "")) for n in ns[at + 1:]):
             continue
         url = "%s#note_%d" % (mr.url, q["note_id"]) if mr.url and isinstance(q["note_id"], int) else mr.url
         out.append(Waiting(q["id"], mr.iid, mr.title, url, q["kind"], q["kind_label"], q["question"], q["options"],

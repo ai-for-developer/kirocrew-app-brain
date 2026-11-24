@@ -208,10 +208,10 @@ interface Now {
   since: number | null
   sessionUrl: string | null
   mrUrl: string | null
-  /** the open MR question (D-n) it waits on, and how it is answered: its options (A / B …), else approve / reject */
+  /** the open MR question (Q-n) it waits on, and how it is answered: its options (A / B …), else approve / reject */
   question: string | null
   choices: string
-  /** what to write on the MR to answer it (`answer D-3 approve`): the board's step */
+  /** what to write on the MR to answer it (`answer Q-3 approve`): the board's step */
   comment: string | null
   /** a refused hand-over: how to hand it over again, as the board's step says it (its reason line is the text already) */
   how: string | null

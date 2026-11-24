@@ -40,7 +40,7 @@ try:
 except ImportError:  # pragma: no cover - Windows: the folders are guarded within this process only
     fcntl = None  # type: ignore[assignment]
 
-from .constants import LOCAL_AGENT
+from .constants import LOCAL_AGENT, QUESTION_ID
 from .gateway import PAGE, GatewayError, said
 from .problems import AGENT_NEW, FOREIGN_INSIDE, folder_root, folder_stuck
 
@@ -79,8 +79,8 @@ SPAWN_TOOLS = ("spawn_run", "spawn_sub_agents")   # kirocrew-core's calls that s
 TASK_KINDS: tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], str], bool], ...] = (
     (re.compile(r"接手合同 "), lambda m: "合同", True),
     (re.compile(r"CI 没过：MR 的流水线 #(\d+)"), lambda m: "CI 没过 #" + m.group(1), False),
-    (re.compile(r"决策 (D-\d+) 已答（[^）\n]*）：(\S+?)。"), lambda m: m.group(1) + (" 退回" if m.group(2) == "reject" else " 已答"),
-     False),
+    (re.compile(r"决策 (%s) 已答（[^）\n]*）：(\S+?)。" % QUESTION_ID),
+     lambda m: m.group(1) + (" 退回" if m.group(2) == "reject" else " 已答"), False),
     (re.compile(r"问题没发出："), lambda m: "问题没发出", False),
     (re.compile(r"问题作废："), lambda m: "问题作废", False),
 )

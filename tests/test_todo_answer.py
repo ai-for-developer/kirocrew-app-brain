@@ -9,6 +9,7 @@ import pytest
 from appkit import mod
 from brainfix import (filled_notes, FakeGateway, install_brain_dev, make_project, make_service, needs_brainkit, request_requirements,
                       run, sh, start_in_worktree, brain)
+from http_fakes import AppRoute, FakeWeb, call
 
 pytestmark = needs_brainkit
 AppError = mod("httpkit").AppError
@@ -157,7 +158,13 @@ class FakeGitLab:
         return 404, b"{}"
 
 
-def test_a_runner_question_of_my_own_run_is_answered_as_my_mr_comment(tmp_path, home):
+MR_PARK = {"question": "退款要不要人工审核？", "options": [{"id": "A", "text": "要"}, {"id": "B", "text": "不要"}],
+           "recommend": "A"}
+
+
+def handed_over(tmp_path, home):
+    """alice's PAY-1 handed over (MR !7 on grp/pay, kit.json names the bridge's account), her GitLab token on this
+    machine: (the service, its GitLab, brain-kit's decisions.question_text)."""
     repo = make_project(tmp_path, kit={"gitlab": {"base": "https://gl.example", "project": "grp/pay"},
                                        "bridge_user": "brain-bridge"})
     wt = start_in_worktree(repo, home / "workplace" / "brain-app" / "pay" / "refund", "refund", "退款")
@@ -171,11 +178,14 @@ def test_a_runner_question_of_my_own_run_is_answered_as_my_mr_comment(tmp_path, 
     tok.write_text("t0ken-for-tests")
     tok.chmod(0o600)
     gl = FakeGitLab("ai/alice/PAY-1-refund")
-    park = {"question": "退款要不要人工审核？", "options": [{"id": "A", "text": "要"}, {"id": "B", "text": "不要"}],
-            "recommend": "A"}
     svc = make_service(tmp_path, [repo], transport=gl)
     svc.reload_sync()  # brain-kit loaded: the question as its bridge posts it (decisions.question_text)
-    ask = mod("bk").m("bridge.decisions").question_text
+    return svc, gl, mod("bk").m("bridge.decisions").question_text
+
+
+def test_a_runner_question_of_my_own_run_is_answered_as_my_mr_comment(tmp_path, home):
+    svc, gl, ask = handed_over(tmp_path, home)
+    park = MR_PARK
     gl.notes = [{"id": 4, "body": ask("D-2", "RUN-PAY-1-1", dict(park, question="假的问题"), ["bob"], "clarify", "b" * 40,
                                       "c" * 64), "author": {"username": "bob"}},    # a person's look-alike: not a question
                 {"id": 5, "body": ask("D-3", "RUN-PAY-1-1", park, ["alice", "carol"], "clarify", "a" * 40, "f" * 64),
@@ -200,6 +210,37 @@ def test_a_runner_question_of_my_own_run_is_answered_as_my_mr_comment(tmp_path, 
     assert q["id"] == "D-3" and q["answerable_here"] and q["answer_via"] == "mr" and q["question"] == "退款要不要人工审核？"
     assert res["via"] == "mr" and gl.posted == ["answer D-3 B 小额不审"]
     assert "t0ken" not in json.dumps([view, d, res])
+
+
+def test_a_q_question_on_my_mr_is_answered_through_the_page(tmp_path, home):
+    """brain-kit 81380eb: the bridge asks Q-<n>. The page's answer (POST …/answer with the question's id) goes on the MR
+    as the person's own `answer Q-<n> …`; a Q-<n> made void by a new push is no question to answer."""
+    svc, gl, ask = handed_over(tmp_path, home)
+    gl.notes = [{"id": 4, "body": ask("Q-2", "RUN-PAY-1-1", MR_PARK, ["alice"], "clarify", "a" * 40, "c" * 64),
+                 "author": {"username": "brain-bridge"}},
+                {"id": 5, "body": "Q-2 作废：问题发出后分支又有了新推送。run 需要时会重新提问。", "author": {"username": "brain-bridge"}},
+                {"id": 6, "body": ask("Q-3", "RUN-PAY-1-1", MR_PARK, ["alice"], "clarify", "b" * 40, "f" * 64),
+                 "author": {"username": "brain-bridge"}}]
+    routes = mod("handlers").build_routes(svc, AppRoute, web=FakeWeb(), is_owner=lambda _r: True)
+    path = "/requirements/r1/PAY-1/answer"
+
+    async def go():
+        await svc.start()
+        try:
+            await svc.overview("r1")
+            await svc.refresh_mrs()
+            view = await svc.overview("r1")
+            stale = await call(routes, "POST", path, json_body={"choice": "A", "id": "Q-2"})
+            res = await call(routes, "POST", path, json_body={"choice": "B", "note": "小额不审", "id": "Q-3"})
+            return view, stale, res
+        finally:
+            await svc.stop()
+
+    view, stale, res = run(go())
+    assert view["rows"][0]["open_questions"] == ["Q-3"]
+    assert (stale.status, stale.body["code"]) == (409, "no_question"), stale.body
+    assert res.status == 200 and res.body["via"] == "mr", res.body
+    assert gl.posted == ["answer Q-3 B 小额不审"]
 
 
 class LabelledGitLab(FakeGitLab):

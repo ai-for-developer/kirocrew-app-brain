@@ -2,10 +2,10 @@
 brain-kit's bridge inside the app, its run id reserved (brain-kit's `signing`) while the separate signer
 (signer/brain_signer.py, its own brain-kit, identities and ledger) signs the contract through brain-kit's SpoolSigner,
 runnerd (in the app) builds the workspace, the run is dispatched into a brain-run session through the app's session
-runner, a parked question goes on the MR as D-1, the owner's answer is checked by brain-kit (bound to that question
-note), signed by the signer and sent to the session once. A contract the signer signs late is taken the next round. A
-tampered answerer list in the app does not get an answer signed. The app never has a key: bridge.json names the spool
-signer only.
+runner, a parked question goes on the MR as Q-1, the owner's answer (`answer D-1`, as people answered before brain-kit
+81380eb: it still counts) is checked by brain-kit (bound to that question note), signed by the signer and sent to the
+session once. A contract the signer signs late is taken the next round. A tampered answerer list in the app does not
+get an answer signed. The app never has a key: bridge.json names the spool signer only.
 """
 
 import asyncio
@@ -61,7 +61,7 @@ def test_hand_over_dispatch_question_and_answer_through_the_separate_signer(worl
             ws = world["runs_root"] / "RUN-PAY-1-1"
             assert ws.is_dir()
             push_park(ws, PARK)
-            second = await svc.team_loop()  # watch posts D-1
+            second = await svc.team_loop()  # watch posts Q-1
             world["gl"].note("alice", "answer D-1 B 小额不审")
             third = await svc.team_loop()  # collect: checked, signed by the signer, sent once
             view = await svc.team_view()
@@ -102,14 +102,14 @@ def test_hand_over_dispatch_question_and_answer_through_the_separate_signer(worl
     assert gw.slot_rows["run-pay-1-1"]["trust"] and [c[1] for c in gw.calls if c[0] == "folder"][0] == "Brain 运行机"
     msgs = gw.msgs["run-pay-1-1"]
     assert msgs[0]["content"].startswith("接手合同 V-") and msgs[0]["meta"]["sendId"].startswith("V-")
-    q = next(n for n in gl.notes if n["body"].startswith("**D-1 · 澄清 · RUN-PAY-1-1**"))
+    q = next(n for n in gl.notes if n["body"].startswith("**Q-1 · 澄清 · RUN-PAY-1-1**"))
     assert q["author"]["username"] == "brain-bridge"
-    assert re.match(r"^\*\*D-1 · 澄清 · RUN-PAY-1-1\*\* · 提交 [0-9a-f]{12} · park [0-9a-f]{12} · 需要 @alice、@carol 回答$",
+    assert re.match(r"^\*\*Q-1 · 澄清 · RUN-PAY-1-1\*\* · 提交 [0-9a-f]{12} · park [0-9a-f]{12} · 需要 @alice、@carol 回答$",
                     q["body"].split("\n")[0])
-    assert msgs[-1]["content"].startswith("决策 D-1 已答") and "：B。" in msgs[-1]["content"]
+    assert msgs[-1]["content"].startswith("决策 Q-1 已答") and "：B。" in msgs[-1]["content"]
     assert not any(re.search(r"(?m)^approve ", m["content"]) for m in msgs)
     assert [m["meta"]["sendId"] for m in msgs if m["role"] == "user"].count(msgs[-1]["meta"]["sendId"]) == 1
-    assert any(b.startswith("D-1 已收到 @alice 的回答：B") for b in gl.bodies())
+    assert any(b.startswith("Q-1 已收到 @alice 的回答：B") for b in gl.bodies())
     # the signer signed both and keeps its own copies; brain-kit's SpoolSigner verified both and took its requests back
     sv = sorted(os.listdir(tmp_path / "signer-vouchers" / "RUN-PAY-1-1"))
     assert len(sv) == 2 and sorted(os.listdir(tmp_path / "app-vouchers" / "RUN-PAY-1-1")) == sv
@@ -214,7 +214,7 @@ def test_a_session_that_parked_or_still_works_is_not_told_to_go_on(world, tmp_pa
             await svc.stop()
 
     run(go())
-    assert any(b.startswith("**D-1 · 澄清 · RUN-PAY-1-1**") for b in world["gl"].bodies())
+    assert any(b.startswith("**Q-1 · 澄清 · RUN-PAY-1-1**") for b in world["gl"].bodies())
     assert resumes(gw) == [] and not [b for b in world["gl"].bodies() if "会话停住了" in b]
     (quiet,) = [b for b in world["gl"].bodies() if "没有动静" in b]
     assert quiet.startswith("RUN-PAY-1-1 已经") and "还在跑" in quiet, quiet
@@ -248,11 +248,11 @@ def test_a_run_accepted_and_done_says_who_merges_it_and_its_label_goes_at_the_me
             await rounds(svc)                           # dispatched
             push_park(ws, ACCEPTANCE)
             gw.finish(SLOT)
-            await rounds(svc)                           # D-1, the acceptance question
+            await rounds(svc)                           # Q-1, the acceptance question
             gl.note("carol", "answer D-1 approve")
             await rounds(svc)                           # the approval reaches the session, whose turn records it
             seen["before"] = (ready(), list(gl.labels))
-            commit_push(ws, {"runs/PAY-1/park.json": dict(ACCEPTANCE, status="answered")}, "PAY-1: accepted (D-1)")
+            commit_push(ws, {"runs/PAY-1/park.json": dict(ACCEPTANCE, status="answered")}, "PAY-1: accepted (Q-1)")
             gw.finish(SLOT)
             await rounds(svc)
             seen["row"] = (await svc.overview("runner"))["rows"][0]
@@ -269,7 +269,7 @@ def test_a_run_accepted_and_done_says_who_merges_it_and_its_label_goes_at_the_me
     run(go())
     assert seen["before"][0] == [] and "ai-running" in seen["before"][1]
     (told,) = ready()
-    assert told.startswith("RUN-PAY-1-1 做完了") and "@alice" in told and "D-1" in told, told
+    assert told.startswith("RUN-PAY-1-1 做完了") and "@alice" in told and "Q-1" in told, told
     assert "ai-ready-to-merge" in seen["labels"] and "ai-running" not in seen["labels"]
     row = seen["row"]
     w = row["waits"]
@@ -336,8 +336,8 @@ def test_the_signer_refuses_what_the_app_was_tricked_into(world, tmp_path):
     assert view["ledger"]["decisions"] == {"refused": 1}
     assert view["signer"]["refused"] and any("有效回答" in r for x in view["signer"]["refused"] for r in x["reasons"])
     msgs = gw.msgs["run-pay-1-1"]
-    assert not any(m["content"].startswith("决策 D-1") for m in msgs)
-    assert any(b.startswith("D-1 的回答没有送回 run：签名服务不签") for b in world["gl"].bodies())
+    assert not any(m["content"].startswith("决策 Q-1") for m in msgs)
+    assert any(b.startswith("Q-1 的回答没有送回 run：签名服务不签") for b in world["gl"].bodies())
 
 
 def test_a_push_after_the_owners_label_is_not_handed_over(world, tmp_path):
@@ -484,7 +484,7 @@ class Repointed:
 
 
 def test_a_project_that_left_the_runner_is_not_looked_at_and_no_round_fails_on_it(world, tmp_path):
-    """The runner is pointed at grp/new while its ledger holds RUN-PAY-1-1 of grp/repo, dispatched with D-1 open, and
+    """The runner is pointed at grp/new while its ledger holds RUN-PAY-1-1 of grp/repo, dispatched with Q-1 open, and
     the bridge's account no longer sees grp/repo. Team mode takes that run as left: it is marked failed (the ledger
     copied first), its question closed and its session stopped, GitLab is asked nothing about grp/repo, and no round
     fails; the run is gone from the runs and from 交付总览, and one line on the 运行机 page says why."""
@@ -496,7 +496,7 @@ def test_a_project_that_left_the_runner_is_not_looked_at_and_no_round_fails_on_i
         try:
             await svc.team_loop()
             push_park(world["runs_root"] / "RUN-PAY-1-1", PARK)
-            await svc.team_loop()                                   # D-1 asked on the MR
+            await svc.team_loop()                                   # Q-1 asked on the MR
         finally:
             await svc.stop()
     run(before())
@@ -524,7 +524,7 @@ def test_a_project_that_left_the_runner_is_not_looked_at_and_no_round_fails_on_i
         db = sqlite3.connect(path)
         try:
             assert db.execute("SELECT state FROM runs WHERE run_id='RUN-PAY-1-1'").fetchall() == [(run_state,)], path
-            assert db.execute("SELECT id, state FROM decisions").fetchall() == [("D-1", question)], path
+            assert db.execute("SELECT id, state FROM decisions").fetchall() == [("Q-1", question)], path
         finally:
             db.close()
     assert ("stop", "run-pay-1-1") in gw.calls

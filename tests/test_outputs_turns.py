@@ -106,6 +106,9 @@ def test_a_bridge_message_shows_by_its_kind_and_anything_else_not_at_all():
     assert shown("决策 D-2 已答（凭证 V-9，答复人 G-1a2b3c）：reject。\n说明：旧订单不该发") == \
         {"by": "bridge", "cause": "D-2 退回", "text": "决策 D-2 已答（凭证 V-9，答复人 G-1a2b3c）：reject。"}
     assert shown("决策 D-1 已答（凭证 V-8，答复人 G-1a2b3c）：A。")["cause"] == "D-1 已答"
+    # brain-kit 81380eb: an answer to the bridge's question Q-<n>
+    assert shown("决策 Q-4 已答（凭证 V-10，答复人 G-1a2b3c）：approve。\n说明：可以") == \
+        {"by": "bridge", "cause": "Q-4 已答", "text": "决策 Q-4 已答（凭证 V-10，答复人 G-1a2b3c）：approve。"}
     for other in ("请把短信改短一点", "approve RELEASE 1a2b3c4d", " 接手合同 V-7", "CI 没过"):
         assert shown(other) is None, other
 

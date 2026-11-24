@@ -5,7 +5,7 @@
  *
  * Words: a requirement (需求) has a key like PAY-3. It is claimed (claim/<KEY> branch), developed
  * locally with AI-DLC Lean in a brain-dev session (run branch ai/<owner>/<KEY>-<slug>), handed over
- * to the team runner (bridge + runnerd + a brain-run session), may park on a question (D-<n> on the
+ * to the team runner (bridge + runnerd + a brain-run session), may park on a question (Q-<n> on the
  * GitLab MR), waits for acceptance, and is merged. The Brain is brain/PRODUCT.md, TECH.md,
  * IMPROVEMENT.md, PROJECT.md on the default branch.
  *
@@ -46,7 +46,7 @@ export type ReqState =
   | 'handed_over' // 已交接：run.json has a hand-over, the bridge has not taken it yet
   | 'rejected' // 接手被拒：the bridge refused the hand-over (reason in waits.text)
   | 'running' // 运行机在跑
-  | 'parked' // 停下等回答：park.json waiting / an open D-<n>
+  | 'parked' // 停下等回答：park.json waiting / an open Q-<n>
   | 'acceptance' // 等验收：parked on an acceptance question (Lean RELEASE)
   | 'to_merge' // 等合并：the product accepted the team runner's run and its session is done: a person merges the MR
   | 'merged' // 已合并：run.json is on the default branch
@@ -199,7 +199,7 @@ export interface Requirement {
   sessions: number
   /** other open requirements whose expected paths overlap this one's */
   overlap: string[]
-  /** open D-<n> questions */
+  /** open Q-<n> questions (D-<n> as a bridge before brain-kit 81380eb asked them) */
   open_questions: string[]
   /** expected paths from run.json (overlap warnings come from these) */
   expected_paths: string[]
@@ -1115,7 +1115,7 @@ export interface Question {
   /** park: this machine's run's park.json (answered in its session); runner: the runner's, read off the run branch after
    * the hand-over (answered on the MR once the bridge posts it); bridge: brain-kit's ledger (team mode); mr: the MR's */
   source: 'park' | 'runner' | 'bridge' | 'mr'
-  /** D-<n> once the bridge posted it */
+  /** Q-<n> once the bridge posted it (D-<n> from an older bridge) */
   id: string | null
   kind: string
   kind_label: string
@@ -1301,7 +1301,7 @@ export interface OpenSessionResult { ok: boolean; slot: string; url: string; reo
  * was working) */
 export interface StopResult { ok: boolean; stopped: string[] }
 /**
- * choice: an option id (A–H), or 'approve' / 'reject' for a question without options. id: the question's D-<n> when it
+ * choice: an option id (A–H), or 'approve' / 'reject' for a question without options. id: the question's Q-<n> when it
  * has one (an MR question); without it the open clarify question is meant.
  */
 export interface AnswerBody { choice: string; note?: string; id?: string }
@@ -1622,7 +1622,7 @@ export interface TeamView {
     refused: { req_id: string; kind: string; reasons: string[]; raw: string[] }[]
     /** vouchers asked for in an earlier round that the signer has not answered yet (brain-kit's pending_vouchers): the
      * next round asks for the very same voucher, so a late signature is still used. ref: what it is for, as brain-kit
-     * names it: 「answer D-2」, or 「handoff shop/shop-pay!41 <head sha>#<label event id>」 (only those within brain-kit's
+     * names it: 「answer Q-2」, or 「handoff shop/shop-pay!41 <head sha>#<label event id>」 (only those within brain-kit's
      * one-hour reuse window) */
     waiting: { ref: string; kind: string; run_id: string; since: string | null }[]
   }
@@ -1756,7 +1756,7 @@ export interface RunnerMr {
 }
 /** A question the bridge asked on an MR that names the person among who may answer, with no answer after it yet. */
 export interface RunnerQuestion {
-  /** D-n */
+  /** Q-n (D-n from an older bridge) */
   id: string
   iid: number
   /** its MR's title */
@@ -2208,7 +2208,7 @@ export interface RoundOutcome {
   gate: GateKind | null
   /** approved / sent_back: 你 · a user name · 产品在 MR 上 (never an email, never a pseudonym's real name) */
   by: string | null
-  /** approved / sent_back on the MR: D-n; null when typed in the session */
+  /** approved / sent_back on the MR: Q-n; null when typed in the session */
   decision: string | null
   /** refused: why, in words (lean_view's refused words); skipped: Lean's reason (agent text, scrubbed) */
   text: string | null
@@ -2275,7 +2275,7 @@ export interface Gate {
   by: string | null
   /** pending on a local run: the exact line to type in the session; null after the hand-over */
   line: string | null
-  /** pending on the runner: the MR question that asks it (D-3) and the MR link; null on a local run */
+  /** pending on the runner: the MR question that asks it (Q-3) and the MR link; null on a local run */
   mr: { decision: string | null; url: string | null } | null
   /** queued: why it is held (等流水线过了才问); stale: 文件改过了：要重新请求批准; null otherwise */
   text: string | null
@@ -2415,7 +2415,7 @@ export interface Acceptance {
    * (sent back), merged */
   state: 'not_yet' | 'waiting' | 'accepted' | 'rejected' | 'merged'
   /** the one step a person takes now; text '' when there is none. *line*: what they type in the session; *comment*:
-   * what they write on the MR after the hand-over (`answer D-3 approve`) */
+   * what they write on the MR after the hand-over (`answer Q-3 approve`) */
   step: { text: string; who: string; line: string | null; comment?: string | null; mr_url: string | null; session_url: string | null }
   /** who settled the decisions (decisions.md's Who): person, check, brain, agent, unknown, unclassified */
   by: { id: string; label: string; count: number }[]
@@ -2685,7 +2685,7 @@ export interface FileView {
 export type TaskView =
   /** cause: 开工消息，只有编号 · 澄清问题的回答 (the person's note replaced) · 审查会话的开工消息 */
   | { kind: 'app'; cause: string; text: string }
-  /** cause: 合同 · CI 没过 #n · D-n 已答 / 退回 · 问题没发出 · 问题作废; text: whole or its first line, by its kind */
+  /** cause: 合同 · CI 没过 #n · Q-n 已答 / 退回 · 问题没发出 · 问题作废; text: whole or its first line, by its kind */
   | { kind: 'bridge'; cause: string; text: string }
   | { kind: 'person'; chars: number; url: string }
   | { kind: 'hidden'; why: string }

@@ -465,7 +465,7 @@ sudo git -C /opt/kirocrew-app-brain checkout <VERSIONS 里 app 那行的 commit>
 
 验证：`sudo git -C /opt/brain-kit rev-parse HEAD` 和 `sudo git -C /opt/kirocrew-app-brain rev-parse HEAD` 分别等于 VERSIONS 里的两个 commit。
 
-以后运行机的 app 升级了，这两份要一起换到新 VERSIONS 里的 commit，再重启签名服务。
+以后运行机的 app 升级了，这两份要一起换到新 VERSIONS 里的 commit，再重启签名服务。顺序照第 12 步：先换签名服务，再换 app。
 
 ### 5. 签名密钥（人运行）
 
@@ -660,6 +660,36 @@ kit.json 或身份表以后改了，要重启签名服务（`sudo systemctl rest
 验证：四条都有，会话里的 AI 读了交接记录并接着做，MR 上能看到它的问题和进度。
 
 KiroCrew 重启（或者模型那边断了）会把会话正在跑的那一轮打断，它写的改动留在工作区里，没提交也没推送。桥每一轮都看每个派出去的会话：停着、没在跑、没有排队的消息、MR 上也没有问题在等人回答，又过了 bridge.json 的 `stall_minutes`（默认 15 分钟）还没有新动静，就给会话发一条「会话中断：…」，让它提交、推送，接着做；还不动就再发一次；再不动，MR 上会说「…的会话停住了」，这时请管运行机的人到 KiroCrew 里看一下这个会话。会话在跑、却这么久没有新动静的，MR 上也会说一声（brain-kit 自己的看门狗）。`stall_minutes` 写 0 就都不看。
+
+### 12. 升级运行机的 app
+
+先换签名服务，再换桥。0.5.4 起（brain-kit 81380eb），桥在 MR 上贴的问题编号是 `Q-<n>`，不再是 `D-<n>`（`D-<n>` 只指 run 的 decisions.md 里的一行）。顺序反了会出错：
+
+- 旧的签名服务不认 `Q-<n>`，会拒签对它的回答。
+- 旧的桥进程和新的用同一个 ledger 时，会把 `Q-<n>` 问题当成坏记录作废。
+
+照第 0 到第 11 步建的运行机：
+
+1. 读新版本的 VERSIONS：GitHub 上 kirocrew-app-brain 的 `release` 分支里的 `VERSIONS` 文件。记下 `app` 和 `brain-kit` 两行的 commit。
+2. 先换签名服务（人运行）：照第 4 步，把 `/opt/brain-kit` 和 `/opt/kirocrew-app-brain` 换到这两个 commit，再运行 `sudo systemctl restart brain-signer`。
+3. 停掉用同一个 ledger 的所有桥进程：在 app 的 **设置** 里关掉团队模式，保存（人点）。这台机器上还有旧运行机的 `brain-bridge` 服务在跑的，照第 1 步停掉它。
+4. 在运行机的 KiroCrew 里更新 Brain 交付 app（人点）。然后在 **设置** 里打开团队模式，保存。
+
+验证：
+
+- `sudo git -C /opt/brain-kit rev-parse HEAD` 和 `sudo -u brainbot cat /home/brainbot/.kiro/crew/apps/brain/VERSIONS` 里 `brain-kit` 那行的 commit 一样；`/opt/kirocrew-app-brain` 也一样对 `app` 那行。
+- `sudo journalctl -u brain-signer -n 50` 里没有 `too old`。
+- 设置页顶上的「团队运行机」卡没有红字。
+
+用「一键建运行机」建的运行机：签名服务是 app 自己起的。在 KiroCrew 里更新 app 就行：团队模式开始时，app 先用新版本重启签名服务，再跑第一轮。
+
+每个人电脑上的 app 也要更新：0.5.3 和更早的版本认不出 `Q-<n>` 问题，需求页和待办里都不会有它，只能去 MR 上回答。
+
+升级以后怎么回答：
+
+- 已经发出的 `D-<n>` 问题不重发，照旧回 `answer D-<n> …`。
+- 新问题是 `Q-<n>`，和旧问题共用一个计数。照老习惯回 `answer D-12 …` 也算 Q-12 的回答。
+- 只有一种例外：D-12 正好是这个验收问题的待审项时，这条回复不算，桥会请你改成 `answer Q-12 …`。
 
 ## 第四部分：最后核对
 

@@ -117,7 +117,7 @@ export function mrDescSource(m: MrDesc): { text: string; title: string } {
   return { text: '', title: '' }
 }
 
-/** What the person writes on the MR after the hand-over to answer an approval (`answer D-3 approve`; reject sends it
+/** What the person writes on the MR after the hand-over to answer an approval (`answer Q-3 approve`; reject sends it
  * back): the comment and 复制那一行. The app never posts it for them. */
 export function MrComment({ comment }: { comment: string }) {
   const { copied, copy } = useCopy(comment)

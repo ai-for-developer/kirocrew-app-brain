@@ -112,6 +112,37 @@ def test_the_runner_at_work_the_questions_waiting_on_me_and_a_repo_without_a_run
     assert "alice-tok" not in got.text
 
 
+def test_a_q_question_waits_on_me_until_a_reply_names_its_number(tmp_path, home, monkeypatch):
+    """brain-kit 81380eb asks Q-<n>, and `answer D-<n>` (as people answered before) still answers Q-<n>, in either case,
+    unless that D-<n> is one of the acceptance question's own review items. A question void since is not waiting."""
+    clock, gl, svc, routes = app(tmp_path, monkeypatch)
+    acceptance = {"question": "可以验收了吗？", "options": [], "lean_request": "RELEASE 1234abcd",
+                  "review_items": [{"id": "D-8", "text": "退款按自然日算"}]}
+
+    async def go():
+        await svc.start()
+        try:
+            ask = mod("bk").m("bridge.decisions").question_text
+            at(clock, H)
+            gl.mr(P, 42, title="退款导出", labels=["ai-running"])
+            for did, park, kind in (("Q-7", PARK, "clarify"), ("Q-8", acceptance, "acceptance"),
+                                    ("Q-9", PARK, "clarify"), ("Q-10", PARK, "clarify"), ("Q-12", PARK, "clarify")):
+                park_hash = ("%02d" % int(did[2:])) * 32
+                note(gl, 42, "brain-bridge", ask(did, "RUN-PAY-2-1", park, ["alice"], kind, "a" * 40, park_hash))
+            note(gl, 42, "alice", "answer D-7 A")                 # the old habit: answers Q-7
+            note(gl, 42, "alice", "answer D-8 approve")           # D-8 is Q-8's review item: no answer to it
+            note(gl, 42, "brain-bridge", "Q-10 作废：问题发出后分支又有了新推送。run 需要时会重新提问。")
+            note(gl, 42, "alice", "answer q-12 B")
+            at(clock, 0)
+            return await call(routes, "GET", "/team/status")
+        finally:
+            await svc.stop()
+
+    got = run(go())
+    assert got.status == 200, got.body
+    assert [q["id"] for q in got.body["repos"][0]["runner"]["seen"]["waiting"]] == ["Q-8", "Q-9"]
+
+
 def test_without_a_token_or_when_gitlab_refuses_it_says_so_and_keeps_the_last_read(tmp_path, home, monkeypatch):
     clock, gl, svc, routes = app(tmp_path, monkeypatch)
     monkeypatch.delenv("GITLAB_TOKEN")

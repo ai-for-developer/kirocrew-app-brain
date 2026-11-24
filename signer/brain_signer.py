@@ -34,7 +34,7 @@ answer     ``decisions.check_answer`` on the MR, bound to the question note the 
            note id brain-kit's ledger recorded when the bridge posted it; a voucher without one is refused). That note
            is on the MR (deleted: the decision is void), by kit.json ``bridge_user``, the text the bridge posts for
            park.json at that commit (ticking its review checklist is fine), posted after GitLab recorded the push, its
-           D-n bound to nothing else; the first valid reply after it (or after the bridge's last conflict note) is by
+           id bound to nothing else; the first valid reply after it (or after the bridge's last conflict note) is by
            a person allowed for that kind (decision_roles from main, this signer's roles; never a bot or the bridge
            account) and says what its author wrote; no other allowed person answered differently; the MR head has not
            moved. A question without options is answered approve / reject; a batch review's item list is whole.
@@ -62,12 +62,14 @@ What this signer adds, because brain-kit cannot know it or does not offer it:
   answer, or its waiting voucher grew old) is signed again: its run is a reservation while it is checked, so
   ``Bridge.verify`` (``Ledger.is_reservation_for``) does not count it as another open run;
 - an answer only for a run whose contract this signer signed, still open, on that MR, with that run's owner;
-- in its own ledger: one answer per question (run, commit, park.json), and a D-n never bound to a second question or a
-  second question note. check_answer sees the MR as it is now, and whoever holds the bridge account's token (the
-  agents' OS user can read the app's bridge.json) can delete, edit and post the bridge's notes: what was signed is
-  remembered here. On the MR it also refuses a question note that an allowed person's reply to its D-n comes before:
-  that reply answered an earlier copy of the question (deleted, or still there), and check_answer counts only the
-  replies after the note it is bound to, so a copy posted later would drop it. (brain-kit posts a second copy itself
+- in its own ledger: one answer per question (run, commit, park.json), and a question's number never bound to a second
+  question or a second question note (brain-kit 81380eb asks Q-<n>, an older bridge asked D-<n>; one ledger counts
+  both, so Q-5 and D-5 are one number). check_answer sees the MR as it is now, and whoever holds the bridge account's
+  token (the agents' OS user can read the app's bridge.json) can delete, edit and post the bridge's notes: what was
+  signed is remembered here. On the MR it also refuses a question note that an allowed person's reply to its number
+  comes before (``decisions.same_question``: `answer D-5` answers Q-5): that reply answered an earlier copy of the
+  question (deleted, or still there), and check_answer counts only the replies after the note it is bound to, so a
+  copy posted later would drop it. (brain-kit posts a second copy itself
   only when GitLab took a post without returning its id, or when it asks again a question an older bridge asked in
   the old layout; if someone had replied in between, the signer refuses rather than drop that reply.)
 A late answer is used as it is: brain-kit's bridge asks for the very same voucher again (its pending voucher, one per
@@ -121,8 +123,8 @@ NEEDS = (("bridge.decisions", "check_answer"), ("bridge.decisions", "VOUCHER_TIM
          ("bridge.ledger", "RESERVED"), ("bridge.ledger", "Ledger.is_reservation_for"),
          ("bridge.handoff", "Bridge.handoff_commit_problems"), ("rest", "GitLab.commit"),
          ("bridge.decisions", "SCHEMA"), ("bridge.decisions", "DecisionLoop.reply_states"),
-         ("bridge.decisions", "edit_state"), ("rest", "GitLab.note_edits"))
-BRAINKIT_NEEDED = "72b278e"
+         ("bridge.decisions", "edit_state"), ("rest", "GitLab.note_edits"), ("bridge.decisions", "same_question"))
+BRAINKIT_NEEDED = "81380eb"
 ROUTES = ("recheck", "issue")       # a hand-over contract's: brain handoff's MR, or a start from a GitLab issue
 ISSUE_LABEL = "brain"               # kit.json issue_label when it names none, as the app's team/issues.py
 DEVELOPER = 30                      # GitLab's access level: who may start a run from an issue
@@ -733,7 +735,7 @@ class Signer:
             if n.get("system") or _author(n) == bridge:
                 continue
             m = self.decisions.ANSWER_RE.match(str(n.get("body") or "").split("\n", 1)[0])
-            if m and m.group(1).upper() == did and _author(n) in who:
+            if m and self.decisions.same_question(m.group(1), did) and _author(n) in who:
                 return nid
         return None
 
@@ -750,7 +752,7 @@ class Signer:
             if not is_str(v.get(k), 100):
                 raise Refuse("%s 要是一行字" % k)
         if not self.decisions.DECISION_ID_RE.match(v["decision"]):
-            raise Refuse("decision 不是 D-<n>")
+            raise Refuse("decision 不是问题号：要是 Q-<n>（以前的桥问的是 D-<n>）")
         qn = v.get("question_note")
         if not is_int(qn) or qn <= 0:
             raise Refuse("question_note 要是正整数：回答凭证要写明它回答的是 MR 上哪一条问题评论（brain-kit 9935b11 起）")
@@ -793,8 +795,10 @@ class Signer:
                              "answerer": v["answerer"]}, sort_keys=True)
         with led.lock:   # read what was signed, sign, record: one step
             why = []
-            bound = led.db.execute("SELECT * FROM bound_decisions WHERE run_id=? AND decision=?",
-                                   (v["run_id"], did)).fetchone()
+            # one bridge ledger counts D-<n> and Q-<n> alike: a number is one question, whatever its letter
+            n = did.split("-", 1)[1]
+            bound = led.db.execute("SELECT * FROM bound_decisions WHERE run_id=? AND decision IN (?, ?)",
+                                   (v["run_id"], "D-" + n, "Q-" + n)).fetchone()
             if bound is not None and (bound["sha"], bound["park_hash"]) != (v["sha"], v["park_hash"]):
                 why.append("%s 已经是另一个问题（%s）的号了" % (did, bound["sha"][:12]))
             elif bound is not None and bound["question_note"] not in (None, qn):

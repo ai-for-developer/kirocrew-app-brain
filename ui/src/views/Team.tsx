@@ -46,7 +46,7 @@ export const LOOP_STEP: Record<string, { name: string; did: string }> = {
 /** what a signature is for (the signer spool's request kinds) */
 export const SIGN_KIND: Record<string, string> = { answer: '回答的凭证', handoff: '交接的合同' }
 const signKind = (k: string) => SIGN_KIND[k] ?? '其他'
-/** brain-kit's name for a voucher it waits on (「answer D-2」, 「handoff shop/shop-pay!41 <sha>#<event>」) in words */
+/** brain-kit's name for a voucher it waits on (「answer Q-2」, 「handoff shop/shop-pay!41 <sha>#<event>」) in words */
 export const waitingRef = (ref: string): string => {
   const [kind, what] = ref.split(/\s+/, 2)
   return SIGN_KIND[kind] ? `${kind === 'answer' ? '回答' : '交接'} ${what ?? ''}`.trim() : ref

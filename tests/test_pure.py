@@ -84,6 +84,59 @@ def test_the_bridges_mr_comments_are_read_back(decisions):
     assert [q["id"] for q in anyone["questions"]] == ["D-9"]  # kit.json names no bridge_user: every note is read
 
 
+@needs_brainkit
+def test_the_bridges_q_questions_are_read_back_as_its_d_ones_were(decisions):
+    """brain-kit 81380eb: the bridge asks Q-<n> (on an MR a D-<n> is a row of the run's decisions.md), and a question an
+    older bridge asked as D-<n> keeps its id. Every note the bridge writes about a question is read for Q-<n> as for
+    D-<n>."""
+    clarify = {"question": "要不要人工审核？", "options": [{"id": "A", "text": "要"}, {"id": "B", "text": "不要"}]}
+    acceptance = {"question": "验收 AC-1..3", "lean_request": "RELEASE 1a2b3c4d",
+                  "review_items": [{"id": "D-7", "text": "退款按自然日算"}, {"id": "A-3", "text": "单笔上限一万"}]}
+    notes = [
+        note(1, ask(decisions, "D-1", clarify, ["alice"], "clarify")),             # asked before the upgrade
+        note(2, "answer D-1 A", "alice"),
+        note(3, "D-1 已收到 @alice 的回答：A，已送回 RUN-PAY-3-1（凭证 V-abcdef0123）。"),
+        note(4, ask(decisions, "Q-2", clarify, ["alice"], "clarify")),
+        note(5, "answer D-2 B", "alice"),                                           # the old habit answers Q-2
+        note(6, "Q-2 已收到 @alice 的回答：B，已送回 RUN-PAY-3-1（凭证 V-0123456789）。"),
+        note(7, ask(decisions, "Q-3", clarify, ["alice"], "clarify")),
+        note(8, "Q-3 作废：问题发出后分支又有了新推送。run 需要时会重新提问。"),
+        note(9, ask(decisions, "Q-4", clarify, ["alice"], "clarify")),
+        note(10, "Q-4 作废（note 9 is not the question the bridge posts for park.json at a1b2c3d4e5f6 (edited?)），"
+                 "对它的回答都不算。run 重新推送后会重新提问。"),
+        note(11, ask(decisions, "Q-5", clarify, ["alice"], "clarify")),
+        note(12, "Q-5 的回答没有送回 run：签名服务不签（MR 上没有可以回答 Q-5 的人的有效回答）。请负责人看一下签名服务的记录。"),
+        note(13, ask(decisions, "Q-6", clarify, ["alice"], "clarify")),
+        note(14, "Q-6 收到了回答，但桥这一轮没能签名，回答还没有送回 run。桥修好后会自动送出，不用重新回答。"),
+        note(15, ask(decisions, "Q-8", acceptance, ["carol"], "acceptance")),
+        note(16, "Q-8：GitLab 现在查不到回复有没有被别人改过，回答先等着（不算，也不会丢）。GitLab 恢复后桥会自动核对，"
+                 "没被改过的回答照常送出，不用重新回复。"),
+        note(17, ask(decisions, "Q-9", clarify, ["alice"], "clarify")),
+        note(18, "Q-9 的回答（凭证 V-1111111111）不知道送到 run 没有：KiroCrew 出错。不用重新回答：桥每轮看一下 KiroCrew 会话 "
+                 "run-pay-3-1，确认没送到就用同一个凭证再送一次，送到了就在这里说「已收到」。"),
+        note(19, "Q-10 无法发出（RUN-PAY-3-1）：\n- park.json: options must be a list"),
+        note(20, ask(decisions, "Q-11", acceptance, ["carol"], "acceptance")),
+    ]
+    qs = {q["id"]: q for q in mrinfo.parse_notes(notes, bridge_user="brain-bridge")["questions"]}
+    assert {k: q["state"] for k, q in qs.items()} == {
+        "D-1": "delivered", "Q-2": "delivered", "Q-3": "stale", "Q-4": "void", "Q-5": "refused", "Q-6": "answered",
+        "Q-8": "held", "Q-9": "delivery_unknown", "Q-10": "invalid", "Q-11": "open"}
+    assert (qs["Q-2"]["answer"], qs["Q-2"]["answerer"], qs["Q-2"]["voucher_id"]) == ("B", "alice", "V-0123456789")
+    assert qs["Q-9"]["voucher_id"] == "V-1111111111"
+    assert (qs["Q-11"]["kind"], qs["Q-11"]["lean_request"], qs["Q-11"]["who"]) == ("acceptance", "RELEASE 1a2b3c4d",
+                                                                                  ["carol"])
+
+
+@needs_brainkit
+def test_the_apps_question_ids_are_brain_kits(decisions):
+    """The app reads the bridge's notes and checks a question id by constants.QUESTION_ID, brain-kit's decisions.DID,
+    and which question a reply names by mrinfo.same_question, brain-kit's decisions.same_question."""
+    assert mod("constants").QUESTION_ID == decisions.DID
+    pairs = [("Q-12", "Q-12"), ("D-12", "Q-12"), ("d-12", "Q-12"), ("q-12", "D-12"), ("Q-12", "D-12"), ("Q-1", "Q-12"),
+             ("D-2", "Q-12"), ("D-120", "Q-12")]
+    assert [mrinfo.same_question(a, b) for a, b in pairs] == [decisions.same_question(a, b) for a, b in pairs]
+
+
 def test_team_states_from_the_ledger():
     def row():
         return {"state": "", "state_label": "", "waits": {}, "open_questions": []}

@@ -28,7 +28,7 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable
 
-from .constants import LOCAL_AGENT, OLD_AGENT
+from .constants import LOCAL_AGENT, OLD_AGENT, QUESTION_ID
 
 LEVELS = ("OK", "WARN", "FAIL")
 FIXES = ("agent", "engine", "kit", "me")
@@ -739,12 +739,12 @@ REASON_RULES: list[tuple[re.Pattern, str, str, str]] = [(re.compile(rx, re.S), t
     (r"^issued_at 和这台机器的时间差太多", "运行机和签名服务的时钟差太多", "请运行机负责人校准两台机器的时间"),
     (r"^默认分支的 \.brain/kit\.json 没写 bridge_user", "brain-kit 设置里没写桥的 GitLab 账号", "在默认分支的 brain-kit 设置里写上桥的 GitLab 账号"),
     (r"^kit\.json 的 bridge_user (?P<u>\S+) 不在", "桥的账号 {u} 不在签名服务的名单里", "请运行机负责人核对签名服务认的桥账号"),
-    (r"^MR 上没有可以回答 (?P<d>D-\d+) 的人的有效回答", "{d} 还没有有效回答", "等有权回答的人在 MR 上回答"),
-    (r"^(?P<d>D-\d+) 收到不同的回答", "{d} 收到了不同的回答", "在 MR 上说清楚以哪个为准"),
-    (r"^(?P<d>D-\d+) 有能回答的人的回复被改过", "{d} 的回复被改过", "请回答的人重新回复一条"),
-    (r"^(?P<d>D-\d+) 作废：问题发出后分支又有了新推送", "{d} 作废：分支又有了新推送", "运行机会按新的推送重新提问"),
-    (r"^(?P<d>D-\d+) 作废：问题没有绑在", "{d} 作废：问题没绑上这次推送", "要重新推送一次，运行机才会重新提问"),
-    (r"^(?P<d>D-\d+) 在问题评论 \d+ 之前已经有人回答过", "{d} 的问题被重新贴过", "请运行机负责人看一下 MR 上的评论"),
+    (r"^MR 上没有可以回答 (?P<d>%s) 的人的有效回答" % QUESTION_ID, "{d} 还没有有效回答", "等有权回答的人在 MR 上回答"),
+    (r"^(?P<d>%s) 收到不同的回答" % QUESTION_ID, "{d} 收到了不同的回答", "在 MR 上说清楚以哪个为准"),
+    (r"^(?P<d>%s) 有能回答的人的回复被改过" % QUESTION_ID, "{d} 的回复被改过", "请回答的人重新回复一条"),
+    (r"^(?P<d>%s) 作废：问题发出后分支又有了新推送" % QUESTION_ID, "{d} 作废：分支又有了新推送", "运行机会按新的推送重新提问"),
+    (r"^(?P<d>%s) 作废：问题没有绑在" % QUESTION_ID, "{d} 作废：问题没绑上这次推送", "要重新推送一次，运行机才会重新提问"),
+    (r"^(?P<d>%s) 在问题评论 \d+ 之前已经有人回答过" % QUESTION_ID, "{d} 的问题被重新贴过", "请运行机负责人看一下 MR 上的评论"),
 )]
 
 

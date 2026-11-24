@@ -35,6 +35,10 @@ CACHE_S = 4.0           # a repo scan is reused for this long
 KEY_RE = _re.compile(r"^[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}$")
 SLUG_RE = _re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 RUN_ID_RE = _re.compile(r"^RUN-[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}-[1-9][0-9]{0,5}$")
+# the id of a question the bridge asks on an MR, as brain-kit's decisions.DID reads it: Q-<n>, or D-<n> as a bridge
+# before brain-kit 81380eb asked it (one ledger counts both, so a number is one question: decisions.same_question).
+# D-<n> on an MR is otherwise a row of the run's decisions.md.
+QUESTION_ID = r"[DQ]-[1-9][0-9]*"
 REPO_ID_RE = _re.compile(r"^(r[1-9][0-9]{0,2}|runner)$")
 
 

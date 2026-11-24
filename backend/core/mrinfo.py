@@ -2,13 +2,13 @@
 brainkit.rest.read_token reads it: $GITLAB_TOKEN, else ~/.brain/gitlab-token, only if no one else can read the file).
 
 What the bridge wrote on the MR is parsed back: its questions (the first line brain-kit's ``decisions.Q_HEAD_RE``
-reads: ``**D-5 · 澄清 · RUN-PAY-3-1** · 提交 <sha12> · park <hash12> · 需要 @… 回答``; a question of an older bridge
-without commit and park counts for nothing and is asked again), their answers, stale (a new push), void (not bound to
-its push or park.json, or its question note deleted), refused (the signer would not sign the answer), answered (the
-bridge has the answer but could not sign it this round: it sends it later, nobody answers again) and invalid ones, and
-the hand-over refusal. The bridge's 「变更说明」 comment (brain-kit 48b6b97: runs/<KEY>/MR.md posted before an acceptance
-question, first line ``decisions.DESC_TITLE``) is none of these and is skipped whole: the MR.md text in it is the
-run's, whatever it looks like.
+reads: ``**Q-5 · 澄清 · RUN-PAY-3-1** · 提交 <sha12> · park <hash12> · 需要 @… 回答``, or D-5 as a bridge before
+brain-kit 81380eb asked it; a question of an older bridge without commit and park counts for nothing and is asked
+again), their answers, stale (a new push), void (not bound to its push or park.json, or its question note deleted),
+refused (the signer would not sign the answer), answered (the bridge has the answer but could not sign it this round:
+it sends it later, nobody answers again) and invalid ones, and the hand-over refusal. The bridge's 「变更说明」 comment
+(brain-kit 48b6b97: runs/<KEY>/MR.md posted before an acceptance question, first line ``decisions.DESC_TITLE``) is none
+of these and is skipped whole: the MR.md text in it is the run's, whatever it looks like.
 Only the notes of the bridge's account count when kit.json names it (``bridge_user``): a look-alike posted by a person
 is not a question. The token never leaves brain-kit's GitLab client: it is not logged, stored or returned. Refreshed
 in the background (``refresh``), at most every TTL_S per MR; the overview only reads the cache.
@@ -36,21 +36,24 @@ from typing import Any
 from urllib.parse import quote
 
 from . import bk, problems
+from .constants import QUESTION_ID
 
 TTL_S = 60.0
 MAX_PIPELINES = 20     # the MR's newest pipelines read per refresh (one page)
 FINISHED = ("success", "failed", "canceled", "skipped")
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 # the answerer: a GitLab username (brain-kit's decisions.USER), as the bridge writes it (lower case)
-DELIVERED_FMT = r"^(D-[1-9][0-9]*) 已收到 @(%s) 的回答：([A-Za-z]+)[^（(]*[（(]凭证 (V-[0-9a-f]{10})"
-VOID_RE = re.compile(r"^(D-[1-9][0-9]*) 作废(：|（)")      # 作废：a new push (stale); 作废（why）: not bound (void)
-REFUSED_RE = re.compile(r"^(D-[1-9][0-9]*) 的回答没有送回 run：签名服务不签")
+DELIVERED_FMT = r"^(" + QUESTION_ID + r") 已收到 @(%s) 的回答：([A-Za-z]+)[^（(]*[（(]凭证 (V-[0-9a-f]{10})"
+VOID_RE = re.compile(r"^(%s) 作废(：|（)" % QUESTION_ID)      # 作废：a new push (stale); 作废（why）: not bound (void)
+REFUSED_RE = re.compile(r"^(%s) 的回答没有送回 run：签名服务不签" % QUESTION_ID)
 # DecisionLoop._tell_not_signed: 「…没能签名…」, 0d52e97 also 「…没能把签好的回答存进 brain-intake…」
-NOT_SIGNED_RE = re.compile(r"^(D-[1-9][0-9]*) 收到了回答，但桥这一轮没能")
+NOT_SIGNED_RE = re.compile(r"^(%s) 收到了回答，但桥这一轮没能" % QUESTION_ID)
 # 0d52e97: GitLab GraphQL cannot say whether a reply was edited: the answer waits (not counted, not lost)
-HELD_RE = re.compile(r"^(D-[1-9][0-9]*)：GitLab 现在查不到回复有没有被别人改过")
-DELIVERY_UNKNOWN_RE = re.compile(r"^(D-[1-9][0-9]*) 的回答（凭证 (V-[0-9a-f]{10})）不知道送到 run 没有")
-INVALID_RE = re.compile(r"^(D-[1-9][0-9]*) 无法发出")
+HELD_RE = re.compile(r"^(%s)：GitLab 现在查不到回复有没有被别人改过" % QUESTION_ID)
+DELIVERY_UNKNOWN_RE = re.compile(r"^(%s) 的回答（凭证 (V-[0-9a-f]{10})）不知道送到 run 没有" % QUESTION_ID)
+INVALID_RE = re.compile(r"^(%s) 无法发出" % QUESTION_ID)
+# an item of an acceptance question's checklist (brain-kit's question_text: 「- [ ] D-7 …」, ticked 「- [x]」)
+REVIEW_ITEM_RE = re.compile(r"^- \[[ xX]\] ([AD]-[1-9][0-9]{0,3}) ", re.M)
 REJECT_HEAD = "AI 接手被拒"
 RUN = r"(RUN-[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}-[1-9][0-9]{0,5})"
 # the run's own notes (brain-kit 0d52e97 handoff.py, delivery.py, decisions.py), newest first wins: (rx, kind, text)
@@ -95,6 +98,24 @@ def runner_note(first: str, at: Any = None) -> dict[str, Any] | None:
             g = {k: (v or "")[:120] for k, v in m.groupdict().items()}
             return {"kind": kind, "text": text.format(**g), "raw": first[:500], "at": at}
     return None
+
+
+def same_question(named: str, did: str) -> bool:
+    """brain-kit 81380eb's decisions.same_question: one ledger counts D-<n> and Q-<n> alike, so `answer D-12`, the way
+    people answered before the bridge asked Q-<n>, names question Q-12. The app runs on a brain-kit before 81380eb
+    too, which has none."""
+    return int(named.split("-", 1)[1]) == int(did.split("-", 1)[1])
+
+
+def answers(reply: str, question: dict[str, Any], body: str) -> bool:
+    """Does the first line *reply* answer *question* (parse_notes) whose note is *body*, as brain-kit's check_answer
+    reads replies: `answer <id> …` naming the question (same_question), except a D-<n> that is one of an acceptance
+    question's review items."""
+    m = bk.m("bridge.decisions").ANSWER_RE.match(reply)
+    if not m or not same_question(m.group(1), question["id"]):
+        return False
+    review = REVIEW_ITEM_RE.findall(body.rsplit("```", 1)[-1]) if question.get("kind") == "acceptance" else []
+    return m.group(1).upper() == question["id"] or m.group(1).upper() not in review
 
 
 def parse_notes(notes: list[dict[str, Any]], bridge_user: str | None = None) -> dict[str, Any]:
