@@ -1359,6 +1359,42 @@ def test_the_adapter_says_refused_only_when_kiro_crew_answered_no(bk):
     assert refused == [True] * 4 + [False] * 6
 
 
+def test_a_run_s_message_is_held_for_trust_only_when_kiro_crew_refuses_the_app_session_approval(bk):
+    """brain-kit's delivery holds a message the run's slot could not be set to trust for (TrustRefused) and tells
+    the MR to grant the bridge's app sessionApproval. Only KiroCrew's 403 session_approval_not_granted is that: a slot
+    this app did not open for the bridge (409 not_a_runner_slot), one KiroCrew does not have (404), KiroCrew asking to
+    slow down (429) or another 403 is an ordinary error, which the delivery settles by reading the slot. Nothing is
+    sent after a failed trust call."""
+    crew, err = mod("team.crewadapter"), bk.brain_error()
+    trust_refused = bk.m("bridge.kirocrew").TrustRefused
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    answer, sent = {}, []
+
+    async def trust(_name):
+        raise answer["exc"]
+
+    async def send(*args):
+        sent.append(args)
+        return {"ok": True}
+    kc = crew.KiroCrewAdapter(loop, SimpleNamespace(app="brain", adapter_trust=trust, adapter_send=send), err)
+    held = []
+    try:
+        for exc in (GatewayError(403, 'App "brain" cannot approve tool requests …', "session_approval_not_granted"),
+                    GatewayError(409, "会话 run-pay-1-1 不是桥开的", "not_a_runner_slot"),
+                    GatewayError(404, "no such slot", "slot_not_found"), GatewayError(429, "slow down", "rate_limited"),
+                    GatewayError(403, "not yours", "folder_not_owned")):
+            answer["exc"] = exc
+            with pytest.raises(err) as got:
+                kc.send("run-pay-1-1", "决策 Q-1 已答", "V-1")
+            held.append(isinstance(got.value, trust_refused))
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(5)
+    assert held == [True, False, False, False, False] and sent == []
+
+
 def test_patrol_s_own_reply_answers_a_review_thread_while_the_mr_s_pipeline_failed(bk, tmp_path):
     """The session replies in a review thread and its turn fails; the pipeline is run again and fails again. The next
     dispatch is about the pipeline only: patrol's reply answered the note, a failed pipeline or not."""
