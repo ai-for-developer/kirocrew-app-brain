@@ -22,7 +22,7 @@ import pytest
 import signinfix
 from appkit import mod, sh
 from brainfix import FakeGateway, make_service, needs_brainkit, run
-from teamfix import BRANCH, PARK, push_park, spool_request, world  # noqa: F401  (world: the fixture)
+from teamfix import BRANCH, PARK, commit_push, push_park, spool_request, world  # noqa: F401  (world: the fixture)
 
 pytestmark = [needs_brainkit, pytest.mark.skipif(subprocess.run(["which", "ssh-keygen"], capture_output=True).returncode,
                                                  reason="ssh-keygen not found")]
@@ -124,6 +124,160 @@ def test_hand_over_dispatch_question_and_answer_through_the_separate_signer(worl
     # stop closed brain-kit's ledger
     with pytest.raises(Exception):
         seen["host"].ledger.db.execute("SELECT 1")
+
+
+SLOT = "run-pay-1-1"
+LONG_AGO = "2026-11-08T10:00:00Z"       # the newest row of a turn that ended long ago: past bridge.json stall_minutes
+
+
+def ended(text, at=LONG_AGO):
+    """A session turn's last rows: its reply, written at *at*."""
+    return [{"role": "assistant", "content": text, "meta": {}, "ts": at}]
+
+
+async def rounds(svc, n=1):
+    """*n* team rounds, each without an error."""
+    for _ in range(n):
+        got = await svc.team_loop()
+        assert got["ok"], got
+
+
+def resumes(gw):
+    return [m["content"] for m in gw.msgs[SLOT] if m["role"] == "user" and m["content"].startswith("会话中断：")]
+
+
+def test_a_session_turn_cut_off_before_its_push_is_told_to_go_on_then_a_person_is(world, tmp_path):
+    """RUN-REQ-2-1: KiroCrew restarted mid-turn, the session's slot idle with its work uncommitted, the bridge never
+    noticed. Each round reads every dispatched run's slot: idle, nothing queued or on its way to it, no question at the
+    MR head, not done, and quiet for bridge.json stall_minutes, the session is told to go on (trust set again first,
+    since a restart ends it); once more if that does not help; then the MR tells a person, once."""
+    gw = FakeGateway()
+    gw.script = [ended("开始写代码", "2099-01-01T00:00:00Z"), ended("好"), ended("好")]
+    svc = service(world, tmp_path, gw)
+    gl = world["gl"]
+    seen = {}
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # handed over, dispatched: the hand-over message sent
+            seen["head"] = gl.head()
+            gw.finish(SLOT)                             # its newest row just now: not quiet yet
+            await rounds(svc)
+            seen["early"] = resumes(gw)
+            gw.slot_rows[SLOT]["_pending"] = ended("我在改 src/refund.py")
+            gw.finish(SLOT)                             # KiroCrew stopped the turn long ago, nothing pushed
+            gw.slot_rows[SLOT]["trust"] = False         # and its restart ended trust
+            await rounds(svc)
+            seen["first"] = resumes(gw)
+            seen["trust"] = gw.slot_rows[SLOT]["trust"]
+            seen["sends"] = [c for c in gw.calls if c[0] in ("trust", "send")][-2:]
+            seen["sid"] = (gw.msgs[SLOT][-1].get("meta") or {}).get("sendId")
+            await rounds(svc)                           # its turn is still going: nothing more
+            seen["going"] = len(resumes(gw))
+            gw.finish(SLOT)                             # ... and ended without a push
+            await rounds(svc)
+            seen["second"] = len(resumes(gw))
+            seen["told_early"] = [b for b in gl.bodies() if "会话停住了" in b]
+            gw.finish(SLOT)
+            await rounds(svc, 2)
+        finally:
+            await svc.stop()
+
+    run(go())
+    assert seen["early"] == []
+    (first,) = seen["first"]
+    assert "提交并推送" in first and seen["head"][:12] in first and seen["trust"] is True
+    assert seen["sends"] == [("trust", SLOT), ("send", SLOT, seen["sid"])]
+    assert seen["going"] == 1 and seen["second"] == 2 and seen["told_early"] == []
+    assert len(resumes(gw)) == 2
+    (told,) = [b for b in gl.bodies() if "会话停住了" in b]
+    assert told.startswith("RUN-PAY-1-1 的会话停住了") and SLOT in told and "2 次" in told, told
+
+
+def test_a_session_that_parked_or_still_works_is_not_told_to_go_on(world, tmp_path):
+    """Idle after it parked (its question on the MR waits for a person), or at work however long: no message. One at
+    work and quiet for stall_minutes is brain-kit's watchdog's (delivery.tell_if_stalled, on once the slot's activity
+    can be read): the MR hears it once."""
+    gw = FakeGateway()
+    gw.script = [ended("等待决策，不继续")]
+    svc = service(world, tmp_path, gw)
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc, 2)                        # at work since the hand-over, quiet for a long time
+            push_park(world["runs_root"] / "RUN-PAY-1-1", PARK)
+            gw.finish(SLOT)
+            await rounds(svc, 3)
+        finally:
+            await svc.stop()
+
+    run(go())
+    assert any(b.startswith("**D-1 · 澄清 · RUN-PAY-1-1**") for b in world["gl"].bodies())
+    assert resumes(gw) == [] and not [b for b in world["gl"].bodies() if "会话停住了" in b]
+    (quiet,) = [b for b in world["gl"].bodies() if "没有动静" in b]
+    assert quiet.startswith("RUN-PAY-1-1 已经") and "还在跑" in quiet, quiet
+
+
+ACCEPTANCE = {"schema": 1, "status": "waiting", "kind": "acceptance", "ask": "product", "question": "可以验收了吗？",
+              "options": [], "lean_request": "RELEASE 1234abcd"}
+
+
+def test_a_run_accepted_and_done_says_who_merges_it_and_its_label_goes_at_the_merge(world, tmp_path):
+    """MR !6: after the product's RELEASE approval and the session's last push nothing said the MR could be merged, it
+    kept ai-running after the merge, and the pages said 运行机在跑. Once the session is idle with its records pushed,
+    the MR hears once that it can be merged and that alice merges it, its label is ai-ready-to-merge instead of
+    ai-running, the runner's row and the project's snapshot say it waits for alice to merge, and the merge takes the
+    label off."""
+    import time
+    snapshot = mod("snapshot")
+    gw = FakeGateway()
+    gw.script = [ended("写好了，请验收"), ended("验收通过，记好了")]
+    svc = service(world, tmp_path, gw)
+    gl = world["gl"]
+    ws = world["runs_root"] / "RUN-PAY-1-1"
+    seen = {}
+
+    def ready():
+        return [b for b in gl.bodies() if "可以合并了" in b]
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # dispatched
+            push_park(ws, ACCEPTANCE)
+            gw.finish(SLOT)
+            await rounds(svc)                           # D-1, the acceptance question
+            gl.note("carol", "answer D-1 approve")
+            await rounds(svc)                           # the approval reaches the session, whose turn records it
+            seen["before"] = (ready(), list(gl.labels))
+            commit_push(ws, {"runs/PAY-1/park.json": dict(ACCEPTANCE, status="answered")}, "PAY-1: accepted (D-1)")
+            gw.finish(SLOT)
+            await rounds(svc)
+            seen["row"] = (await svc.overview("runner"))["rows"][0]
+            rt = svc.team
+            seen["snap"] = snapshot.parse(rt.snapshot_of("grp/repo", time.time(), time.monotonic() + 20, None,
+                                                         rt._shared()))["runner"]["handovers"]
+            await rounds(svc)
+            seen["labels"] = list(gl.labels)
+            gl.state = "merged"
+            await rounds(svc, 2)
+        finally:
+            await svc.stop()
+
+    run(go())
+    assert seen["before"][0] == [] and "ai-running" in seen["before"][1]
+    (told,) = ready()
+    assert told.startswith("RUN-PAY-1-1 做完了") and "@alice" in told and "D-1" in told, told
+    assert "ai-ready-to-merge" in seen["labels"] and "ai-running" not in seen["labels"]
+    row = seen["row"]
+    w = row["waits"]
+    assert (row["state"], row["state_label"], w["who"], w["do"], w["where"]) == ("to_merge", "等合并", "people", "merge", "mr")
+    assert w["text"] == "验收通过了：等 alice 在 GitLab 上合并"
+    (h,) = seen["snap"]
+    assert (h["waits"]["text"], h["waits"]["do"], h["waits"]["on"]) == (w["text"], "merge", ["alice"])
+    assert "ai-ready-to-merge" not in gl.labels and "ai-running" not in gl.labels
 
 
 def test_the_page_says_what_the_bridge_made_of_each_labelled_mr(world, tmp_path):

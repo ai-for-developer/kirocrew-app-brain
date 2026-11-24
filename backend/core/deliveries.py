@@ -15,11 +15,14 @@ import time
 from typing import Any
 
 from . import bk, deploys_view, fastrow, flowview, lean_view
+from .constants import MERGE_LABEL
 
+# to_merge: the product accepted a run on the team runner and its session is done: a person merges the MR
 STATE_LABEL = {"claimed": "已认领", "local": "本地开发中", "handed_over": "已交接", "rejected": "接手被拒",
-               "running": "运行机在跑", "parked": "停下等回答", "acceptance": "等验收", "merged": "已合并",
-               "closed": "已关闭", "unclaimed": "待认领", "merged_into_parent": "已合进大需求"}
-OPEN_STATES = ("claimed", "local", "handed_over", "running", "parked", "acceptance", "rejected", "unclaimed")
+               "running": "运行机在跑", "parked": "停下等回答", "acceptance": "等验收", "to_merge": "等合并",
+               "merged": "已合并", "closed": "已关闭", "unclaimed": "待认领", "merged_into_parent": "已合进大需求"}
+OPEN_STATES = ("claimed", "local", "handed_over", "running", "parked", "acceptance", "to_merge", "rejected",
+               "unclaimed")
 # the columns of 需求流动 (ui/src/cto/Flow.tsx COLS), as 交付总览 names them: a requirement's stage on its way
 FLOW_STAGES = ("需求", "设计", "构建", "交给运行机", "发布 · 验收", "已合并")
 RUNNER_STATES = ("handed_over", "running", "rejected")
@@ -293,6 +296,8 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
         lean_req = q.get("lean_request") or (park or {}).get("lean_request")
         return put("parked", who, "answer", mr_ask(who, KIND_LABEL.get(kind, kind), did, approval=bool(lean_req),
                                                    owner=None if mine else owner), where="mr", since=since)
+    if MERGE_LABEL in labels:       # the team runner said on the MR that its run is accepted and done
+        return put("to_merge", you, "merge", merge_text(them), where="mr", since=f.get("tip_at"))
     if cfg.get("running_label") in labels or bot_commits:
         if note and note["kind"] in RUNNING_NOTES:      # e.g. the acceptance question held until CI is green
             return put("running", RUNNING_NOTES[note["kind"]], "none", note["text"][:200],
@@ -305,6 +310,11 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
         return put("handed_over", WAITING_NOTES[note["kind"]], "none", note["text"][:200],
                    raw=str(note.get("raw") or "")[:2000], since=lean_view.epoch(note.get("at")))
     return put("handed_over", "bridge", "none", "等桥核对交接", since=f.get("tip_at"))
+
+
+def merge_text(them: str) -> str:
+    """A run the product accepted, its session done, said as what waits: 「验收通过了：等 alice 在 GitLab 上合并」."""
+    return spaced("验收通过了：等", them, "在 GitLab 上合并")
 
 
 def approve_text(a: dict[str, Any], them: str = "你") -> str:
@@ -389,6 +399,7 @@ NOTICE_KIND = {
     "gaveup": ("gaveup", "people", "消息送了 3 次都没进会话：桥接着送，一直不行就看一下 KiroCrew"),
     "failed": ("failed", "people", "没能开始：MR 上写了原因，处理好以后重新交接"),
     "nobody": ("nobody", "people", "问题发不出：没人能回答这类决定（要在 brain-kit 设置里配上谁来回答）"),
+    "ready": ("ready", "people", "验收通过了，会话也做完了：MR 上说了可以合并、谁来合并"),       # team/runwatch.py
     "edits-down-told": ("held", "bridge", "%s 的回答先等着：GitLab 查不到回复有没有被改过（不用重新回复）"),
 }
 OUTBOX_WHAT = {"handover": "接手消息", "answer": "%s 的回答", "notice": "给运行机的通知"}
@@ -490,6 +501,9 @@ def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[
         # that landed, never one that did not, so it does not send it again by itself
         return put("running", "people", "none",
                    "不知道接手消息送到运行机没有：桥每轮看一下它的会话，看到了就接着做；一直这样就要人去 KiroCrew 看一下")
+    if "ready" in latest:       # accepted, its session done, and its MR told so (team/runwatch.py)
+        return put("to_merge", "people", "merge", merge_text(str(row.get("owner") or "人")), where="mr",
+                   since=latest["ready"].get("at"))
     if open_d:
         d = open_d[-1]
         since = lean_view.epoch(d.get("created"))
@@ -786,7 +800,7 @@ def flow_stage(row: dict[str, Any]) -> str | None:
         return "已合并"
     if row.get("flow") and not row["flow"]["intent"]:
         return "发布 · 验收" if row.get("mr") else "构建"
-    if st == "acceptance":
+    if st in ("acceptance", "to_merge"):
         return "发布 · 验收"
     if st == "unclaimed":
         return "构建"

@@ -140,6 +140,13 @@ class FakeGateway:
         """KiroCrew 0.11.2: the newest *limit* rows, never more than 500."""
         return list(self.msgs[key])[-min(limit, 500):]
 
+    async def slot(self, key, limit=1):
+        """KiroCrew 0.12.0's read of one slot: its newest *limit* rows, whether a turn runs, what is queued."""
+        if key not in self.slot_rows:
+            raise GatewayError(404, "no such slot", "slot_not_found")
+        return {"key": key, "running": bool(self.slot_rows[key]["running"]), "queue": [],
+                "messages": list(self.msgs[key])[-min(limit, 500):]}
+
     async def page(self, key, before=None, limit=500):
         """KiroCrew 0.11.2's paged read: at most 500 rows ending at row *before*; where the page before them ends."""
         rows = self.msgs[key]

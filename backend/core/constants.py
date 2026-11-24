@@ -18,6 +18,10 @@ RUNNER_FOLDER = "Brain 运行机"     # brain-run sessions the team runner dispa
 LOCAL_AGENT = "brain-dev-crew"
 OLD_AGENT = "brain-dev"            # what sessions were opened with before: those keep working
 RUNNER_AGENT = "brain-run"         # ~/.kiro/agents/brain-run.json on the team runner
+# the label of an MR whose run on the team runner the product accepted and whose session is done: a person merges it
+# (team/runwatch.py puts it on in place of kit.json running_label and takes it off at the merge; brain-kit's labels
+# have none for it, BRAINKIT_REQUESTS 50)
+MERGE_LABEL = "ai-ready-to-merge"
 
 # KiroCrew lets an agent work only under ~/workspace(s) or ~/workplace(s): every requirement's worktree lives here.
 WORK_ROOT = _Path.home() / "workplace" / "brain-app"

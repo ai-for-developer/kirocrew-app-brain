@@ -396,6 +396,40 @@ def test_the_bridges_change_description_note_is_none_of_its_status_notes(decisio
     assert got["rejected_reason"] is None
 
 
+def test_a_runner_run_accepted_and_done_waits_for_its_owner_to_merge():
+    """MR !6: after the RELEASE approval and the session's last push the pages said 运行机在跑. On the team runner the
+    ledger's notice that the MR heard it can be merged (team/runwatch.py) makes the row 等合并, on its owner by name;
+    on a person's machine and in 全队交付 the MR's label ai-ready-to-merge does, on them (你) or on the owner; the
+    merge ends it as before."""
+    relay = mod("team.relay")
+    r = {"state": "", "state_label": "", "waits": {}, "open_questions": [], "owner": "alice"}
+    told = deliveries.team_note({"key": "ready:RUN-PAY-1-1", "state": "told", "updated": "2026-11-23T08:30:00Z"})
+    accepted = [{"id": "D-9", "state": "delivered", "kind": "acceptance", "answer": "approve"}]
+    deliveries.team_classify(r, {"state": "dispatched", "run_id": "RUN-PAY-1-1"}, accepted, {"status": "answered"},
+                             notes=[told])
+    w = r["waits"]
+    assert (r["state"], r["state_label"], w["who"], w["do"], w["where"]) == ("to_merge", "等合并", "people", "merge", "mr")
+    assert w["text"] == "验收通过了：等 alice 在 GitLab 上合并" and w["since"] is not None
+    assert relay.on_names(r, None, {}) == ["alice"] and deliveries.flow_stage(dict(r, lean={}, mr=None)) == "发布 · 验收"
+    r = {"state": "", "state_label": "", "waits": {}, "open_questions": [], "owner": "alice"}
+    deliveries.team_classify(r, {"state": "dispatched", "run_id": "RUN-PAY-1-1"}, accepted, {"status": "answered"})
+    assert r["state"] == "running"          # accepted, its session still recording it: not said before the MR is
+    cfg = {"handoff_label": "ai-handoff", "running_label": "ai-running", "rejected_label": "ai-handoff-rejected"}
+    f = {"run": {"handoff": {"local_head": "a" * 40}}, "tip": "b" * 40, "park": {"status": "answered"}, "approvals": [],
+         "claim": None, "owner": "alice"}
+    for me, who, text in (("alice", "you", "验收通过了：等你在 GitLab 上合并"), ("bob", "people", w["text"]),
+                          (None, "people", w["text"])):
+        row = {"state": "", "state_label": "", "waits": {}}
+        mr = {"state": "opened", "labels": ["ai-ready-to-merge"], "sha": "b" * 40, "questions": []}
+        deliveries.classify(row, f, mr=mr, slot=None, cfg=cfg, me=me, bot_commits=3)
+        assert (row["state"], row["waits"]["who"], row["waits"]["do"], row["waits"]["text"]) == (
+            "to_merge", who, "merge", text), (me, row)
+    row = {"state": "", "state_label": "", "waits": {}}
+    deliveries.classify(row, f, mr={"state": "merged", "labels": ["ai-ready-to-merge"], "sha": "b" * 40, "questions": []},
+                        slot=None, cfg=cfg, me="alice", bot_commits=3)
+    assert row["state"] == "merged"
+
+
 def test_asking_is_a_question_not_on_the_mr_yet():
     """brain-kit 72b278e: 'asking' (one bridge process posting the question right now) is like 'posting'."""
     r = {"state": "", "state_label": "", "waits": {}, "open_questions": []}

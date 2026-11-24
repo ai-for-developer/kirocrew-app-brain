@@ -30,6 +30,16 @@ USERS = {"alice": 11, "bob": 12, "rita": 13, "carol": 14}
 LEVELS = {"alice": 30, "bob": 30, "rita": 20, "carol": 40}      # Developer, Developer, Reporter, Maintainer
 RUNNER = {"GIT_AUTHOR_NAME": "brain-bot", "GIT_AUTHOR_EMAIL": "brain-bot@noreply.invalid",
           "GIT_COMMITTER_NAME": "brain-bot", "GIT_COMMITTER_EMAIL": "brain-bot@noreply.invalid"}
+CHECKS = ["python3 -c pass"]        # lean.json's checks: Lean's template has none, and then lean verify cannot pass
+
+
+def set_checks(repo, checks, msg):
+    """aidlc-docs/lean.json's checks in *repo*, committed on its branch (a person's commit: lean.json is theirs)."""
+    path = repo / "aidlc-docs" / "lean.json"
+    cfg = json.loads(path.read_text(encoding="utf-8"))
+    if cfg.get("checks") != checks:
+        path.write_text(json.dumps(dict(cfg, checks=checks), indent=2), encoding="utf-8")
+        sh("git", "-C", repo, "commit", "-q", "-am", msg)
 
 
 class IssueGitLab:
@@ -272,13 +282,15 @@ class IssueGitLab:
                 "committer_name": f[4], "committer_email": f[5]}
 
 
-def make_issue_world(tmp_path, home, monkeypatch, *, kit_extra=None):
-    """The project (prefix PAY) on origin with issue-label on, issue #3 filed by carol, the bridge.json, runnerd.json and
-    signer of a same-user runner, and brain-authz naming alice, bob and carol (rita is not in it)."""
+def make_issue_world(tmp_path, home, monkeypatch, *, kit_extra=None, checks=CHECKS):
+    """The project (prefix PAY) on origin with issue-label on and *checks* in its lean.json, issue #3 filed by carol,
+    the bridge.json, runnerd.json and signer of a same-user runner, and brain-authz naming alice, bob and carol (rita
+    is not in it)."""
     kit = {"gitlab": {"base": BASE, "project": P}, "bot_users": ["brain-bot"], "bot_emails": ["brain-bot@noreply.invalid"],
            "bridge_user": "brain-bridge", "work_sources": ["mr-handoff", "issue-label"]}
     kit.update(kit_extra or {})
     repo = make_project(tmp_path, name="repo", origin=True, kit=kit)
+    set_checks(repo, checks, "lean verify runs the tests")
     sh("git", "-C", repo, "push", "-q", "origin", "main")
     bare = tmp_path / "repo-origin.git"
     gl = IssueGitLab(bare)

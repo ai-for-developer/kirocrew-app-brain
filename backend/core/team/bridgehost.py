@@ -25,6 +25,8 @@ patched or subclassed. What the app changes:
   voucher, so its late signature is taken. brain-kit's poll returns nothing (BRAINKIT_REQUESTS 27). A project whose
   kit.json work_sources leaves mr-handoff out (sources.py) is not polled, and one that cannot be read holds up none
   after it: the status' checks say which;
+- runs: after reconcile, what brain-kit's watch leaves out (team/runwatch.py): a session that went idle owing a push
+  is told to go on, then its MR tells a person;
 - issues: right after poll, the issues labelled for Brain (team/issues.py, work source issue-label) are claimed, given
   a start commit, an MR and a start contract, which the signer checks like a hand-over's and the bridge then runs as
   one: runnerd, dispatch and the questions in the same round;
@@ -64,6 +66,7 @@ from . import issues as issues_mod
 from . import left as left_mod
 from . import patrol as patrol_mod
 from . import relay as relay_mod
+from . import runwatch as runwatch_mod
 from . import signerproc, sources
 from . import staging as staging_mod
 from .crewadapter import KiroCrewAdapter
@@ -151,6 +154,7 @@ class TeamRuntime:
         self.patrol: patrol_mod.Patrol | None = None
         self.staging: staging_mod.StagingWatch | None = None
         self.issues: issues_mod.IssueSource | None = None
+        self.runs: runwatch_mod.RunWatch | None = None
         self.cfg: dict[str, Any] = {}
         self.runnerd_cfg: dict[str, Any] | None = None
         self.spool = ""
@@ -249,13 +253,15 @@ class TeamRuntime:
                 ledger_path=os.path.join(os.path.dirname(config), "issues.sqlite"),
                 clones=issues_mod.Clones.of(rcfg) if rcfg and rcfg.get("runs_root") and rcfg.get("clone_url") else None,
                 claims=lambda: sources.held(self), out=self._out)
+            self.runs = runwatch_mod.RunWatch(self.host, out=self._out)
             self.relay, self.deliveries = self._relay(cfg, gl, rcfg, config)
             self.cfg, self.runnerd_cfg, self.spool, self.allowed_signers, self.gl = cfg, rcfg, spool, allowed, gl
             self.error = ""
             return True
         except Exception as exc:  # noqa: BLE001
             self.error = str(exc).split("\n", 1)[0][:400]
-            self.host = self.patrol = self.staging = self.issues = self.relay = self.deliveries = self.gl = None
+            self.host = self.patrol = self.staging = self.issues = self.runs = self.relay = self.deliveries = None
+            self.gl = None
             return False
 
     def _relay(self, cfg: dict[str, Any], gl: Any, rcfg: dict[str, Any] | None,
@@ -302,8 +308,8 @@ class TeamRuntime:
     # ---- one round ------------------------------------------------------------------------------------ #
 
     def loop_once(self) -> dict[str, int]:
-        """poll, issues, runnerd, dispatch, watch, collect, reconcile, patrol, staging, then 状态中转; one bad step does
-        not stop the others."""
+        """poll, issues, runnerd, dispatch, watch, collect, reconcile, runs, patrol, staging, then 状态中转; one bad step
+        does not stop the others."""
         host = self.host
         if host is None:
             raise RuntimeError(self.error or "运行机模式没有启动")
@@ -319,8 +325,13 @@ class TeamRuntime:
                 self._leave(host)
             except Exception as exc:  # noqa: BLE001 - said as a step's; the round goes on
                 errors.append(self._failed("left", exc))
-            for step in ("poll", "issues", "runnerd", "dispatch", "watch", "collect", "reconcile", "patrol", "staging"):
+            for step in ("poll", "issues", "runnerd", "dispatch", "watch", "collect", "reconcile", "runs", "patrol",
+                         "staging"):
                 try:
+                    if step == "runs":
+                        if self.runs is not None:
+                            summary["resumed"] = self.runs.round()
+                        continue
                     if step == "issues":
                         if self.issues is not None:
                             summary["issues"] = self.issues.round()

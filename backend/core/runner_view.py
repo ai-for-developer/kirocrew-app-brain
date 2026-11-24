@@ -31,6 +31,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Mapping, NamedTuple
 
 from . import bk, mrinfo, snapshot
+from .constants import MERGE_LABEL
 from .team import patrol
 
 RECENT_S = 24 * 3600
@@ -168,7 +169,7 @@ def read(gl: Any, project: str, kit: Mapping[str, Any], now: float) -> tuple[lis
 def seen_of(mrs: list[Mr], notes: Mapping[int, list[Any]], *, kit: Mapping[str, Any], bridge_user: str,
             me: str | None, now: float) -> Seen:
     bridge, running = bridge_user.lower(), str(kit.get("running_label") or "")
-    hand = {str(kit.get(k) or "") for k in HAND_LABELS} - {""}
+    hand = ({str(kit.get(k) or "") for k in HAND_LABELS} | {MERGE_LABEL}) - {""}
     at_work: list[AtWork] = []
     waiting: list[Waiting] = []
     acts: list[float] = []

@@ -1,19 +1,23 @@
-"""brain-kit's KiroCrew client surface (bridge/kirocrew.py: create_slot, set_project, send, slot, stop), served by
-the app's own session runner instead of brain-kit's HTTP client: the runner's sessions are opened like every other
-session of the app (gateway.py, the app token, sessionApproval), sit in the sidebar under 「Brain 运行机」, and count
-their credits. MR 巡检 (team/patrol.py) has a surface of its own (open_patrol … patrol_stop) on its own slot names, and
-测试环境报错's fix sessions (team/staging.py) use it on theirs (staging-…): patrol_project and patrol_send raise
-patrol.Refused when KiroCrew answered no (nothing went in), BrainError when it did not answer (a message may then have
-landed).
+"""brain-kit's KiroCrew client surface (bridge/kirocrew.py: create_slot, set_project, send, slot, activity, stop),
+served by the app's own session runner instead of brain-kit's HTTP client: the runner's sessions are opened like every
+other session of the app (gateway.py, the app token, sessionApproval), sit in the sidebar under 「Brain 运行机」, and
+count their credits. MR 巡检 (team/patrol.py) has a surface of its own (open_patrol … patrol_stop) on its own slot
+names, and 测试环境报错's fix sessions (team/staging.py) use it on theirs (staging-…): patrol_project and patrol_send
+raise patrol.Refused when KiroCrew answered no (nothing went in), BrainError when it did not answer (a message may then
+have landed).
 
 The bridge loop runs in a worker thread and calls these synchronously; each call runs on the gateway's event loop
 (``run_coroutine_threadsafe``) and waits for its answer. A failure is raised as brain-kit's BrainError, which the
 bridge already handles (setup failures are retried, a send whose outcome is unknown is never repeated).
 
-What a turn does: brain-kit's ``slot()`` answers the newest messages only, without ``running`` or the queue, and there
-is no ``activity()``. So brain-kit's bridge sees a send that landed but never one that did not, and its stall
-watchdog is off. patrol_turn() answers from the session runner instead: every message sent through it is a turn it
-polls (sessions.py), which ends once the slot is idle twice in a row with the reply in.
+What a turn does: brain-kit's ``slot()`` answers the newest messages only, without ``running`` or the queue, so
+brain-kit's bridge sees a send that landed but never one that did not. ``activity()`` is brain-kit's own (KiroCrew's
+read of the slot with its newest row, through brain-kit's slot_activity), with ``queued`` added: brain-kit's stall
+watchdog (delivery.tell_if_stalled) reads it, and so does team/runwatch.py for a session that went idle before its
+push. ``send()`` sets the slot to trust before each message, as brain-kit's client does: KiroCrew keeps trust in
+memory, so a restart ends it, and nobody is at the runner to approve a tool call. patrol_turn() answers from the
+session runner instead: every message sent through it is a turn it polls (sessions.py), which ends once the slot is
+idle twice in a row with the reply in.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ import concurrent.futures
 import re
 from typing import Any
 
+from .. import bk
 from ..constants import RUNNER_FOLDER
 from ..gateway import GatewayError
 from .patrol import Refused
@@ -72,14 +77,27 @@ class KiroCrewAdapter:
         return self._run(self.mgr.adapter_set_project(name, path))
 
     def send(self, name: str, message: str, send_id: str) -> dict[str, Any]:
+        """Trust for the slot, then the message. KiroCrew refusing trust is brain-kit's TrustRefused: nothing was sent
+        (its delivery holds the message and tells the MR what to do)."""
         if not SEND_ID_RE.match(send_id or ""):
             raise self.BrainError("sendId must match [A-Za-z0-9_-]{1,128}")
         self._ours(name)
+        self._run(self.mgr.adapter_trust(name), bk.m("bridge.kirocrew").TrustRefused)
         return self._run(self.mgr.adapter_send(name, message, send_id))
 
     def slot(self, name: str) -> dict[str, Any]:
         self._ours(name)
         return self._run(self.mgr.adapter_slot(name))
+
+    def activity(self, name: str) -> dict[str, Any] | None:
+        """brain-kit's slot_activity of the slot's newest row (running, last_at, last_role, last_id), and queued: a
+        message waits behind the turn, or a tool call for a click; None when KiroCrew's read does not say."""
+        self._ours(name)
+        data = self._run(self.mgr.adapter_activity(name))
+        a = bk.m("bridge.kirocrew").slot_activity(data)
+        if a is not None:
+            a["queued"] = bool(data.get("queue") or data.get("queue_depth") or data.get("pending_approval"))
+        return a
 
     def stop(self, name: str) -> dict[str, Any]:
         self._ours(name)

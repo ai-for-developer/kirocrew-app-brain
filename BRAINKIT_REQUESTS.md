@@ -214,6 +214,29 @@ Lean timeline follow them when trace is missing), `decisions.USER` (the MR reade
     the issue and nothing more (`pre_receive.py`, the bot and run.json rules; a test that refuses every neighbouring
     shape); `run_owner` finds the owner of a bot-made start in brain-authz (`ci.py`), so people can commit on the
     branch. Until then the app's issue source is for projects with those checks off.
+49. **A session that stopped mid-turn** (new, the app's `team/runwatch.py`). `Delivery.tell_if_stalled` looks at a
+    session at work only: an idle one it leaves alone, since a session that parked or finished is idle too. A turn
+    KiroCrew stopped half-way (a restart, a provider shutdown) leaves an idle session that is neither, its work
+    uncommitted in the workspace, and nothing moves again (RUN-REQ-2-1 waited 20 hours). The app now gives its adapter
+    `activity()` (brain-kit's `slot_activity`, plus `queued`), which turns brain-kit's watchdog on, and does the idle
+    case itself after `reconcile`: a dispatched run whose slot is idle (not running, nothing queued, no permission
+    row), with no outbox row in flight, no decision at the MR head in posting, asking, open, held, answered,
+    delivery_unknown or refused, and either its newest `sent` outbox row about the head (its `sha`) or the head the one
+    the bridge last read (`last_sha`) with no decision at it and `_accepted` none, quiet for `stall_s`. It sends
+    「会话中断：…」 as a notice about the head (`notice:resume:<head12>:<n>`) through `Delivery._send_once`, because
+    `notify_run` refuses a text outside NOTICE_PREFIXES; twice at one head, then `tell_mr_once("stopped:<run>:<head12>",
+    …)`. Wanted: that branch in `tell_if_stalled`, its notice word in NOTICE_PREFIXES (「会话中断：」), and a line in
+    brain-run.md for what a session does on it (commit and push what the cut-off turn left, then stop as usual), so the
+    app drops its copy and calls nothing private.
+50. **The end of a run on its MR** (new, the app's `team/runwatch.py`). After the product's acceptance reached the run
+    and its session pushed its records, nothing tells the MR it can be merged, it keeps `running_label`, and
+    `_reconcile_one` marks the run merged or closed and leaves the label on (MR !6 still had `ai-running` after its
+    merge). The app does both itself: once `_accepted(run)` holds, the slot is idle and the head is past the
+    acceptance's commit with no question there, it posts 「…做完了：…可以合并了：请 @<owner> …」 with `tell_mr_once`
+    (`ready:<run>`) and swaps the label for its own `ai-ready-to-merge` (constants.MERGE_LABEL: kit.json has no key for
+    it); for a run merged or closed it takes `running_label` and that label off, once (`unlabelled:<run>`). Wanted: a
+    kit.json label for an accepted run waiting for its merge (`accepted_label`, in config.DEFAULTS and the docs' label
+    list), the ready comment and that label swap in the bridge, and reconcile taking `running_label` and it off.
 
 ### Nice-to-have
 

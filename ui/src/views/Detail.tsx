@@ -164,7 +164,7 @@ export const runnerHolds = (run: RequirementDetail['run']): boolean => !!run?.ha
 /** The requirement went to the team runner: its questions and approvals are answered on the MR from then on. A
  * hand-over commit whose push failed (push_handoff) went nowhere. */
 function handedOver(x: RequirementDetail): boolean {
-  return x.row.waits.do !== 'push_handoff' && (runnerHolds(x.run) || ['handed_over', 'running', 'parked', 'acceptance'].includes(x.row.state))
+  return x.row.waits.do !== 'push_handoff' && (runnerHolds(x.run) || ['handed_over', 'running', 'parked', 'acceptance', 'to_merge'].includes(x.row.state))
 }
 
 /** Lean's stages on the way, the ones its progress counts (vocab.leanProgress, backend lean_view.summary): those of a
