@@ -363,7 +363,7 @@ def test_a_first_run_builds_the_runner_and_waits_for_the_kit_mr(world):
     assert days_left(bridge[0]["expires_at"]) in (363, 364)                 # a year less a day, from today in UTC
     assert not gl.made("brain-bot")                                         # this machine's git reaches the project
     bot = gl.users[bridge[0]["token"]]["username"]
-    assert sorted(gl.labels) == ["ai-handoff", "ai-handoff-rejected", "ai-running", "brain-reflect"]
+    assert sorted(gl.labels) == ["ai-handoff", "ai-handoff-rejected", "ai-ready-to-merge", "ai-running", "brain-reflect"]
     # the token's value is in its own file only, 0600; the person's token is nowhere
     assert (ps.root / "bridge-gitlab-token").read_text().strip() == bridge[0]["token"]
     assert mode(ps.root / "bridge-gitlab-token") == "0o600" and mode(ps.key) == "0o600" and mode(ps.root) == "0o700"
@@ -455,7 +455,7 @@ def test_a_run_that_stops_part_way_converges_when_run_again(world):
     third, _ = build(world)
     assert everything_done(third)
     assert len(gl.made("brain-bridge")) == 1 and len(gl.mrs) == 1 and gl.revoked == set()
-    assert sorted(gl.labels) == ["ai-handoff", "ai-handoff-rejected", "ai-running", "brain-reflect"]
+    assert sorted(gl.labels) == ["ai-handoff", "ai-handoff-rejected", "ai-ready-to-merge", "ai-running", "brain-reflect"]
     token = gl.made("brain-bridge")[0]["token"]
     assert saved_tokens(json.loads(ps.state.read_text()))["bridge"]["username"] == gl.users[token]["username"]
 
@@ -1187,7 +1187,7 @@ def test_the_command_line_says_one_line_per_step(world):
 # ---- bot-account: one runner, several projects, as GitLab users of its own ---------------------------------------- #
 
 TEAM = (("grp/a", 51), ("grp/b", 52), ("grp/c", 53))
-LABELS4 = ["ai-handoff", "ai-handoff-rejected", "ai-running", "brain-reflect"]
+LABELS4 = ["ai-handoff", "ai-handoff-rejected", "ai-ready-to-merge", "ai-running", "brain-reflect"]
 BRIDGE_ID, BOT_ID = 201, 202
 # the people of each project besides alice (Maintainer everywhere) and the runner's two accounts (Developer everywhere)
 PEOPLE = {"grp/a": (("bob", 30), ("dave", 20)), "grp/b": (("carol", 30),), "grp/c": (("erin", 30),)}
