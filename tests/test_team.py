@@ -131,8 +131,30 @@ LONG_AGO = "2026-11-08T10:00:00Z"       # the newest row of a turn that ended lo
 
 
 def ended(text, at=LONG_AGO):
-    """A session turn's last rows: its reply, written at *at*."""
-    return [{"role": "assistant", "content": text, "meta": {}, "ts": at}]
+    """A session turn KiroCrew closed: its last reply, written at *at*, with the turn's turn_stats (KiroCrew writes
+    them on the last reply of every turn it finished)."""
+    return [{"role": "assistant", "content": text, "meta": {"turn_stats": {"elapsed_ms": 60000}}, "ts": at}]
+
+
+def stopped(at=LONG_AGO):
+    """The row KiroCrew writes when a turn stops (someone stopped it, or KiroCrew itself is stopped): an assistant row
+    with nothing in it, its file_changes and no turn_stats."""
+    return [{"role": "assistant", "content": "", "meta": {"file_changes": []}, "ts": at}]
+
+
+def cut(at=LONG_AGO):
+    """The last rows of a turn KiroCrew's restart cut off, as RUN-REQ-2-1's were: a tool call, then stopped()."""
+    return [{"role": "tool", "content": "🔧 Validate the acceptance park file", "meta": {"kind": "execute", "done": True},
+             "ts": at}] + stopped(at)
+
+
+STOP_EVENT = {"role": "system", "content": json.dumps({"kind": "stop_event", "id": "stop-1", "state": "stopped",
+                                                       "outcome": "soft"}), "meta": {}, "ts": LONG_AGO}
+COMPACTED = {"role": "assistant", "content": "🔄 Auto-compacted at 76%.", "meta": {"kind": "compaction"}, "ts": LONG_AGO}
+TRUST_RESET = {"role": "system", "content": "Trust mode was turned off because Kiro Crew restarted, so tools ask for "
+               "approval again.", "meta": {"kind": "trust_reset_notice"}, "ts": LONG_AGO}
+KIROCREW_ERROR = {"role": "error", "content": "This turn was interrupted when the app restarted.",
+                  "meta": {"kind": "gateway_restart_interruption"}, "ts": LONG_AGO}
 
 
 async def rounds(svc, n=1):
@@ -150,9 +172,9 @@ def test_a_session_turn_cut_off_before_its_push_is_told_to_go_on_then_a_person_i
     """RUN-REQ-2-1: KiroCrew restarted mid-turn, the session's slot idle with its work uncommitted, the bridge never
     noticed. Each round reads every dispatched run's slot: idle, nothing queued or on its way to it, no question at the
     MR head, not done, and quiet for bridge.json stall_minutes, the session is told to go on (trust set again first,
-    since a restart ends it); once more if that does not help; then the MR tells a person, once."""
+    since a restart ends it); once more if that turn is cut off too; then the MR tells a person, once."""
     gw = FakeGateway()
-    gw.script = [ended("开始写代码", "2099-01-01T00:00:00Z"), ended("好"), ended("好")]
+    gw.script = [ended("开始写代码", "2099-01-01T00:00:00Z"), cut(), cut()]
     svc = service(world, tmp_path, gw)
     gl = world["gl"]
     seen = {}
@@ -165,7 +187,7 @@ def test_a_session_turn_cut_off_before_its_push_is_told_to_go_on_then_a_person_i
             gw.finish(SLOT)                             # its newest row just now: not quiet yet
             await rounds(svc)
             seen["early"] = resumes(gw)
-            gw.slot_rows[SLOT]["_pending"] = ended("我在改 src/refund.py")
+            gw.slot_rows[SLOT]["_pending"] = cut()
             gw.finish(SLOT)                             # KiroCrew stopped the turn long ago, nothing pushed
             gw.slot_rows[SLOT]["trust"] = False         # and its restart ended trust
             await rounds(svc)
@@ -218,6 +240,81 @@ def test_a_session_that_parked_or_still_works_is_not_told_to_go_on(world, tmp_pa
     assert resumes(gw) == [] and not [b for b in world["gl"].bodies() if "会话停住了" in b]
     (quiet,) = [b for b in world["gl"].bodies() if "没有动静" in b]
     assert quiet.startswith("RUN-PAY-1-1 已经") and "还在跑" in quiet, quiet
+
+
+@pytest.mark.parametrize("tail, told", [
+    (ended("工作区和合同 V-1 对不上，不继续"), 0),           # brain-run §1: it changes nothing and ends its turn
+    (ended("运行机的 git 身份没设置，不继续") + [COMPACTED], 0),   # KiroCrew compacts after the turn
+    (ended("等待决策，不继续") + [TRUST_RESET], 0),              # KiroCrew restarted after the turn ended
+    ([STOP_EVENT] + stopped(), 0),                              # a person pressed stop in KiroCrew
+    ([KIROCREW_ERROR], 1),                                      # KiroCrew's error ended it half-way
+], ids=["ended", "ended-then-compacted", "ended-then-trust-reset", "stopped-in-kirocrew", "kirocrew-error"])
+def test_only_a_turn_kirocrew_cut_off_is_told_to_go_on(world, tmp_path, tail, told):
+    """A session that ended its turn owes no push, whatever it said: KiroCrew wrote the turn's turn_stats on its
+    last reply (rows KiroCrew adds after a turn, a compaction or a trust reset, change nothing), or someone stopped
+    it. Only a turn without that end, its last row KiroCrew's error or whatever it wrote when KiroCrew stopped, is
+    told to go on."""
+    gw = FakeGateway()
+    gw.script = [tail]
+    svc = service(world, tmp_path, gw)
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # handed over, dispatched
+            gw.finish(SLOT)                             # its turn ends long ago, nothing pushed
+            await rounds(svc, 2)
+            if gw.slot_rows[SLOT]["running"]:
+                gw.finish(SLOT)
+            await rounds(svc)
+        finally:
+            await svc.stop()
+
+    run(go())
+    assert len(resumes(gw)) == told, resumes(gw)
+    assert not [b for b in world["gl"].bodies() if "会话停住了" in b]
+
+
+def test_a_run_whose_answer_the_signer_refused_waits_for_a_person_after_its_push(world, tmp_path):
+    """The signer refused the answer to Q-1. The run is told it is blocked; as brain-run.md says, it writes `Status:
+    blocked`, commits and pushes (the MR head moves past Q-1's), and KiroCrew cuts its turn off before its last reply.
+    The person's move, whatever the head: no 会话中断 at any later push, and the MR does not hear that the session
+    stopped."""
+    gw = FakeGateway()
+    gw.script = [ended("等待决策，不继续"), cut(), cut()]
+    svc = service(world, tmp_path, gw)
+    ids = json.loads(world["app_ids"].read_text())
+    ws = world["runs_root"] / "RUN-PAY-1-1"
+    seen = {}
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)
+            push_park(ws, PARK)
+            gw.finish(SLOT)
+            await rounds(svc)                           # Q-1 on the MR
+            ids["roles"]["product"].append("mallory")   # the app's list only: the signer's own does not have her
+            world["app_ids"].write_text(json.dumps(ids))
+            svc.team.host.roles = ids["roles"]
+            world["gl"].note("mallory", "answer D-1 A")
+            await svc.team_loop()                       # refused: the run is told 问题没发出：…签名服务不签…
+            seen["told"] = [m["content"] for m in gw.msgs[SLOT] if m["role"] == "user"][-1]
+            for n in (1, 2):                            # Status: blocked pushed, the turn cut off; once more
+                commit_push(ws, {"aidlc-docs/notes.md": "Status: blocked: 签名服务没签 Q-1 的回答 %d" % n}, "blocked")
+                gw.finish(SLOT)
+                for _ in range(3):
+                    await svc.team_loop()
+                    if gw.slot_rows[SLOT]["running"]:
+                        gw.finish(SLOT)
+            seen["decisions"] = (await svc.team_view())["ledger"]["decisions"]
+        finally:
+            await svc.stop()
+
+    run(go())
+    assert seen["told"].startswith("问题没发出：Q-1") and "签名服务不签" in seen["told"], seen["told"]
+    assert seen["decisions"] == {"refused": 1}
+    assert resumes(gw) == [] and not [b for b in world["gl"].bodies() if "会话停住了" in b]
 
 
 ACCEPTANCE = {"schema": 1, "status": "waiting", "kind": "acceptance", "ask": "product", "question": "可以验收了吗？",
