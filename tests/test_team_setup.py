@@ -1746,6 +1746,15 @@ def test_the_app_declares_lean_s_read_only_reviewers_as_its_own_agents():
         assert used <= {"read", "fs_read"} and spec["mcpServers"] == {} and spec["includeMcpJson"] is False, name
 
 
+def test_brain_run_spawns_the_reviewers_the_app_declares():
+    """brain-kit's brain-run.md (b1ffe40) has the runner's session give the code it wrote to two read-only reviewers
+    through spawn_sub_agents. KiroCrew lets that session spawn only the app's own agents, so the names brain-run.md
+    tells it to spawn are the ones app.json declares, no more and no fewer."""
+    told = set(re.findall(r"`(lean-reviewer-[a-z0-9-]+)`",
+                          (BRAINKIT / "remote" / "prompts" / "brain-run.md").read_text(encoding="utf-8")))
+    assert told == {spec["name"] for spec in app_agents()} == {"lean-reviewer-opus", "lean-reviewer-k3"}
+
+
 def test_the_reviewers_step_checks_that_kirocrew_put_the_apps_read_only_reviewers_in_place(world):
     """With the app's reviewers where KiroCrew writes them: done, naming them. Before KiroCrew wrote them (an app
     updated while KiroCrew was not restarted, say), or with one changed so it can write: a person is waited for, said

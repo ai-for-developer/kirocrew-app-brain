@@ -129,6 +129,9 @@ def test_the_labelers_page_says_the_runners_question_once_and_its_credits_and_la
         "its sessions are on the runner, which this machine does not read"
     assert [r["kind"] for r in b["runs"]] == ["runner"], "运行过程 has no local half: the runner has it from its start"
     assert b["runs"][0]["label"] == "运行机 第 1 次" and b["relays"] == []
+    desc = d["mr_desc"]
+    assert "从开工起就在团队运行机上" in desc["first"] and "还没交接" not in desc["text"], \
+        "its 变更说明 (brain-kit aab2c1d) says it is the runner's from its start, not that it is developed locally"
 
 
 def test_the_labelers_answer_goes_onto_the_mr(world, monkeypatch):
