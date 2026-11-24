@@ -22,8 +22,8 @@
       "data": []
     },
     "push": "token",
-    "patrol": true,
-    "issues": false,
+    "patrol": ["shop/shop-pay", "shop/shop-order", "shop/shop-stock"],
+    "issues": [],
     "jenkins": {
       "base": "",
       "user": ""
@@ -252,6 +252,15 @@
       "title": "brain-patrol agent",
       "status": "done",
       "message": "写好了 brain-patrol 的设置：~/.kiro/agents/brain-patrol.json",
+      "link": null,
+      "detail": "",
+      "projects": []
+    },
+    {
+      "id": "reviewers",
+      "title": "评审 agent",
+      "status": "done",
+      "message": "评审 agent lean-reviewer-opus、lean-reviewer-k3 都在，只读：运行机把自己写的代码交给它们评审，不用等人",
       "link": null,
       "detail": "",
       "projects": []

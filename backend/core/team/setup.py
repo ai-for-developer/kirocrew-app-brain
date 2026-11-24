@@ -36,11 +36,12 @@ Under one root (default ~/.brain/team-setup; files 0600, folders 0700):
 (team/relay.py), so GitLab lets whoever can read the project read its status, and nobody else; the bridge's account
 pushes it, and the step checks that no protected branch rule keeps it from that.
 Under ~/workplace/brain-team (KiroCrew lets agents work only under ~/workplace): runs/ and cache/, and MR 巡检's clones
-in patrol/. The agents: ~/.kiro/agents/brain-run.json, and brain-patrol.json beside it when 巡检所有开着的 MR is on (the
-kit.json MRs then also switch work source mr-patrol on). 从打了标签的 issue 接活 switches work source issue-label on in
-the same MRs and makes its label (team/issues.py: issues.LABEL). The person's one-time token (SetupInput.admin_token)
-lives in memory for one run: it is never written, logged or answered, and text from GitLab or a command goes through
-Ctx.redact before it is kept.
+in patrol/. The agents: ~/.kiro/agents/brain-run.json, and brain-patrol.json beside it when 巡检所有开着的 MR is on in a
+project (the kit.json MRs of the projects it is on in then also switch work source mr-patrol on). 从打了标签的 issue 接活
+switches work source issue-label on in the MRs of the projects it is ticked for and makes its label there
+(team/issues.py: issues.LABEL); a project ticked for neither gets no MR for them. The person's one-time token
+(SetupInput.admin_token) lives in memory for one run: it is never written, logged or answered, and text from GitLab or a
+command goes through Ctx.redact before it is kept.
 """
 
 from __future__ import annotations
@@ -185,8 +186,8 @@ class SetupInput:
                                                   # bot-account mode goes without it
     roles: Mapping[str, tuple[str, ...]] = field(default_factory=dict)   # role -> usernames; none: the token's owner
     push: str = "auto"                            # auto | ssh | token
-    patrol: bool = True                           # 巡检所有开着的 MR
-    issues: bool = False                          # 从打了标签的 issue 接活
+    patrol: tuple[str, ...] = ()                  # the projects 巡检所有开着的 MR is on in, in the input's order
+    issues: tuple[str, ...] = ()                  # the projects 从打了标签的 issue 接活 is on in
     mode: str = PROJECT_TOKEN
     bridge_token: str = field(default="", repr=False)   # bot-account: brain-bridge's personal token ('': the one kept)
     bot_token: str = field(default="", repr=False)      # bot-account: the bot user's personal token ('': the one kept)
@@ -252,21 +253,44 @@ class SetupInput:
         push = raw.get("push") or "auto"
         if push not in PUSH_MODES:
             raise SetupRefused("推送方式只能是 auto、ssh 或 token")
-        patrol = raw.get("patrol", True)
-        if not isinstance(patrol, bool):
-            raise SetupRefused("「巡检所有开着的 MR」的值不对：刷新页面再试")
-        issues = raw.get("issues", False)
-        if not isinstance(issues, bool):
-            raise SetupRefused("「从打了标签的 issue 接活」的值不对：刷新页面再试")
+        patrol = ticked(base, got, raw.get("patrol", True), "巡检所有开着的 MR")
+        issues = ticked(base, got, raw.get("issues", False), "从打了标签的 issue 接活")
         return cls(base, tuple(got.values()), token, roles, push, patrol, issues, mode, bridge or "", bot or "",
                    JenkinsInput.parse(raw.get("jenkins")))
+
+    def on(self, flag: str, path: str) -> bool:
+        """Whether *flag* (patrol, issues) is on in project *path* (GitLab's paths are not case-sensitive)."""
+        return path.lower() in {p.lower() for p in getattr(self, flag)}
 
     def public(self) -> dict[str, Any]:
         """What setup-state.json keeps of the input: all of it but the tokens."""
         return {"gitlab_base": self.gitlab_base, "mode": self.mode, "projects": list(self.projects), "push": self.push,
-                "roles": {r: list(self.roles.get(r) or ()) for r in ROLES}, "patrol": self.patrol,
-                "issues": self.issues,
+                "roles": {r: list(self.roles.get(r) or ()) for r in ROLES}, "patrol": list(self.patrol),
+                "issues": list(self.issues),
                 "jenkins": {"base": self.jenkins.base, "user": self.jenkins.user} if self.jenkins else None}
+
+
+def ticked(base: str, projects: Mapping[str, str], value: Any, name: str) -> tuple[str, ...]:
+    """The projects (of *projects*: lower-case path -> path) a switch the page sent as *value* is on in: true every one,
+    false none, else the ones listed, by path or page as a project is typed. SetupRefused for anything else, or a
+    project listed that is not one of them."""
+    if isinstance(value, bool):
+        return tuple(projects.values()) if value else ()
+    if not isinstance(value, (list, tuple)) or not all(isinstance(t, str) for t in value):
+        raise SetupRefused("「%s」的值不对：刷新页面再试" % name)
+    want = {project_path(base, t).lower() for t in value if t.strip()}
+    stray = sorted(want - set(projects))
+    if stray:
+        raise SetupRefused("「%s」勾的 %s 不在上面的项目里" % (name, "、".join(stray)))
+    return tuple(path for low, path in projects.items() if low in want)
+
+
+def ticked_view(value: Any, projects: list[str], default: bool) -> list[str]:
+    """A switch of the last run's input as the projects it is on in: the list a run kept; a run before switches went by
+    project kept true or false for all of them, or (patrol, *default* on) nothing at all."""
+    if isinstance(value, list):
+        return [str(p) for p in value]
+    return [str(p) for p in projects] if value is True or (default and value is not False) else []
 
 
 @dataclass(frozen=True)
@@ -647,8 +671,8 @@ def view(state: Mapping[str, Any], paths: Paths, running: bool | None = None) ->
                       "mode": inp.get("mode") if inp.get("mode") in MODES else PROJECT_TOKEN,
                       "projects": [str(p) for p in projects],
                       "roles": {r: [str(n) for n in roles.get(r) or []] for r in ROLES},
-                      "push": str(inp.get("push") or "auto"), "patrol": inp.get("patrol") is not False,
-                      "issues": inp.get("issues") is True,
+                      "push": str(inp.get("push") or "auto"), "patrol": ticked_view(inp.get("patrol"), projects, True),
+                      "issues": ticked_view(inp.get("issues"), projects, False),
                       "jenkins": {"base": str(jenkins.get("base") or ""), "user": str(jenkins.get("user") or "")}},
             "accounts": {k: str((kept.get(k) if isinstance(kept.get(k), dict) else {}).get("username") or "")
                          for k in ("bridge", "bot")},
@@ -1116,7 +1140,7 @@ def step_labels(ctx: Ctx) -> StepResult:
 
 def project_labels(ctx: Ctx, p: Proj) -> StepResult:
     want: list[tuple[str, str]] = []
-    for key, default, color in LABELS + ((ISSUE_LABEL,) if ctx.inp.issues else ()):
+    for key, default, color in LABELS + ((ISSUE_LABEL,) if ctx.inp.on("issues", p.path) else ()):
         name = str(p.kit.get(key) or default) if key else default
         if name.lower() not in {w.lower() for w, _ in want}:
             want.append((name, color))
@@ -1309,7 +1333,7 @@ def wanted_kit(ctx: Ctx, p: Proj) -> dict[str, Any]:
     kinds = [k for k in raw if isinstance(k, str)] if isinstance(raw, list) else []
     named = isinstance(raw, list)
     for kind, flag, _, _ in SWITCHES:
-        if getattr(ctx.inp, flag):
+        if ctx.inp.on(flag, p.path):
             kinds += [k for k in (sources.HANDOFF, kind) if k not in kinds]
             named = True
         elif kind in kinds:
@@ -1358,20 +1382,59 @@ def step_signing_key(ctx: Ctx) -> StepResult:
 
 # ---- 10 the three configs ---------------------------------------------------------------------------------------- #
 
+# The fields of the three configs this setup owns (MIGRATE 第三部分 试用 lists the same): a rerun writes these and keeps
+# every other field as the file has it, a person's intake_dir say. A field named with its own fields is owned only in
+# those (a person's poll in the signer block stays); an owned field this run does not write is taken out (jenkins with
+# no Jenkins typed; team_status, which an earlier version wrote).
+_GITLAB = ("base", "token_env", "token_file")
+OWNED: dict[str, dict[str, tuple[str, ...] | None]] = {
+    "bridge.json": {"projects": None, "gitlab": _GITLAB, "identities": None, "ledger": None, "spool_dir": None,
+                    "vouchers_dir": None, "runner_runs_root": None, "publish_vouchers": None, "max_inflight": None,
+                    "max_per_repo": None, "pseudonym_salt": None, "kirocrew": ("agent", "memory_mode"),
+                    "signer": ("type", "spool_dir", "allowed_signers", "timeout"), "jenkins": None, "team_status": None},
+    "runnerd.json": dict.fromkeys(("spool_dir", "cache_dir", "runs_root", "allowed_signers", "clone_url", "kit_dir",
+                                   "agent_spec", "git_name", "git_email")),
+    "signer.json": {"brainkit": None, "spool": None, "signing_key": None, "projects": None, "gitlab": _GITLAB,
+                    "identities": None, "vouchers_dir": None, "publish_vouchers": None, "ledger": None,
+                    "pseudonym_salt": None, "bridge_users": None},
+}
+
+
 def step_configs(ctx: Ctx) -> StepResult:
     """bridge.json, runnerd.json and signer.json in the shapes of MIGRATE 第三部分 7, for one OS user and every project:
     no MR filter, no brain-intake, vouchers not published, the signer on the bridge's token with its account as
-    bridge_users, one pseudonym_salt for both (made once, kept on every run). A file is written only when its content
-    changes. The open runs the ledgers under the root hold of a project this run leaves out are left first
-    (leave_runner)."""
+    bridge_users, one pseudonym_salt for both (made once, kept on every run). Only the fields OWNED names are this run's:
+    the others stay as the file has them. A file is written only when its content changes. The open runs the ledgers
+    under the root hold of a project this run leaves out are left first (leave_runner)."""
     ps = ctx.paths
     salt = old_salt(ps) or secrets.token_hex(16)
     ctx.remember(salt)
     left = leave_runner(ctx)
     docs = ((ps.bridge_json, bridge_doc(ctx, salt)), (ps.runnerd_json, runnerd_doc(ctx)),
             (ps.signer_json, signer_doc(ctx, salt)))
-    wrote = [path.name for path, doc in docs if write_file(path, dumps(doc))]
+    wrote = [path.name for path, doc in docs
+             if write_file(path, dumps(merged(parse_json(read_secret(path)), doc, OWNED[path.name])))]
     return done(("写了 %s" % "、".join(wrote) if wrote else "三份配置都没变") + left)
+
+
+def merged(old: Any, doc: Mapping[str, Any], owned: Mapping[str, tuple[str, ...] | None]) -> dict[str, Any]:
+    """*doc*, what this run writes of a config, over *old*, the file as it is: each field *owned* names is *doc*'s (left
+    out when *doc* has none), field by field where it names the fields owned in it; every other field is *old*'s. In
+    *old*'s order, the fields new to it after."""
+    old = old if isinstance(old, dict) else {}
+    out: dict[str, Any] = {}
+    for k in dict.fromkeys([*old, *doc]):
+        sub = owned.get(k)
+        if k not in owned:
+            out[k] = old[k]
+        elif sub is None or not isinstance(old.get(k), dict):
+            if k in doc:
+                out[k] = doc[k]
+        else:
+            block = merged(old[k], doc.get(k) or {}, dict.fromkeys(sub))
+            if block:
+                out[k] = block
+    return out
 
 
 def leave_runner(ctx: Ctx) -> str:
@@ -1538,7 +1601,45 @@ def step_patrol_agent(ctx: Ctx) -> StepResult:
     return done("%s brain-patrol 的设置：%s" % ("写好了" if wrote else "已经是新的", tilde(ps.patrol_spec)))
 
 
-# ---- 13 the signer ------------------------------------------------------------------------------------------------ #
+# ---- 13 the reviewers --------------------------------------------------------------------------------------------- #
+
+REVIEW_TOOLS = frozenset(("read", "fs_read", "grep", "glob"))     # the tools a reviewer may have: they only read
+
+
+def step_reviewers(ctx: Ctx) -> StepResult:
+    """The read-only reviewers a run gives the code it wrote on the runner to (brain-run's 接手步骤 4, Lean's
+    aidlc-lean-release step 1). KiroCrew lets a session the app opened spawn only the app's own agents: it writes each
+    one app.json declares as ~/.kiro/agents/brain--<name>.json when the app is installed or updated and when KiroCrew
+    starts, and at its start takes out a brain--*.json app.json does not declare, so nothing is written here. Each is
+    looked for beside brain-run.json under its declared name, with tools that only read; one not there, or able to do
+    more, waits for a person (until then a run asks someone to review the code it wrote)."""
+    ps = ctx.paths
+    names = [str(spec.get("name") or "") for spec in shipped_agents(ps.app_dir)]
+    specs = {n: parse_json(read_secret(ps.agent_spec.with_name("brain--%s.json" % n))) for n in names}
+    missing = [n for n, s in specs.items() if not isinstance(s, dict) or s.get("name") != n]
+    more = [n for n, s in specs.items() if n not in missing
+            and (not isinstance(s.get("tools"), list) or {str(x) for x in s["tools"]} - REVIEW_TOOLS)]
+    said = []
+    if missing:
+        said.append("KiroCrew 还没装上评审 agent %s：重启 KiroCrew，或者在 KiroCrew 里更新一下 Brain 交付 app，再跑一次；"
+                    "装上以前，运行机自己写的代码要人来评审" % "、".join(missing))
+    if more:
+        said.append("评审 agent %s 不只能读文件（%s 里的 tools）：评审要只读。删掉这个文件，重启 KiroCrew 让它照 app 重写，再跑一次"
+                    % ("、".join(more), "、".join(tilde(ps.agent_spec.with_name("brain--%s.json" % n)) for n in more)))
+    if said:
+        return waiting("；".join(said))
+    return done("评审 agent %s 都在，只读：运行机把自己写的代码交给它们评审，不用等人" % "、".join(names))
+
+
+def shipped_agents(app_dir: Path) -> list[dict]:
+    """The agent specs the app's app.json declares (agents/), as the app ships them."""
+    manifest = parse_json(read_secret(app_dir / "app.json"))
+    rels = manifest.get("agents") if isinstance(manifest, dict) else None
+    specs = [parse_json(read_secret(app_dir / str(rel))) for rel in rels or []]
+    return [s for s in specs if isinstance(s, dict)]
+
+
+# ---- 14 the signer ------------------------------------------------------------------------------------------------ #
 
 def step_signer(ctx: Ctx) -> StepResult:
     """The signer, run by the app itself in same-user mode (signerproc): started when it is not running, or when it
@@ -1551,7 +1652,7 @@ def step_signer(ctx: Ctx) -> StepResult:
     return done("签名服务%s（进程 %d）" % ("开起来了" if started else "在跑", pid))
 
 
-# ---- 14 team mode ------------------------------------------------------------------------------------------------- #
+# ---- 15 team mode ------------------------------------------------------------------------------------------------- #
 
 def step_team_mode(ctx: Ctx) -> StepResult:
     """Team mode on with the two configs and the same-user trial, through the app's settings (its TeamRuntime starts,
@@ -1579,12 +1680,14 @@ def mrs_said(ctx: Ctx) -> str:
     if handoff:
         return ("；可是上面那个 MR 合并以前，交接都会被拒" if len(ctx.found) == 1 else
                 "；可是 %s 的 kit.json MR 合并以前，这些项目的交接都会被拒" % "、".join(handoff))
-    kinds = {k for mr in wait.values() for k in mr.get("switches") or ()}
-    turns = "，".join("%s才%s" % (what, "开始" if getattr(ctx.inp, flag) else "停")
-                      for kind, flag, _, what in SWITCHES if kind in kinds)
+    by: dict[str, list[str]] = {}               # what an MR starts or stops -> the projects whose MR does that
+    for path, mr in wait.items():
+        turns = "，".join("%s才%s" % (what, "开始" if ctx.inp.on(flag, path) else "停")
+                          for kind, flag, _, what in SWITCHES if kind in (mr.get("switches") or ()))
+        by.setdefault(turns, []).append(path)
     if len(ctx.found) == 1:
-        return "；上面那个 MR 合并以后，" + turns
-    return "；%s 的 kit.json MR 合并以后，那里的%s" % ("、".join(wait), turns)
+        return "；上面那个 MR 合并以后，" + next(iter(by))
+    return "".join("；%s 的 kit.json MR 合并以后，那里的%s" % ("、".join(paths), turns) for turns, paths in by.items())
 
 
 STEPS: tuple[Step, ...] = (
@@ -1600,6 +1703,7 @@ STEPS: tuple[Step, ...] = (
     Step("configs", "三份配置", step_configs),
     Step("agent", "brain-run agent", step_agent),
     Step("patrol_agent", "brain-patrol agent", step_patrol_agent),
+    Step("reviewers", "评审 agent", step_reviewers),
     Step("signer", "签名服务", step_signer),
     Step("team_mode", "打开团队模式", step_team_mode),
 )

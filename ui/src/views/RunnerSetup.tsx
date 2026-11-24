@@ -11,7 +11,8 @@
  * request: this page keeps them in their fields while it is open (for 再跑一次); the backend keeps the two accounts'
  * personal tokens and Jenkins' only. 巡检所有开着的 MR (on unless unticked) adds brain-patrol and switches work source
  * mr-patrol on in the kit.json MRs; 从打了标签的 issue 接活 (off unless ticked) switches work source issue-label on there
- * and makes its label. Jenkins (address, read-only user, its token; one for the runner, whatever the projects) is for
+ * and makes its label. With several projects each of the two is ticked project by project, and a project left unticked
+ * gets no MR for it. Jenkins (address, read-only user, its token; one for the runner, whatever the projects) is for
  * MR 巡检 to read failed builds' logs: sent only with an address; the backend keeps the token, so the last run's address
  * and user come back, not it.
  */
@@ -69,9 +70,21 @@ export const STEP_LOOK: Record<SetupStepStatus, { glyph: string; word: string; t
 }
 
 type Push = 'ssh' | 'token'
-interface Form { mode: SetupMode; base: string; project: string; projects: string; product: string; builder: string; patrol: boolean; issues: boolean; push: Push; jenkinsBase: string; jenkinsUser: string }
+/** A switch ticked project by project: lower-case path -> on; '' stands for a project not typed yet. */
+type Ticks = Record<string, boolean>
+interface Form { mode: SetupMode; base: string; project: string; projects: string; product: string; builder: string; patrol: Ticks; issues: Ticks; push: Push; jenkinsBase: string; jenkinsUser: string }
 
 const names = (s: string) => s.split(/[,，、\s]+/).map((x) => x.trim()).filter(Boolean)
+const tickKey = (project: string) => project.trim().toLowerCase()
+/** Whether a switch is on in *project*: as ticked, else as ticked before a project was typed, else its default. */
+const ticked = (t: Ticks, project: string, dflt: boolean) => t[tickKey(project)] ?? t[''] ?? dflt
+/** The projects the form names now, each once. */
+const projectsOf = (f: Form) => [...new Map((f.mode === 'bot-account' ? names(f.projects) : names(f.project)).map((p) => [tickKey(p), p])).values()]
+/** A switch of the last run's input (the projects it was on in) as ticks over the projects it ran on. */
+const ticksOf = (ran: string[], on: string[]): Ticks => {
+  const yes = new Set(on.map(tickKey))
+  return Object.fromEntries(ran.map((p) => [tickKey(p), yes.has(tickKey(p))]))
+}
 
 /** The last run's input, else the repos on GitLab (their kit.json's): the first one for 项目令牌, all of them for 机器人账号. */
 function formOf(s: TeamSetup, repos: RepoInfo[]): Form {
@@ -85,8 +98,8 @@ function formOf(s: TeamSetup, repos: RepoInfo[]): Form {
     projects: (s.input.mode === 'bot-account' || !listed.length ? ran : listed).join('\n'),
     product: s.input.roles.product.join(', '),
     builder: s.input.roles.builder.join(', '),
-    patrol: s.input.patrol !== false,
-    issues: s.input.issues === true,
+    patrol: ticksOf(ran, s.input.patrol),
+    issues: ticksOf(ran, s.input.issues),
     push: s.input.push === 'token' ? 'token' : 'ssh',
     jenkinsBase: s.input.jenkins.base,
     jenkinsUser: s.input.jenkins.user,
@@ -145,7 +158,11 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
     const jenkins = f.jenkinsBase.trim()
       ? { jenkins: { base: f.jenkinsBase.trim(), user: f.jenkinsUser.trim(), token: jenkinsToken.trim() } }
       : {}
-    const common = { gitlab_base: f.base.trim(), roles: { product: names(f.product), builder: names(f.builder) }, patrol: f.patrol, issues: f.issues, ...jenkins }
+    const listed = projectsOf(f)
+    const common = {
+      gitlab_base: f.base.trim(), roles: { product: names(f.product), builder: names(f.builder) },
+      patrol: listed.filter((p) => ticked(f.patrol, p, true)), issues: listed.filter((p) => ticked(f.issues, p, false)), ...jenkins,
+    }
     if (f.mode === 'project-token') return { ...common, project: f.project.trim(), admin_token: token.trim() }
     return {
       ...common, mode: 'bot-account', projects: names(f.projects), push: f.push,
@@ -246,20 +263,10 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
               </div>
             </div>
             <p className="br-hint" id="rs-roles-hint">{bots && !token.trim() ? ROLES_HINT_NO_TOKEN : ROLES_HINT}</p>
-            <div className="br-field">
-              <label className="br-check">
-                <input type="checkbox" checked={form.patrol} aria-describedby="rs-patrol-hint" onChange={(e) => edit({ patrol: e.target.checked })} />
-                <b>巡检所有开着的 MR</b>
-              </label>
-              <p className="br-hint" id="rs-patrol-hint">{PATROL_HINT}</p>
-            </div>
-            <div className="br-field">
-              <label className="br-check">
-                <input type="checkbox" checked={form.issues} aria-describedby="rs-issues-hint" onChange={(e) => edit({ issues: e.target.checked })} />
-                <b>从打了标签的 issue 接活</b>
-              </label>
-              <p className="br-hint" id="rs-issues-hint">{ISSUES_HINT}</p>
-            </div>
+            <Switch id="rs-patrol" label="巡检所有开着的 MR" hint={PATROL_HINT} projects={projectsOf(form)} ticks={form.patrol} dflt
+              onTick={(patrol) => edit({ patrol })} />
+            <Switch id="rs-issues" label="从打了标签的 issue 接活" hint={ISSUES_HINT} projects={projectsOf(form)} ticks={form.issues}
+              dflt={false} onTick={(issues) => edit({ issues })} />
             <div className="rs-grid">
               <div className="br-field">
                 <label htmlFor="rs-jenkins">Jenkins 地址</label>
@@ -300,6 +307,37 @@ export function RunnerSetupCard({ repos, onDone, pollMs = SETUP_POLL_MS }: { rep
         </>
       )}
     </section>
+  )
+}
+
+/** A work source the runner takes in a project: one checkbox for one project, one per project for several. */
+function Switch({ id, label, hint, projects, ticks, dflt, onTick }: { id: string; label: string; hint: string; projects: string[]; ticks: Ticks; dflt: boolean; onTick: (t: Ticks) => void }) {
+  const tick = (project: string, on: boolean) => onTick({ ...ticks, [tickKey(project)]: on })
+  if (projects.length < 2) {
+    const one = projects[0] ?? ''
+    return (
+      <div className="br-field">
+        <label className="br-check">
+          <input type="checkbox" checked={ticked(ticks, one, dflt)} aria-describedby={`${id}-hint`} onChange={(e) => tick(one, e.target.checked)} />
+          <b>{label}</b>
+        </label>
+        <p className="br-hint" id={`${id}-hint`}>{hint}</p>
+      </div>
+    )
+  }
+  return (
+    <div className="br-field" role="group" aria-labelledby={`${id}-l`} aria-describedby={`${id}-hint`}>
+      <span className="br-label" id={`${id}-l`}>{label}</span>
+      <div className="rs-each">
+        {projects.map((p) => (
+          <label key={tickKey(p)} className="br-check">
+            <input type="checkbox" checked={ticked(ticks, p, dflt)} onChange={(e) => tick(p, e.target.checked)} />
+            <span className="br-mono rs-each-name">{p}</span>
+          </label>
+        ))}
+      </div>
+      <p className="br-hint" id={`${id}-hint`}>{hint}</p>
+    </div>
   )
 }
 
@@ -387,6 +425,8 @@ const RS_CSS = `
 .rs-fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: .8em; min-width: 0; }
 .rs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16em, 1fr)); gap: .8em 1.2em; align-items: start; }
 .rs-kept { margin-left: .4em; font-weight: 650; color: var(--text); }
+.rs-each { display: flex; flex-wrap: wrap; gap: 4px 18px; min-width: 0; }
+.rs-each-name { word-break: break-all; }
 .rs-seg { display: flex; flex-wrap: wrap; gap: 6px; }
 .rs-opt { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 9px; border-radius: 999px; cursor: pointer; font-size: .92em; font-weight: 650;
   border: 1px solid var(--border-strong, var(--border)); background: var(--card); color: var(--text); }
