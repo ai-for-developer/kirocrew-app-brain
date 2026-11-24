@@ -1781,8 +1781,8 @@ def test_the_app_declares_lean_s_read_only_reviewers_as_its_own_agents():
 
 
 def test_brain_run_spawns_the_reviewers_the_app_declares():
-    """brain-kit's brain-run.md (b1ffe40) has the runner's session give the code it wrote to two read-only reviewers
-    through spawn_sub_agents. KiroCrew lets that session spawn only the app's own agents, so the names brain-run.md
+    """brain-kit's brain-run.md (b1ffe40; f99d74a starts them in the run's workspace) has the runner's session give the
+    code it wrote to two read-only reviewers through spawn_sub_agents. KiroCrew lets that session spawn only the app's own agents, so the names brain-run.md
     tells it to spawn are the ones app.json declares, no more and no fewer."""
     told = set(re.findall(r"`(lean-reviewer-[a-z0-9-]+)`",
                           (BRAINKIT / "remote" / "prompts" / "brain-run.md").read_text(encoding="utf-8")))
