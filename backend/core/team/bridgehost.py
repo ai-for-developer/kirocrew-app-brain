@@ -550,7 +550,7 @@ class TeamRuntime:
         for r in led["runs"]:
             all_ids.setdefault(r["req"], []).append(r["run_id"])
             latest[r["req"]] = r
-        notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [])
+        notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [], led["runs"])
         out = []
         for key, r in sorted(latest.items()):
             facts = {"key": key, "claim": None, "where": "runner", "branch": None, "owner": r.get("owner"),

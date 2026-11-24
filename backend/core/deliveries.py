@@ -400,6 +400,8 @@ NOTICE_KIND = {
     "failed": ("failed", "people", "没能开始：MR 上写了原因，处理好以后重新交接"),
     "nobody": ("nobody", "people", "问题发不出：没人能回答这类决定（要在 brain-kit 设置里配上谁来回答）"),
     "ready": ("ready", "people", "验收通过了，会话也做完了：MR 上说了可以合并、谁来合并"),       # team/runwatch.py
+    "stopped": ("stopped", "people",                                                           # team/runwatch.py
+                "会话停住了：桥让它接着做，它还是没推送：请负责人到 KiroCrew 看一下这个会话（工作区里可能有它没提交的改动）"),
     "edits-down-told": ("held", "bridge", "%s 的回答先等着：GitLab 查不到回复有没有被改过（不用重新回复）"),
 }
 OUTBOX_WHAT = {"handover": "接手消息", "answer": "%s 的回答", "notice": "给运行机的通知"}
@@ -437,11 +439,15 @@ def outbox_note(o: dict[str, Any]) -> dict[str, Any] | None:
     return {"kind": "outbox_" + st, "text": text, "at": lean_view.epoch(o.get("updated") or o.get("created"))}
 
 
-def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]],
+                   runs: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     """{run id: [TeamNote]}: what brain-kit's bridge (0d52e97) holds about a run in its ledger, said plainly
     (team_note): the notices it told the MR or counts (CI holding the acceptance question, runnerd silent, sends that
-    keep failing, queued …) and the messages into its session that are not known to have landed."""
+    keep failing, queued …) and the messages into its session that are not known to have landed. A notice about one
+    MR head (stopped:<run>:<head12>, team/runwatch.py) holds while it is the head the bridge last read of the run
+    (*runs*: the ledger's), dispatched: the next push ends it."""
     out: dict[str, list[dict[str, Any]]] = {}
+    heads = {str(r.get("run_id")): str(r.get("last_sha") or "")[:12] for r in runs if r.get("state") == "dispatched"}
     sent = {str(o.get("send_id")) for o in outbox if o.get("state") == "sent"}
     holding = {str(n.get("key") or "").split(":")[1] for n in notices
                if str(n.get("key") or "").startswith("ciheld:") and n.get("state") == "counting"}
@@ -451,6 +457,8 @@ def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]]) 
             continue        # it landed in the end
         if key.startswith(("ciheld-wait:", "ciheld-person:", "ciheld-red:")) and str(n.get("run_id")) not in holding:
             continue        # the pipeline it was about is green, or another push started another wait
+        if key.startswith("stopped:") and key.rsplit(":", 1)[-1] != heads.get(str(n.get("run_id"))):
+            continue        # pushed since, or the run is over
         got = team_note(n)
         if got and n.get("run_id"):
             out.setdefault(str(n["run_id"]), []).append(got)
@@ -535,7 +543,7 @@ def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[
         if "nobody" in latest:
             return put("parked", "people", "none", latest["nobody"]["text"], since=latest["nobody"].get("at"))
         return put("parked", "bridge", "none", "运行机停下来问人了：等桥把问题贴到 MR 上")
-    for k in ("ci_red", "ci_person", "ci_wait", "gaveup"):
+    for k in ("stopped", "ci_red", "ci_person", "ci_wait", "gaveup"):
         if k in latest:
             return put("running", NOTICE_KIND.get({"ci_red": "ciheld-red", "ci_person": "ciheld-person",
                                                    "ci_wait": "ciheld"}.get(k, k), ("", "runner", ""))[1], "none",

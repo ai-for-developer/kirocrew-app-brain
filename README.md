@@ -314,7 +314,9 @@ shown folded): `backend/core/problems.py`.
   stopped in the app (停止: the session runner marks that turn user-stopped, whatever KiroCrew's rows end on). A
   cut-off one is sent 「会话中断：…」 (go on: commit and push as brain-run does, then stop as usual), through brain-kit's
   outbox as a notice about that head; once more when that turn is cut off too; then the MR says 「…的会话停住了」 once,
-  for a person to look at it in KiroCrew. A push starts the count again.
+  for a person to look at it in KiroCrew, and 运行机 says it under the run, its row waiting on people (the ledger
+  notice `stopped:<run>:<head12>`, said while that head is the one the bridge last read). A push starts the count
+  again and ends what 运行机 says.
 - **A run the runner finished** (`team/runwatch.py`). Once the product's acceptance reached the run (brain-kit's
   `_accepted`: its newest delivered acceptance decision is `approve`) and its session is idle with its records pushed
   after it, the MR hears once 「RUN-… 做完了：…可以合并了：请 @<owner> 在 GitLab 上合并」 (GitLab's approvals and

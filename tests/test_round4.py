@@ -154,7 +154,7 @@ def test_team_mode_reads_the_ledgers_notices_and_outbox():
     outbox = [{"send_id": "V-9999999999", "run_id": "RUN-PAY-5-1", "what": "handover:RUN-PAY-5-1", "state": "sent", "tries": 4},
               {"send_id": "N-1", "run_id": RUN, "what": "answer:D-2", "state": "unknown", "tries": 2},
               {"send_id": "N-2", "run_id": "RUN-PAY-4-1", "what": "handover:RUN-PAY-4-1", "state": "dropped", "tries": 3}]
-    by = deliveries.notices_by_run(notices, outbox)
+    by = deliveries.notices_by_run(notices, outbox, [])
     assert [n["kind"] for n in by[RUN]] == ["ci_wait", "outbox_unknown"], by
     assert by[RUN][1]["text"].startswith("D-2 的回答不知道送到会话没有（送过 2 次）")
     assert "RUN-PAY-5-1" not in by                         # gave up, then it landed: nothing to say
