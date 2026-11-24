@@ -677,7 +677,7 @@ KiroCrew 重启（或者模型那边断了）会把会话正在跑的那一轮�
 
 验证：
 
-- `sudo git -C /opt/brain-kit rev-parse HEAD` 和 `sudo -u brainbot cat /home/brainbot/.kiro/crew/apps/brain/VERSIONS` 里 `brain-kit` 那行的 commit 一样；`/opt/kirocrew-app-brain` 也一样对 `app` 那行。
+- `sudo git -C /opt/brain-kit rev-parse HEAD` 等于 `sudo -u brainbot cat /home/brainbot/.kiro/crew/apps/brain/VERSIONS` 里 `brain-kit` 那行的 commit，`sudo git -C /opt/kirocrew-app-brain rev-parse HEAD` 等于 `app` 那行的 commit。
 - `sudo journalctl -u brain-signer -n 50` 里没有 `too old`。
 - 设置页顶上的「团队运行机」卡没有红字。
 

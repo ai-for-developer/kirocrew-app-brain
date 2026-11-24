@@ -237,6 +237,20 @@ Lean timeline follow them when trace is missing), `decisions.USER` (the MR reade
     it); for a run merged or closed it takes `running_label` and that label off, once (`unlabelled:<run>`). Wanted: a
     kit.json label for an accepted run waiting for its merge (`accepted_label`, in config.DEFAULTS and the docs' label
     list), the ready comment and that label swap in the bridge, and reconcile taking `running_label` and it off.
+51. **Which question a reply answers** (new, 81380eb; the app's `mrinfo.answers`). `check_answer` decides inside
+    itself that `answer D-12` answers Q-12 (`same_question`) unless D-12 is one of an acceptance question's review
+    items. A person's app has the MR's notes and no park.json, so 团队运行机's 等你回答 makes that rule again from the
+    question note's checklist (「- [ ] D-7 …」 after its text block). Wanted: one pure function that `check_answer` uses
+    too, `decisions.answers(reply_first_line, did, kind, review_item_ids)`, and `review_items_of(question_body)`, so
+    the two cannot drift.
+52. **A question's number, public** (new, 81380eb; `signer/brain_signer.py`). One ledger counts D-<n> and Q-<n> alike,
+    and the outside signer keeps its own `bound_decisions` by id, so it now splits the id itself and looks up both
+    letters of its number. Wanted: `decisions._did_no` public (`question_number(did)`), so the signer reads a number
+    as brain-kit does.
+53. **安装和使用 3.4 on the watchdog is out of date** (new, b1ffe40). It says 「app 的运行机模式还没有这个检查：它给桥的会话
+    接口不报会话在不在跑」. Since the app's 549da74 (0.5.4) its KiroCrew adapter gives `slot_activity`, so brain-kit's
+    stall watchdog runs in the app's team mode too. Wanted: that sentence taken out, or saying the app does it from
+    0.5.4.
 
 ### Nice-to-have
 
@@ -251,6 +265,8 @@ Lean timeline follow them when trace is missing), `decisions.USER` (the MR reade
     not opening the session, 在排队, the hand-over send not known, sends that keep failing, the acceptance question held
     until the head pipeline is green (running, red, canceled / manual), a question nobody may answer. Wanted: a marker
     such as `<!-- brain-decision {"id", "run", "state"} -->` (and one for the run's notes), or regexes next to the texts.
+    81380eb shows the cost: its questions became Q-<n>, and every one of the app's seven note patterns, six signer
+    refusal rules and its answer-in-the-session pattern had to learn the letter (`constants.QUESTION_ID`).
 17. **`evaluate.collect` contract.** The app maps `autonomy` (and, 72b278e, `runs[].correct == "wrong_open"` for an
     unmerged run whose acceptance was rejected), `delivery` (and `wrong_open`), `judgment`, `repeat_rate`, `useful`,
     `staleness.total`, `cost.per_success` and `cost.note`, `skipped`, `funnel.counts` and `funnel.unclassified`, and
