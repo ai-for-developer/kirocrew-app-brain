@@ -5,9 +5,10 @@ modules are: nothing goes on ``sys.path``, and nothing else in the gateway proce
 imports its siblings relatively, so the package works under any name.
 
 Required modules (the app does nothing without them): common, config, claims, runrec, lean, entries, brainlint, usage,
-reflect, sign, cli, intake.package, bridge.handoff, bridge.decisions, bridge.runnerd, rest, flows (a run's flow, lean or
-fast, and every rule that differs by flow: the app keeps no copy of one), riskpaths and ci (a fast run's changes are
-judged against the risk paths as brain-ci judges them).
+reflect, sign, cli, intake.package, bridge.handoff, bridge.decisions, bridge.runnerd, bridge.kirocrew (what a session
+does now: slot_activity), bridge.delivery (a notice into a run's session, a comment on its MR), rest, flows (a run's
+flow, lean or fast, and every rule that differs by flow: the app keeps no copy of one), riskpaths and ci (a fast run's
+changes are judged against the risk paths as brain-ci judges them).
 Optional ones, added while this app was written, are guarded: trace, evaluate, golden, intents, mrdesc, split
 (0d52e97: brain split, claim, start --key, sync; without it the 大需求 features are off), proof (证据: which evidence
 `lean verify` sealed and whether it is of the code under review; without it the 证据 row says the brain-kit is too old
@@ -37,8 +38,8 @@ from typing import Any
 
 PKG = "_brainapp_brainkit"
 REQUIRED = ("common", "config", "claims", "runrec", "lean", "entries", "brainlint", "usage", "reflect", "sign", "cli",
-            "rest", "intake.package", "bridge.handoff", "bridge.decisions", "bridge.runnerd", "bridge.ledger", "flows",
-            "riskpaths", "ci")
+            "rest", "intake.package", "bridge.handoff", "bridge.decisions", "bridge.runnerd", "bridge.ledger",
+            "bridge.kirocrew", "bridge.delivery", "flows", "riskpaths", "ci")
 OPTIONAL = ("trace", "evaluate", "golden", "intents", "mrdesc", "split", "proof", "deploys")   # split: brain-kit 0d52e97
 CANDIDATES = ("~/brain-kit", "~/warren_ws/brain-kit", "~/workplace/brain-kit", "/opt/brain-kit")
 # The brain-kit a release ships inside the app (scripts/release.sh puts it there; a dev checkout has none).
@@ -52,7 +53,10 @@ NEEDS = (("sign", "SpoolSigner"), ("sign", "SignerRefused"), ("sign", "signer_fr
          ("bridge.decisions", "edit_state"), ("bridge.decisions", "DecisionLoop.reply_states"),
          ("rest", "GitLab.note_edits"), ("flows", "of"), ("flows", "refusals"), ("flows", "policy_at"),
          ("flows", "belongs"), ("flows", "decisions_path"), ("flows", "prepare_clone"), ("flows", "action_problem"),
-         ("flows", "Refusal.zh"), ("riskpaths", "hits"), ("ci", "changed_paths"), ("ci", "gitlinks"))
+         ("flows", "Refusal.zh"), ("riskpaths", "hits"), ("ci", "changed_paths"), ("ci", "gitlinks"),
+         ("bridge.kirocrew", "slot_activity"), ("bridge.kirocrew", "TrustRefused"), ("bridge.delivery", "inert"),
+         ("bridge.delivery", "notice_send_id"), ("bridge.delivery", "Delivery._send_once"),
+         ("bridge.delivery", "Delivery.tell_mr_once"), ("bridge.handoff", "Bridge.stall_s"))
 VERSION_NEEDED = "b572303"
 
 _lock = threading.RLock()

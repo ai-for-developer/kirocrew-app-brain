@@ -126,6 +126,100 @@ def test_hand_over_dispatch_question_and_answer_through_the_separate_signer(worl
         seen["host"].ledger.db.execute("SELECT 1")
 
 
+SLOT = "run-pay-1-1"
+LONG_AGO = "2026-11-08T10:00:00Z"       # the newest row of a turn that ended long ago: past bridge.json stall_minutes
+
+
+def ended(text, at=LONG_AGO):
+    """A session turn's last rows: its reply, written at *at*."""
+    return [{"role": "assistant", "content": text, "meta": {}, "ts": at}]
+
+
+async def rounds(svc, n=1):
+    """*n* team rounds, each without an error."""
+    for _ in range(n):
+        got = await svc.team_loop()
+        assert got["ok"], got
+
+
+def resumes(gw):
+    return [m["content"] for m in gw.msgs[SLOT] if m["role"] == "user" and m["content"].startswith("会话中断：")]
+
+
+def test_a_session_turn_cut_off_before_its_push_is_told_to_go_on_then_a_person_is(world, tmp_path):
+    """RUN-REQ-2-1: KiroCrew restarted mid-turn, the session's slot idle with its work uncommitted, the bridge never
+    noticed. Each round reads every dispatched run's slot: idle, nothing queued or on its way to it, no question at the
+    MR head, not done, and quiet for bridge.json stall_minutes, the session is told to go on (trust set again first,
+    since a restart ends it); once more if that does not help; then the MR tells a person, once."""
+    gw = FakeGateway()
+    gw.script = [ended("开始写代码", "2099-01-01T00:00:00Z"), ended("好"), ended("好")]
+    svc = service(world, tmp_path, gw)
+    gl = world["gl"]
+    seen = {}
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # handed over, dispatched: the hand-over message sent
+            seen["head"] = gl.head()
+            gw.finish(SLOT)                             # its newest row just now: not quiet yet
+            await rounds(svc)
+            seen["early"] = resumes(gw)
+            gw.slot_rows[SLOT]["_pending"] = ended("我在改 src/refund.py")
+            gw.finish(SLOT)                             # KiroCrew stopped the turn long ago, nothing pushed
+            gw.slot_rows[SLOT]["trust"] = False         # and its restart ended trust
+            await rounds(svc)
+            seen["first"] = resumes(gw)
+            seen["trust"] = gw.slot_rows[SLOT]["trust"]
+            seen["sends"] = [c for c in gw.calls if c[0] in ("trust", "send")][-2:]
+            seen["sid"] = (gw.msgs[SLOT][-1].get("meta") or {}).get("sendId")
+            await rounds(svc)                           # its turn is still going: nothing more
+            seen["going"] = len(resumes(gw))
+            gw.finish(SLOT)                             # ... and ended without a push
+            await rounds(svc)
+            seen["second"] = len(resumes(gw))
+            seen["told_early"] = [b for b in gl.bodies() if "会话停住了" in b]
+            gw.finish(SLOT)
+            await rounds(svc, 2)
+        finally:
+            await svc.stop()
+
+    run(go())
+    assert seen["early"] == []
+    (first,) = seen["first"]
+    assert "提交并推送" in first and seen["head"][:12] in first and seen["trust"] is True
+    assert seen["sends"] == [("trust", SLOT), ("send", SLOT, seen["sid"])]
+    assert seen["going"] == 1 and seen["second"] == 2 and seen["told_early"] == []
+    assert len(resumes(gw)) == 2
+    (told,) = [b for b in gl.bodies() if "会话停住了" in b]
+    assert told.startswith("RUN-PAY-1-1 的会话停住了") and SLOT in told and "2 次" in told, told
+
+
+def test_a_session_that_parked_or_still_works_is_not_told_to_go_on(world, tmp_path):
+    """Idle after it parked (its question on the MR waits for a person), or at work however long: no message. One at
+    work and quiet for stall_minutes is brain-kit's watchdog's (delivery.tell_if_stalled, on once the slot's activity
+    can be read): the MR hears it once."""
+    gw = FakeGateway()
+    gw.script = [ended("等待决策，不继续")]
+    svc = service(world, tmp_path, gw)
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc, 2)                        # at work since the hand-over, quiet for a long time
+            push_park(world["runs_root"] / "RUN-PAY-1-1", PARK)
+            gw.finish(SLOT)
+            await rounds(svc, 3)
+        finally:
+            await svc.stop()
+
+    run(go())
+    assert any(b.startswith("**D-1 · 澄清 · RUN-PAY-1-1**") for b in world["gl"].bodies())
+    assert resumes(gw) == [] and not [b for b in world["gl"].bodies() if "会话停住了" in b]
+    (quiet,) = [b for b in world["gl"].bodies() if "没有动静" in b]
+    assert quiet.startswith("RUN-PAY-1-1 已经") and "还在跑" in quiet, quiet
+
+
 def test_the_page_says_what_the_bridge_made_of_each_labelled_mr(world, tmp_path):
     """brain-kit 72b278e's Bridge.process results, MR by MR, last round. The newest event on the hand-over label takes
     it off (as `brain handoff` does while it labels again): unlabelled, nothing done, no rejection on the MR. Labelled

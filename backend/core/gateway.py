@@ -234,6 +234,12 @@ class Gateway:
                                   body={"slot": key, "message": message, "meta": {"sendId": send_id}})
         return data if isinstance(data, dict) else {}
 
+    async def slot(self, key: str, limit: int = 1) -> dict[str, Any]:
+        """KiroCrew's read of one slot as brain-kit's activity() reads it: its newest *limit* rows (``messages``),
+        whether a turn is in flight (``running``) and what waits behind it (``queue``; KiroCrew 0.12.0 and later)."""
+        data = await self.request("GET", f"/api/chat/slots/{q(key)}", params={"limit": limit})
+        return data if isinstance(data, dict) else {}
+
     async def messages(self, key: str, limit: int = 120) -> list[dict[str, Any]]:
         data = await self.request("GET", f"/api/chat/slots/{q(key)}", params={"limit": limit})
         rows = data.get("messages") if isinstance(data, dict) else None

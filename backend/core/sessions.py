@@ -1153,6 +1153,17 @@ class SessionManager:
         self._runner_slot(name)
         return {"key": name, "messages": await self.gw.messages(name, limit=PAGE)}
 
+    async def adapter_activity(self, name: str) -> dict[str, Any]:
+        """Runner slot *name* as KiroCrew reads it with its newest row only: whether a turn runs, what is queued."""
+        self._runner_slot(name)
+        return await self.gw.slot(name, limit=1)
+
+    async def adapter_trust(self, name: str) -> dict[str, Any]:
+        """Trust for runner slot *name* again: KiroCrew keeps it in memory, so a restart ends it."""
+        self._runner_slot(name)
+        await self.gw.trust(name)
+        return {"ok": True}
+
     async def adapter_turn(self, name: str, send_id: str) -> str:
         """The turn the message *send_id* started in runner slot *name*: running; ended (the reply is in and the slot
         went idle); failed (it never went in, ended without a reply or with KiroCrew's error, was stopped, or the
