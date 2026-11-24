@@ -118,6 +118,8 @@ def test_hand_over_dispatch_question_and_answer_through_the_separate_signer(worl
     assert view["signer"]["refused"] == [] and view["status"]["same_user"] is True
     row = overview["rows"][0]
     assert row["repo"] == "runner" and row["key"] == "PAY-1" and row["run_ids"] == ["RUN-PAY-1-1"]
+    # the answer just reached the session, at work on it: the runner carries on (no one is sent to KiroCrew yet)
+    assert (row["waits"]["who"], row["waits"]["text"]) == ("runner", "Q-1 的回答送到了，运行机在接着做"), row["waits"]
     assert row["title"] == "退款"     # the claim's, read in runnerd's clone (not the branch's slug, 「refund」)
     assert row["mr"]["url"] == "https://gl.example/grp/repo/-/merge_requests/5"
     assert todo["team"] is True

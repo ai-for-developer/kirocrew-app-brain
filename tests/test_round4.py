@@ -6,6 +6,7 @@ its refusals in plain Chinese, eval's batch states and families. The strings are
 decisions.py, delivery.py, cli.py, kit/.kiro/brain/lean-hook.py, evaluate.py)."""
 
 import re
+import time
 
 import pytest
 
@@ -173,6 +174,48 @@ def test_team_mode_reads_the_ledgers_notices_and_outbox():
     d = {"id": "D-1", "run_id": "RUN-PAY-8-1", "state": "delivered", "kind": "clarify", "sha": None}
     deliveries.team_classify(row, {"run_id": "RUN-PAY-8-1", "state": "dispatched"}, [d], {"status": "waiting"})
     assert (row["state"], row["waits"]["who"]) == ("parked", "runner") and "运行机还没接着做" in row["waits"]["text"]
+
+
+@needs_brainkit
+def test_an_answer_that_reached_the_run_says_the_runner_goes_on_until_its_session_stays_idle_past_stall_minutes(
+        decisions):
+    """0.5.4-srv9: 「Q-2 的回答送到了，运行机还没接着做：去 KiroCrew 看一下它的会话」 showed 3 minutes after the answer
+    reached the run, its session at work on it. The runner's row says the runner carries on while the session works and
+    for bridge.json stall_minutes (the watchdog's) after the answer or the session's newest row, whichever is later;
+    only after that does it send a person to KiroCrew (at once with the watchdog off). A row read from the MR (a
+    person's machine, 全队交付) waits as long after the bridge's note that the answer was sent."""
+    t = 1795000000                                                      # the answer reached the run
+
+    def iso(x):
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(x))
+    going = ("runner", "Q-2 的回答送到了，运行机在接着做")
+    look = ("runner", "Q-2 的回答送到了，运行机还没接着做：去 KiroCrew 看一下它的会话")
+    d = {"id": "Q-2", "run_id": "RUN-PAY-8-1", "state": "delivered", "kind": "clarify", "sha": None, "updated": iso(t)}
+
+    def runner(now, session, stall=900.0):
+        row = deliveries.base_row("runner", {"key": "PAY-8"})
+        deliveries.team_classify(row, {"run_id": "RUN-PAY-8-1", "state": "dispatched"}, [d], {"status": "waiting"},
+                                 now=now, stall_s=stall, session=session)
+        return row["waits"]["who"], row["waits"]["text"]
+    assert runner(t + 180, {"busy": False, "last_activity": t + 170}) == going        # srv9's snapshot
+    assert runner(t + 3600, {"busy": True, "last_activity": t + 3590}) == going       # at work for an hour
+    assert runner(t + 1200, {"busy": False, "last_activity": t + 600}) == going       # idle 10 minutes of 15
+    assert runner(t + 1200, {"busy": False, "last_activity": t + 60}) == look         # idle 19 minutes
+    assert runner(t + 1200, None) == look                                             # no session known: since the answer
+    assert runner(t + 60, {"busy": False, "last_activity": t + 30}, stall=0.0) == look
+
+    notes = [note(1, ask(decisions, "Q-2", CLARIFY, ["alice"]), at=iso(t - 600)),
+             note(2, "answer Q-2 B", "alice", at=iso(t - 60)),
+             note(3, "Q-2 已收到 @alice 的回答：B，已送回 %s（凭证 V-abcdef0123）。" % RUN, at=iso(t))]
+    mr = {"state": "opened", "labels": ["ai-running"], "questions": mrinfo.parse_notes(notes)["questions"]}
+
+    def person(now, **wait):
+        f = facts({"status": "waiting", "kind": "clarify"})
+        row = deliveries.base_row("r1", f)
+        deliveries.classify(row, f, mr=mr, slot=None, cfg=CFG, now=now, **wait)
+        return row["waits"]["who"], row["waits"]["text"]
+    assert person(t + 180) == going and person(t + 16 * 60) == look
+    assert person(t + 180, answer_wait_s=120.0) == look and person(t + 180, answer_wait_s=0.0) == look
 
 
 @needs_brainkit
