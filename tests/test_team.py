@@ -449,6 +449,35 @@ def test_a_run_accepted_and_done_says_who_merges_it_and_its_label_goes_at_the_me
     assert "ai-ready-to-merge" not in gl.labels and "ai-running" not in gl.labels
 
 
+@pytest.mark.parametrize("status", [404, 403])
+def test_a_run_that_ended_on_an_mr_gitlab_no_longer_shows_fails_no_round(world, tmp_path, status):
+    """A run that ended within 14 days has its labels taken off once. Its MR deleted since (404), or its project not
+    readable by the bridge's account any more (403): the bridge's log says why, GitLab is not asked again and no
+    round fails on it. (An app before 0.5.4 took no labels off, so the runs it saw end are such runs after the
+    update; one of them on a deleted MR made every round 这一轮没跑成 for 14 days.)"""
+    svc = service(world, tmp_path)
+    gl = world["gl"]
+    seen = {}
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # dispatched
+            gl.state = "closed"
+            await rounds(svc)                           # closed, its labels taken off
+            svc.team.host.ledger.db.execute("DELETE FROM notices WHERE key='unlabelled:RUN-PAY-1-1'")
+            gl.gone = status
+            seen["rounds"] = [await svc.team_loop() for _ in range(3)]
+            seen["lines"] = [text for _, text in svc.team.lines]
+        finally:
+            await svc.stop()
+
+    run(go())
+    assert [(r["ok"], r["error"]) for r in seen["rounds"]] == [(True, "")] * 3, seen["rounds"]
+    assert gl.gone_calls == 1
+    assert any("RUN-PAY-1-1" in x and str(status) in x and "labels" in x for x in seen["lines"]), seen["lines"][-5:]
+
+
 def test_the_page_says_what_the_bridge_made_of_each_labelled_mr(world, tmp_path):
     """brain-kit 72b278e's Bridge.process results, MR by MR, last round. The newest event on the hand-over label takes
     it off (as `brain handoff` does while it labels again): unlabelled, nothing done, no rejection on the MR. Labelled

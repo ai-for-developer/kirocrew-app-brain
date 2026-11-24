@@ -47,6 +47,8 @@ class GitLab:
         self.next_note = 1000
         self.graphql_down = set()   # tokens GraphQL answers 502 for ("*": every token)
         self.graphql_calls = []     # the token of each GraphQL request
+        self.gone = 0               # what GitLab answers for MR !5 once it is deleted (404) or not readable (403)
+        self.gone_calls = 0         # the requests for MR !5 answered so
 
     def tick(self):
         self.t += 1
@@ -136,6 +138,9 @@ class GitLab:
         if path == pre + "/merge_requests" and method == "GET":
             want = q.get("labels")
             return ok([self.mr()] if self.state == "opened" and (not want or want in self.labels) else [])
+        if self.gone and path.startswith(pre + "/merge_requests/5"):
+            self.gone_calls += 1
+            return ok({"message": "%d %s" % (self.gone, "Not Found" if self.gone == 404 else "Forbidden")}, self.gone)
         if path == pre + "/merge_requests/5" and method == "GET":
             return ok(self.mr())
         if path == pre + "/merge_requests/5" and method == "PUT":

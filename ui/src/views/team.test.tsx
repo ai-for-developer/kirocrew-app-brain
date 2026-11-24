@@ -529,6 +529,25 @@ describe('运行机', () => {
     await waitFor(() => expect(p.reloadStatus).toHaveBeenCalled())
   })
 
+  test('a round says how many sessions it told to go on, and names its runs step when that one failed', async () => {
+    const user = userEvent.setup()
+    installFixtureRoutes({ [`POST ${API}/team/loop`]: () => ({ ok: true, summary: { poll: 1, reconcile: 0, resumed: 1 }, error: '' }) })
+    const { unmount } = render(<TeamPage {...props()} />)
+    await screen.findByRole('region', { name: '运行' })
+    await user.click(screen.getByRole('button', { name: '现在跑一轮' }))
+    const result = await screen.findByTestId('loop-result')
+    expect(within(result).getAllByText(/ 个$/).map((t) => t.textContent)).toEqual(['看了 MR 1 个', '对了账 0 个', '让中断的会话接着做 1 个'])
+    expect(result).not.toHaveTextContent('resumed')
+    unmount()
+    const tv = fx.team()
+    tv.status.loop_error = 'runs: not done this round: RUN-PAY-1-1: GitLab 502 Bad Gateway'
+    installFixtureRoutes({ [`GET ${API}/team`]: () => tv })
+    render(<TeamPage {...props()} />)
+    const err = await screen.findByTestId('loop-error')
+    expect(err).toHaveTextContent('上一轮有一步没成：照看派出去的运行')
+    expect(err).not.toHaveTextContent('其他一步')
+  })
+
   test('a round that failed a step says which, in words, what to do, and folds the error', async () => {
     const tv = fx.team()
     tv.status.loop_error = 'signin: ~/.brain/local_transport.py could not be loaded: x；left: database is locked；poll: GitLab 401 Unauthorized；collect: [Errno 2] No such file or directory'
