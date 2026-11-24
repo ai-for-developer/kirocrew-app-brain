@@ -535,6 +535,29 @@ def test_a_project_that_left_the_runner_is_not_looked_at_and_no_round_fails_on_i
     assert "RUN-PAY-1-1" in line["raw"]
 
 
+def test_a_run_session_team_mode_opened_right_before_the_app_stopped_is_still_its_own_when_the_app_starts_again(
+        tmp_path, home, monkeypatch):
+    """KiroCrew stops the app (on_shutdown: an update, a restart) right after team mode opened a run's session, before
+    the next poll saved the sessions: started again on the same data, the app still lets team mode stop that session,
+    as it does for a project that left the runner (left.py)."""
+    monkeypatch.setattr(mod("service"), "TICK_S", 3600)    # no poll after the first: nothing saves before the stop
+    gw = FakeGateway()
+
+    async def started(act):
+        svc = make_service(tmp_path / "app", [], gw=gw)
+        await svc.start()
+        try:
+            kc = mod("team.crewadapter").KiroCrewAdapter(asyncio.get_running_loop(), svc.sessions,
+                                                         mod("bk").m("common").BrainError)
+            return await asyncio.to_thread(act, kc)        # from a worker thread, as the bridge calls it
+        finally:
+            await svc.stop()
+
+    run(started(lambda kc: kc.create_slot("run-pay-1-1", "brain-run", "", "incognito")))
+    run(started(lambda kc: kc.stop("run-pay-1-1")))
+    assert [c for c in gw.calls if c[0] == "stop"] == [("stop", "run-pay-1-1")]
+
+
 def test_team_mode_never_holds_a_key(world, tmp_path):
     """bridge.json naming a signing_key, or no spool signer, does not start team mode (whatever dev_same_user says)."""
     cfg = json.loads(world["bridge_cfg"].read_text())
