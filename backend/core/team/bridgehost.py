@@ -277,7 +277,8 @@ class TeamRuntime:
             relay_mod.push_orphan(str(rcfg["clone_url"]).replace("{project}", project), work,
                                   str(rcfg.get("git_name") or "brain-bot"),
                                   str(rcfg.get("git_email") or "brain-bot@noreply.invalid"))
-        return relay_mod.Relay(gl, make_branch), relay_mod.Deliveries(gl, str(cfg["gitlab"]["base"]), self.host.kit)
+        return relay_mod.Relay(gl, make_branch), relay_mod.Deliveries(gl, str(cfg["gitlab"]["base"]), self.host.kit,
+                                                                      answer_wait_s=float(self.host.stall_s))
 
     def stop(self) -> None:
         """Close the ledger after the round in progress (it runs on the executor), then let the executor go."""
@@ -551,6 +552,7 @@ class TeamRuntime:
             all_ids.setdefault(r["req"], []).append(r["run_id"])
             latest[r["req"]] = r
         notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [], led["runs"])
+        now, stall_s = time.time(), float(self.host.stall_s)
         out = []
         for key, r in sorted(latest.items()):
             facts = {"key": key, "claim": None, "where": "runner", "branch": None, "owner": r.get("owner"),
@@ -567,7 +569,8 @@ class TeamRuntime:
             row = deliveries.base_row("runner", facts)
             row["where"] = "runner"
             decs = [d for d in led["decisions"] if d["run_id"] in all_ids[key]]
-            deliveries.team_classify(row, r, decs, facts.get("park"), notes=notes.get(r["run_id"], []))
+            deliveries.team_classify(row, r, decs, facts.get("park"), notes=notes.get(r["run_id"], []), now=now,
+                                     stall_s=stall_s, session=self.mgr.slot_stats(r.get("slot")) if self.mgr else None)
             row["run_ids"] = all_ids[key]
             row["mr"] = {"iid": int(r["iid"]), "url": self.mr_url(r["project"], r["iid"]), "state": None}
             row["updated_at"] = lean_view.epoch(r.get("updated"))

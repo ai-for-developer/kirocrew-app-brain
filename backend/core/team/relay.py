@@ -240,8 +240,10 @@ class Deliveries:
     thread)."""
 
     def __init__(self, gl: Any, base: str, kit: Callable[[str], Mapping[str, Any]],
-                 now: Callable[[], float] = time.time, clock: Callable[[], float] = time.monotonic) -> None:
+                 now: Callable[[], float] = time.time, clock: Callable[[], float] = time.monotonic,
+                 answer_wait_s: float = deliveries.ANSWER_WAIT_S) -> None:
         self.gl, self.base, self.kit, self.now, self.clock = gl, base.rstrip("/"), kit, now, clock
+        self.answer_wait_s = answer_wait_s      # bridge.json stall_minutes: an answer delivered says 运行机在接着做 that long
         self._facts: dict[tuple, Facts] = {}                # (project, key, sha) -> read_facts at that commit
         self._blobs: dict[str, dict[str, bytes]] = {}       # project -> blob id -> the file (GitLabSource)
         self._claims: dict[tuple, Any] = {}                 # (project, sha) -> its claim.json, an object or None
@@ -393,7 +395,7 @@ class Deliveries:
         since = deliveries.runner_commits_from(run, info, dict(kit)) if f["where"] == "branch" else None
         deliveries.classify(row, f, mr=info, slot=None, cfg=dict(kit), at_handover=bool(info) and bool(handover)
                             and list(parent) == [handover], me=None, reflected=reflected, now=now, pushed=True,
-                            fast=fast_of(f, kit),
+                            fast=fast_of(f, kit), answer_wait_s=self.answer_wait_s,
                             bot_commits=self._bot_commits(project, since, g.sha, kit, seen) if since else 0)
         row["family"] = fam
         family.classify(row, fam, f, None)

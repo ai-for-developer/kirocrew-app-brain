@@ -53,6 +53,9 @@ NOT_POSTED = ("posting", "asking")
 STUCK_DECISION = {"refused": "%s 的回答签名服务不签：看运行机页的拒签原因",
                   "void": "%s 作废（问题和这次推送对不上）：运行机要重新推送一次才会重新提问",
                   "invalid": "%s 发不出去（AI 停下来写的问题不对）：运行机要改好再推送一次"}
+# how long an answer that reached the run says 运行机在接着做 on a row read from the MR, which knows no bridge.json:
+# brain-kit's stall_minutes default (the runner's rows and 全队交付 there use bridge.json's)
+ANSWER_WAIT_S = 900.0
 
 
 def park_waiting(park: Any) -> bool:
@@ -183,7 +186,7 @@ def runner_commits_from(run: dict[str, Any] | None, mr: dict[str, Any] | None, c
 def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | None, slot: dict[str, Any] | None,
              cfg: dict[str, Any], bot_commits: int = 0, at_handover: bool = False, me: str | None = None,
              reflected: bool = False, now: float | None = None, pushed: bool = True,
-             fast: fastrow.FastFacts | None = None) -> None:
+             fast: fastrow.FastFacts | None = None, answer_wait_s: float = ANSWER_WAIT_S) -> None:
     """Fill in state, state_label and waits (person mode). *at_handover*: the branch tip is the hand-over commit
     `brain handoff` made (its parent is run.json's handoff.local_head). *me*: who this machine's person is (None: not
     known); someone else's requirement waits for them, not for "you".
@@ -281,7 +284,7 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
         got = [q for q in qs if h and q.get("park") == h and q.get("state") in ANSWERED_TEXT]
         if got:
             q = got[-1]
-            who, text = ANSWERED_TEXT[q["state"]]
+            who, text = answered_text(q["state"], lean_view.epoch(q.get("delivered_at")), now, answer_wait_s)
             return put("parked", who, "none", text % q["id"], since=lean_view.epoch(q.get("at")) or f.get("park_at"))
     if park_waiting(park) or open_q:
         q = open_q[-1] if open_q else {}
@@ -348,6 +351,24 @@ ANSWERED_TEXT = {"held": ("bridge", "%s 有了回复：等 GitLab 能查回复�
                  "answered": ("bridge", "%s 有了回答：桥还在签名、送回运行机（不用再答）"),
                  "delivered": ("runner", "%s 的回答送到了，运行机还没接着做：去 KiroCrew 看一下它的会话"),
                  "delivery_unknown": ("bridge", "%s 的回答不知道送到没有：桥每轮看一下会话，确认没送到才再送；一直这样就要人去 KiroCrew 看一下（不用再答）")}
+# ... the answer reached the run and its session works on it, or has for less than the watchdog's stall_minutes
+DELIVERED_GOING = ("runner", "%s 的回答送到了，运行机在接着做")
+
+
+def answered_text(state: str, at: float | None, now: float | None, wait_s: float,
+                  session: dict[str, Any] | None = None) -> tuple[str, str]:
+    """ANSWERED_TEXT of *state*; for one delivered (at *at*), DELIVERED_GOING while the run's *session* (slot_stats:
+    busy, last_activity) works, or for *wait_s* (bridge.json stall_minutes) after the answer or its newest row,
+    whichever is later; ANSWERED_TEXT's look in KiroCrew after that, or at once when *wait_s* is 0 (the watchdog off)
+    or nothing says when."""
+    if state != "delivered":
+        return ANSWERED_TEXT[state]
+    if session and session.get("busy"):
+        return DELIVERED_GOING
+    quiet = max([x for x in (at, (session or {}).get("last_activity")) if isinstance(x, (int, float))], default=None)
+    if wait_s and now is not None and quiet is not None and now - quiet < wait_s:
+        return DELIVERED_GOING
+    return ANSWERED_TEXT[state]
 # the run's own MR notes (mrinfo.RUNNER_NOTES) that say why a running run waits, and on whom
 RUNNING_NOTES = {"ci_wait": "runner", "ci_person": "people", "ci_red": "people", "nobody": "people",
                  "gaveup": "people", "send_unknown": "bridge"}
@@ -470,11 +491,14 @@ def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]],
 
 
 def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[dict[str, Any]],
-                  park: Any, notes: list[dict[str, Any]] | None = None) -> None:
+                  park: Any, notes: list[dict[str, Any]] | None = None, *, now: float | None = None,
+                  stall_s: float = 0.0, session: dict[str, Any] | None = None) -> None:
     """Team mode: the ledger's run state and its decisions (brain-kit's states). A run id reserved while the signer
     signs its contract (``signing``) is a hand-over not taken yet; a decision whose answer the signer refused, that is
     void, or that could not be asked leaves the run waiting until a person looks. *notes* (team_note, outbox_note):
-    what brain-kit 0d52e97's bridge holds about the run, e.g. the acceptance question held until CI is green."""
+    what brain-kit 0d52e97's bridge holds about the run, e.g. the acceptance question held until CI is green. *now*,
+    *stall_s* (bridge.json stall_minutes) and *session* (the run's slot_stats): an answer that reached the run says
+    the runner goes on until its session stays idle past stall_s (answered_text)."""
     st = run_row.get("state")
     notes = sorted(notes or [], key=lambda x: x.get("at") or 0)
     latest = {x["kind"]: x for x in notes}
@@ -536,9 +560,9 @@ def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[
     answered = [d for d in mine if d.get("state") in ("answered", "delivered", "delivery_unknown")]
     if park_waiting(park) and answered and answered[-1] is last:
         # brain-kit 0d52e97's `answered`: the bridge has the answer, park.json still waits
-        who, text = ANSWERED_TEXT[answered[-1]["state"]]
-        return put("parked", who, "none", text % answered[-1]["id"],
-                   since=lean_view.epoch(answered[-1].get("updated") or answered[-1].get("created")))
+        at = lean_view.epoch(answered[-1].get("updated") or answered[-1].get("created"))
+        who, text = answered_text(answered[-1]["state"], at, now, stall_s, session)
+        return put("parked", who, "none", text % answered[-1]["id"], since=at)
     if park_waiting(park):
         if "nobody" in latest:
             return put("parked", "people", "none", latest["nobody"]["text"], since=latest["nobody"].get("at"))

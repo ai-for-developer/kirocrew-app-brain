@@ -256,8 +256,11 @@ shown folded): `backend/core/problems.py`.
   first line names its commit and park.json hash); when the repo's kit.json names `bridge_user`, only that account's
   notes count, so a look-alike posted by a person is not a question. The bridge's 「变更说明」 comment (first line
   `decisions.DESC_TITLE`, 48b6b97) is skipped whole, whatever the MR.md in it says. States shown: open, answered (the
-  bridge has the answer but could not sign it this round: it sends it later, nobody answers again), delivered, stale
-  (a new push), void (not bound to its push and park.json, or its question note was deleted), refused (the signer
+  bridge has the answer but could not sign it this round: it sends it later, nobody answers again), delivered (while
+  park.json still waits the row says 「Q-n 的回答送到了，运行机在接着做」 for `stall_minutes` after the bridge's note,
+  15 here, which knows no bridge.json; the runner's own rows and 全队交付 take bridge.json's, and the runner's say it
+  as long as the session works and for that long after its newest row; then 「…运行机还没接着做：去 KiroCrew 看一下它的
+  会话」, at once with `stall_minutes` 0), stale (a new push), void (not bound to its push and park.json, or its question note was deleted), refused (the signer
   would not sign), invalid; 0d52e97: held (GitLab cannot say yet whether a reply was edited: it waits, nobody replies
   again), delivery_unknown. The run's own notes (they start with its run id) say why a taken hand-over or a running run
   waits, as long as nothing was pushed after them: runnerd silent for `runnerd_wait_minutes`, runnerd retrying, 没能开始

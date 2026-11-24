@@ -176,7 +176,8 @@ def parse_notes(notes: list[dict[str, Any]], bridge_user: str | None = None) -> 
             continue
         m = delivered_re.match(first)
         if m and m.group(1) in qs:
-            qs[m.group(1)].update(state="delivered", answer=m.group(3), answerer=m.group(2), voucher_id=m.group(4))
+            qs[m.group(1)].update(state="delivered", answer=m.group(3), answerer=m.group(2), voucher_id=m.group(4),
+                                  delivered_at=n.get("created_at"))
             continue
         m = NOT_SIGNED_RE.match(first)
         if m and m.group(1) in qs and qs[m.group(1)]["state"] in ("open", "held"):
