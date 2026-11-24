@@ -298,12 +298,19 @@ shown folded): `backend/core/problems.py`.
   turns it off) is said on its MR once. And it sets the slot to trust before every message, as brain-kit's client
   does: KiroCrew keeps trust in memory, so a restart ends it. A turn KiroCrew stopped half-way (a restart, a provider
   shutdown) leaves an idle session brain-kit's watchdog does not look at, its work uncommitted in the workspace. So
-  after brain-kit's steps each round reads every dispatched run's slot: idle, nothing queued or on its way to it
-  (brain-kit's outbox), no question at its MR head waiting for a person or the bridge, not accepted and done, and its
-  newest row older than `stall_minutes`, the session owes a push (the newest message that reached it is about the MR's
-  head, or the head is its own push that asks nothing). It is sent 「会话中断：…」 (go on: commit and push as brain-run
-  does, then stop as usual), through brain-kit's outbox as a notice about that head; once more when it is quiet again;
-  then the MR says 「…的会话停住了」 once, for a person to look at it in KiroCrew. A push starts the count again.
+  after brain-kit's steps each round reads every dispatched run's slot (its newest rows): idle, nothing queued or on
+  its way to it (brain-kit's outbox), its newest turn cut off, no question at its MR head waiting for a person or the
+  bridge, the signer not refusing the answer to its newest question (at any head: the run was told it is blocked), not
+  accepted and done, and its newest row older than `stall_minutes`, the session owes a push (the newest message that
+  reached it is about the MR's head, or the head is its own push that asks nothing). A turn is cut off when KiroCrew
+  wrote no end to it: KiroCrew puts `meta.turn_stats` on the last reply of a turn it finished and a `stop_event` row
+  on one someone stopped, while a restart leaves the turn on whatever it wrote last (RUN-REQ-2-1: a tool call, then
+  KiroCrew's empty row of a stopped turn) and an error on an `error` row; rows KiroCrew writes after a turn (a
+  compaction, a trust reset) are looked past (`crewadapter.cut_off`). So a session that ended its turn without a push
+  (brain-run's 「工作区和合同 … 对不上，不继续」, 「…等人处理」) is left alone. A cut-off one is sent 「会话中断：…」 (go
+  on: commit and push as brain-run does, then stop as usual), through brain-kit's outbox as a notice about that head;
+  once more when that turn is cut off too; then the MR says 「…的会话停住了」 once, for a person to look at it in
+  KiroCrew. A push starts the count again.
 - **A run the runner finished** (`team/runwatch.py`). Once the product's acceptance reached the run (brain-kit's
   `_accepted`: its newest delivered acceptance decision is `approve`) and its session is idle with its records pushed
   after it, the MR hears once 「RUN-… 做完了：…可以合并了：请 @<owner> 在 GitLab 上合并」 (GitLab's approvals and

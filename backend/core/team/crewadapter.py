@@ -12,18 +12,19 @@ bridge already handles (setup failures are retried, a send whose outcome is unkn
 
 What a turn does: brain-kit's ``slot()`` answers the newest messages only, without ``running`` or the queue, so
 brain-kit's bridge sees a send that landed but never one that did not. ``activity()`` is brain-kit's own (KiroCrew's
-read of the slot with its newest row, through brain-kit's slot_activity), with ``queued`` added: brain-kit's stall
-watchdog (delivery.tell_if_stalled) reads it, and so does team/runwatch.py for a session that went idle before its
-push. ``send()`` sets the slot to trust before each message, as brain-kit's client does: KiroCrew keeps trust in
-memory, so a restart ends it, and nobody is at the runner to approve a tool call. patrol_turn() answers from the
-session runner instead: every message sent through it is a turn it polls (sessions.py), which ends once the slot is
-idle twice in a row with the reply in.
+read of the slot with its newest row, through brain-kit's slot_activity), with ``queued`` and ``cut`` added:
+brain-kit's stall watchdog (delivery.tell_if_stalled) reads it, and so does team/runwatch.py for a session whose turn
+KiroCrew cut off before its push (cut_off). ``send()`` sets the slot to trust before each message, as brain-kit's
+client does: KiroCrew keeps trust in memory, so a restart ends it, and nobody is at the runner to approve a tool call.
+patrol_turn() answers from the session runner instead: every message sent through it is a turn it polls
+(sessions.py), which ends once the slot is idle twice in a row with the reply in.
 """
 
 from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import json
 import re
 from typing import Any
 
@@ -35,6 +36,32 @@ from .patrol import Refused
 SEND_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 RUN_SLOT_RE = re.compile(r"^run-[a-z][a-z0-9]{0,9}-[1-9][0-9]{0,6}-[1-9][0-9]{0,5}$")
 PATROL_SLOT_RE = re.compile(r"^(?:patrol|staging)-[1-9][0-9]{0,11}-[1-9][0-9]{0,6}(?:-[2-9]|-[1-9][0-9]{1,3})?$")
+# rows KiroCrew writes after a turn, not part of it: a compaction, the notice that its restart turned trust off
+AFTER_TURN = (("assistant", "compaction"), ("system", "trust_reset_notice"))
+
+
+def cut_off(rows: list[Any]) -> bool:
+    """Did KiroCrew stop the newest turn of these rows (a slot's newest, oldest first) before it ended? KiroCrew ends a
+    turn it finished with a reply that carries the turn's ``meta.turn_stats``, and one someone stopped with a system
+    row ``{"kind": "stop_event"}``. A turn its restart cut off ends on whatever it wrote last (RUN-REQ-2-1: a tool
+    call), one its error ended on that error (role ``error``). Looked past: the rows of AFTER_TURN, and the empty
+    assistant row KiroCrew writes when a turn stops, a stop_event before it or not (its file_changes, no turn_stats).
+    No rows: nothing was cut."""
+    for m in reversed([r for r in rows if isinstance(r, dict)]):
+        role, meta = m.get("role"), m.get("meta") if isinstance(m.get("meta"), dict) else {}
+        if (role, meta.get("kind")) in AFTER_TURN:
+            continue
+        if role == "assistant":
+            if "turn_stats" not in meta and not str(m.get("content") or "").strip():
+                continue
+            return "turn_stats" not in meta
+        if role == "system":
+            try:
+                return (json.loads(str(m.get("content") or "")) or {}).get("kind") != "stop_event"
+            except (ValueError, AttributeError):
+                return True
+        return True
+    return False
 
 
 class KiroCrewAdapter:
@@ -90,13 +117,15 @@ class KiroCrewAdapter:
         return self._run(self.mgr.adapter_slot(name))
 
     def activity(self, name: str) -> dict[str, Any] | None:
-        """brain-kit's slot_activity of the slot's newest row (running, last_at, last_role, last_id), and queued: a
-        message waits behind the turn, or a tool call for a click; None when KiroCrew's read does not say."""
+        """brain-kit's slot_activity of the slot's newest row (running, last_at, last_role, last_id); queued: a
+        message waits behind the turn, or a tool call for a click; cut: KiroCrew stopped its newest turn before it
+        ended (cut_off). None when KiroCrew's read does not say."""
         self._ours(name)
         data = self._run(self.mgr.adapter_activity(name))
         a = bk.m("bridge.kirocrew").slot_activity(data)
         if a is not None:
             a["queued"] = bool(data.get("queue") or data.get("queue_depth") or data.get("pending_approval"))
+            a["cut"] = cut_off(data.get("messages") or [])
         return a
 
     def stop(self, name: str) -> dict[str, Any]:

@@ -4,11 +4,14 @@ from brain-kit's ledger, the slot as KiroCrew reads it (crewadapter.activity) an
 brain-kit's watchdog (delivery.tell_if_stalled, bridge.json stall_minutes) tells the MR about a session at work that
 went quiet, or one KiroCrew cannot show; an idle session it leaves alone, since a session that parked or finished is
 idle too. A turn KiroCrew stopped half-way (a restart, a provider shutdown) leaves one idle that is neither: its work
-in the workspace, uncommitted, and the bridge waiting for a push that never comes (RUN-REQ-2-1, 20 hours). turn() tells
-them apart, and a session that owes a push, with nothing queued or on its way to it, quiet for stall_minutes, is told
+in the workspace, uncommitted, and the bridge waiting for a push that never comes (RUN-REQ-2-1, 20 hours). The slot
+tells such a turn apart (crewadapter.cut_off: KiroCrew wrote no end to it) and turn() whose move the run is; a session
+whose turn was cut off and that owes a push, with nothing queued or on its way to it, quiet for stall_minutes, is told
 to go on (RESUME, through brain-kit's outbox as a notice about the MR's head: sent once, settled as brain-kit settles
-its own); once more if it is quiet again; then the MR hears once that a person should look. brain-kit's own watchdog is
-where this belongs (BRAINKIT_REQUESTS 49).
+its own); once more if that turn is cut off too; then the MR hears once that a person should look. A session that
+ended its turn without a push (brain-run's 「…不继续」 lines) or that someone stopped is left alone, and so is a run
+whose newest answer the signer refused: it waits for a person. brain-kit's own watchdog is where this belongs
+(BRAINKIT_REQUESTS 49).
 
 A run the product accepted (brain-kit's _accepted) whose session is idle with its records pushed after (turn: DONE)
 is done: the MR hears once that it can be merged and who merges it (the run's owner), and its label is MERGE_LABEL in
@@ -54,15 +57,17 @@ def accepted(decisions: list[Mapping[str, Any]]) -> Mapping[str, Any] | None:
 def turn(run: Mapping[str, Any], head: str, decisions: list[Mapping[str, Any]],
          outbox: list[Mapping[str, Any]]) -> str:
     """Whose move a dispatched run is at its MR's *head*, from brain-kit's ledger. OTHERS while a message is on its
-    way to the session or a question at the head waits for a person or the bridge. SESSION when the newest message
-    that reached the session is about this head (the hand-over, an answer, a notice: each asks for a push) and none
-    came after, or when the head is a push of the session's the bridge read, with no question there, and the run is
-    not accepted. DONE when the product accepted it and its records came after. OTHERS otherwise: the bridge has not
+    way to the session, a question at the head waits for a person or the bridge, or the newest question's answer was
+    refused by the signer, whatever its head (the run was told it is blocked, and pushes that). SESSION when the newest
+    message that reached the session is about this head (the hand-over, an answer, a notice: each asks for a push) and
+    none came after, or when the head is a push of the session's the bridge read, with no question there, and the run
+    is not accepted. DONE when the product accepted it and its records came after. OTHERS otherwise: the bridge has not
     read the head yet (an acceptance question waiting for CI, say)."""
     if any(o["state"] in IN_FLIGHT for o in outbox):
         return OTHERS
     at = [d for d in decisions if d.get("sha") == head]
-    if any(d["state"] in ASKED for d in at):
+    newest = max(decisions, key=lambda d: str(d.get("created") or ""), default=None)
+    if any(d["state"] in ASKED for d in at) or (newest is not None and newest["state"] == "refused"):
         return OTHERS
     sent = [o for o in outbox if o["state"] == "sent"]
     if sent and max(sent, key=lambda o: str(o["created"]))["sha"] == head:
@@ -119,9 +124,9 @@ class RunWatch:
                                                  "decisions WHERE run_id=?", (rid,))]
         acc, stall = accepted(decisions), float(self.host.stall_s)
         due = acc is not None and not self._told(READY_KEY % rid)
-        quiet = bool(stall) and a["last_at"] is not None and \
+        cut = a["cut"] and bool(stall) and a["last_at"] is not None and \
             (common.utcnow() - a["last_at"]).total_seconds() >= stall
-        if not (due or quiet):
+        if not (due or cut):
             return 0
         mr = self.host.gl.mr(run["project"], run["iid"]) or {}
         head = str(mr.get("sha") or "")
@@ -130,7 +135,7 @@ class RunWatch:
         move = turn(run, head, decisions, outbox)
         if move == DONE and due:
             self._ready(run, mr, acc, head)
-        elif move == SESSION and quiet:
+        elif move == SESSION and cut:
             return self._resume(run, head, a["last_at"].strftime("%Y-%m-%d %H:%M"), outbox)
         return 0
 

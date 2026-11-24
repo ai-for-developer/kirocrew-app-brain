@@ -57,6 +57,7 @@ NUDGES = 4              # a turn cut short (a transient model error, or stuck) i
 TRANSIENT = re.compile(r"transient|5\d\d|runtime failed|timed? ?out|overloaded|rate.?limit|throttl|temporarily|unavailable",
                        re.I)
 HISTORY = 400
+ACTIVITY_ROWS = 4       # a runner slot's newest rows adapter_activity reads: past what KiroCrew writes after a turn
 STATS_EVERY = 5         # a tracked slot's credits and turns are read every this many polls (its new rows: Tally)
 TRANSCRIPT_PAGES = 40   # pages of a transcript read at most (KiroCrew's 500 rows each): a turn, a slot's stats, 产出
 WAIT_S = 60.0           # a session quiet this long between a turn's end and the next message waited for a person
@@ -1154,9 +1155,10 @@ class SessionManager:
         return {"key": name, "messages": await self.gw.messages(name, limit=PAGE)}
 
     async def adapter_activity(self, name: str) -> dict[str, Any]:
-        """Runner slot *name* as KiroCrew reads it with its newest row only: whether a turn runs, what is queued."""
+        """Runner slot *name* as KiroCrew reads it with its newest ACTIVITY_ROWS rows: whether a turn runs, what is
+        queued, how its newest turn ended (crewadapter.cut_off)."""
         self._runner_slot(name)
-        return await self.gw.slot(name, limit=1)
+        return await self.gw.slot(name, limit=ACTIVITY_ROWS)
 
     async def adapter_trust(self, name: str) -> dict[str, Any]:
         """Trust for runner slot *name* again: KiroCrew keeps it in memory, so a restart ends it."""
