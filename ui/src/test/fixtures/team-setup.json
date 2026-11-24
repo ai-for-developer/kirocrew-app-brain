@@ -14,8 +14,8 @@
       "data": []
     },
     "push": "auto",
-    "patrol": true,
-    "issues": false,
+    "patrol": ["shop/shop-pay"],
+    "issues": [],
     "jenkins": { "base": "", "user": "" }
   },
   "accounts": {

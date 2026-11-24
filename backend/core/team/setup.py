@@ -36,11 +36,12 @@ Under one root (default ~/.brain/team-setup; files 0600, folders 0700):
 (team/relay.py), so GitLab lets whoever can read the project read its status, and nobody else; the bridge's account
 pushes it, and the step checks that no protected branch rule keeps it from that.
 Under ~/workplace/brain-team (KiroCrew lets agents work only under ~/workplace): runs/ and cache/, and MR 巡检's clones
-in patrol/. The agents: ~/.kiro/agents/brain-run.json, and brain-patrol.json beside it when 巡检所有开着的 MR is on (the
-kit.json MRs then also switch work source mr-patrol on). 从打了标签的 issue 接活 switches work source issue-label on in
-the same MRs and makes its label (team/issues.py: issues.LABEL). The person's one-time token (SetupInput.admin_token)
-lives in memory for one run: it is never written, logged or answered, and text from GitLab or a command goes through
-Ctx.redact before it is kept.
+in patrol/. The agents: ~/.kiro/agents/brain-run.json, and brain-patrol.json beside it when 巡检所有开着的 MR is on in a
+project (the kit.json MRs of the projects it is on in then also switch work source mr-patrol on). 从打了标签的 issue 接活
+switches work source issue-label on in the MRs of the projects it is ticked for and makes its label there
+(team/issues.py: issues.LABEL); a project ticked for neither gets no MR for them. The person's one-time token
+(SetupInput.admin_token) lives in memory for one run: it is never written, logged or answered, and text from GitLab or a
+command goes through Ctx.redact before it is kept.
 """
 
 from __future__ import annotations
@@ -185,8 +186,8 @@ class SetupInput:
                                                   # bot-account mode goes without it
     roles: Mapping[str, tuple[str, ...]] = field(default_factory=dict)   # role -> usernames; none: the token's owner
     push: str = "auto"                            # auto | ssh | token
-    patrol: bool = True                           # 巡检所有开着的 MR
-    issues: bool = False                          # 从打了标签的 issue 接活
+    patrol: tuple[str, ...] = ()                  # the projects 巡检所有开着的 MR is on in, in the input's order
+    issues: tuple[str, ...] = ()                  # the projects 从打了标签的 issue 接活 is on in
     mode: str = PROJECT_TOKEN
     bridge_token: str = field(default="", repr=False)   # bot-account: brain-bridge's personal token ('': the one kept)
     bot_token: str = field(default="", repr=False)      # bot-account: the bot user's personal token ('': the one kept)
@@ -252,21 +253,44 @@ class SetupInput:
         push = raw.get("push") or "auto"
         if push not in PUSH_MODES:
             raise SetupRefused("推送方式只能是 auto、ssh 或 token")
-        patrol = raw.get("patrol", True)
-        if not isinstance(patrol, bool):
-            raise SetupRefused("「巡检所有开着的 MR」的值不对：刷新页面再试")
-        issues = raw.get("issues", False)
-        if not isinstance(issues, bool):
-            raise SetupRefused("「从打了标签的 issue 接活」的值不对：刷新页面再试")
+        patrol = ticked(base, got, raw.get("patrol", True), "巡检所有开着的 MR")
+        issues = ticked(base, got, raw.get("issues", False), "从打了标签的 issue 接活")
         return cls(base, tuple(got.values()), token, roles, push, patrol, issues, mode, bridge or "", bot or "",
                    JenkinsInput.parse(raw.get("jenkins")))
+
+    def on(self, flag: str, path: str) -> bool:
+        """Whether *flag* (patrol, issues) is on in project *path* (GitLab's paths are not case-sensitive)."""
+        return path.lower() in {p.lower() for p in getattr(self, flag)}
 
     def public(self) -> dict[str, Any]:
         """What setup-state.json keeps of the input: all of it but the tokens."""
         return {"gitlab_base": self.gitlab_base, "mode": self.mode, "projects": list(self.projects), "push": self.push,
-                "roles": {r: list(self.roles.get(r) or ()) for r in ROLES}, "patrol": self.patrol,
-                "issues": self.issues,
+                "roles": {r: list(self.roles.get(r) or ()) for r in ROLES}, "patrol": list(self.patrol),
+                "issues": list(self.issues),
                 "jenkins": {"base": self.jenkins.base, "user": self.jenkins.user} if self.jenkins else None}
+
+
+def ticked(base: str, projects: Mapping[str, str], value: Any, name: str) -> tuple[str, ...]:
+    """The projects (of *projects*: lower-case path -> path) a switch the page sent as *value* is on in: true every one,
+    false none, else the ones listed, by path or page as a project is typed. SetupRefused for anything else, or a
+    project listed that is not one of them."""
+    if isinstance(value, bool):
+        return tuple(projects.values()) if value else ()
+    if not isinstance(value, (list, tuple)) or not all(isinstance(t, str) for t in value):
+        raise SetupRefused("「%s」的值不对：刷新页面再试" % name)
+    want = {project_path(base, t).lower() for t in value if t.strip()}
+    stray = sorted(want - set(projects))
+    if stray:
+        raise SetupRefused("「%s」勾的 %s 不在上面的项目里" % (name, "、".join(stray)))
+    return tuple(path for low, path in projects.items() if low in want)
+
+
+def ticked_view(value: Any, projects: list[str], default: bool) -> list[str]:
+    """A switch of the last run's input as the projects it is on in: the list a run kept; a run before switches went by
+    project kept true or false for all of them, or (patrol, *default* on) nothing at all."""
+    if isinstance(value, list):
+        return [str(p) for p in value]
+    return [str(p) for p in projects] if value is True or (default and value is not False) else []
 
 
 @dataclass(frozen=True)
@@ -647,8 +671,8 @@ def view(state: Mapping[str, Any], paths: Paths, running: bool | None = None) ->
                       "mode": inp.get("mode") if inp.get("mode") in MODES else PROJECT_TOKEN,
                       "projects": [str(p) for p in projects],
                       "roles": {r: [str(n) for n in roles.get(r) or []] for r in ROLES},
-                      "push": str(inp.get("push") or "auto"), "patrol": inp.get("patrol") is not False,
-                      "issues": inp.get("issues") is True,
+                      "push": str(inp.get("push") or "auto"), "patrol": ticked_view(inp.get("patrol"), projects, True),
+                      "issues": ticked_view(inp.get("issues"), projects, False),
                       "jenkins": {"base": str(jenkins.get("base") or ""), "user": str(jenkins.get("user") or "")}},
             "accounts": {k: str((kept.get(k) if isinstance(kept.get(k), dict) else {}).get("username") or "")
                          for k in ("bridge", "bot")},
@@ -1116,7 +1140,7 @@ def step_labels(ctx: Ctx) -> StepResult:
 
 def project_labels(ctx: Ctx, p: Proj) -> StepResult:
     want: list[tuple[str, str]] = []
-    for key, default, color in LABELS + ((ISSUE_LABEL,) if ctx.inp.issues else ()):
+    for key, default, color in LABELS + ((ISSUE_LABEL,) if ctx.inp.on("issues", p.path) else ()):
         name = str(p.kit.get(key) or default) if key else default
         if name.lower() not in {w.lower() for w, _ in want}:
             want.append((name, color))
@@ -1309,7 +1333,7 @@ def wanted_kit(ctx: Ctx, p: Proj) -> dict[str, Any]:
     kinds = [k for k in raw if isinstance(k, str)] if isinstance(raw, list) else []
     named = isinstance(raw, list)
     for kind, flag, _, _ in SWITCHES:
-        if getattr(ctx.inp, flag):
+        if ctx.inp.on(flag, p.path):
             kinds += [k for k in (sources.HANDOFF, kind) if k not in kinds]
             named = True
         elif kind in kinds:
@@ -1618,12 +1642,14 @@ def mrs_said(ctx: Ctx) -> str:
     if handoff:
         return ("；可是上面那个 MR 合并以前，交接都会被拒" if len(ctx.found) == 1 else
                 "；可是 %s 的 kit.json MR 合并以前，这些项目的交接都会被拒" % "、".join(handoff))
-    kinds = {k for mr in wait.values() for k in mr.get("switches") or ()}
-    turns = "，".join("%s才%s" % (what, "开始" if getattr(ctx.inp, flag) else "停")
-                      for kind, flag, _, what in SWITCHES if kind in kinds)
+    by: dict[str, list[str]] = {}               # what an MR starts or stops -> the projects whose MR does that
+    for path, mr in wait.items():
+        turns = "，".join("%s才%s" % (what, "开始" if ctx.inp.on(flag, path) else "停")
+                          for kind, flag, _, what in SWITCHES if kind in (mr.get("switches") or ()))
+        by.setdefault(turns, []).append(path)
     if len(ctx.found) == 1:
-        return "；上面那个 MR 合并以后，" + turns
-    return "；%s 的 kit.json MR 合并以后，那里的%s" % ("、".join(wait), turns)
+        return "；上面那个 MR 合并以后，" + next(iter(by))
+    return "".join("；%s 的 kit.json MR 合并以后，那里的%s" % ("、".join(paths), turns) for turns, paths in by.items())
 
 
 STEPS: tuple[Step, ...] = (

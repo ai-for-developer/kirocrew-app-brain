@@ -22,8 +22,8 @@
       "data": []
     },
     "push": "token",
-    "patrol": true,
-    "issues": false,
+    "patrol": ["shop/shop-pay", "shop/shop-order", "shop/shop-stock"],
+    "issues": [],
     "jenkins": {
       "base": "",
       "user": ""

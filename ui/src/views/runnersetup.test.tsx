@@ -14,8 +14,8 @@ import { SETUP_POINTER, SettingsView } from './Settings'
 function never(): TeamSetup {
   const s = fx.teamSetup()
   s.started_at = s.ended_at = null
-  s.input = { gitlab_base: '', mode: 'project-token', projects: [], roles: { product: [], builder: [], security: [], data: [] }, push: 'auto', patrol: true,
-    issues: false, jenkins: { base: '', user: '' } }
+  s.input = { gitlab_base: '', mode: 'project-token', projects: [], roles: { product: [], builder: [], security: [], data: [] }, push: 'auto', patrol: [],
+    issues: [], jenkins: { base: '', user: '' } }
   s.steps = s.steps.map((x) => ({ ...x, status: 'todo', message: '', link: null, detail: '' }))
   return s
 }
@@ -58,7 +58,7 @@ describe('一键建运行机', () => {
     const posts = apiCalls.filter((c) => c.method === 'POST')
     expect(posts).toHaveLength(1)
     expect(posts[0].body).toEqual({ gitlab_base: 'https://gitlab.example.com', project: 'shop/shop-pay', admin_token: TOKEN,
-      roles: { product: ['carol'], builder: ['dave', 'erin'] }, patrol: true, issues: false })
+      roles: { product: ['carol'], builder: ['dave', 'erin'] }, patrol: ['shop/shop-pay'], issues: [] })
     expect(apiCalls.filter((c) => c.method === 'GET').every((c) => !c.path.includes(TOKEN) && c.body === undefined)).toBe(true)
     expect(done).toHaveBeenCalledTimes(1)
     // each step: its title, ✓ / 等人 / ✕, its words; the MR to merge with its link
@@ -101,7 +101,8 @@ describe('一键建运行机', () => {
   test('巡检所有开着的 MR is ticked unless the last run left it off, says what it does, and goes in the post', async () => {
     const user = userEvent.setup()
     const off = never()
-    off.input.patrol = false
+    off.input.projects = ['shop/shop-pay']
+    off.input.patrol = []
     installFixtureRoutes({ [`GET ${API}/team/setup`]: () => off, [`POST ${API}/team/setup`]: () => going() })
     const { unmount } = render(<RunnerSetupCard repos={fx.status().repos} pollMs={60_000} />)
     const card = await screen.findByRole('region', { name: '一键建运行机' })
@@ -118,7 +119,7 @@ describe('一键建运行机', () => {
     await user.type(within(again).getByLabelText('一次性 token'), TOKEN)
     await user.click(within(again).getByRole('button', { name: '开始建' }))
     await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
-    expect(apiCalls.find((c) => c.method === 'POST')?.body).toMatchObject({ patrol: false })
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).toMatchObject({ patrol: [] })
   })
 
   test('Jenkins: the last run’s address and read-only user are in the form again, its token is not; typed, all three go in the post', async () => {
@@ -148,7 +149,7 @@ describe('一键建运行机', () => {
   test('从打了标签的 issue 接活 is off unless the last run left it on, says what it does, and goes in the post', async () => {
     const user = userEvent.setup()
     const on = never()
-    on.input.issues = true
+    on.input.projects = on.input.issues = ['shop/shop-pay']
     installFixtureRoutes({ [`GET ${API}/team/setup`]: () => on, [`POST ${API}/team/setup`]: () => going() })
     const { unmount } = render(<RunnerSetupCard repos={fx.status().repos} pollMs={60_000} />)
     const card = await screen.findByRole('region', { name: '一键建运行机' })
@@ -166,7 +167,7 @@ describe('一键建运行机', () => {
     await user.type(within(again).getByLabelText('一次性 token'), TOKEN)
     await user.click(within(again).getByRole('button', { name: '开始建' }))
     await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
-    expect(apiCalls.find((c) => c.method === 'POST')?.body).toMatchObject({ patrol: false, issues: true })
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).toMatchObject({ patrol: [], issues: ['shop/shop-pay'] })
   })
 
   test('while a run goes on, its step in progress is said and the form waits', async () => {
@@ -268,7 +269,7 @@ describe('一键建运行机', () => {
     await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
     expect(apiCalls.find((c) => c.method === 'POST')?.body).toEqual({
       mode: 'bot-account', gitlab_base: 'https://gitlab.example.com', projects: ['shop/shop-pay', 'shop/shop-order', 'shop/shop-stock'],
-      roles: { product: ['carol'], builder: ['dave'] }, patrol: true, issues: false, push: 'token', bridge_token: TOKEN + '-bridge', bot_token: TOKEN + '-bot' })
+      roles: { product: ['carol'], builder: ['dave'] }, patrol: ['shop/shop-pay', 'shop/shop-order', 'shop/shop-stock'], issues: [], push: 'token', bridge_token: TOKEN + '-bridge', bot_token: TOKEN + '-bot' })
   })
 
   test('项目令牌 again after 机器人账号: the one project field is back, the post is the one-project one', async () => {
@@ -285,7 +286,7 @@ describe('一键建运行机', () => {
     await user.click(within(card).getByRole('button', { name: '开始建' }))
     await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
     expect(apiCalls.find((c) => c.method === 'POST')?.body).toEqual({ gitlab_base: 'https://gitlab.example.com', project: 'shop/shop-pay',
-      admin_token: TOKEN, roles: { product: [], builder: [] }, patrol: true, issues: false })
+      admin_token: TOKEN, roles: { product: [], builder: [] }, patrol: ['shop/shop-pay'], issues: [] })
   })
 
   test('a step about several projects lists each one under it with its own mark, words and link; 再跑一次 leaves out the tokens this machine kept', async () => {
@@ -320,7 +321,7 @@ describe('一键建运行机', () => {
     await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
     expect(apiCalls.find((c) => c.method === 'POST')?.body).toEqual({
       mode: 'bot-account', gitlab_base: 'https://gitlab.example.com', projects: ['shop/shop-pay', 'shop/shop-order', 'shop/shop-stock'],
-      roles: { product: ['carol'], builder: ['dave'] }, patrol: true, issues: false, push: 'token' })
+      roles: { product: ['carol'], builder: ['dave'] }, patrol: ['shop/shop-pay', 'shop/shop-order', 'shop/shop-stock'], issues: [], push: 'token' })
   })
 
   test('机器人账号 with Jenkins: one Jenkins for the runner, its address and user posted again on 再跑一次 with the token left empty (the one kept)', async () => {
@@ -336,8 +337,34 @@ describe('一键建运行机', () => {
     await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
     expect(apiCalls.find((c) => c.method === 'POST')?.body).toEqual({
       mode: 'bot-account', gitlab_base: 'https://gitlab.example.com', projects: ['shop/shop-pay', 'shop/shop-order', 'shop/shop-stock'],
-      roles: { product: ['carol'], builder: ['dave'] }, patrol: true, issues: false, push: 'token',
+      roles: { product: ['carol'], builder: ['dave'] }, patrol: ['shop/shop-pay', 'shop/shop-order', 'shop/shop-stock'], issues: [], push: 'token',
       jenkins: { base: 'https://jenkins.example.com', user: 'brain-reader', token: '' } })
+  })
+
+  test('机器人账号 with several projects: 巡检 and 从 issue 接活 are ticked project by project, as the last run left them, and each posts the projects ticked', async () => {
+    const user = userEvent.setup()
+    const last = fx.teamSetupBot()
+    last.input.patrol = ['shop/shop-pay', 'shop/shop-order', 'shop/shop-stock']
+    last.input.issues = ['shop/shop-pay']
+    installFixtureRoutes({ [`GET ${API}/team/setup`]: () => last, [`POST ${API}/team/setup`]: () => going() })
+    render(<RunnerSetupCard repos={[]} pollMs={60_000} />)
+    const card = await screen.findByRole('region', { name: '一键建运行机' })
+    const issues = await within(card).findByRole('group', { name: '从打了标签的 issue 接活' })
+    expect(issues).toHaveAccessibleDescription(ISSUES_HINT)
+    expect(within(issues).getAllByRole('checkbox')).toHaveLength(3)
+    expect(within(issues).getByRole('checkbox', { name: 'shop/shop-pay' })).toBeChecked()
+    expect(within(issues).getByRole('checkbox', { name: 'shop/shop-order' })).not.toBeChecked()
+    expect(within(issues).getByRole('checkbox', { name: 'shop/shop-stock' })).not.toBeChecked()
+    const patrol = within(card).getByRole('group', { name: '巡检所有开着的 MR' })
+    expect(patrol).toHaveAccessibleDescription(PATROL_HINT)
+    for (const box of within(patrol).getAllByRole('checkbox')) expect(box).toBeChecked()
+    await user.click(within(issues).getByRole('checkbox', { name: 'shop/shop-order' }))
+    await user.click(within(patrol).getByRole('checkbox', { name: 'shop/shop-stock' }))
+    await user.click(within(card).getByRole('button', { name: '再跑一次' }))
+    await waitFor(() => expect(apiCalls.filter((c) => c.method === 'POST')).toHaveLength(1))
+    expect(apiCalls.find((c) => c.method === 'POST')?.body).toMatchObject({
+      projects: ['shop/shop-pay', 'shop/shop-order', 'shop/shop-stock'],
+      patrol: ['shop/shop-pay', 'shop/shop-order'], issues: ['shop/shop-pay', 'shop/shop-order'] })
   })
 
   test('on 设置, below 团队模式: the pointer to it, and after a run the form shows the team settings it saved', async () => {

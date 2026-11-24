@@ -554,7 +554,7 @@ def test_patrol_off_writes_no_brain_patrol_and_its_kit_mr_switches_mr_patrol_off
     view, ps = build(world, patrol=False)
     assert step(view, "patrol_agent")["status"] == "skipped" and not ps.patrol_spec.exists()
     assert json.loads(branch_kit(world))["work_sources"] == ["mr-handoff", "issues-later"]
-    assert view["input"]["patrol"] is False
+    assert view["input"]["patrol"] == []
     world["gl"].files["main"][KIT] = kit_file(world["tmp"], work_sources=["issues-later"])
     view, ps = build(world)
     assert step(view, "patrol_agent")["status"] == "done" and ps.patrol_spec.exists()
@@ -597,7 +597,7 @@ def test_issues_on_switches_issue_label_on_in_the_kit_mr_and_makes_its_label(wor
     assert "issue-label" in mr["description"] and "Developer 以上" in mr["description"] and "brain" in gl.labels
     by = {s["id"]: s for s in view["steps"]}
     assert by["team_mode"]["message"] == "团队模式开了；上面那个 MR 合并以后，从 issue 接活才开始"
-    assert view["input"]["issues"] is True and view["input"]["patrol"] is False
+    assert view["input"]["issues"] == [P] and view["input"]["patrol"] == []
     gl.merge(mr["iid"])
     view, _ = build(world, patrol=False, issues=False)
     assert json.loads(branch_kit(world))["work_sources"] == ["mr-handoff"]
@@ -859,12 +859,14 @@ def test_the_input_is_read_at_the_boundary():
     got = setup.SetupInput.parse({"gitlab_base": BASE + "/", "project": BASE + "/grp/sub/pay/-/tree/main",
                                   "admin_token": " tok-123456 ", "roles": {"product": "@Carol，dave", "builder": []}})
     assert (got.gitlab_base, got.projects, got.admin_token, got.push) == (BASE, ("grp/sub/pay",), "tok-123456", "auto")
-    assert got.patrol is True and got.public()["patrol"] is True     # 巡检所有开着的 MR: on unless the page says no
+    assert got.patrol == ("grp/sub/pay",) and got.public()["patrol"] == ["grp/sub/pay"]   # 巡检: on unless the page says no
     assert setup.SetupInput.parse({"gitlab_base": BASE, "project": P, "admin_token": "tok-123456",
-                                   "patrol": False}).public()["patrol"] is False
-    assert got.issues is False and got.public()["issues"] is False   # 从打了标签的 issue 接活: off unless ticked
+                                   "patrol": False}).public()["patrol"] == []
+    assert got.issues == () and got.public()["issues"] == []        # 从打了标签的 issue 接活: off unless ticked
     assert setup.SetupInput.parse({"gitlab_base": BASE, "project": P, "admin_token": "tok-123456",
-                                   "issues": True}).public()["issues"] is True
+                                   "issues": True}).public()["issues"] == [P]
+    assert setup.SetupInput.parse({"gitlab_base": BASE, "project": P, "admin_token": "tok-123456",
+                                   "issues": [BASE + "/" + P.upper()]}).issues == (P,)
     assert got.roles == {"product": ("carol", "dave"), "builder": ()} and "tok-123456" not in repr(got)
     assert "tok-123456" not in json.dumps(got.public())
     assert got.jenkins is None and got.public()["jenkins"] is None
@@ -874,7 +876,7 @@ def test_the_input_is_read_at_the_boundary():
     assert "jen-123456" not in repr(jk)
     for bad in ({"gitlab_base": "gitlab.example.com"}, {"gitlab_base": "https://u:p@gitlab.example.com"},
                 {"project": "pay"}, {"admin_token": ""}, {"admin_token": "a b"}, {"roles": {"boss": "x"}},
-                {"roles": {"product": "a/b"}}, {"push": "ftp"}, {"patrol": "yes"}, {"issues": 1},
+                {"roles": {"product": "a/b"}}, {"push": "ftp"}, {"patrol": "yes"}, {"issues": 1}, {"issues": ["grp/other"]},
                 {"jenkins": "jenkins.example.com"},
                 {"jenkins": {"base": "jenkins.example.com", "user": "r"}},
                 {"jenkins": {"base": "https://j.example.com"}},
@@ -1266,16 +1268,18 @@ def team_reach(world):
     return reach
 
 
-def team_ctx(world, projects=("grp/a", "grp/b"), push="token", admin=True, bridge=True, bot=True, roles=None, jenkins=None):
+def team_ctx(world, projects=("grp/a", "grp/b"), push="token", admin=True, bridge=True, bot=True, roles=None, jenkins=None,
+             patrol=True, issues=False):
     """bot-account on *projects*. admin, bridge, bot: whether this run types the one-time token and the two accounts'
-    personal tokens (False: left out; a string: that token); jenkins: the Jenkins fields typed (None: none)."""
+    personal tokens (False: left out; a string: that token); jenkins: the Jenkins fields typed (None: none); patrol,
+    issues: 巡检 and 从 issue 接活 as the page sends them (True, False, or the projects ticked)."""
     setup, rest = mod("team.setup"), mod("bk").m("rest")
     typed = lambda given, key: given if isinstance(given, str) else world[key] if given else ""  # noqa: E731
     inp = setup.SetupInput.parse({
         "gitlab_base": BASE, "mode": "bot-account", "projects": list(projects), "push": push,
         "roles": {"product": "bob", "builder": "carol"} if roles is None else roles,
         "admin_token": typed(admin, "admin"), "bridge_token": typed(bridge, "bridge"), "bot_token": typed(bot, "bot"),
-        "jenkins": jenkins})
+        "jenkins": jenkins, "patrol": patrol, "issues": issues})
     paths = setup.Paths.default(BRAINKIT, root=world["tmp"] / "team-setup")
     return setup.Ctx(inp, paths, gitlab=lambda tok: rest.GitLab(BASE, tok, world["gl"]), team_mode=team_mode(world),
                      signer=fake_signer(world), reach=team_reach(world))
@@ -1557,8 +1561,8 @@ def test_the_state_a_run_before_bot_account_mode_left_reads_as_a_project_token_r
         "project": {"id": PID, "path": P, "default_branch": "main", "web_url": BASE + "/" + P},
         "kit_mr": {"iid": 7, "web_url": BASE + "/" + P + "/-/merge_requests/7"}}))
     view = setup.view(setup.load_state(paths), paths, running=False)
-    assert view["input"] == {"gitlab_base": BASE, "mode": "project-token", "projects": [P], "push": "auto", "patrol": True,
-                             "issues": False, "roles": {"product": ["carol"], "builder": [], "security": [], "data": []},
+    assert view["input"] == {"gitlab_base": BASE, "mode": "project-token", "projects": [P], "push": "auto", "patrol": [P],
+                             "issues": [], "roles": {"product": ["carol"], "builder": [], "security": [], "data": []},
                              "jenkins": {"base": "", "user": ""}}
     assert view["accounts"] == {"bridge": "", "bot": ""}
     assert (step(view, "project")["status"], step(view, "project")["projects"]) == ("done", [])
@@ -1661,3 +1665,40 @@ def test_a_rerun_keeps_every_field_of_the_three_configs_that_setup_does_not_own(
     assert step(again, "configs")["message"] == "三份配置都没变"
     assert all(path.read_text() == setup.dumps(doc) for path, doc in want.items())
     assert all(set(first[p]) <= set(setup.OWNED[p.name]) for p in configs)     # every field it writes is one it owns
+
+
+def test_issue_intake_and_patrol_are_ticked_per_project_and_a_project_left_out_gets_no_kit_mr_for_them(team):
+    """bot-account on grp/a, grp/b and grp/c with 巡检 ticked for grp/a and grp/b: their kit.json MRs switch mr-patrol on,
+    grp/c's leaves work_sources out. All merged, a rerun with 从 issue 接活 ticked for grp/a alone opens one MR, in grp/a,
+    switching issue-label on, and makes the label brain there only: grp/b and grp/c get no write at all. The page reads
+    the choices back per project; a state an earlier version left (issues true, patrol not said) has both on in every
+    project."""
+    setup = mod("team.setup")
+    three = ("grp/a", "grp/b", "grp/c")
+    view, ps = build_team(team, projects=three, patrol=["grp/a", "grp/b"])
+    gl = team["gl"]
+    assert everything_done(view), [(s["id"], s["status"], s["message"], s["detail"][:200]) for s in view["steps"]]
+    sources = {p: json.loads(gl.repos[p].files["brain/runner-setup"][KIT]).get("work_sources") for p in three}
+    assert sources == {"grp/a": ["mr-handoff", "mr-patrol"], "grp/b": ["mr-handoff", "mr-patrol"], "grp/c": None}
+    assert view["input"]["patrol"] == ["grp/a", "grp/b"] and view["input"]["issues"] == []
+    for p in three:
+        gl.repos[p].merge(gl.repos[p].mrs[-1]["iid"])
+    since = gl.seen()
+    again, _ = build_team(team, projects=three, patrol=["grp/a", "grp/b"], issues=["GRP/A"])
+    assert [len(gl.repos[p].mrs) for p in three] == [2, 1, 1]
+    assert gl.writes(since)["grp/b"] == gl.writes(since)["grp/c"] == []
+    mr = gl.repos["grp/a"].mrs[-1]
+    assert json.loads(gl.repos["grp/a"].files["brain/runner-setup"][KIT])["work_sources"] == [
+        "mr-handoff", "mr-patrol", "issue-label"]
+    assert mr["description"] == "一键建运行机开的 MR：" + setup.MR_ISSUES[True]
+    assert [p for p in three if "brain" in gl.repos[p].labels] == ["grp/a"]
+    assert step(again, "team_mode")["message"] == "团队模式开了；grp/a 的 kit.json MR 合并以后，那里的从 issue 接活才开始"
+    assert again["input"]["issues"] == ["grp/a"] and again["input"]["patrol"] == ["grp/a", "grp/b"]
+    state = json.loads(ps.state.read_text())
+    state["input"]["issues"] = True
+    del state["input"]["patrol"]
+    ps.state.write_text(json.dumps(state))
+    old = setup.view(setup.load_state(ps), ps, running=False)["input"]
+    assert old["issues"] == old["patrol"] == list(three)
+    with pytest.raises(setup.SetupRefused, match="grp/d"):
+        team_ctx(team, projects=three, issues=["grp/d"])
