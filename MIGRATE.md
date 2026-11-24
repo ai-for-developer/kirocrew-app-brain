@@ -291,6 +291,12 @@ AI 可以在一个新分支上帮我写好这个改动并提交。推送先问�
 
 一台运行机管几个项目（比如一个团队的几个微服务），「账号」选「机器人账号」。先在 GitLab 上准备两样（人做）：一个专门给桥用的用户（比如 `brain-bridge`），加进每个项目，角色 Developer，给它建一个有 `api` 权限的个人令牌；运行机推代码用这台机器的 SSH（它的 SSH key 要能推每个项目），或者再建一个用户（比如 `brain-bot`，每个项目里也是 Developer），给它一个有 `write_repository` 和 `read_user` 权限的个人令牌。这两个用户不能是同一个，也不能是你自己。然后在卡片上「项目」一行写一个，填桥的账号的个人令牌，「运行机怎么推送」选「这台机器的 SSH」或者「机器人账号」并填它的令牌。一次性 token 可以不填：不填就用桥的账号建标签、开 kit.json 的 MR，「产品」和「开发」就都要填，安全和数据跟开发一样。这种方式不建也不换项目令牌。两个个人令牌存在这台机器上（`~/.brain/team-setup/`，只有你能读），以后再跑一次可以空着。个人令牌到期以前，在 GitLab 上给那个用户换一个新令牌，再跑一次填上。加项目、减项目：改「项目」那一栏，再跑一次。加的项目建标签、开 MR，别的项目一点不动。去掉的项目不再交接、不再巡检，它在 GitLab 上的标签、kit.json 和没合并的 MR 都留着。
 
+再跑一次只改它自己管的那几项。三份配置里你自己加的项都留着，比如 `intake_dir`、项目对象里的 `staging`、`signer` 里的 `poll`。它管的项是这些，你手改了，再跑一次会改回去：
+
+- bridge.json：`projects`（写成对象的项目，对象里你加的项留着）、`gitlab` 里的 `base`、`token_env` 和 `token_file`、`identities`、`ledger`、`spool_dir`、`vouchers_dir`、`runner_runs_root`、`publish_vouchers`、`max_inflight`、`max_per_repo`、`pseudonym_salt`、`kirocrew` 里的 `agent` 和 `memory_mode`、`signer` 里的 `type`、`spool_dir`、`allowed_signers` 和 `timeout`、`jenkins`（卡片上没填 Jenkins 就去掉）。旧版本写的 `team_status` 也归它管，再跑一次会去掉。
+- runnerd.json：`spool_dir`、`cache_dir`、`runs_root`、`allowed_signers`、`clone_url`、`kit_dir`、`agent_spec`、`git_name`、`git_email`。
+- signer.json：`brainkit`、`spool`、`signing_key`、`projects`、`gitlab` 里的 `base`、`token_env` 和 `token_file`、`identities`、`vouchers_dir`、`publish_vouchers`、`ledger`、`pseudonym_salt`、`bridge_users`。
+
 这样建的运行机里，签名服务、app 和 AI 的会话是同一个系统用户。它跳过了第 2 步分开系统用户的那层保护，签名挡不住 app 自己，所以只能用来试。正式给团队用，照下面第 0 到第 11 步做。它的文件在 `~/.brain/team-setup/`（令牌、密钥、三份配置，巡检的账本 `patrol.sqlite`）和 `~/workplace/brain-team/`（运行的工作区和缓存，巡检的克隆在 `patrol/`）。
 
 ### 试用：测试环境报错（staging-errors）

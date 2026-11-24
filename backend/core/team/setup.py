@@ -1358,20 +1358,59 @@ def step_signing_key(ctx: Ctx) -> StepResult:
 
 # ---- 10 the three configs ---------------------------------------------------------------------------------------- #
 
+# The fields of the three configs this setup owns (MIGRATE 第三部分 试用 lists the same): a rerun writes these and keeps
+# every other field as the file has it, a person's intake_dir say. A field named with its own fields is owned only in
+# those (a person's poll in the signer block stays); an owned field this run does not write is taken out (jenkins with
+# no Jenkins typed; team_status, which an earlier version wrote).
+_GITLAB = ("base", "token_env", "token_file")
+OWNED: dict[str, dict[str, tuple[str, ...] | None]] = {
+    "bridge.json": {"projects": None, "gitlab": _GITLAB, "identities": None, "ledger": None, "spool_dir": None,
+                    "vouchers_dir": None, "runner_runs_root": None, "publish_vouchers": None, "max_inflight": None,
+                    "max_per_repo": None, "pseudonym_salt": None, "kirocrew": ("agent", "memory_mode"),
+                    "signer": ("type", "spool_dir", "allowed_signers", "timeout"), "jenkins": None, "team_status": None},
+    "runnerd.json": dict.fromkeys(("spool_dir", "cache_dir", "runs_root", "allowed_signers", "clone_url", "kit_dir",
+                                   "agent_spec", "git_name", "git_email")),
+    "signer.json": {"brainkit": None, "spool": None, "signing_key": None, "projects": None, "gitlab": _GITLAB,
+                    "identities": None, "vouchers_dir": None, "publish_vouchers": None, "ledger": None,
+                    "pseudonym_salt": None, "bridge_users": None},
+}
+
+
 def step_configs(ctx: Ctx) -> StepResult:
     """bridge.json, runnerd.json and signer.json in the shapes of MIGRATE 第三部分 7, for one OS user and every project:
     no MR filter, no brain-intake, vouchers not published, the signer on the bridge's token with its account as
-    bridge_users, one pseudonym_salt for both (made once, kept on every run). A file is written only when its content
-    changes. The open runs the ledgers under the root hold of a project this run leaves out are left first
-    (leave_runner)."""
+    bridge_users, one pseudonym_salt for both (made once, kept on every run). Only the fields OWNED names are this run's:
+    the others stay as the file has them. A file is written only when its content changes. The open runs the ledgers
+    under the root hold of a project this run leaves out are left first (leave_runner)."""
     ps = ctx.paths
     salt = old_salt(ps) or secrets.token_hex(16)
     ctx.remember(salt)
     left = leave_runner(ctx)
     docs = ((ps.bridge_json, bridge_doc(ctx, salt)), (ps.runnerd_json, runnerd_doc(ctx)),
             (ps.signer_json, signer_doc(ctx, salt)))
-    wrote = [path.name for path, doc in docs if write_file(path, dumps(doc))]
+    wrote = [path.name for path, doc in docs
+             if write_file(path, dumps(merged(parse_json(read_secret(path)), doc, OWNED[path.name])))]
     return done(("写了 %s" % "、".join(wrote) if wrote else "三份配置都没变") + left)
+
+
+def merged(old: Any, doc: Mapping[str, Any], owned: Mapping[str, tuple[str, ...] | None]) -> dict[str, Any]:
+    """*doc*, what this run writes of a config, over *old*, the file as it is: each field *owned* names is *doc*'s (left
+    out when *doc* has none), field by field where it names the fields owned in it; every other field is *old*'s. In
+    *old*'s order, the fields new to it after."""
+    old = old if isinstance(old, dict) else {}
+    out: dict[str, Any] = {}
+    for k in dict.fromkeys([*old, *doc]):
+        sub = owned.get(k)
+        if k not in owned:
+            out[k] = old[k]
+        elif sub is None or not isinstance(old.get(k), dict):
+            if k in doc:
+                out[k] = doc[k]
+        else:
+            block = merged(old[k], doc.get(k) or {}, dict.fromkeys(sub))
+            if block:
+                out[k] = block
+    return out
 
 
 def leave_runner(ctx: Ctx) -> str:

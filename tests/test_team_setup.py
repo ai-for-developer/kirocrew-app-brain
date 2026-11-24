@@ -1626,3 +1626,38 @@ def test_a_rerun_keeps_a_projects_hand_written_block(tmp_path):
     got = s.kept_entries(path, ["grp/pay", "grp/new"])
     assert got == [{"project": "grp/pay", "staging": {"log": {"kind": "file", "path": "/x"}}}, "grp/new"]
     assert s.kept_entries(tmp_path / "missing.json", ["grp/a"]) == ["grp/a"]
+
+
+def test_a_rerun_keeps_every_field_of_the_three_configs_that_setup_does_not_own(world):
+    """Fields a person added to the three configs by hand (intake_dir in each, a project's staging block, the signer
+    block's poll in bridge.json, keep_days in signer.json) are there after a rerun as they were, the files the same byte
+    for byte but for the fields setup owns: one of those changed by hand in each file is put back, and team_status, which
+    an earlier version wrote, is taken out. A second rerun writes nothing."""
+    setup = mod("team.setup")
+    _, ps = build(world)
+    configs = (ps.bridge_json, ps.runnerd_json, ps.signer_json)
+    first = {p: json.loads(p.read_text()) for p in configs}
+    intake = str(world["home"] / "brain-intake")
+    staging = {"log": {"kind": "file", "path": "/srv/staging/pay/app.log"},
+               "version": {"kind": "file", "path": "/srv/staging/pay/VERSION"}}
+    b, r, s = (copy.deepcopy(first[p]) for p in configs)
+    b["projects"] = [{"project": P, "staging": staging}]
+    b["signer"]["poll"] = 5
+    b.update(max_inflight=9, team_status={"project": "grp/brain-status"}, intake_dir=intake)
+    r.update(git_name="someone", intake_dir=intake)
+    s.update(bridge_users=["someone"], intake_dir=intake, keep_days=7)
+    for path, doc in zip(configs, (b, r, s)):
+        path.write_text(setup.dumps(doc))
+    view, _ = build(world)
+    assert everything_done(view)
+    put_back = {"max_inflight": first[ps.bridge_json]["max_inflight"]}
+    want = {ps.bridge_json: {k: v for k, v in b.items() if k != "team_status"} | put_back,
+            ps.runnerd_json: dict(r, git_name=first[ps.runnerd_json]["git_name"]),
+            ps.signer_json: dict(s, bridge_users=first[ps.signer_json]["bridge_users"])}
+    for path, doc in want.items():
+        assert path.read_text() == setup.dumps(doc), path.name
+    assert step(view, "configs")["message"] == "写了 bridge.json、runnerd.json、signer.json"
+    again, _ = build(world)
+    assert step(again, "configs")["message"] == "三份配置都没变"
+    assert all(path.read_text() == setup.dumps(doc) for path, doc in want.items())
+    assert all(set(first[p]) <= set(setup.OWNED[p.name]) for p in configs)     # every field it writes is one it owns
