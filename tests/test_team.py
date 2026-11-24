@@ -317,6 +317,41 @@ def test_a_run_whose_answer_the_signer_refused_waits_for_a_person_after_its_push
     assert resumes(gw) == [] and not [b for b in world["gl"].bodies() if "会话停住了" in b]
 
 
+def test_a_session_turn_a_person_stopped_is_not_told_to_go_on(world, tmp_path):
+    """A person stopped the run's session in the app (sessions.cancel). KiroCrew's rows need not show it at their end:
+    here the turn's last tool call came in after the stop_event. The app marks that turn user-stopped: no 会话中断
+    and no 会话停住了 for it. A later turn the bridge starts (the answer to Q-1, its park.json pushed by hand here) is
+    the newest one: KiroCrew cutting that off is told to go on."""
+    gw = FakeGateway()
+    gw.script = [[], cut()]
+    svc = service(world, tmp_path, gw)
+    ws = world["runs_root"] / "RUN-PAY-1-1"
+    seen = {}
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # dispatched, its turn running
+            turn = next(i for i in svc.sessions.all_agents if i.slot == SLOT and not i.done)
+            seen["cancel"] = await svc.sessions.cancel(turn.id)
+            gw.msgs[SLOT].extend([STOP_EVENT] + cut())
+            await rounds(svc, 3)
+            seen["stopped"] = len(resumes(gw))
+            push_park(ws, PARK)                         # someone picks it up: its question, then the answer
+            await rounds(svc)
+            world["gl"].note("alice", "answer D-1 B 小额不审")
+            await rounds(svc)                           # the answer starts a turn, which KiroCrew cuts off
+            gw.finish(SLOT)
+            await rounds(svc, 2)
+        finally:
+            await svc.stop()
+
+    run(go())
+    assert seen["cancel"] is True and seen["stopped"] == 0
+    assert not [b for b in world["gl"].bodies() if "会话停住了" in b]
+    assert len(resumes(gw)) == 1, resumes(gw)
+
+
 ACCEPTANCE = {"schema": 1, "status": "waiting", "kind": "acceptance", "ask": "product", "question": "可以验收了吗？",
               "options": [], "lean_request": "RELEASE 1234abcd"}
 
