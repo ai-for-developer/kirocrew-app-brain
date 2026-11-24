@@ -110,6 +110,8 @@ BRANCH = "brain/runner-setup"
 STATUS_BRANCH = snapshot.BRANCH     # where the team server writes each project's status (状态中转, team/relay.py)
 FIRST_WRITE = "团队服务器第一次写 %s 时就知道能不能推，推不了会在它的运行机页上说" % STATUS_BRANCH
 MR_TITLE = "运行机：更新 .brain/kit.json"
+STALE_MR_NOTE = ("一键建运行机又跑了一次：默认分支上的 .brain/kit.json 已经是这次要的样子，这个 MR 过时了，合并它会改回之前的选择"
+                 "（比如重新打开从 issue 接活或巡检），所以关掉了；要改，在运行机页上重跑一键建运行机。")
 MR_TEXT = ("一键建运行机开的 MR：运行机要 kit.json 写上 bridge_user（桥的账号）、bot_users 和 bot_emails（运行机推送用的账号和邮箱）、"
            "gitlab 和 default_branch。合并以前，签名服务不签交接。")
 MR_PATROL = {True: "work_sources 加上 mr-patrol：合并以后，运行机巡检这个项目所有开着的 MR，流水线没过、评审意见没回、有冲突的，它自己去修。",
@@ -1288,7 +1290,9 @@ def step_kit_mr(ctx: Ctx) -> StepResult:
 def project_kit_mr(ctx: Ctx, p: Proj) -> StepResult:
     want = wanted_kit(ctx, p)
     if want == p.kit:
-        return done("默认分支上的 .brain/kit.json 已经写好了运行机要的几项")
+        gone = close_stale_kit_mrs(ctx, p)
+        return done("默认分支上的 .brain/kit.json 已经写好了运行机要的几项" +
+                    ("；之前开的 %s 过时了，关掉了" % "、".join("MR !%s" % m.get("iid") for m in gone) if gone else ""))
     changed = kit_changes(p, want)
     only, turns = sources_only(p, want), switched(p, want)
     lines = [said[on] for (_, _, said, _), on in turns]
@@ -1300,6 +1304,21 @@ def project_kit_mr(ctx: Ctx, p: Proj) -> StepResult:
                                    "switches": [sw[0] for sw, _ in turns]}
     return waiting("%s MR !%s：请在 GitLab 上合并这个 MR" % ("开了" if opened else "还没合并", mr.get("iid")),
                    link=mr.get("web_url") or None)
+
+
+def close_stale_kit_mrs(ctx: Ctx, p: Proj) -> list[dict[str, Any]]:
+    """Setup's own kit.json MRs still open in *p* (from BRANCH, in *p* itself and into it: never a fork's) once the
+    default branch is what this run wants: an earlier run's, which merged later would undo this run's choices (turn
+    从 issue 接活 or 巡检 on again). Each hears why in one line and is closed. -> those MRs."""
+    gone = []
+    for mr in ctx.gl.mrs_for_branch(p.id, BRANCH):
+        if mr.get("source_branch") != BRANCH or mr.get("source_project_id") != p.id or \
+                mr.get("target_project_id") != p.id:
+            continue
+        ctx.gl.comment(p.id, int(mr["iid"]), STALE_MR_NOTE)
+        ctx.gl.call("PUT", "/projects/%d/merge_requests/%d" % (p.id, int(mr["iid"])), body={"state_event": "close"})
+        gone.append(mr)
+    return gone
 
 
 def kit_changes(p: Proj, want: dict[str, Any]) -> list[str]:
