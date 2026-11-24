@@ -15,7 +15,7 @@ import pytest
 from appkit import BRAINKIT, mod, sh
 from brainfix import FakeGateway, make_service, needs_brainkit, run
 from http_fakes import AppRoute, FakeWeb, call
-from issuefix import BASE, BODY, IID, P, TITLE, make_issue_world
+from issuefix import BASE, BODY, CHECKS, IID, P, TITLE, make_issue_world, set_checks
 from test_contract import diff_keys, fixture
 
 pytestmark = [needs_brainkit, pytest.mark.skipif(subprocess.run(["which", "ssh-keygen"], capture_output=True).returncode,
@@ -286,6 +286,35 @@ def test_an_issue_the_content_checks_refuse_starts_nothing(w, body, why):
         told, = gl.notes_on(IID)
         assert "需求的内容没过检查" in told and why in told, told
         assert claims(w) == {} and gl.branches("ai/") == [] and gl.mrs == {} and requests(w) == []
+    finally:
+        rt.stop()
+
+
+def test_an_issue_waits_while_lean_verify_cannot_pass_on_main_and_is_claimed_once_it_can(tmp_path, home, monkeypatch):
+    """main's lean.json has no checks: Lean's verify can never pass there, so a run started from it writes its code and
+    cannot commit it (MR !6 note #100). Nothing is claimed; the issue hears why once, and 运行机 and the project's
+    snapshot say it on the issue's row; once a person gives main its checks, the next round claims and starts it, with
+    no new label."""
+    import time
+    snapshot = mod("snapshot")
+    w = make_issue_world(tmp_path, home, monkeypatch, checks=[])
+    gl = w["gl"]
+    gl.label("alice")
+    rt = runtime(w)
+    try:
+        assert rounds(rt, 2) == [None, None]
+        assert claims(w) == {} and gl.branches("ai/") == [] and gl.mrs == {} and requests(w) == []
+        told, = gl.notes_on(IID)
+        assert told.startswith("Brain 先不接这个 issue：") and "checks 是空的" in told and "不用再打标签" in told, told
+        item, = rt.issues_view()["items"]
+        assert item["state"] == "new" and "checks 是空的" in item["note"] and "lean verify 过不了" in item["note"], item
+        shown, = snapshot.parse(rt.snapshot_of(P, time.time(), time.monotonic() + 20, None, rt._shared()))["runner"]["issues"]
+        assert (shown["state"], shown["note"]) == ("new", item["note"])
+        set_checks(w["repo"], CHECKS, "lean verify runs the tests")
+        sh("git", "-C", w["repo"], "push", "-q", "origin", "main")
+        assert rounds(rt) == [None]
+        assert rt.issues.led.get(P, IID).state == "started" and list(claims(w)) == ["PAY-1"]
+        assert [t.split("：")[0] for t in gl.notes_on(IID)] == ["Brain 先不接这个 issue", "AI 已接手", "MR !1 已开，问题在 MR 上问"]
     finally:
         rt.stop()
 
