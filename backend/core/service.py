@@ -205,6 +205,7 @@ class Service:
         self._tasks = []
         async with self._team_lock:
             await self._stop_team()
+        await self.sessions.save()     # what changed since the last poll saved them, team mode's last round included
         if hasattr(self.sessions.gw, "close"):
             await self.sessions.gw.close()
         bk.unload()
