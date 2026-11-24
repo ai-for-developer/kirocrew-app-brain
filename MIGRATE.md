@@ -297,6 +297,8 @@ AI 可以在一个新分支上帮我写好这个改动并提交。推送先问�
 - runnerd.json：`spool_dir`、`cache_dir`、`runs_root`、`allowed_signers`、`clone_url`、`kit_dir`、`agent_spec`、`git_name`、`git_email`。
 - signer.json：`brainkit`、`spool`、`signing_key`、`projects`、`gitlab` 里的 `base`、`token_env` 和 `token_file`、`identities`、`vouchers_dir`、`publish_vouchers`、`ledger`、`pseudonym_salt`、`bridge_users`。
 
+运行机自己写的代码，发布前要由没写过它的上下文评审（Lean 发布第 1 步）。KiroCrew 只让 app 开的会话起 app 自己带的 agent，所以 Brain 交付 app 带了两个只读的评审 agent：`lean-reviewer-opus` 和 `lean-reviewer-k3`，和 Lean 的质量包里的同名、同模型、同样只能读文件。KiroCrew 装 app、更新 app 和启动的时候，把它们写成 `~/.kiro/agents/brain--lean-reviewer-opus.json` 和 `brain--lean-reviewer-k3.json`。运行机的会话把自己写的代码交给它们评审，不用等人；它们改不了代码。一键建运行机的「评审 agent」这一步查它们在不在、是不是只读：不在或者能写，这一步写「等人」，照它说的重启 KiroCrew（或者在 KiroCrew 里更新一下 app）再跑一次。不要自己往 `~/.kiro/agents` 里放 `brain--` 开头的文件：KiroCrew 启动时会删掉 app.json 里没写的。
+
 这样建的运行机里，签名服务、app 和 AI 的会话是同一个系统用户。它跳过了第 2 步分开系统用户的那层保护，签名挡不住 app 自己，所以只能用来试。正式给团队用，照下面第 0 到第 11 步做。它的文件在 `~/.brain/team-setup/`（令牌、密钥、三份配置，巡检的账本 `patrol.sqlite`）和 `~/workplace/brain-team/`（运行的工作区和缓存，巡检的克隆在 `patrol/`）。
 
 ### 试用：测试环境报错（staging-errors）
@@ -443,7 +445,10 @@ sudo -u brainbot mkdir -p /home/brainbot/workplace/runs /home/brainbot/brain-cac
 ```bash
 sudo -u brainbot cat /home/brainbot/.kiro/crew/apps/brain/VERSIONS
 sudo -iu brainbot kirocrew config get agent.acp_backend    # 最后一行是 kas
+sudo -u brainbot ls /home/brainbot/.kiro/agents/ | grep '^brain--.*\.json$'   # brain--lean-reviewer-k3.json 和 brain--lean-reviewer-opus.json
 ```
+
+最后一条列出的两个文件，是 app 带的两个只读评审 agent，KiroCrew 装 app、更新 app 和启动时写进去。运行机自己写的代码，发布前交给它们评审（Lean 发布第 1 步要一个没写过代码的上下文来审），不用等人。少了的话，重启 brainbot 的 KiroCrew 再看一次。
 
 ### 4. 放两份代码（人运行）
 

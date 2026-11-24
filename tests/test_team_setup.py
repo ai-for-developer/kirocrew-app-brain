@@ -241,10 +241,24 @@ def kit_file(tmp_path, **over):
     return path.read_text(encoding="utf-8")
 
 
+def app_agents():
+    """The agent specs app.json declares, as the app ships them."""
+    return [json.loads((ROOT / rel).read_text(encoding="utf-8")) for rel in
+            json.loads((ROOT / "app.json").read_text(encoding="utf-8")).get("agents", [])]
+
+
+def registered(home):
+    """The app's agents where KiroCrew writes them when the app is installed, updated or KiroCrew starts:
+    ~/.kiro/agents/brain--<name>.json, under its declared name."""
+    for spec in app_agents():
+        (home / ".kiro" / "agents" / ("brain--%s.json" % spec["name"])).write_text(json.dumps(spec), encoding="utf-8")
+
+
 @pytest.fixture
 def world(tmp_path, home):
     bk = mod("bk")
     assert bk.load(str(BRAINKIT))["ok"]
+    registered(home)
     bare = tmp_path / "origin" / "grp" / "pay.git"
     bare.parent.mkdir(parents=True)
     sh("git", "init", "-q", "--bare", bare)
@@ -1154,12 +1168,13 @@ def test_the_command_line_says_one_line_per_step(world):
         served.stop()
     assert left is not None
     lines = first.stdout.splitlines()
-    assert first.returncode == 0 and len(lines) == 15, first.stdout + first.stderr
+    assert first.returncode == 0 and len(lines) == 16, first.stdout + first.stderr
     assert lines[0].startswith("✓ 找到项目  grp/pay") and lines[6].startswith("… kit.json 的 MR  开了 MR !7")
     assert lines[5].startswith("✓ 状态中转  brain/status 还没有：团队服务器第一次写的时候建")
     assert lines[11].startswith("✓ brain-patrol agent  写好了 brain-patrol 的设置")
-    assert lines[13].startswith("✓ 打开团队模式  团队模式的配置能用") and lines[13].endswith("交接都会被拒")
-    for last in (lines[14], second.stdout.splitlines()[-1]):
+    assert lines[12].startswith("✓ 评审 agent  评审 agent lean-reviewer-opus、lean-reviewer-k3 都在，只读")
+    assert lines[14].startswith("✓ 打开团队模式  团队模式的配置能用") and lines[14].endswith("交接都会被拒")
+    for last in (lines[15], second.stdout.splitlines()[-1]):
         assert last.startswith("签名服务还在跑（进程 %d）" % left) and last.endswith("kill %d" % left), last
     assert second.returncode == 0 and world["gl"].writes(seen) == [], second.stdout + second.stderr
     assert "✓ 桥的令牌  用上次建的项目令牌 brain-bridge" in second.stdout
@@ -1237,6 +1252,7 @@ class FakeTeam:
 def team(tmp_path, home):
     bk = mod("bk")
     assert bk.load(str(BRAINKIT))["ok"]
+    registered(home)
     kit = kit_file(tmp_path)
     projects = {}
     for path, pid in TEAM:
@@ -1702,3 +1718,53 @@ def test_issue_intake_and_patrol_are_ticked_per_project_and_a_project_left_out_g
     assert old["issues"] == old["patrol"] == list(three)
     with pytest.raises(setup.SetupRefused, match="grp/d"):
         team_ctx(team, projects=three, issues=["grp/d"])
+
+
+def lean_reviewers():
+    """Lean's read-only reviewers as the brain-kit the app runs on ships them in Lean's pstack pack (.kiro/agents/*.md
+    whose tools only read): name -> its description, model and words."""
+    out = {}
+    for md in sorted((BRAINKIT / "vendor" / "aidlc-lean" / "kit-pstack" / ".kiro" / "agents").glob("*.md")):
+        head, _, body = md.read_text(encoding="utf-8").removeprefix("---\n").partition("\n---\n")
+        meta = dict(line.split(": ", 1) for line in head.splitlines())
+        if json.loads(meta["tools"]) == ["read"]:
+            out[meta["name"]] = {"description": meta["description"], "model": meta["model"], "prompt": body.strip()}
+    return out
+
+
+def test_the_app_declares_lean_s_read_only_reviewers_as_its_own_agents():
+    """KiroCrew lets a session the brain app opened (brain-run on the runner, brain-dev-crew on a laptop) spawn only the
+    app's own agents, the ones app.json declares. They are Lean's read-only reviewers under the names Lean's review
+    dispatches (aidlc-lean-release step 1, pstack-interrogate), with Lean's model and words, tools that only read and
+    no MCP servers; Lean's lean-worker, which writes, is not one."""
+    lean, mine = lean_reviewers(), {s["name"]: s for s in app_agents()}
+    assert sorted(lean) == ["lean-reviewer-k3", "lean-reviewer-opus"] and sorted(mine) == sorted(lean)
+    for name, want in lean.items():
+        spec = mine[name]
+        assert {k: spec[k] for k in want} == want, name
+        used = set(spec["tools"]) | set(spec["allowedTools"]) | {r["capability"] for r in spec["permissions"]["rules"]}
+        assert used <= {"read", "fs_read"} and spec["mcpServers"] == {} and spec["includeMcpJson"] is False, name
+
+
+def test_the_reviewers_step_checks_that_kirocrew_put_the_apps_read_only_reviewers_in_place(world):
+    """With the app's reviewers where KiroCrew writes them: done, naming them. Before KiroCrew wrote them (an app
+    updated while KiroCrew was not restarted, say), or with one changed so it can write: a person is waited for, said
+    with what to do, and the run goes on to team mode. Nothing is written into ~/.kiro/agents for them."""
+    view, ps = build(world)
+    agents = ps.agent_spec.parent
+    assert step(view, "reviewers")["status"] == "done", step(view, "reviewers")
+    assert "lean-reviewer-opus" in step(view, "reviewers")["message"]
+    for f in agents.glob("brain--*.json"):
+        f.unlink()
+    view, _ = build(world)
+    said = step(view, "reviewers")
+    assert said["status"] == "waiting" and "重启 KiroCrew" in said["message"]
+    assert step(view, "team_mode")["status"] == "done"
+    assert not list(agents.glob("brain--*.json"))
+    registered(world["home"])
+    k3 = agents / "brain--lean-reviewer-k3.json"
+    k3.write_text(json.dumps(dict(json.loads(k3.read_text()), tools=["read", "write", "shell"])))
+    view, _ = build(world)
+    said = step(view, "reviewers")
+    assert said["status"] == "waiting" and "lean-reviewer-k3" in said["message"]
+    assert "lean-reviewer-opus" not in said["message"]

@@ -1601,7 +1601,45 @@ def step_patrol_agent(ctx: Ctx) -> StepResult:
     return done("%s brain-patrol 的设置：%s" % ("写好了" if wrote else "已经是新的", tilde(ps.patrol_spec)))
 
 
-# ---- 13 the signer ------------------------------------------------------------------------------------------------ #
+# ---- 13 the reviewers --------------------------------------------------------------------------------------------- #
+
+REVIEW_TOOLS = frozenset(("read", "fs_read", "grep", "glob"))     # the tools a reviewer may have: they only read
+
+
+def step_reviewers(ctx: Ctx) -> StepResult:
+    """The read-only reviewers a run gives the code it wrote on the runner to (brain-run's 接手步骤 4, Lean's
+    aidlc-lean-release step 1). KiroCrew lets a session the app opened spawn only the app's own agents: it writes each
+    one app.json declares as ~/.kiro/agents/brain--<name>.json when the app is installed or updated and when KiroCrew
+    starts, and at its start takes out a brain--*.json app.json does not declare, so nothing is written here. Each is
+    looked for beside brain-run.json under its declared name, with tools that only read; one not there, or able to do
+    more, waits for a person (until then a run asks someone to review the code it wrote)."""
+    ps = ctx.paths
+    names = [str(spec.get("name") or "") for spec in shipped_agents(ps.app_dir)]
+    specs = {n: parse_json(read_secret(ps.agent_spec.with_name("brain--%s.json" % n))) for n in names}
+    missing = [n for n, s in specs.items() if not isinstance(s, dict) or s.get("name") != n]
+    more = [n for n, s in specs.items() if n not in missing
+            and (not isinstance(s.get("tools"), list) or {str(x) for x in s["tools"]} - REVIEW_TOOLS)]
+    said = []
+    if missing:
+        said.append("KiroCrew 还没装上评审 agent %s：重启 KiroCrew，或者在 KiroCrew 里更新一下 Brain 交付 app，再跑一次；"
+                    "装上以前，运行机自己写的代码要人来评审" % "、".join(missing))
+    if more:
+        said.append("评审 agent %s 不只能读文件（%s 里的 tools）：评审要只读。删掉这个文件，重启 KiroCrew 让它照 app 重写，再跑一次"
+                    % ("、".join(more), "、".join(tilde(ps.agent_spec.with_name("brain--%s.json" % n)) for n in more)))
+    if said:
+        return waiting("；".join(said))
+    return done("评审 agent %s 都在，只读：运行机把自己写的代码交给它们评审，不用等人" % "、".join(names))
+
+
+def shipped_agents(app_dir: Path) -> list[dict]:
+    """The agent specs the app's app.json declares (agents/), as the app ships them."""
+    manifest = parse_json(read_secret(app_dir / "app.json"))
+    rels = manifest.get("agents") if isinstance(manifest, dict) else None
+    specs = [parse_json(read_secret(app_dir / str(rel))) for rel in rels or []]
+    return [s for s in specs if isinstance(s, dict)]
+
+
+# ---- 14 the signer ------------------------------------------------------------------------------------------------ #
 
 def step_signer(ctx: Ctx) -> StepResult:
     """The signer, run by the app itself in same-user mode (signerproc): started when it is not running, or when it
@@ -1614,7 +1652,7 @@ def step_signer(ctx: Ctx) -> StepResult:
     return done("签名服务%s（进程 %d）" % ("开起来了" if started else "在跑", pid))
 
 
-# ---- 14 team mode ------------------------------------------------------------------------------------------------- #
+# ---- 15 team mode ------------------------------------------------------------------------------------------------- #
 
 def step_team_mode(ctx: Ctx) -> StepResult:
     """Team mode on with the two configs and the same-user trial, through the app's settings (its TeamRuntime starts,
@@ -1665,6 +1703,7 @@ STEPS: tuple[Step, ...] = (
     Step("configs", "三份配置", step_configs),
     Step("agent", "brain-run agent", step_agent),
     Step("patrol_agent", "brain-patrol agent", step_patrol_agent),
+    Step("reviewers", "评审 agent", step_reviewers),
     Step("signer", "签名服务", step_signer),
     Step("team_mode", "打开团队模式", step_team_mode),
 )
