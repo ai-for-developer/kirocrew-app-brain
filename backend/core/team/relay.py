@@ -148,7 +148,8 @@ def epoch(stamp: Any) -> float | None:
 def on_names(row: Mapping[str, Any], mr: Mapping[str, Any] | None, roles: Mapping[str, Any]) -> list[str]:
     """Who takes the step *row* waits on now (Waits.on), GitLab usernames: those the bridge's open question names
     (an answer, an acceptance), the people of the role it waits on (identities.json), or its owner for a step of
-    theirs; [] when it waits on no one in particular (AI, the runner, the bridge, anyone who claims it)."""
+    theirs (the merge of a run the runner finished among them); [] when it waits on no one in particular (AI, the
+    runner, the bridge, anyone who claims it)."""
     w = row["waits"]
     if w["do"] in deliveries.GATES and mr:
         asked = [q for q in mr.get("questions") or [] if q.get("state") == "open" and q.get("who")]
@@ -157,7 +158,8 @@ def on_names(row: Mapping[str, Any], mr: Mapping[str, Any] | None, roles: Mappin
     role = ROLE_OF.get(w["who"])
     if role:
         return [str(n) for n in roles.get(role) or []]
-    if w["do"] in OWNER_STEPS and w["who"] in ("people", "you") and row.get("owner"):
+    owners = w["do"] in OWNER_STEPS or row.get("state") == "to_merge"
+    if owners and w["who"] in ("people", "you") and row.get("owner"):
         return [str(row["owner"])]
     return []
 

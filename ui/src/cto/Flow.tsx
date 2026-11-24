@@ -55,7 +55,7 @@ export function colOf(r: Requirement): Col | null {
   if (r.state === 'closed' || r.state === 'merged_into_parent') return null
   if (r.state === 'merged') return '已合并'
   if (!flowOf(r).intent) return r.mr ? '发布验收' : '构建'
-  if (r.state === 'acceptance') return '发布验收'
+  if (r.state === 'acceptance' || r.state === 'to_merge') return '发布验收'
   if (r.state === 'unclaimed') return '构建'
   const n = r.lean.stage_n
   const released = n === '✓' || !!n?.startsWith('4.')

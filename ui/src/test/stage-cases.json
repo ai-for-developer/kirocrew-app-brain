@@ -5,6 +5,7 @@
     { "why": "merged into its big one", "stage": null, "row": { "state": "merged_into_parent", "lean": { "stage_n": "3.5" }, "family": { "role": "child", "family_state": "in_progress" }, "local_only": false, "mr": null, "run_ids": [] } },
     { "why": "merged", "stage": "已合并", "row": { "state": "merged", "lean": { "stage_n": "✓" }, "family": null, "local_only": false, "mr": { "iid": 5 }, "run_ids": [] } },
     { "why": "waits for its acceptance", "stage": "发布 · 验收", "row": { "state": "acceptance", "lean": { "stage_n": "✓" }, "family": null, "local_only": false, "mr": { "iid": 5 }, "run_ids": ["RUN-PAY-1-1"] } },
+    { "why": "accepted on the runner, its session done: waits for a person to merge", "stage": "发布 · 验收", "row": { "state": "to_merge", "lean": { "stage_n": "3.5" }, "family": null, "local_only": false, "mr": { "iid": 5 }, "run_ids": ["RUN-PAY-1-1"] } },
     { "why": "a small one nobody has", "stage": "构建", "row": { "state": "unclaimed", "lean": { "stage_n": null }, "family": null, "local_only": false, "mr": null, "run_ids": [] } },
     { "why": "claimed, not started", "stage": "需求", "row": { "state": "claimed", "lean": { "stage_n": null }, "family": null, "local_only": false, "mr": null, "run_ids": [] } },
     { "why": "Lean not started", "stage": "需求", "row": { "state": "local", "lean": { "stage_n": null }, "family": null, "local_only": false, "mr": null, "run_ids": [] } },

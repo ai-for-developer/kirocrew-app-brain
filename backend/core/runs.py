@@ -320,6 +320,9 @@ def overlay(rs: Sequence[RunView], nodes: Sequence[Node], *, row: Mapping[str, A
             elif state == "acceptance":
                 r.now = at_work(r, "awaiting_approval", waits.get("text") or "等产品验收", since or last,
                                 waits.get("who") or "product", "accept")
+            elif state == "to_merge":
+                r.now = at_work(r, "awaiting_approval", waits.get("text") or "验收通过了：等人合并", since or last,
+                                waits.get("who") or "people", "merge")
             elif state == "handed_over":
                 r.now = at_work(r, "queued", waits.get("text") or "运行机在准备工作区", since or last)
             elif state == "rejected":
@@ -381,7 +384,7 @@ def hand_phase(row: Mapping[str, Any]) -> str:
         return "unpushed"
     if state == "rejected":
         return "refused"
-    if state in ("running", "parked", "acceptance", "merged"):
+    if state in ("running", "parked", "acceptance", "to_merge", "merged"):
         return "started"
     if state != "handed_over":
         return "none"

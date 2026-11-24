@@ -248,7 +248,7 @@ app 导不进来的：以前手开会话的聊天记录；用 Jira 认领、还�
 
 ### 2. 标签（人做）
 
-在项目里建好这几个标签：`ai-handoff`、`ai-running`、`ai-handoff-rejected`、`brain-reflect`。
+在项目里建好这几个标签：`ai-handoff`、`ai-running`、`ai-handoff-rejected`、`ai-ready-to-merge`、`brain-reflect`。`ai-ready-to-merge` 是运行机做完的 MR：产品验收通过、会话把记录也推上来以后，运行机把 `ai-running` 换成它，在 MR 上说一次可以合并了、请需求的负责人合并；合并以后两个标签都去掉。
 
 ### 3. 两个小仓库（人做）
 
@@ -656,5 +656,5 @@ KiroCrew 重启（或者模型那边断了）会把会话正在跑的那一轮�
 - [ ] 每个仓库：kit 文件升级的 MR 已合进默认分支，`brain doctor` 没有 FAIL。
 - [ ] 每个旧需求：在 app 里的状态和第一部分第 8 步的表对得上；做到一半的已经在 app 开的会话里接着做。
 - [ ] 旧的 `~/.kiro/agents/brain-dev.json` 已删；个人电脑上没有 `brain-bridge` app。
-- [ ] 要交接的项目：桥账号是 Developer；四个标签都在；`kit.json` 里有 `bridge_user`、`bot_users`、`bot_emails`。
+- [ ] 要交接的项目：桥账号是 Developer；五个标签都在；`kit.json` 里有 `bridge_user`、`bot_users`、`bot_emails`。
 - [ ] 运行机：旧运行机已停；签名服务在跑；「团队运行机」卡正常；试交接四条都有。这一条没过，就先别把需求交接给运行机，各自在本机做完、本机合并。

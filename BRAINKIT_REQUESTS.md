@@ -228,6 +228,15 @@ Lean timeline follow them when trace is missing), `decisions.USER` (the MR reade
     …)`. Wanted: that branch in `tell_if_stalled`, its notice word in NOTICE_PREFIXES (「会话中断：」), and a line in
     brain-run.md for what a session does on it (commit and push what the cut-off turn left, then stop as usual), so the
     app drops its copy and calls nothing private.
+50. **The end of a run on its MR** (new, the app's `team/runwatch.py`). After the product's acceptance reached the run
+    and its session pushed its records, nothing tells the MR it can be merged, it keeps `running_label`, and
+    `_reconcile_one` marks the run merged or closed and leaves the label on (MR !6 still had `ai-running` after its
+    merge). The app does both itself: once `_accepted(run)` holds, the slot is idle and the head is past the
+    acceptance's commit with no question there, it posts 「…做完了：…可以合并了：请 @<owner> …」 with `tell_mr_once`
+    (`ready:<run>`) and swaps the label for its own `ai-ready-to-merge` (constants.MERGE_LABEL: kit.json has no key for
+    it); for a run merged or closed it takes `running_label` and that label off, once (`unlabelled:<run>`). Wanted: a
+    kit.json label for an accepted run waiting for its merge (`accepted_label`, in config.DEFAULTS and the docs' label
+    list), the ready comment and that label swap in the bridge, and reconcile taking `running_label` and it off.
 
 ### Nice-to-have
 

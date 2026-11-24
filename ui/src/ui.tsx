@@ -33,15 +33,15 @@ export function Icon({ name, size = 15, className, title }: { name: string; size
 }
 
 export const STATE_TONE: Record<ReqState, Tone> = {
-  claimed: 'idle', local: 'run', handed_over: 'hand', rejected: 'bad', running: 'run', parked: 'wait', acceptance: 'wait', merged: 'ok', closed: 'idle',
-  unclaimed: 'idle', merged_into_parent: 'ok',
+  claimed: 'idle', local: 'run', handed_over: 'hand', rejected: 'bad', running: 'run', parked: 'wait', acceptance: 'wait', to_merge: 'wait',
+  merged: 'ok', closed: 'idle', unclaimed: 'idle', merged_into_parent: 'ok',
 }
 /** the dot inside a state chip: live states blink, as the board's run status does */
 const STATE_DOT: Record<ReqState, string> = {
-  claimed: '○', local: '●', handed_over: '➜', rejected: '✕', running: '●', parked: '✋', acceptance: '✋', merged: '✔', closed: '■',
-  unclaimed: '◌', merged_into_parent: '⤴',
+  claimed: '○', local: '●', handed_over: '➜', rejected: '✕', running: '●', parked: '✋', acceptance: '✋', to_merge: '✋', merged: '✔',
+  closed: '■', unclaimed: '◌', merged_into_parent: '⤴',
 }
-const LIVE_STATES: ReadonlySet<ReqState> = new Set<ReqState>(['local', 'running', 'parked', 'acceptance'])
+const LIVE_STATES: ReadonlySet<ReqState> = new Set<ReqState>(['local', 'running', 'parked', 'acceptance', 'to_merge'])
 
 /** A requirement's state. With *who* (its waits.who), the one judgment of whose turn it is: 停下等回答 / 等验收 are
  * magenta (等人) only when they wait on you, calm when they wait on someone else (the product, a colleague); a state

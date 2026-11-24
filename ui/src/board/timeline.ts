@@ -248,7 +248,7 @@ export function replayAt(b: ReqBoard, t: number): ReqBoard {
 
 const STATE_LABEL: Record<ReqState, string> = {
   claimed: '已认领', local: '本地开发中', handed_over: '已交接', rejected: '接手被拒', running: '运行机在跑', parked: '停下等回答',
-  acceptance: '等验收', merged: '已合并', closed: '已关闭', unclaimed: '待认领', merged_into_parent: '已合进大需求',
+  acceptance: '等验收', to_merge: '等合并', merged: '已合并', closed: '已关闭', unclaimed: '待认领', merged_into_parent: '已合进大需求',
 }
 
 /** 验收 then, by 发布's latest gate: approved, sent back, asked; none decided or asked: as 发布 waits or not. */

@@ -22,7 +22,7 @@ import pytest
 import signinfix
 from appkit import mod, sh
 from brainfix import FakeGateway, make_service, needs_brainkit, run
-from teamfix import BRANCH, PARK, push_park, spool_request, world  # noqa: F401  (world: the fixture)
+from teamfix import BRANCH, PARK, commit_push, push_park, spool_request, world  # noqa: F401  (world: the fixture)
 
 pytestmark = [needs_brainkit, pytest.mark.skipif(subprocess.run(["which", "ssh-keygen"], capture_output=True).returncode,
                                                  reason="ssh-keygen not found")]
@@ -218,6 +218,66 @@ def test_a_session_that_parked_or_still_works_is_not_told_to_go_on(world, tmp_pa
     assert resumes(gw) == [] and not [b for b in world["gl"].bodies() if "会话停住了" in b]
     (quiet,) = [b for b in world["gl"].bodies() if "没有动静" in b]
     assert quiet.startswith("RUN-PAY-1-1 已经") and "还在跑" in quiet, quiet
+
+
+ACCEPTANCE = {"schema": 1, "status": "waiting", "kind": "acceptance", "ask": "product", "question": "可以验收了吗？",
+              "options": [], "lean_request": "RELEASE 1234abcd"}
+
+
+def test_a_run_accepted_and_done_says_who_merges_it_and_its_label_goes_at_the_merge(world, tmp_path):
+    """MR !6: after the product's RELEASE approval and the session's last push nothing said the MR could be merged, it
+    kept ai-running after the merge, and the pages said 运行机在跑. Once the session is idle with its records pushed,
+    the MR hears once that it can be merged and that alice merges it, its label is ai-ready-to-merge instead of
+    ai-running, the runner's row and the project's snapshot say it waits for alice to merge, and the merge takes the
+    label off."""
+    import time
+    snapshot = mod("snapshot")
+    gw = FakeGateway()
+    gw.script = [ended("写好了，请验收"), ended("验收通过，记好了")]
+    svc = service(world, tmp_path, gw)
+    gl = world["gl"]
+    ws = world["runs_root"] / "RUN-PAY-1-1"
+    seen = {}
+
+    def ready():
+        return [b for b in gl.bodies() if "可以合并了" in b]
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # dispatched
+            push_park(ws, ACCEPTANCE)
+            gw.finish(SLOT)
+            await rounds(svc)                           # D-1, the acceptance question
+            gl.note("carol", "answer D-1 approve")
+            await rounds(svc)                           # the approval reaches the session, whose turn records it
+            seen["before"] = (ready(), list(gl.labels))
+            commit_push(ws, {"runs/PAY-1/park.json": dict(ACCEPTANCE, status="answered")}, "PAY-1: accepted (D-1)")
+            gw.finish(SLOT)
+            await rounds(svc)
+            seen["row"] = (await svc.overview("runner"))["rows"][0]
+            rt = svc.team
+            seen["snap"] = snapshot.parse(rt.snapshot_of("grp/repo", time.time(), time.monotonic() + 20, None,
+                                                         rt._shared()))["runner"]["handovers"]
+            await rounds(svc)
+            seen["labels"] = list(gl.labels)
+            gl.state = "merged"
+            await rounds(svc, 2)
+        finally:
+            await svc.stop()
+
+    run(go())
+    assert seen["before"][0] == [] and "ai-running" in seen["before"][1]
+    (told,) = ready()
+    assert told.startswith("RUN-PAY-1-1 做完了") and "@alice" in told and "D-1" in told, told
+    assert "ai-ready-to-merge" in seen["labels"] and "ai-running" not in seen["labels"]
+    row = seen["row"]
+    w = row["waits"]
+    assert (row["state"], row["state_label"], w["who"], w["do"], w["where"]) == ("to_merge", "等合并", "people", "merge", "mr")
+    assert w["text"] == "验收通过了：等 alice 在 GitLab 上合并"
+    (h,) = seen["snap"]
+    assert (h["waits"]["text"], h["waits"]["do"], h["waits"]["on"]) == (w["text"], "merge", ["alice"])
+    assert "ai-ready-to-merge" not in gl.labels and "ai-running" not in gl.labels
 
 
 def test_the_page_says_what_the_bridge_made_of_each_labelled_mr(world, tmp_path):

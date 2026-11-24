@@ -48,6 +48,7 @@ export type ReqState =
   | 'running' // 运行机在跑
   | 'parked' // 停下等回答：park.json waiting / an open D-<n>
   | 'acceptance' // 等验收：parked on an acceptance question (Lean RELEASE)
+  | 'to_merge' // 等合并：the product accepted the team runner's run and its session is done: a person merges the MR
   | 'merged' // 已合并：run.json is on the default branch
   | 'closed' // 已关闭：the claim was closed (duplicate, dropped)
   | 'unclaimed' // 待认领：a small requirement `brain split` filed for others: nobody has it yet
@@ -61,6 +62,7 @@ export const STATE_LABEL: Record<ReqState, string> = {
   running: '运行机在跑',
   parked: '停下等回答',
   acceptance: '等验收',
+  to_merge: '等合并',
   merged: '已合并',
   closed: '已关闭',
   unclaimed: '待认领',
