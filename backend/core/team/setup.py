@@ -1313,10 +1313,7 @@ def close_stale_kit_mrs(ctx: Ctx, p: Proj) -> list[dict[str, Any]]:
     default branch is what this run wants: an earlier run's, which merged later would undo this run's choices (turn
     从 issue 接活 or 巡检 on again). Each hears why in one line and is closed. -> those MRs."""
     gone = []
-    for mr in ctx.gl.mrs_for_branch(p.id, BRANCH):
-        if mr.get("source_branch") != BRANCH or mr.get("source_project_id") != p.id or \
-                mr.get("target_project_id") != p.id:
-            continue
+    for mr in kitmr.own_mrs(ctx.gl, p.id, BRANCH):
         ctx.gl.comment(p.id, int(mr["iid"]), STALE_MR_NOTE)
         ctx.gl.call("PUT", "/projects/%d/merge_requests/%d" % (p.id, int(mr["iid"])), body={"state_event": "close"})
         gone.append(mr)

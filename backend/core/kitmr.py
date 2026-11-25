@@ -141,15 +141,23 @@ def branch_exists(gl: Any, project: Any, name: str) -> bool:
     return True
 
 
+def own_mrs(gl: Any, project: Any, branch: str) -> list[dict[str, Any]]:
+    """The open MRs of *branch* in *project* and into it: never one from a fork's branch of that name."""
+    pid = (gl.project(project) or {}).get("id")
+    return [m for m in gl.mrs_for_branch(project, branch) if m.get("source_branch") == branch
+            and m.get("source_project_id") == pid and m.get("target_project_id") == pid]
+
+
 def kit_mr(gl: Any, project: Any, default: str, branch: str, want: Mapping[str, Any], like: str, *, title: str,
            text: str, message: str) -> tuple[dict[str, Any], bool]:
-    """kit.json on *branch* made to equal *want*, and an MR of it into *default*: with an MR open, its branch; with none,
-    the branch made again from *default* (what an earlier change left on it never rides along); one commit when the
-    branch's kit.json differs (written the way the branch's file is, else *like*, the default branch's text), the MR
-    (*title*, *text*; its branch removed once merged) when none is open. *gl* is brain-kit's rest.GitLab with the
-    person's token; *project* its id or path. -> (the MR, whether it was opened now)."""
+    """kit.json on *branch* made to equal *want*, and an MR of it into *default*: with an MR of it open (own_mrs), its
+    branch, and its description made *text* when it says something else; with none, the branch made again from
+    *default* (what an earlier change left on it never rides along); one commit when the branch's kit.json differs
+    (written the way the branch's file is, else *like*, the default branch's text), the MR (*title*, *text*; its branch
+    removed once merged) when none is open. *gl* is brain-kit's rest.GitLab with the person's token; *project* its id
+    or path. -> (the MR, whether it was opened now)."""
     p = _project(project)
-    mr = gl.mr_for_branch(project, branch)
+    mr = next(iter(own_mrs(gl, project, branch)), None)
     if mr is None:
         if branch_exists(gl, project, branch):
             gl.call("DELETE", "/projects/%s/repository/branches/%s" % (p, urllib.parse.quote(branch, safe="")))
@@ -162,6 +170,8 @@ def kit_mr(gl: Any, project: Any, default: str, branch: str, want: Mapping[str, 
             "actions": [{"action": "update" if raw is not None else "create", "file_path": KIT,
                          "content": kit_text(want, there or like)}]})
     if mr is not None:
+        if mr.get("description") != text:
+            mr = gl.edit_mr(project, int(mr["iid"]), description=text) or dict(mr, description=text)
         return mr, False
     return gl.call("POST", "/projects/%s/merge_requests" % p, body={
         "source_branch": branch, "target_branch": default, "title": title, "description": text,
