@@ -224,17 +224,18 @@ Lean timeline follow them when trace is missing), `decisions.USER` (the MR reade
     asking, open, held, answered, delivery_unknown or refused, its newest decision (at any head) not refused, and
     either its newest `sent` outbox row about the head (its `sha`) or the head the one the bridge last read
     (`last_sha`) with no decision at it and `_accepted` none, quiet for `stall_s`. A turn is cut off when KiroCrew
-    wrote no end to it (the app's `crewadapter.cut_off`, over the slot's newest rows): a turn KiroCrew finished ends
-    on a reply with `meta.turn_stats`, one someone stopped on a system row `{"kind": "stop_event"}`; a restart leaves
-    whatever the turn wrote last (RUN-REQ-2-1: a tool call, then the empty assistant row KiroCrew writes when a turn
-    stops), an error a row of role `error`; a compaction or trust reset row after a turn is looked past; a turn a
-    person stopped in the app (its session runner's user_stopped) is not cut off, whatever the rows end on. A session
-    that ended its turn without a push (brain-run's 「…不继续」 and 「…等人处理」 lines) is not told to go on, and the MR
-    does not hear it either: wanted too, a line on the MR for such an end. It sends 「会话中断：…」 as a notice about
-    the head (`notice:resume:<head12>:<n>`) through `Delivery._send_once`, because `notify_run` refuses a text outside
-    NOTICE_PREFIXES; twice at one head, then `tell_mr_once("stopped:<run>:<head12>", …)`. Wanted: that branch in `tell_if_stalled`, its notice word in NOTICE_PREFIXES (「会话中断：」), and a line in
-    brain-run.md for what a session does on it (commit and push what the cut-off turn left, then stop as usual), so the
-    app drops its copy and calls nothing private.
+    wrote no end to it (the app's `crewadapter.cut_off`, over the slot's newest rows): a turn KiroCrew finished ends on
+    a reply with `meta.turn_stats`, one someone stopped on a system row `{"kind": "stop_event"}` (a tool call that came
+    in, or the one KiroCrew rejects, may follow it); a restart leaves whatever the turn wrote last (RUN-REQ-2-1: a tool
+    call, then the empty assistant row KiroCrew writes when a turn stops), an error a row of role `error`; a compaction,
+    trust reset or agent switch row after a turn is looked past; a turn a person stopped in the app (its session
+    runner's user_stopped) is not cut off, whatever the rows end on. A session that ended its turn without a push
+    (brain-run's 「…不继续」 and 「…等人处理」 lines) is not told to go on, and the MR does not hear it either: wanted too, a line
+    on the MR for such an end. It sends 「会话中断：…」 as a notice about the head (`notice:resume:<head12>:<n>`) through
+    `Delivery._send_once`, because `notify_run` refuses a text outside NOTICE_PREFIXES; twice at one head, then
+    `tell_mr_once("stopped:<run>:<head12>", …)`. Wanted: that branch in `tell_if_stalled`, its notice word in
+    NOTICE_PREFIXES (「会话中断：」), and a line in brain-run.md for what a session does on it (commit and push what the
+    cut-off turn left, then stop as usual), so the app drops its copy and calls nothing private.
 50. **The end of a run on its MR** (new, the app's `team/runwatch.py`). After the product's acceptance reached the run
     and its session pushed its records, nothing tells the MR it can be merged, it keeps `running_label`, and
     `_reconcile_one` marks the run merged or closed and leaves the label on (MR !6 still had `ai-running` after its
