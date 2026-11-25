@@ -282,6 +282,44 @@ def age(ledger, seconds):
                 + (row[0],))
 
 
+def test_a_session_parked_on_a_new_question_is_not_said_to_work_on_the_last_answer(world, tmp_path):
+    """0.5.4-srv10: after Q-17's answer the session parked on its acceptance question, which the bridge had not posted
+    yet, and the runner's row still said 「Q-17 的回答送到了，运行机在接着做」; held past stall_minutes (an acceptance
+    waits for the head's pipeline) it would send people to KiroCrew. The answered question is the row's only while
+    park.json is the one it was asked from: a new one waits for the bridge to post it."""
+    gw = FakeGateway()
+    gw.script = [ended("开始写代码"), ended("等待决策，不继续")]
+    svc = service(world, tmp_path, gw)
+    ws = world["runs_root"] / "RUN-PAY-1-1"
+    seen = {}
+
+    async def waits():
+        w = (await svc.overview("runner"))["rows"][0]["waits"]
+        return w["who"], w["text"]
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # dispatched
+            push_park(ws, PARK)
+            gw.finish(SLOT)
+            await rounds(svc)                           # Q-1 on the MR
+            world["gl"].note("alice", "answer D-1 B 小额不审")
+            await rounds(svc)                           # the answer reached the session
+            seen["answered"] = await waits()
+            (ws / "runs" / "PAY-1" / "park.json").write_text(json.dumps(ACCEPTANCE, ensure_ascii=False))
+            gw.finish(SLOT)                             # it parks on its acceptance question, not posted yet
+            seen["parked"] = await waits()
+            age(svc.team.host.ledger, 3600)             # still not posted an hour on
+            seen["later"] = await waits()
+        finally:
+            await svc.stop()
+
+    run(go())
+    assert seen["answered"] == ("runner", "Q-1 的回答送到了，运行机在接着做")
+    assert seen["parked"] == seen["later"] == ("bridge", "运行机停下来问人了：等桥把问题贴到 MR 上"), seen
+
+
 def test_the_runner_page_says_a_session_stopped_on_its_run_until_the_next_push(world, tmp_path):
     """Its turn cut off at one MR head, then each of the two turns told to go on: the MR hears 「…的会话停住了」. The
     run's row on 运行机 says it under the run, and the requirement's row waits on people, for that head only: once the
