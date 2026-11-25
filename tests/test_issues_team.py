@@ -319,6 +319,46 @@ def test_an_issue_waits_while_lean_verify_cannot_pass_on_main_and_is_claimed_onc
         rt.stop()
 
 
+def test_an_issue_held_for_main_s_lean_json_is_looked_at_again_only_once_main_moves(tmp_path, home, monkeypatch):
+    """While main's lean.json has no checks, a round asks GitLab nothing about who labelled the held issue or what was
+    written on it, and fetches no clone for it. A commit on main that leaves the checks empty is looked at once, and
+    the issue still hears why only once; the commit that fills them in has it claimed and started the next round."""
+    w = make_issue_world(tmp_path, home, monkeypatch, checks=[])
+    gl = w["gl"]
+    gl.label("alice")
+    fetched = tmp_path / "work" / "issues" / "7" / ".git" / "FETCH_HEAD"
+
+    def admission(since):
+        return [c[1] for c in gl.calls[since:] if "/members/all/" in c[1] or c[1].endswith("/issues/%d/notes" % IID)]
+
+    def main_moves(msg, checks=None):
+        if checks is None:
+            (w["repo"] / "NOTES.md").write_text(msg + "\n", encoding="utf-8")
+            sh("git", "-C", w["repo"], "add", "NOTES.md")
+            sh("git", "-C", w["repo"], "commit", "-q", "-m", msg)
+        else:
+            set_checks(w["repo"], checks, msg)
+        sh("git", "-C", w["repo"], "push", "-q", "origin", "main")
+    rt = runtime(w)
+    try:
+        assert rounds(rt) == [None] and rt.issues.led.get(P, IID).state == "new"
+        since, at = len(gl.calls), fetched.stat().st_mtime_ns
+        assert rounds(rt, 3) == [None] * 3
+        assert admission(since) == [] and fetched.stat().st_mtime_ns == at
+        main_moves("notes for the team")
+        since = len(gl.calls)
+        assert rounds(rt, 2) == [None] * 2
+        assert len([p for p in admission(since) if "/members/all/" in p]) == 1 and fetched.stat().st_mtime_ns != at
+        assert rt.issues.led.get(P, IID).state == "new" and len(gl.notes_on(IID)) == 1
+        item, = rt.issues_view()["items"]
+        assert "checks 是空的" in item["note"], item
+        main_moves("lean verify runs the tests", CHECKS)
+        assert rounds(rt) == [None]
+        assert rt.issues.led.get(P, IID).state == "started" and list(claims(w)) == ["PAY-1"]
+    finally:
+        rt.stop()
+
+
 def test_an_issue_edited_after_its_label_waits_for_a_new_label(w):
     gl = w["gl"]
     gl.label("alice")

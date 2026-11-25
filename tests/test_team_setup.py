@@ -70,10 +70,11 @@ class FakeGitLab:
         self.tokens, self.mrs, self.calls, self.fail = [], [], [], []
         self.revoked = set()
         self.protected = []
+        self.renamed_from = []      # the paths it had before a rename: GitLab's API still finds it by them
 
     def prefix(self, path):
         """The part of *path* that names this project (/api/v4/projects/<path or id>); None: another one's, or none."""
-        return next(("%s/projects/%s" % (API, k) for k in (self.path, str(self.pid))
+        return next(("%s/projects/%s" % (API, k) for k in (self.path, str(self.pid), *self.renamed_from)
                      if path == "%s/projects/%s" % (API, k) or path.startswith("%s/projects/%s/" % (API, k))), None)
 
     def level_of(self, username):
@@ -239,6 +240,9 @@ class FakeGitLab:
         if mr and not m.group(2) and method == "PUT" and data.get("state_event") == "close":
             mr["state"] = "closed"
             return ok(mr)
+        if mr and not m.group(2) and method == "PUT" and "description" in data:
+            mr["description"] = data["description"]
+            return ok(mr)
         return ok({"message": "404 (fake)"}, 404)
 
 
@@ -307,9 +311,9 @@ def fake_reach(world):
     return reach
 
 
-def setup_ctx(world, push="auto", roles=None, patrol=True, jenkins=None, issues=False):
+def setup_ctx(world, push="auto", roles=None, patrol=True, jenkins=None, issues=False, project=P):
     setup, rest = mod("team.setup"), mod("bk").m("rest")
-    inp = setup.SetupInput.parse({"gitlab_base": BASE, "project": P, "admin_token": world["admin"],
+    inp = setup.SetupInput.parse({"gitlab_base": BASE, "project": project, "admin_token": world["admin"],
                                   "roles": roles or {"builder": "bob"}, "push": push, "patrol": patrol,
                                   "jenkins": jenkins, "issues": issues})
     paths = setup.Paths.default(BRAINKIT, root=world["tmp"] / "team-setup")
@@ -651,6 +655,44 @@ def test_a_rerun_that_unticks_issue_intake_closes_its_earlier_kit_mr_and_no_one_
     gl.mrs.remove(fork)
     view, _ = build(world, patrol=False, issues=True)
     assert gl.mrs[-1]["iid"] != stale["iid"] and gl.mrs[-1]["state"] == "opened" and step(view, "kit_mr")["status"] == "waiting"
+
+
+def test_a_project_typed_by_the_path_it_had_before_a_rename_keeps_its_ticks(world):
+    """grp/pay was grp/old-pay before a rename, and GitLab's API still finds it by the old path. Set up by its path now
+    with 巡检 ticked and that kit.json MR merged, then run again by the old path with 巡检 still ticked: no kit.json MR
+    takes mr-patrol out. Ticked for 从 issue 接活 as well, the MR switches issue-label on next to mr-patrol, the label
+    brain is made, and team mode says intake starts once the MR is merged."""
+    gl = world["gl"]
+    gl.renamed_from.append("grp/old-pay")
+    build(world)
+    gl.merge(gl.mrs[-1]["iid"])
+    view, _ = build(world, project="grp/old-pay")
+    assert step(view, "kit_mr")["status"] == "done" and len(gl.mrs) == 1, step(view, "kit_mr")
+    view, _ = build(world, project="grp/old-pay", issues=True)
+    kit = json.loads(branch_kit(world))
+    assert kit["work_sources"] == ["mr-handoff", "mr-patrol", "issue-label"] and kit["gitlab"]["project"] == P, kit
+    assert "brain" in gl.labels
+    assert step(view, "team_mode")["message"] == "团队模式开了；上面那个 MR 合并以后，从 issue 接活才开始"
+
+
+def test_a_rerun_goes_on_with_its_own_kit_mr_never_a_fork_s_and_its_description_says_what_it_does_now(world):
+    """巡检 ticked: the kit.json MR opens. Someone opens an MR from a fork's branch of the same name, which GitLab lists
+    first. Run again with 从 issue 接活 ticked too before anyone merged: the run goes on with its own MR, whose
+    description now says what merging it switches on, issue-label too; the fork's MR is left as it was."""
+    setup, gl = mod("team.setup"), world["gl"]
+    build(world)
+    own = gl.mrs[-1]
+    assert setup.MR_ISSUES[True] not in own["description"]
+    fork = dict(own, iid=99, source_project_id=PID + 1, web_url=BASE + "/bob/pay/-/merge_requests/99", notes=[],
+                description="bob's own change")
+    gl.mrs.insert(0, fork)
+    view, ps = build(world, issues=True)
+    said = step(view, "kit_mr")
+    assert said["status"] == "waiting" and said["message"] == "还没合并 MR !%d：请在 GitLab 上合并这个 MR" % own["iid"], said
+    assert [m["iid"] for m in gl.mrs] == [99, own["iid"]] and json.loads(ps.state.read_text())["kit_mr"][P]["iid"] == own["iid"]
+    assert json.loads(branch_kit(world))["work_sources"] == ["mr-handoff", "mr-patrol", "issue-label"]
+    assert setup.MR_ISSUES[True] in own["description"] and setup.MR_PATROL[True] in own["description"]
+    assert (fork["description"], fork["notes"], fork["state"]) == ("bob's own change", [], "opened")
 
 
 def branch_kit(world):
@@ -1319,10 +1361,11 @@ def team_reach(world):
 
 
 def team_ctx(world, projects=("grp/a", "grp/b"), push="token", admin=True, bridge=True, bot=True, roles=None, jenkins=None,
-             patrol=True, issues=False):
+             patrol=True, issues=False, stop=None):
     """bot-account on *projects*. admin, bridge, bot: whether this run types the one-time token and the two accounts'
     personal tokens (False: left out; a string: that token); jenkins: the Jenkins fields typed (None: none); patrol,
-    issues: 巡检 and 从 issue 接活 as the page sends them (True, False, or the projects ticked)."""
+    issues: 巡检 and 从 issue 接活 as the page sends them (True, False, or the projects ticked); stop: how a run's session
+    is stopped (None: not here)."""
     setup, rest = mod("team.setup"), mod("bk").m("rest")
     typed = lambda given, key: given if isinstance(given, str) else world[key] if given else ""  # noqa: E731
     inp = setup.SetupInput.parse({
@@ -1332,7 +1375,7 @@ def team_ctx(world, projects=("grp/a", "grp/b"), push="token", admin=True, bridg
         "jenkins": jenkins, "patrol": patrol, "issues": issues})
     paths = setup.Paths.default(BRAINKIT, root=world["tmp"] / "team-setup")
     return setup.Ctx(inp, paths, gitlab=lambda tok: rest.GitLab(BASE, tok, world["gl"]), team_mode=team_mode(world),
-                     signer=fake_signer(world), reach=team_reach(world))
+                     signer=fake_signer(world), reach=team_reach(world), stop=stop)
 
 
 def build_team(world, **kw):
@@ -1491,9 +1534,10 @@ def runs_in(path):
 
 
 def test_a_project_taken_out_has_its_open_runs_left_in_both_ledgers_after_a_copy_of_each(team):
-    """grp/b taken out while the bridge's ledger holds RUN-PAY-2-1 of it, dispatched with D-1 open, and the signer's
-    ledger that run too: the rerun marks it failed in the bridge's ledger, D-1 closed, and closed in the signer's, each
-    ledger copied first, grp/a's run left as it is; the 三份配置 step says so. Run again, it has nothing left to do."""
+    """grp/b taken out while the bridge's ledger holds RUN-PAY-2-1 of it, dispatched with D-1 open in its session
+    run-pay-2-1, and the signer's ledger that run too: the rerun marks it failed in the bridge's ledger, D-1 closed, and
+    closed in the signer's, each ledger copied first, grp/a's run left as it is; the 三份配置 step says so, and that
+    KiroCrew did not stop the session, with its words. Run again, it has nothing left to do."""
     bk = mod("bk")
     Ledger = bk.m("bridge.ledger").Ledger
     roles = {"product": "bob", "builder": "bob"}
@@ -1503,13 +1547,15 @@ def test_a_project_taken_out_has_its_open_runs_left_in_both_ledgers_after_a_copy
         for run_id, project, iid in (("RUN-PAY-1-1", "grp/a", 7), ("RUN-PAY-2-1", "grp/b", 9)):
             led.add_run(run_id, project, run_id[4:9], iid, "a" * 40, "V-%d" % iid)
             if state != "spooled":
-                assert led.set_run(run_id, "spooled", state)
+                assert led.set_run(run_id, "spooled", state, slot=run_id.lower())
         if name.startswith("bridge"):
             led.db.executescript(bk.m("bridge.decisions").SCHEMA)
             led.db.execute("INSERT INTO decisions(id, run_id, project, iid, sha, park_hash, kind, state, created, updated) "
                            "VALUES ('D-1', 'RUN-PAY-2-1', 'grp/b', 9, ?, 'p', 'clarify', 'open', 'x', 'x')", ("a" * 40,))
         led.close()
-    view, ps = build_team(team, projects=("grp/a",), roles=roles)
+    def unavailable(slot):
+        raise mod("bk").brain_error()("KiroCrew：HTTP 503 unavailable Kiro Crew is restarting (%s)" % slot)
+    view, ps = build_team(team, projects=("grp/a",), roles=roles, stop=unavailable)
     assert everything_done(view), [(s["id"], s["status"], s["message"], s["detail"][:200]) for s in view["steps"]]
     assert runs_in(ps.root / "bridge-ledger.sqlite") == {"RUN-PAY-1-1": "dispatched", "RUN-PAY-2-1": "failed"}
     assert runs_in(ps.root / "signer-ledger.sqlite") == {"RUN-PAY-1-1": "spooled", "RUN-PAY-2-1": "closed"}
@@ -1522,6 +1568,7 @@ def test_a_project_taken_out_has_its_open_runs_left_in_both_ledgers_after_a_copy
     said = step(view, "configs")["message"]
     assert "grp/b 不归这台运行机管了：账本里它没做完的 1 个运行（RUN-PAY-2-1）停了" in said, said
     assert copies[0] in said and copies[1] in said
+    assert "RUN-PAY-2-1 的会话 run-pay-2-1 没停下" in said and "Kiro Crew is restarting (run-pay-2-1)" in said, said
     again, _ = build_team(team, projects=("grp/a",), roles=roles)
     assert everything_done(again) and "不归这台运行机管了" not in step(again, "configs")["message"]
     assert sorted(p.name for p in ps.root.iterdir() if ".left-" in p.name) == copies

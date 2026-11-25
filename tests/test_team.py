@@ -10,6 +10,7 @@ get an answer signed. The app never has a key: bridge.json names the spool signe
 
 import asyncio
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -157,6 +158,10 @@ TRUST_RESET = {"role": "system", "content": "Trust mode was turned off because K
                "approval again.", "meta": {"kind": "trust_reset_notice"}, "ts": LONG_AGO}
 KIROCREW_ERROR = {"role": "error", "content": "This turn was interrupted when the app restarted.",
                   "meta": {"kind": "gateway_restart_interruption"}, "ts": LONG_AGO}
+# a person picked another agent for the session in KiroCrew, after its turn ended (brain-r3-oms-4-1's row 53)
+SWITCHED = {"role": "assistant", "content": "🔄 Switched to agent: brain-dev", "meta": {"mid": "m-1"}, "ts": LONG_AGO}
+# KiroCrew rejects the tool call a turn stopped in its own UI was waiting on (kas-off1's row 6, after its stop_event)
+REJECTED = {"role": "tool", "content": "🚫 Load skill: aidlc (rejected)", "meta": {"mid": "m-2"}, "ts": LONG_AGO}
 
 
 async def rounds(svc, n=1):
@@ -286,13 +291,18 @@ def test_a_session_that_parked_or_still_works_is_not_told_to_go_on(world, tmp_pa
     (ended("运行机的 git 身份没设置，不继续") + [COMPACTED], 0),   # KiroCrew compacts after the turn
     (ended("等待决策，不继续") + [TRUST_RESET], 0),              # KiroCrew restarted after the turn ended
     ([STOP_EVENT] + stopped(), 0),                              # a person pressed stop in KiroCrew
+    (ended("等待决策，不继续") + [SWITCHED], 0),                  # a person switched the session's agent after it
+    ([STOP_EVENT, REJECTED], 0),                                # stopped in KiroCrew, the tool call it waited on rejected
     ([KIROCREW_ERROR], 1),                                      # KiroCrew's error ended it half-way
-], ids=["ended", "ended-then-compacted", "ended-then-trust-reset", "stopped-in-kirocrew", "kirocrew-error"])
+    (cut(), 1),                                                 # KiroCrew shut down mid-turn: RUN-REQ-2-1's rows 299-301
+], ids=["ended", "ended-then-compacted", "ended-then-trust-reset", "stopped-in-kirocrew", "ended-then-agent-switched",
+        "stopped-then-tool-rejected", "kirocrew-error", "killed-mid-turn"])
 def test_only_a_turn_kirocrew_cut_off_is_told_to_go_on(world, tmp_path, tail, told):
     """A session that ended its turn owes no push, whatever it said: KiroCrew wrote the turn's turn_stats on its
-    last reply (rows KiroCrew adds after a turn, a compaction or a trust reset, change nothing), or someone stopped
-    it. Only a turn without that end, its last row KiroCrew's error or whatever it wrote when KiroCrew stopped, is
-    told to go on."""
+    last reply (rows KiroCrew adds after a turn, a compaction or a trust reset, and a person switching the agent
+    change nothing), or someone stopped it (a tool call KiroCrew rejects after the stop changes nothing either). Only
+    a turn without that end, its last row KiroCrew's error or whatever it wrote when KiroCrew stopped, is told to go
+    on."""
     gw = FakeGateway()
     gw.script = [tail]
     svc = service(world, tmp_path, gw)
@@ -683,11 +693,15 @@ class Repointed:
         return self.gl(method, url, headers, body)
 
 
-def test_a_project_that_left_the_runner_is_not_looked_at_and_no_round_fails_on_it(world, tmp_path):
+@pytest.mark.parametrize("stops", [True, False], ids=["stopped", "kirocrew-does-not-stop-it"])
+def test_a_project_that_left_the_runner_is_not_looked_at_and_no_round_fails_on_it(world, tmp_path, caplog, stops):
     """The runner is pointed at grp/new while its ledger holds RUN-PAY-1-1 of grp/repo, dispatched with Q-1 open, and
     the bridge's account no longer sees grp/repo. Team mode takes that run as left: it is marked failed (the ledger
     copied first), its question closed and its session stopped, GitLab is asked nothing about grp/repo, and no round
-    fails; the run is gone from the runs and from 交付总览, and one line on the 运行机 page says why."""
+    fails; the run is gone from the runs and from 交付总览, and one line on the 运行机 page says why. *stops* False:
+    KiroCrew does not stop the session; the run is left all the same and no round fails, the bridge's log says why,
+    and a line on the 运行机 page says which session may still be at work, with KiroCrew's words."""
+    caplog.set_level(logging.INFO)
     gw = FakeGateway()
     svc = service(world, tmp_path, gw)
 
@@ -707,6 +721,12 @@ def test_a_project_that_left_the_runner_is_not_looked_at_and_no_round_fails_on_i
                                                    work_sources=["mr-handoff"])).encode())
     svc = make_service(tmp_path / "app", [], gw=gw, team=world["team"], transport=moved,
                        kick=lambda: world["signer"].once())
+
+    async def unavailable(key):
+        gw.calls.append(("stop", key))
+        raise mod("gateway").GatewayError(503, "Kiro Crew is restarting", "unavailable")
+    if not stops:
+        gw.stop = unavailable
 
     async def after():
         await svc.start()
@@ -733,6 +753,16 @@ def test_a_project_that_left_the_runner_is_not_looked_at_and_no_round_fails_on_i
     (line,) = [c for c in view["status"]["checks"] if "grp/repo" in c["text"]]
     assert (line["level"], line["text"]) == ("OK", "grp/repo 不归这台运行机管了（bridge.json 里没有它）：账本里它的 1 个运行，桥不再看")
     assert "RUN-PAY-1-1" in line["raw"]
+    stuck = [c for c in view["status"]["checks"] if "没停下" in c["text"]]
+    logged = [r.getMessage() for r in caplog.records if "was not stopped" in r.getMessage()]
+    if stops:
+        assert stuck == [] and logged == []
+        return
+    (stuck,) = stuck
+    assert stuck["level"] == "WARN" and "RUN-PAY-1-1" in stuck["text"] and "run-pay-1-1" in stuck["text"], stuck
+    assert stuck["todo"] and "Kiro Crew is restarting" in stuck["raw"], stuck
+    (logged,) = logged
+    assert logged.startswith("brain bridge: RUN-PAY-1-1: its session run-pay-1-1 was not stopped: ") and "503" in logged
 
 
 def test_a_run_session_team_mode_opened_right_before_the_app_stopped_is_still_its_own_when_the_app_starts_again(

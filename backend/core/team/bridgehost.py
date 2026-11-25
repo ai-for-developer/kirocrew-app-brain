@@ -167,6 +167,7 @@ class TeamRuntime:
         self.poll_checks: list[dict[str, Any]] = []      # CheckRows: the projects the last poll did not read or poll
         self.poll_projects: list[dict[str, Any]] = []    # each project as the last poll left it (relay.project_state)
         self.left: list[dict[str, Any]] = []             # the ledger's runs of projects bridge.json leaves out (left.py)
+        self.left_unstopped: dict[str, dict[str, Any]] = {}  # run id -> one left whose session did not stop, and why
         self.relay: relay_mod.Relay | None = None        # 状态中转: each project's brain/status
         self.deliveries: relay_mod.Deliveries | None = None
         self.lines: deque = deque(maxlen=200)
@@ -378,6 +379,9 @@ class TeamRuntime:
         if runs:
             self._out("%s: not in bridge.json, left: %s (the ledger before: %s)" % (
                 "、".join(sorted({str(r["project"]) for r in runs})), ", ".join(r["run_id"] for r in runs), copy))
+        for r in [r for r in runs if r.get("stop_error")]:
+            self._out("%s: its session %s was not stopped: %s" % (r["run_id"], r["slot"], r["stop_error"]))
+            self.left_unstopped[str(r["run_id"])] = r
         rows = host.ledger.db.execute("SELECT run_id, project, state FROM runs ORDER BY created").fetchall()
         self.left = [dict(r) for r in rows if str(r["project"]).lower() not in keep]
 
@@ -725,13 +729,20 @@ class TeamRuntime:
 
     def left_checks(self) -> list[dict[str, Any]]:
         """One line for the runs of projects that left the runner (_leave): the ledger keeps them, nothing looks at
-        them any more, and they are not among the runs the page lists."""
+        them any more, and they are not among the runs the page lists. Another for those whose session did not stop
+        when they were left (left_unstopped, until the app starts again): it may still be at work in KiroCrew."""
         if not self.left:
             return []
         projects = list(dict.fromkeys(str(r["project"]) for r in self.left))
         it = "它" if len(projects) == 1 else "它们"
-        return [problems.mk("OK", LEFT_TEXT % ("、".join(projects), it, it, len(self.left)),
+        rows = [problems.mk("OK", LEFT_TEXT % ("、".join(projects), it, it, len(self.left)),
                             raw="\n".join("%s %s (%s)" % (r["project"], r["run_id"], r["state"]) for r in self.left))]
+        ids = {r["run_id"] for r in self.left}
+        stuck = [r for r in self.left_unstopped.values() if r["run_id"] in ids]
+        if stuck:
+            rows.append(problems.mk("WARN", left_mod.unstopped_said(stuck, why=False), left_mod.UNSTOPPED_TODO,
+                                    raw=left_mod.unstopped_said(stuck)))
+        return rows
 
     def signer_view(self) -> dict[str, Any]:
         return spool_view(self.spool) if self.host is not None and self.spool else {"pending": [], "refused": []}

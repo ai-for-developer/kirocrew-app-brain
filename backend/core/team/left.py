@@ -7,8 +7,8 @@ project only), so every round failed on them. Leaving marks each open run of suc
 ``Ledger.set_run`` (compare-and-set: run again, nothing more happens): in the bridge's ledger failed, a run this
 runner will not finish, so brain-kit closes its answers on its way; in the signer's closed, as the signer's own close
 command does. Its open questions are closed the way brain-kit closes those of a run that ended (collect would read the
-MR before it looked at the run), and its session is stopped when *stop* is given. The ledger file is copied first
-(``backup``).
+MR before it looked at the run), and its session is stopped when *stop* is given; a session that does not stop leaves
+the run left all the same, and its caller says so (unstopped_said). The ledger file is copied first (``backup``).
 """
 
 from __future__ import annotations
@@ -22,6 +22,8 @@ from .. import bk
 
 BRIDGE_TO, SIGNER_TO = "failed", "closed"
 QUESTIONS = ("open", "posting", "asking")      # brain-kit's decision states its collect reads the MR for
+UNSTOPPED = "%s 的会话 %s 没停下"
+UNSTOPPED_TODO = "它可能还在 KiroCrew 里做：在 KiroCrew 里打开它，停掉"
 
 
 def kept(projects: Iterable[Any]) -> set[str]:
@@ -53,7 +55,8 @@ def backup(path: str) -> str:
 def leave(ledger: Any, path: str, keep: set[str], to: str, *, signer: bool = False,
           stop: Callable[[str], Any] | None = None) -> tuple[list[dict[str, Any]], str]:
     """Every open run in *ledger* (its file at *path*) of a project not in *keep* marked *to*, after a backup of the
-    file: (the runs marked, the backup's path); ([], "") when there is none."""
+    file: (the runs marked, the backup's path); ([], "") when there is none. A run whose session *stop* could not stop
+    has stop_error, what stopping it raised."""
     runs = stray(ledger, keep, signer)
     if not runs:
         return [], ""
@@ -70,9 +73,16 @@ def leave(ledger: Any, path: str, keep: set[str], to: str, *, signer: bool = Fal
         if stop is not None and r.get("slot") and r["state"] in ("dispatched", "send_unknown"):
             try:
                 stop(str(r["slot"]))
-            except Exception:  # noqa: BLE001 - a session KiroCrew cannot stop now has nothing left to do anyway
-                pass
+            except Exception as exc:  # noqa: BLE001 - KiroCrew's, or a bug: the run is left either way
+                r["stop_error"] = " ".join(str(exc).split())[:300] or type(exc).__name__
     return marked, copy
+
+
+def unstopped_said(runs: Iterable[dict[str, Any]], why: bool = True) -> str:
+    """The runs of *runs* whose session did not stop, each with its slot (and *why*: what stopping it raised), in one
+    line; '' when none."""
+    return "；".join(UNSTOPPED % (r["run_id"], r["slot"]) + ("（%s）" % r["stop_error"] if why else "")
+                    for r in runs if r.get("stop_error"))
 
 
 def leave_file(path: str, keep: set[str], to: str, *, signer: bool = False,

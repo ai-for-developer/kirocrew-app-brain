@@ -260,9 +260,10 @@ class SetupInput:
         return cls(base, tuple(got.values()), token, roles, push, patrol, issues, mode, bridge or "", bot or "",
                    JenkinsInput.parse(raw.get("jenkins")))
 
-    def on(self, flag: str, path: str) -> bool:
-        """Whether *flag* (patrol, issues) is on in project *path* (GitLab's paths are not case-sensitive)."""
-        return path.lower() in {p.lower() for p in getattr(self, flag)}
+    def on(self, flag: str, project: "Proj") -> bool:
+        """Whether *flag* (patrol, issues) is on in *project*: ticked by the path it was typed by, which GitLab may know
+        under another path now (a renamed project) and spell in another case."""
+        return project.typed.lower() in {p.lower() for p in getattr(self, flag)}
 
     def public(self) -> dict[str, Any]:
         """What setup-state.json keeps of the input: all of it but the tokens."""
@@ -344,6 +345,7 @@ class Proj:
     default branch."""
     id: int
     path: str                 # GitLab's path_with_namespace
+    typed: str                # the project as the input names it (SetupInput.projects): what its switches are ticked by
     default_branch: str
     web_url: str | None
     ssh_url: str
@@ -790,8 +792,8 @@ def find_project(ctx: Ctx, me: Mapping[str, Any], name: str) -> StepResult:
         return failed("默认分支上的 .brain/kit.json 读不懂：先在个人电脑上导入这个仓库，让它修好", detail=str(exc))
     if not isinstance(kit, dict):
         return failed("默认分支上的 .brain/kit.json 读不懂：先在个人电脑上导入这个仓库，让它修好")
-    ctx.found.append(Proj(int(p["id"]), path, branch, p.get("web_url") or None, str(p.get("ssh_url_to_repo") or ""),
-                          str(p.get("http_url_to_repo") or ""), kit, text))
+    ctx.found.append(Proj(int(p["id"]), path, name, branch, p.get("web_url") or None,
+                          str(p.get("ssh_url_to_repo") or ""), str(p.get("http_url_to_repo") or ""), kit, text))
     note = "；它用 Jira 跟踪需求：团队模式还配不了 Jira，交接会被拒" if kit.get("tracker") == "jira" else ""
     return done("默认分支 %s；%s是 %s%s" % (branch, who, LEVEL_NAME.get(level, level), note), link=p.get("web_url") or None)
 
@@ -1142,7 +1144,7 @@ def step_labels(ctx: Ctx) -> StepResult:
 
 def project_labels(ctx: Ctx, p: Proj) -> StepResult:
     want: list[tuple[str, str]] = []
-    for key, default, color in LABELS + ((ISSUE_LABEL,) if ctx.inp.on("issues", p.path) else ()):
+    for key, default, color in LABELS + ((ISSUE_LABEL,) if ctx.inp.on("issues", p) else ()):
         name = str(p.kit.get(key) or default) if key else default
         if name.lower() not in {w.lower() for w, _ in want}:
             want.append((name, color))
@@ -1311,10 +1313,7 @@ def close_stale_kit_mrs(ctx: Ctx, p: Proj) -> list[dict[str, Any]]:
     default branch is what this run wants: an earlier run's, which merged later would undo this run's choices (turn
     从 issue 接活 or 巡检 on again). Each hears why in one line and is closed. -> those MRs."""
     gone = []
-    for mr in ctx.gl.mrs_for_branch(p.id, BRANCH):
-        if mr.get("source_branch") != BRANCH or mr.get("source_project_id") != p.id or \
-                mr.get("target_project_id") != p.id:
-            continue
+    for mr in kitmr.own_mrs(ctx.gl, p.id, BRANCH):
         ctx.gl.comment(p.id, int(mr["iid"]), STALE_MR_NOTE)
         ctx.gl.call("PUT", "/projects/%d/merge_requests/%d" % (p.id, int(mr["iid"])), body={"state_event": "close"})
         gone.append(mr)
@@ -1352,7 +1351,7 @@ def wanted_kit(ctx: Ctx, p: Proj) -> dict[str, Any]:
     kinds = [k for k in raw if isinstance(k, str)] if isinstance(raw, list) else []
     named = isinstance(raw, list)
     for kind, flag, _, _ in SWITCHES:
-        if ctx.inp.on(flag, p.path):
+        if ctx.inp.on(flag, p):
             kinds += [k for k in (sources.HANDOFF, kind) if k not in kinds]
             named = True
         elif kind in kinds:
@@ -1468,8 +1467,10 @@ def leave_runner(ctx: Ctx) -> str:
     if not runs:
         return ""
     projects = list(dict.fromkeys(runs.values()))
+    stuck = left_mod.unstopped_said(bridge)
     return LEFT_SAID % ("、".join(projects), "它" if len(projects) == 1 else "它们", len(runs), "、".join(sorted(runs)),
-                        "、".join(Path(c).name for c in (bcopy, scopy) if c))
+                        "、".join(Path(c).name for c in (bcopy, scopy) if c)) + \
+        ("；%s：%s" % (stuck, left_mod.UNSTOPPED_TODO) if stuck else "")
 
 
 def old_salt(ps: Paths) -> str:
@@ -1700,10 +1701,10 @@ def mrs_said(ctx: Ctx) -> str:
         return ("；可是上面那个 MR 合并以前，交接都会被拒" if len(ctx.found) == 1 else
                 "；可是 %s 的 kit.json MR 合并以前，这些项目的交接都会被拒" % "、".join(handoff))
     by: dict[str, list[str]] = {}               # what an MR starts or stops -> the projects whose MR does that
-    for path, mr in wait.items():
-        turns = "，".join("%s才%s" % (what, "开始" if ctx.inp.on(flag, path) else "停")
-                          for kind, flag, _, what in SWITCHES if kind in (mr.get("switches") or ()))
-        by.setdefault(turns, []).append(path)
+    for p in [p for p in ctx.found if p.path in wait]:
+        turns = "，".join("%s才%s" % (what, "开始" if ctx.inp.on(flag, p) else "停")
+                          for kind, flag, _, what in SWITCHES if kind in (wait[p.path].get("switches") or ()))
+        by.setdefault(turns, []).append(p.path)
     if len(ctx.found) == 1:
         return "；上面那个 MR 合并以后，" + next(iter(by))
     return "".join("；%s 的 kit.json MR 合并以后，那里的%s" % ("、".join(paths), turns) for turns, paths in by.items())

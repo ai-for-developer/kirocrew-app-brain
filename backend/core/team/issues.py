@@ -10,7 +10,8 @@ labelled issue (IssueRow), moved by STEPS:
                      (intents.problems: no secrets, personal data, amounts): claim/<KEY> is filed for the labeler with
                      that text and the issue's address (intents.add, which finds it again by its hash). While `lean
                      verify` cannot pass on the default branch (verify_problem: lean.json there has no checks), the run
-                     could never commit its code: the issue stays new, hears why once (held), and is claimed the round
+                     could never commit its code: the issue stays new, hears why once (held), and is looked at again
+                     only once the default branch's head moves (one read of it a round), so it is claimed the round
                      after a person fixes lean.json there
   claimed -> pushed  one commit on top of the default branch, made in a clone of its own (<work>/issues/<project id>)
                      as runnerd's bot: a new Lean intent with its Session notes filled in, runs/<KEY>/run.json (origin
@@ -98,6 +99,7 @@ class IssueRow:
     voucher_id: str = ""
     reason: str = ""                    # refused or dropped: why, as the issue heard it
     held: str = ""                      # new: why it is not claimed yet (verify_problem), as the issue heard it
+    held_at: str = ""                   # ... and the default branch's head that was decided at
     told: tuple[str, ...] = ()          # the states whose note the issue has (and HELD)
 
     @classmethod
@@ -476,8 +478,13 @@ class IssueSource:
     # ---- the steps ------------------------------------------------------------------------------------- #
 
     def _claim(self, e: Entry, row: IssueRow) -> IssueRow:
-        """new -> claimed: who labelled it and what it says are checked, then claim/<KEY> is filed for them."""
+        """new -> claimed: who labelled it and what it says are checked, then claim/<KEY> is filed for them. One held at
+        the default branch's head GitLab has now stays as it is: only a commit there can change verify_problem."""
         intents = bk.m("intents")
+        head = (self.gl.commit(e.project, e.kit["default_branch"]) or {}) if row.held_at else {}
+        if row.held_at and row.held_at == head.get("id"):
+            e.note = row.held
+            return row
         role = self._admit(e, row)
         title, body = str(e.issue.get("title") or "").strip(), str(e.issue.get("description") or "")
         notes = self.gl.pages("/projects/%s/issues/%d/notes" % (bk.m("rest").q(e.project), e.iid),
@@ -489,17 +496,18 @@ class IssueSource:
             raise Refusal(*["需求的内容没过检查：%s" % x for x in errs])
         if e.kit.get("tracker") != "none":
             raise Refusal("这个项目的需求在 %s 里：issue 不能直接变成需求" % e.kit.get("tracker"))
-        held = verify_problem(self._clone(e), e.kit["default_branch"])
+        path = self._clone(e)
+        held = verify_problem(path, e.kit["default_branch"])
         if held:
             e.note = held
-            return replace(row, held=held)
-        doc = intents.add(self._clone(e), e.kit, "product", title, body, refs=[str(e.issue.get("web_url") or "")],
+            return replace(row, held=held, held_at=bk.m("common").git_out(path, "rev-parse", "HEAD"))
+        doc = intents.add(path, e.kit, "product", title, body, refs=[str(e.issue.get("web_url") or "")],
                           owner=row.labeler)
         if doc.get("owner") != row.labeler:
             raise Refusal("同样的需求已经是 @%s 的 %s 了" % (doc.get("owner") or doc.get("filed_by") or "别人", doc["key"]))
         if doc.get("closed"):
             raise Refusal("同样的需求 %s 已经关了：%s" % (doc["key"], (doc["closed"] or {}).get("reason") or ""))
-        return replace(row, state=CLAIMED, key=str(doc["key"]), role=role, held="")
+        return replace(row, state=CLAIMED, key=str(doc["key"]), role=role, held="", held_at="")
 
     def _admit(self, e: Entry, row: IssueRow) -> str:
         """The labeler's role in the project when they may start a run; Refusal otherwise."""
