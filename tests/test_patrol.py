@@ -152,7 +152,9 @@ def test_each_problem_kind_is_found_and_the_session_is_told_each_with_its_ids(bk
     assert "和目标分支 main 有冲突：git fetch origin，再 git merge origin/main，解决冲突后提交。不要 rebase，不要强推。" in cf
 
 
-def test_a_fingerprint_is_dispatched_once_and_a_new_comment_pipeline_or_head_dispatches_again(bk, tmp_path):
+def test_a_fingerprint_is_dispatched_once_and_a_new_comment_or_head_dispatches_again(bk, tmp_path):
+    """A turn that ended at a head was given its failed pipeline: a pipeline run again on that head and failing is no
+    new work there, a person's comment is, and so is a new head's failed pipeline."""
     w = World(tmp_path)
     gl = w.gl
     gl.mr(P, 7)
@@ -172,27 +174,67 @@ def test_a_fingerprint_is_dispatched_once_and_a_new_comment_pipeline_or_head_dis
     retry = gl.fail(P, 7)               # a pipeline run again on the same head fails: GitLab leaves the MR as it was
     w.later()
     w.round()
-    assert len(w.sessions.sent) == 2
     w.later(mod("team.patrol").RECHECK_S)
-    w.round()                           # ... so it is seen when the MR is read again
-    assert len(w.sessions.sent) == 3 and "#%d 没过" % retry in w.sessions.messages()[-1]
-    assert "加个测试" not in w.sessions.messages()[-1]          # answered by the turn that ended
-    w.sessions.end()
+    w.round()                           # ... so it is seen when the MR is read again, and is no new work there
+    assert len(w.sessions.sent) == 2 and w.item(7)["state"] == "done"
+    assert w.item(7)["problems"] == [{"kind": "ci_failed", "text": "流水线 #%d 没过：test" % retry}]
     gl.push(P, 7, SHA[2])               # a new head; its pipeline runs, then fails
     w.later()
     w.round()
     gl.pipeline(P, 7, "running")
     w.later()
     w.round()
-    assert len(w.sessions.sent) == 3 and w.item(7)["state"] == "ok"
+    assert len(w.sessions.sent) == 2 and w.item(7)["state"] == "ok"
     fresh = gl.fail(P, 7)
     w.later()
     w.round()
-    assert len(w.sessions.sent) == 4 and "#%d 没过" % fresh in w.sessions.messages()[-1]
-    assert SHA[2][:12] in w.sessions.messages()[-1]
+    assert len(w.sessions.sent) == 3 and "#%d 没过" % fresh in w.sessions.messages()[-1]
+    assert SHA[2][:12] in w.sessions.messages()[-1] and "加个测试" not in w.sessions.messages()[-1]
     # one session for the MR all along, every message its own sendId
     assert [o[0] for o in w.sessions.opened] == ["patrol-42-7"] and set(w.slots()) == {"patrol-42-7"}
-    assert len({sid for _, _, sid in w.sessions.sent}) == 4
+    assert len({sid for _, _, sid in w.sessions.sent}) == 3
+
+
+def test_a_turn_that_pushed_nothing_is_not_sent_the_same_head_again(bk, tmp_path):
+    """As orders!4 went on the test server: main moved, so the MR conflicts with it, and Jenkins' build had failed. The
+    session merges main in and pushes; at that new head GitLab still says it conflicts, and Jenkins' build fails the
+    same way. That turn ends with nothing to push. Then GitLab sees the conflict is gone, and Jenkins builds the same
+    head again and fails as before: neither is new work at that head, so the session is not told it again. A person's
+    comment at that head goes out, and so does a conflict the turns there were not given."""
+    patrol = mod("team.patrol")
+    w = World(tmp_path)
+    w.with_jenkins()
+    gl, jk = w.gl, w.jk
+    gl.mr(P, 4, **conflicted())
+    gl.check(P, 4, "unit-tests", "failed", jk.build("/job/orders/29", b"FAILED test_known_failure\n"))
+    w.round()
+    gl.push(P, 4, SHA[2])               # the merge of main
+    gl.check(P, 4, "unit-tests", "failed", jk.build("/job/orders/74", b"FAILED test_known_failure\n"))
+    w.sessions.end()
+    w.later()
+    w.round()
+    assert len(w.sessions.sent) == 2 and "和目标分支 main 有冲突" in w.sessions.messages()[-1]
+    w.sessions.end()                    # 「本次没有新提交」
+    gl.mrs[(P, 4)].update(has_conflicts=False, detailed_merge_status="mergeable")
+    gl.touch(P, 4)
+    w.later()
+    w.round()
+    assert len(w.sessions.sent) == 2 and w.item(4)["state"] == "done"
+    gl.check(P, 4, "unit-tests", "failed", jk.build("/job/orders/75", b"FAILED test_known_failure\n"))
+    w.later(patrol.RECHECK_S)
+    w.round()
+    assert len(w.sessions.sent) == 2 and w.item(4)["state"] == "done"
+    assert jk.reads()[-1] == "/job/orders/75/logText/progressiveText?start=0"
+    gl.thread(P, 4, "alice", "test_known_failure 是故意的，先别管它", resolvable=False)
+    w.later()
+    w.round()
+    assert len(w.sessions.sent) == 3 and "故意的" in w.sessions.messages()[-1]
+    w.sessions.end()
+    gl.mrs[(P, 4)].update(**conflicted())
+    gl.touch(P, 4)
+    w.later()
+    w.round()
+    assert len(w.sessions.sent) == 4 and "和目标分支 main 有冲突" in w.sessions.messages()[-1]
 
 
 def test_a_check_jenkins_reported_goes_out_with_the_tail_of_its_console_read_where_the_runner_reaches_jenkins(
@@ -268,9 +310,10 @@ def test_a_check_whose_log_is_not_read_goes_out_with_its_link_and_one_line_why(b
 
 
 @pytest.mark.parametrize("own", [False, True])
-def test_a_new_jenkins_build_on_the_same_head_is_dispatched_again_and_each_build_s_log_is_read_once(bk, tmp_path, own):
+def test_a_new_jenkins_build_on_the_same_head_lifts_a_block_and_each_build_s_log_is_read_once(bk, tmp_path, own):
     """Jenkins builds again on the same head: GitLab posts its status into the same pipeline, failed before and after;
-    the new build's status is what moves the fingerprint, also when it ran and failed between two reads. *own*: the
+    the new build's status is what moves the fingerprint, also when it ran and failed between two reads. Two failed
+    attempts blocked the MR on the first build: the new one lifts the block and goes out with its own log. *own*: the
     pipeline is GitLab's own, a job of it failed as well, and Jenkins posts into it."""
     patrol = mod("team.patrol")
     w = World(tmp_path)
@@ -281,20 +324,23 @@ def test_a_new_jenkins_build_on_the_same_head_is_dispatched_again_and_each_build
         gl.fail(P, 7, {"test": b"FAILED test_gitlab\n"})
     gl.check(P, 7, "unit-tests", "failed", jk.build("/job/orders/2", b"FAILED test_one\n"))
     w.round()
-    w.sessions.end()
+    w.sessions.end("failed")            # KiroCrew's error, twice: the MR is blocked on the first build
+    w.later()
+    w.round()
+    w.sessions.end("failed")
     for _ in range(3):
         w.later()
         w.round()
     w.later(patrol.RECHECK_S)
     w.round()
-    assert len(w.sessions.sent) == 1 and w.item(7)["state"] == "done"
+    assert len(w.sessions.sent) == 2 and w.item(7)["state"] == "blocked"
     pid = gl.mrs[(P, 7)]["_pipeline"]["id"]
     third = jk.build("/job/orders/3", b"FAILED test_two\n")
     gl.check(P, 7, "unit-tests", "running", third)
     gl.check(P, 7, "unit-tests", "failed", third)
     w.later(patrol.RECHECK_S)
     w.round()
-    assert gl.mrs[(P, 7)]["_pipeline"]["id"] == pid and len(w.sessions.sent) == 2
+    assert gl.mrs[(P, 7)]["_pipeline"]["id"] == pid and len(w.sessions.sent) == 3
     again = w.sessions.messages()[-1]
     assert "Jenkins 构建 %s/job/orders/3/）：\n     > FAILED test_two\n" % JENKINS_BASE in again and "test_one" not in again
     assert ("> FAILED test_gitlab" in again) is own and gl.asked(r"/jobs/\d+/trace$") == (1 if own else 0)
@@ -303,7 +349,8 @@ def test_a_new_jenkins_build_on_the_same_head_is_dispatched_again_and_each_build
 
 def test_a_build_s_log_is_read_once_and_only_its_end_however_often_its_mr_is_read(bk, tmp_path):
     """A long console: Jenkins says how long it is, and only its end is asked for, once, while its MR is read every
-    round as it is worked, and again when Jenkins posts that build's status anew (a new status: dispatched again)."""
+    round as it is worked, and again when Jenkins posts that build's status anew (a new status, at a head the turn that
+    ended was given that failure at: nothing goes out again)."""
     patrol, jenkins = mod("team.patrol"), mod("team.jenkins")
     w = World(tmp_path)
     w.with_jenkins()
@@ -319,7 +366,7 @@ def test_a_build_s_log_is_read_once_and_only_its_end_however_often_its_mr_is_rea
     gl.check(P, 7, "unit-tests", "failed", url)
     w.later(patrol.RECHECK_S)
     w.round()
-    assert len(jk.calls) == 2 and len(w.sessions.sent) == 2
+    assert len(jk.calls) == 2 and len(w.sessions.sent) == 1
     head, end = jk.reads()
     assert head == "/job/orders/2/logText/progressiveText?start=0"
     assert end == "/job/orders/2/logText/progressiveText?start=%d" % (len(console) - jenkins.TAIL_BYTES)
@@ -591,7 +638,8 @@ def test_a_child_pipeline_s_failed_jobs_go_out_through_the_trigger_job_that_star
 
 def test_a_ledger_from_before_failed_checks_counted_keeps_the_mrs_it_worked_worked(bk, tmp_path):
     """A row as a runner without them wrote it (no status_ids, its fingerprints of the head, the pipeline, the conflict
-    and the notes alone) reads as before: the failed pipeline its turn ended on is not sent again."""
+    and the notes alone, the one its turn ended on kept as done_fp, as before 0.5.5) reads as before: the failed
+    pipeline its turn ended on is not sent again."""
     w = World(tmp_path)
     w.gl.mr(P, 7)
     pid = w.gl.fail(P, 7)
@@ -604,6 +652,8 @@ def test_a_ledger_from_before_failed_checks_counted_keeps_the_mrs_it_worked_work
     doc = json.loads(db.execute("SELECT doc FROM mrs WHERE project=? AND iid=7", (P,)).fetchone()[0])
     doc.pop("status_ids")
     doc["read"].pop("checks")
+    for key in ("done_head", "done"):           # a row from before 0.5.5 says what its turn ended on as done_fp
+        doc.pop(key, None)
     doc.update(fingerprint=then, done_fp=then)
     db.execute("UPDATE mrs SET doc=? WHERE project=? AND iid=7", (json.dumps(doc), P))
     w.later(mod("team.patrol").RECHECK_S)
