@@ -17,12 +17,16 @@ build of a failed check, the conflict and the open review notes and comments, an
 
 The ledger, <root>/patrol.sqlite, has one row per open MR of the projects patrol is on (MrRow). It is a state machine
 (settle, Patrol._look and Patrol._send):
-  idle -> working     the fingerprint was not worked to the end of a turn yet, and a session is free: at most CAP at
+  idle -> working     the MR has work no turn ended on at its head, and a session is free: at most CAP at
                       work or handed work this round, 测试环境报错's fixes counted, the others wait (first the MRs open
                       before patrol started in their project, then by when each MR last changed). The row is working
                       before its message goes, so a message KiroCrew did not answer, which may have landed, is never
                       sent again.
-  working -> idle     the turn ended (the review notes it named count as answered then), or the MR head moved
+  working -> idle     the turn ended (the review notes it named count as answered then, and the kinds of problem it
+                      was given are done at its head: a turn that pushed nothing did all it could there, so the
+                      conflict and the failed CI it was given, whichever pipeline or build fails there later, are not
+                      sent again at that head; a person's new note is, and a kind it was not given), or the MR head
+                      moved
   working -> idle     a failed attempt: TIMEOUT_S without either (the turn is stopped), or a turn that ended without a
                       reply or with KiroCrew's error. A message KiroCrew refused is a failed attempt as well, and so is
                       its clone not ready for the same fingerprint a round again (a git lock a stopped turn left in it
@@ -530,7 +534,8 @@ class MrRow:
     sent_notes: tuple[int, ...] = ()    # the review notes and comments that dispatch named
     outcome: str = ""                   # how the last attempt ended: ended | moved | failed | timeout | refused | taken
                                         # | workspace (its clone was not ready, again: _unready)
-    done_fp: str = ""                   # the fingerprint a turn ended on (its notes answered)
+    done_head: str = ""                 # the head of the dispatch whose turn ended last (its notes answered) ...
+    done: tuple[str, ...] = ()          # ... and the kinds of problem (Problem.kind) that turn was given there
     answered: tuple[int, ...] = ()
     marks: tuple[int, ...] = ()         # Read.last_note at each dispatch: what its session could know (open_reviews)
     told: bool = False                  # it is blocked or paused, and the MR was told so
@@ -546,10 +551,14 @@ class MrRow:
     @classmethod
     def of(cls, d: Mapping[str, Any]) -> "MrRow":
         d = dict(d)
-        for k in ("sent_notes", "answered", "marks", "status_ids", "rules", "rules_said"):
+        for k in ("sent_notes", "answered", "marks", "status_ids", "rules", "rules_said", "done"):
             d[k] = tuple(d.get(k) or ())
         d["read"] = Read.of(d["read"]) if isinstance(d.get("read"), dict) else None
-        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+        row = cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+        if "done_head" not in d and d.get("done_fp") == fingerprint(row.head_sha, row.pipeline_id, row.conflict, (),
+                                                                     row.status_ids):
+            row = replace(row, done_head=row.head_sha, done=given(row))     # before 0.5.5: its turn's end as done_fp
+        return row
 
 
 SCHEMA = """
@@ -608,6 +617,11 @@ class Ledger:
 
 # ---- the state machine ---------------------------------------------------------------------------------------- #
 
+def given(row: MrRow) -> tuple[str, ...]:
+    """The kinds of problem its last dispatch gave the session besides people's notes: its failed CI, its conflict."""
+    return tuple(k for k, on in ((CiFailed.kind, row.pipeline_id is not None), (Conflict.kind, row.conflict)) if on)
+
+
 def _failed(row: MrRow, outcome: str) -> MrRow:
     return replace(row, state=BLOCKED if row.attempts >= MAX_ATTEMPTS else IDLE, outcome=outcome, told=False)
 
@@ -620,7 +634,7 @@ def settle(row: MrRow, head: str, turn: str, now: float) -> tuple[MrRow, bool]:
     if row.state == WORKING:
         if turn == "ended":
             return replace(row, state=IDLE, outcome="ended", answered=_union(row.answered, row.sent_notes),
-                           done_fp=fingerprint(row.head_sha, row.pipeline_id, row.conflict, (), row.status_ids)), False
+                           done_head=row.head_sha, done=given(row)), False
         if turn == "failed":
             return _failed(row, "failed"), False
         if head != row.head_sha:
@@ -639,7 +653,8 @@ def settle(row: MrRow, head: str, turn: str, now: float) -> tuple[MrRow, bool]:
 
 def standing(row: MrRow, item: PatrolItem) -> str:
     """ok (nothing to fix) | working | blocked | rules (brain-push-rules refused the runner's commits: left alone) |
-    done (this fingerprint was worked to the end of a turn) | todo."""
+    done (a turn that ended at this head was given every kind of problem it has: people's notes not answered yet are
+    never among them) | todo."""
     if row.state == WORKING:
         return "working"
     if not item.problems:
@@ -648,7 +663,7 @@ def standing(row: MrRow, item: PatrolItem) -> str:
         return "rules"
     if row.state == PAUSED or (row.state == BLOCKED and row.fingerprint == item.fingerprint):
         return "blocked"
-    if row.done_fp == item.fingerprint:
+    if row.done_head == item.head_sha and {p.kind for p in item.problems} <= set(row.done):
         return "done"
     return "todo"
 
