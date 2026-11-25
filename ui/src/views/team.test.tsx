@@ -151,7 +151,7 @@ describe('运行机', () => {
     const d = await show({})
     expect(d.card).toHaveTextContent('送进会话的消息0/0—')
     expect(d.card.querySelector('.tm-stack')).toHaveClass('is-empty')
-    expect(Object.keys(OUTBOX_STATE)).toEqual(['sending', 'interrupted', 'sent', 'unknown', 'dropped'])
+    expect(Object.keys(OUTBOX_STATE)).toEqual(['sending', 'interrupted', 'sent', 'unknown', 'held', 'dropped'])   // brain-kit's OUTBOX_STATES
     expect(outboxMeta('later')).toEqual({ label: 'later', tone: 'idle' })
   })
 
@@ -207,6 +207,36 @@ describe('运行机', () => {
     expect(within(runs).getByTitle('RUN-PAY-4-1').closest('tr')).toHaveClass('has-notes')
     expect(noteTone('outbox_interrupted')).toBe('warn')
     expect(noteTone('ci_wait')).toBe('warn')
+  })
+
+  test('送进会话的消息 counts a message KiroCrew will not let in (held) in words, red, and points at its run', async () => {
+    const tv = fx.team()
+    tv.ledger.outbox = { sent: 4, held: 1 }
+    installFixtureRoutes({ [`GET ${API}/team`]: () => tv })
+    render(<TeamPage {...props()} />)
+    await screen.findByRole('region', { name: '运行' })
+    const card = screen.getByRole('region', { name: '账本' }).querySelector('[data-ledger="outbox"]') as HTMLElement
+    const legs = Array.from(card.querySelectorAll('.tm-leg'))
+    expect(legs.map((t) => t.textContent)).toEqual(['送到了 4', 'KiroCrew 不让送 1'])
+    expect(legs[1].querySelector('i')).toHaveClass('tone-bad')
+    expect(card).toHaveClass('has-bad')
+    expect(card).toHaveTextContent('KiroCrew 不让 Brain 交付 app 把会话设成信任：下面那个运行写了要在 KiroCrew 里同意什么')
+    expect(outboxMeta('held')).toEqual({ label: 'KiroCrew 不让送', tone: 'bad' })
+  })
+
+  test('a message KiroCrew will not let into the session (held for trust) is a line under its run, toned as one a person acts on', async () => {
+    const text = 'Q-2 的回答还没送进会话：KiroCrew 不让 Brain 交付 app 把会话设成信任，它的 sessionApproval 权限没有得到同意（或者 app 停用了），桥就先不送。'
+    const tv = fx.team()
+    tv.runs[1].notes = [{ kind: 'outbox_held', text, at: Math.floor(Date.now() / 1000) - 600 }]
+    installFixtureRoutes({ [`GET ${API}/team`]: () => tv })
+    render(<TeamPage {...props()} />)
+    const runs = await screen.findByRole('region', { name: '运行' })
+    const li = within(within(runs).getByRole('list', { name: 'PAY-4 的第 1 次运行：桥记着的事' })).getByRole('listitem')
+    expect(li).toHaveAttribute('data-kind', 'outbox_held')
+    expect(li).toHaveTextContent(text)
+    expect(li).toHaveTextContent('10 分钟前')
+    expect(li).toHaveClass('tone-bad')
+    expect(li.querySelector('.tm-note-glyph')).toHaveTextContent('✕')
   })
 
   test('配置: bridge.json and runnerd.json by file, the key in code, the value with a quiet 默认, its line; none read yet, one line', async () => {

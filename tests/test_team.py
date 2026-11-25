@@ -320,6 +320,56 @@ def test_a_session_parked_on_a_new_question_is_not_said_to_work_on_the_last_answ
     assert seen["parked"] == seen["later"] == ("bridge", "运行机停下来问人了：等桥把问题贴到 MR 上"), seen
 
 
+def test_a_message_held_for_trust_says_on_its_run_why_and_what_the_brain_app_needs(world, tmp_path):
+    """KiroCrew would not let the brain app set the run's session to trust (403 session_approval_not_granted), so
+    brain-kit holds Q-1's answer and sends it again each round; 运行机 showed nothing of it, and the MR's advice (brain-
+    kit's) is to reinstall brain-kit's brain-bridge app. The run on 运行机 says the answer is held, why, and what the
+    brain app needs: its sessionApproval, consented to in KiroCrew's dashboard, no answer again; the requirement's row
+    waits on people with it. Once KiroCrew lets it, the answer goes in and neither says it."""
+    from appkit import GatewayError
+    gw = FakeGateway()
+    gw.script = [ended("等待决策，不继续"), ended("好了")]
+    svc = service(world, tmp_path, gw)
+    seen = {}
+
+    async def refused(_key):
+        raise GatewayError(403, 'App "brain" cannot approve tool requests', "session_approval_not_granted")
+
+    async def held():
+        notes = [(n["kind"], n["text"]) for r in (await svc.team_view())["runs"] for n in r["notes"]]
+        w = (await svc.overview("runner"))["rows"][0]["waits"]
+        return notes, (w["who"], w["text"])
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # dispatched
+            push_park(world["runs_root"] / "RUN-PAY-1-1", PARK)
+            gw.finish(SLOT)
+            await rounds(svc)                           # Q-1 on the MR
+            trust, gw.trust = gw.trust, refused
+            world["gl"].note("alice", "answer D-1 B 小额不审")
+            await rounds(svc)                           # signed; KiroCrew refuses trust: held
+            seen["held"] = await held()
+            await rounds(svc)                           # sent again, held again
+            seen["again"] = await held()
+            gw.trust = trust
+            await rounds(svc)                           # KiroCrew lets it: in
+            seen["after"] = await held()
+        finally:
+            await svc.stop()
+
+    run(go())
+    notes, waits = seen["held"]
+    assert [k for k, _ in notes] == ["outbox_held"], seen["held"]
+    text = notes[0][1]
+    assert text.startswith("Q-1 的回答还没送进会话：KiroCrew 不让 Brain 交付 app"), text
+    assert "sessionApproval" in text and "KiroCrew 网页" in text and "不用重新回答" in text, text
+    assert "brain-bridge 重装 app 的话不适用" in text, text
+    assert waits == ("people", text) and seen["again"] == seen["held"]
+    assert seen["after"] == ([], ("runner", "Q-1 的回答送到了，运行机在接着做")), seen["after"]
+
+
 def test_the_runner_page_says_a_session_stopped_on_its_run_until_the_next_push(world, tmp_path):
     """Its turn cut off at one MR head, then each of the two turns told to go on: the MR hears 「…的会话停住了」. The
     run's row on 运行机 says it under the run, and the requirement's row waits on people, for that head only: once the
