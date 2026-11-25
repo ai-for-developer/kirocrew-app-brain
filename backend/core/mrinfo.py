@@ -83,7 +83,7 @@ RUNNER_NOTES: list[tuple[re.Pattern, str, Any]] = [(re.compile(rx), kind, text) 
      "验收问题没发：流水线 #{p} 没过，运行机已经收到过多次 CI 失败：请负责人看一下"),
     (r"^%s 的问题（提交 \w+ 的 park\.json）现在发不出：没有人被配置为可以回答「(?P<kind>[^」]*)」" % RUN, "nobody",
      "问题发不出：没人能回答「{kind}」类决定（在 brain-kit 设置里配上谁来回答，配好就自动发）"),
-    # brain-kit 769efc7 (and team/runwatch.py before it): accepted, its records pushed; kit.json accepted_label may be ""
+    # brain-kit 769efc7 (team/runwatch.py before it): accepted, its records pushed; kit.json accepted_label may be ""
     (r"^%s 做完了：产品在提交 \w+ 上验收通过" % RUN, "ready", READY_TEXT),
     # ... its watchdog: told twice to go on at one head, nothing pushed; a turn that ended without a push
     (r"^%s 的会话停住了：KiroCrew 会话 " % RUN, "stopped", STOPPED_TEXT),

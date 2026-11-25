@@ -15,8 +15,9 @@ whose newest answer the signer refused: it waits for a person. brain-kit's own w
 
 A run the product accepted (brain-kit's _accepted) whose session is idle with its records pushed after (turn: DONE)
 is done: the MR hears once that it can be merged and who merges it (the run's owner), and its label is kit.json
-accepted_label in place of running_label (none when it is ""). brain-kit's reconcile marks a run merged or closed and leaves the MR's labels: those
-two are taken off once, within RECENT_S of the run's end. brain-kit has neither (BRAINKIT_REQUESTS 50).
+accepted_label in place of running_label (none when it is ""). brain-kit's reconcile marks a run merged or closed
+and leaves the MR's labels: those two are taken off once, within RECENT_S of the run's end. brain-kit has neither
+(BRAINKIT_REQUESTS 50) before 769efc7, whose bridge does both with the same ledger keys, so this finds them told.
 """
 
 from __future__ import annotations

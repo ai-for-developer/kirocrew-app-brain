@@ -245,6 +245,8 @@ Lean timeline follow them when trace is missing), `decisions.USER` (the MR reade
     it); for a run merged or closed it takes `running_label` and that label off, once (`unlabelled:<run>`). Wanted: a
     kit.json label for an accepted run waiting for its merge (`accepted_label`, in config.DEFAULTS and the docs' label
     list), the ready comment and that label swap in the bridge, and reconcile taking `running_label` and it off.
+    **Done in e8e90b8**: the app reads kit.json `accepted_label` wherever it classifies or makes labels
+    (`constants.accepted_label`), and a run whose kit.json wants none by the bridge's ready note.
 51. **Which question a reply answers** (new, 81380eb; the app's `mrinfo.answers`). `check_answer` decides inside
     itself that `answer D-12` answers Q-12 (`same_question`) unless D-12 is one of an acceptance question's review
     items. A person's app has the MR's notes and no park.json, so 团队运行机's 等你回答 makes that rule again from the

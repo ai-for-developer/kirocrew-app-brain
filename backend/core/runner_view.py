@@ -6,9 +6,10 @@ An open MR is at work when it carries the hand-over's running label (kit.json ru
 on it or summed it up within RECENT_S: patrol leaves the hand-over's MRs alone (team/patrol.skip_of), so a note of the
 bridge's account on any other open MR is patrol's, unless it is patrol's own comment that it left the MR alone
 (patrol.STOPPED_RE), or the MR is a hand-over's that is done: the bridge said on it that it can be merged (its label,
-kit.json accepted_label, may be ""). A question waits on the person when the bridge asked it and counts no answer yet (mrinfo.
-parse_notes: open), names them among who may answer, and nobody wrote `answer D-n` after it. The runner last acted
-when the bridge's account last wrote on one of the MRs read (a system note, a label it changed, counts too).
+kit.json accepted_label, may be ""). A question waits on the person when the bridge asked it and counts no answer
+yet (mrinfo.parse_notes: open), names them among who may answer, and nobody wrote `answer D-n` after it. The runner
+last acted when the bridge's account last wrote on one of the MRs read (a system note, a label it changed, counts
+too).
 
 Read: the open MRs with the running label and every MR changed within RECENT_S (at most MAX_MRS, the newest first),
 each with its notes; each repo at most every TTL_S, READERS of the listed projects at once (five projects over a
