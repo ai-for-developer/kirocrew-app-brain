@@ -12,7 +12,7 @@ from __future__ import annotations
 import inspect
 import re
 import time
-from typing import Any
+from typing import Any, Mapping
 
 from . import bk, deploys_view, fastrow, flowview, lean_view
 from .constants import MERGE_LABEL
@@ -186,14 +186,17 @@ def runner_commits_from(run: dict[str, Any] | None, mr: dict[str, Any] | None, c
 def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | None, slot: dict[str, Any] | None,
              cfg: dict[str, Any], bot_commits: int = 0, at_handover: bool = False, me: str | None = None,
              reflected: bool = False, now: float | None = None, pushed: bool = True,
-             fast: fastrow.FastFacts | None = None, answer_wait_s: float = ANSWER_WAIT_S) -> None:
+             fast: fastrow.FastFacts | None = None, answer_wait_s: float = ANSWER_WAIT_S,
+             session: Mapping[str, Any] | None = None) -> None:
     """Fill in state, state_label and waits (person mode). *at_handover*: the branch tip is the hand-over commit
     `brain handoff` made (its parent is run.json's handoff.local_head). *me*: who this machine's person is (None: not
     known); someone else's requirement waits for them, not for "you".
     *reflected*: its Brain proposals were written back already (a brain/<KEY>-reflect-<n> branch). *pushed*: the
     branch tip is on the remote (False: a hand-over committed here whose push failed, so nothing was handed over; a
     repo done only on this machine has nothing to push to). *fast*: the run has no Lean intent (a fast run): its
-    own facts, and fastrow says its step."""
+    own facts, and fastrow says its step. *session*: the team runner's session of a run it has, as the team server
+    sees it (busy, last_activity): an answer that reached the run says the runner goes on while that works
+    (answered_text); None where it is not known (a person's machine)."""
     run, park, claim = f.get("run"), f.get("park"), f.get("claim") or {}
     pending = [a for a in f.get("approvals") or [] if a["state"] == "pending" and a.get("line")]
     owner = f.get("owner") or claim.get("owner")
@@ -284,7 +287,7 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
         got = [q for q in qs if h and q.get("park") == h and q.get("state") in ANSWERED_TEXT]
         if got:
             q = got[-1]
-            who, text = answered_text(q["state"], lean_view.epoch(q.get("delivered_at")), now, answer_wait_s)
+            who, text = answered_text(q["state"], lean_view.epoch(q.get("delivered_at")), now, answer_wait_s, session)
             return put("parked", who, "none", text % q["id"], since=lean_view.epoch(q.get("at")) or f.get("park_at"))
     if park_waiting(park) or open_q:
         q = open_q[-1] if open_q else {}
@@ -356,11 +359,12 @@ DELIVERED_GOING = ("runner", "%s 的回答送到了，运行机在接着做")
 
 
 def answered_text(state: str, at: float | None, now: float | None, wait_s: float,
-                  session: dict[str, Any] | None = None) -> tuple[str, str]:
-    """ANSWERED_TEXT of *state*; for one delivered (at *at*), DELIVERED_GOING while the run's *session* (slot_stats:
-    busy, last_activity) works, or for *wait_s* (bridge.json stall_minutes) after the answer or its newest row,
-    whichever is later; ANSWERED_TEXT's look in KiroCrew after that, or at once when *wait_s* is 0 (the watchdog off)
-    or nothing says when."""
+                  session: Mapping[str, Any] | None = None) -> tuple[str, str]:
+    """ANSWERED_TEXT of *state*; for one delivered (at *at*), DELIVERED_GOING while the run's *session* (the team
+    server's TeamRuntime.run_sessions: busy, last_activity) works, or for *wait_s* (bridge.json stall_minutes) after
+    the answer or the session's last activity (its newest row, or the newest message the bridge put in it, such as the
+    watchdog's 会话中断), whichever is later; ANSWERED_TEXT's look in KiroCrew after that, or at once when *wait_s* is 0
+    (the watchdog off) or nothing says when."""
     if state != "delivered":
         return ANSWERED_TEXT[state]
     if session and session.get("busy"):
