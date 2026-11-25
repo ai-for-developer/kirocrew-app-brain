@@ -15,11 +15,14 @@ import time
 from typing import Any
 
 from . import bk, deploys_view, fastrow, flowview, lean_view
+from .constants import MERGE_LABEL
 
+# to_merge: the product accepted a run on the team runner and its session is done: a person merges the MR
 STATE_LABEL = {"claimed": "已认领", "local": "本地开发中", "handed_over": "已交接", "rejected": "接手被拒",
-               "running": "运行机在跑", "parked": "停下等回答", "acceptance": "等验收", "merged": "已合并",
-               "closed": "已关闭", "unclaimed": "待认领", "merged_into_parent": "已合进大需求"}
-OPEN_STATES = ("claimed", "local", "handed_over", "running", "parked", "acceptance", "rejected", "unclaimed")
+               "running": "运行机在跑", "parked": "停下等回答", "acceptance": "等验收", "to_merge": "等合并",
+               "merged": "已合并", "closed": "已关闭", "unclaimed": "待认领", "merged_into_parent": "已合进大需求"}
+OPEN_STATES = ("claimed", "local", "handed_over", "running", "parked", "acceptance", "to_merge", "rejected",
+               "unclaimed")
 # the columns of 需求流动 (ui/src/cto/Flow.tsx COLS), as 交付总览 names them: a requirement's stage on its way
 FLOW_STAGES = ("需求", "设计", "构建", "交给运行机", "发布 · 验收", "已合并")
 RUNNER_STATES = ("handed_over", "running", "rejected")
@@ -50,6 +53,9 @@ NOT_POSTED = ("posting", "asking")
 STUCK_DECISION = {"refused": "%s 的回答签名服务不签：看运行机页的拒签原因",
                   "void": "%s 作废（问题和这次推送对不上）：运行机要重新推送一次才会重新提问",
                   "invalid": "%s 发不出去（AI 停下来写的问题不对）：运行机要改好再推送一次"}
+# how long an answer that reached the run says 运行机在接着做 on a row read from the MR, which knows no bridge.json:
+# brain-kit's stall_minutes default (the runner's rows and 全队交付 there use bridge.json's)
+ANSWER_WAIT_S = 900.0
 
 
 def park_waiting(park: Any) -> bool:
@@ -180,7 +186,7 @@ def runner_commits_from(run: dict[str, Any] | None, mr: dict[str, Any] | None, c
 def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | None, slot: dict[str, Any] | None,
              cfg: dict[str, Any], bot_commits: int = 0, at_handover: bool = False, me: str | None = None,
              reflected: bool = False, now: float | None = None, pushed: bool = True,
-             fast: fastrow.FastFacts | None = None) -> None:
+             fast: fastrow.FastFacts | None = None, answer_wait_s: float = ANSWER_WAIT_S) -> None:
     """Fill in state, state_label and waits (person mode). *at_handover*: the branch tip is the hand-over commit
     `brain handoff` made (its parent is run.json's handoff.local_head). *me*: who this machine's person is (None: not
     known); someone else's requirement waits for them, not for "you".
@@ -278,7 +284,7 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
         got = [q for q in qs if h and q.get("park") == h and q.get("state") in ANSWERED_TEXT]
         if got:
             q = got[-1]
-            who, text = ANSWERED_TEXT[q["state"]]
+            who, text = answered_text(q["state"], lean_view.epoch(q.get("delivered_at")), now, answer_wait_s)
             return put("parked", who, "none", text % q["id"], since=lean_view.epoch(q.get("at")) or f.get("park_at"))
     if park_waiting(park) or open_q:
         q = open_q[-1] if open_q else {}
@@ -293,6 +299,8 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
         lean_req = q.get("lean_request") or (park or {}).get("lean_request")
         return put("parked", who, "answer", mr_ask(who, KIND_LABEL.get(kind, kind), did, approval=bool(lean_req),
                                                    owner=None if mine else owner), where="mr", since=since)
+    if MERGE_LABEL in labels:       # the team runner said on the MR that its run is accepted and done
+        return put("to_merge", you, "merge", merge_text(them), where="mr", since=f.get("tip_at"))
     if cfg.get("running_label") in labels or bot_commits:
         if note and note["kind"] in RUNNING_NOTES:      # e.g. the acceptance question held until CI is green
             return put("running", RUNNING_NOTES[note["kind"]], "none", note["text"][:200],
@@ -305,6 +313,11 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
         return put("handed_over", WAITING_NOTES[note["kind"]], "none", note["text"][:200],
                    raw=str(note.get("raw") or "")[:2000], since=lean_view.epoch(note.get("at")))
     return put("handed_over", "bridge", "none", "等桥核对交接", since=f.get("tip_at"))
+
+
+def merge_text(them: str) -> str:
+    """A run the product accepted, its session done, said as what waits: 「验收通过了：等 alice 在 GitLab 上合并」."""
+    return spaced("验收通过了：等", them, "在 GitLab 上合并")
 
 
 def approve_text(a: dict[str, Any], them: str = "你") -> str:
@@ -338,6 +351,24 @@ ANSWERED_TEXT = {"held": ("bridge", "%s 有了回复：等 GitLab 能查回复�
                  "answered": ("bridge", "%s 有了回答：桥还在签名、送回运行机（不用再答）"),
                  "delivered": ("runner", "%s 的回答送到了，运行机还没接着做：去 KiroCrew 看一下它的会话"),
                  "delivery_unknown": ("bridge", "%s 的回答不知道送到没有：桥每轮看一下会话，确认没送到才再送；一直这样就要人去 KiroCrew 看一下（不用再答）")}
+# ... the answer reached the run and its session works on it, or has for less than the watchdog's stall_minutes
+DELIVERED_GOING = ("runner", "%s 的回答送到了，运行机在接着做")
+
+
+def answered_text(state: str, at: float | None, now: float | None, wait_s: float,
+                  session: dict[str, Any] | None = None) -> tuple[str, str]:
+    """ANSWERED_TEXT of *state*; for one delivered (at *at*), DELIVERED_GOING while the run's *session* (slot_stats:
+    busy, last_activity) works, or for *wait_s* (bridge.json stall_minutes) after the answer or its newest row,
+    whichever is later; ANSWERED_TEXT's look in KiroCrew after that, or at once when *wait_s* is 0 (the watchdog off)
+    or nothing says when."""
+    if state != "delivered":
+        return ANSWERED_TEXT[state]
+    if session and session.get("busy"):
+        return DELIVERED_GOING
+    quiet = max([x for x in (at, (session or {}).get("last_activity")) if isinstance(x, (int, float))], default=None)
+    if wait_s and now is not None and quiet is not None and now - quiet < wait_s:
+        return DELIVERED_GOING
+    return ANSWERED_TEXT[state]
 # the run's own MR notes (mrinfo.RUNNER_NOTES) that say why a running run waits, and on whom
 RUNNING_NOTES = {"ci_wait": "runner", "ci_person": "people", "ci_red": "people", "nobody": "people",
                  "gaveup": "people", "send_unknown": "bridge"}
@@ -389,6 +420,9 @@ NOTICE_KIND = {
     "gaveup": ("gaveup", "people", "消息送了 3 次都没进会话：桥接着送，一直不行就看一下 KiroCrew"),
     "failed": ("failed", "people", "没能开始：MR 上写了原因，处理好以后重新交接"),
     "nobody": ("nobody", "people", "问题发不出：没人能回答这类决定（要在 brain-kit 设置里配上谁来回答）"),
+    "ready": ("ready", "people", "验收通过了，会话也做完了：MR 上说了可以合并、谁来合并"),       # team/runwatch.py
+    "stopped": ("stopped", "people",                                                           # team/runwatch.py
+                "会话停住了：桥让它接着做，它还是没推送：请负责人到 KiroCrew 看一下这个会话（工作区里可能有它没提交的改动）"),
     "edits-down-told": ("held", "bridge", "%s 的回答先等着：GitLab 查不到回复有没有被改过（不用重新回复）"),
 }
 OUTBOX_WHAT = {"handover": "接手消息", "answer": "%s 的回答", "notice": "给运行机的通知"}
@@ -426,11 +460,15 @@ def outbox_note(o: dict[str, Any]) -> dict[str, Any] | None:
     return {"kind": "outbox_" + st, "text": text, "at": lean_view.epoch(o.get("updated") or o.get("created"))}
 
 
-def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]],
+                   runs: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     """{run id: [TeamNote]}: what brain-kit's bridge (0d52e97) holds about a run in its ledger, said plainly
     (team_note): the notices it told the MR or counts (CI holding the acceptance question, runnerd silent, sends that
-    keep failing, queued …) and the messages into its session that are not known to have landed."""
+    keep failing, queued …) and the messages into its session that are not known to have landed. A notice about one
+    MR head (stopped:<run>:<head12>, team/runwatch.py) holds while it is the head the bridge last read of the run
+    (*runs*: the ledger's), dispatched: the next push ends it."""
     out: dict[str, list[dict[str, Any]]] = {}
+    heads = {str(r.get("run_id")): str(r.get("last_sha") or "")[:12] for r in runs if r.get("state") == "dispatched"}
     sent = {str(o.get("send_id")) for o in outbox if o.get("state") == "sent"}
     holding = {str(n.get("key") or "").split(":")[1] for n in notices
                if str(n.get("key") or "").startswith("ciheld:") and n.get("state") == "counting"}
@@ -440,6 +478,8 @@ def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]]) 
             continue        # it landed in the end
         if key.startswith(("ciheld-wait:", "ciheld-person:", "ciheld-red:")) and str(n.get("run_id")) not in holding:
             continue        # the pipeline it was about is green, or another push started another wait
+        if key.startswith("stopped:") and key.rsplit(":", 1)[-1] != heads.get(str(n.get("run_id"))):
+            continue        # pushed since, or the run is over
         got = team_note(n)
         if got and n.get("run_id"):
             out.setdefault(str(n["run_id"]), []).append(got)
@@ -451,11 +491,14 @@ def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]]) 
 
 
 def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[dict[str, Any]],
-                  park: Any, notes: list[dict[str, Any]] | None = None) -> None:
+                  park: Any, notes: list[dict[str, Any]] | None = None, *, now: float | None = None,
+                  stall_s: float = 0.0, session: dict[str, Any] | None = None) -> None:
     """Team mode: the ledger's run state and its decisions (brain-kit's states). A run id reserved while the signer
     signs its contract (``signing``) is a hand-over not taken yet; a decision whose answer the signer refused, that is
     void, or that could not be asked leaves the run waiting until a person looks. *notes* (team_note, outbox_note):
-    what brain-kit 0d52e97's bridge holds about the run, e.g. the acceptance question held until CI is green."""
+    what brain-kit 0d52e97's bridge holds about the run, e.g. the acceptance question held until CI is green. *now*,
+    *stall_s* (bridge.json stall_minutes) and *session* (the run's slot_stats): an answer that reached the run says
+    the runner goes on until its session stays idle past stall_s (answered_text)."""
     st = run_row.get("state")
     notes = sorted(notes or [], key=lambda x: x.get("at") or 0)
     latest = {x["kind"]: x for x in notes}
@@ -490,6 +533,9 @@ def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[
         # that landed, never one that did not, so it does not send it again by itself
         return put("running", "people", "none",
                    "不知道接手消息送到运行机没有：桥每轮看一下它的会话，看到了就接着做；一直这样就要人去 KiroCrew 看一下")
+    if "ready" in latest:       # accepted, its session done, and its MR told so (team/runwatch.py)
+        return put("to_merge", "people", "merge", merge_text(str(row.get("owner") or "人")), where="mr",
+                   since=latest["ready"].get("at"))
     if open_d:
         d = open_d[-1]
         since = lean_view.epoch(d.get("created"))
@@ -514,14 +560,14 @@ def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[
     answered = [d for d in mine if d.get("state") in ("answered", "delivered", "delivery_unknown")]
     if park_waiting(park) and answered and answered[-1] is last:
         # brain-kit 0d52e97's `answered`: the bridge has the answer, park.json still waits
-        who, text = ANSWERED_TEXT[answered[-1]["state"]]
-        return put("parked", who, "none", text % answered[-1]["id"],
-                   since=lean_view.epoch(answered[-1].get("updated") or answered[-1].get("created")))
+        at = lean_view.epoch(answered[-1].get("updated") or answered[-1].get("created"))
+        who, text = answered_text(answered[-1]["state"], at, now, stall_s, session)
+        return put("parked", who, "none", text % answered[-1]["id"], since=at)
     if park_waiting(park):
         if "nobody" in latest:
             return put("parked", "people", "none", latest["nobody"]["text"], since=latest["nobody"].get("at"))
         return put("parked", "bridge", "none", "运行机停下来问人了：等桥把问题贴到 MR 上")
-    for k in ("ci_red", "ci_person", "ci_wait", "gaveup"):
+    for k in ("stopped", "ci_red", "ci_person", "ci_wait", "gaveup"):
         if k in latest:
             return put("running", NOTICE_KIND.get({"ci_red": "ciheld-red", "ci_person": "ciheld-person",
                                                    "ci_wait": "ciheld"}.get(k, k), ("", "runner", ""))[1], "none",
@@ -786,7 +832,7 @@ def flow_stage(row: dict[str, Any]) -> str | None:
         return "已合并"
     if row.get("flow") and not row["flow"]["intent"]:
         return "发布 · 验收" if row.get("mr") else "构建"
-    if st == "acceptance":
+    if st in ("acceptance", "to_merge"):
         return "发布 · 验收"
     if st == "unclaimed":
         return "构建"

@@ -8,7 +8,7 @@ import re
 from typing import Any
 
 from . import outputs as outputs_mod
-from .constants import KEY_RE, REPO_ID_RE
+from .constants import KEY_RE, QUESTION_ID, REPO_ID_RE
 from .httpkit import AppError, Kit
 
 NO_REPO = "页面没说是哪个仓库：刷新页面再试"
@@ -99,8 +99,8 @@ def build_routes(svc: Any, AppRoute: Any, *, web: Any = None, is_owner: Any = No
     async def answer(request: Any) -> Any:
         body = await kit.body(request)
         did = body.get("id")
-        if did is not None and (not isinstance(did, str) or not re.fullmatch(r"D-[1-9][0-9]{0,6}", did)):
-            raise AppError("问题号不对（要像 D-3）：刷新页面再试", "invalid_id")
+        if did is not None and (not isinstance(did, str) or len(did) > 9 or not re.fullmatch(QUESTION_ID, did)):
+            raise AppError("问题号不对（要像 Q-3）：刷新页面再试", "invalid_id")
         note = body.get("note")
         if note is not None and not isinstance(note, str):
             raise AppError("「补一句」要是一段文字：刷新页面再试", "invalid_note")

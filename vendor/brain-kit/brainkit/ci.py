@@ -333,7 +333,7 @@ def _design_hash(v) -> str:
 
 
 def _decision_number(v) -> int:
-    m = re.match(r"^D-([0-9]+)$", str(v.get("decision", "")))
+    m = re.match(r"^[DQ]-([0-9]+)$", str(v.get("decision", "")))
     return int(m.group(1)) if m else 0
 
 

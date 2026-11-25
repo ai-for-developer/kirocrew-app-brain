@@ -5,7 +5,7 @@ build() reads, render() formats; write() is the only writer (runs/<KEY>/MR.md: `
 `brain handoff` into its hand-over commit). The bridge posts the file as its 「变更说明」 comment through inert().
 
 Sources (working tree, or --ref)
-  run.json            runs/<KEY>/run.json: intent, owner, branch, hand-over
+  run.json            runs/<KEY>/run.json: intent, owner, branch, hand-over, origin (remote: the runner started it)
   requirements.md     aidlc-docs/<intent>/inception/requirements/requirements.md: Goal, Not doing, Acceptance
                       criteria, Assumptions A-n, Size
   plans               construction/plans/<unit>-code-generation-plan.md: steps ticked, the Tests table (AC/BR -> test)
@@ -49,7 +49,7 @@ from .intake import checks
 SCHEMA = 1
 MR_FILE = "MR.md"
 # a reply line the bridge reads as an answer (bridge.decisions.ANSWER_RE starts like this): inert() quotes it
-ANSWER_LINE_RE = re.compile(r"(?i)^\s*(?:answer|答|回答)\s+D-[0-9]")
+ANSWER_LINE_RE = re.compile(r"(?i)^\s*(?:answer|答|回答)\s+[DQ]-[0-9]")
 REQ_DOC = "inception/requirements/requirements.md"
 # Lean 0.3 Ideation (only with `lean new --ideation`): IDEATION covers the Ideation documents; the hand-off brief
 # is always among them
@@ -131,7 +131,7 @@ def _one(text, limit=None) -> str:
 def inert(text, web=None, sealed=None) -> str:
     """Markdown someone else wrote (a runs/<KEY>/MR.md a bot committed), made safe to post on GitLab: no mention, no
     HTML (an HTML comment would hide what follows), no image loaded (_defang), no line that GitLab runs as a quick
-    action, and no line that reads as an approval, a rejection or an answer (`approve RELEASE …`, `answer D-3
+    action, and no line that reads as an approval, a rejection or an answer (`approve RELEASE …`, `answer Q-3
     approve`: quoted with '> ', so neither Lean nor the bridge, nor a person copying it, takes it as one). CR goes
     first: GitLab deletes it before it reads Markdown, so `!<CR>[` is '!['.
 
@@ -1235,7 +1235,8 @@ def build(repo, cfg, key, base=None, ref=None, credits=None, vouchers_dir=None, 
         "title": _one((req or {}).get("title") or next((_d(e).get("title") for e in events
                                                          if e.get("event") == "INTENT_CREATED"), None) or intent,
                       80) or None,
-        "where": {"stage": stage, "handed_over": bool(handoff), "merged": (ch or {}).get("merged"),
+        "where": {"stage": stage, "handed_over": bool(handoff), "started_on_runner": rec.get("origin") == "remote",
+                  "merged": (ch or {}).get("merged"),
                   "handoff_at": handoff.get("requested_at") if handoff and plain(handoff.get("requested_at")) else None,
                   "waiting": waiting, "released": approvals["released"]},
         "size": (req or {}).get("size"),
@@ -1673,10 +1674,12 @@ def render(d) -> str:
            if st else "Lean 还没开始阶段"]
     if w["handed_over"]:
         now.append("已交给团队运行机")
+    elif w.get("started_on_runner"):
+        now.append("从开工起就在团队运行机上")
     if w.get("merged"):
         now.append("已合进 `%s`（%s %s）" % (_one(w["merged"]["into"], 100), w["merged"]["how"],
                                          w["merged"]["commit"][:12]))
-    elif not w["handed_over"]:
+    elif not w["handed_over"] and not w.get("started_on_runner"):
         now.append("在本地开发（还没交接）")
     if w["released"]:
         now.append("RELEASE 已批")

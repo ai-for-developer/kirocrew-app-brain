@@ -60,6 +60,7 @@ from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Callable, ClassVar, Mapping, Union
 
 from .. import bk, snapshot
+from ..constants import MERGE_LABEL
 from . import sources
 from .jenkins import RUNNING as BUILD_RUNNING, WAIT_S, Jenkins, Logs, build_path
 
@@ -495,6 +496,7 @@ def skip_of(kit: Mapping[str, Any], mr: Mapping[str, Any]) -> Skip | None:
         return Skip("status", "团队状态的分支 %s 的 MR：它只放团队服务器写的状态，不巡检，也别合并" % snapshot.BRANCH)
     labels = {str(x) for x in mr.get("labels") or []}
     hand = [kit[k] for k in ("handoff_label", "running_label", "rejected_label") if kit.get(k) in labels]
+    hand += [MERGE_LABEL] if MERGE_LABEL in labels else []      # accepted and done, still the hand-over's
     if hand:
         return Skip("handoff", "交接给运行机的 MR（标签 %s）：交接那边管它" % "、".join(hand))
     if SKIP_LABEL in labels:

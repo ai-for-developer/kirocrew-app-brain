@@ -6,17 +6,20 @@ A run on the team runner that needs a person writes runs/<KEY>/park.json, pushes
    "recommend": "A", "lean_request": "INCEPTION 8cf2cbce", "refs": ["D01#S003"]}
 An acceptance question may carry "review_items": [{"id": "D-7", "text": "..."}, {"id": "A-3", "text": "..."}]: every
 decision the agent took itself and every assumption, reviewed in one batch. They are posted as a checklist; the reply
-`answer D-<n> approve` approves them all, `answer D-<n> reject A-3,D-7 [note]` rejects the listed ones (delivered to
+`answer Q-<n> approve` approves them all, `answer Q-<n> reject A-3,D-7 [note]` rejects the listed ones (delivered to
 the run as corrections; the voucher records rejected_items).
-The bridge posts it on the MR as D-<n> (once GitLab has recorded the push as an MR version); the question's first
-line names the commit and park.json's hash. It waits for a reply line `answer D-<n> <A|approve|reject> [note]`.
+The bridge posts it on the MR as Q-<n> (once GitLab has recorded the push as an MR version); the question's first
+line names the commit and park.json's hash. It waits for a reply line `answer Q-<n> <A|approve|reject> [note]`.
+Q, not D: D-<n> is a row of the run's decisions.md (a review item too), and when the bridge's questions were D-<n> as
+well one MR could show two different D-5s. A question an older bridge asked as D-<n> keeps its id; `answer D-<n>`
+still answers question Q-<n> (same_question).
 What counts is one pure function, check_answer(), which an outside signer can import too:
   bound          the question note is on the MR, is the text the bridge posts for park.json at that commit (not
                  edited; ticking the boxes of its review checklist is fine), was posted after GitLab recorded that
-                 push, and no other note binds this D-n to another run, commit or park.json (a D-n is never bound
-                 twice)
+                 push, and no other note binds this question id to another run, commit or park.json (an id is never
+                 bound twice)
   right person   the GitLab author is allowed for this kind of decision (decision_roles from main, not from the run)
-  right question the reply names this decision id; the decision belongs to this run
+  right question the reply names this question (by its number: same_question); the decision belongs to this run
   as written     the reply says what its author wrote: never edited by anyone else, and not changed since the bridge
                  first read it (the bridge records each reply's text hash then; GitLab GraphQL's lastEditedAt /
                  lastEditedBy tells, at first sight, whether someone edited it before: award emoji and resolving
@@ -56,7 +59,9 @@ LEAN_KINDS = ("IDEATION", "REQUIREMENTS", "DESIGN", "PLAN", "RELEASE")   # INCEP
 LEAN_KIND_ROLE = {"IDEATION": "ideation", "REQUIREMENTS": "requirements", "DESIGN": "design", "PLAN": "plan", "RELEASE": "acceptance"}
 DEFAULT_ROLES = {"clarify": ["owner", "product"], "ideation": ["product"], "requirements": ["product"], "design": ["builder"],
                  "plan": ["builder"], "acceptance": ["product"], "action": ["security"], "other": ["owner"]}
-ANSWER_RE = re.compile(r"^\s*(?:answer|答|回答)\s+(D-[1-9][0-9]*)\s+([A-H]|approve|reject)\b[ \t:：-]*(.*)$", re.I)
+# a question's id: Q-<n>, or D-<n> from a bridge before Q (one ledger counts both: a number is one question)
+DID = r"[DQ]-[1-9][0-9]*"
+ANSWER_RE = re.compile(r"^\s*(?:answer|答|回答)\s+(%s)\s+([A-H]|approve|reject)\b[ \t:：-]*(.*)$" % DID, re.I)
 LEAN_REQ_RE = re.compile(r"^(%s) ([0-9a-f]{6,64})$" % "|".join(LEAN_KINDS))
 ITEM_ID_RE = re.compile(r"^[AD]-[1-9][0-9]{0,3}$")     # review items: decisions D-n (Who = agent), assumptions A-n
 ITEMS_RE = re.compile(r"^([AD]-[1-9][0-9]{0,3}(?:(?:\s*[,，、]\s*|\s+)[AD]-[1-9][0-9]{0,3})*)(?![0-9A-Za-z_-])"
@@ -66,17 +71,17 @@ ITEM_TOKEN_RE = re.compile(r"(?<![0-9A-Za-z_])[AD]-[0-9]+(?![0-9A-Za-z_])", re.I
 MAX_REVIEW_ITEMS = 50
 KIND_LABEL = {"clarify": "澄清", "design": "设计", "plan": "计划", "acceptance": "验收", "action": "危险动作",
               "other": "其他"}
-DECISION_ID_RE = re.compile(r"^D-[1-9][0-9]*$")
+DECISION_ID_RE = re.compile(r"^%s$" % DID)
 RUN_ID = r"RUN-[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}-[1-9][0-9]{0,5}"
 # a GitLab username (GitLab's namespace path rule): letters, digits, '_', '-', '.'; 1-255 characters; it does not
 # start with '-' and does not end with '.'. (GitLab also refuses names ending in .git / .atom; matching them here is
 # harmless: this only reads back the names the bridge itself wrote.)
 USER = r"(?:[A-Za-z0-9_.][A-Za-z0-9_.-]{0,253}[A-Za-z0-9_-]|[A-Za-z0-9_])"
 # the first line of a question note (question_text): decision, kind, run, commit and park.json hash, who answers
-Q_HEAD_RE = re.compile(r"^\*\*(D-[1-9][0-9]*) · ([^·*\n]+) · (%s)\*\* · 提交 ([0-9a-f]{12}) · park ([0-9a-f]{12}) · "
-                       r"需要 (@%s(?:、@%s)*) 回答$" % (RUN_ID, USER, USER))
+Q_HEAD_RE = re.compile(r"^\*\*(%s) · ([^·*\n]+) · (%s)\*\* · 提交 ([0-9a-f]{12}) · park ([0-9a-f]{12}) · "
+                       r"需要 (@%s(?:、@%s)*) 回答$" % (DID, RUN_ID, USER, USER))
 # the bridge's note that ends a round with different answers: replies before it no longer count
-CONFLICT_RE = re.compile(r"^(D-[1-9][0-9]*) 收到不同的回答（")
+CONFLICT_RE = re.compile(r"^(%s) 收到不同的回答（" % DID)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS decisions (
@@ -296,7 +301,7 @@ class Verdict:
     reason   why it is not an answer (English, ids and hashes only)
     code     for void, what made it void: record, park, nobody, unbound (no question note recorded, or not that
              one), gone (the recorded question note is not on the MR), author (not the bridge's account), elsewhere
-             (another note binds this D-n), edited, missing (no question on the MR), unpushed, before_push
+             (another note binds this id), edited, missing (no question on the MR), unpushed, before_push
     feedback [(note id, text)]: replies that do not count and why (to tell the people who wrote them)
     last_id  the newest note looked at
     """
@@ -335,6 +340,13 @@ def _did_no(did) -> int:
         return int(str(did).split("-", 1)[1])
     except (IndexError, ValueError):
         return 0
+
+
+def same_question(named, did) -> bool:
+    """Does `answer <named>` (or a question or conflict note of the bridge's) name question `did`? By number: `answer
+    D-12`, the way people answered before, answers Q-12, and a D-12 note binds the number Q-12 has. check_answer
+    takes no D-<n> that is one of the question's own review items for it."""
+    return _did_no(did) > 0 and _did_no(named) == _did_no(did)
 
 
 def _first(note) -> str:
@@ -487,11 +499,11 @@ def check_answer(decision, park_raw, notes, kit, roles, owner, head, pushed_at, 
     asked = []
     for n in notes:
         m = Q_HEAD_RE.match(_first(n))
-        if n.get("system") or not m or m.group(1) != did or (bridge and _author(n) != bridge):
+        if n.get("system") or not m or not same_question(m.group(1), did) or (bridge and _author(n) != bridge):
             continue
         if (m.group(3), m.group(4), m.group(5)) != (run_id, sha[:12], ph[:12]):
             return void("%s on the MR is bound to %s @ %s (park %s): a decision id is never bound twice"
-                        % (did, m.group(3), m.group(4), m.group(5)), "elsewhere")
+                        % (m.group(1), m.group(3), m.group(4), m.group(5)), "elsewhere")
         want = question_text(did, run_id, park, [u[1:] for u in m.group(6).split("、")], kind, sha, ph)
         if _unticked(n.get("body")) != _unticked(want):
             return void("note %d is not the question the bridge posts for park.json at %s (edited?)"
@@ -515,7 +527,7 @@ def check_answer(decision, park_raw, notes, kit, roles, owner, head, pushed_at, 
     if bridge:
         for n in notes:
             m = CONFLICT_RE.match(_first(n))
-            if m and m.group(1) == did and _author(n) == bridge and _nid(n) > start:
+            if m and same_question(m.group(1), did) and _author(n) == bridge and _nid(n) > start:
                 start = _nid(n)
     review = [i["id"] for i in park.get("review_items") or [] if isinstance(i, dict) and "id" in i] \
         if kind == "acceptance" else []
@@ -527,7 +539,11 @@ def check_answer(decision, park_raw, notes, kit, roles, owner, head, pushed_at, 
             continue
         last = max(last, nid)
         m = ANSWER_RE.match(str(n.get("body") or "").split("\n", 1)[0])
-        if not m or m.group(1).upper() != did:
+        if not m or not same_question(m.group(1), did):
+            continue
+        if m.group(1).upper() != did and m.group(1).upper() in review:
+            feedback.append((nid, "%s 是这个问题的待审项（decisions.md 的一行），不是问题号：请回 `answer %s …`，"
+                                  "这条回复不算。" % (m.group(1).upper(), did)))
             continue
         author, choice = _author(n), m.group(2)
         choice = choice.lower() if choice.lower() in ("approve", "reject") else choice.upper()
@@ -753,14 +769,14 @@ class DecisionLoop(Delivery):
                                     " OR (state='asking' AND updated<?))", (iso(now), did, stale)).rowcount:
                     return 0                               # another process claimed it just now
             else:
-                did = "D-%d" % (db.execute("SELECT COUNT(*) FROM decisions").fetchone()[0] + 1)
+                did = "Q-%d" % (db.execute("SELECT COUNT(*) FROM decisions").fetchone()[0] + 1)
                 try:
                     db.execute("INSERT INTO decisions(id,run_id,project,iid,sha,park_hash,kind,lean_request,"
                                "state,created,updated) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                                (did, row["run_id"], row["project"], row["iid"], head, ph, kind,
                                 park.get("lean_request"), "invalid" if probs else "asking", iso(now), iso(now)))
                 except sqlite3.IntegrityError as e:
-                    # another process on this ledger recorded this question (or took this D-n) just now: it
+                    # another process on this ledger recorded this question (or took this id) just now: it
                     # asks it; this round goes on with the next run
                     self.out("%s: decision for %s not recorded this round: %s" % (row["run_id"], head[:12], e))
                     return 0
@@ -1015,7 +1031,7 @@ class DecisionLoop(Delivery):
     def _tell_void(self, d, row, v):
         """A question that became void. A deleted question note was taken off on purpose: the MR is told how to ask
         again, the run is not. Otherwise the run is told, once, to push again (the bridge asks again at the new
-        commit, under a new D-n): a D-n is never asked twice for the same push."""
+        commit, under a new id): an id is never asked twice for the same push."""
         deleted = v.code in ("gone", "missing")
         sent = None
         if not deleted and row is not None:
@@ -1368,7 +1384,8 @@ class DecisionLoop(Delivery):
             m = ANSWER_RE.match(str(n.get("body") or "").split("\n", 1)[0])
             if not m:
                 continue
-            did, r = m.group(1).upper(), mine.get(m.group(1).upper())
+            r = next((mine[x] for x in mine if same_question(m.group(1), x)), None)
+            did = r["id"] if r is not None else m.group(1).upper()
             if r is not None and (r["state"] in ("open", "posting", "asking") or nid <= int(r["told_id"] or 0)):
                 continue
             if r is None:
@@ -1393,7 +1410,7 @@ class DecisionLoop(Delivery):
             if not isinstance(n, dict) or n.get("system") or _nid(n) <= start:
                 continue
             m = ANSWER_RE.match(str(n.get("body") or "").split("\n", 1)[0])
-            if not m or m.group(1).upper() != did:
+            if not m or not same_question(m.group(1), did):
                 continue
             nid, h = _nid(n), body_hash(n)
             rec = db.execute("SELECT state, body_hash FROM replies WHERE note_id=?", (nid,)).fetchone()

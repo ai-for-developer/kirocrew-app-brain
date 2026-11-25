@@ -25,6 +25,8 @@ patched or subclassed. What the app changes:
   voucher, so its late signature is taken. brain-kit's poll returns nothing (BRAINKIT_REQUESTS 27). A project whose
   kit.json work_sources leaves mr-handoff out (sources.py) is not polled, and one that cannot be read holds up none
   after it: the status' checks say which;
+- runs: after reconcile, what brain-kit's watch leaves out (team/runwatch.py): a session that went idle owing a push
+  is told to go on, then its MR tells a person;
 - issues: right after poll, the issues labelled for Brain (team/issues.py, work source issue-label) are claimed, given
   a start commit, an MR and a start contract, which the signer checks like a hand-over's and the bridge then runs as
   one: runnerd, dispatch and the questions in the same round;
@@ -64,6 +66,7 @@ from . import issues as issues_mod
 from . import left as left_mod
 from . import patrol as patrol_mod
 from . import relay as relay_mod
+from . import runwatch as runwatch_mod
 from . import signerproc, sources
 from . import staging as staging_mod
 from .crewadapter import KiroCrewAdapter
@@ -151,6 +154,7 @@ class TeamRuntime:
         self.patrol: patrol_mod.Patrol | None = None
         self.staging: staging_mod.StagingWatch | None = None
         self.issues: issues_mod.IssueSource | None = None
+        self.runs: runwatch_mod.RunWatch | None = None
         self.cfg: dict[str, Any] = {}
         self.runnerd_cfg: dict[str, Any] | None = None
         self.spool = ""
@@ -249,13 +253,15 @@ class TeamRuntime:
                 ledger_path=os.path.join(os.path.dirname(config), "issues.sqlite"),
                 clones=issues_mod.Clones.of(rcfg) if rcfg and rcfg.get("runs_root") and rcfg.get("clone_url") else None,
                 claims=lambda: sources.held(self), out=self._out)
+            self.runs = runwatch_mod.RunWatch(self.host, out=self._out)
             self.relay, self.deliveries = self._relay(cfg, gl, rcfg, config)
             self.cfg, self.runnerd_cfg, self.spool, self.allowed_signers, self.gl = cfg, rcfg, spool, allowed, gl
             self.error = ""
             return True
         except Exception as exc:  # noqa: BLE001
             self.error = str(exc).split("\n", 1)[0][:400]
-            self.host = self.patrol = self.staging = self.issues = self.relay = self.deliveries = self.gl = None
+            self.host = self.patrol = self.staging = self.issues = self.runs = self.relay = self.deliveries = None
+            self.gl = None
             return False
 
     def _relay(self, cfg: dict[str, Any], gl: Any, rcfg: dict[str, Any] | None,
@@ -271,7 +277,8 @@ class TeamRuntime:
             relay_mod.push_orphan(str(rcfg["clone_url"]).replace("{project}", project), work,
                                   str(rcfg.get("git_name") or "brain-bot"),
                                   str(rcfg.get("git_email") or "brain-bot@noreply.invalid"))
-        return relay_mod.Relay(gl, make_branch), relay_mod.Deliveries(gl, str(cfg["gitlab"]["base"]), self.host.kit)
+        return relay_mod.Relay(gl, make_branch), relay_mod.Deliveries(gl, str(cfg["gitlab"]["base"]), self.host.kit,
+                                                                      answer_wait_s=float(self.host.stall_s))
 
     def stop(self) -> None:
         """Close the ledger after the round in progress (it runs on the executor), then let the executor go."""
@@ -302,8 +309,8 @@ class TeamRuntime:
     # ---- one round ------------------------------------------------------------------------------------ #
 
     def loop_once(self) -> dict[str, int]:
-        """poll, issues, runnerd, dispatch, watch, collect, reconcile, patrol, staging, then 状态中转; one bad step does
-        not stop the others."""
+        """poll, issues, runnerd, dispatch, watch, collect, reconcile, runs, patrol, staging, then 状态中转; one bad step
+        does not stop the others."""
         host = self.host
         if host is None:
             raise RuntimeError(self.error or "运行机模式没有启动")
@@ -319,8 +326,13 @@ class TeamRuntime:
                 self._leave(host)
             except Exception as exc:  # noqa: BLE001 - said as a step's; the round goes on
                 errors.append(self._failed("left", exc))
-            for step in ("poll", "issues", "runnerd", "dispatch", "watch", "collect", "reconcile", "patrol", "staging"):
+            for step in ("poll", "issues", "runnerd", "dispatch", "watch", "collect", "reconcile", "runs", "patrol",
+                         "staging"):
                 try:
+                    if step == "runs":
+                        if self.runs is not None:
+                            summary["resumed"] = self.runs.round()
+                        continue
                     if step == "issues":
                         if self.issues is not None:
                             summary["issues"] = self.issues.round()
@@ -539,7 +551,8 @@ class TeamRuntime:
         for r in led["runs"]:
             all_ids.setdefault(r["req"], []).append(r["run_id"])
             latest[r["req"]] = r
-        notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [])
+        notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [], led["runs"])
+        now, stall_s = time.time(), float(self.host.stall_s)
         out = []
         for key, r in sorted(latest.items()):
             facts = {"key": key, "claim": None, "where": "runner", "branch": None, "owner": r.get("owner"),
@@ -556,7 +569,8 @@ class TeamRuntime:
             row = deliveries.base_row("runner", facts)
             row["where"] = "runner"
             decs = [d for d in led["decisions"] if d["run_id"] in all_ids[key]]
-            deliveries.team_classify(row, r, decs, facts.get("park"), notes=notes.get(r["run_id"], []))
+            deliveries.team_classify(row, r, decs, facts.get("park"), notes=notes.get(r["run_id"], []), now=now,
+                                     stall_s=stall_s, session=self.mgr.slot_stats(r.get("slot")) if self.mgr else None)
             row["run_ids"] = all_ids[key]
             row["mr"] = {"iid": int(r["iid"]), "url": self.mr_url(r["project"], r["iid"]), "state": None}
             row["updated_at"] = lean_view.epoch(r.get("updated"))

@@ -227,9 +227,9 @@ brain reflect --draft PAY-3
 
   只能用在验收问题上（approve/reject，不带选项）；号只能是 `D-n` 或 `A-n`，不重复；每句一行，最多 200 字；最多 50 项。
 - **MR 上**：桥把它们贴成清单（文字放在行内代码里，@ 和快捷命令都不生效）。产品回一行：
-  - `answer D-5 approve`：全部通过（包括这些待审项）。
-  - `answer D-5 reject A-3,D-7 说明`：只驳回列出的几项，其余通过。号之间用逗号、顿号或空格都行，大小写都认；列了不存在的号，这条回复不算。
-  - `answer D-5 reject 说明`：不列号，就是整个驳回，和以前一样。
+  - `answer Q-5 approve`：全部通过（包括这些待审项）。
+  - `answer Q-5 reject A-3,D-7 说明`：只驳回列出的几项，其余通过。号之间用逗号、顿号或空格都行，大小写都认；列了不存在的号，这条回复不算。
+  - `answer Q-5 reject 说明`：不列号，就是整个驳回，和以前一样。
   - 两个人驳回的项不一样，算回答冲突，都不送，请商量后由一个人重答。
 - **送回 run**：驳回的项作为纠正送回去：run 要改掉、在 decisions.md 记一行、每一项写一个 `type: correction` 的提案（`src` 写项号和凭证号），再重新请求验收。给 Lean 的那行口令仍然是 `reject RELEASE <hash>`。
 - **留痕**：答复凭证里多了 `review_items`（这次审了哪些）和 `rejected_items`（驳回了哪些）。`brain reflect` 对每一个驳回的项检查有没有 correction 引用它的号，没有就提醒。

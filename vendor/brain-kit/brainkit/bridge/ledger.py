@@ -63,8 +63,8 @@ CREATE TABLE IF NOT EXISTS mr_notes_due (
 # (CREATE TABLE IF NOT EXISTS); columns added later go in MR_DESC_ADDED_COLUMNS.
 # outbox: every message the bridge sends into a run's KiroCrew slot (the hand-over, an answer, a notice), written
 # before it is sent, so a bridge that stops mid-send knows what it was sending. send_id: meta.sendId (the voucher id,
-# or N-<hash> for a notice); what: handover:<run> | answer:<D-n> | notice:<key>. state: sending (being sent now, by
-# this or another bridge process), interrupted (the bridge was stopped while it sent: it may or may not have
+# or N-<hash> for a notice); what: handover:<run> | answer:<question id> | notice:<key>. state: sending (being sent
+# now, by this or another bridge process), interrupted (the bridge was stopped while it sent: it may or may not have
 # landed), sent, unknown (KiroCrew answered with an error: it may or may not have landed), held (not sent: KiroCrew
 # refused to set the session to trust before the send; sent again each round, not a try), dropped (never sent again:
 # what it says no longer holds - the MR head moved on, the run ended - or KiroCrew did not take a hand-over for

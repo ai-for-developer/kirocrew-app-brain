@@ -8,7 +8,10 @@ labelled issue (IssueRow), moved by STEPS:
   new -> claimed     the labeler may start a run (not a bot, Developer or more, in brain-authz), the issue was not
                      edited after the label, and its title and text pass the Brain's content checks
                      (intents.problems: no secrets, personal data, amounts): claim/<KEY> is filed for the labeler with
-                     that text and the issue's address (intents.add, which finds it again by its hash)
+                     that text and the issue's address (intents.add, which finds it again by its hash). While `lean
+                     verify` cannot pass on the default branch (verify_problem: lean.json there has no checks), the run
+                     could never commit its code: the issue stays new, hears why once (held), and is claimed the round
+                     after a person fixes lean.json there
   claimed -> pushed  one commit on top of the default branch, made in a clone of its own (<work>/issues/<project id>)
                      as runnerd's bot: a new Lean intent with its Session notes filled in, runs/<KEY>/run.json (origin
                      remote) and runs/<KEY>/intent.md; pushed as ai/<owner>/<KEY>-issue-<iid> (a Chinese title gives
@@ -51,6 +54,12 @@ NEW, CLAIMED, PUSHED, OPENED, STARTED, REFUSED, DROPPED = (
     "new", "claimed", "pushed", "opened", "started", "refused", "dropped")
 UNDER_WAY = (CLAIMED, PUSHED, OPENED)
 FINAL = (STARTED, REFUSED, DROPPED)
+HELD = "held"                   # not a state: the note a new issue gets once while verify_problem holds its claim
+NO_CHECKS = ("默认分支 %s 上 aidlc-docs/lean.json 的 checks 是空的：lean verify 过不了（AI-DLC Lean 说 No checks "
+             "configured），运行机写好的代码也提交不了。请人在 %s 上给 checks 写上要跑的命令（构建、测试），合并以后 Brain "
+             "自己接，不用再打标签")
+LEAN_BAD = ("默认分支 %s 上 aidlc-docs/lean.json 不是一个 JSON 对象：AI-DLC Lean 读不了它，lean verify 过不了。请人在 %s 上改好，"
+            "合并以后 Brain 自己接，不用再打标签")
 # the signer did not answer within brain-kit's SpoolSigner wait (bridge.json signer.timeout): not an error, the issue
 # stays opened and the next round asks for that very contract again (a late signature is used)
 SIGNING = "签名服务这一轮没来得及签开工合同（第一次签常常慢一些）：下一轮再问同一份，签好就开工"
@@ -88,7 +97,8 @@ class IssueRow:
     run_id: str = ""
     voucher_id: str = ""
     reason: str = ""                    # refused or dropped: why, as the issue heard it
-    told: tuple[str, ...] = ()          # the states whose note the issue has
+    held: str = ""                      # new: why it is not claimed yet (verify_problem), as the issue heard it
+    told: tuple[str, ...] = ()          # the states whose note the issue has (and HELD)
 
     @classmethod
     def of(cls, d: Mapping[str, Any]) -> "IssueRow":
@@ -207,6 +217,8 @@ def mr_text(key: str, iid: int, owner: str) -> str:
 
 def told_text(row: IssueRow, state: str) -> str:
     """What the issue hears when its row gets to *state*."""
+    if state == HELD:
+        return "Brain 先不接这个 issue：%s。" % row.held
     if state == CLAIMED:
         return "AI 已接手：需求号 %s。运行机在开分支和 MR，问题会在 MR 上问。" % row.key
     if state == STARTED:
@@ -219,8 +231,10 @@ def told_text(row: IssueRow, state: str) -> str:
 
 
 def owed(row: IssueRow) -> list[str]:
-    """The states whose note the issue is owed: the claim's once it has a key, then the end it got to."""
-    want = [CLAIMED] if row.key and row.state in UNDER_WAY + (STARTED,) else []
+    """The states whose note the issue is owed: why it is held while it is, the claim's once it has a key, then the end
+    it got to."""
+    want = [HELD] if row.state == NEW and row.held else []
+    want += [CLAIMED] if row.key and row.state in UNDER_WAY + (STARTED,) else []
     want += [row.state] if row.state in FINAL else []
     return [s for s in want if s not in row.told]
 
@@ -475,13 +489,17 @@ class IssueSource:
             raise Refusal(*["需求的内容没过检查：%s" % x for x in errs])
         if e.kit.get("tracker") != "none":
             raise Refusal("这个项目的需求在 %s 里：issue 不能直接变成需求" % e.kit.get("tracker"))
+        held = verify_problem(self._clone(e), e.kit["default_branch"])
+        if held:
+            e.note = held
+            return replace(row, held=held)
         doc = intents.add(self._clone(e), e.kit, "product", title, body, refs=[str(e.issue.get("web_url") or "")],
                           owner=row.labeler)
         if doc.get("owner") != row.labeler:
             raise Refusal("同样的需求已经是 @%s 的 %s 了" % (doc.get("owner") or doc.get("filed_by") or "别人", doc["key"]))
         if doc.get("closed"):
             raise Refusal("同样的需求 %s 已经关了：%s" % (doc["key"], (doc["closed"] or {}).get("reason") or ""))
-        return replace(row, state=CLAIMED, key=str(doc["key"]), role=role)
+        return replace(row, state=CLAIMED, key=str(doc["key"]), role=role, held="")
 
     def _admit(self, e: Entry, row: IssueRow) -> str:
         """The labeler's role in the project when they may start a run; Refusal otherwise."""
@@ -668,6 +686,24 @@ STEPS: dict[str, Callable[[IssueSource, Entry, IssueRow], IssueRow]] = {
 
 
 # ---- the start commit ---------------------------------------------------------------------------------------- #
+
+def verify_problem(path: str, default: str) -> str:
+    """Why `lean verify` cannot pass in the clone at *path* (the default branch *default* as origin has it), '' when it
+    can: AI-DLC Lean's own rule (aidlc_lean.py: Project reads lean.json over DEFAULT_CONFIG, whose checks are [];
+    cmd_verify answers "No checks configured" and fails when there are none). A run started there writes its code and
+    can commit none of it (brain-run commits on a green verify). A clone without lean.json has no Lean, which
+    make_start_commit refuses. tests/test_lean_rules.py holds this to the vendored Lean's verify."""
+    try:
+        with open(os.path.join(path, bk.m("lean").CONFIG), encoding="utf-8") as fh:
+            cfg = json.load(fh)
+    except FileNotFoundError:
+        return ""
+    except (OSError, ValueError):
+        return LEAN_BAD % (default, default)
+    if not isinstance(cfg, dict):
+        return LEAN_BAD % (default, default)
+    return NO_CHECKS % (default, default) if not cfg.get("checks") else ""
+
 
 def make_start_commit(path: str, kit: Mapping[str, Any], row: IssueRow, branch: str, default: str) -> str:
     """The run's first commit, in the clone at the default branch as origin has it: a new Lean intent (its Session

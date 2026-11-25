@@ -40,7 +40,7 @@ try:
 except ImportError:  # pragma: no cover - Windows: the folders are guarded within this process only
     fcntl = None  # type: ignore[assignment]
 
-from .constants import LOCAL_AGENT
+from .constants import LOCAL_AGENT, QUESTION_ID
 from .gateway import PAGE, GatewayError, said
 from .problems import AGENT_NEW, FOREIGN_INSIDE, folder_root, folder_stuck
 
@@ -57,6 +57,7 @@ NUDGES = 4              # a turn cut short (a transient model error, or stuck) i
 TRANSIENT = re.compile(r"transient|5\d\d|runtime failed|timed? ?out|overloaded|rate.?limit|throttl|temporarily|unavailable",
                        re.I)
 HISTORY = 400
+ACTIVITY_ROWS = 4       # a runner slot's newest rows adapter_activity reads: past what KiroCrew writes after a turn
 STATS_EVERY = 5         # a tracked slot's credits and turns are read every this many polls (its new rows: Tally)
 TRANSCRIPT_PAGES = 40   # pages of a transcript read at most (KiroCrew's 500 rows each): a turn, a slot's stats, 产出
 WAIT_S = 60.0           # a session quiet this long between a turn's end and the next message waited for a person
@@ -79,8 +80,8 @@ SPAWN_TOOLS = ("spawn_run", "spawn_sub_agents")   # kirocrew-core's calls that s
 TASK_KINDS: tuple[tuple[re.Pattern[str], Callable[[re.Match[str]], str], bool], ...] = (
     (re.compile(r"接手合同 "), lambda m: "合同", True),
     (re.compile(r"CI 没过：MR 的流水线 #(\d+)"), lambda m: "CI 没过 #" + m.group(1), False),
-    (re.compile(r"决策 (D-\d+) 已答（[^）\n]*）：(\S+?)。"), lambda m: m.group(1) + (" 退回" if m.group(2) == "reject" else " 已答"),
-     False),
+    (re.compile(r"决策 (%s) 已答（[^）\n]*）：(\S+?)。" % QUESTION_ID),
+     lambda m: m.group(1) + (" 退回" if m.group(2) == "reject" else " 已答"), False),
     (re.compile(r"问题没发出："), lambda m: "问题没发出", False),
     (re.compile(r"问题作废："), lambda m: "问题作废", False),
 )
@@ -1152,6 +1153,21 @@ class SessionManager:
     async def adapter_slot(self, name: str) -> dict[str, Any]:
         self._runner_slot(name)
         return {"key": name, "messages": await self.gw.messages(name, limit=PAGE)}
+
+    async def adapter_activity(self, name: str) -> dict[str, Any]:
+        """Runner slot *name* as KiroCrew reads it with its newest ACTIVITY_ROWS rows: whether a turn runs, what is
+        queued, how its newest turn ended (crewadapter.cut_off); and user_stopped: the app stopped the slot's newest
+        turn (a person's 停止, or the bridge's stop)."""
+        self._runner_slot(name)
+        data = await self.gw.slot(name, limit=ACTIVITY_ROWS)
+        last = next((i for i in reversed(list(self._infos.values())) if i.slot == name and i.task), None)
+        return dict(data, user_stopped=last is not None and last.user_stopped)
+
+    async def adapter_trust(self, name: str) -> dict[str, Any]:
+        """Trust for runner slot *name* again: KiroCrew keeps it in memory, so a restart ends it."""
+        self._runner_slot(name)
+        await self.gw.trust(name)
+        return {"ok": True}
 
     async def adapter_turn(self, name: str, send_id: str) -> str:
         """The turn the message *send_id* started in runner slot *name*: running; ended (the reply is in and the slot

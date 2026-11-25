@@ -27,7 +27,8 @@ or fails, read the raw files instead (all at your ref). Read them anyway where t
 - the questions: `git log -p --follow -- runs/<KEY>/park.json` (each version is one question; `review_items` on
   the acceptance question);
 - the answers: voucher files `<vouchers>/RUN-<KEY>-*/V-*.json` (`decision`, `choice`, `rejected_items`,
-  `voucher_id`). They may be missing on this machine; then use what decisions.md recorded (`决策 D-n 已答 ...`).
+  `voucher_id`). They may be missing on this machine; then use what decisions.md recorded (`决策 Q-n 已答 ...`;
+  an older bridge's `决策 D-n 已答 ...`).
 - the Brain at your ref: `brain/PRODUCT.md`, `TECH.md`, `IMPROVEMENT.md`, `PROJECT.md` (ids for `replaces`,
   `repeats`, `same`; do not propose what is already there).
 

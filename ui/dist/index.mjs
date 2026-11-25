@@ -11,6 +11,7 @@ var v = "/api/apps/brain", y = {
 	running: "运行机在跑",
 	parked: "停下等回答",
 	acceptance: "等验收",
+	to_merge: "等合并",
 	merged: "已合并",
 	closed: "已关闭",
 	unclaimed: "待认领",
@@ -1159,6 +1160,7 @@ var st = {
 	running: "run",
 	parked: "wait",
 	acceptance: "wait",
+	to_merge: "wait",
 	merged: "ok",
 	closed: "idle",
 	unclaimed: "idle",
@@ -1171,6 +1173,7 @@ var st = {
 	running: "●",
 	parked: "✋",
 	acceptance: "✋",
+	to_merge: "✋",
 	merged: "✔",
 	closed: "■",
 	unclaimed: "◌",
@@ -1179,7 +1182,8 @@ var st = {
 	"local",
 	"running",
 	"parked",
-	"acceptance"
+	"acceptance",
+	"to_merge"
 ]);
 function ut({ state: e, label: t, who: n }) {
 	let r = st[e] ?? "idle", i = n !== void 0 && (r === "wait" ? n !== "you" : r === "run" && n !== "agent" && n !== "runner");
@@ -9073,6 +9077,7 @@ var Gc = {
 	running: "运行机在跑",
 	parked: "停下等回答",
 	acceptance: "等验收",
+	to_merge: "等合并",
 	merged: "已合并",
 	closed: "已关闭",
 	unclaimed: "待认领",
@@ -17089,6 +17094,14 @@ var Nf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width:
 		name: "对账",
 		did: "对了账"
 	},
+	runs: {
+		name: "照看派出去的运行",
+		did: "照看了派出去的运行"
+	},
+	resumed: {
+		name: "让中断的会话接着做",
+		did: "让中断的会话接着做"
+	},
 	patrol: {
 		name: "巡检 MR",
 		did: "巡检了 MR"
@@ -17204,7 +17217,8 @@ var Nf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width:
 	outbox_unknown: "warn",
 	outbox_interrupted: "warn",
 	outbox_dropped: "bad",
-	queued: "idle"
+	queued: "idle",
+	stopped: "bad"
 }, qf = (e) => Kf[e] ?? (/^(ci|runnerd)_/.test(e) ? "warn" : "idle"), Jf = {
 	bad: "✕",
 	warn: "!"
@@ -18554,7 +18568,8 @@ function Ap(e) {
 		"handed_over",
 		"running",
 		"parked",
-		"acceptance"
+		"acceptance",
+		"to_merge"
 	].includes(e.row.state));
 }
 var jp = (e) => {
@@ -23364,7 +23379,7 @@ function Oh(e) {
 	if (e.state === "closed" || e.state === "merged_into_parent") return null;
 	if (e.state === "merged") return "已合并";
 	if (!wo(e).intent) return e.mr ? "发布验收" : "构建";
-	if (e.state === "acceptance") return "发布验收";
+	if (e.state === "acceptance" || e.state === "to_merge") return "发布验收";
 	if (e.state === "unclaimed") return "构建";
 	let t = e.lean.stage_n, n = t === "✓" || !!t?.startsWith("4."), r = Number(t ?? 0), i = e.state === "handed_over" || e.state === "running" || e.state === "rejected" || e.state === "parked" && (e.mr !== null || e.run_ids.length > 0), a = e.family?.role;
 	return a === "child" && !i ? "构建" : i && !e.local_only ? "交给运行机" : n ? "发布验收" : a === "parent" ? e.family?.family_state === "ready_to_release" ? "发布验收" : "构建" : e.state === "claimed" || r < 2.6 ? "需求" : r < 3.5 ? "设计" : "构建";
@@ -26790,8 +26805,11 @@ var l_ = "\n.rv-repo { gap: .8em; }\n.rv-repo.is-bad, .rv-strip.is-bad { border-
 		tone: "idle",
 		look: "is-quiet"
 	}
-}, w_ = (e) => e.split(/[,，、\s]+/).map((e) => e.trim()).filter(Boolean);
-function T_(e, t) {
+}, w_ = (e) => e.split(/[,，、\s]+/).map((e) => e.trim()).filter(Boolean), T_ = (e) => e.trim().toLowerCase(), E_ = (e, t, n) => e[T_(t)] ?? e[""] ?? n, D_ = (e) => [...new Map((e.mode === "bot-account" ? w_(e.projects) : w_(e.project)).map((e) => [T_(e), e])).values()], O_ = (e, t) => {
+	let n = new Set(t.map(T_));
+	return Object.fromEntries(e.map((e) => [T_(e), n.has(T_(e))]));
+};
+function k_(e, t) {
 	let n = t.flatMap((e) => e.kit?.gitlab_project ? [e.kit] : []), r = [...new Set(n.map((e) => e.gitlab_project))], i = e.input.projects;
 	return {
 		mode: e.input.mode,
@@ -26800,14 +26818,14 @@ function T_(e, t) {
 		projects: (e.input.mode === "bot-account" || !r.length ? i : r).join("\n"),
 		product: e.input.roles.product.join(", "),
 		builder: e.input.roles.builder.join(", "),
-		patrol: e.input.patrol !== !1,
-		issues: e.input.issues === !0,
+		patrol: O_(i, e.input.patrol),
+		issues: O_(i, e.input.issues),
 		push: e.input.push === "token" ? "token" : "ssh",
 		jenkinsBase: e.input.jenkins.base,
 		jenkinsUser: e.input.jenkins.user
 	};
 }
-function E_(e) {
+function A_(e) {
 	return e.running ? {
 		label: "正在建",
 		tone: "run"
@@ -26822,10 +26840,10 @@ function E_(e) {
 		tone: "ok"
 	};
 }
-function D_({ repos: e, onDone: t, pollMs: n = u_ }) {
+function j_({ repos: e, onDone: t, pollMs: n = u_ }) {
 	let r = u(), [a, o] = c(!1), l = F(D.teamSetup(), a ? n : 0), [d, f] = c(null), [p, m] = c(""), [v, y] = c(""), [b, S] = c(""), [C, w] = c(""), [T, E] = c(""), O = s(null), k = s(null), A = s(null), j = s(!1), M = I((e) => r.post(D.teamSetup(), e)), N = x(t), P = l.data;
 	i(() => {
-		P && !d && f(T_(P, e));
+		P && !d && f(k_(P, e));
 	}, [P]), i(() => {
 		P && (o(P.running), P.running ? j.current = !0 : j.current && (j.current = !1, N.current?.()));
 	}, [P, N]);
@@ -26840,22 +26858,22 @@ function D_({ repos: e, onDone: t, pollMs: n = u_ }) {
 			base: e.jenkinsBase.trim(),
 			user: e.jenkinsUser.trim(),
 			token: C.trim()
-		} } : {}, n = {
+		} } : {}, n = D_(e), r = {
 			gitlab_base: e.base.trim(),
 			roles: {
 				product: w_(e.product),
 				builder: w_(e.builder)
 			},
-			patrol: e.patrol,
-			issues: e.issues,
+			patrol: n.filter((t) => E_(e.patrol, t, !0)),
+			issues: n.filter((t) => E_(e.issues, t, !1)),
 			...t
 		};
 		return e.mode === "project-token" ? {
-			...n,
+			...r,
 			project: e.project.trim(),
 			admin_token: p.trim()
 		} : {
-			...n,
+			...r,
 			mode: "bot-account",
 			projects: w_(e.projects),
 			push: e.push,
@@ -26873,7 +26891,7 @@ function D_({ repos: e, onDone: t, pollMs: n = u_ }) {
 		E("");
 		let t = await M.run(B(d));
 		t && (j.current = !0, l.set(t));
-	}, H = P ? E_(P) : null, U = !!P && (!!P.cut_off || P.steps.some((e) => e.status !== "todo")), te = P?.cut_off ? P.steps.find((e) => e.id === P.cut_off)?.title ?? P.cut_off : null, ne = a || M.busy, W = d?.mode === "bot-account", re = /* @__PURE__ */ _(h, { children: [T && /* @__PURE__ */ g("span", {
+	}, H = P ? A_(P) : null, U = !!P && (!!P.cut_off || P.steps.some((e) => e.status !== "todo")), te = P?.cut_off ? P.steps.find((e) => e.id === P.cut_off)?.title ?? P.cut_off : null, ne = a || M.busy, W = d?.mode === "bot-account", re = /* @__PURE__ */ _(h, { children: [T && /* @__PURE__ */ g("span", {
 		className: "br-error",
 		role: "alert",
 		children: T
@@ -26913,7 +26931,7 @@ function D_({ repos: e, onDone: t, pollMs: n = u_ }) {
 		"aria-label": "一键建运行机",
 		"data-testid": "runner-setup",
 		children: [
-			/* @__PURE__ */ g("style", { children: N_ }),
+			/* @__PURE__ */ g("style", { children: R_ }),
 			/* @__PURE__ */ _("header", { children: [
 				/* @__PURE__ */ g(J, {
 					role: "runner",
@@ -26955,7 +26973,7 @@ function D_({ repos: e, onDone: t, pollMs: n = u_ }) {
 					className: "rs-fieldset",
 					disabled: ne,
 					children: [
-						/* @__PURE__ */ g(O_, {
+						/* @__PURE__ */ g(N_, {
 							name: "mode",
 							label: "账号",
 							value: d.mode,
@@ -27012,7 +27030,7 @@ function D_({ repos: e, onDone: t, pollMs: n = u_ }) {
 							className: "rs-kept",
 							children: __(ee.bridge)
 						})] }), k),
-						W && /* @__PURE__ */ _(h, { children: [/* @__PURE__ */ g(O_, {
+						W && /* @__PURE__ */ _(h, { children: [/* @__PURE__ */ g(N_, {
 							name: "push",
 							label: "运行机怎么推送",
 							value: d.push,
@@ -27061,37 +27079,23 @@ function D_({ repos: e, onDone: t, pollMs: n = u_ }) {
 							id: "rs-roles-hint",
 							children: W && !p.trim() ? "填 GitLab 用户名，几个人用逗号隔开。没填一次性 token：产品和开发都要填，安全和数据两个角色跟开发一样。" : "填 GitLab 用户名，几个人用逗号隔开；空着就是 token 的主人。安全和数据两个角色也是 token 的主人。"
 						}),
-						/* @__PURE__ */ _("div", {
-							className: "br-field",
-							children: [/* @__PURE__ */ _("label", {
-								className: "br-check",
-								children: [/* @__PURE__ */ g("input", {
-									type: "checkbox",
-									checked: d.patrol,
-									"aria-describedby": "rs-patrol-hint",
-									onChange: (e) => L({ patrol: e.target.checked })
-								}), /* @__PURE__ */ g("b", { children: "巡检所有开着的 MR" })]
-							}), /* @__PURE__ */ g("p", {
-								className: "br-hint",
-								id: "rs-patrol-hint",
-								children: "运行机每一轮看这个项目所有开着的 MR，以前开的也算：流水线没过、评审意见没回、和目标分支有冲突的，派 brain-patrol 去修，同时最多 2 个。交接过来的 MR 还是交接那边管。"
-							})]
+						/* @__PURE__ */ g(M_, {
+							id: "rs-patrol",
+							label: "巡检所有开着的 MR",
+							hint: "运行机每一轮看这个项目所有开着的 MR，以前开的也算：流水线没过、评审意见没回、和目标分支有冲突的，派 brain-patrol 去修，同时最多 2 个。交接过来的 MR 还是交接那边管。",
+							projects: D_(d),
+							ticks: d.patrol,
+							dflt: !0,
+							onTick: (e) => L({ patrol: e })
 						}),
-						/* @__PURE__ */ _("div", {
-							className: "br-field",
-							children: [/* @__PURE__ */ _("label", {
-								className: "br-check",
-								children: [/* @__PURE__ */ g("input", {
-									type: "checkbox",
-									checked: d.issues,
-									"aria-describedby": "rs-issues-hint",
-									onChange: (e) => L({ issues: e.target.checked })
-								}), /* @__PURE__ */ g("b", { children: "从打了标签的 issue 接活" })]
-							}), /* @__PURE__ */ g("p", {
-								className: "br-hint",
-								id: "rs-issues-hint",
-								children: "项目里 Developer 以上的人给 issue 打上标签 brain，运行机就把它认领成需求、开分支和 MR，在 MR 上问问题；MR 合并时 issue 跟着关。issue 的内容要过 Brain 的内容检查：不能有密钥、个人信息和金额。"
-							})]
+						/* @__PURE__ */ g(M_, {
+							id: "rs-issues",
+							label: "从打了标签的 issue 接活",
+							hint: "项目里 Developer 以上的人给 issue 打上标签 brain，运行机就把它认领成需求、开分支和 MR，在 MR 上问问题；MR 合并时 issue 跟着关。issue 的内容要过 Brain 的内容检查：不能有密钥、个人信息和金额。",
+							projects: D_(d),
+							ticks: d.issues,
+							dflt: !1,
+							onTick: (e) => L({ issues: e })
 						}),
 						/* @__PURE__ */ _("div", {
 							className: "rs-grid",
@@ -27170,9 +27174,9 @@ function D_({ repos: e, onDone: t, pollMs: n = u_ }) {
 				/* @__PURE__ */ g("ol", {
 					className: "br-probs rs-steps",
 					"aria-label": "建运行机的每一步",
-					children: P.steps.map((e) => /* @__PURE__ */ g(k_, { s: e }, e.id))
+					children: P.steps.map((e) => /* @__PURE__ */ g(P_, { s: e }, e.id))
 				}),
-				P.tokens.length > 0 && /* @__PURE__ */ g(A_, { tokens: P.tokens }),
+				P.tokens.length > 0 && /* @__PURE__ */ g(F_, { tokens: P.tokens }),
 				/* @__PURE__ */ _("div", {
 					className: "br-row",
 					children: [
@@ -27198,7 +27202,64 @@ function D_({ repos: e, onDone: t, pollMs: n = u_ }) {
 		]
 	});
 }
-function O_({ name: e, label: t, value: n, options: r, onPick: i, hint: a }) {
+function M_({ id: e, label: t, hint: n, projects: r, ticks: i, dflt: a, onTick: o }) {
+	let s = (e, t) => o({
+		...i,
+		[T_(e)]: t
+	});
+	if (r.length < 2) {
+		let o = r[0] ?? "";
+		return /* @__PURE__ */ _("div", {
+			className: "br-field",
+			children: [/* @__PURE__ */ _("label", {
+				className: "br-check",
+				children: [/* @__PURE__ */ g("input", {
+					type: "checkbox",
+					checked: E_(i, o, a),
+					"aria-describedby": `${e}-hint`,
+					onChange: (e) => s(o, e.target.checked)
+				}), /* @__PURE__ */ g("b", { children: t })]
+			}), /* @__PURE__ */ g("p", {
+				className: "br-hint",
+				id: `${e}-hint`,
+				children: n
+			})]
+		});
+	}
+	return /* @__PURE__ */ _("div", {
+		className: "br-field",
+		role: "group",
+		"aria-labelledby": `${e}-l`,
+		"aria-describedby": `${e}-hint`,
+		children: [
+			/* @__PURE__ */ g("span", {
+				className: "br-label",
+				id: `${e}-l`,
+				children: t
+			}),
+			/* @__PURE__ */ g("div", {
+				className: "rs-each",
+				children: r.map((e) => /* @__PURE__ */ _("label", {
+					className: "br-check",
+					children: [/* @__PURE__ */ g("input", {
+						type: "checkbox",
+						checked: E_(i, e, a),
+						onChange: (t) => s(e, t.target.checked)
+					}), /* @__PURE__ */ g("span", {
+						className: "br-mono rs-each-name",
+						children: e
+					})]
+				}, T_(e)))
+			}),
+			/* @__PURE__ */ g("p", {
+				className: "br-hint",
+				id: `${e}-hint`,
+				children: n
+			})
+		]
+	});
+}
+function N_({ name: e, label: t, value: n, options: r, onPick: i, hint: a }) {
 	return /* @__PURE__ */ _("div", {
 		className: "br-field",
 		children: [
@@ -27231,7 +27292,7 @@ function O_({ name: e, label: t, value: n, options: r, onPick: i, hint: a }) {
 		]
 	});
 }
-function k_({ s: e }) {
+function P_({ s: e }) {
 	let t = C_[e.status] ?? C_.todo;
 	return /* @__PURE__ */ _("li", {
 		className: `br-prob rs-step ${t.look}`,
@@ -27255,7 +27316,7 @@ function k_({ s: e }) {
 				className: "br-prob-todo",
 				children: e.message
 			}),
-			/* @__PURE__ */ g(M_, {
+			/* @__PURE__ */ g(L_, {
 				status: e.status,
 				link: e.link,
 				detail: e.detail
@@ -27263,12 +27324,12 @@ function k_({ s: e }) {
 			e.projects.length > 0 && /* @__PURE__ */ g("ul", {
 				className: "rs-projects",
 				"aria-label": `${e.title}：每个项目`,
-				children: e.projects.map((e) => /* @__PURE__ */ g(j_, { p: e }, e.project))
+				children: e.projects.map((e) => /* @__PURE__ */ g(I_, { p: e }, e.project))
 			})
 		]
 	});
 }
-function A_({ tokens: e }) {
+function F_({ tokens: e }) {
 	return /* @__PURE__ */ g("ul", {
 		className: "br-probs rs-tokens",
 		"aria-label": "运行机的令牌",
@@ -27305,7 +27366,7 @@ function A_({ tokens: e }) {
 		}, e.key))
 	});
 }
-function j_({ p: e }) {
+function I_({ p: e }) {
 	let t = C_[e.status] ?? C_.todo;
 	return /* @__PURE__ */ _("li", {
 		className: "rs-project",
@@ -27326,7 +27387,7 @@ function j_({ p: e }) {
 				className: "rs-project-text",
 				children: e.message
 			}),
-			/* @__PURE__ */ g(M_, {
+			/* @__PURE__ */ g(L_, {
 				status: e.status,
 				link: e.link,
 				detail: e.detail
@@ -27334,7 +27395,7 @@ function j_({ p: e }) {
 		]
 	});
 }
-function M_({ status: e, link: t, detail: n }) {
+function L_({ status: e, link: t, detail: n }) {
 	return !t && !n ? null : /* @__PURE__ */ _("span", {
 		className: "br-prob-acts",
 		children: [t && /* @__PURE__ */ g($, {
@@ -27346,7 +27407,7 @@ function M_({ status: e, link: t, detail: n }) {
 		})]
 	});
 }
-var N_ = "\n.rs-card { gap: .8em; }\n.rs-lead { margin: 0; color: var(--text); max-width: 60em; }\n.rs-note { margin: 0; }\n.rs-fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: .8em; min-width: 0; }\n.rs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16em, 1fr)); gap: .8em 1.2em; align-items: start; }\n.rs-kept { margin-left: .4em; font-weight: 650; color: var(--text); }\n.rs-seg { display: flex; flex-wrap: wrap; gap: 6px; }\n.rs-opt { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 9px; border-radius: 999px; cursor: pointer; font-size: .92em; font-weight: 650;\n  border: 1px solid var(--border-strong, var(--border)); background: var(--card); color: var(--text); }\n.rs-opt input { margin: 0; accent-color: var(--accent); }\n.rs-opt:hover { border-color: var(--accent); }\n.rs-opt.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 17%, var(--card)); color: var(--text-strong); }\n.rs-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }\n.rs-fieldset:disabled .rs-opt { cursor: default; opacity: .7; }\n.rs-word { margin-left: .6em; font-size: .78em; vertical-align: 1px; }\n.rs-step.is-quiet { border-color: transparent; background: transparent; padding-top: 3px; padding-bottom: 3px; }\n.rs-step.is-quiet .br-prob-glyph { width: 20px; height: 20px; border-radius: 6px; font-size: 11px; border-width: 1.5px;\n  color: var(--muted); border-color: color-mix(in srgb, var(--muted) 50%, transparent); background: transparent; }\n.rs-step.is-quiet .br-prob-text { font-weight: 550; color: var(--muted); }\n.rs-step.is-running { border-color: var(--kit-run); background: color-mix(in srgb, var(--kt-run) 7%, transparent); }\n.rs-step.is-running .br-prob-glyph { animation: kt-blink 1.4s ease-in-out infinite; }\n.rs-projects { grid-column: 2; list-style: none; margin: 4px 0 0; padding: 6px 0 0; display: grid; gap: 5px; border-top: 1px dashed var(--border); }\n.rs-project { display: grid; grid-template-columns: 18px minmax(9em, max-content) minmax(0, 1fr); gap: 2px 10px; align-items: baseline; font-size: .93em; }\n.rs-project-glyph { align-self: center; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 5px; font-size: 10px; font-weight: 900;\n  color: var(--kt-tone); border: 1.5px solid var(--kt-tone); background: color-mix(in srgb, var(--kt-tone) 14%, transparent); }\n.rs-project-name { color: var(--text-strong); font-weight: 650; word-break: break-all; }\n.rs-project-text { color: var(--text); min-width: 0; }\n.rs-project .br-prob-acts { grid-column: 3; margin-top: 0; }\n", P_ = "bridge.json：带 \"signer\": {\"type\": \"spool\", \"spool_dir\", \"allowed_signers\"}，不写 signing_key", F_ = (e) => ({
+var R_ = "\n.rs-card { gap: .8em; }\n.rs-lead { margin: 0; color: var(--text); max-width: 60em; }\n.rs-note { margin: 0; }\n.rs-fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: .8em; min-width: 0; }\n.rs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16em, 1fr)); gap: .8em 1.2em; align-items: start; }\n.rs-kept { margin-left: .4em; font-weight: 650; color: var(--text); }\n.rs-each { display: flex; flex-wrap: wrap; gap: 4px 18px; min-width: 0; }\n.rs-each-name { word-break: break-all; }\n.rs-seg { display: flex; flex-wrap: wrap; gap: 6px; }\n.rs-opt { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 9px; border-radius: 999px; cursor: pointer; font-size: .92em; font-weight: 650;\n  border: 1px solid var(--border-strong, var(--border)); background: var(--card); color: var(--text); }\n.rs-opt input { margin: 0; accent-color: var(--accent); }\n.rs-opt:hover { border-color: var(--accent); }\n.rs-opt.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 17%, var(--card)); color: var(--text-strong); }\n.rs-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }\n.rs-fieldset:disabled .rs-opt { cursor: default; opacity: .7; }\n.rs-word { margin-left: .6em; font-size: .78em; vertical-align: 1px; }\n.rs-step.is-quiet { border-color: transparent; background: transparent; padding-top: 3px; padding-bottom: 3px; }\n.rs-step.is-quiet .br-prob-glyph { width: 20px; height: 20px; border-radius: 6px; font-size: 11px; border-width: 1.5px;\n  color: var(--muted); border-color: color-mix(in srgb, var(--muted) 50%, transparent); background: transparent; }\n.rs-step.is-quiet .br-prob-text { font-weight: 550; color: var(--muted); }\n.rs-step.is-running { border-color: var(--kit-run); background: color-mix(in srgb, var(--kt-run) 7%, transparent); }\n.rs-step.is-running .br-prob-glyph { animation: kt-blink 1.4s ease-in-out infinite; }\n.rs-projects { grid-column: 2; list-style: none; margin: 4px 0 0; padding: 6px 0 0; display: grid; gap: 5px; border-top: 1px dashed var(--border); }\n.rs-project { display: grid; grid-template-columns: 18px minmax(9em, max-content) minmax(0, 1fr); gap: 2px 10px; align-items: baseline; font-size: .93em; }\n.rs-project-glyph { align-self: center; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 5px; font-size: 10px; font-weight: 900;\n  color: var(--kt-tone); border: 1.5px solid var(--kt-tone); background: color-mix(in srgb, var(--kt-tone) 14%, transparent); }\n.rs-project-name { color: var(--text-strong); font-weight: 650; word-break: break-all; }\n.rs-project-text { color: var(--text); min-width: 0; }\n.rs-project .br-prob-acts { grid-column: 3; margin-top: 0; }\n", z_ = "bridge.json：带 \"signer\": {\"type\": \"spool\", \"spool_dir\", \"allowed_signers\"}，不写 signing_key", B_ = (e) => ({
 	brainkit: e.brainkit,
 	work_root: e.work_root,
 	fetch_every_min: e.fetch_every_min,
@@ -27356,13 +27417,13 @@ var N_ = "\n.rs-card { gap: .8em; }\n.rs-lead { margin: 0; color: var(--text); m
 	wait_timeout_h: e.wait_timeout_h,
 	stale_after_h: e.stale_after_h,
 	verify_fail_limit: e.verify_fail_limit
-}), I_ = (e) => ({
+}), V_ = (e) => ({
 	...e,
 	brainkit: e.brainkit.trim(),
 	work_root: e.work_root.trim(),
 	auto_push: { ...e.auto_push },
 	team: { ...e.team }
-}), L_ = "队友推上去的进度，app 隔这么久自己取一次，交付总览里就能看到；填 0 就只在点「从远端取最新」时取。", R_ = "这台机器是团队运行机（服务器）", z_ = "团队只有一台团队运行机，装在团队的服务器上：它接手交接过来的需求、巡检 MR。只有那台服务器勾上；组员自己的电脑不勾，在「运行机」里看它在做什么。", B_ = "这台机器是个人电脑：团队运行机在团队的服务器上，在「运行机」里看它在做什么。", V_ = "Lean 每过一个关卡，就把你自己的 run 分支上已经提交的推到远端，队友就能看到你做到哪了；不交接，不开 MR。只在本机做的仓库不推，也不列在这里。", H_ = "关掉以后，开着的快速需求的 MR 再跑 CI 就过不了。", U_ = [[
+}), H_ = "队友推上去的进度，app 隔这么久自己取一次，交付总览里就能看到；填 0 就只在点「从远端取最新」时取。", U_ = "这台机器是团队运行机（服务器）", W_ = "团队只有一台团队运行机，装在团队的服务器上：它接手交接过来的需求、巡检 MR。只有那台服务器勾上；组员自己的电脑不勾，在「运行机」里看它在做什么。", G_ = "这台机器是个人电脑：团队运行机在团队的服务器上，在「运行机」里看它在做什么。", K_ = "Lean 每过一个关卡，就把你自己的 run 分支上已经提交的推到远端，队友就能看到你做到哪了；不交接，不开 MR。只在本机做的仓库不推，也不列在这里。", q_ = "关掉以后，开着的快速需求的 MR 再跑 CI 就过不了。", J_ = [[
 	"bridge_config",
 	"桥的配置文件",
 	"…/bridge.json"
@@ -27370,7 +27431,7 @@ var N_ = "\n.rs-card { gap: .8em; }\n.rs-lead { margin: 0; color: var(--text); m
 	"runnerd_config",
 	"运行机的配置文件",
 	"…/runnerd.json"
-]], W_ = [
+]], Y_ = [
 	{
 		key: "wip_limit",
 		before: "每人同时在做的需求，最多",
@@ -27396,7 +27457,7 @@ var N_ = "\n.rs-card { gap: .8em; }\n.rs-lead { margin: 0; color: var(--text); m
 		max: 20
 	}
 ];
-function G_(e) {
+function X_(e) {
 	return e.ok ? {
 		word: "能用",
 		tone: "ok"
@@ -27420,12 +27481,12 @@ function G_(e) {
 		tone: "bad"
 	};
 }
-function K_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
+function Z_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 	let a = u(), o = F(D.settings(), 0), [l, d] = c(null), [f, p] = c(!1), m = s(null), v = !!e && !e.brainkit.ok;
 	i(() => {
 		v && l && m.current?.focus();
 	}, [v, !!l]), i(() => {
-		o.data && !l && d(F_(o.data));
+		o.data && !l && d(B_(o.data));
 	}, [o.data]);
 	let y = I((e) => a.post(D.settings(), e)), b = (e) => {
 		p(!1), d((t) => t && {
@@ -27437,8 +27498,8 @@ function K_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 		...e
 	} }), S = async () => {
 		if (!l) return;
-		let e = await y.run(I_(l));
-		e && (d(F_(e.settings)), t(e.status), p(e.ok));
+		let e = await y.run(V_(l));
+		e && (d(B_(e.settings)), t(e.status), p(e.ok));
 	}, C = (e) => r({
 		kind: "import",
 		...e ? { path: e } : {}
@@ -27450,7 +27511,7 @@ function K_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 	}, E = async () => {
 		n();
 		try {
-			d(F_(await a.get(D.settings()))), p(!1);
+			d(B_(await a.get(D.settings()))), p(!1);
 		} catch {}
 	}, O = l && /* @__PURE__ */ _("div", {
 		className: "br-field",
@@ -27581,7 +27642,7 @@ function K_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 							]
 						})]
 					}),
-					/* @__PURE__ */ g(q_, {
+					/* @__PURE__ */ g(Q_, {
 						form: l,
 						repos: e?.repos ?? [],
 						edit: b,
@@ -27591,7 +27652,7 @@ function K_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 						className: "br-fieldset",
 						children: [
 							/* @__PURE__ */ g("legend", { children: "全队视图" }),
-							W_.map(({ key: e, before: t, after: n, max: r }) => /* @__PURE__ */ _("label", {
+							Y_.map(({ key: e, before: t, after: n, max: r }) => /* @__PURE__ */ _("label", {
 								className: "st-limit",
 								children: [
 									t,
@@ -27646,7 +27707,7 @@ function K_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 								/* @__PURE__ */ g("div", {
 									className: "st-fields",
 									"data-testid": "team-fields",
-									children: U_.map(([e, t, n]) => /* @__PURE__ */ _("div", {
+									children: J_.map(([e, t, n]) => /* @__PURE__ */ _("div", {
 										className: "br-field",
 										children: [
 											/* @__PURE__ */ g("label", {
@@ -27670,7 +27731,7 @@ function K_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 								}),
 								/* @__PURE__ */ _("details", {
 									className: "br-raw",
-									children: [/* @__PURE__ */ g("summary", { children: "细节：桥的配置文件里，签名服务那一段怎么写" }), /* @__PURE__ */ g("pre", { children: P_ })]
+									children: [/* @__PURE__ */ g("summary", { children: "细节：桥的配置文件里，签名服务那一段怎么写" }), /* @__PURE__ */ g("pre", { children: z_ })]
 								}),
 								/* @__PURE__ */ _("label", {
 									className: "br-check",
@@ -27698,7 +27759,7 @@ function K_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 		className: "kt-root br-view st-root",
 		"data-testid": "settings",
 		children: [
-			/* @__PURE__ */ g("style", { children: nv }),
+			/* @__PURE__ */ g("style", { children: sv }),
 			/* @__PURE__ */ _("header", {
 				className: "st-top",
 				children: [/* @__PURE__ */ g(J, {
@@ -27715,7 +27776,7 @@ function K_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 				})]
 			}),
 			j,
-			e && /* @__PURE__ */ g(X_, {
+			e && /* @__PURE__ */ g(tv, {
 				status: e,
 				onTeam: () => r({ kind: "team" })
 			}),
@@ -27724,7 +27785,7 @@ function K_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 				children: [/* @__PURE__ */ _("div", {
 					className: "st-col",
 					children: [
-						e && /* @__PURE__ */ g(Q_, {
+						e && /* @__PURE__ */ g(rv, {
 							repos: e.repos,
 							idsProblem: e.repo_ids_problem,
 							kitOk: e.brainkit.ok,
@@ -27733,11 +27794,11 @@ function K_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 							onChanged: n
 						}),
 						M,
-						w && /* @__PURE__ */ g(D_, {
+						w && /* @__PURE__ */ g(j_, {
 							repos: e?.repos ?? [],
 							onDone: () => void E()
 						}),
-						e && /* @__PURE__ */ g(Z_, {
+						e && /* @__PURE__ */ g(nv, {
 							role: e.app.role,
 							teamOn: e.team.enabled,
 							onSaved: T
@@ -27745,7 +27806,7 @@ function K_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 					]
 				}), /* @__PURE__ */ g("div", {
 					className: "st-col",
-					children: e && /* @__PURE__ */ g(tv, {
+					children: e && /* @__PURE__ */ g(ov, {
 						crew: e.crew,
 						onFixed: n,
 						kitCard: A?.text
@@ -27755,7 +27816,7 @@ function K_({ status: e, setStatus: t, reloadStatus: n, go: r }) {
 		]
 	});
 }
-function q_({ form: e, repos: t, edit: n, onChanged: r }) {
+function Q_({ form: e, repos: t, edit: n, onChanged: r }) {
 	let i = t.filter((e) => !!e.sync), a = i.filter((e) => e.sync.auto_push !== null), o = a.filter((e) => !!e.fast), s = i.filter((e) => e.sync.fetch && !e.sync.fetch.ok), c = i.filter((e) => e.sync.fetch?.ok), l = (t) => t.trim() === "" ? 0 : Number.isFinite(Number(t)) ? Number(t) : e.fetch_every_min;
 	return /* @__PURE__ */ _("fieldset", {
 		className: "br-fieldset st-sync",
@@ -27784,7 +27845,7 @@ function q_({ form: e, repos: t, edit: n, onChanged: r }) {
 					/* @__PURE__ */ g("p", {
 						className: "br-hint",
 						id: "set-fetch-hint",
-						children: L_
+						children: H_
 					}),
 					s.map((e) => /* @__PURE__ */ _("div", {
 						className: "st-ask",
@@ -27843,7 +27904,7 @@ function q_({ form: e, repos: t, edit: n, onChanged: r }) {
 					}),
 					/* @__PURE__ */ g("p", {
 						className: "br-hint",
-						children: V_
+						children: K_
 					})
 				]
 			}),
@@ -27857,7 +27918,7 @@ function q_({ form: e, repos: t, edit: n, onChanged: r }) {
 						id: "set-fast",
 						children: "允许快速模式"
 					}),
-					o.map((e) => /* @__PURE__ */ g(J_, {
+					o.map((e) => /* @__PURE__ */ g($_, {
 						r: e,
 						onChanged: r
 					}, e.path)),
@@ -27870,7 +27931,7 @@ function q_({ form: e, repos: t, edit: n, onChanged: r }) {
 		]
 	});
 }
-function J_({ r: e, onChanged: t }) {
+function $_({ r: e, onChanged: t }) {
 	let n = u(), r = I((e) => n.post(D.fastMode(), e)), [i, a] = c(null), o = r.result?.fast ?? e.fast, s = o.pending, l = async (n) => {
 		await r.run({
 			repo: e.id,
@@ -27927,7 +27988,7 @@ function J_({ r: e, onChanged: t }) {
 					/* @__PURE__ */ g("p", { children: "这是团队规则：会在 .brain/kit.json 改 fast_mode 并开一个 MR，合并以后才生效。" }),
 					!i && /* @__PURE__ */ g("p", {
 						className: "br-warn-text",
-						children: H_
+						children: q_
 					}),
 					/* @__PURE__ */ _("div", {
 						className: "br-row",
@@ -27964,8 +28025,8 @@ function J_({ r: e, onChanged: t }) {
 		]
 	});
 }
-var Y_ = (e) => e ? "有" : "没有";
-function X_({ status: e, onTeam: t }) {
+var ev = (e) => e ? "有" : "没有";
+function tv({ status: e, onTeam: t }) {
 	let n = e.app.role === "personal", r = n ? {
 		label: "在服务器上",
 		tone: "idle"
@@ -28029,7 +28090,7 @@ function X_({ status: e, onTeam: t }) {
 								}),
 								rt[e] ?? e,
 								" ",
-								Y_(t)
+								ev(t)
 							]
 						}, e))
 					}),
@@ -28081,7 +28142,7 @@ function X_({ status: e, onTeam: t }) {
 									children: e.me.token ? "✓" : "!"
 								}),
 								"GitLab 令牌 ",
-								Y_(e.me.token)
+								ev(e.me.token)
 							]
 						})
 					}),
@@ -28152,7 +28213,7 @@ function X_({ status: e, onTeam: t }) {
 						})
 					] }) : n ? /* @__PURE__ */ _(h, { children: [/* @__PURE__ */ g("div", {
 						className: "br-kpi-note st-how",
-						children: B_
+						children: G_
 					}), /* @__PURE__ */ g("div", {
 						className: "st-mods",
 						children: /* @__PURE__ */ g("button", {
@@ -28179,7 +28240,7 @@ function X_({ status: e, onTeam: t }) {
 		]
 	});
 }
-function Z_({ role: e, teamOn: t, onSaved: n }) {
+function nv({ role: e, teamOn: t, onSaved: n }) {
 	let r = u(), [i, a] = c(null), o = I((e) => r.post(D.settings(), { role: e })), s = async () => {
 		if (!i) return;
 		let e = await o.run(i);
@@ -28214,11 +28275,11 @@ function Z_({ role: e, teamOn: t, onSaved: n }) {
 							let n = t.target.checked ? "team_server" : "personal";
 							a(n === e ? null : n);
 						}
-					}), /* @__PURE__ */ g("b", { children: R_ })]
+					}), /* @__PURE__ */ g("b", { children: U_ })]
 				}), /* @__PURE__ */ g("p", {
 					className: "br-hint",
 					id: "set-role-hint",
-					children: z_
+					children: W_
 				})]
 			}),
 			i && /* @__PURE__ */ _("div", {
@@ -28250,7 +28311,7 @@ function Z_({ role: e, teamOn: t, onSaved: n }) {
 		]
 	});
 }
-function Q_({ repos: e, idsProblem: t, kitOk: n, onImport: r, onRemoved: i, onChanged: a }) {
+function rv({ repos: e, idsProblem: t, kitOk: n, onImport: r, onRemoved: i, onChanged: a }) {
 	let o = e.filter((e) => e.ok).length, [s, l] = c("");
 	return /* @__PURE__ */ _("section", {
 		className: "br-card",
@@ -28281,7 +28342,7 @@ function Q_({ repos: e, idsProblem: t, kitOk: n, onImport: r, onRemoved: i, onCh
 					}), "导入仓库"]
 				})
 			] }),
-			t && /* @__PURE__ */ g($_, {
+			t && /* @__PURE__ */ g(iv, {
 				text: t,
 				onRebuilt: (e) => {
 					l(e.text), i(e.status);
@@ -28303,7 +28364,7 @@ function Q_({ repos: e, idsProblem: t, kitOk: n, onImport: r, onRemoved: i, onCh
 				})]
 			}) : /* @__PURE__ */ g("ul", {
 				className: "st-repos",
-				children: e.map((e) => /* @__PURE__ */ g(ev, {
+				children: e.map((e) => /* @__PURE__ */ g(av, {
 					r: e,
 					kitOk: n,
 					onImport: r,
@@ -28314,7 +28375,7 @@ function Q_({ repos: e, idsProblem: t, kitOk: n, onImport: r, onRemoved: i, onCh
 		]
 	});
 }
-function $_({ text: e, onRebuilt: t }) {
+function iv({ text: e, onRebuilt: t }) {
 	let n = u(), r = I(() => n.post(D.repoIdsRebuild(), {})), i = async () => {
 		let e = await r.run();
 		e && t(e);
@@ -28335,11 +28396,11 @@ function $_({ text: e, onRebuilt: t }) {
 		]
 	});
 }
-function ev({ r: e, kitOk: t, onImport: n, onRemoved: r, onChanged: i }) {
+function av({ r: e, kitOk: t, onImport: n, onRemoved: r, onChanged: i }) {
 	let a = u(), [o, s] = c(!1), l = I(() => a.post(D.repoRemove(), { path: e.path })), d = async () => {
 		let e = await l.run();
 		e && r(e.status);
-	}, { word: f, tone: p } = G_(e), m = e.ok ? "ok" : e.pending ? "wait" : p === "idle" ? "idle" : "bad", v = !t && p === "idle";
+	}, { word: f, tone: p } = X_(e), m = e.ok ? "ok" : e.pending ? "wait" : p === "idle" ? "idle" : "bad", v = !t && p === "idle";
 	return /* @__PURE__ */ _("li", {
 		className: `st-repo is-${m}`,
 		"data-repo": e.id,
@@ -28469,7 +28530,7 @@ function ev({ r: e, kitOk: t, onImport: n, onRemoved: r, onChanged: i }) {
 		]
 	});
 }
-function tv({ crew: e, onFixed: t, kitCard: n }) {
+function ov({ crew: e, onFixed: t, kitCard: n }) {
 	let r = n ? e.rows.map((e) => e.level === "FAIL" && !e.repo && !e.fix ? {
 		...e,
 		todo: `照最上面「${n}」那张卡做`
@@ -28519,7 +28580,7 @@ function tv({ crew: e, onFixed: t, kitCard: n }) {
 		]
 	});
 }
-var nv = "\n.st-root { container: st / inline-size; }\n.st-top { display: flex; align-items: center; gap: .6em 1em; flex-wrap: wrap; }\n.st-top-icon { color: var(--accent); }\n.st-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }\n@container st (max-width: 900px) { .st-stats { grid-template-columns: minmax(0, 1fr); } }\n.st-stat { gap: .5em; }\n.st-stat.is-good { border-color: var(--kit-ok); }\n.st-stat.is-broken { border-color: var(--kit-bad); }\n.st-stat.is-warn { border-color: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); }\n.st-stat-head { display: flex; align-items: center; gap: .5em; }\n.st-stat-head .kt-role-icon { color: var(--muted); }\n.st-stat .br-kpi-big { font-size: 2.2em; }\n.st-user { word-break: break-all; }\n.st-path { display: block; font-size: .82em; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }\n.st-mods { display: flex; flex-wrap: wrap; gap: .35em; align-items: center; }\n.st-mods .br-chip { font-size: .8em; }\n.st-mods .br-chip i { font-style: normal; }\n.st-mods .br-chip.is-off { opacity: .75; border-style: dashed; }\n.st-how { white-space: normal; }\n.st-main { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: var(--kit-gap-block, 16px); align-items: start; }\n@container st (max-width: 1000px) { .st-main { grid-template-columns: minmax(0, 1fr); } }\n.st-col { display: grid; gap: var(--kit-gap-block, 16px); min-width: 0; align-content: start; }\n.st-repos { list-style: none; margin: 0; padding: 0; display: grid; gap: .6em; }\n.st-repo { display: grid; gap: .5em; padding: .75em .9em; border-radius: var(--kit-r-cell, 10px); border: 1px solid var(--border); background: var(--bg-elevated, var(--card));\n  box-shadow: inset 3px 0 0 var(--st-c, transparent); }\n.st-repo.is-ok { --st-c: var(--kt-ok); }\n.st-repo.is-wait { --st-c: var(--kt-approve); border-color: var(--kit-wait); }\n.st-repo.is-bad { --st-c: var(--kt-bad); border-color: var(--kit-bad); }\n.st-repo.is-idle { --st-c: var(--muted); }\n.st-repo-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: .2em .7em; min-width: 0; }\n.st-repo-icon { display: inline-grid; place-items: center; color: var(--st-c, var(--muted)); padding-top: .15em; }\n.st-repo-id { display: grid; gap: .15em; min-width: 0; }\n.st-repo-line { display: flex; align-items: center; gap: .4em .7em; flex-wrap: wrap; min-width: 0; }\n.st-repo-name { color: var(--text-strong); font-size: 1.05em; }\n.st-repo-rm { align-self: start; }\n.st-kitfix { gap: .7em; }\n.st-kitfix header h3 { color: var(--kt-bad); }\n.st-kitfix-todo { margin: 0; }\n.st-kitfix-todo b { color: var(--muted); font-weight: 650; margin-right: .5em; }\n.st-ask { display: grid; gap: .35em; justify-items: start; }\n.st-ask p { margin: 0; }\n.st-kit { display: flex; flex-wrap: wrap; gap: .35em; }\n.st-kit .br-tag { color: var(--muted); }\n.st-kit .br-tag b { color: var(--text-strong); font-weight: 650; margin-left: .3em; }\n.st-repo-why { display: flex; align-items: center; gap: .5em .8em; flex-wrap: wrap; font-size: .93em; }\n.st-me { display: flex; align-items: flex-start; gap: .4em .8em; flex-wrap: wrap; font-size: .93em; }\n.st-me > .br-dim { padding-top: .2em; }\n.st-norepo { display: grid; gap: .8em; }\n.st-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(18em, 1fr)); gap: .8em 1.2em; align-items: start; }\n.st-limit input { width: 5.2em; margin: 0 .4em; text-align: center; }\n.st-team { gap: .8em; }\n.st-sync { gap: .8em; }\n.st-minutes { display: inline-flex; align-items: center; gap: .5em; }\n.st-minutes input { width: 6em; }\n.st-label { font-weight: 650; color: var(--text-strong); }\n.st-push { display: grid; gap: .3em; }\n.st-team.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }\n.st-role { gap: .7em; }\n.st-toggle { display: grid; gap: .1em; }\n.st-toggle b { color: var(--text-strong); }\n.st-toggle .br-hint { padding-left: 1.6em; }\n.st-cells i.is-ok { background: var(--kt-ok); } .st-cells i.is-warn { background: var(--kt-warn); } .st-cells i.is-bad { background: var(--kt-bad); }\n", rv = [
+var sv = "\n.st-root { container: st / inline-size; }\n.st-top { display: flex; align-items: center; gap: .6em 1em; flex-wrap: wrap; }\n.st-top-icon { color: var(--accent); }\n.st-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }\n@container st (max-width: 900px) { .st-stats { grid-template-columns: minmax(0, 1fr); } }\n.st-stat { gap: .5em; }\n.st-stat.is-good { border-color: var(--kit-ok); }\n.st-stat.is-broken { border-color: var(--kit-bad); }\n.st-stat.is-warn { border-color: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); }\n.st-stat-head { display: flex; align-items: center; gap: .5em; }\n.st-stat-head .kt-role-icon { color: var(--muted); }\n.st-stat .br-kpi-big { font-size: 2.2em; }\n.st-user { word-break: break-all; }\n.st-path { display: block; font-size: .82em; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }\n.st-mods { display: flex; flex-wrap: wrap; gap: .35em; align-items: center; }\n.st-mods .br-chip { font-size: .8em; }\n.st-mods .br-chip i { font-style: normal; }\n.st-mods .br-chip.is-off { opacity: .75; border-style: dashed; }\n.st-how { white-space: normal; }\n.st-main { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: var(--kit-gap-block, 16px); align-items: start; }\n@container st (max-width: 1000px) { .st-main { grid-template-columns: minmax(0, 1fr); } }\n.st-col { display: grid; gap: var(--kit-gap-block, 16px); min-width: 0; align-content: start; }\n.st-repos { list-style: none; margin: 0; padding: 0; display: grid; gap: .6em; }\n.st-repo { display: grid; gap: .5em; padding: .75em .9em; border-radius: var(--kit-r-cell, 10px); border: 1px solid var(--border); background: var(--bg-elevated, var(--card));\n  box-shadow: inset 3px 0 0 var(--st-c, transparent); }\n.st-repo.is-ok { --st-c: var(--kt-ok); }\n.st-repo.is-wait { --st-c: var(--kt-approve); border-color: var(--kit-wait); }\n.st-repo.is-bad { --st-c: var(--kt-bad); border-color: var(--kit-bad); }\n.st-repo.is-idle { --st-c: var(--muted); }\n.st-repo-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: .2em .7em; min-width: 0; }\n.st-repo-icon { display: inline-grid; place-items: center; color: var(--st-c, var(--muted)); padding-top: .15em; }\n.st-repo-id { display: grid; gap: .15em; min-width: 0; }\n.st-repo-line { display: flex; align-items: center; gap: .4em .7em; flex-wrap: wrap; min-width: 0; }\n.st-repo-name { color: var(--text-strong); font-size: 1.05em; }\n.st-repo-rm { align-self: start; }\n.st-kitfix { gap: .7em; }\n.st-kitfix header h3 { color: var(--kt-bad); }\n.st-kitfix-todo { margin: 0; }\n.st-kitfix-todo b { color: var(--muted); font-weight: 650; margin-right: .5em; }\n.st-ask { display: grid; gap: .35em; justify-items: start; }\n.st-ask p { margin: 0; }\n.st-kit { display: flex; flex-wrap: wrap; gap: .35em; }\n.st-kit .br-tag { color: var(--muted); }\n.st-kit .br-tag b { color: var(--text-strong); font-weight: 650; margin-left: .3em; }\n.st-repo-why { display: flex; align-items: center; gap: .5em .8em; flex-wrap: wrap; font-size: .93em; }\n.st-me { display: flex; align-items: flex-start; gap: .4em .8em; flex-wrap: wrap; font-size: .93em; }\n.st-me > .br-dim { padding-top: .2em; }\n.st-norepo { display: grid; gap: .8em; }\n.st-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(18em, 1fr)); gap: .8em 1.2em; align-items: start; }\n.st-limit input { width: 5.2em; margin: 0 .4em; text-align: center; }\n.st-team { gap: .8em; }\n.st-sync { gap: .8em; }\n.st-minutes { display: inline-flex; align-items: center; gap: .5em; }\n.st-minutes input { width: 6em; }\n.st-label { font-weight: 650; color: var(--text-strong); }\n.st-push { display: grid; gap: .3em; }\n.st-team.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }\n.st-role { gap: .7em; }\n.st-toggle { display: grid; gap: .1em; }\n.st-toggle b { color: var(--text-strong); }\n.st-toggle .br-hint { padding-left: 1.6em; }\n.st-cells i.is-ok { background: var(--kt-ok); } .st-cells i.is-warn { background: var(--kt-warn); } .st-cells i.is-bad { background: var(--kt-bad); }\n", cv = [
 	{
 		key: "reply",
 		heading: "会话在等你回话",
@@ -28653,14 +28714,14 @@ var nv = "\n.st-root { container: st / inline-size; }\n.st-top { display: flex; 
 		tone: "bad",
 		hint: "修好了才能开会话（不开会话也能开工）"
 	}
-], iv = {
+], lv = {
 	wait: "等你",
 	bad: "被拒或卡住",
 	warn: "看一眼"
-}, av = {
+}, uv = {
 	open_mr: X.openMr,
 	full: X.toFull
-}, ov = (e) => e.kind === "question" && !e.question ? "stuck" : e.kind === "reply" && e.review ? "review" : e.kind, sv = (e) => e && /DESIGN|PLAN|INCEPTION/i.test(e) ? "design" : "req", cv = [
+}, dv = (e) => e.kind === "question" && !e.question ? "stuck" : e.kind === "reply" && e.review ? "review" : e.kind, fv = (e) => e && /DESIGN|PLAN|INCEPTION/i.test(e) ? "design" : "req", pv = [
 	{
 		icon: "laptop",
 		title: "会话等你",
@@ -28692,11 +28753,11 @@ var nv = "\n.st-root { container: st / inline-size; }\n.st-top { display: flex; 
 		text: "运行机的问题、验收"
 	}
 ];
-function lv(e) {
+function mv(e) {
 	let t = F(D.todo(), e.pollMs ?? 1e4), n = t.data, r = () => {
 		t.reload(), e.reloadStatus();
-	}, a = Date.now() / 1e3, o = s(null), [l, u] = c(!1), [d, f] = c({}), p = (e) => `${e.repo}/${e.key}`, m = n ? rv.map((e) => {
-		let t = n.items.filter((t) => ov(t) === e.key), r = e.key === "child_start" ? Object.values(d).filter((e) => !t.some((t) => p(t) === p(e.it))).map((e) => e.it) : [];
+	}, a = Date.now() / 1e3, o = s(null), [l, u] = c(!1), [d, f] = c({}), p = (e) => `${e.repo}/${e.key}`, m = n ? cv.map((e) => {
+		let t = n.items.filter((t) => dv(t) === e.key), r = e.key === "child_start" ? Object.values(d).filter((e) => !t.some((t) => p(t) === p(e.it))).map((e) => e.it) : [];
 		return {
 			...e,
 			items: t,
@@ -28721,7 +28782,7 @@ function lv(e) {
 		"data-testid": "br-todo",
 		ref: o,
 		children: [
-			/* @__PURE__ */ g("style", { children: mv }),
+			/* @__PURE__ */ g("style", { children: yv }),
 			/* @__PURE__ */ g("style", { children: Rn }),
 			/* @__PURE__ */ _("header", {
 				className: "td-top",
@@ -28744,7 +28805,7 @@ function lv(e) {
 				title: "现在没有等你做的事",
 				text: ["需求走到要你动手的地方，就会出现在这里，按种类分好：会话等你回话、等你开会话审查、Lean 的审批、会话问你的澄清、认领了还没开工、交接被拒、MR 上的问题和验收，还有 KiroCrew 这边要修的；拆成小需求的，能开工的小需求、能发布的大需求，关了却留着分支的需求，还有没推上去的进度，也在这里。"],
 				punch: "这一页空着，就是没有谁在等你。",
-				flow: cv,
+				flow: pv,
 				children: /* @__PURE__ */ _("button", {
 					type: "button",
 					className: "br-btn",
@@ -28847,7 +28908,7 @@ function lv(e) {
 							})
 						}) : /* @__PURE__ */ g("div", {
 							className: "td-items",
-							children: [...t.items, ...t.kept].map((n, i) => /* @__PURE__ */ g(pv, {
+							children: [...t.items, ...t.kept].map((n, i) => /* @__PURE__ */ g(vv, {
 								it: n,
 								group: t,
 								now: a,
@@ -28863,8 +28924,8 @@ function lv(e) {
 		]
 	});
 }
-var uv = (e) => e.path || null;
-function dv({ path: t }) {
+var hv = (e) => e.path || null;
+function gv({ path: t }) {
 	return /* @__PURE__ */ _("p", {
 		className: "td-do td-read",
 		"data-testid": "todo-read",
@@ -28877,9 +28938,9 @@ function dv({ path: t }) {
 		})] }, t))]
 	});
 }
-var fv = (e) => `交接被拒了：${e.replace(/^(接手被拒|交接被拒)[：:]\s*/, "")}。请按这个原因改好，再交接一次。`;
-function pv({ it: e, group: t, now: n, go: r, onAnswered: i, started: a, onStarted: o }) {
-	let s = p(), c = u(), l = I((t) => c.post(D.childStart(e.repo, e.key), t)), d = e.kind === "lean_approval" ? sv(e.approval) : t.icon, f = e.session?.url ?? null, m = e.kind === "handoff_rejected" && f ? fv(e.text) : e.line, h = e.question && (e.kind === "question" || e.kind === "clarify" || e.kind === "acceptance"), v = e.mr_url ?? e.question?.mr_url ?? null, y = t.key === "question" ? X.answerOnMr : t.key === "acceptance" ? X.acceptOnMr : t.key === "handoff_unlabelled" ? Y.label_handoff : X.viewMr, b = t.key === "question" || t.key === "acceptance" || t.key === "handoff_unlabelled" || t.key === "stuck", x = async () => {
+var _v = (e) => `交接被拒了：${e.replace(/^(接手被拒|交接被拒)[：:]\s*/, "")}。请按这个原因改好，再交接一次。`;
+function vv({ it: e, group: t, now: n, go: r, onAnswered: i, started: a, onStarted: o }) {
+	let s = p(), c = u(), l = I((t) => c.post(D.childStart(e.repo, e.key), t)), d = e.kind === "lean_approval" ? fv(e.approval) : t.icon, f = e.session?.url ?? null, m = e.kind === "handoff_rejected" && f ? _v(e.text) : e.line, h = e.question && (e.kind === "question" || e.kind === "clarify" || e.kind === "acceptance"), v = e.mr_url ?? e.question?.mr_url ?? null, y = t.key === "question" ? X.answerOnMr : t.key === "acceptance" ? X.acceptOnMr : t.key === "handoff_unlabelled" ? Y.label_handoff : X.viewMr, b = t.key === "question" || t.key === "acceptance" || t.key === "handoff_unlabelled" || t.key === "stuck", x = async () => {
 		let e = await l.run({ open_session: !0 });
 		e && o(e);
 	}, S = e.kind === "child_start" && !a?.ok;
@@ -28894,7 +28955,7 @@ function pv({ it: e, group: t, now: n, go: r, onAnswered: i, started: a, onStart
 				children: [
 					/* @__PURE__ */ g("span", {
 						className: "td-item-icon",
-						title: iv[t.tone],
+						title: lv[t.tone],
 						children: /* @__PURE__ */ g(J, {
 							role: d,
 							size: 18
@@ -28932,7 +28993,7 @@ function pv({ it: e, group: t, now: n, go: r, onAnswered: i, started: a, onStart
 				className: "td-text",
 				children: e.text
 			}),
-			e.kind === "lean_approval" && uv(e) && /* @__PURE__ */ g(dv, { path: uv(e) }),
+			e.kind === "lean_approval" && hv(e) && /* @__PURE__ */ g(gv, { path: hv(e) }),
 			t.key === "stuck" && /* @__PURE__ */ _("p", {
 				className: "td-do",
 				children: [/* @__PURE__ */ g("b", { children: "做什么" }), "找这个需求的负责人，在 MR 上决定重开还是关掉它。"]
@@ -29009,10 +29070,10 @@ function pv({ it: e, group: t, now: n, go: r, onAnswered: i, started: a, onStart
 							size: 14
 						}), Y.push_handoff]
 					}),
-					av[t.key] && e.key && /* @__PURE__ */ _("button", {
+					uv[t.key] && e.key && /* @__PURE__ */ _("button", {
 						type: "button",
 						className: "br-btn is-small is-primary",
-						title: `在${X.openDetail}里点「${av[t.key]}」`,
+						title: `在${X.openDetail}里点「${uv[t.key]}」`,
 						onClick: () => r({
 							kind: "item",
 							repo: e.repo,
@@ -29083,12 +29144,12 @@ function pv({ it: e, group: t, now: n, go: r, onAnswered: i, started: a, onStart
 		]
 	});
 }
-var mv = "\n.td-top { display: flex; align-items: center; gap: .6em 1em; flex-wrap: wrap; }\n.td-top-icon { color: var(--accent); }\n.td-root { --td-wait: var(--kt-approve); --td-bad: var(--kt-bad); --td-warn: var(--kt-warn); }\n.td-root .is-wait { --td-c: var(--td-wait); --td-b: var(--kit-wait); }\n.td-root .is-bad { --td-c: var(--td-bad); --td-b: var(--kit-bad); }\n.td-root .is-warn { --td-c: var(--td-warn); --td-b: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); }\n.td-kpi { gap: .6em; border-color: var(--kit-wait); }\n.td-kpi-row { display: flex; align-items: center; gap: .8em 1.6em; flex-wrap: wrap; }\n.td-cells { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 18em; }\n.td-cells i { width: 1.9em; height: 1.9em; border-radius: .5em; border: 2px solid var(--td-c); background: color-mix(in srgb, var(--td-c) 22%, transparent); }\n.td-cells i.is-wait { animation: kt-blink 2.4s ease-in-out infinite; }\n@media (prefers-reduced-motion: reduce) { .td-cells i.is-wait { animation: none; } }\n.td-jumps { display: flex; flex-wrap: wrap; gap: .4em; }\n.td-jump { appearance: none; font: inherit; font-size: .88em; display: inline-flex; align-items: center; gap: .4em; padding: .25em .8em; border-radius: 999px; cursor: pointer;\n  color: var(--text); background: color-mix(in srgb, var(--td-c) 10%, transparent); border: 1px solid color-mix(in srgb, var(--td-c) 45%, transparent); }\n.td-jump .kt-role-icon { color: var(--td-c); }\n.td-jump b { color: var(--text-strong); }\n.td-jump:hover { border-color: var(--td-c); }\n.td-groups { columns: 3 30em; column-gap: var(--kit-gap-block, 16px); }\n@container br-app (max-width: 1100px) { .td-groups { columns: 2 22em; } }\n@container br-app (max-width: 720px) { .td-groups { columns: 1; } }\n.td-group { display: grid; gap: .7em; break-inside: avoid; margin-bottom: 1.4em; }\n.td-group-head { display: flex; align-items: center; gap: .4em .7em; flex-wrap: wrap; }\n.td-group-head h3 { font-size: 1.1em; }\n.td-group-icon { display: grid; place-items: center; width: 2.1em; height: 2.1em; border-radius: .6em; color: var(--td-c);\n  border: 1px solid color-mix(in srgb, var(--td-c) 50%, var(--border)); background: color-mix(in srgb, var(--td-c) 12%, transparent); }\n.td-root span.td-badge { --kt-tone: var(--td-c); font-size: .8em; }\n.td-items { display: grid; gap: var(--kit-gap-row, 12px); }\n.td-item { display: grid; gap: .6em; align-content: start; padding: .9em 1.1em; border-radius: var(--kit-r, 16px); background: var(--card);\n  border: 1px solid var(--td-b, var(--border)); box-shadow: inset 3px 0 0 var(--td-c, transparent); }\n.td-item-top { display: flex; align-items: center; gap: .4em .6em; flex-wrap: wrap; }\n.td-item-icon { display: inline-grid; place-items: center; color: var(--td-c); }\n.td-title { color: var(--text-strong); font-weight: 700; }\n.td-text { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--text); }\n.td-do { margin: 0; font-size: .93em; color: var(--text); }\n.td-do b { color: var(--muted); font-weight: 650; margin-right: .5em; }\n.td-read b { margin-right: 0; }\n.td-read .td-seg { white-space: nowrap; }\n.td-acts { display: flex; align-items: center; gap: .5em; flex-wrap: wrap; }\n.td-acts a.br-btn { text-decoration: none; }\n.td-acts .kt-btn { padding: 4px 10px; font-size: .84em; border-radius: 8px; display: inline-flex; align-items: center; gap: 5px; }\n.td-acts .br-note, .td-acts .br-error { flex-basis: 100%; margin: 0; }\n.td-acts a.br-btn.is-primary { color: var(--accent-fg, #fff); }\n", hv = 3e4, gv = (e, t) => e.kind === "board" && t.kind === "board" && e.repo === t.repo && e.key === t.key;
-function _v({ pollMs: e } = {}) {
+var yv = "\n.td-top { display: flex; align-items: center; gap: .6em 1em; flex-wrap: wrap; }\n.td-top-icon { color: var(--accent); }\n.td-root { --td-wait: var(--kt-approve); --td-bad: var(--kt-bad); --td-warn: var(--kt-warn); }\n.td-root .is-wait { --td-c: var(--td-wait); --td-b: var(--kit-wait); }\n.td-root .is-bad { --td-c: var(--td-bad); --td-b: var(--kit-bad); }\n.td-root .is-warn { --td-c: var(--td-warn); --td-b: color-mix(in srgb, var(--kt-warn) 55%, var(--border)); }\n.td-kpi { gap: .6em; border-color: var(--kit-wait); }\n.td-kpi-row { display: flex; align-items: center; gap: .8em 1.6em; flex-wrap: wrap; }\n.td-cells { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 18em; }\n.td-cells i { width: 1.9em; height: 1.9em; border-radius: .5em; border: 2px solid var(--td-c); background: color-mix(in srgb, var(--td-c) 22%, transparent); }\n.td-cells i.is-wait { animation: kt-blink 2.4s ease-in-out infinite; }\n@media (prefers-reduced-motion: reduce) { .td-cells i.is-wait { animation: none; } }\n.td-jumps { display: flex; flex-wrap: wrap; gap: .4em; }\n.td-jump { appearance: none; font: inherit; font-size: .88em; display: inline-flex; align-items: center; gap: .4em; padding: .25em .8em; border-radius: 999px; cursor: pointer;\n  color: var(--text); background: color-mix(in srgb, var(--td-c) 10%, transparent); border: 1px solid color-mix(in srgb, var(--td-c) 45%, transparent); }\n.td-jump .kt-role-icon { color: var(--td-c); }\n.td-jump b { color: var(--text-strong); }\n.td-jump:hover { border-color: var(--td-c); }\n.td-groups { columns: 3 30em; column-gap: var(--kit-gap-block, 16px); }\n@container br-app (max-width: 1100px) { .td-groups { columns: 2 22em; } }\n@container br-app (max-width: 720px) { .td-groups { columns: 1; } }\n.td-group { display: grid; gap: .7em; break-inside: avoid; margin-bottom: 1.4em; }\n.td-group-head { display: flex; align-items: center; gap: .4em .7em; flex-wrap: wrap; }\n.td-group-head h3 { font-size: 1.1em; }\n.td-group-icon { display: grid; place-items: center; width: 2.1em; height: 2.1em; border-radius: .6em; color: var(--td-c);\n  border: 1px solid color-mix(in srgb, var(--td-c) 50%, var(--border)); background: color-mix(in srgb, var(--td-c) 12%, transparent); }\n.td-root span.td-badge { --kt-tone: var(--td-c); font-size: .8em; }\n.td-items { display: grid; gap: var(--kit-gap-row, 12px); }\n.td-item { display: grid; gap: .6em; align-content: start; padding: .9em 1.1em; border-radius: var(--kit-r, 16px); background: var(--card);\n  border: 1px solid var(--td-b, var(--border)); box-shadow: inset 3px 0 0 var(--td-c, transparent); }\n.td-item-top { display: flex; align-items: center; gap: .4em .6em; flex-wrap: wrap; }\n.td-item-icon { display: inline-grid; place-items: center; color: var(--td-c); }\n.td-title { color: var(--text-strong); font-weight: 700; }\n.td-text { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--text); }\n.td-do { margin: 0; font-size: .93em; color: var(--text); }\n.td-do b { color: var(--muted); font-weight: 650; margin-right: .5em; }\n.td-read b { margin-right: 0; }\n.td-read .td-seg { white-space: nowrap; }\n.td-acts { display: flex; align-items: center; gap: .5em; flex-wrap: wrap; }\n.td-acts a.br-btn { text-decoration: none; }\n.td-acts .kt-btn { padding: 4px 10px; font-size: .84em; border-radius: 8px; display: inline-flex; align-items: center; gap: 5px; }\n.td-acts .br-note, .td-acts .br-error { flex-basis: 100%; margin: 0; }\n.td-acts a.br-btn.is-primary { color: var(--accent-fg, #fff); }\n", bv = 3e4, xv = (e, t) => e.kind === "board" && t.kind === "board" && e.repo === t.repo && e.key === t.key;
+function Sv({ pollMs: e } = {}) {
 	let [t, r] = c(() => ({
 		...q(window.location.search),
 		n: 0
-	})), [a, o] = c(() => wv(q(window.location.search), xv())), l = u(), [d, m] = c(!1), [h, v] = c(null), y = n((e, t, n) => {
+	})), [a, o] = c(() => kv(q(window.location.search), Ev())), l = u(), [d, m] = c(!1), [h, v] = c(null), y = n((e, t, n) => {
 		let r = `${e}/${t}`;
 		v((e) => n ? r : e === r ? null : e);
 	}, []), b = p(), x = f(), S = s(null), C = s(q(window.location.search)), w = s(C.current.kind === "overview" ? C.current : { kind: "overview" }), T = F(D.status(), e ?? 3e4), E = T.data?.counts.todo ?? 0;
@@ -29097,8 +29158,8 @@ function _v({ pollMs: e } = {}) {
 	}, [E, !!T.data]);
 	let O = n((e) => {
 		C.current = e, e.kind === "overview" && (w.current = e), o((t) => {
-			let n = wv(e, t);
-			return n !== t && Sv(n), n;
+			let n = kv(e, t);
+			return n !== t && Dv(n), n;
 		});
 	}, []), k = (e) => `${window.location.pathname}${Ce(e)}`, A = () => Number(window.history.state?.brDepth ?? 0), M = n((e) => {
 		O(e);
@@ -29128,7 +29189,7 @@ function _v({ pollMs: e } = {}) {
 	i(() => {
 		let e = () => {
 			let e = q(window.location.search);
-			O(e), r((t) => gv(t, e) ? t : {
+			O(e), r((t) => xv(t, e) ? t : {
 				...e,
 				n: t.n + 1
 			});
@@ -29150,7 +29211,7 @@ function _v({ pollMs: e } = {}) {
 				...a
 			});
 			m(!0), l.get(D.overview("all")).then((t) => {
-				let n = Cv(t.rows);
+				let n = Ov(t.rows);
 				P(n ? {
 					kind: e,
 					repo: n.repo,
@@ -29159,7 +29220,7 @@ function _v({ pollMs: e } = {}) {
 			}, () => P(w.current)).finally(() => m(!1));
 			return;
 		}
-		let t = Tv(C.current);
+		let t = Av(C.current);
 		if (e === "new") return P({
 			kind: "new",
 			...t ? { repo: t } : {}
@@ -29240,9 +29301,9 @@ function _v({ pollMs: e } = {}) {
 			entry: t,
 			...z
 		}, B);
-	} else if (V.kind === "todo") H = /* @__PURE__ */ g(lv, { ...z }, B);
+	} else if (V.kind === "todo") H = /* @__PURE__ */ g(mv, { ...z }, B);
 	else if (V.kind === "team") H = T.data?.app.role === "personal" ? /* @__PURE__ */ g($g, { ...z }, B) : /* @__PURE__ */ g(up, { ...z }, B);
-	else if (V.kind === "settings") H = /* @__PURE__ */ g(K_, { ...z }, B);
+	else if (V.kind === "settings") H = /* @__PURE__ */ g(Z_, { ...z }, B);
 	else if (V.kind === "import") {
 		let { kind: e, ...t } = V;
 		H = /* @__PURE__ */ g(Am, {
@@ -29266,7 +29327,7 @@ function _v({ pollMs: e } = {}) {
 			/* @__PURE__ */ g("style", { children: dd }),
 			/* @__PURE__ */ g("style", { children: _d }),
 			/* @__PURE__ */ g("style", { children: md }),
-			/* @__PURE__ */ g("style", { children: vv }),
+			/* @__PURE__ */ g("style", { children: Cv }),
 			/* @__PURE__ */ g(an, {
 				view: V.kind,
 				onView: ee,
@@ -29280,7 +29341,7 @@ function _v({ pollMs: e } = {}) {
 				className: "br-banners",
 				"data-testid": "br-banners",
 				children: [
-					ne && /* @__PURE__ */ g(yv, {
+					ne && /* @__PURE__ */ g(wv, {
 						text: `${U ? "状态刷新没成：" : ""}${ne.text}`,
 						todo: ne.todo,
 						raw: T.raw,
@@ -29293,7 +29354,7 @@ function _v({ pollMs: e } = {}) {
 							children: "再试一次"
 						})
 					}),
-					W && /* @__PURE__ */ _(yv, {
+					W && /* @__PURE__ */ _(wv, {
 						text: W.text,
 						todo: W.todo,
 						raw: W.raw,
@@ -29306,7 +29367,7 @@ function _v({ pollMs: e } = {}) {
 							children: W.kind === "missing" ? "去填位置" : "去设置"
 						})]
 					}),
-					G && /* @__PURE__ */ g(yv, {
+					G && /* @__PURE__ */ g(wv, {
 						text: "仓库编号的记录坏了：这次没认仓库",
 						todo: "在设置里点「按记录重建编号」",
 						raw: G,
@@ -29360,8 +29421,8 @@ function _v({ pollMs: e } = {}) {
 		]
 	});
 }
-var vv = "\n.br-app { container: br-app / inline-size; width: 100%; }\n.br-tabs button.is-off { color: var(--muted); }\n.br-tabs button.is-off[aria-selected=\"true\"] { border-bottom-color: color-mix(in srgb, var(--muted) 70%, transparent); }\n.br-shell-row { display: flex; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; }\n.br-shell-row .br-prob-todo { display: inline-flex; gap: 6px; }\n.br-shell-row .br-prob-todo b { color: var(--muted); font-weight: 650; }\n";
-function yv({ text: e, todo: t, raw: n, bad: r, testid: i, children: a }) {
+var Cv = "\n.br-app { container: br-app / inline-size; width: 100%; }\n.br-tabs button.is-off { color: var(--muted); }\n.br-tabs button.is-off[aria-selected=\"true\"] { border-bottom-color: color-mix(in srgb, var(--muted) 70%, transparent); }\n.br-shell-row { display: flex; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; }\n.br-shell-row .br-prob-todo { display: inline-flex; gap: 6px; }\n.br-shell-row .br-prob-todo b { color: var(--muted); font-weight: 650; }\n";
+function wv({ text: e, todo: t, raw: n, bad: r, testid: i, children: a }) {
 	return /* @__PURE__ */ g("div", {
 		className: `br-banner${r ? " is-error" : ""}`,
 		role: "alert",
@@ -29386,10 +29447,10 @@ function yv({ text: e, todo: t, raw: n, bad: r, testid: i, children: a }) {
 		})
 	});
 }
-var bv = "brain.app.held";
-function xv() {
+var Tv = "brain.app.held";
+function Ev() {
 	try {
-		let e = JSON.parse(window.localStorage.getItem(bv) || "null");
+		let e = JSON.parse(window.localStorage.getItem(Tv) || "null");
 		return e && typeof e.repo == "string" && typeof e.key == "string" ? {
 			repo: e.repo,
 			key: e.key
@@ -29398,24 +29459,24 @@ function xv() {
 		return null;
 	}
 }
-function Sv(e) {
+function Dv(e) {
 	try {
-		e && window.localStorage.setItem(bv, JSON.stringify(e));
+		e && window.localStorage.setItem(Tv, JSON.stringify(e));
 	} catch {}
 }
-function Cv(e) {
+function Ov(e) {
 	if (!e.length) return null;
 	let t = (e) => e.updated_at ?? 0, n = e.filter((e) => e.waits.who === "you");
 	return n.length ? [...n].sort((e, n) => t(n) - t(e))[0] : [...e].sort((e, n) => t(n) - t(e))[0];
 }
-function wv(e, t) {
+function kv(e, t) {
 	return e.kind !== "item" && e.kind !== "board" || t && t.repo === e.repo && t.key === e.key ? t : {
 		repo: e.repo,
 		key: e.key
 	};
 }
-function Tv(e) {
+function Av(e) {
 	return "repo" in e && e.repo && e.repo !== "runner" ? e.repo : void 0;
 }
 //#endregion
-export { hv as STATUS_POLL_MS, _v as default, Cv as pickRequirement };
+export { bv as STATUS_POLL_MS, Sv as default, Ov as pickRequirement };

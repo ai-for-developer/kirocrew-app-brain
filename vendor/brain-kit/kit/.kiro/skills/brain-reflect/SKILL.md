@@ -45,9 +45,9 @@ One to five lines the next run can act on. State the rule, not the story.
 - Only knowledge a later run needs. Not this run's status, not a diary.
 - An entry that relaxes tests, logging, auth, reviews or dependencies needs Builder and security: say why.
 - Entries from requirement documents (`src` with `D01#S...`) are reviewed one by one: keep each one small.
-- If a person rejected your work (`answer D-n reject ...`), write a `correction` (or `repeats <id>`) citing that
-  decision or voucher id. Reflect warns about rejections nobody wrote down.
-- If they rejected review items at acceptance (`answer D-n reject A-3,D-7 ...`), write one `correction` per item,
+- If a person rejected your work (`answer Q-n reject ...`), write a `correction` (or `repeats <id>`) citing that
+  question or voucher id. Reflect warns about rejections nobody wrote down.
+- If they rejected review items at acceptance (`answer Q-n reject A-3,D-7 ...`), write one `correction` per item,
   with the item id and the voucher id in `src` (`src: A-3, V-1a2b3c4d5e`). Reflect warns about each item nobody
   wrote down.
 - If they sent items back on a review sheet (the `[brain-kit] 审批单` line names them), write one `correction` per

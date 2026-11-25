@@ -205,6 +205,7 @@ class Service:
         self._tasks = []
         async with self._team_lock:
             await self._stop_team()
+        await self.sessions.save()     # what changed since the last poll saved them, team mode's last round included
         if hasattr(self.sessions.gw, "close"):
             await self.sessions.gw.close()
         bk.unload()
@@ -2372,7 +2373,7 @@ class Service:
             got = problems.reason(row["error"]) if row["error"] else None
             row.update(error=got["text"] if got else "", raw=(got["raw"] or "") if got else "")
             handovers.append(row)
-        notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [])
+        notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [], led.get("runs") or [])
         return {"status": self.team.status(), "ledger": self.team.counts(led),
                 "runs": [{"run_id": r["run_id"], "req": r["req"], "project": r["project"], "iid": int(r["iid"]),
                           "state": r["state"], "slot": r.get("slot"), "mr_url": self.team.mr_url(r["project"], r["iid"]),

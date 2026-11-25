@@ -148,7 +148,8 @@ def epoch(stamp: Any) -> float | None:
 def on_names(row: Mapping[str, Any], mr: Mapping[str, Any] | None, roles: Mapping[str, Any]) -> list[str]:
     """Who takes the step *row* waits on now (Waits.on), GitLab usernames: those the bridge's open question names
     (an answer, an acceptance), the people of the role it waits on (identities.json), or its owner for a step of
-    theirs; [] when it waits on no one in particular (AI, the runner, the bridge, anyone who claims it)."""
+    theirs (the merge of a run the runner finished among them); [] when it waits on no one in particular (AI, the
+    runner, the bridge, anyone who claims it)."""
     w = row["waits"]
     if w["do"] in deliveries.GATES and mr:
         asked = [q for q in mr.get("questions") or [] if q.get("state") == "open" and q.get("who")]
@@ -157,7 +158,8 @@ def on_names(row: Mapping[str, Any], mr: Mapping[str, Any] | None, roles: Mappin
     role = ROLE_OF.get(w["who"])
     if role:
         return [str(n) for n in roles.get(role) or []]
-    if w["do"] in OWNER_STEPS and w["who"] in ("people", "you") and row.get("owner"):
+    owners = w["do"] in OWNER_STEPS or row.get("state") == "to_merge"
+    if owners and w["who"] in ("people", "you") and row.get("owner"):
         return [str(row["owner"])]
     return []
 
@@ -238,8 +240,10 @@ class Deliveries:
     thread)."""
 
     def __init__(self, gl: Any, base: str, kit: Callable[[str], Mapping[str, Any]],
-                 now: Callable[[], float] = time.time, clock: Callable[[], float] = time.monotonic) -> None:
+                 now: Callable[[], float] = time.time, clock: Callable[[], float] = time.monotonic,
+                 answer_wait_s: float = deliveries.ANSWER_WAIT_S) -> None:
         self.gl, self.base, self.kit, self.now, self.clock = gl, base.rstrip("/"), kit, now, clock
+        self.answer_wait_s = answer_wait_s      # bridge.json stall_minutes: an answer delivered says 运行机在接着做 that long
         self._facts: dict[tuple, Facts] = {}                # (project, key, sha) -> read_facts at that commit
         self._blobs: dict[str, dict[str, bytes]] = {}       # project -> blob id -> the file (GitLabSource)
         self._claims: dict[tuple, Any] = {}                 # (project, sha) -> its claim.json, an object or None
@@ -391,7 +395,7 @@ class Deliveries:
         since = deliveries.runner_commits_from(run, info, dict(kit)) if f["where"] == "branch" else None
         deliveries.classify(row, f, mr=info, slot=None, cfg=dict(kit), at_handover=bool(info) and bool(handover)
                             and list(parent) == [handover], me=None, reflected=reflected, now=now, pushed=True,
-                            fast=fast_of(f, kit),
+                            fast=fast_of(f, kit), answer_wait_s=self.answer_wait_s,
                             bot_commits=self._bot_commits(project, since, g.sha, kit, seen) if since else 0)
         row["family"] = fam
         family.classify(row, fam, f, None)

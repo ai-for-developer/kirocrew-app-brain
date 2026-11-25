@@ -6,7 +6,7 @@ import shutil as _shutil
 from pathlib import Path as _Path
 
 APP_NAME = "brain"
-VERSION = "0.5.3"
+VERSION = "0.5.4"
 
 # Sidebar folders of the sessions this app opens (apart from aidlc-team's 「AI-DLC 团队」, so both apps can be installed).
 LOCAL_FOLDER = "Brain 需求"        # brain-dev sessions on this machine: a folder per repo, in it one per requirement
@@ -18,6 +18,10 @@ RUNNER_FOLDER = "Brain 运行机"     # brain-run sessions the team runner dispa
 LOCAL_AGENT = "brain-dev-crew"
 OLD_AGENT = "brain-dev"            # what sessions were opened with before: those keep working
 RUNNER_AGENT = "brain-run"         # ~/.kiro/agents/brain-run.json on the team runner
+# the label of an MR whose run on the team runner the product accepted and whose session is done: a person merges it
+# (team/runwatch.py puts it on in place of kit.json running_label and takes it off at the merge; brain-kit's labels
+# have none for it, BRAINKIT_REQUESTS 50)
+MERGE_LABEL = "ai-ready-to-merge"
 
 # KiroCrew lets an agent work only under ~/workspace(s) or ~/workplace(s): every requirement's worktree lives here.
 WORK_ROOT = _Path.home() / "workplace" / "brain-app"
@@ -31,6 +35,10 @@ CACHE_S = 4.0           # a repo scan is reused for this long
 KEY_RE = _re.compile(r"^[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}$")
 SLUG_RE = _re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 RUN_ID_RE = _re.compile(r"^RUN-[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}-[1-9][0-9]{0,5}$")
+# the id of a question the bridge asks on an MR, as brain-kit's decisions.DID reads it: Q-<n>, or D-<n> as a bridge
+# before brain-kit 81380eb asked it (one ledger counts both, so a number is one question: decisions.same_question).
+# D-<n> on an MR is otherwise a row of the run's decisions.md.
+QUESTION_ID = r"[DQ]-[1-9][0-9]*"
 REPO_ID_RE = _re.compile(r"^(r[1-9][0-9]{0,2}|runner)$")
 
 
