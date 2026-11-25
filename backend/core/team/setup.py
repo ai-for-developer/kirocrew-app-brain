@@ -1467,8 +1467,10 @@ def leave_runner(ctx: Ctx) -> str:
     if not runs:
         return ""
     projects = list(dict.fromkeys(runs.values()))
+    stuck = left_mod.unstopped_said(bridge)
     return LEFT_SAID % ("、".join(projects), "它" if len(projects) == 1 else "它们", len(runs), "、".join(sorted(runs)),
-                        "、".join(Path(c).name for c in (bcopy, scopy) if c))
+                        "、".join(Path(c).name for c in (bcopy, scopy) if c)) + \
+        ("；%s：%s" % (stuck, left_mod.UNSTOPPED_TODO) if stuck else "")
 
 
 def old_salt(ps: Paths) -> str:
