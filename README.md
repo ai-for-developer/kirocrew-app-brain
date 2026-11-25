@@ -361,10 +361,12 @@ shown folded): `backend/core/problems.py`.
   or again once it is 30 minutes old. The one there is read when the relay first builds the project, so a restart
   writes nothing new. A write that fails is said on 运行机 for its project and tried again 5 minutes later; it never
   stops the round. MR 巡检, 测试环境报错 and the hand-over poll leave MRs from or into `brain/status` alone. A person's
-  app reads each listed project's file with its own token at most once a minute, puts the projects of one GitLab
-  together, and past 75 minutes (two heartbeats missed) says the server may have stopped. A field added within
-  schema 1 (`snapshot.Added`: the issues, the label, each source's sessions and the held ones) reads as empty from an
-  older team server's file, and an older app drops it as any newer writer's addition.
+  app reads each listed project's file, and its runner's MRs, with its own token at most once a minute, four projects
+  at a time (five over a tunnel took 17 s one after another), a project that cannot be read saying so on its own line,
+  puts the projects of one GitLab together, and past 75 minutes (two heartbeats missed) says the server may have
+  stopped. A field added within schema 1 (`snapshot.Added`: the issues, the label, each source's sessions and the
+  held ones) reads as empty from an older team server's file, and an older app drops it as any newer writer's
+  addition.
 - **导入仓库** (`importer.py`, `installer.py`): every path from the page must be absolute, without `..` or control
   characters, a real directory, and with no symlink on the way that a user other than root owns (an agent with this OS
   user could have planted it; root's aliases such as macOS's `/tmp` are fine); from then on its realpath is used. A

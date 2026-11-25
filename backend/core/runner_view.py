@@ -10,7 +10,9 @@ parse_notes: open), names them among who may answer, and nobody wrote `answer D-
 when the bridge's account last wrote on one of the MRs read (a system note, a label it changed, counts too).
 
 Read: the open MRs with the running label and every MR changed within RECENT_S (at most MAX_MRS, the newest first),
-each with its notes; each repo at most every TTL_S. A read that fails keeps the last one it got, with why (Problem).
+each with its notes; each repo at most every TTL_S, READERS of the listed projects at once (five projects over a
+tunnel took 17 s one after another). A read that fails keeps the last one it got, with why (Problem), for its
+project alone.
 
 状态中转 (Runners.view's relays): a listed repo is on the relay when its GitLab project has the branch brain/status,
 where the team server writes the project's own TeamSnapshot (snapshot.py; team/relay.py writes it): snapshot.json there
@@ -27,8 +29,10 @@ from __future__ import annotations
 
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
-from typing import Any, Mapping, NamedTuple
+from functools import partial
+from typing import Any, Callable, Mapping, NamedTuple
 
 from . import bk, mrinfo, snapshot
 from .constants import MERGE_LABEL
@@ -37,6 +41,7 @@ from .team import patrol
 RECENT_S = 24 * 3600
 TTL_S = 60.0
 MAX_MRS = 20
+READERS = 4     # projects read from GitLab at once: over a tunnel each request takes a few hundred ms
 RUNNING, PATROL = "running", "patrol"       # AtWork.why: the hand-over's label, MR 巡检's notes
 HAND_LABELS = ("handoff_label", "running_label", "rejected_label")
 
@@ -219,6 +224,9 @@ class Relayed:
     problem: Problem | None             # why the last read did not work
 
 
+NO_RELAY = Relayed(False, None, None, None)     # a repo whose kit.json names no GitLab project
+
+
 class Runners:
     """Each listed repo's runner as GitLab last showed it, read again at most every TTL_S (blocking: call it in a
     thread), and each repo's project's snapshot (状态中转) the same way. The person's token never leaves brain-kit's
@@ -232,37 +240,58 @@ class Runners:
 
     def view(self, listed: list[Listed], *, now: float, transport: Any = None) -> dict[str, Any]:
         """GET /team/status (RunnerStatus in ui/src/types.ts): the repos in the order the app lists them, and for each
-        GitLab whose projects are on the relay, those projects put together (RelayRead)."""
+        GitLab whose projects are on the relay, those projects put together (RelayRead); what is due read first
+        (_refresh)."""
         with self._lock:
-            reads = {x.repo: self._relay(x, now, transport) for x in listed}
+            self._refresh(listed, now, transport)
+            reads = {x.repo: self._relays[(x.base, x.project)][1] if x.base and x.project else NO_RELAY for x in listed}
             groups: dict[str, list[Listed]] = {}
             for x in listed:
                 if reads[x.repo].on:
                     groups.setdefault(x.base, []).append(x)
             return {"recent_h": RECENT_S // 3600, "at": now, "stale_after_s": snapshot.STALE_S,
-                    "repos": [self._repo(x, now, transport, bool(reads[x.repo].on and reads[x.repo].snapshot))
-                              for x in listed],
+                    "repos": [self._repo(x, bool(reads[x.repo].on and reads[x.repo].snapshot)) for x in listed],
                     "relays": [together(base, xs, listed, reads, now) for base, xs in groups.items()]}
 
-    def _repo(self, x: Listed, now: float, transport: Any, on: bool) -> dict[str, Any]:
-        bridge = str(x.kit.get("bridge_user") or "").strip()
+    def _refresh(self, listed: list[Listed], now: float, transport: Any) -> None:
+        """Each listed project's snapshot and each repo's runner not read within TTL_S read again, READERS at a time,
+        so the page waits for the slowest project, not for every one in a row. A read that raises is its project's
+        problem alone, its last read kept."""
+        due: dict[tuple, tuple[Callable[[], Any], Callable[[Exception], Any]]] = {}
+        for x in listed:
+            key = (x.base, x.project)
+            if x.base and x.project and ("relay", key) not in due and self._due(self._relays.get(key)):
+                last = self._relays[key][1] if key in self._relays else Relayed(None, None, None, None)
+                due[("relay", key)] = (partial(read_relay, x.base, x.project, now, transport, last),
+                                       lambda exc, last=last: Relayed(last.on, last.read_at, last.snapshot,
+                                                                      problem_of(exc)))
+            bridge = bridge_of(x)
+            key = runner_key(x, bridge)
+            if bridge and self._due(self._got.get(key)):
+                seen = self._got[key][1].seen if key in self._got else None
+                due[("runner", key)] = (partial(self._read, x, bridge, now, transport, seen),
+                                        lambda exc, x=x, bridge=bridge, seen=seen: Runner(bridge, x.project, x.me, seen,
+                                                                                          problem_of(exc)))
+        if not due:
+            return
+        at = self.clock()
+        with ThreadPoolExecutor(min(READERS, len(due))) as pool:
+            jobs = {k: (pool.submit(read), failed) for k, (read, failed) in due.items()}
+        for (kind, key), (job, failed) in jobs.items():
+            try:
+                got = job.result()
+            except Exception as exc:  # noqa: BLE001 - a read gone wrong in a way nobody foresaw: said for it only
+                got = failed(exc)
+            (self._relays if kind == "relay" else self._got)[key] = (at, got)
+
+    def _due(self, got: tuple[float, Any] | None) -> bool:
+        return got is None or self.clock() - got[0] > TTL_S
+
+    def _repo(self, x: Listed, on: bool) -> dict[str, Any]:
+        bridge = bridge_of(x)
         if not bridge:
             return {"repo": x.repo, "name": x.name, "runner": None, "relay": on}
-        key = (x.repo, x.base, x.project, bridge.lower(), x.me)
-        got = self._got.get(key)
-        if got is None or self.clock() - got[0] > TTL_S:
-            got = self._got[key] = (self.clock(), self._read(x, bridge, now, transport, got[1].seen if got else None))
-        return {"repo": x.repo, "name": x.name, "runner": asdict(got[1]), "relay": on}
-
-    def _relay(self, x: Listed, now: float, transport: Any) -> Relayed:
-        if not x.base or not x.project:
-            return Relayed(False, None, None, None)
-        key = (x.base, x.project)
-        got = self._relays.get(key)
-        if got is None or self.clock() - got[0] > TTL_S:
-            got = self._relays[key] = (self.clock(), read_relay(x.base, x.project, now, transport,
-                                                                got[1] if got else Relayed(None, None, None, None)))
-        return got[1]
+        return {"repo": x.repo, "name": x.name, "runner": asdict(self._got[runner_key(x, bridge)][1]), "relay": on}
 
     @staticmethod
     def _read(x: Listed, bridge: str, now: float, transport: Any, last: Seen | None) -> Runner:
@@ -282,6 +311,15 @@ class Runners:
         except Exception as exc:  # noqa: BLE001 - GitLab down, the token refused, SSO expired: said, the last read kept
             return runner(last, problem_of(exc))
         return runner(seen_of(mrs, notes, kit=x.kit, bridge_user=bridge, me=x.me, now=now), None)
+
+
+def bridge_of(x: Listed) -> str:
+    """The bridge's account *x*'s kit.json names ('': the repo has no team runner)."""
+    return str(x.kit.get("bridge_user") or "").strip()
+
+
+def runner_key(x: Listed, bridge: str) -> tuple:
+    return (x.repo, x.base, x.project, bridge.lower(), x.me)
 
 
 def read_relay(base: str, project: str, now: float, transport: Any, last: Relayed) -> Relayed:
