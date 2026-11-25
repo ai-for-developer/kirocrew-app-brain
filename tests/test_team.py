@@ -428,6 +428,33 @@ def test_the_runner_page_read_while_a_save_stops_team_mode_answers_with_what_it_
     assert team is None and [r["req"] for r in view["runs"]] == ["PAY-1"], view["runs"]
 
 
+def test_a_runner_requirement_read_while_a_save_stops_team_mode_answers_with_what_it_read_not_an_error(world, tmp_path):
+    """需求现状 of a requirement on the team runner is read off the event loop: the runner's rows, then team mode's
+    ledger, vouchers and allowed signers for its timeline. A settings save that stops team mode on the event loop
+    right after the rows' ledger read left the next of those reads on None (an AttributeError, a failed page). The page
+    answers with the team mode it started reading."""
+    svc = service(world, tmp_path)
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # handed over: a run in the ledger, its workspace made
+            rt, loop = svc.team, asyncio.get_running_loop()
+            read = rt.ledger
+
+            def read_then_stop():
+                got = read()
+                asyncio.run_coroutine_threadsafe(svc._stop_team(), loop).result(30)    # a save stops team mode
+                return got
+            rt.ledger = read_then_stop
+            return await svc.requirement("runner", "PAY-1"), svc.team
+        finally:
+            await svc.stop()
+
+    got, team = run(go())
+    assert team is None and got["row"]["key"] == "PAY-1" and got["where_label"].startswith("运行机工作区 /"), got["row"]
+
+
 def test_the_runner_page_says_a_session_stopped_on_its_run_until_the_next_push(world, tmp_path):
     """Its turn cut off at one MR head, then each of the two turns told to go on: the MR hears 「…的会话停住了」. The
     run's row on 运行机 says it under the run, and the requirement's row waits on people, for that head only: once the
