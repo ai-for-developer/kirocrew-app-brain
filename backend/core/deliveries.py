@@ -432,6 +432,14 @@ NOTICE_KIND = {
 OUTBOX_WHAT = {"handover": "接手消息", "answer": "%s 的回答", "notice": "给运行机的通知"}
 
 
+def run_state(run: Mapping[str, Any], notes: list[dict[str, Any]]) -> str:
+    """A run's state as 运行机 and a person's 团队运行机 draw its chip: the ledger's (brain-kit's), but to_merge (等合并)
+    for a dispatched run whose MR was told it can be merged (team/runwatch.py's ready notice, among *notes*:
+    notices_by_run's), as its row's 在等 says it."""
+    st = str(run.get("state") or "")
+    return "to_merge" if st == "dispatched" and any(n.get("kind") == "ready" for n in notes) else st
+
+
 def team_note(n: dict[str, Any]) -> dict[str, Any] | None:
     """A ledger notice as a TeamNote {kind, text, at}, or None (one that tells nothing about why a run waits, or is
     still being told)."""

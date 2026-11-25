@@ -1561,6 +1561,7 @@ export type RunState =
   //                  at the session each round; through this app's KiroCrew adapter it sees a send that landed, never
   //                  one that did not: a person looks)
   | 'failed' // it could not start: the workspace could not be made, or (0d52e97) KiroCrew never took the hand-over
+  | 'to_merge' // the app's, not brain-kit's: dispatched, accepted and done, its MR told it can be merged (等合并)
   | 'merged'
   | 'closed'
 
@@ -1569,7 +1570,7 @@ export interface TeamRun {
   req: string
   project: string
   iid: number
-  /** brain-kit's run state; a state this page does not know is shown as it is */
+  /** brain-kit's run state, or to_merge once its MR was told it can be merged; a state this page does not know is shown as it is */
   state: RunState
   slot: string | null
   mr_url: string | null
@@ -1912,7 +1913,7 @@ export interface SnapshotHandover {
   key: string
   title: string
   run_id: string
-  /** brain-kit's run state */
+  /** brain-kit's run state, or to_merge once its MR was told it can be merged */
   state: RunState
   owner: string | null
   waits: SnapshotWaits

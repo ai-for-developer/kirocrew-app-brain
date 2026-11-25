@@ -2374,10 +2374,11 @@ class Service:
             row.update(error=got["text"] if got else "", raw=(got["raw"] or "") if got else "")
             handovers.append(row)
         notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [], led.get("runs") or [])
-        return {"status": self.team.status(), "ledger": self.team.counts(led),
+        runs = [dict(r, state=deliveries.run_state(r, notes.get(r["run_id"], []))) for r in led["runs"]]
+        return {"status": self.team.status(), "ledger": self.team.counts(dict(led, runs=runs)),
                 "runs": [{"run_id": r["run_id"], "req": r["req"], "project": r["project"], "iid": int(r["iid"]),
                           "state": r["state"], "slot": r.get("slot"), "mr_url": self.team.mr_url(r["project"], r["iid"]),
-                          "updated": r.get("updated"), "notes": notes.get(r["run_id"], [])} for r in led["runs"]],
+                          "updated": r.get("updated"), "notes": notes.get(r["run_id"], [])} for r in runs],
                 "handovers": handovers, "signer": signer, "config": self.team.config_view(),
                 "hooks": await asyncio.to_thread(self.team.hook_rows)}
 

@@ -410,15 +410,18 @@ class TeamRuntime:
 
     def _shared(self) -> dict[str, Any]:
         """What every project's snapshot is made from this round: MR 巡检's and 测试环境报错's views, identities.json's
-        roles, each project's deployed commit, the runner's open runs (runner_rows), the session of each requirement's
-        latest run (run_sessions, by requirement) and the server."""
+        roles, each project's deployed commit, the runner's open runs (runner_rows; each run's state as its chip says it,
+        deliveries.run_state), the session of each requirement's latest run (run_sessions, by requirement) and the
+        server."""
         patrol, staging = self.patrol_view(), self.staging_view()
         led = self.ledger()
         latest, sessions = self.runner_rows(led), self.run_sessions(led)
+        notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [], led["runs"])
         return {"patrol": patrol, "staging": staging, "roles": relay_mod.identity_roles(self.cfg.get("identities")),
                 "deployed": {p["project"]: str(p.get("deployed_sha") or "") for p in staging.get("projects") or []
                              if p.get("on")},
-                "runs": [(row, run) for row, _facts, _decs, run in latest if run["state"] not in ("merged", "closed")],
+                "runs": [(row, dict(run, state=deliveries.run_state(run, notes.get(run["run_id"], []))))
+                         for row, _facts, _decs, run in latest if run["state"] not in ("merged", "closed")],
                 "sessions": {run["req"]: sessions[run["run_id"]] for _row, _f, _d, run in latest
                              if run["run_id"] in sessions},
                 "server": {"version": VERSION, "team_mode": True, "last_round_at": self.last_loop_at,

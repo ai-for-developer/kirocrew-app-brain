@@ -65,12 +65,14 @@ const said = (s: string) => /[\u3400-\u9fff]/.test(s)
 const failedSteps = (loopError: string) => Array.from(new Set(loopError.split('；').map((x) => x.split(':', 1)[0].trim()).filter(Boolean)))
   .map((k) => LOOP_STEP[k]?.name ?? '其他一步')
 
-/** brain-kit's run states (the bridge ledger's), in words; hint: what a state can mean, under its chip. */
+/** brain-kit's run states (the bridge ledger's), in words, and the app's to_merge (a dispatched run whose MR was told
+ * it can be merged), as its 在等 says it; hint: what a state can mean, under its chip. */
 export const RUN_STATE: Record<RunState, { label: string; tone: Tone; hint?: string }> = {
   signing: { label: '签名中', tone: 'hand' },
   spooled: { label: '排队等工作区', tone: 'idle' },
   ready: { label: '工作区好了', tone: 'info' },
   dispatched: { label: '已派给会话', tone: 'run' },
+  to_merge: { label: '等合并', tone: 'wait' },
   send_unknown: { label: '送没送到不清楚', tone: 'warn', hint: '桥每轮看会话，看到了就接着做；一直这样要人看一下' },
   failed: { label: '没能开始', tone: 'bad', hint: '工作区没建成，或接手消息一直送不进会话' },
   merged: { label: '已合并', tone: 'ok' },
