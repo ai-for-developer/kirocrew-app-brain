@@ -288,11 +288,11 @@ def test_team_mode_lists_each_requirement_once_the_runners_facts_winning(tmp_pat
         await svc.start()
         try:
             svc.team = SimpleNamespace(host=object())
-            svc._team_rows = lambda snap: [runner_row("PAY-1", "parked", "等产品在 MR 上回答 D-1"),
-                                           runner_row("PAY-2", "merged", "MR 已合并，运行结束"),
-                                           runner_row("PAY-3", "running", "运行机在跑"),
-                                           runner_row("PAY-9", "running", "运行机在跑"),
-                                           runner_row("WEB-1", "running", "运行机在跑", project="shop/web")]
+            svc._team_rows = lambda snap, team: [runner_row("PAY-1", "parked", "等产品在 MR 上回答 D-1"),
+                                                 runner_row("PAY-2", "merged", "MR 已合并，运行结束"),
+                                                 runner_row("PAY-3", "running", "运行机在跑"),
+                                                 runner_row("PAY-9", "running", "运行机在跑"),
+                                                 runner_row("WEB-1", "running", "运行机在跑", project="shop/web")]
             return await svc.overview("all"), await svc.overview("r1"), await svc.overview("runner"), await svc.todo()
         finally:
             svc.team = None

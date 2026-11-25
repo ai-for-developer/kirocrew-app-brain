@@ -678,13 +678,15 @@ class Service:
         cr = {"runs": {x: {"credits": c} for x in run_ids[-1:]}} if c is not None and run_ids else None
         return (path, sha, main, key, c), (lambda: mrdesc_view.describe(path, cfg, key, sha, cr))
 
-    def _team_rows(self, snap: dict[str, Any]) -> list[tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]]:
-        """(row, facts, decisions) per requirement the team runner has (its latest run, TeamRuntime.runner_rows), with
-        the credits of its sessions here and its 变更说明's first line."""
-        if self.team is None or self.team.host is None:
+    def _team_rows(self, snap: dict[str, Any],
+                   team: Any) -> list[tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]]:
+        """(row, facts, decisions) per requirement the team runner has (its latest run, TeamRuntime.runner_rows, of
+        *team*: self.team as the caller read it once, so a settings save that stops team mode meanwhile leaves it the
+        rows that team mode had), with the credits of its sessions here and its 变更说明's first line."""
+        if team is None:
             return []
         out = []
-        for row, facts, decs, _run in self.team.runner_rows():
+        for row, facts, decs, _run in team.runner_rows():
             counted, cost = self._team_credits(snap, row["key"], row["run_ids"], facts.get("project"))
             row["credits"], row["credits_whole"], row["sessions"] = cost["total"], cost["whole"], len(counted)
             job = self._runner_desc(facts, row["key"], row) if facts.get("run") else None
@@ -697,7 +699,7 @@ class Service:
         """Team mode, one row per requirement: the runner's requirements listed as its own (_team_rows'), each with
         the listed repo of its GitLab project (row ``home``, None when this machine does not list it), and the
         (repo id, key) of this machine's rows (*mine*: repo id, facts, row) they stand for (deliveries.runner_takes)."""
-        team = self._team_rows(snap)
+        team = self._team_rows(snap, self.team)
         rid_of: dict[str, str] = {}
         for rid, repo in self.repos.items():
             if self._gitlab_of(repo)[1]:
@@ -715,7 +717,8 @@ class Service:
         return keep, taken
 
     def _team_on(self) -> bool:
-        return self.team is not None and self.team.host is not None
+        team = self.team        # once: a save that stops team mode sets it to None on the event loop meanwhile
+        return team is not None and team.host is not None
 
     def _runner_desc(self, facts: dict[str, Any], key: str, row: dict[str, Any]):
         path = facts.get("worktree")
@@ -1010,7 +1013,8 @@ class Service:
                 files_stamp(vouchers, runs) if vouchers else (), int(self.now() // 60))
 
     def _team_detail(self, key: str, snap: dict[str, Any], parts: dict[str, Any] | None = None) -> dict[str, Any]:
-        hit = next(((r, f, d) for r, f, d in self._team_rows(snap) if r["key"] == key), None)
+        team = self.team        # once (a worker thread): a save that stops team mode meanwhile leaves it what it read
+        hit = next(((r, f, d) for r, f, d in self._team_rows(snap, team) if r["key"] == key), None)
         if hit is None:
             raise AppError("运行机上没有 %s" % key, "not_found", 404)
         row, f, decs = hit
@@ -1028,8 +1032,8 @@ class Service:
             tl = detail.timeline(path, cfg, key, ref=None, events=f.get("events") or [],
                                  credits={"runs": {x: {"credits": snap["credits"].get(x)} for x in row["run_ids"]
                                                    if snap["credits"].get(x) is not None}} if c else None,
-                                 ledger_path=self.team.cfg.get("ledger"), vouchers_dir=self.team.cfg.get("vouchers_dir"),
-                                 allowed_signers=self.team.allowed_signers or None,
+                                 ledger_path=team.cfg.get("ledger"), vouchers_dir=team.cfg.get("vouchers_dir"),
+                                 allowed_signers=team.allowed_signers or None,
                                  deploys=self.deploys.source(path, cfg))
             deploy = deploys_view.requirement(tl.get("trace"), cfg)
         for rid in row["run_ids"]:
@@ -1877,13 +1881,14 @@ class Service:
     # ---- status, settings ----------------------------------------------------------------------------- #
 
     def _team_status(self) -> dict[str, Any]:
-        if self.team is None:
+        team = self.team
+        if team is None:
             on = bool(self.settings["team"].get("enabled"))
             why = problems.team_start("brain-kit 没装载" if on else "")
             return {"enabled": on, "ok": False, "error": why["text"], "error_todo": why["todo"], "error_raw": why["raw"],
                     "last_loop_at": None, "loop_error": "", "checks": [], "same_user": False,
                     "signer": {"pending": 0, "refused": 0}, "relay": None}
-        return self.team.status()
+        return team.status()
 
     async def status(self) -> dict[str, Any]:
         if self.folders_stuck:   # one folder list: a folder dragged in since, or KiroCrew answering again

@@ -44,7 +44,7 @@ def test_hand_over_dispatch_question_and_answer_through_the_separate_signer(worl
 
     def kick():   # while brain-kit's SpoolSigner waits on the signer: what the page shows, then the signer answers
         if not during:
-            during.append((svc._team_rows({"by": {}, "credits": {}}), svc.team.pending()))
+            during.append((svc._team_rows({"by": {}, "credits": {}}, svc.team), svc.team.pending()))
         world["signer"].once()
 
     svc = service(world, tmp_path, gw, kick=kick)
