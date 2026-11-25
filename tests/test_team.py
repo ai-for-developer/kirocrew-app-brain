@@ -158,6 +158,10 @@ TRUST_RESET = {"role": "system", "content": "Trust mode was turned off because K
                "approval again.", "meta": {"kind": "trust_reset_notice"}, "ts": LONG_AGO}
 KIROCREW_ERROR = {"role": "error", "content": "This turn was interrupted when the app restarted.",
                   "meta": {"kind": "gateway_restart_interruption"}, "ts": LONG_AGO}
+# a person picked another agent for the session in KiroCrew, after its turn ended (brain-r3-oms-4-1's row 53)
+SWITCHED = {"role": "assistant", "content": "🔄 Switched to agent: brain-dev", "meta": {"mid": "m-1"}, "ts": LONG_AGO}
+# KiroCrew rejects the tool call a turn stopped in its own UI was waiting on (kas-off1's row 6, after its stop_event)
+REJECTED = {"role": "tool", "content": "🚫 Load skill: aidlc (rejected)", "meta": {"mid": "m-2"}, "ts": LONG_AGO}
 
 
 async def rounds(svc, n=1):
@@ -287,13 +291,18 @@ def test_a_session_that_parked_or_still_works_is_not_told_to_go_on(world, tmp_pa
     (ended("运行机的 git 身份没设置，不继续") + [COMPACTED], 0),   # KiroCrew compacts after the turn
     (ended("等待决策，不继续") + [TRUST_RESET], 0),              # KiroCrew restarted after the turn ended
     ([STOP_EVENT] + stopped(), 0),                              # a person pressed stop in KiroCrew
+    (ended("等待决策，不继续") + [SWITCHED], 0),                  # a person switched the session's agent after it
+    ([STOP_EVENT, REJECTED], 0),                                # stopped in KiroCrew, the tool call it waited on rejected
     ([KIROCREW_ERROR], 1),                                      # KiroCrew's error ended it half-way
-], ids=["ended", "ended-then-compacted", "ended-then-trust-reset", "stopped-in-kirocrew", "kirocrew-error"])
+    (cut(), 1),                                                 # KiroCrew shut down mid-turn: RUN-REQ-2-1's rows 299-301
+], ids=["ended", "ended-then-compacted", "ended-then-trust-reset", "stopped-in-kirocrew", "ended-then-agent-switched",
+        "stopped-then-tool-rejected", "kirocrew-error", "killed-mid-turn"])
 def test_only_a_turn_kirocrew_cut_off_is_told_to_go_on(world, tmp_path, tail, told):
     """A session that ended its turn owes no push, whatever it said: KiroCrew wrote the turn's turn_stats on its
-    last reply (rows KiroCrew adds after a turn, a compaction or a trust reset, change nothing), or someone stopped
-    it. Only a turn without that end, its last row KiroCrew's error or whatever it wrote when KiroCrew stopped, is
-    told to go on."""
+    last reply (rows KiroCrew adds after a turn, a compaction or a trust reset, and a person switching the agent
+    change nothing), or someone stopped it (a tool call KiroCrew rejects after the stop changes nothing either). Only
+    a turn without that end, its last row KiroCrew's error or whatever it wrote when KiroCrew stopped, is told to go
+    on."""
     gw = FakeGateway()
     gw.script = [tail]
     svc = service(world, tmp_path, gw)
