@@ -15,6 +15,7 @@ import re
 import sqlite3
 import subprocess
 import threading
+import time
 from urllib.parse import unquote, urlsplit
 
 import pytest
@@ -217,6 +218,68 @@ def test_a_session_turn_cut_off_before_its_push_is_told_to_go_on_then_a_person_i
     assert len(resumes(gw)) == 2
     (told,) = [b for b in gl.bodies() if "会话停住了" in b]
     assert told.startswith("RUN-PAY-1-1 的会话停住了") and SLOT in told and "2 次" in told, told
+
+
+def test_the_round_that_told_a_session_to_go_on_says_in_its_snapshot_that_the_runner_goes_on(world, tmp_path):
+    """0.5.4-srv10: Q-17's answer reached the run, KiroCrew's restart cut the session's turn off, and 16 minutes later
+    the watchdog told it to go on (会话中断). The snapshot that same round built said 「Q-17 的回答送到了，运行机还没接着
+    做：去 KiroCrew 看一下它的会话」, and the relay's 5-minute floor kept it there while the session worked. What the
+    round just sent into the session is its newest sign of life: the runner's row and 全队交付's row of the MR, as
+    brain/status has them, say the runner goes on."""
+    from relayfix import RepoGitLab
+    from test_relay_write import Both
+    snapshot = mod("snapshot")
+    gw = FakeGateway()
+    gw.script = [ended("开始写代码"), cut()]
+    rg = RepoGitLab()
+    rg.project("grp/repo", 1, world["gl"].bare)
+    svc = make_service(tmp_path / "app", [], gw=gw, team=world["team"], transport=Both(world["gl"], rg),
+                       kick=lambda: world["signer"].once())
+    going = "Q-1 的回答送到了，运行机在接着做"
+    seen = {}
+
+    def written():
+        raw = sh("git", "-C", world["gl"].bare, "show", "%s:%s" % (snapshot.BRANCH, snapshot.FILE)).stdout
+        snap = snapshot.parse(raw)
+        return ([h["waits"]["text"] for h in snap["runner"]["handovers"]],
+                [r["waits"]["text"] for r in snap["delivery"] if r["key"] == "PAY-1"])
+
+    async def go():
+        await svc.start()
+        try:
+            rt = svc.team
+            await rounds(svc)                           # dispatched
+            push_park(world["runs_root"] / "RUN-PAY-1-1", PARK)
+            gw.finish(SLOT)
+            await rounds(svc)                           # Q-1 on the MR
+            world["gl"].note("alice", "answer D-1 B 小额不审")
+            await rounds(svc)                           # the answer reached the session: its turn starts
+            gw.finish(SLOT)                             # KiroCrew's restart cut it off, nothing pushed
+            age(rt.host.ledger, 3600)                   # an hour ago, past stall_minutes
+            seen["before"] = resumes(gw)
+            rt.relay.now = lambda: time.time() + snapshot.FLOOR_S     # this round builds the snapshot
+            await rounds(svc)
+            seen["resumed"] = resumes(gw)
+            seen["snap"] = written()
+        finally:
+            await svc.stop()
+
+    run(go())
+    assert seen["before"] == [] and len(seen["resumed"]) == 1
+    handovers, delivery = seen["snap"]
+    assert handovers == [going] and delivery == [going], seen["snap"]
+
+
+def age(ledger, seconds):
+    """What brain-kit's ledger stamped on the run's questions and messages happened *seconds* earlier, in the same
+    order, as the rest of this world (KiroCrew's rows, GitLab's notes) did."""
+    from datetime import timedelta
+    common = mod("bk").m("common")
+    for table, key in (("decisions", "id"), ("outbox", "send_id")):
+        for row in ledger.db.execute("SELECT %s, created, updated FROM %s" % (key, table)).fetchall():
+            ledger.db.execute("UPDATE %s SET created=?, updated=? WHERE %s=?" % (table, key), tuple(
+                common.iso(common.parse_iso(row[c]) - timedelta(seconds=seconds)) for c in ("created", "updated"))
+                + (row[0],))
 
 
 def test_the_runner_page_says_a_session_stopped_on_its_run_until_the_next_push(world, tmp_path):
