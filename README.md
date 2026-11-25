@@ -303,12 +303,13 @@ shown folded): `backend/core/problems.py`.
   watchdog is on: a session at work, or waiting for a click, with no new row for bridge.json `stall_minutes` (15; 0
   turns it off) is said on its MR once. And it sets the slot to trust before every message, as brain-kit's client
   does: KiroCrew keeps trust in memory, so a restart ends it. Only KiroCrew's `403 session_approval_not_granted` to
-  that call holds the message (brain-kit's `TrustRefused`; what the MR is then told is brain-kit's text, which names
-  brain-kit's brain-bridge app: BRAINKIT_REQUESTS 54); a 409, 404 or 429 of it is an ordinary error, settled by
+  that call holds the message (brain-kit's `TrustRefused`); a 409, 404 or 429 of it is an ordinary error, settled by
   reading the slot. While a message is held (brain-kit's outbox `held`), 运行机 says it under its run, toned bad, and
-  the requirement's row waits on people with it: why, and the brain app's fix, its `sessionApproval` consented to in
-  KiroCrew's dashboard (Apps → Brain 交付: turn it off if it is on, enable it, allow sessionApproval), not the MR's
-  reinstall of brain-bridge; 送进会话的消息 counts it as KiroCrew 不让送. A turn KiroCrew stopped half-way (a restart, a provider
+  the requirement's row waits on people with it: why, and the brain app's fix, its `sessionApproval` consented to on
+  its page in KiroCrew's dashboard (`/apps/detail/brain`, 「Enable and allow chat control」, 「启用并允许控制聊天」 in
+  its Chinese dashboard, after Disable if the app is on; Enable if that is all the page offers); 送进会话的消息 counts
+  it as KiroCrew 不让送. The MR is told the same fix in the same words (`constants.TRUST_FIX`, the adapter's
+  `trust_advice`, which brain-kit's bridge says since 0e0c424 in place of its own: BRAINKIT_REQUESTS 54). A turn KiroCrew stopped half-way (a restart, a provider
   shutdown) leaves an idle session brain-kit's watchdog does not look at, its work uncommitted in the workspace. So
   after brain-kit's steps each round reads every dispatched run's slot (its newest rows): idle, nothing queued or on
   its way to it (brain-kit's outbox), its newest turn cut off, no question at its MR head waiting for a person or the

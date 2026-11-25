@@ -29,7 +29,7 @@ import re
 from typing import Any
 
 from .. import bk
-from ..constants import RUNNER_FOLDER
+from ..constants import RUNNER_FOLDER, TRUST_FIX
 from ..gateway import GatewayError
 from .patrol import Refused
 
@@ -79,6 +79,8 @@ def _stop_event(m: dict) -> bool:
 
 
 class KiroCrewAdapter:
+    trust_advice = TRUST_FIX        # what brain-kit's bridge tells the MR when KiroCrew will not set a slot to trust
+
     def __init__(self, loop: asyncio.AbstractEventLoop, mgr: Any, brain_error: type, *, timeout: float = 90.0) -> None:
         self.loop, self.mgr, self.BrainError, self.timeout = loop, mgr, brain_error, timeout
         self.app = getattr(mgr, "app", "brain")

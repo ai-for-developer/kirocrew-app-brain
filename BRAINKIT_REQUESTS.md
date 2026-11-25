@@ -260,7 +260,9 @@ Lean timeline follow them when trace is missing), `decisions.USER` (the MR reade
     stall watchdog runs in the app's team mode too. Wanted: that sentence taken out, or saying the app does it from
     0.5.4.
 54. **What the MR is told when KiroCrew will not set a run's session to trust** (new, b1ffe40; the app's
-    `crewadapter.send`). `delivery._tell_held` and the hand-over's `TrustRefused` branch post `TRUST_ADVICE`: 「请负责人
+    `crewadapter.send`). **Done in 0e0c424** (`TrustRefused.cause`, `delivery.trust_refusal` by cause and app,
+    `kc.trust_advice`): the app's adapter gives its own fix as `trust_advice` (`constants.TRUST_FIX`), so the MR and
+    运行机 say one fix; its GatewayError keeps no `cause` yet, so the MR's why is the one without a cause. `delivery._tell_held` and the hand-over's `TrustRefused` branch post `TRUST_ADVICE`: 「请负责人
     用 brain-kit 的 remote/kirocrew-app/brain-bridge 重新装这个 app（`kirocrew app install`）…」. In the brain app's team
     mode the bridge runs inside the app named brain, so that advice installs another app and leaves brain as it was.
     It is not always right for brain-bridge either: KiroCrew 0.13 answers `403 session_approval_not_granted` with a

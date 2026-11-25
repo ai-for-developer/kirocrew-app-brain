@@ -15,7 +15,7 @@ import time
 from typing import Any, Mapping
 
 from . import bk, deploys_view, fastrow, flowview, lean_view, mrinfo
-from .constants import accepted_label
+from .constants import TRUST_FIX, accepted_label
 
 # to_merge: the product accepted a run on the team runner and its session is done: a person merges the MR
 STATE_LABEL = {"claimed": "已认领", "local": "本地开发中", "handed_over": "已交接", "rejected": "接手被拒",
@@ -432,11 +432,10 @@ NOTICE_KIND = {
 }
 OUTBOX_WHAT = {"handover": "接手消息", "answer": "%s 的回答", "notice": "给运行机的通知"}
 # a message KiroCrew would not let the brain app send: it refused to set the session to trust (brain-kit's TrustRefused,
-# only for its 403 session_approval_not_granted: crewadapter.APPROVAL_REFUSED). brain-kit's own advice on the MR is to
-# reinstall its brain-bridge app (BRAINKIT_REQUESTS 54); the brain app's fix is the owner's consent in KiroCrew.
+# only for its 403 session_approval_not_granted: crewadapter.APPROVAL_REFUSED); the owner's consent in KiroCrew fixes
+# it, TRUST_FIX, which the MR says too (brain-kit 0e0c424's kc.trust_advice)
 OUTBOX_HELD = ("%s还没送进会话：KiroCrew 不让 Brain 交付 app 把会话设成信任，它的 sessionApproval 权限没有得到同意（或者 app 停用"
-               "了）。请管运行机的人在 KiroCrew 网页的 Apps 里打开 Brain 交付（/apps/detail/brain）：开着就先停用，再点启用，同意它要的 "
-               "sessionApproval。MR 上让用 brain-kit 的 brain-bridge 重装 app 的话不适用。同意以后桥每轮自动接着送，%s。")
+               "了）。" + TRUST_FIX + "同意以后桥每轮自动接着送，%s。")
 OUTBOX_REDO = {"answer": "不用重新回答", "handover": "不用重新交接"}
 
 

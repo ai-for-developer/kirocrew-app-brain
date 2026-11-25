@@ -437,7 +437,7 @@ sudo -u brainbot mkdir -p /home/brainbot/workplace/runs /home/brainbot/brain-cac
    ```
    然后在浏览器打开 `http://localhost:15476`。先确认打开的是运行机的 KiroCrew，不是自己电脑上的。
 3. 引擎换成 kas：`sudo -iu brainbot kirocrew config set agent.acp_backend kas`，然后重启 brainbot 的 KiroCrew。
-4. 照第一部分第 2 步，在运行机的 KiroCrew 里装 Brain 交付 app、确认信任、启用并同意 sessionApproval。没同意（或者 app 停用了），桥送进会话的消息会被 KiroCrew 拦住：运行机页那个运行下面写着「…还没送进会话：KiroCrew 不让 Brain 交付 app 把会话设成信任…」。这时在 KiroCrew 网页的 Apps 里打开 Brain 交付，开着就先停用，再点启用，同意 sessionApproval，桥下一轮自动接着送。MR 上 brain-kit 说的用 brain-bridge 重装 app，对 Brain 交付 不适用。
+4. 照第一部分第 2 步，在运行机的 KiroCrew 里装 Brain 交付 app、确认信任、启用并同意 sessionApproval。没同意（或者 app 停用了），桥送进会话的消息会被 KiroCrew 拦住：运行机页那个运行下面写着「…还没送进会话：KiroCrew 不让 Brain 交付 app 把会话设成信任…」。这时打开 KiroCrew 网页上 Brain 交付 的页面 `/apps/detail/brain`，点「Enable and allow chat control」（中文界面是「启用并允许控制聊天」；只有「Enable」（「启用」）的话就点它）；app 还开着的话，先在这个页面上（或者 Library（「库」）里它的菜单上）点「Disable」（「禁用」），再点。桥下一轮自动接着送。MR 上桥说的是同一句话。
 5. 运行机不用装 `brain-bridge` app。
 
 验证：
