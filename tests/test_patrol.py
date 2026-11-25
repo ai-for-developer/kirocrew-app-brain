@@ -856,8 +856,47 @@ def test_three_dispatches_with_no_person_pushing_or_commenting_in_between_pause_
     w.later()
     w.round()
     assert len(w.sessions.sent) == 7 and (w.item(7)["state"], w.item(7)["attempts"]) == ("working", 1)
-    assert gl.asked(r"/repository/commits$") == 9         # GitLab is asked about each of the 9 pushes once
+    # GitLab is asked about each of the 9 pushes once, and about the person's once more: which of its commits main has
+    assert gl.asked(r"/repository/commits$") == (10 if ranges else 9)
     assert gl.asked(r"/repository/commits/[0-9a-f]+$") == (0 if ranges else 9)
+
+
+def test_the_runner_merging_the_target_branch_in_is_no_person_s_push(bk, tmp_path):
+    """The MR's failed pipeline went out; then main moved, so the MR conflicts, and the session merges main in and
+    pushes. The new head brings main's commits, people's, and the runner's merge commit: that is the runner's push,
+    not a person's, so after the third dispatch in a row the MR is paused with one comment, not sent a fourth time
+    (orders!4 on the test server: its streak started again at that merge). A person's push still counts."""
+    w = World(tmp_path)
+    gl = w.gl
+
+    def main_moves(sha):
+        gl.main(P, sha)
+        gl.mrs[(P, 4)].update(**conflicted())
+        gl.touch(P, 4)
+        w.later()
+        w.round()
+    gl.mr(P, 4)
+    gl.fail(P, 4)
+    w.round()
+    w.sessions.end()
+    main_moves(SHA[8])
+    assert len(w.sessions.sent) == 2 and "和目标分支 main 有冲突" in w.sessions.messages()[-1]
+    gl.push(P, 4, SHA[3], merged=SHA[8], has_conflicts=False, detailed_merge_status="mergeable")
+    gl.fail(P, 4)
+    w.sessions.end()
+    w.later()
+    w.round()
+    assert len(w.sessions.sent) == 3 and SHA[3][:12] in w.sessions.messages()[-1]
+    w.sessions.end()
+    main_moves(SHA[9])
+    assert len(w.sessions.sent) == 3 and w.item(4)["state"] == "blocked", w.item(4)
+    told = gl.posted("notes")
+    assert len(told) == 1 and told[0]["body"].startswith("MR 巡检：运行机连着修了 3 次，中间没有人推送或评论，这些还没修好：")
+    gl.push(P, 4, SHA[5], by="alice@example.com")
+    gl.fail(P, 4)
+    w.later()
+    w.round()
+    assert len(w.sessions.sent) == 4 and w.item(4)["state"] == "working"
 
 
 def test_a_person_s_follow_up_written_while_the_session_works_is_a_new_problem_after_its_reply(bk, tmp_path):

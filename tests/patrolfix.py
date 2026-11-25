@@ -5,7 +5,8 @@ MRs (paged; by state, all of them included, the label filter the bridge uses, up
 pipeline, a pipeline's failed jobs and their logs, a commit's statuses (its pipelines' jobs, and what external CI posted
 into them, as measured on a GitLab CE with Jenkins' GitLab plugin), discussions (paged), an MR's notes (paged, oldest
 first, as GitLab's notes API lists the discussions' notes), the notes posted, and the commits a push brought (ref_name
-old..new, with who committed them). Its times are the clock's, so "before patrol started" is the same moment for both.
+old..new, with who committed them, a merge commit's other side too; a ref is a commit or the default branch main).
+Its times are the clock's, so "before patrol started" is the same moment for both.
 A request to JENKINS_BASE goes to its FakeJenkins. FakeSessions is crewadapter's patrol surface (open_patrol …
 patrol_stop): a turn runs until a test ends it.
 """
@@ -151,6 +152,8 @@ class PatrolGitLab:
         self.jenkins: FakeJenkins | None = None
         self.commits: dict[tuple[str, str], tuple[str, str]] = {}    # (project, sha) -> (its parent, its committer)
         self.merges: dict[tuple[str, str], list[str]] = {}           # (project, merge commit) -> its parents
+        self.merged_in: dict[tuple[str, str], str] = {}              # (project, a push's merge commit) -> its other parent
+        self.heads: dict[tuple[str, str], str] = {}                  # (project, branch) -> its head: main's commits
         self.ranges = True          # False: GitLab will not list a range of commits (ref_name old..new is a 400)
         self.traces: dict[int, bytes] = {}
         self.calls: list[tuple] = []
@@ -301,13 +304,30 @@ class PatrolGitLab:
         n = dict(self._note("alice", body, False, False), system=True)
         self.discussions[(path, iid)].append({"id": "%040x" % next(self.ids), "individual_note": True, "notes": [n]})
 
-    def push(self, path: str, iid: int, sha: str, by: str = RUNNER, **over) -> None:
-        """A new head, a commit *by* committed on the old one: GitLab moves updated_at; the head has no pipeline until
-        one is made."""
+    def push(self, path: str, iid: int, sha: str, by: str = RUNNER, merged: str | None = None, **over) -> None:
+        """A new head, a commit *by* committed on the old one (*merged*: a merge commit, that commit its other parent):
+        GitLab moves updated_at; the head has no pipeline until one is made."""
         m = self.mrs[(path, iid)]
         self.commits[(path, sha)] = (m["sha"], by)
+        if merged:
+            self.merged_in[(path, sha)] = merged
         m.update(sha=sha, _pipeline=None, **over)
         self.touch(path, iid)
+
+    def main(self, path: str, sha: str, by: str = "alice@example.com") -> None:
+        """A commit *by* on the default branch main, on top of it (another MR merged, say)."""
+        self.commits[(path, sha)] = (self.heads.get((path, "main"), ""), by)
+        self.heads[(path, "main")] = sha
+
+    def _reach(self, path: str, ref: str) -> list[str]:
+        """The commits *ref* (a commit, or main) has, through every parent, newest first."""
+        out, todo = [], [self.heads.get((path, ref), ref)]
+        while todo:
+            sha = todo.pop()
+            if (path, sha) in self.commits and sha not in out:
+                out.append(sha)
+                todo += [x for x in (self.merged_in.get((path, sha)), self.commits[(path, sha)][0]) if x]
+        return out
 
     def _line(self, path: str, sha: str) -> list[str]:
         out = []
@@ -380,13 +400,14 @@ class PatrolGitLab:
             return ok({"id": c.group(1), "parent_ids": self.merges[(name, c.group(1))], "committer_email": ""})
         if c and method == "GET" and (name, c.group(1)) in self.commits:
             parent, by = self.commits[(name, c.group(1))]
-            return ok({"id": c.group(1), "parent_ids": [parent], "committer_email": by})
+            other = [self.merged_in[(name, c.group(1))]] if (name, c.group(1)) in self.merged_in else []
+            return ok({"id": c.group(1), "parent_ids": [parent] + other, "committer_email": by})
         if rest == "/repository/commits" and method == "GET" and ".." in q.get("ref_name", ""):
             if not self.ranges:
                 return ok({"message": "400 Bad request - ref_name is invalid"}, 400)
             old, new = q["ref_name"].split("..", 1)
-            seen = set(self._line(name, old))
-            return ok([{"id": c, "committer_email": self.commits[(name, c)][1]} for c in self._line(name, new)
+            seen = set(self._reach(name, old))
+            return ok([{"id": c, "committer_email": self.commits[(name, c)][1]} for c in self._reach(name, new)
                        if c not in seen])
         if rest == "/merge_requests" and method == "GET":
             since = q.get("updated_after")
