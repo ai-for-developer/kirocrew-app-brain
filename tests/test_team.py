@@ -10,6 +10,7 @@ get an answer signed. The app never has a key: bridge.json names the spool signe
 
 import asyncio
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -683,11 +684,15 @@ class Repointed:
         return self.gl(method, url, headers, body)
 
 
-def test_a_project_that_left_the_runner_is_not_looked_at_and_no_round_fails_on_it(world, tmp_path):
+@pytest.mark.parametrize("stops", [True, False], ids=["stopped", "kirocrew-does-not-stop-it"])
+def test_a_project_that_left_the_runner_is_not_looked_at_and_no_round_fails_on_it(world, tmp_path, caplog, stops):
     """The runner is pointed at grp/new while its ledger holds RUN-PAY-1-1 of grp/repo, dispatched with Q-1 open, and
     the bridge's account no longer sees grp/repo. Team mode takes that run as left: it is marked failed (the ledger
     copied first), its question closed and its session stopped, GitLab is asked nothing about grp/repo, and no round
-    fails; the run is gone from the runs and from 交付总览, and one line on the 运行机 page says why."""
+    fails; the run is gone from the runs and from 交付总览, and one line on the 运行机 page says why. *stops* False:
+    KiroCrew does not stop the session; the run is left all the same and no round fails, the bridge's log says why,
+    and a line on the 运行机 page says which session may still be at work, with KiroCrew's words."""
+    caplog.set_level(logging.INFO)
     gw = FakeGateway()
     svc = service(world, tmp_path, gw)
 
@@ -707,6 +712,12 @@ def test_a_project_that_left_the_runner_is_not_looked_at_and_no_round_fails_on_i
                                                    work_sources=["mr-handoff"])).encode())
     svc = make_service(tmp_path / "app", [], gw=gw, team=world["team"], transport=moved,
                        kick=lambda: world["signer"].once())
+
+    async def unavailable(key):
+        gw.calls.append(("stop", key))
+        raise mod("gateway").GatewayError(503, "Kiro Crew is restarting", "unavailable")
+    if not stops:
+        gw.stop = unavailable
 
     async def after():
         await svc.start()
@@ -733,6 +744,16 @@ def test_a_project_that_left_the_runner_is_not_looked_at_and_no_round_fails_on_i
     (line,) = [c for c in view["status"]["checks"] if "grp/repo" in c["text"]]
     assert (line["level"], line["text"]) == ("OK", "grp/repo 不归这台运行机管了（bridge.json 里没有它）：账本里它的 1 个运行，桥不再看")
     assert "RUN-PAY-1-1" in line["raw"]
+    stuck = [c for c in view["status"]["checks"] if "没停下" in c["text"]]
+    logged = [r.getMessage() for r in caplog.records if "was not stopped" in r.getMessage()]
+    if stops:
+        assert stuck == [] and logged == []
+        return
+    (stuck,) = stuck
+    assert stuck["level"] == "WARN" and "RUN-PAY-1-1" in stuck["text"] and "run-pay-1-1" in stuck["text"], stuck
+    assert stuck["todo"] and "Kiro Crew is restarting" in stuck["raw"], stuck
+    (logged,) = logged
+    assert logged.startswith("brain bridge: RUN-PAY-1-1: its session run-pay-1-1 was not stopped: ") and "503" in logged
 
 
 def test_a_run_session_team_mode_opened_right_before_the_app_stopped_is_still_its_own_when_the_app_starts_again(

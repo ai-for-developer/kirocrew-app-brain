@@ -1361,10 +1361,11 @@ def team_reach(world):
 
 
 def team_ctx(world, projects=("grp/a", "grp/b"), push="token", admin=True, bridge=True, bot=True, roles=None, jenkins=None,
-             patrol=True, issues=False):
+             patrol=True, issues=False, stop=None):
     """bot-account on *projects*. admin, bridge, bot: whether this run types the one-time token and the two accounts'
     personal tokens (False: left out; a string: that token); jenkins: the Jenkins fields typed (None: none); patrol,
-    issues: 巡检 and 从 issue 接活 as the page sends them (True, False, or the projects ticked)."""
+    issues: 巡检 and 从 issue 接活 as the page sends them (True, False, or the projects ticked); stop: how a run's session
+    is stopped (None: not here)."""
     setup, rest = mod("team.setup"), mod("bk").m("rest")
     typed = lambda given, key: given if isinstance(given, str) else world[key] if given else ""  # noqa: E731
     inp = setup.SetupInput.parse({
@@ -1374,7 +1375,7 @@ def team_ctx(world, projects=("grp/a", "grp/b"), push="token", admin=True, bridg
         "jenkins": jenkins, "patrol": patrol, "issues": issues})
     paths = setup.Paths.default(BRAINKIT, root=world["tmp"] / "team-setup")
     return setup.Ctx(inp, paths, gitlab=lambda tok: rest.GitLab(BASE, tok, world["gl"]), team_mode=team_mode(world),
-                     signer=fake_signer(world), reach=team_reach(world))
+                     signer=fake_signer(world), reach=team_reach(world), stop=stop)
 
 
 def build_team(world, **kw):
@@ -1533,9 +1534,10 @@ def runs_in(path):
 
 
 def test_a_project_taken_out_has_its_open_runs_left_in_both_ledgers_after_a_copy_of_each(team):
-    """grp/b taken out while the bridge's ledger holds RUN-PAY-2-1 of it, dispatched with D-1 open, and the signer's
-    ledger that run too: the rerun marks it failed in the bridge's ledger, D-1 closed, and closed in the signer's, each
-    ledger copied first, grp/a's run left as it is; the 三份配置 step says so. Run again, it has nothing left to do."""
+    """grp/b taken out while the bridge's ledger holds RUN-PAY-2-1 of it, dispatched with D-1 open in its session
+    run-pay-2-1, and the signer's ledger that run too: the rerun marks it failed in the bridge's ledger, D-1 closed, and
+    closed in the signer's, each ledger copied first, grp/a's run left as it is; the 三份配置 step says so, and that
+    KiroCrew did not stop the session, with its words. Run again, it has nothing left to do."""
     bk = mod("bk")
     Ledger = bk.m("bridge.ledger").Ledger
     roles = {"product": "bob", "builder": "bob"}
@@ -1545,13 +1547,15 @@ def test_a_project_taken_out_has_its_open_runs_left_in_both_ledgers_after_a_copy
         for run_id, project, iid in (("RUN-PAY-1-1", "grp/a", 7), ("RUN-PAY-2-1", "grp/b", 9)):
             led.add_run(run_id, project, run_id[4:9], iid, "a" * 40, "V-%d" % iid)
             if state != "spooled":
-                assert led.set_run(run_id, "spooled", state)
+                assert led.set_run(run_id, "spooled", state, slot=run_id.lower())
         if name.startswith("bridge"):
             led.db.executescript(bk.m("bridge.decisions").SCHEMA)
             led.db.execute("INSERT INTO decisions(id, run_id, project, iid, sha, park_hash, kind, state, created, updated) "
                            "VALUES ('D-1', 'RUN-PAY-2-1', 'grp/b', 9, ?, 'p', 'clarify', 'open', 'x', 'x')", ("a" * 40,))
         led.close()
-    view, ps = build_team(team, projects=("grp/a",), roles=roles)
+    def unavailable(slot):
+        raise mod("bk").brain_error()("KiroCrew：HTTP 503 unavailable Kiro Crew is restarting (%s)" % slot)
+    view, ps = build_team(team, projects=("grp/a",), roles=roles, stop=unavailable)
     assert everything_done(view), [(s["id"], s["status"], s["message"], s["detail"][:200]) for s in view["steps"]]
     assert runs_in(ps.root / "bridge-ledger.sqlite") == {"RUN-PAY-1-1": "dispatched", "RUN-PAY-2-1": "failed"}
     assert runs_in(ps.root / "signer-ledger.sqlite") == {"RUN-PAY-1-1": "spooled", "RUN-PAY-2-1": "closed"}
@@ -1564,6 +1568,7 @@ def test_a_project_taken_out_has_its_open_runs_left_in_both_ledgers_after_a_copy
     said = step(view, "configs")["message"]
     assert "grp/b 不归这台运行机管了：账本里它没做完的 1 个运行（RUN-PAY-2-1）停了" in said, said
     assert copies[0] in said and copies[1] in said
+    assert "RUN-PAY-2-1 的会话 run-pay-2-1 没停下" in said and "Kiro Crew is restarting (run-pay-2-1)" in said, said
     again, _ = build_team(team, projects=("grp/a",), roles=roles)
     assert everything_done(again) and "不归这台运行机管了" not in step(again, "configs")["message"]
     assert sorted(p.name for p in ps.root.iterdir() if ".left-" in p.name) == copies
