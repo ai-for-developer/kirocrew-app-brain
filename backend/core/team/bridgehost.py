@@ -552,7 +552,8 @@ class TeamRuntime:
         需求现状 say it (deliveries.team_classify over the ledger, *led* when the caller read it, the records in the
         run's workspace and its session, run_sessions; its run ids, MR and last update). Its credits and the first
         line of its 变更说明 are the service's."""
-        if self.host is None:
+        host = self.host        # once: a save that stops team mode lets go of it on the worker meanwhile
+        if host is None:
             return []
         led = led if led is not None else self.ledger()
         sessions = self.run_sessions(led)
@@ -562,7 +563,7 @@ class TeamRuntime:
             all_ids.setdefault(r["req"], []).append(r["run_id"])
             latest[r["req"]] = r
         notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [], led["runs"])
-        now, stall_s = time.time(), float(self.host.stall_s)
+        now, stall_s = time.time(), float(host.stall_s)
         out = []
         for key, r in sorted(latest.items()):
             facts = {"key": key, "claim": None, "where": "runner", "branch": None, "owner": r.get("owner"),
