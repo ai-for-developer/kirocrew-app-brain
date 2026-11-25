@@ -143,6 +143,30 @@ def test_the_signer_needs_the_brain_kit_that_asks_q_n(tmp_path):
         bk.unload()
 
 
+def test_the_signer_needs_the_brain_kit_whose_check_answer_takes_the_ci_line(tmp_path):
+    """The bridge (brain-kit d333ec9) puts a line of its own on what CI did into an acceptance question, and the
+    signer's check_answer must take the question with it: an older one voids it as edited, so every acceptance answer
+    would be refused. A checkout without decisions.ci_line (the rule that line follows) is refused at the start,
+    naming it and d333ec9."""
+    import shutil
+    import subprocess
+    import sys
+    from appkit import BRAINKIT
+    f = BRAINKIT / "brainkit" / "bridge" / "decisions.py"
+    if "def ci_line(" not in f.read_text(encoding="utf-8"):
+        pytest.skip("brain-kit checkout before d333ec9")
+    old = tmp_path / "old-brain-kit"
+    shutil.copytree(BRAINKIT / "brainkit", old / "brainkit", ignore=shutil.ignore_patterns("__pycache__"))
+    g = old / "brainkit" / "bridge" / "decisions.py"
+    g.write_text(g.read_text(encoding="utf-8").replace("def ci_line(", "def _ci_line_gone("), encoding="utf-8")
+    probe = "import sys; sys.path.insert(0, %r); import brain_signer; brain_signer.load_brainkit(sys.argv[1])" % str(
+        ROOT / "signer")
+    p = subprocess.run([sys.executable, "-I", "-c", probe, str(old)], capture_output=True, text=True)
+    assert p.returncode != 0 and "bridge.decisions.ci_line" in p.stderr and "d333ec9" in p.stderr, p.stderr
+    p = subprocess.run([sys.executable, "-I", "-c", probe, str(BRAINKIT)], capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+
+
 def test_a_brainkit_without_flows_is_refused_as_too_old(tmp_path):
     """Fast mode's rules live in brain-kit's flows: a checkout from before it is too old, said so, never half used."""
     import shutil
