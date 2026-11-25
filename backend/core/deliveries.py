@@ -430,6 +430,13 @@ NOTICE_KIND = {
     "edits-down-told": ("held", "bridge", "%s 的回答先等着：GitLab 查不到回复有没有被改过（不用重新回复）"),
 }
 OUTBOX_WHAT = {"handover": "接手消息", "answer": "%s 的回答", "notice": "给运行机的通知"}
+# a message KiroCrew would not let the brain app send: it refused to set the session to trust (brain-kit's TrustRefused,
+# only for its 403 session_approval_not_granted: crewadapter.APPROVAL_REFUSED). brain-kit's own advice on the MR is to
+# reinstall its brain-bridge app (BRAINKIT_REQUESTS 54); the brain app's fix is the owner's consent in KiroCrew.
+OUTBOX_HELD = ("%s还没送进会话：KiroCrew 不让 Brain 交付 app 把会话设成信任，它的 sessionApproval 权限没有得到同意（或者 app 停用"
+               "了）。请管运行机的人在 KiroCrew 网页的 Apps 里打开 Brain 交付（/apps/detail/brain）：开着就先停用，再点启用，同意它要的 "
+               "sessionApproval。MR 上让用 brain-kit 的 brain-bridge 重装 app 的话不适用。同意以后桥每轮自动接着送，%s。")
+OUTBOX_REDO = {"answer": "不用重新回答", "handover": "不用重新交接"}
 
 
 def run_state(run: Mapping[str, Any], notes: list[dict[str, Any]]) -> str:
@@ -455,10 +462,11 @@ def team_note(n: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def outbox_note(o: dict[str, Any]) -> dict[str, Any] | None:
-    """A message into the run's session that is not known to have landed, or that is not sent any more (brain-kit
-    0d52e97's outbox: sending, interrupted, sent, unknown, dropped), as a TeamNote; None for one that landed."""
+    """A message into the run's session that is not known to have landed, that is not sent any more, or that KiroCrew
+    would not let in (brain-kit 0d52e97's outbox: sending, interrupted, sent, unknown, dropped, held), as a TeamNote;
+    None for one that landed or is being sent."""
     st = str(o.get("state") or "")
-    if st not in ("unknown", "interrupted", "dropped"):
+    if st not in ("unknown", "interrupted", "dropped", "held"):
         return None
     what, _, rest = str(o.get("what") or "").partition(":")
     name = OUTBOX_WHAT.get(what, "消息")
@@ -468,8 +476,10 @@ def outbox_note(o: dict[str, Any]) -> dict[str, Any] | None:
     text = {"unknown": "%s不知道送到会话没有（送过 %d 次）：桥每轮看一下会话，看到了就算送到；一直这样就要人看一下会话" % (name, tries),
             "interrupted": "%s送的时候桥停了：桥每轮看一下会话，看到了就算送到；一直这样就要人看一下会话" % name,
             "dropped": "%s不送了：%s" % (name, "KiroCrew 一直没收下，这次运行算没能开始" if what == "handover"
-                                        else "分支有了新推送，或者运行结束了" if what == "answer" else "已经不适用")}[st]
-    return {"kind": "outbox_" + st, "text": text, "at": lean_view.epoch(o.get("updated") or o.get("created"))}
+                                        else "分支有了新推送，或者运行结束了" if what == "answer" else "已经不适用"),
+            "held": OUTBOX_HELD % (name, OUTBOX_REDO.get(what, "不用做别的"))}[st]
+    since = o.get("created") if st == "held" else o.get("updated") or o.get("created")   # held since its first try
+    return {"kind": "outbox_" + st, "text": text, "at": lean_view.epoch(since)}
 
 
 def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]],
@@ -534,6 +544,10 @@ def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[
                    "没能开始（工作区没建成，或者接手消息一直送不进会话）：要人看一下，处理好以后重新交接", where="mr")
     if st == "signing":
         return put("handed_over", "bridge", "none", "签名服务在签接手合同")
+    if "outbox_held" in latest:     # KiroCrew will not let the app send into the session until a person consents
+        held = latest["outbox_held"]
+        return put("handed_over" if st in ("spooled", "ready") else "parked" if park_waiting(park) else "running",
+                   "people", "none", held["text"], since=held.get("at"))
     if st in ("spooled", "ready"):
         for k in ("runnerd_silent", "setup", "runnerd_retry", "queued", "gaveup", "outbox_unknown"):
             if k in latest:

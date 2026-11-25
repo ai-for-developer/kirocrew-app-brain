@@ -85,19 +85,22 @@ const HANDOFF_STATE: Record<string, { label: string; tone: Tone }> = {
   checking: { label: '在检查', tone: 'run' }, accepted: { label: '已接手', tone: 'ok' }, rejected: { label: '拒绝接手', tone: 'bad' },
 }
 
-/** The messages into the runs' sessions (brain-kit's outbox: hand-overs, answers, notices) by state, in words. */
+/** The messages into the runs' sessions (brain-kit's outbox: hand-overs, answers, notices) by state, in words; held:
+ * KiroCrew would not let the app set the session to trust, so the bridge sends it again each round. */
 export const OUTBOX_STATE: Record<string, { label: string; tone: Tone }> = {
   sending: { label: '正在送', tone: 'run' },
   interrupted: { label: '送的时候桥停了', tone: 'warn' },
   sent: { label: '送到了', tone: 'ok' },
   unknown: { label: '不知道送到没有', tone: 'warn' },
+  held: { label: 'KiroCrew 不让送', tone: 'bad' },
   dropped: { label: '不送了', tone: 'bad' },
 }
 export const outboxMeta = (state: string) => OUTBOX_STATE[state] ?? { label: state, tone: 'idle' as Tone }
 
 /**
  * A run's note (what the bridge holds about it) by kind: the pipeline holding the acceptance question (ci_*), runnerd
- * silent or retrying (runnerd_*), sends that keep failing (gaveup), messages not known to have landed (outbox_*),
+ * silent or retrying (runnerd_*), sends that keep failing (gaveup), messages not known to have landed or that KiroCrew
+ * will not let in until a person consents (outbox_*),
  * queued, a session told to go on that still did not push (stopped). Another ci_ / runnerd_ kind is a warning; any
  * other kind is quiet.
  */
@@ -105,7 +108,7 @@ export const NOTE_TONE: Record<string, Tone> = {
   ci_wait: 'warn', ci_person: 'warn', ci_red: 'bad',
   runnerd_retry: 'warn', runnerd_silent: 'bad',
   gaveup: 'bad', setup: 'warn', send_unknown: 'warn', held: 'warn', failed: 'bad', nobody: 'bad',
-  outbox_unknown: 'warn', outbox_interrupted: 'warn', outbox_dropped: 'bad',
+  outbox_unknown: 'warn', outbox_interrupted: 'warn', outbox_dropped: 'bad', outbox_held: 'bad',
   queued: 'idle', stopped: 'bad',
 }
 export const noteTone = (kind: string): Tone => NOTE_TONE[kind] ?? (/^(ci|runnerd)_/.test(kind) ? 'warn' : 'idle')
@@ -440,8 +443,8 @@ function OutboxKpi({ counts }: { counts: Record<string, number> }) {
   return (
     <LedgerKpi
       k="outbox" label="送进会话的消息" unit="条" counts={counts} big="sent" order={Object.keys(OUTBOX_STATE)}
-      mark={n('dropped') ? 'bad' : unsure ? 'warn' : undefined}
-      note={unsure ? '桥每轮看会话：看到了就算送到，一直这样要人看一下' : undefined}
+      mark={n('dropped') || n('held') ? 'bad' : unsure ? 'warn' : undefined}
+      note={n('held') ? 'KiroCrew 不让 Brain 交付 app 把会话设成信任：下面那个运行写了要在 KiroCrew 里同意什么' : unsure ? '桥每轮看会话：看到了就算送到，一直这样要人看一下' : undefined}
     />
   )
 }

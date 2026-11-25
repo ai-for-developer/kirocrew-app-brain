@@ -305,7 +305,10 @@ shown folded): `backend/core/problems.py`.
   does: KiroCrew keeps trust in memory, so a restart ends it. Only KiroCrew's `403 session_approval_not_granted` to
   that call holds the message (brain-kit's `TrustRefused`; what the MR is then told is brain-kit's text, which names
   brain-kit's brain-bridge app: BRAINKIT_REQUESTS 54); a 409, 404 or 429 of it is an ordinary error, settled by
-  reading the slot. A turn KiroCrew stopped half-way (a restart, a provider
+  reading the slot. While a message is held (brain-kit's outbox `held`), 运行机 says it under its run, toned bad, and
+  the requirement's row waits on people with it: why, and the brain app's fix, its `sessionApproval` consented to in
+  KiroCrew's dashboard (Apps → Brain 交付: turn it off if it is on, enable it, allow sessionApproval), not the MR's
+  reinstall of brain-bridge; 送进会话的消息 counts it as KiroCrew 不让送. A turn KiroCrew stopped half-way (a restart, a provider
   shutdown) leaves an idle session brain-kit's watchdog does not look at, its work uncommitted in the workspace. So
   after brain-kit's steps each round reads every dispatched run's slot (its newest rows): idle, nothing queued or on
   its way to it (brain-kit's outbox), its newest turn cut off, no question at its MR head waiting for a person or the
