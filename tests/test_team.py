@@ -370,6 +370,33 @@ def test_a_message_held_for_trust_says_on_its_run_why_and_what_the_brain_app_nee
     assert seen["after"] == ([], ("runner", "Q-1 的回答送到了，运行机在接着做")), seen["after"]
 
 
+def test_a_page_that_reads_the_runners_rows_while_a_save_stops_team_mode_gets_rows_not_an_error(world, tmp_path):
+    """A full test run saw 'NoneType' object has no attribute 'stall_s' (two settings saves at once): a page, or the
+    status a save answers with, reads the runner's rows on a thread of its own while the save stops team mode, whose
+    worker lets go of brain-kit's bridge (host None) between the rows' check that team mode runs and their later read
+    of bridge.json's stall_minutes. The rows read are what the ledger held then, with no error."""
+    svc = service(world, tmp_path)
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # handed over: a run in the ledger
+            rt = svc.team
+            read = rt.ledger
+
+            def read_then_stop():
+                got = read()
+                rt.stop()                               # a settings save stops team mode right after the ledger read
+                return got
+            rt.ledger = read_then_stop
+            return await asyncio.to_thread(rt.runner_rows), rt.host
+        finally:
+            await svc.stop()
+
+    rows, host = run(go())
+    assert host is None and [r["key"] for r, _f, _d, _run in rows] == ["PAY-1"], rows
+
+
 def test_the_runner_page_says_a_session_stopped_on_its_run_until_the_next_push(world, tmp_path):
     """Its turn cut off at one MR head, then each of the two turns told to go on: the MR hears 「…的会话停住了」. The
     run's row on 运行机 says it under the run, and the requirement's row waits on people, for that head only: once the
