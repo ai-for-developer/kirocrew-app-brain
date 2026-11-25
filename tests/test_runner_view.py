@@ -147,12 +147,14 @@ def test_a_q_question_waits_on_me_until_a_reply_names_its_number(tmp_path, home,
     assert [q["id"] for q in got.body["repos"][0]["runner"]["seen"]["waiting"]] == ["Q-8", "Q-9"]
 
 
-@pytest.mark.parametrize("label", ["", "merge-me"], ids=["no-label", "renamed"])
+@pytest.mark.parametrize("label, labels", [("", []), ("merge-me", ["merge-me"]), ("ai-ready-to-merge", ["ai-running"])],
+                         ids=["no-label", "renamed", "label-kept"])
 def test_a_hand_over_accepted_and_done_is_not_at_work_whatever_kit_json_calls_its_label(tmp_path, home, monkeypatch,
-                                                                                         label):
+                                                                                         label, labels):
     """kit.json accepted_label renames the label the bridge puts on a hand-over's MR once the run is accepted and
-    done, or ("") asks for none: running_label comes off, and the bridge's last note on it says it can be merged. That
-    MR is the hand-over's, done: neither the runner's hand-over nor MR 巡检 is at work on it."""
+    done, or ("") asks for none: running_label comes off, and the bridge's last note on it says it can be merged; a
+    bridge whose account GitLab does not let change the labels says it all the same, the MR keeping running_label.
+    That MR is the hand-over's, done: neither the runner's hand-over nor MR 巡检 is at work on it."""
     clock, gl, svc, routes = app(tmp_path, monkeypatch, accepted_label=label)
 
     async def go():
@@ -160,7 +162,7 @@ def test_a_hand_over_accepted_and_done_is_not_at_work_whatever_kit_json_calls_it
         try:
             ready = getattr(mod("bk").m("bridge.decisions"), "READY", mod("team.runwatch").READY)
             at(clock, H)
-            gl.mr(P, 43, title="退款审核", labels=[label] if label else [])
+            gl.mr(P, 43, title="退款审核", labels=labels)
             note(gl, 43, "brain-bridge", "AI 已接手 RUN-PAY-3-1")
             note(gl, 43, "brain-bridge", ready % ("RUN-PAY-3-1", "a" * 12, "Q-2", "V-0123456789", "b" * 12, "@alice"))
             at(clock, 0)
