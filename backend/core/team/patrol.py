@@ -33,7 +33,8 @@ The ledger, <root>/patrol.sqlite, has one row per open MR of the projects patrol
                       is removed once LOCK_STALE_S old, and waited for until then)
   working -> blocked  the MAX_ATTEMPTS-th failed attempt on one fingerprint: left alone until its fingerprint changes
   idle -> paused      dispatched MAX_STREAK times in a row with no person pushing or commenting in between (each push
-                      of the runner's makes a new fingerprint): left alone until a person does
+                      of the runner's makes a new fingerprint, its merge of the target branch too, whose commits are
+                      the target's, not a person's push): left alone until a person does
   any -> rules        brain-kit's brain-push-rules failed the head pipeline for commits of the runner's (it lets the
                       bot commit on run branches only): any it pushes would be refused too, so the MR is left alone for
                       good (its turn stopped)
@@ -446,10 +447,11 @@ def failed_checks(gl: Any, logs: Logs, project: str, sha: str, pipeline_id: int,
     return tuple(out)
 
 
-def pushed_by_people(gl: Any, project: str, old: str, new: str, bots: set[str]) -> bool:
+def pushed_by_people(gl: Any, project: str, old: str, new: str, bots: set[str], target: str) -> bool:
     """Whether a person pushed to the MR's source branch from its head *old* to *new*: a commit in old..new that none
-    of *bots* (the runner's git emails) committed, or a head that moved back (the runner only adds commits). A range
-    GitLab will not list (*old* rewritten away, or a GitLab without ranges) is judged by who committed *new*."""
+    of *bots* (the runner's git emails) committed and that is not one of the target branch's (old..*target*: the runner
+    merging the target in brings those), or a head that moved back (the runner only adds commits). A range GitLab will
+    not list (*old* rewritten away, or a GitLab without ranges) is judged by who committed *new*."""
     rest = bk.m("rest")
     path = "/projects/%s/repository/commits" % rest.q(project)
     try:
@@ -457,9 +459,18 @@ def pushed_by_people(gl: Any, project: str, old: str, new: str, bots: set[str]) 
     except rest.HttpError as exc:
         if not 400 <= exc.status < 500:
             raise
-        rows = [gl.call("GET", "%s/%s" % (path, new))]
+        rows, target = [gl.call("GET", "%s/%s" % (path, new))], ""
     commits = [c for c in rows or [] if isinstance(c, dict)]
-    return not commits or any(str(c.get("committer_email") or "").lower() not in bots for c in commits)
+    people = [c for c in commits if str(c.get("committer_email") or "").lower() not in bots]
+    if people and target:
+        try:
+            theirs = gl.call("GET", path, {"ref_name": "%s..%s" % (old, target), "per_page": 100}) or []
+        except rest.HttpError as exc:
+            if not 400 <= exc.status < 500:
+                raise
+            theirs = []                         # the target's commits unknown: every person's commit counts
+        people = [c for c in people if c.get("id") not in {t.get("id") for t in theirs if isinstance(t, dict)}]
+    return not commits or bool(people)
 
 
 def rules_said(jobs: tuple[FailedJob, ...] | list[FailedJob]) -> list[str]:
@@ -1100,7 +1111,8 @@ class Patrol:
             return row
         acted = row.read.people_note > row.people_note
         if not acted and item.head_sha != row.checked_head:
-            acted = pushed_by_people(self.gl, e.project, row.checked_head, item.head_sha, self._bot_emails(e.kit))
+            acted = pushed_by_people(self.gl, e.project, row.checked_head, item.head_sha, self._bot_emails(e.kit),
+                                     item.target_branch)
             row = row if acted else replace(row, checked_head=item.head_sha)
         return replace(row, streak=0, state=IDLE if row.state == PAUSED else row.state) if acted else row
 
