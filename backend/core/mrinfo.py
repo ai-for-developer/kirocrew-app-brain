@@ -19,8 +19,8 @@ whose delivery is not known (「D-n 的回答（凭证 V-…）不知道送到 r
 wordings, and the run's own notes, which start with its run id: runnerd silent, runnerd retrying, the run that could
 not start (it also gets the rejected label), KiroCrew not opening the session, queued, a hand-over send not known,
 sends that keep failing, an acceptance question held until the head pipeline is green (running, red, or waiting for a
-person), a question nobody may answer. The newest such note since the last 「AI 已接手」 is ``runner``: {kind, text in
-short Chinese, raw, at}.
+person), a question nobody may answer, and (769efc7) a run accepted and done that can be merged. The newest such note
+since the last 「AI 已接手」 is ``runner``: {kind, text in short Chinese, raw, at}.
 
 The same refresh reads the MR's newest pipelines (``pipelines``, parse_pipelines): one more GET with the same token, so
 the 运行过程 can say a round happened because CI failed (「CI 没过 #1234」). None when they could not be read (CI off, no
@@ -76,6 +76,8 @@ RUNNER_NOTES: list[tuple[re.Pattern, str, Any]] = [(re.compile(rx), kind, text) 
      "验收问题没发：流水线 #{p} 没过，运行机已经收到过多次 CI 失败：请负责人看一下"),
     (r"^%s 的问题（提交 \w+ 的 park\.json）现在发不出：没有人被配置为可以回答「(?P<kind>[^」]*)」" % RUN, "nobody",
      "问题发不出：没人能回答「{kind}」类决定（在 brain-kit 设置里配上谁来回答，配好就自动发）"),
+    # brain-kit 769efc7 (and team/runwatch.py before it): accepted, its records pushed; kit.json accepted_label may be ""
+    (r"^%s 做完了：产品在提交 \w+ 上验收通过" % RUN, "ready", "验收通过了，会话也做完了：MR 上说了可以合并、谁来合并"),
 )]
 LABEL_KIND = {"澄清": "clarify", "设计": "design", "计划": "plan", "验收": "acceptance", "危险动作": "action", "其他": "other",
               "需求批准": "requirements"}

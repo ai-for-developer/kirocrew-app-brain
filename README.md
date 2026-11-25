@@ -330,13 +330,17 @@ shown folded): `backend/core/problems.py`.
 - **A run the runner finished** (`team/runwatch.py`). Once the product's acceptance reached the run (brain-kit's
   `_accepted`: its newest delivered acceptance decision is `approve`) and its session is idle with its records pushed
   after it, the MR hears once 「RUN-… 做完了：…可以合并了：请 @<owner> 在 GitLab 上合并」 (GitLab's approvals and
-  pipeline still decide), and its label `ai-running` becomes `ai-ready-to-merge` (brain-kit's labels have none for it,
-  BRAINKIT_REQUESTS 50; GitLab makes it the first time it is put on, until 一键建运行机 makes it with the others).
-  From the ledger's note of that comment the runner's row is 等合并 (`to_merge`), waiting on the owner to merge, here,
-  in the project's snapshot and on a person's machine, which reads the label; so is the run's own chip, where
+  pipeline still decide), and its label `ai-running` becomes kit.json `accepted_label` (`ai-ready-to-merge` when
+  kit.json names none; `""`: none, `ai-running` only comes off; GitLab makes it the first time it is put on, until
+  一键建运行机 makes it with the others). brain-kit's bridge does this itself since 769efc7, with the same ledger keys,
+  so the app's step finds it told; with an older brain-kit the app's step does it. From the ledger's note of that
+  comment the runner's row is 等合并 (`to_merge`), waiting on the owner to merge, here, in the project's snapshot and
+  on a person's machine, which reads kit.json's label or, with none, the bridge's note 「…做完了」 (mrinfo's `ready`;
+  a person's 团队运行机 does not count that MR at work either); so is the run's own chip, where
   brain-kit's ledger still says `dispatched` (`deliveries.run_state`): 运行机's run and its count, and the snapshot's
-  hand-over on a person's 团队运行机. brain-kit's reconcile marks the run merged or closed and leaves the MR's labels: the round
-  after takes `ai-running` and `ai-ready-to-merge` off it, once (a run that ended within the last 14 days). An MR
+  hand-over on a person's 团队运行机. brain-kit's reconcile marks the run merged or closed (and, since 769efc7, takes the
+  labels off); the round after takes `ai-running` and kit.json's `accepted_label` off it, once (a run that ended within
+  the last 14 days). An MR
   GitLab no longer shows (deleted: 404) or the bridge's account may not read (403) ends that too: the bridge's log
   says so and no round fails on it. 运行机 says this step as 照看派出去的运行 when it fails, and a round's count of
   sessions told to go on as 让中断的会话接着做 n 个.

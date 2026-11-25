@@ -61,7 +61,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from .. import bk, kitmr, snapshot
-from ..constants import APP_ROOT, MERGE_LABEL, PYTHON_BIN
+from ..constants import APP_ROOT, MERGE_LABEL, PYTHON_BIN, accepted_label
 from . import issues as issues_mod
 from . import left as left_mod
 from . import patrol as patrol_mod
@@ -122,9 +122,10 @@ MR_ISSUES = {True: "work_sources 加上 issue-label：合并以后，项目里 D
 # the work sources 一键建运行机 switches on or off: (kind, its SetupInput field, what the kit.json MR says of it on and off,
 # what starts or stops once that MR is merged). On, a kind goes into kit.json work_sources with the hand-over before it.
 SWITCHES = ((sources.PATROL, "patrol", MR_PATROL, "巡检"), (sources.ISSUE, "issues", MR_ISSUES, "从 issue 接活"))
-# (kit.json key, default name, colour): the labels the bridge moves, and brain reflect's
+# (kit.json key, default name, colour): the labels the bridge moves, and brain reflect's; accepted_label "" is none
 LABELS = (("handoff_label", "ai-handoff", "#1f75cb"), ("running_label", "ai-running", "#108548"),
-          ("rejected_label", "ai-handoff-rejected", "#dd2b0e"), ("", "brain-reflect", "#6699cc"), ("", MERGE_LABEL, "#e9be74"))
+          ("rejected_label", "ai-handoff-rejected", "#dd2b0e"), ("", "brain-reflect", "#6699cc"),
+          ("accepted_label", MERGE_LABEL, "#e9be74"))
 ISSUE_LABEL = ("issue_label", issues_mod.LABEL, "#9e5fd0")      # the issue label, made when 从 issue 接活 is on
 # an environment variable nobody sets: the bridge and the signer read their token from token_file only (the default
 # names, BRIDGE_GITLAB_TOKEN and SIGNER_GITLAB_TOKEN, may hold something else)
@@ -1145,8 +1146,8 @@ def step_labels(ctx: Ctx) -> StepResult:
 def project_labels(ctx: Ctx, p: Proj) -> StepResult:
     want: list[tuple[str, str]] = []
     for key, default, color in LABELS + ((ISSUE_LABEL,) if ctx.inp.on("issues", p) else ()):
-        name = str(p.kit.get(key) or default) if key else default
-        if name.lower() not in {w.lower() for w, _ in want}:
+        name = accepted_label(p.kit) if key == "accepted_label" else str(p.kit.get(key) or default) if key else default
+        if name and name.lower() not in {w.lower() for w, _ in want}:
             want.append((name, color))
     have = {str(row.get("name") or "").lower()
             for row in ctx.gl.pages("/projects/%d/labels" % p.id, {}, 100, 20, "labels")}

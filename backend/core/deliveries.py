@@ -15,7 +15,7 @@ import time
 from typing import Any, Mapping
 
 from . import bk, deploys_view, fastrow, flowview, lean_view
-from .constants import MERGE_LABEL
+from .constants import accepted_label
 
 # to_merge: the product accepted a run on the team runner and its session is done: a person merges the MR
 STATE_LABEL = {"claimed": "已认领", "local": "本地开发中", "handed_over": "已交接", "rejected": "接手被拒",
@@ -302,7 +302,8 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
         lean_req = q.get("lean_request") or (park or {}).get("lean_request")
         return put("parked", who, "answer", mr_ask(who, KIND_LABEL.get(kind, kind), did, approval=bool(lean_req),
                                                    owner=None if mine else owner), where="mr", since=since)
-    if MERGE_LABEL in labels:       # the team runner said on the MR that its run is accepted and done
+    label = accepted_label(cfg)
+    if (label and label in labels) or (note and note["kind"] == "ready"):     # the team runner's run is done
         return put("to_merge", you, "merge", merge_text(them), where="mr", since=f.get("tip_at"))
     if cfg.get("running_label") in labels or bot_commits:
         if note and note["kind"] in RUNNING_NOTES:      # e.g. the acceptance question held until CI is green

@@ -248,7 +248,7 @@ app 导不进来的：以前手开会话的聊天记录；用 Jira 认领、还�
 
 ### 2. 标签（人做）
 
-在项目里建好这几个标签：`ai-handoff`、`ai-running`、`ai-handoff-rejected`、`ai-ready-to-merge`、`brain-reflect`。`ai-ready-to-merge` 是运行机做完的 MR：产品验收通过、会话把记录也推上来以后，运行机把 `ai-running` 换成它，在 MR 上说一次可以合并了、请需求的负责人合并，运行机页和「团队运行机」上这个运行也写「等合并」；合并以后两个标签都去掉。
+在项目里建好这几个标签：`ai-handoff`、`ai-running`、`ai-handoff-rejected`、`ai-ready-to-merge`、`brain-reflect`。`ai-ready-to-merge` 是运行机做完的 MR：产品验收通过、会话把记录也推上来以后，运行机把 `ai-running` 换成它，在 MR 上说一次可以合并了、请需求的负责人合并，运行机页和「团队运行机」上这个运行也写「等合并」；合并以后两个标签都去掉。这个标签可以在 `.brain/kit.json` 的 `accepted_label` 里改名；写成 `""` 就不打标签，运行机只去掉 `ai-running`，各个页面照桥在 MR 上说的「…做完了…可以合并了」认出它在等合并（一键建运行机也就不建这个标签）。
 
 ### 3. 两个小仓库（人做）
 

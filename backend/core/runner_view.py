@@ -5,7 +5,8 @@ GitLab client 交付总览 reads MRs with (mrinfo.client).
 An open MR is at work when it carries the hand-over's running label (kit.json running_label), or when MR 巡检 replied
 on it or summed it up within RECENT_S: patrol leaves the hand-over's MRs alone (team/patrol.skip_of), so a note of the
 bridge's account on any other open MR is patrol's, unless it is patrol's own comment that it left the MR alone
-(patrol.STOPPED_RE). A question waits on the person when the bridge asked it and counts no answer yet (mrinfo.
+(patrol.STOPPED_RE), or the MR is a hand-over's that is done: the bridge said on it that it can be merged (its label,
+kit.json accepted_label, may be ""). A question waits on the person when the bridge asked it and counts no answer yet (mrinfo.
 parse_notes: open), names them among who may answer, and nobody wrote `answer D-n` after it. The runner last acted
 when the bridge's account last wrote on one of the MRs read (a system note, a label it changed, counts too).
 
@@ -35,7 +36,7 @@ from functools import partial
 from typing import Any, Callable, Mapping, NamedTuple
 
 from . import bk, mrinfo, snapshot
-from .constants import MERGE_LABEL
+from .constants import accepted_label
 from .team import patrol
 
 RECENT_S = 24 * 3600
@@ -174,7 +175,7 @@ def read(gl: Any, project: str, kit: Mapping[str, Any], now: float) -> tuple[lis
 def seen_of(mrs: list[Mr], notes: Mapping[int, list[Any]], *, kit: Mapping[str, Any], bridge_user: str,
             me: str | None, now: float) -> Seen:
     bridge, running = bridge_user.lower(), str(kit.get("running_label") or "")
-    hand = ({str(kit.get(k) or "") for k in HAND_LABELS} | {MERGE_LABEL}) - {""}
+    hand = ({str(kit.get(k) or "") for k in HAND_LABELS} | {accepted_label(kit)}) - {""}
     at_work: list[AtWork] = []
     waiting: list[Waiting] = []
     acts: list[float] = []
@@ -187,9 +188,10 @@ def seen_of(mrs: list[Mr], notes: Mapping[int, list[Any]], *, kit: Mapping[str, 
         last = said[-1] if said else None
         if not mr.open:
             continue
+        done = any((mrinfo.runner_note(n.first) or {}).get("kind") == "ready" for n in said)
         if running in mr.labels:
             at_work.append(AtWork(mr.iid, mr.title, mr.url, RUNNING, last.at if last else None))
-        elif not (mr.labels & hand) and last and last.at is not None and now - last.at <= RECENT_S \
+        elif not (mr.labels & hand) and not done and last and last.at is not None and now - last.at <= RECENT_S \
                 and not patrol.STOPPED_RE.match(last.first):
             at_work.append(AtWork(mr.iid, mr.title, mr.url, PATROL, last.at))
         if me:

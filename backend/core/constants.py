@@ -19,9 +19,15 @@ LOCAL_AGENT = "brain-dev-crew"
 OLD_AGENT = "brain-dev"            # what sessions were opened with before: those keep working
 RUNNER_AGENT = "brain-run"         # ~/.kiro/agents/brain-run.json on the team runner
 # the label of an MR whose run on the team runner the product accepted and whose session is done: a person merges it
-# (team/runwatch.py puts it on in place of kit.json running_label and takes it off at the merge; brain-kit's labels
-# have none for it, BRAINKIT_REQUESTS 50)
+# (brain-kit's bridge, or team/runwatch.py with a brain-kit before 769efc7, puts it on in place of running_label and
+# takes it off at the merge): kit.json accepted_label, this when kit.json (or a brain-kit before it) names none
 MERGE_LABEL = "ai-ready-to-merge"
+
+
+def accepted_label(kit) -> str:
+    """kit.json accepted_label: the label of a run accepted and done; "" when the team wants none (then only
+    running_label comes off, and the bridge's ready note on the MR is what says it waits for its merge)."""
+    return str(kit.get("accepted_label", MERGE_LABEL) or "")
 
 # KiroCrew lets an agent work only under ~/workspace(s) or ~/workplace(s): every requirement's worktree lives here.
 WORK_ROOT = _Path.home() / "workplace" / "brain-app"
