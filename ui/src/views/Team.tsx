@@ -101,15 +101,15 @@ export const outboxMeta = (state: string) => OUTBOX_STATE[state] ?? { label: sta
  * A run's note (what the bridge holds about it) by kind: the pipeline holding the acceptance question (ci_*), runnerd
  * silent or retrying (runnerd_*), sends that keep failing (gaveup), messages not known to have landed or that KiroCrew
  * will not let in until a person consents (outbox_*),
- * queued, a session told to go on that still did not push (stopped). Another ci_ / runnerd_ kind is a warning; any
- * other kind is quiet.
+ * queued, a session told to go on that still did not push (stopped) or that ended its turn without a push (ended).
+ * Another ci_ / runnerd_ kind is a warning; any other kind is quiet.
  */
 export const NOTE_TONE: Record<string, Tone> = {
   ci_wait: 'warn', ci_person: 'warn', ci_red: 'bad',
   runnerd_retry: 'warn', runnerd_silent: 'bad',
   gaveup: 'bad', setup: 'warn', send_unknown: 'warn', held: 'warn', failed: 'bad', nobody: 'bad',
   outbox_unknown: 'warn', outbox_interrupted: 'warn', outbox_dropped: 'bad', outbox_held: 'bad',
-  queued: 'idle', stopped: 'bad',
+  queued: 'idle', stopped: 'bad', ended: 'bad',
 }
 export const noteTone = (kind: string): Tone => NOTE_TONE[kind] ?? (/^(ci|runnerd)_/.test(kind) ? 'warn' : 'idle')
 const NOTE_GLYPH: Partial<Record<Tone, string>> = { bad: '✕', warn: '!' }

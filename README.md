@@ -320,13 +320,17 @@ shown folded): `backend/core/problems.py`.
   rejects), while a restart leaves the turn on whatever it wrote last (RUN-REQ-2-1: a tool call, then KiroCrew's empty
   row of a stopped turn) and an error on an `error` row; rows KiroCrew writes after a turn (a compaction, a trust reset,
   「🔄 Switched to agent」 when a person picks the session's agent) are looked past (`crewadapter.cut_off`). So a session
-  that ended its turn without a push (brain-run's 「工作区和合同 … 对不上，不继续」, 「…等人处理」) is left alone, and so is one whose newest
+  that ended its turn without a push (brain-run's 「工作区和合同 … 对不上，不继续」, 「…等人处理」) is not told to go on (brain-kit's watchdog,
+  769efc7, tells its MR once 「…的会话这一轮结束了，可是没有推送…请负责人到 KiroCrew 看一下」: the ledger notice
+  `ended:<run>:<head12>`, said as `stopped` is below), and so is one whose newest
   turn a person stopped in the app (停止: the session runner marks that turn user-stopped, whatever KiroCrew's rows end
   on). A cut-off one is sent 「会话中断：…」 (go on: commit and push as brain-run does, then stop as usual), through
   brain-kit's outbox as a notice about that head; once more when that turn is cut off too; then the MR says 「…的会话停住了」
   once, for a person to look at it in KiroCrew, and 运行机 says it under the run, its row waiting on people (the ledger
   notice `stopped:<run>:<head12>`, said while that head is the one the bridge last read). A push starts the count again
-  and ends what 运行机 says.
+  and ends what 运行机 says. Both notices are said the same way: under the run on 运行机 (red), as what the
+  requirement's row waits on (people), in the project's snapshot (a person's 团队运行机), and, from the bridge's note
+  on the MR (mrinfo's `stopped` and `ended`), on a person's 交付总览 and in 全队交付, until a push after it.
 - **A run the runner finished** (`team/runwatch.py`). Once the product's acceptance reached the run (brain-kit's
   `_accepted`: its newest delivered acceptance decision is `approve`) and its session is idle with its records pushed
   after it, the MR hears once 「RUN-… 做完了：…可以合并了：请 @<owner> 在 GitLab 上合并」 (GitLab's approvals and

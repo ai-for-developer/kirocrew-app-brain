@@ -14,7 +14,7 @@ import re
 import time
 from typing import Any, Mapping
 
-from . import bk, deploys_view, fastrow, flowview, lean_view
+from . import bk, deploys_view, fastrow, flowview, lean_view, mrinfo
 from .constants import accepted_label
 
 # to_merge: the product accepted a run on the team runner and its session is done: a person merges the MR
@@ -376,7 +376,7 @@ def answered_text(state: str, at: float | None, now: float | None, wait_s: float
     return ANSWERED_TEXT[state]
 # the run's own MR notes (mrinfo.RUNNER_NOTES) that say why a running run waits, and on whom
 RUNNING_NOTES = {"ci_wait": "runner", "ci_person": "people", "ci_red": "people", "nobody": "people",
-                 "gaveup": "people", "send_unknown": "bridge"}
+                 "gaveup": "people", "send_unknown": "bridge", "stopped": "people", "ended": "people"}
 # ... and why a taken hand-over has not started on the runner yet
 WAITING_NOTES = {"runnerd_silent": "people", "runnerd_retry": "runner", "setup": "people", "queued": "runner",
                  "send_unknown": "bridge", "gaveup": "people"}
@@ -425,9 +425,9 @@ NOTICE_KIND = {
     "gaveup": ("gaveup", "people", "消息送了 3 次都没进会话：桥接着送，一直不行就看一下 KiroCrew"),
     "failed": ("failed", "people", "没能开始：MR 上写了原因，处理好以后重新交接"),
     "nobody": ("nobody", "people", "问题发不出：没人能回答这类决定（要在 brain-kit 设置里配上谁来回答）"),
-    "ready": ("ready", "people", "验收通过了，会话也做完了：MR 上说了可以合并、谁来合并"),       # team/runwatch.py
-    "stopped": ("stopped", "people",                                                           # team/runwatch.py
-                "会话停住了：桥让它接着做，它还是没推送：请负责人到 KiroCrew 看一下这个会话（工作区里可能有它没提交的改动）"),
+    "ready": ("ready", "people", mrinfo.READY_TEXT),                # brain-kit 769efc7's watchdog, team/runwatch.py
+    "stopped": ("stopped", "people", mrinfo.STOPPED_TEXT),          # ... the same
+    "ended": ("ended", "people", mrinfo.ENDED_TEXT),                # brain-kit 769efc7's watchdog
     "edits-down-told": ("held", "bridge", "%s 的回答先等着：GitLab 查不到回复有没有被改过（不用重新回复）"),
 }
 OUTBOX_WHAT = {"handover": "接手消息", "answer": "%s 的回答", "notice": "给运行机的通知"}
@@ -488,8 +488,8 @@ def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]],
     """{run id: [TeamNote]}: what brain-kit's bridge (0d52e97) holds about a run in its ledger, said plainly
     (team_note): the notices it told the MR or counts (CI holding the acceptance question, runnerd silent, sends that
     keep failing, queued …) and the messages into its session that are not known to have landed. A notice about one
-    MR head (stopped:<run>:<head12>, team/runwatch.py) holds while it is the head the bridge last read of the run
-    (*runs*: the ledger's), dispatched: the next push ends it."""
+    MR head (stopped:<run>:<head12>, team/runwatch.py; ended:<run>:<head12>, brain-kit 769efc7) holds while it is the
+    head the bridge last read of the run (*runs*: the ledger's), dispatched: the next push ends it."""
     out: dict[str, list[dict[str, Any]]] = {}
     heads = {str(r.get("run_id")): str(r.get("last_sha") or "")[:12] for r in runs if r.get("state") == "dispatched"}
     sent = {str(o.get("send_id")) for o in outbox if o.get("state") == "sent"}
@@ -501,7 +501,7 @@ def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]],
             continue        # it landed in the end
         if key.startswith(("ciheld-wait:", "ciheld-person:", "ciheld-red:")) and str(n.get("run_id")) not in holding:
             continue        # the pipeline it was about is green, or another push started another wait
-        if key.startswith("stopped:") and key.rsplit(":", 1)[-1] != heads.get(str(n.get("run_id"))):
+        if key.startswith(("stopped:", "ended:")) and key.rsplit(":", 1)[-1] != heads.get(str(n.get("run_id"))):
             continue        # pushed since, or the run is over
         got = team_note(n)
         if got and n.get("run_id"):
@@ -596,7 +596,7 @@ def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[
         if "nobody" in latest:
             return put("parked", "people", "none", latest["nobody"]["text"], since=latest["nobody"].get("at"))
         return put("parked", "bridge", "none", "运行机停下来问人了：等桥把问题贴到 MR 上")
-    for k in ("stopped", "ci_red", "ci_person", "ci_wait", "gaveup"):
+    for k in ("stopped", "ended", "ci_red", "ci_person", "ci_wait", "gaveup"):
         if k in latest:
             return put("running", NOTICE_KIND.get({"ci_red": "ciheld-red", "ci_person": "ciheld-person",
                                                    "ci_wait": "ciheld"}.get(k, k), ("", "runner", ""))[1], "none",
