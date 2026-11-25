@@ -327,10 +327,11 @@ def test_a_session_parked_on_a_new_question_is_not_said_to_work_on_the_last_answ
 
 def test_a_message_held_for_trust_says_on_its_run_why_and_what_the_brain_app_needs(world, tmp_path):
     """KiroCrew would not let the brain app set the run's session to trust (403 session_approval_not_granted), so
-    brain-kit holds Q-1's answer and sends it again each round; 运行机 showed nothing of it, and the MR's advice (brain-
-    kit's) is to reinstall brain-kit's brain-bridge app. The run on 运行机 says the answer is held, why, and what the
-    brain app needs: its sessionApproval, consented to in KiroCrew's dashboard, no answer again; the requirement's row
-    waits on people with it. Once KiroCrew lets it, the answer goes in and neither says it."""
+    brain-kit holds Q-1's answer and sends it again each round. The run on 运行机 says the answer is held, why, and
+    what the brain app needs: its sessionApproval, consented to on its page in KiroCrew's dashboard
+    (/apps/detail/brain, 「Enable and allow chat control」), no answer again; the requirement's row waits on people
+    with it; the MR says the same fix, word for word, and neither sends anyone to brain-kit's brain-bridge app. Once
+    KiroCrew lets it, the answer goes in and neither says it."""
     from appkit import GatewayError
     gw = FakeGateway()
     gw.script = [ended("等待决策，不继续"), ended("好了")]
@@ -369,8 +370,11 @@ def test_a_message_held_for_trust_says_on_its_run_why_and_what_the_brain_app_nee
     assert [k for k, _ in notes] == ["outbox_held"], seen["held"]
     text = notes[0][1]
     assert text.startswith("Q-1 的回答还没送进会话：KiroCrew 不让 Brain 交付 app"), text
-    assert "sessionApproval" in text and "KiroCrew 网页" in text and "不用重新回答" in text, text
-    assert "brain-bridge 重装 app 的话不适用" in text, text
+    assert "sessionApproval" in text and "/apps/detail/brain" in text and "「Enable and allow chat control」" in text, text
+    assert "不用重新回答" in text and "brain-bridge" not in text, text
+    (told,) = [b for b in world["gl"].bodies() if "还没送进 KiroCrew 会话" in b]
+    fix = text[text.index("请管运行机的人"):text.index("同意以后")]
+    assert fix and fix in told and "brain-bridge" not in told, (fix, told)
     assert waits == ("people", text) and seen["again"] == seen["held"]
     assert seen["after"] == ([], ("runner", "Q-1 的回答送到了，运行机在接着做")), seen["after"]
 
