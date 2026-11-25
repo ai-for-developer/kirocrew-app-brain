@@ -186,8 +186,39 @@ def test_a_quiet_team_whose_dismissed_error_keeps_coming_back_writes_the_heartbe
     snap["runner"]["staging"][0]["state"] = "issued"
     assert relay.content_key(snap) != relay.content_key(busy(clock.t, 1))                       # a real change is one
     elsewhere = busy(clock.t, 1)
-    elsewhere["server"].update(working=2, held={"patrol": 2, "staging": 0})   # sessions of another project: no news here
-    assert relay.content_key(elsewhere) == relay.content_key(busy(clock.t, 1))
+    elsewhere["server"].update(working=2, held={"patrol": 2, "staging": 0})   # sessions at work, in whichever project
+    assert relay.content_key(elsewhere) != relay.content_key(busy(clock.t, 1))
+
+
+def firing(now, n, working):
+    """Round *n* of an hour in which the log shows an open staging error every minute, its Issue open, and *working*
+    of the server's brain-patrol sessions fix things."""
+    snap = a_snapshot(now)
+    snap["server"].update(working=working, held={"patrol": 0, "staging": working})
+    snap["runner"]["staging"] = [{
+        "project": PAY, "signature": "KeyError at pay/refund.py in refund", "count": 2 + n, "state": "issued",
+        "issue": None, "origin": None, "fix_mr": None, "first_seen": now - 60 * n, "last_seen": now,
+        "deployed_sha": "a" * 40, "attempts": 0, "slot": None, "note": ""}]
+    return snap
+
+
+def test_an_open_staging_error_and_the_sessions_at_work_are_at_most_a_floor_old_on_brain_status(status):
+    """multi2: a person's 团队运行机 said an open error was seen 5 times, the last 13 minutes ago, while the log showed it
+    every minute (the team server's page: 17 times, a minute ago); its 在修 and the sessions at work could be 30 minutes
+    old too. Coarsely, they are news: an open error's count by its doubling and when it was last seen to the floor, the
+    sessions at work as they are. An hour of it writes once a build (every 5 minutes), never once a round, and what is
+    on brain/status is never a floor old."""
+    gl, clock, _tick, rl = status
+    working = lambda n: 1 if 7 <= n < 40 else 0      # noqa: E731 - a fix session from minute 7 to minute 40
+    for n in range(60):
+        rl.round([PAY], lambda path, now, deadline, was: firing(now, n, working(n)))
+        snap = there(gl)
+        (e,) = snap["runner"]["staging"]
+        assert clock.t - e["last_seen"] < snapshot.FLOOR_S and e["count"] == 2 + n - n % 5, (n, e)
+        assert snap["server"]["working"] == snap["server"]["held"]["staging"] == working(n - n % 5), (n, snap["server"])
+        clock.t += 60
+    said = [c["commit_message"] for c in gl.status_commits(PAY)]
+    assert said == ["团队状态：更新 [skip ci] [ci-skip]"] * 12, said
 
 
 def test_a_round_builds_for_twenty_seconds_the_longest_waiting_first_and_the_rest_wait(status):

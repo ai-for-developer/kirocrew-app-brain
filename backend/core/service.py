@@ -2357,29 +2357,33 @@ class Service:
     # ---- team mode ------------------------------------------------------------------------------------ #
 
     async def team_view(self) -> dict[str, Any]:
-        if self.team is None:
+        """GET /team: the team mode this read started with, whole, though a settings save stops it meanwhile (its reads
+        are awaited off the event loop, where the save runs)."""
+        team = self.team
+        if team is None:
             return {"status": self._team_status(), "ledger": {"runs": {}, "decisions": {}, "handoffs": {}, "outbox": {}},
                     "runs": [], "handovers": [], "signer": {"pending": [], "refused": [], "waiting": []}, "config": [],
                     "hooks": []}
-        led = await asyncio.to_thread(self.team.ledger)
-        signer = await asyncio.to_thread(self.team.signer_view)
-        signer["waiting"] = await asyncio.to_thread(self.team.pending)
+        led = await asyncio.to_thread(team.ledger)
+        signer = await asyncio.to_thread(team.signer_view)
+        signer["waiting"] = await asyncio.to_thread(team.pending)
         # the signer's reasons and a round's errors in short Chinese (problems.reason), their own words beside them
         signer["refused"] = [dict(x, reasons=[problems.reason(r)["text"] for r in x.get("reasons") or []],
                                   raw=[str(r) for r in x.get("reasons") or []]) for x in signer.get("refused") or []]
         handovers = []
-        for h in self.team.handovers():
+        for h in team.handovers():
             row = {k: h[k] for k in ("project", "iid", "sha", "result", "error", "at", "mr_url")}
             got = problems.reason(row["error"]) if row["error"] else None
             row.update(error=got["text"] if got else "", raw=(got["raw"] or "") if got else "")
             handovers.append(row)
         notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [], led.get("runs") or [])
-        return {"status": self.team.status(), "ledger": self.team.counts(led),
+        runs = [dict(r, state=deliveries.run_state(r, notes.get(r["run_id"], []))) for r in led["runs"]]
+        return {"status": team.status(), "ledger": team.counts(dict(led, runs=runs)),
                 "runs": [{"run_id": r["run_id"], "req": r["req"], "project": r["project"], "iid": int(r["iid"]),
-                          "state": r["state"], "slot": r.get("slot"), "mr_url": self.team.mr_url(r["project"], r["iid"]),
-                          "updated": r.get("updated"), "notes": notes.get(r["run_id"], [])} for r in led["runs"]],
-                "handovers": handovers, "signer": signer, "config": self.team.config_view(),
-                "hooks": await asyncio.to_thread(self.team.hook_rows)}
+                          "state": r["state"], "slot": r.get("slot"), "mr_url": team.mr_url(r["project"], r["iid"]),
+                          "updated": r.get("updated"), "notes": notes.get(r["run_id"], [])} for r in runs],
+                "handovers": handovers, "signer": signer, "config": team.config_view(),
+                "hooks": await asyncio.to_thread(team.hook_rows)}
 
     async def runner_status(self) -> dict[str, Any]:
         """GET /team/status: each listed repo's team runner as GitLab shows it (runner_view.py), read with this person's

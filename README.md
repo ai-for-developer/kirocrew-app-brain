@@ -258,16 +258,19 @@ shown folded): `backend/core/problems.py`.
   `decisions.DESC_TITLE`, 48b6b97) is skipped whole, whatever the MR.md in it says. States shown: open, answered (the
   bridge has the answer but could not sign it this round: it sends it later, nobody answers again), delivered (while
   park.json still waits the row says 「Q-n 的回答送到了，运行机在接着做」 for `stall_minutes` after the bridge's note,
-  15 here, which knows no bridge.json; the runner's own rows and 全队交付 take bridge.json's, and the runner's say it
-  as long as the session works and for that long after its newest row; then 「…运行机还没接着做：去 KiroCrew 看一下它的
-  会话」, at once with `stall_minutes` 0), stale (a new push), void (not bound to its push and park.json, or its question note was deleted), refused (the signer
+  15 here, which knows no bridge.json; the runner's own rows and 全队交付 take bridge.json's, and the team server says
+  it as long as the run's session works and for that long after its newest row or the newest message the bridge put
+  in it, so the 会话中断 the watchdog sent earlier in the same round counts; then 「…运行机还没接着做：去 KiroCrew 看一下
+  它的会话」, at once with `stall_minutes` 0), stale (a new push), void (not bound to its push and park.json, or its question note was deleted), refused (the signer
   would not sign), invalid; 0d52e97: held (GitLab cannot say yet whether a reply was edited: it waits, nobody replies
   again), delivery_unknown. The run's own notes (they start with its run id) say why a taken hand-over or a running run
   waits, as long as nothing was pushed after them: runnerd silent for `runnerd_wait_minutes`, runnerd retrying, 没能开始
   (labelled rejected too: its reason is that note's), KiroCrew not opening the session, queued, the hand-over send not
   known, sends that keep failing, the acceptance question held until the head pipeline is green (running, red,
   canceled / manual), a question nobody may answer. A parked run whose question the bridge already answered says so
-  (brain-kit's `answered`: the run, or the bridge, has not gone on).
+  (brain-kit's `answered`: the run, or the bridge, has not gone on), only while park.json is the one that question
+  was asked from (its hash, brain-kit's `park_hash` on the runner): a session that parked on a new question the bridge
+  has not posted yet (an acceptance waiting for its pipeline, say) says 「运行机停下来问人了：等桥把问题贴到 MR 上」.
 - **The MR's pipelines on a person's machine** are read in the same MR refresh, with the same token and at the same
   cadence (each handed-over run's MR at most every 60 s, from the background loop): one more call,
   `GET /projects/:id/merge_requests/:iid/pipelines?per_page=20`, the MR's 20 newest. Nothing else calls it: building
@@ -302,7 +305,10 @@ shown folded): `backend/core/problems.py`.
   does: KiroCrew keeps trust in memory, so a restart ends it. Only KiroCrew's `403 session_approval_not_granted` to
   that call holds the message (brain-kit's `TrustRefused`; what the MR is then told is brain-kit's text, which names
   brain-kit's brain-bridge app: BRAINKIT_REQUESTS 54); a 409, 404 or 429 of it is an ordinary error, settled by
-  reading the slot. A turn KiroCrew stopped half-way (a restart, a provider
+  reading the slot. While a message is held (brain-kit's outbox `held`), 运行机 says it under its run, toned bad, and
+  the requirement's row waits on people with it: why, and the brain app's fix, its `sessionApproval` consented to in
+  KiroCrew's dashboard (Apps → Brain 交付: turn it off if it is on, enable it, allow sessionApproval), not the MR's
+  reinstall of brain-bridge; 送进会话的消息 counts it as KiroCrew 不让送. A turn KiroCrew stopped half-way (a restart, a provider
   shutdown) leaves an idle session brain-kit's watchdog does not look at, its work uncommitted in the workspace. So
   after brain-kit's steps each round reads every dispatched run's slot (its newest rows): idle, nothing queued or on
   its way to it (brain-kit's outbox), its newest turn cut off, no question at its MR head waiting for a person or the
@@ -327,7 +333,9 @@ shown folded): `backend/core/problems.py`.
   pipeline still decide), and its label `ai-running` becomes `ai-ready-to-merge` (brain-kit's labels have none for it,
   BRAINKIT_REQUESTS 50; GitLab makes it the first time it is put on, until 一键建运行机 makes it with the others).
   From the ledger's note of that comment the runner's row is 等合并 (`to_merge`), waiting on the owner to merge, here,
-  in the project's snapshot and on a person's machine, which reads the label. brain-kit's reconcile marks the run merged or closed and leaves the MR's labels: the round
+  in the project's snapshot and on a person's machine, which reads the label; so is the run's own chip, where
+  brain-kit's ledger still says `dispatched` (`deliveries.run_state`): 运行机's run and its count, and the snapshot's
+  hand-over on a person's 团队运行机. brain-kit's reconcile marks the run merged or closed and leaves the MR's labels: the round
   after takes `ai-running` and `ai-ready-to-merge` off it, once (a run that ended within the last 14 days). An MR
   GitLab no longer shows (deleted: 404) or the bridge's account may not read (403) ends that too: the bridge's log
   says so and no round fails on it. 运行机 says this step as 照看派出去的运行 when it fails, and a round's count of
@@ -356,15 +364,20 @@ shown folded): `backend/core/problems.py`.
   when they were read. The round writes `snapshot.json` on the project's own branch `brain/status` (made once with
   this machine's git as the runner pushes, no parent and a README only, since GitLab's API opens a branch only from
   another; every commit says `[skip ci] [ci-skip]`) only when it differs apart from what moves without news (when it
-  was made, the last round, the brain-patrol sessions' counts, when the rows were read, staging errors' counts and
-  last_seen, patrol MRs' updated_at),
-  or again once it is 30 minutes old. The one there is read when the relay first builds the project, so a restart
-  writes nothing new. A write that fails is said on 运行机 for its project and tried again 5 minutes later; it never
-  stops the round. MR 巡检, 测试环境报错 and the hand-over poll leave MRs from or into `brain/status` alone. A person's
-  app reads each listed project's file with its own token at most once a minute, puts the projects of one GitLab
-  together, and past 75 minutes (two heartbeats missed) says the server may have stopped. A field added within
-  schema 1 (`snapshot.Added`: the issues, the label, each source's sessions and the held ones) reads as empty from an
-  older team server's file, and an older app drops it as any newer writer's addition.
+  was made, the last round, when the rows were read, patrol MRs' updated_at, a closed or dismissed staging error's
+  count and last_seen), or again once it is 30 minutes old. An open staging error's count (by its doubling) and
+  last_seen (to the 5-minute floor) and the brain-patrol sessions at work are news, so a person's 团队运行机 shows them
+  at most a floor old (multi2's said an error came 5 times, the last 13 minutes ago, while it came every minute); a
+  project is still built and written at most once every 5 minutes, never once a round. The one there is read when the
+  relay first builds the project, so a restart writes nothing new. A write that fails is said on 运行机 for its project
+  and tried again 5 minutes later; it never stops the round. MR 巡检, 测试环境报错 and the hand-over poll leave MRs from or
+  into `brain/status` alone. A person's
+  app reads each listed project's file, and its runner's MRs, with its own token at most once a minute, four projects
+  at a time (five over a tunnel took 17 s one after another), a project that cannot be read saying so on its own line,
+  puts the projects of one GitLab together, and past 75 minutes (two heartbeats missed) says the server may have
+  stopped. A field added within schema 1 (`snapshot.Added`: the issues, the label, each source's sessions and the
+  held ones) reads as empty from an older team server's file, and an older app drops it as any newer writer's
+  addition.
 - **导入仓库** (`importer.py`, `installer.py`): every path from the page must be absolute, without `..` or control
   characters, a real directory, and with no symlink on the way that a user other than root owns (an agent with this OS
   user could have planted it; root's aliases such as macOS's `/tmp` are fine); from then on its realpath is used. A

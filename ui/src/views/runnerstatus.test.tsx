@@ -166,6 +166,21 @@ describe('团队运行机 on a personal install, from the team server’s 状态
     expect(apiCalls.filter((c) => c.method !== 'GET')).toEqual([])
   })
 
+  test('a hand-over accepted and done says 等合并 on its chip, as its 在等 does, not brain-kit’s 已派给会话', async () => {
+    const st = fx.teamStatus()
+    const ho = st.relays[0].view!.runner.handovers
+    ho[0] = { ...ho[0], state: 'to_merge', waits: { ...ho[0].waits, who: 'people', do: 'merge', text: '验收通过了：等 alice 在 GitLab 上合并', on: ['alice'] } }
+    installFixtureRoutes({ [`GET ${API}/team/status`]: () => st })
+    render(<RunnerStatusPage {...props()} />)
+    const row = rowOf(await screen.findByTestId('relay-handovers'), 'PAY-4')
+    const chip = row.querySelector('.br-chip') as HTMLElement
+    expect(chip).toHaveTextContent('等合并')
+    expect(chip).toHaveClass('tone-wait')
+    expect(chip).not.toHaveClass('is-live')
+    expect(row).not.toHaveTextContent('已派给会话')
+    expect(row).toHaveTextContent('等合并等你验收通过了：等 alice 在 GitLab 上合并')
+  })
+
   test('从 issue 接活: the labelled issues not started yet, mine said as 你, why each waits or was not taken; none left says where they went', async () => {
     installFixtureRoutes()
     const { unmount } = render(<RunnerStatusPage {...props()} />)

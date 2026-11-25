@@ -268,10 +268,12 @@ Lean timeline follow them when trace is missing), `decisions.USER` (the MR reade
     opens `/apps/detail/<app>` and clicks "Enable and allow chat control", turning the app off first if it is on;
     `disabled`: the owner turns it on; `unavailable`: try again) and an `error` text that says that fix. The app can
     change neither text without patching brain-kit, so since 0.5.4 it only makes sure the advice comes for that
-    refusal alone (a 409, 404 or 429 of the trust call is an ordinary error now). Wanted: `TrustRefused` carrying
-    KiroCrew's `cause` (brain-kit's client reads it from the body, the app's adapter from its GatewayError), the MR
-    note saying the fix for that cause and the app's name, and a client attribute for an app that is not
-    brain-bridge (`kc.trust_advice`, or the app's install page), so the brain app's note names the brain app.
+    refusal alone (a 409, 404 or 429 of the trust call is an ordinary error now), and 运行机 says the brain app's fix
+    under the run while the message is held (`deliveries.OUTBOX_HELD`); the MR note is still brain-kit's. Wanted:
+    `TrustRefused` carrying KiroCrew's `cause` (brain-kit's client reads it from the body, the app's adapter from its
+    GatewayError), the MR note saying the fix for that cause and the app's name, and a client attribute for an app
+    that is not brain-bridge (`kc.trust_advice`, or the app's install page), so the brain app's note names the brain
+    app.
 
 ### Nice-to-have
 

@@ -414,13 +414,20 @@ class TeamRuntime:
 
     def _shared(self) -> dict[str, Any]:
         """What every project's snapshot is made from this round: MR 巡检's and 测试环境报错's views, identities.json's
-        roles, each project's deployed commit, the runner's open runs (runner_rows) and the server."""
+        roles, each project's deployed commit, the runner's open runs (runner_rows; each run's state as its chip says
+        it, deliveries.run_state), the session of each requirement's latest run (run_sessions, by requirement) and the
+        server."""
         patrol, staging = self.patrol_view(), self.staging_view()
+        led = self.ledger()
+        latest, sessions = self.runner_rows(led), self.run_sessions(led)
+        notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [], led["runs"])
         return {"patrol": patrol, "staging": staging, "roles": relay_mod.identity_roles(self.cfg.get("identities")),
                 "deployed": {p["project"]: str(p.get("deployed_sha") or "") for p in staging.get("projects") or []
                              if p.get("on")},
-                "runs": [(row, run) for row, _facts, _decs, run in self.runner_rows()
-                         if run["state"] not in ("merged", "closed")],
+                "runs": [(row, dict(run, state=deliveries.run_state(run, notes.get(run["run_id"], []))))
+                         for row, _facts, _decs, run in latest if run["state"] not in ("merged", "closed")],
+                "sessions": {run["req"]: sessions[run["run_id"]] for _row, _f, _d, run in latest
+                             if run["run_id"] in sessions},
                 "server": {"version": VERSION, "team_mode": True, "last_round_at": self.last_loop_at,
                            "cap": int(patrol["cap"]), "working": int(patrol["working"]) + int(staging["working"]),
                            "held": {"patrol": int(patrol["working"]), "staging": int(staging["working"])}}}
@@ -434,7 +441,7 @@ class TeamRuntime:
         (*there*: the one on its brain/status, for a project not read since the start). Scrubbed as the pages are."""
         try:
             got = self.deliveries.read(project, deployed=shared["deployed"].get(project, ""), roles=shared["roles"],
-                                       deadline=deadline)
+                                       deadline=deadline, sessions=shared["sessions"])
             rows, at, said = got.rows, got.at, "全队交付：%s" % "；".join(got.notes) if got.notes else ""
         except Exception as exc:  # noqa: BLE001 - GitLab, what it holds, the time: the last rows, with why
             last = self.deliveries.last.get(project)
@@ -543,20 +550,24 @@ class TeamRuntime:
             out.append(dict(r, mr_url=self.mr_url(r["project"], r["iid"])))
         return out
 
-    def runner_rows(self) -> list[tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], dict[str, Any]]]:
+    def runner_rows(self, led: dict[str, Any] | None = None
+                    ) -> list[tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], dict[str, Any]]]:
         """(row, facts, decisions, run) per requirement the bridge has a run of, its latest run: the row as 交付总览 and
-        需求现状 say it (deliveries.team_classify over the ledger and the records in the run's workspace, its run ids,
-        MR and last update). Its credits and the first line of its 变更说明 are the service's."""
-        if self.host is None:
+        需求现状 say it (deliveries.team_classify over the ledger, *led* when the caller read it, the records in the
+        run's workspace and its session, run_sessions; its run ids, MR and last update). Its credits and the first
+        line of its 变更说明 are the service's."""
+        host = self.host        # once: a save that stops team mode lets go of it on the worker meanwhile
+        if host is None:
             return []
-        led = self.ledger()
+        led = led if led is not None else self.ledger()
+        sessions = self.run_sessions(led)
         latest: dict[str, dict[str, Any]] = {}
         all_ids: dict[str, list[str]] = {}
         for r in led["runs"]:
             all_ids.setdefault(r["req"], []).append(r["run_id"])
             latest[r["req"]] = r
         notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [], led["runs"])
-        now, stall_s = time.time(), float(self.host.stall_s)
+        now, stall_s = time.time(), float(host.stall_s)
         out = []
         for key, r in sorted(latest.items()):
             facts = {"key": key, "claim": None, "where": "runner", "branch": None, "owner": r.get("owner"),
@@ -574,11 +585,30 @@ class TeamRuntime:
             row["where"] = "runner"
             decs = [d for d in led["decisions"] if d["run_id"] in all_ids[key]]
             deliveries.team_classify(row, r, decs, facts.get("park"), notes=notes.get(r["run_id"], []), now=now,
-                                     stall_s=stall_s, session=self.mgr.slot_stats(r.get("slot")) if self.mgr else None)
+                                     stall_s=stall_s, session=sessions.get(r["run_id"]), park_sha=facts.get("park_sha"))
             row["run_ids"] = all_ids[key]
             row["mr"] = {"iid": int(r["iid"]), "url": self.mr_url(r["project"], r["iid"]), "state": None}
             row["updated_at"] = lean_view.epoch(r.get("updated"))
             out.append((row, facts, decs, r))
+        return out
+
+    def run_sessions(self, led: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        """{run id: its session as the rows say it (deliveries.answered_text)}: the session runner's slot_stats (busy,
+        last_activity), which it reads every few polls, with the newest message the bridge's ledger (*led*) says
+        landed in the session as its last_activity when that is later: an answer, or the 会话中断 the round's runs step
+        just sent, which the session runner has not read yet."""
+        landed: dict[str, float] = {}
+        for o in led.get("outbox") or []:
+            at = lean_view.epoch(o.get("updated"))
+            if o.get("state") == "sent" and at is not None:
+                landed[o["run_id"]] = max(at, landed.get(o["run_id"], at))
+        out = {}
+        for r in led["runs"]:
+            st = dict((self.mgr.slot_stats(r.get("slot")) if self.mgr else None) or {})
+            newest = max([x for x in (st.get("last_activity"), landed.get(r["run_id"])) if isinstance(x, (int, float))],
+                         default=None)
+            if st or newest is not None:
+                out[r["run_id"]] = dict(st, last_activity=newest)
         return out
 
     # ---- what the page reads -------------------------------------------------------------------------- #
@@ -602,8 +632,8 @@ class TeamRuntime:
                         "created, updated FROM runs ORDER BY created")]
                 if "decisions" in tables:
                     out["decisions"] = [dict(r) for r in led.db.execute(
-                        "SELECT id, run_id, project, iid, sha, kind, lean_request, state, answer, answerer, voucher_id, "
-                        "created, updated FROM decisions ORDER BY created")]
+                        "SELECT id, run_id, project, iid, sha, park_hash, kind, lean_request, state, answer, answerer, "
+                        "voucher_id, created, updated FROM decisions ORDER BY created")]
                 if "handoffs" in tables:
                     out["handoffs"] = [dict(r) for r in led.db.execute(
                         "SELECT project, iid, sha, state, run_id, voucher_id, reason, created, updated FROM handoffs "

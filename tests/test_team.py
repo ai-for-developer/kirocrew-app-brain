@@ -16,6 +16,7 @@ import re
 import sqlite3
 import subprocess
 import threading
+import time
 from urllib.parse import unquote, urlsplit
 
 import pytest
@@ -224,6 +225,209 @@ def test_a_session_turn_cut_off_before_its_push_is_told_to_go_on_then_a_person_i
     assert told.startswith("RUN-PAY-1-1 的会话停住了") and SLOT in told and "2 次" in told, told
 
 
+def test_the_round_that_told_a_session_to_go_on_says_in_its_snapshot_that_the_runner_goes_on(world, tmp_path):
+    """0.5.4-srv10: Q-17's answer reached the run, KiroCrew's restart cut the session's turn off, and 16 minutes later
+    the watchdog told it to go on (会话中断). The snapshot that same round built said 「Q-17 的回答送到了，运行机还没接着
+    做：去 KiroCrew 看一下它的会话」, and the relay's 5-minute floor kept it there while the session worked. What the
+    round just sent into the session is its newest sign of life: the runner's row and 全队交付's row of the MR, as
+    brain/status has them, say the runner goes on."""
+    from relayfix import RepoGitLab
+    from test_relay_write import Both
+    snapshot = mod("snapshot")
+    gw = FakeGateway()
+    gw.script = [ended("开始写代码"), cut()]
+    rg = RepoGitLab()
+    rg.project("grp/repo", 1, world["gl"].bare)
+    svc = make_service(tmp_path / "app", [], gw=gw, team=world["team"], transport=Both(world["gl"], rg),
+                       kick=lambda: world["signer"].once())
+    going = "Q-1 的回答送到了，运行机在接着做"
+    seen = {}
+
+    def written():
+        raw = sh("git", "-C", world["gl"].bare, "show", "%s:%s" % (snapshot.BRANCH, snapshot.FILE)).stdout
+        snap = snapshot.parse(raw)
+        return ([h["waits"]["text"] for h in snap["runner"]["handovers"]],
+                [r["waits"]["text"] for r in snap["delivery"] if r["key"] == "PAY-1"])
+
+    async def go():
+        await svc.start()
+        try:
+            rt = svc.team
+            await rounds(svc)                           # dispatched
+            push_park(world["runs_root"] / "RUN-PAY-1-1", PARK)
+            gw.finish(SLOT)
+            await rounds(svc)                           # Q-1 on the MR
+            world["gl"].note("alice", "answer D-1 B 小额不审")
+            await rounds(svc)                           # the answer reached the session: its turn starts
+            gw.finish(SLOT)                             # KiroCrew's restart cut it off, nothing pushed
+            age(rt.host.ledger, 3600)                   # an hour ago, past stall_minutes
+            seen["before"] = resumes(gw)
+            rt.relay.now = lambda: time.time() + snapshot.FLOOR_S     # this round builds the snapshot
+            await rounds(svc)
+            seen["resumed"] = resumes(gw)
+            seen["snap"] = written()
+        finally:
+            await svc.stop()
+
+    run(go())
+    assert seen["before"] == [] and len(seen["resumed"]) == 1
+    handovers, delivery = seen["snap"]
+    assert handovers == [going] and delivery == [going], seen["snap"]
+
+
+def age(ledger, seconds):
+    """What brain-kit's ledger stamped on the run's questions and messages happened *seconds* earlier, in the same
+    order, as the rest of this world (KiroCrew's rows, GitLab's notes) did."""
+    from datetime import timedelta
+    common = mod("bk").m("common")
+    for table, key in (("decisions", "id"), ("outbox", "send_id")):
+        for row in ledger.db.execute("SELECT %s, created, updated FROM %s" % (key, table)).fetchall():
+            ledger.db.execute("UPDATE %s SET created=?, updated=? WHERE %s=?" % (table, key), tuple(
+                common.iso(common.parse_iso(row[c]) - timedelta(seconds=seconds)) for c in ("created", "updated"))
+                + (row[0],))
+
+
+def test_a_session_parked_on_a_new_question_is_not_said_to_work_on_the_last_answer(world, tmp_path):
+    """0.5.4-srv10: after Q-17's answer the session parked on its acceptance question, which the bridge had not posted
+    yet, and the runner's row still said 「Q-17 的回答送到了，运行机在接着做」; held past stall_minutes (an acceptance
+    waits for the head's pipeline) it would send people to KiroCrew. The answered question is the row's only while
+    park.json is the one it was asked from: a new one waits for the bridge to post it."""
+    gw = FakeGateway()
+    gw.script = [ended("开始写代码"), ended("等待决策，不继续")]
+    svc = service(world, tmp_path, gw)
+    ws = world["runs_root"] / "RUN-PAY-1-1"
+    seen = {}
+
+    async def waits():
+        w = (await svc.overview("runner"))["rows"][0]["waits"]
+        return w["who"], w["text"]
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # dispatched
+            push_park(ws, PARK)
+            gw.finish(SLOT)
+            await rounds(svc)                           # Q-1 on the MR
+            world["gl"].note("alice", "answer D-1 B 小额不审")
+            await rounds(svc)                           # the answer reached the session
+            seen["answered"] = await waits()
+            (ws / "runs" / "PAY-1" / "park.json").write_text(json.dumps(ACCEPTANCE, ensure_ascii=False))
+            gw.finish(SLOT)                             # it parks on its acceptance question, not posted yet
+            seen["parked"] = await waits()
+            age(svc.team.host.ledger, 3600)             # still not posted an hour on
+            seen["later"] = await waits()
+        finally:
+            await svc.stop()
+
+    run(go())
+    assert seen["answered"] == ("runner", "Q-1 的回答送到了，运行机在接着做")
+    assert seen["parked"] == seen["later"] == ("bridge", "运行机停下来问人了：等桥把问题贴到 MR 上"), seen
+
+
+def test_a_message_held_for_trust_says_on_its_run_why_and_what_the_brain_app_needs(world, tmp_path):
+    """KiroCrew would not let the brain app set the run's session to trust (403 session_approval_not_granted), so
+    brain-kit holds Q-1's answer and sends it again each round; 运行机 showed nothing of it, and the MR's advice (brain-
+    kit's) is to reinstall brain-kit's brain-bridge app. The run on 运行机 says the answer is held, why, and what the
+    brain app needs: its sessionApproval, consented to in KiroCrew's dashboard, no answer again; the requirement's row
+    waits on people with it. Once KiroCrew lets it, the answer goes in and neither says it."""
+    from appkit import GatewayError
+    gw = FakeGateway()
+    gw.script = [ended("等待决策，不继续"), ended("好了")]
+    svc = service(world, tmp_path, gw)
+    seen = {}
+
+    async def refused(_key):
+        raise GatewayError(403, 'App "brain" cannot approve tool requests', "session_approval_not_granted")
+
+    async def held():
+        notes = [(n["kind"], n["text"]) for r in (await svc.team_view())["runs"] for n in r["notes"]]
+        w = (await svc.overview("runner"))["rows"][0]["waits"]
+        return notes, (w["who"], w["text"])
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # dispatched
+            push_park(world["runs_root"] / "RUN-PAY-1-1", PARK)
+            gw.finish(SLOT)
+            await rounds(svc)                           # Q-1 on the MR
+            trust, gw.trust = gw.trust, refused
+            world["gl"].note("alice", "answer D-1 B 小额不审")
+            await rounds(svc)                           # signed; KiroCrew refuses trust: held
+            seen["held"] = await held()
+            await rounds(svc)                           # sent again, held again
+            seen["again"] = await held()
+            gw.trust = trust
+            await rounds(svc)                           # KiroCrew lets it: in
+            seen["after"] = await held()
+        finally:
+            await svc.stop()
+
+    run(go())
+    notes, waits = seen["held"]
+    assert [k for k, _ in notes] == ["outbox_held"], seen["held"]
+    text = notes[0][1]
+    assert text.startswith("Q-1 的回答还没送进会话：KiroCrew 不让 Brain 交付 app"), text
+    assert "sessionApproval" in text and "KiroCrew 网页" in text and "不用重新回答" in text, text
+    assert "brain-bridge 重装 app 的话不适用" in text, text
+    assert waits == ("people", text) and seen["again"] == seen["held"]
+    assert seen["after"] == ([], ("runner", "Q-1 的回答送到了，运行机在接着做")), seen["after"]
+
+
+def test_a_page_that_reads_the_runners_rows_while_a_save_stops_team_mode_gets_rows_not_an_error(world, tmp_path):
+    """A full test run saw 'NoneType' object has no attribute 'stall_s' (two settings saves at once): a page, or the
+    status a save answers with, reads the runner's rows on a thread of its own while the save stops team mode, whose
+    worker lets go of brain-kit's bridge (host None) between the rows' check that team mode runs and their later read
+    of bridge.json's stall_minutes. The rows read are what the ledger held then, with no error."""
+    svc = service(world, tmp_path)
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # handed over: a run in the ledger
+            rt = svc.team
+            read = rt.ledger
+
+            def read_then_stop():
+                got = read()
+                rt.stop()                               # a settings save stops team mode right after the ledger read
+                return got
+            rt.ledger = read_then_stop
+            return await asyncio.to_thread(rt.runner_rows), rt.host
+        finally:
+            await svc.stop()
+
+    rows, host = run(go())
+    assert host is None and [r["key"] for r, _f, _d, _run in rows] == ["PAY-1"], rows
+
+
+def test_the_runner_page_read_while_a_save_stops_team_mode_answers_with_what_it_read_not_an_error(world, tmp_path):
+    """GET /team reads team mode's ledger, its signer's waits and its config one after another off the event loop; a
+    settings save that stops team mode on the event loop in between left the page's next read on None (an
+    AttributeError, a failed page). The page answers with the team mode it started reading."""
+    svc = service(world, tmp_path)
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # handed over: a run in the ledger
+            rt, loop = svc.team, asyncio.get_running_loop()
+            read = rt.ledger
+
+            def read_then_stop():
+                got = read()
+                asyncio.run_coroutine_threadsafe(svc._stop_team(), loop).result(30)    # a save stops team mode
+                return got
+            rt.ledger = read_then_stop
+            return await svc.team_view(), svc.team
+        finally:
+            await svc.stop()
+
+    view, team = run(go())
+    assert team is None and [r["req"] for r in view["runs"]] == ["PAY-1"], view["runs"]
+
+
 def test_the_runner_page_says_a_session_stopped_on_its_run_until_the_next_push(world, tmp_path):
     """Its turn cut off at one MR head, then each of the two turns told to go on: the MR hears 「…的会话停住了」. The
     run's row on 运行机 says it under the run, and the requirement's row waits on people, for that head only: once the
@@ -409,8 +613,8 @@ def test_a_run_accepted_and_done_says_who_merges_it_and_its_label_goes_at_the_me
     """MR !6: after the product's RELEASE approval and the session's last push nothing said the MR could be merged, it
     kept ai-running after the merge, and the pages said 运行机在跑. Once the session is idle with its records pushed,
     the MR hears once that it can be merged and that alice merges it, its label is ai-ready-to-merge instead of
-    ai-running, the runner's row and the project's snapshot say it waits for alice to merge, and the merge takes the
-    label off."""
+    ai-running, the runner's row and the project's snapshot say it waits for alice to merge, its run's state on 运行机
+    and in the snapshot is to_merge (等合并), and the merge takes the label off."""
     import time
     snapshot = mod("snapshot")
     gw = FakeGateway()
@@ -437,6 +641,8 @@ def test_a_run_accepted_and_done_says_who_merges_it_and_its_label_goes_at_the_me
             gw.finish(SLOT)
             await rounds(svc)
             seen["row"] = (await svc.overview("runner"))["rows"][0]
+            view = await svc.team_view()
+            seen["runs"] = ([r["state"] for r in view["runs"]], view["ledger"]["runs"])
             rt = svc.team
             seen["snap"] = snapshot.parse(rt.snapshot_of("grp/repo", time.time(), time.monotonic() + 20, None,
                                                          rt._shared()))["runner"]["handovers"]
@@ -458,6 +664,8 @@ def test_a_run_accepted_and_done_says_who_merges_it_and_its_label_goes_at_the_me
     assert w["text"] == "验收通过了：等 alice 在 GitLab 上合并"
     (h,) = seen["snap"]
     assert (h["waits"]["text"], h["waits"]["do"], h["waits"]["on"]) == (w["text"], "merge", ["alice"])
+    # 运行机's run, its count and the snapshot's hand-over say 等合并 as the row's 在等 does, not brain-kit's dispatched
+    assert seen["runs"] == (["to_merge"], {"to_merge": 1}) and h["state"] == "to_merge", (seen["runs"], h["state"])
     assert "ai-ready-to-merge" not in gl.labels and "ai-running" not in gl.labels
 
 

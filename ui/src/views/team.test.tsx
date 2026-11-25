@@ -71,9 +71,24 @@ describe('运行机', () => {
     expect(ledger.querySelector('[data-ledger="signer"]')).toHaveTextContent('签名1等签名')
     expect(ledger.querySelector('[data-ledger="signer"]')).toHaveTextContent('拒签 1 · 上一轮没等到 1')
     // every run state of brain-kit has words
-    expect(Object.keys(RUN_STATE).sort()).toEqual(['closed', 'dispatched', 'failed', 'merged', 'ready', 'send_unknown', 'signing', 'spooled'])
+    expect(Object.keys(RUN_STATE).sort()).toEqual(['closed', 'dispatched', 'failed', 'merged', 'ready', 'send_unknown', 'signing', 'spooled', 'to_merge'])
     expect(runStateMeta('send_unknown')).toEqual({ label: '送没送到不清楚', tone: 'warn', hint: '桥每轮看会话，看到了就接着做；一直这样要人看一下' })
     expect(runStateMeta('signing').label).toBe('签名中')
+  })
+
+  test('a run accepted and done is 等合并 on its chip and in the ledger, as the MR and its 在等 say, not brain-kit’s 已派给会话', async () => {
+    const tv = fx.team()
+    tv.runs[2] = { ...tv.runs[2], state: 'to_merge', notes: [{ kind: 'ready', text: '验收通过了，会话也做完了：MR 上说了可以合并、谁来合并', at: null }] }
+    tv.ledger.runs = { signing: 1, dispatched: 1, to_merge: 1, merged: 3 }
+    installFixtureRoutes({ [`GET ${API}/team`]: () => tv })
+    render(<TeamPage {...props()} />)
+    const runs = await screen.findByRole('region', { name: '运行' })
+    const chip = within(within(runs).getByTitle('RUN-PAY-5-1').closest('tr') as HTMLElement).getByText(/./, { selector: '.br-chip' })
+    expect(chip).toHaveTextContent('等合并')
+    expect(chip).toHaveClass('tone-wait')
+    expect(chip).not.toHaveClass('is-live')
+    const ledger = screen.getByRole('region', { name: '账本' })
+    expect(Array.from(ledger.querySelectorAll('[data-ledger="runs"] .tm-leg')).map((t) => t.textContent)).toEqual(['签名中 1', '已派给会话 1', '等合并 1', '已合并 3'])
   })
 
   test('failed is 没能开始 (no workspace, or the hand-over never got into the session); send_unknown says the bridge looks each round', async () => {
@@ -136,7 +151,7 @@ describe('运行机', () => {
     const d = await show({})
     expect(d.card).toHaveTextContent('送进会话的消息0/0—')
     expect(d.card.querySelector('.tm-stack')).toHaveClass('is-empty')
-    expect(Object.keys(OUTBOX_STATE)).toEqual(['sending', 'interrupted', 'sent', 'unknown', 'dropped'])
+    expect(Object.keys(OUTBOX_STATE)).toEqual(['sending', 'interrupted', 'sent', 'unknown', 'held', 'dropped'])   // brain-kit's OUTBOX_STATES
     expect(outboxMeta('later')).toEqual({ label: 'later', tone: 'idle' })
   })
 
@@ -192,6 +207,36 @@ describe('运行机', () => {
     expect(within(runs).getByTitle('RUN-PAY-4-1').closest('tr')).toHaveClass('has-notes')
     expect(noteTone('outbox_interrupted')).toBe('warn')
     expect(noteTone('ci_wait')).toBe('warn')
+  })
+
+  test('送进会话的消息 counts a message KiroCrew will not let in (held) in words, red, and points at its run', async () => {
+    const tv = fx.team()
+    tv.ledger.outbox = { sent: 4, held: 1 }
+    installFixtureRoutes({ [`GET ${API}/team`]: () => tv })
+    render(<TeamPage {...props()} />)
+    await screen.findByRole('region', { name: '运行' })
+    const card = screen.getByRole('region', { name: '账本' }).querySelector('[data-ledger="outbox"]') as HTMLElement
+    const legs = Array.from(card.querySelectorAll('.tm-leg'))
+    expect(legs.map((t) => t.textContent)).toEqual(['送到了 4', 'KiroCrew 不让送 1'])
+    expect(legs[1].querySelector('i')).toHaveClass('tone-bad')
+    expect(card).toHaveClass('has-bad')
+    expect(card).toHaveTextContent('KiroCrew 不让 Brain 交付 app 把会话设成信任：下面那个运行写了要在 KiroCrew 里同意什么')
+    expect(outboxMeta('held')).toEqual({ label: 'KiroCrew 不让送', tone: 'bad' })
+  })
+
+  test('a message KiroCrew will not let into the session (held for trust) is a line under its run, toned as one a person acts on', async () => {
+    const text = 'Q-2 的回答还没送进会话：KiroCrew 不让 Brain 交付 app 把会话设成信任，它的 sessionApproval 权限没有得到同意（或者 app 停用了），桥就先不送。'
+    const tv = fx.team()
+    tv.runs[1].notes = [{ kind: 'outbox_held', text, at: Math.floor(Date.now() / 1000) - 600 }]
+    installFixtureRoutes({ [`GET ${API}/team`]: () => tv })
+    render(<TeamPage {...props()} />)
+    const runs = await screen.findByRole('region', { name: '运行' })
+    const li = within(within(runs).getByRole('list', { name: 'PAY-4 的第 1 次运行：桥记着的事' })).getByRole('listitem')
+    expect(li).toHaveAttribute('data-kind', 'outbox_held')
+    expect(li).toHaveTextContent(text)
+    expect(li).toHaveTextContent('10 分钟前')
+    expect(li).toHaveClass('tone-bad')
+    expect(li.querySelector('.tm-note-glyph')).toHaveTextContent('✕')
   })
 
   test('配置: bridge.json and runnerd.json by file, the key in code, the value with a quiet 默认, its line; none read yet, one line', async () => {

@@ -7,6 +7,9 @@ after. The runner last acted at the newest note of its account on any MR read, a
 names no bridge_user has no runner. Without a token, or when GitLab refuses, the page is told so in words, the last read
 kept."""
 
+import threading
+import time
+
 import pytest
 
 from appkit import mod
@@ -201,3 +204,64 @@ def test_a_runner_repo_without_a_gitlab_project_says_what_kit_json_lacks(tmp_pat
     runner = run(go())["repos"][0]["runner"]
     assert runner["seen"] is None and runner["problem"]["text"] == "这个仓库的 kit.json 没写 GitLab 项目，读不了团队运行机"
     assert not any("/merge_requests" in c[1] for c in gl.calls)
+
+
+class Slow:
+    """GitLab over a slow tunnel: each request answered *delay* seconds after it came in, one at a time inside (the
+    fake is not thread-safe); *peak*: the most requests that were in at once."""
+
+    def __init__(self, gl, delay):
+        self.gl, self.delay, self.inside, self.lock = gl, delay, threading.Lock(), threading.Lock()
+        self.now = self.peak = 0
+
+    def __call__(self, *a, **k):
+        with self.lock:
+            self.now += 1
+            self.peak = max(self.peak, self.now)
+        try:
+            time.sleep(self.delay)
+            with self.inside:
+                return self.gl(*a, **k)
+        finally:
+            with self.lock:
+                self.now -= 1
+
+
+def test_five_projects_are_read_four_at_a_time_and_one_gitlab_does_not_show_fails_only_its_own(
+        tmp_path, home, monkeypatch):
+    """multi2: with five projects the first GET /team/status took 17 s over the tunnel, reading them one after another,
+    and the page said 正在读取 all that while. They are read at once, at most four at a time; a project GitLab does not
+    show is that project's problem, the others are read as ever."""
+    monkeypatch.setenv("GITLAB_TOKEN", "alice-tok")
+    clock = Clock(T0)
+    gl = PatrolGitLab(clock)
+    gl.who["alice-tok"] = "alice"
+    names = ["pay", "web", "ops", "inv", "ntf"]
+    repos = []
+    for i, name in enumerate(names):
+        path = "grp/" + name
+        if name != "ntf":                               # alice may not see grp/ntf
+            gl.project(path, 10 + i)
+            for iid in (1, 2, 3):
+                gl.mr(path, iid, title="%s %d" % (name, iid), labels=["ai-running"] if iid == 1 else [])
+                gl.thread(path, iid, "brain-bridge", "改好了 %d" % iid, resolvable=False)
+        repos.append(make_project(tmp_path, name=name, prefix=name.upper(),
+                                  kit={"gitlab": {"base": BASE, "project": path}, "bridge_user": "brain-bridge"}))
+    slow = Slow(gl, 0.1)
+    svc = make_service(tmp_path, repos, transport=slow)
+    svc.now = clock
+
+    async def go():
+        await svc.start()
+        try:
+            return await svc.runner_status()
+        finally:
+            await svc.stop()
+
+    got = run(go())
+    assert 2 <= slow.peak <= 4, slow.peak
+    runners = {r["name"]: r["runner"] for r in got["repos"]}
+    for name in names[:4]:
+        assert runners[name]["problem"] is None and [w["iid"] for w in runners[name]["seen"]["at_work"]] == [1, 2, 3], (
+            name, runners[name])
+    assert runners["ntf"]["seen"] is None and runners["ntf"]["problem"]["text"] == "GitLab 上看不到这个项目"
