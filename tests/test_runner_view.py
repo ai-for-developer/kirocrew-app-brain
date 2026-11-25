@@ -24,14 +24,15 @@ PARK = {"question": "退款超过 500 元要不要人工审核？", "options": [
         "recommend": "A"}
 
 
-def app(tmp_path, monkeypatch):
-    """alice's machine: pay (kit.json names the bridge's account) and web (no team runner), on one GitLab."""
+def app(tmp_path, monkeypatch, **kit):
+    """alice's machine: pay (kit.json names the bridge's account, and *kit*) and web (no team runner), on one
+    GitLab."""
     clock = Clock(T0)
     gl = PatrolGitLab(clock)
     gl.who["alice-tok"] = "alice"
     gl.project(P, 7)
     monkeypatch.setenv("GITLAB_TOKEN", "alice-tok")
-    pay = make_project(tmp_path, kit={"gitlab": {"base": BASE, "project": P}, "bridge_user": "brain-bridge"})
+    pay = make_project(tmp_path, kit=dict({"gitlab": {"base": BASE, "project": P}, "bridge_user": "brain-bridge"}, **kit))
     web = make_project(tmp_path, name="web", prefix="WEB")
     svc = make_service(tmp_path, [pay, web], transport=gl)
     svc.now = clock
@@ -144,6 +145,33 @@ def test_a_q_question_waits_on_me_until_a_reply_names_its_number(tmp_path, home,
     got = run(go())
     assert got.status == 200, got.body
     assert [q["id"] for q in got.body["repos"][0]["runner"]["seen"]["waiting"]] == ["Q-8", "Q-9"]
+
+
+@pytest.mark.parametrize("label", ["", "merge-me"], ids=["no-label", "renamed"])
+def test_a_hand_over_accepted_and_done_is_not_at_work_whatever_kit_json_calls_its_label(tmp_path, home, monkeypatch,
+                                                                                         label):
+    """kit.json accepted_label renames the label the bridge puts on a hand-over's MR once the run is accepted and
+    done, or ("") asks for none: running_label comes off, and the bridge's last note on it says it can be merged. That
+    MR is the hand-over's, done: neither the runner's hand-over nor MR 巡检 is at work on it."""
+    clock, gl, svc, routes = app(tmp_path, monkeypatch, accepted_label=label)
+
+    async def go():
+        await svc.start()
+        try:
+            ready = getattr(mod("bk").m("bridge.decisions"), "READY", mod("team.runwatch").READY)
+            at(clock, H)
+            gl.mr(P, 43, title="退款审核", labels=[label] if label else [])
+            note(gl, 43, "brain-bridge", "AI 已接手 RUN-PAY-3-1")
+            note(gl, 43, "brain-bridge", ready % ("RUN-PAY-3-1", "a" * 12, "Q-2", "V-0123456789", "b" * 12, "@alice"))
+            at(clock, 0)
+            return await call(routes, "GET", "/team/status")
+        finally:
+            await svc.stop()
+
+    got = run(go())
+    assert got.status == 200, got.body
+    seen = got.body["repos"][0]["runner"]["seen"]
+    assert seen["at_work"] == [] and seen["last_at"] == T0 - H, seen
 
 
 def test_without_a_token_or_when_gitlab_refuses_it_says_so_and_keeps_the_last_read(tmp_path, home, monkeypatch):

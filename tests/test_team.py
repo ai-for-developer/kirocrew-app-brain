@@ -669,6 +669,52 @@ def test_a_run_accepted_and_done_says_who_merges_it_and_its_label_goes_at_the_me
     assert "ai-ready-to-merge" not in gl.labels and "ai-running" not in gl.labels
 
 
+@pytest.mark.parametrize("label", ["", "merge-me"], ids=["no-label", "renamed"])
+def test_a_run_accepted_and_done_gets_kit_jsons_accepted_label_or_none(tmp_path, home, monkeypatch, label):
+    """kit.json accepted_label renames the label of a run accepted and done, or ("") asks for none. With a brain-kit
+    whose bridge does not finish such a run itself (before 769efc7; here its idle-session step and its reconcile's
+    unlabel do nothing), the app's runs step tells the MR and moves the labels as kit.json says: ai-running off and
+    kit.json's label on, or none, never ai-ready-to-merge; the runner's row says 等合并; at the merge they come off."""
+    from teamfix import make_world
+    world = make_world(tmp_path, home, monkeypatch, kit_over={"accepted_label": label})
+    gw = FakeGateway()
+    gw.script = [ended("写好了，请验收"), ended("验收通过，记好了")]
+    svc = service(world, tmp_path, gw)
+    gl = world["gl"]
+    ws = world["runs_root"] / "RUN-PAY-1-1"
+    ours = {"ai-running", "ai-ready-to-merge", "merge-me"}
+    seen = {}
+
+    async def go():
+        await svc.start()
+        bkm = mod("bk")
+        monkeypatch.setattr(bkm.m("bridge.decisions").DecisionLoop, "_idle_session", lambda *_a, **_k: None)
+        monkeypatch.setattr(bkm.m("bridge.handoff").Bridge, "_unlabel", lambda *_a, **_k: None)
+        try:
+            await rounds(svc)                           # dispatched
+            push_park(ws, ACCEPTANCE)
+            gw.finish(SLOT)
+            await rounds(svc)                           # Q-1, the acceptance question
+            gl.note("carol", "answer D-1 approve")
+            await rounds(svc)                           # the approval reaches the session, whose turn records it
+            commit_push(ws, {"runs/PAY-1/park.json": dict(ACCEPTANCE, status="answered")}, "PAY-1: accepted (Q-1)")
+            gw.finish(SLOT)
+            await rounds(svc)
+            seen["labels"] = set(gl.labels) & ours
+            seen["row"] = (await svc.overview("runner"))["rows"][0]
+            gl.state = "merged"
+            await rounds(svc, 2)
+        finally:
+            await svc.stop()
+
+    run(go())
+    (told,) = [b for b in gl.bodies() if "可以合并了" in b]
+    assert told.startswith("RUN-PAY-1-1 做完了") and ("标签换成了 merge-me" in told) == bool(label), told
+    assert seen["labels"] == ({label} if label else set()), seen["labels"]
+    assert (seen["row"]["state"], seen["row"]["waits"]["text"]) == ("to_merge", "验收通过了：等 alice 在 GitLab 上合并")
+    assert not set(gl.labels) & ours, gl.labels
+
+
 @pytest.mark.parametrize("status", [404, 403])
 def test_a_run_that_ended_on_an_mr_gitlab_no_longer_shows_fails_no_round(world, tmp_path, status):
     """A run that ended within 14 days has its labels taken off once. Its MR deleted since (404), or its project not

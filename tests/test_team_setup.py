@@ -432,6 +432,17 @@ def test_a_first_run_builds_the_runner_and_waits_for_the_kit_mr(world):
                                "soon": False}]
 
 
+@pytest.mark.parametrize("label", ["", "merge-me"], ids=["no-label", "renamed"])
+def test_the_label_of_a_run_done_is_kit_jsons_accepted_label_or_none(world, label):
+    """kit.json accepted_label names the label the bridge puts on a run's MR once it is accepted and done, or ("")
+    asks for none. The labels step makes that one, or none, and never ai-ready-to-merge in its place."""
+    world["gl"] = FakeGitLab(world["admin"], str(world["bare"]), kit_file(world["tmp"], accepted_label=label))
+    view, _ps = build(world)
+    assert everything_done(view), [(s["id"], s["status"], s["message"], s["detail"][:200]) for s in view["steps"]]
+    assert sorted(world["gl"].labels) == sorted(["ai-handoff", "ai-handoff-rejected", "ai-running", "brain-reflect"] +
+                                                ([label] if label else []))
+
+
 def test_a_second_run_makes_nothing_new(world):
     build(world)
     gl, ps = world["gl"], mod("team.setup").Paths.default(BRAINKIT, root=world["tmp"] / "team-setup")

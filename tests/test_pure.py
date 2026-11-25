@@ -483,6 +483,28 @@ def test_a_runner_run_accepted_and_done_waits_for_its_owner_to_merge():
     assert row["state"] == "merged"
 
 
+@pytest.mark.parametrize("label", ["", "merge-me"], ids=["no-label", "renamed"])
+def test_a_runner_run_accepted_and_done_waits_to_merge_whatever_kit_json_calls_its_label(decisions, label):
+    """kit.json accepted_label renames the label the bridge puts on a run it finished, or ("") asks for none: then
+    only running_label comes off. On a person's machine and in 全队交付 the MR says 等合并 by kit.json's label, or by
+    the bridge's note that it can be merged (also when GitLab did not let it change the labels), where it said
+    运行机在跑 by the bot's commits."""
+    ready = getattr(decisions, "READY", mod("team.runwatch").READY) % (
+        "RUN-PAY-1-1", "a" * 12, "Q-1", "V-0123456789", "b" * 12, "@alice")
+    cfg = {"handoff_label": "ai-handoff", "running_label": "ai-running", "rejected_label": "ai-handoff-rejected",
+           "accepted_label": label}
+    f = {"run": {"handoff": {"local_head": "a" * 40}}, "tip": "b" * 40, "park": {"status": "answered"}, "approvals": [],
+         "claim": None, "owner": "alice"}
+    told = mrinfo.parse_notes([note(1, "AI 已接手 RUN-PAY-1-1"), note(2, ready)], bridge_user="brain-bridge")["runner"]
+    cases = [([], told)] + ([([label], None)] if label else [])
+    for labels, runner in cases:
+        row = {"state": "", "state_label": "", "waits": {}}
+        mr = {"state": "opened", "labels": labels, "sha": "b" * 40, "questions": [], "runner": runner}
+        deliveries.classify(row, f, mr=mr, slot=None, cfg=cfg, me="alice", bot_commits=3)
+        assert (row["state"], row["waits"]["who"], row["waits"]["do"], row["waits"]["text"]) == (
+            "to_merge", "you", "merge", "验收通过了：等你在 GitLab 上合并"), (labels, runner, row["waits"])
+
+
 def test_asking_is_a_question_not_on_the_mr_yet():
     """brain-kit 72b278e: 'asking' (one bridge process posting the question right now) is like 'posting'."""
     r = {"state": "", "state_label": "", "waits": {}, "open_questions": []}

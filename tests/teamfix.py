@@ -250,9 +250,9 @@ def handoff_unlabelled(wt) -> None:
     assert p.returncode in (0, 1) and "NOT labelled" in p.stdout + p.stderr, p.stdout + p.stderr
 
 
-def make_world(tmp_path, home, monkeypatch, *, bridge_user="brain-bridge", signer_cfg=None):
-    kit = {"gitlab": {"base": "https://gl.example", "project": P}, "bot_users": ["brain-bot"],
-           "bot_emails": ["brain-bot@noreply.invalid"]}
+def make_world(tmp_path, home, monkeypatch, *, bridge_user="brain-bridge", signer_cfg=None, kit_over=None):
+    kit = dict({"gitlab": {"base": "https://gl.example", "project": P}, "bot_users": ["brain-bot"],
+                "bot_emails": ["brain-bot@noreply.invalid"]}, **(kit_over or {}))
     if bridge_user:
         kit["bridge_user"] = bridge_user
     repo = make_project(tmp_path, name="repo", origin=True, kit=kit)
