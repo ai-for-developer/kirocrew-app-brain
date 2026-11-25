@@ -500,8 +500,8 @@ def test_a_run_accepted_and_done_says_who_merges_it_and_its_label_goes_at_the_me
     """MR !6: after the product's RELEASE approval and the session's last push nothing said the MR could be merged, it
     kept ai-running after the merge, and the pages said 运行机在跑. Once the session is idle with its records pushed,
     the MR hears once that it can be merged and that alice merges it, its label is ai-ready-to-merge instead of
-    ai-running, the runner's row and the project's snapshot say it waits for alice to merge, and the merge takes the
-    label off."""
+    ai-running, the runner's row and the project's snapshot say it waits for alice to merge, its run's state on 运行机
+    and in the snapshot is to_merge (等合并), and the merge takes the label off."""
     import time
     snapshot = mod("snapshot")
     gw = FakeGateway()
@@ -528,6 +528,8 @@ def test_a_run_accepted_and_done_says_who_merges_it_and_its_label_goes_at_the_me
             gw.finish(SLOT)
             await rounds(svc)
             seen["row"] = (await svc.overview("runner"))["rows"][0]
+            view = await svc.team_view()
+            seen["runs"] = ([r["state"] for r in view["runs"]], view["ledger"]["runs"])
             rt = svc.team
             seen["snap"] = snapshot.parse(rt.snapshot_of("grp/repo", time.time(), time.monotonic() + 20, None,
                                                          rt._shared()))["runner"]["handovers"]
@@ -549,6 +551,8 @@ def test_a_run_accepted_and_done_says_who_merges_it_and_its_label_goes_at_the_me
     assert w["text"] == "验收通过了：等 alice 在 GitLab 上合并"
     (h,) = seen["snap"]
     assert (h["waits"]["text"], h["waits"]["do"], h["waits"]["on"]) == (w["text"], "merge", ["alice"])
+    # 运行机's run, its count and the snapshot's hand-over say 等合并 as the row's 在等 does, not brain-kit's dispatched
+    assert seen["runs"] == (["to_merge"], {"to_merge": 1}) and h["state"] == "to_merge", (seen["runs"], h["state"])
     assert "ai-ready-to-merge" not in gl.labels and "ai-running" not in gl.labels
 
 

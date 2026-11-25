@@ -71,9 +71,24 @@ describe('运行机', () => {
     expect(ledger.querySelector('[data-ledger="signer"]')).toHaveTextContent('签名1等签名')
     expect(ledger.querySelector('[data-ledger="signer"]')).toHaveTextContent('拒签 1 · 上一轮没等到 1')
     // every run state of brain-kit has words
-    expect(Object.keys(RUN_STATE).sort()).toEqual(['closed', 'dispatched', 'failed', 'merged', 'ready', 'send_unknown', 'signing', 'spooled'])
+    expect(Object.keys(RUN_STATE).sort()).toEqual(['closed', 'dispatched', 'failed', 'merged', 'ready', 'send_unknown', 'signing', 'spooled', 'to_merge'])
     expect(runStateMeta('send_unknown')).toEqual({ label: '送没送到不清楚', tone: 'warn', hint: '桥每轮看会话，看到了就接着做；一直这样要人看一下' })
     expect(runStateMeta('signing').label).toBe('签名中')
+  })
+
+  test('a run accepted and done is 等合并 on its chip and in the ledger, as the MR and its 在等 say, not brain-kit’s 已派给会话', async () => {
+    const tv = fx.team()
+    tv.runs[2] = { ...tv.runs[2], state: 'to_merge', notes: [{ kind: 'ready', text: '验收通过了，会话也做完了：MR 上说了可以合并、谁来合并', at: null }] }
+    tv.ledger.runs = { signing: 1, dispatched: 1, to_merge: 1, merged: 3 }
+    installFixtureRoutes({ [`GET ${API}/team`]: () => tv })
+    render(<TeamPage {...props()} />)
+    const runs = await screen.findByRole('region', { name: '运行' })
+    const chip = within(within(runs).getByTitle('RUN-PAY-5-1').closest('tr') as HTMLElement).getByText(/./, { selector: '.br-chip' })
+    expect(chip).toHaveTextContent('等合并')
+    expect(chip).toHaveClass('tone-wait')
+    expect(chip).not.toHaveClass('is-live')
+    const ledger = screen.getByRole('region', { name: '账本' })
+    expect(Array.from(ledger.querySelectorAll('[data-ledger="runs"] .tm-leg')).map((t) => t.textContent)).toEqual(['签名中 1', '已派给会话 1', '等合并 1', '已合并 3'])
   })
 
   test('failed is 没能开始 (no workspace, or the hand-over never got into the session); send_unknown says the bridge looks each round', async () => {
