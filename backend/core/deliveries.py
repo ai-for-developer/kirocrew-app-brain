@@ -519,7 +519,7 @@ def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[
     signs its contract (``signing``) is a hand-over not taken yet; a decision whose answer the signer refused, that is
     void, or that could not be asked leaves the run waiting until a person looks. *notes* (team_note, outbox_note):
     what brain-kit 0d52e97's bridge holds about the run, e.g. the acceptance question held until CI is green. *now*,
-    *stall_s* (bridge.json stall_minutes) and *session* (the run's slot_stats): an answer that reached the run says
+    *stall_s* (bridge.json stall_minutes) and *session* (TeamRuntime.run_sessions): an answer that reached the run says
     the runner goes on until its session stays idle past stall_s (answered_text). *park_sha*: the sha256 of the
     run's park.json (read_facts): an answered question is the row's only while it is the park.json the question was
     asked from (its park_hash); another one is a new question the bridge has not posted yet."""

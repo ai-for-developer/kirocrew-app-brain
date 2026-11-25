@@ -410,8 +410,8 @@ class TeamRuntime:
 
     def _shared(self) -> dict[str, Any]:
         """What every project's snapshot is made from this round: MR 巡检's and 测试环境报错's views, identities.json's
-        roles, each project's deployed commit, the runner's open runs (runner_rows; each run's state as its chip says it,
-        deliveries.run_state), the session of each requirement's latest run (run_sessions, by requirement) and the
+        roles, each project's deployed commit, the runner's open runs (runner_rows; each run's state as its chip says
+        it, deliveries.run_state), the session of each requirement's latest run (run_sessions, by requirement) and the
         server."""
         patrol, staging = self.patrol_view(), self.staging_view()
         led = self.ledger()
