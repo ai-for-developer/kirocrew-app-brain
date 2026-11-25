@@ -240,6 +240,9 @@ class FakeGitLab:
         if mr and not m.group(2) and method == "PUT" and data.get("state_event") == "close":
             mr["state"] = "closed"
             return ok(mr)
+        if mr and not m.group(2) and method == "PUT" and "description" in data:
+            mr["description"] = data["description"]
+            return ok(mr)
         return ok({"message": "404 (fake)"}, 404)
 
 
@@ -670,6 +673,26 @@ def test_a_project_typed_by_the_path_it_had_before_a_rename_keeps_its_ticks(worl
     assert kit["work_sources"] == ["mr-handoff", "mr-patrol", "issue-label"] and kit["gitlab"]["project"] == P, kit
     assert "brain" in gl.labels
     assert step(view, "team_mode")["message"] == "团队模式开了；上面那个 MR 合并以后，从 issue 接活才开始"
+
+
+def test_a_rerun_goes_on_with_its_own_kit_mr_never_a_fork_s_and_its_description_says_what_it_does_now(world):
+    """巡检 ticked: the kit.json MR opens. Someone opens an MR from a fork's branch of the same name, which GitLab lists
+    first. Run again with 从 issue 接活 ticked too before anyone merged: the run goes on with its own MR, whose
+    description now says what merging it switches on, issue-label too; the fork's MR is left as it was."""
+    setup, gl = mod("team.setup"), world["gl"]
+    build(world)
+    own = gl.mrs[-1]
+    assert setup.MR_ISSUES[True] not in own["description"]
+    fork = dict(own, iid=99, source_project_id=PID + 1, web_url=BASE + "/bob/pay/-/merge_requests/99", notes=[],
+                description="bob's own change")
+    gl.mrs.insert(0, fork)
+    view, ps = build(world, issues=True)
+    said = step(view, "kit_mr")
+    assert said["status"] == "waiting" and said["message"] == "还没合并 MR !%d：请在 GitLab 上合并这个 MR" % own["iid"], said
+    assert [m["iid"] for m in gl.mrs] == [99, own["iid"]] and json.loads(ps.state.read_text())["kit_mr"][P]["iid"] == own["iid"]
+    assert json.loads(branch_kit(world))["work_sources"] == ["mr-handoff", "mr-patrol", "issue-label"]
+    assert setup.MR_ISSUES[True] in own["description"] and setup.MR_PATROL[True] in own["description"]
+    assert (fork["description"], fork["notes"], fork["state"]) == ("bob's own change", [], "opened")
 
 
 def branch_kit(world):

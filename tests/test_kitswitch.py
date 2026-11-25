@@ -14,13 +14,13 @@ from brainfix import make_project, make_service, needs_brainkit, run
 pytestmark = needs_brainkit
 kitmr = mod("kitmr")
 AppError = mod("httpkit").AppError
-BASE, P, TOKEN = "https://gitlab.example.com", "grp/pay", "fake-token-for-kit-switch"
+BASE, P, PID, TOKEN = "https://gitlab.example.com", "grp/pay", 42, "fake-token-for-kit-switch"
 GITLAB = {"gitlab": {"base": BASE, "project": P}}
 
 
 class GitLab:
-    """GitLab REST v4 for grp/pay: files per branch, branches, commits, MRs (their notes: none), as kit_mr and the
-    app's MR cache call them."""
+    """GitLab REST v4 for grp/pay (id 42): the project, files per branch, branches, commits, MRs (their notes: none),
+    as kit_mr and the app's MR cache call them."""
 
     def __init__(self, kit_text):
         self.files = {"main": {kitmr.KIT: kit_text}}
@@ -38,6 +38,8 @@ class GitLab:
         if not path.startswith(pre):
             return ok({"message": "404 Project Not Found"}, 404)
         rest = path[len(pre):]
+        if rest == "" and method == "GET":
+            return ok({"id": PID, "path_with_namespace": P, "default_branch": "main"})
         if rest.startswith("/repository/files/") and rest.endswith("/raw") and method == "GET":
             text = self.files.get(q.get("ref"), {}).get(rest[len("/repository/files/"):-len("/raw")])
             return (200, text.encode()) if text is not None else ok({"message": "404 File Not Found"}, 404)
@@ -59,8 +61,8 @@ class GitLab:
                        and q.get("state") in ("all", m["state"])])
         if rest == "/merge_requests" and method == "POST":
             iid = 31 + len(self.mrs)
-            mr = dict(data, iid=iid, state="opened", sha="d" * 40, labels=[],
-                      web_url="%s/%s/-/merge_requests/%d" % (BASE, P, iid))
+            mr = dict(data, iid=iid, state="opened", sha="d" * 40, labels=[], source_project_id=PID,
+                      target_project_id=PID, web_url="%s/%s/-/merge_requests/%d" % (BASE, P, iid))
             self.mrs.append(mr)
             return ok(mr, 201)
         if rest.endswith("/notes") and method == "GET":
