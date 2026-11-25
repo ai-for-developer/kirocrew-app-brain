@@ -52,6 +52,7 @@ from .. import bk, deliveries, family, fastrow, lean_view, mrinfo, snapshot
 from ..constants import KEY_RE
 from ..repo import MAX_FILE, REFLECT_RE, Source, empty_facts, parse_branch, read_facts
 from . import sources
+from . import staging as staging_mod
 from .issues import NEW, REFUSED, UNDER_WAY
 
 FILE, BRANCH = snapshot.FILE, snapshot.BRANCH
@@ -553,16 +554,24 @@ class Deliveries:
 
 def content_key(snap: Mapping[str, Any]) -> str:
     """What decides whether a snapshot is new: all of it but what moves without news of its project, round after round:
-    when it was made, the bridge's last round, how many brain-patrol sessions work now (the server's and each work
-    source's, in every project's snapshot), when its rows were read, each staging error's count and when the log last
-    showed it, each patrol MR's updated_at (any note or label on it). Those are written along with a real change, or
-    with the heartbeat."""
+    when it was made, the bridge's last round, when its rows were read, each patrol MR's updated_at (any note or label
+    on it), and a closed or dismissed staging error's count and when the log last showed it (it is fixed, or people
+    left it alone). Those are written along with a real change, or with the heartbeat. An open staging error's are
+    news coarsely (staging_news), and so are the brain-patrol sessions at work: a person's 团队运行机 shows them at
+    most a floor old, and a project is still written at most once a build (FLOOR_S), never once a round."""
     runner = snap["runner"]
-    server = dict(snap["server"], last_round_at=None, working=0, held=None)
-    body = dict(snap, generated_at=0, delivery_at=None, server=server,
-                runner=dict(runner, staging=[dict(e, count=0, last_seen=0.0) for e in runner["staging"]],
+    body = dict(snap, generated_at=0, delivery_at=None, server=dict(snap["server"], last_round_at=None),
+                runner=dict(runner, staging=[staging_news(e) for e in runner["staging"]],
                             patrol=[dict(m, updated_at=None) for m in runner["patrol"]]))
     return hashlib.sha256(snapshot.dump(body).encode("utf-8")).hexdigest()
+
+
+def staging_news(e: Mapping[str, Any]) -> dict[str, Any]:
+    """A staging error as content_key weighs it: an open one's count by its doubling (as the Issue hears of it) and
+    when the log last showed it to FLOOR_S; a closed or dismissed one's neither."""
+    if e["state"] in (staging_mod.CLOSED, staging_mod.DISMISSED):
+        return dict(e, count=0, last_seen=0.0)
+    return dict(e, count=int(e["count"]).bit_length(), last_seen=float(e["last_seen"] // FLOOR_S))
 
 
 WRITE_SAID = {401: "GitLab 不认桥的令牌，状态没写成", 403: "GitLab 不让桥的账号推 brain/status，状态没写成",

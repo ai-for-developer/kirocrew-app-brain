@@ -358,11 +358,14 @@ shown folded): `backend/core/problems.py`.
   when they were read. The round writes `snapshot.json` on the project's own branch `brain/status` (made once with
   this machine's git as the runner pushes, no parent and a README only, since GitLab's API opens a branch only from
   another; every commit says `[skip ci] [ci-skip]`) only when it differs apart from what moves without news (when it
-  was made, the last round, the brain-patrol sessions' counts, when the rows were read, staging errors' counts and
-  last_seen, patrol MRs' updated_at),
-  or again once it is 30 minutes old. The one there is read when the relay first builds the project, so a restart
-  writes nothing new. A write that fails is said on 运行机 for its project and tried again 5 minutes later; it never
-  stops the round. MR 巡检, 测试环境报错 and the hand-over poll leave MRs from or into `brain/status` alone. A person's
+  was made, the last round, when the rows were read, patrol MRs' updated_at, a closed or dismissed staging error's
+  count and last_seen), or again once it is 30 minutes old. An open staging error's count (by its doubling) and
+  last_seen (to the 5-minute floor) and the brain-patrol sessions at work are news, so a person's 团队运行机 shows them
+  at most a floor old (multi2's said an error came 5 times, the last 13 minutes ago, while it came every minute); a
+  project is still built and written at most once every 5 minutes, never once a round. The one there is read when the
+  relay first builds the project, so a restart writes nothing new. A write that fails is said on 运行机 for its project
+  and tried again 5 minutes later; it never stops the round. MR 巡检, 测试环境报错 and the hand-over poll leave MRs from or
+  into `brain/status` alone. A person's
   app reads each listed project's file, and its runner's MRs, with its own token at most once a minute, four projects
   at a time (five over a tunnel took 17 s one after another), a project that cannot be read saying so on its own line,
   puts the projects of one GitLab together, and past 75 minutes (two heartbeats missed) says the server may have
