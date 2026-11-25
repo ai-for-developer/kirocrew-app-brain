@@ -3,6 +3,7 @@ only (never an app token), and the routes answer under plain pytest with the fak
 
 import asyncio
 import json
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -80,6 +81,9 @@ def test_settings_are_checked_before_they_are_saved(tmp_path, home):
     assert not (tmp_path / "data" / "settings.json").exists()
 
 
+# the brain-kit commit the separate-user signer names when it refuses an older checkout (its BRAINKIT_NEEDED)
+SIGNER_NEEDED = re.search(r'^BRAINKIT_NEEDED = "([0-9a-f]+)"', (ROOT / "signer" / "brain_signer.py").read_text(
+    encoding="utf-8"), re.M).group(1)
 OLDER = [
     # 9935b11: the hand-over commit rule (a method: nothing else imports it, so the copy still imports)
     ("bridge/handoff.py", lambda t: t.replace("def handoff_commit_problems(", "def _handoff_commit_problems_gone("),
@@ -93,7 +97,7 @@ OLDER = [
 def test_an_older_brainkit_is_refused(tmp_path, path, cut, lacks):
     """The app (and its signer) need brain-kit 72b278e's interfaces: a checkout without one of them is refused with a
     message naming what it lacks and the commit needed (the app's: bk.VERSION_NEEDED; the signer's: its own
-    BRAINKIT_NEEDED, 81380eb), not half used. (A copy of the checkout with one taken out.)"""
+    BRAINKIT_NEEDED), not half used. (A copy of the checkout with one taken out.)"""
     import shutil
     from appkit import BRAINKIT, mod
     if not (BRAINKIT / "brainkit" / "__init__.py").is_file():
@@ -115,15 +119,16 @@ def test_an_older_brainkit_is_refused(tmp_path, path, cut, lacks):
     probe = "import sys; sys.path.insert(0, %r); import brain_signer; brain_signer.load_brainkit(sys.argv[1])" % str(
         ROOT / "signer")
     p = subprocess.run([sys.executable, "-I", "-c", probe, str(old)], capture_output=True, text=True)
-    assert p.returncode != 0 and lacks in p.stderr and "81380eb" in p.stderr, p.stderr
+    assert p.returncode != 0 and lacks in p.stderr and SIGNER_NEEDED in p.stderr, p.stderr
     p = subprocess.run([sys.executable, "-I", "-c", probe, str(BRAINKIT)], capture_output=True, text=True)
     assert p.returncode == 0, p.stderr
 
 
 def test_the_signer_needs_the_brain_kit_that_asks_q_n(tmp_path):
     """The signer reads which question a reply names by brain-kit 81380eb's decisions.same_question (its bridge asks
-    Q-<n>, and `answer D-<n>` still answers it): a checkout without it is refused, naming it and 81380eb. The app reads
-    the same rule itself (mrinfo.same_question) and still runs on that checkout."""
+    Q-<n>, and `answer D-<n>` still answers it): a checkout without it is refused, naming it and the brain-kit the
+    signer needs (its BRAINKIT_NEEDED, 81380eb or later). The app reads the same rule itself (mrinfo.same_question) and
+    still runs on that checkout."""
     import shutil
     import subprocess
     import sys
@@ -135,7 +140,7 @@ def test_the_signer_needs_the_brain_kit_that_asks_q_n(tmp_path):
     probe = "import sys; sys.path.insert(0, %r); import brain_signer; brain_signer.load_brainkit(sys.argv[1])" % str(
         ROOT / "signer")
     p = subprocess.run([sys.executable, "-I", "-c", probe, str(old)], capture_output=True, text=True)
-    assert p.returncode != 0 and "bridge.decisions.same_question" in p.stderr and "81380eb" in p.stderr, p.stderr
+    assert p.returncode != 0 and "bridge.decisions.same_question" in p.stderr and SIGNER_NEEDED in p.stderr, p.stderr
     bk = mod("bk")
     try:
         assert bk.load(str(old))["ok"] is True
