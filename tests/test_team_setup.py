@@ -70,10 +70,11 @@ class FakeGitLab:
         self.tokens, self.mrs, self.calls, self.fail = [], [], [], []
         self.revoked = set()
         self.protected = []
+        self.renamed_from = []      # the paths it had before a rename: GitLab's API still finds it by them
 
     def prefix(self, path):
         """The part of *path* that names this project (/api/v4/projects/<path or id>); None: another one's, or none."""
-        return next(("%s/projects/%s" % (API, k) for k in (self.path, str(self.pid))
+        return next(("%s/projects/%s" % (API, k) for k in (self.path, str(self.pid), *self.renamed_from)
                      if path == "%s/projects/%s" % (API, k) or path.startswith("%s/projects/%s/" % (API, k))), None)
 
     def level_of(self, username):
@@ -307,9 +308,9 @@ def fake_reach(world):
     return reach
 
 
-def setup_ctx(world, push="auto", roles=None, patrol=True, jenkins=None, issues=False):
+def setup_ctx(world, push="auto", roles=None, patrol=True, jenkins=None, issues=False, project=P):
     setup, rest = mod("team.setup"), mod("bk").m("rest")
-    inp = setup.SetupInput.parse({"gitlab_base": BASE, "project": P, "admin_token": world["admin"],
+    inp = setup.SetupInput.parse({"gitlab_base": BASE, "project": project, "admin_token": world["admin"],
                                   "roles": roles or {"builder": "bob"}, "push": push, "patrol": patrol,
                                   "jenkins": jenkins, "issues": issues})
     paths = setup.Paths.default(BRAINKIT, root=world["tmp"] / "team-setup")
@@ -651,6 +652,24 @@ def test_a_rerun_that_unticks_issue_intake_closes_its_earlier_kit_mr_and_no_one_
     gl.mrs.remove(fork)
     view, _ = build(world, patrol=False, issues=True)
     assert gl.mrs[-1]["iid"] != stale["iid"] and gl.mrs[-1]["state"] == "opened" and step(view, "kit_mr")["status"] == "waiting"
+
+
+def test_a_project_typed_by_the_path_it_had_before_a_rename_keeps_its_ticks(world):
+    """grp/pay was grp/old-pay before a rename, and GitLab's API still finds it by the old path. Set up by its path now
+    with 巡检 ticked and that kit.json MR merged, then run again by the old path with 巡检 still ticked: no kit.json MR
+    takes mr-patrol out. Ticked for 从 issue 接活 as well, the MR switches issue-label on next to mr-patrol, the label
+    brain is made, and team mode says intake starts once the MR is merged."""
+    gl = world["gl"]
+    gl.renamed_from.append("grp/old-pay")
+    build(world)
+    gl.merge(gl.mrs[-1]["iid"])
+    view, _ = build(world, project="grp/old-pay")
+    assert step(view, "kit_mr")["status"] == "done" and len(gl.mrs) == 1, step(view, "kit_mr")
+    view, _ = build(world, project="grp/old-pay", issues=True)
+    kit = json.loads(branch_kit(world))
+    assert kit["work_sources"] == ["mr-handoff", "mr-patrol", "issue-label"] and kit["gitlab"]["project"] == P, kit
+    assert "brain" in gl.labels
+    assert step(view, "team_mode")["message"] == "团队模式开了；上面那个 MR 合并以后，从 issue 接活才开始"
 
 
 def branch_kit(world):
