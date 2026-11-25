@@ -496,13 +496,15 @@ def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]],
 
 def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[dict[str, Any]],
                   park: Any, notes: list[dict[str, Any]] | None = None, *, now: float | None = None,
-                  stall_s: float = 0.0, session: dict[str, Any] | None = None) -> None:
+                  stall_s: float = 0.0, session: dict[str, Any] | None = None, park_sha: str | None = None) -> None:
     """Team mode: the ledger's run state and its decisions (brain-kit's states). A run id reserved while the signer
     signs its contract (``signing``) is a hand-over not taken yet; a decision whose answer the signer refused, that is
     void, or that could not be asked leaves the run waiting until a person looks. *notes* (team_note, outbox_note):
     what brain-kit 0d52e97's bridge holds about the run, e.g. the acceptance question held until CI is green. *now*,
     *stall_s* (bridge.json stall_minutes) and *session* (the run's slot_stats): an answer that reached the run says
-    the runner goes on until its session stays idle past stall_s (answered_text)."""
+    the runner goes on until its session stays idle past stall_s (answered_text). *park_sha*: the sha256 of the
+    run's park.json (read_facts): an answered question is the row's only while it is the park.json the question was
+    asked from (its park_hash); another one is a new question the bridge has not posted yet."""
     st = run_row.get("state")
     notes = sorted(notes or [], key=lambda x: x.get("at") or 0)
     latest = {x["kind"]: x for x in notes}
@@ -562,7 +564,7 @@ def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[
             (not run_row.get("last_sha") or not last.get("sha") or last["sha"] == run_row["last_sha"]):
         return put("parked", "people", "answer", STUCK_DECISION[last["state"]] % last["id"], where="mr")
     answered = [d for d in mine if d.get("state") in ("answered", "delivered", "delivery_unknown")]
-    if park_waiting(park) and answered and answered[-1] is last:
+    if park_waiting(park) and answered and answered[-1] is last and asked_from(answered[-1], park_sha):
         # brain-kit 0d52e97's `answered`: the bridge has the answer, park.json still waits
         at = lean_view.epoch(answered[-1].get("updated") or answered[-1].get("created"))
         who, text = answered_text(answered[-1]["state"], at, now, stall_s, session)
@@ -577,6 +579,12 @@ def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[
                                                    "ci_wait": "ciheld"}.get(k, k), ("", "runner", ""))[1], "none",
                        latest[k]["text"], since=latest[k].get("at"))
     return put("running", "runner", "none", "运行机在跑")
+
+
+def asked_from(d: Mapping[str, Any], park_sha: str | None) -> bool:
+    """The bridge asked decision *d* from the park.json whose sha256 is *park_sha* (brain-kit's park_hash); either
+    one unknown: taken as so."""
+    return not park_sha or not d.get("park_hash") or d["park_hash"] == park_sha
 
 
 def runner_takes(f: dict[str, Any] | None, row: dict[str, Any] | None, runner_row: dict[str, Any]) -> bool:

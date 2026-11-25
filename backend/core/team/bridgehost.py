@@ -577,7 +577,7 @@ class TeamRuntime:
             row["where"] = "runner"
             decs = [d for d in led["decisions"] if d["run_id"] in all_ids[key]]
             deliveries.team_classify(row, r, decs, facts.get("park"), notes=notes.get(r["run_id"], []), now=now,
-                                     stall_s=stall_s, session=sessions.get(r["run_id"]))
+                                     stall_s=stall_s, session=sessions.get(r["run_id"]), park_sha=facts.get("park_sha"))
             row["run_ids"] = all_ids[key]
             row["mr"] = {"iid": int(r["iid"]), "url": self.mr_url(r["project"], r["iid"]), "state": None}
             row["updated_at"] = lean_view.epoch(r.get("updated"))
@@ -624,8 +624,8 @@ class TeamRuntime:
                         "created, updated FROM runs ORDER BY created")]
                 if "decisions" in tables:
                     out["decisions"] = [dict(r) for r in led.db.execute(
-                        "SELECT id, run_id, project, iid, sha, kind, lean_request, state, answer, answerer, voucher_id, "
-                        "created, updated FROM decisions ORDER BY created")]
+                        "SELECT id, run_id, project, iid, sha, park_hash, kind, lean_request, state, answer, answerer, "
+                        "voucher_id, created, updated FROM decisions ORDER BY created")]
                 if "handoffs" in tables:
                     out["handoffs"] = [dict(r) for r in led.db.execute(
                         "SELECT project, iid, sha, state, run_id, voucher_id, reason, created, updated FROM handoffs "

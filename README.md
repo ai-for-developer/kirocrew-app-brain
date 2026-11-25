@@ -268,7 +268,9 @@ shown folded): `backend/core/problems.py`.
   (labelled rejected too: its reason is that note's), KiroCrew not opening the session, queued, the hand-over send not
   known, sends that keep failing, the acceptance question held until the head pipeline is green (running, red,
   canceled / manual), a question nobody may answer. A parked run whose question the bridge already answered says so
-  (brain-kit's `answered`: the run, or the bridge, has not gone on).
+  (brain-kit's `answered`: the run, or the bridge, has not gone on), only while park.json is the one that question
+  was asked from (its hash, brain-kit's `park_hash` on the runner): a session that parked on a new question the bridge
+  has not posted yet (an acceptance waiting for its pipeline, say) says 「运行机停下来问人了：等桥把问题贴到 MR 上」.
 - **The MR's pipelines on a person's machine** are read in the same MR refresh, with the same token and at the same
   cadence (each handed-over run's MR at most every 60 s, from the background loop): one more call,
   `GET /projects/:id/merge_requests/:iid/pipelines?per_page=20`, the MR's 20 newest. Nothing else calls it: building
