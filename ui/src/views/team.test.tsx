@@ -239,6 +239,21 @@ describe('运行机', () => {
     expect(li.querySelector('.tm-note-glyph')).toHaveTextContent('✕')
   })
 
+  test('a session that ended its turn without a push (brain-kit\'s ended notice) is a line under its run, toned as one a person acts on', async () => {
+    const text = '会话这一轮结束了，可是没有推送，也没有问题在等人回答：请负责人到 KiroCrew 看一下这个会话（工作区里可能有它没提交的改动）'
+    const tv = fx.team()
+    tv.runs[1].notes = [{ kind: 'ended', text, at: Math.floor(Date.now() / 1000) - 600 }]
+    installFixtureRoutes({ [`GET ${API}/team`]: () => tv })
+    render(<TeamPage {...props()} />)
+    const runs = await screen.findByRole('region', { name: '运行' })
+    const li = within(within(runs).getByRole('list', { name: 'PAY-4 的第 1 次运行：桥记着的事' })).getByRole('listitem')
+    expect(li).toHaveAttribute('data-kind', 'ended')
+    expect(li).toHaveTextContent(text)
+    expect(li).toHaveClass('tone-bad')
+    expect(li.querySelector('.tm-note-glyph')).toHaveTextContent('✕')
+    expect(noteTone('ended')).toBe(noteTone('stopped'))
+  })
+
   test('配置: bridge.json and runnerd.json by file, the key in code, the value with a quiet 默认, its line; none read yet, one line', async () => {
     const row = (file: TeamConfigRow['file'], key: string, value: string, isDefault: boolean, text: string): TeamConfigRow => ({ file, key, value, default: isDefault, text })
     const bridge = [

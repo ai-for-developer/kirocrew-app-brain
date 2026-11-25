@@ -505,6 +505,49 @@ def test_a_runner_run_accepted_and_done_waits_to_merge_whatever_kit_json_calls_i
             "to_merge", "you", "merge", "验收通过了：等你在 GitLab 上合并"), (labels, runner, row["waits"])
 
 
+def test_a_session_that_ended_or_stopped_without_a_push_waits_on_people_until_the_next_push(decisions):
+    """brain-kit 769efc7's watchdog tells the MR once when a run's session ended its turn without pushing (ENDED,
+    ledger ended:<run>:<head12>), or stopped after it was told twice to go on (STOPPED, stopped:<run>:<head12>). The
+    runner's row reads the ledger's notice while that head is the run's last one; a person's row and 全队交付's read
+    the bridge's note on the MR while nothing was pushed after it. Each waits on people, in the bridge's words, not
+    运行机在跑; a push ends it."""
+    if not hasattr(decisions, "ENDED"):
+        pytest.skip("brain-kit before 769efc7")
+    head = "a" * 40
+    run = {"run_id": "RUN-PAY-1-1", "state": "dispatched", "last_sha": head, "owner": "alice"}
+    texts = {}
+    for kind in ("ended", "stopped"):
+        notices = [{"key": "%s:RUN-PAY-1-1:%s" % (kind, head[:12]), "run_id": "RUN-PAY-1-1", "state": "told",
+                    "created": "2026-11-25T00:00:00Z", "updated": "2026-11-25T00:00:00Z"}]
+        notes = deliveries.notices_by_run(notices, [], [run]).get("RUN-PAY-1-1", [])
+        assert [n["kind"] for n in notes] == [kind], (kind, notes)
+        r = {"key": "PAY-1", "owner": "alice"}
+        deliveries.team_classify(r, run, [], None, notes=notes, now=0, stall_s=900)
+        assert (r["state"], r["waits"]["who"], r["waits"]["text"]) == ("running", "people", notes[0]["text"]), r
+        assert "KiroCrew" in notes[0]["text"] and "推送" in notes[0]["text"], notes[0]["text"]
+        texts[kind] = notes[0]["text"]
+        pushed = dict(run, last_sha="b" * 40)
+        assert deliveries.notices_by_run(notices, [], [pushed]) == {}, kind
+    assert texts["ended"] != texts["stopped"]
+    on_mr = {"ended": decisions.ENDED % ("RUN-PAY-1-1", head[:12], "run-pay-1-1", "2026-11-25 08:00",
+                                         "，它最后说 没看懂需求，不继续"),
+             "stopped": decisions.STOPPED % ("RUN-PAY-1-1", "run-pay-1-1", "2026-11-25 08:00", head[:12], 2)}
+    cfg = {"handoff_label": "ai-handoff", "running_label": "ai-running", "rejected_label": "ai-handoff-rejected"}
+    for kind, body in on_mr.items():
+        runner = mrinfo.parse_notes([note(1, "AI 已接手 RUN-PAY-1-1"), note(2, body)], bridge_user="brain-bridge")["runner"]
+        f = {"run": {"handoff": {"local_head": "c" * 40}}, "tip": head, "park": None, "approvals": [], "claim": None,
+             "owner": "alice", "tip_at": mod("lean_view").epoch("2026-11-08T10:00:00Z")}
+        row = {"state": "", "state_label": "", "waits": {}}
+        mr = {"state": "opened", "labels": ["ai-running"], "sha": head, "questions": [], "runner": runner}
+        deliveries.classify(row, f, mr=mr, slot=None, cfg=cfg, me="alice")
+        assert (row["state"], row["waits"]["who"], row["waits"]["text"]) == ("running", "people", texts[kind]), (
+            kind, runner, row["waits"])
+        row = {"state": "", "state_label": "", "waits": {}}
+        deliveries.classify(row, dict(f, tip_at=mod("lean_view").epoch("2026-11-08T11:00:00Z")), mr=mr, slot=None, cfg=cfg,
+                            me="alice")
+        assert (row["state"], row["waits"]["text"]) == ("running", "运行机在跑"), (kind, row["waits"])
+
+
 def test_asking_is_a_question_not_on_the_mr_yet():
     """brain-kit 72b278e: 'asking' (one bridge process posting the question right now) is like 'posting'."""
     r = {"state": "", "state_label": "", "waits": {}, "open_questions": []}

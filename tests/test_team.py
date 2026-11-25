@@ -465,6 +465,53 @@ def test_the_runner_page_says_a_session_stopped_on_its_run_until_the_next_push(w
     assert seen["after"] == [] and seen["waits_after"]["text"] != note
 
 
+def test_the_runner_page_says_a_session_ended_without_a_push_on_its_run_until_the_next_push(world, tmp_path):
+    """The run's session ends its turn with brain-run's 「…不继续」, pushes nothing and stays idle past stall_minutes:
+    brain-kit's bridge tells the MR once 「…的会话这一轮结束了，可是没有推送…请负责人到 KiroCrew 看一下」 (ledger
+    ended:<run>:<head12>). 运行机 says it under the run, and the requirement's row waits on people with it, here and in
+    the project's snapshot (a person's 团队运行机), for that head only: once the branch has a new push the bridge
+    read (the session at work again), none says it."""
+    import time
+    snapshot = mod("snapshot")
+    gw = FakeGateway()
+    gw.script = [ended("没看懂需求，不继续")]
+    svc = service(world, tmp_path, gw)
+    seen = {}
+
+    def ended_notes(view):
+        return [n["text"] for r in view["runs"] for n in r["notes"] if n["kind"] == "ended"]
+
+    async def go():
+        await svc.start()
+        try:
+            await rounds(svc)                           # handed over, dispatched
+            gw.finish(SLOT)                             # its turn ended long ago, nothing pushed
+            await rounds(svc, 2)
+            seen["told"] = [b for b in world["gl"].bodies() if "这一轮结束了" in b]
+            seen["notes"] = ended_notes(await svc.team_view())
+            seen["waits"] = (await svc.overview("runner"))["rows"][0]["waits"]
+            rt = svc.team
+            seen["snap"] = snapshot.parse(rt.snapshot_of("grp/repo", time.time(), time.monotonic() + 20, None,
+                                                         rt._shared()))["runner"]["handovers"]
+            commit_push(world["runs_root"] / "RUN-PAY-1-1", {"src/refund.py": "LIMIT = 1\n"}, "PAY-1: go on")
+            gw.slot_rows[SLOT]["running"] = True        # someone got the session going: it pushed, and works on
+            await rounds(svc)
+            seen["after"] = ended_notes(await svc.team_view())
+            seen["waits_after"] = (await svc.overview("runner"))["rows"][0]["waits"]
+        finally:
+            await svc.stop()
+
+    run(go())
+    (told,) = seen["told"]
+    assert told.startswith("RUN-PAY-1-1 的会话这一轮结束了") and "没看懂需求，不继续" in told, told
+    (note,) = seen["notes"]
+    assert "KiroCrew" in note and "推送" in note, note
+    assert (seen["waits"]["who"], seen["waits"]["text"]) == ("people", note), seen["waits"]
+    (h,) = seen["snap"]
+    assert h["waits"]["text"] == note, h["waits"]
+    assert seen["after"] == [] and seen["waits_after"]["text"] != note, (seen["after"], seen["waits_after"])
+
+
 def test_a_session_that_parked_or_still_works_is_not_told_to_go_on(world, tmp_path):
     """Idle after it parked (its question on the MR waits for a person), or at work however long: no message. One at
     work and quiet for stall_minutes is brain-kit's watchdog's (delivery.tell_if_stalled, on once the slot's activity
