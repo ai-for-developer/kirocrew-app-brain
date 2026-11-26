@@ -6,7 +6,7 @@ import shutil as _shutil
 from pathlib import Path as _Path
 
 APP_NAME = "brain"
-VERSION = "0.5.4"
+VERSION = "0.5.5"
 # what the team runner's owner does when KiroCrew will not let this app set a run's session to trust (its 403
 # session_approval_not_granted): the app's page in KiroCrew's dashboard and its buttons, as KiroCrew 0.14 names them
 # in English and in its zh-CN dashboard (enable_and_allow_chat_control, enable, disable). The MR says it (team/
