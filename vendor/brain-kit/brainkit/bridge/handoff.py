@@ -41,7 +41,7 @@ from ..common import (BrainError, NetworkError, git, git_net, iso, later, load_j
                       paths_overlap, plain, utcnow, write_json)
 from ..rest import DEFAULT_TOKEN_FILE, GitLab, HttpError, Jira, gl_time, head_pushed_at, jira_user_id, read_token
 from .decisions import DecisionLoop
-from .delivery import TRUST_ADVICE, one_line
+from .delivery import one_line, trust_refusal
 from .kirocrew import KiroCrew, TrustRefused
 from .ledger import OPEN_RUN_STATES, Ledger
 
@@ -124,6 +124,7 @@ def taken_mrs(cfg) -> dict:
 # runnerd could not prepare a workspace (spool/failed/<RUN>.json): how often the bridge asks it again after a failure
 # it calls transient (runnerd itself tries such a request up to its own `tries` first), and how long after it gave up
 REQUEUES, REQUEUE_AFTER_S = 2, 300
+UNLABEL_WITHIN_S = 14 * 86400   # a run that ended longer ago than this is not looked at again for its labels
 SETUP_TELL_AFTER = 3        # rounds of failed KiroCrew session setup before the MR is told (it is retried each round)
 # a run waiting for a person (a question open, being posted or asked) holds no session at work: it does not count
 # against max_inflight / max_per_repo. An answer whose delivery is unknown may have landed: that run counts.
@@ -891,12 +892,11 @@ class Bridge(DecisionLoop):
         except Exception as e:  # noqa: BLE001 - nothing was sent: retried next round
             self.ledger.set_run(rid, "ready", "spooled")
             self.out("%s: session setup failed, will retry: %s" % (rid, e))
-            if isinstance(e, TrustRefused):             # a missing permission: no retry heals it, the MR hears now
-                app = getattr(self.kc, "app", None) or "brain-bridge"         # the app the bridge signs in as
+            if isinstance(e, TrustRefused) and e.cause != "unavailable":    # a person fixes it: the MR hears now
+                why, fix = trust_refusal(self.kc, e.cause)
                 self.tell_mr_once("setup:" + rid, row["project"], row["iid"], (
-                    "%s 还没开始：KiroCrew 不让桥把运行机会话设成信任（桥的 KiroCrew app %s 没有 sessionApproval 权限），"
-                    "没人点批准，run 会停在第一条命令。" % (rid, app)) + TRUST_ADVICE % app + "装好后桥自动开始，不用重新交接。",
-                    run_id=rid)
+                    "%s 还没开始：KiroCrew 不让桥把运行机会话设成信任（%s），没人点批准，run 会停在第一条命令。" % (rid, why))
+                    + fix + "好了以后桥自动开始，不用重新交接。", run_id=rid)
             elif self.ledger.bump("setup:" + rid, rid) >= SETUP_TELL_AFTER:
                 self.tell_mr_once("setup:" + rid, row["project"], row["iid"], "%s 还没开始：KiroCrew 开会话失败（%s）。桥每轮"
                                   "重试；一直不行的话请负责人看一下 KiroCrew 和 agent %s。"
@@ -1103,6 +1103,7 @@ class Bridge(DecisionLoop):
     # ---------- reconcile ----------
 
     def reconcile(self):
+        """Runs whose MR was merged or closed end (merged, closed), and their MR's labels come off (_unlabel)."""
         # what a bridge that stopped mid-way left (a reservation, a hand-over still 'checking') is cleared once stale
         n = self.ledger.drop_stale(self.reservation_ttl)
         if n:
@@ -1113,6 +1114,14 @@ class Bridge(DecisionLoop):
                 self._reconcile_one(row)
             except Exception as e:  # noqa: BLE001 - one MR GitLab will not show must not hold up the others
                 errors.append("%s: %s" % (row["run_id"], e))
+        since = iso(utcnow() - timedelta(seconds=UNLABEL_WITHIN_S))
+        for row in self.ledger.runs_in("merged", "closed"):
+            if str(row["updated"]) < since:
+                continue
+            try:
+                self._unlabel(row)
+            except Exception as e:  # noqa: BLE001 - GitLab: tried again next round
+                errors.append("%s: labels: %s" % (row["run_id"], e))
         if errors:
             raise BrainError("reconcile: not done this round: " + "; ".join(errors))
 
@@ -1128,6 +1137,33 @@ class Bridge(DecisionLoop):
             # "merged" and "closed" stay apart: Eval counts deliveries, not abandoned runs
             self.ledger.set_run(row["run_id"], row["state"], mr.get("state"))
             self.out("%s %s" % (mr.get("state"), row["run_id"]))
+
+    def _unlabel(self, row):
+        """A run that ended (merged, closed): running_label and accepted_label come off its MR, once (ledger notice
+        unlabelled:<run>). A project or MR GitLab no longer shows (404), or that the bridge's account may not see or
+        whose labels it may not change (403), ends it too, said in the log: kit.json is read after the claim, so a
+        project deleted since fails no round."""
+        rid, key = row["run_id"], "unlabelled:" + row["run_id"]
+        n = self.ledger.notice(key)
+        if n is not None and n["state"] == "told":
+            return
+        if not self.ledger.claim_notice(key, rid, row["project"], row["iid"]):
+            return
+        try:
+            kit = self.kit(row["project"])
+            gone = [x for x in (kit.get("running_label"), kit.get("accepted_label")) if x]
+            if gone:
+                self.gl.edit_labels(row["project"], row["iid"], remove=gone)
+        except HttpError as e:
+            if e.status not in (403, 404):
+                self.ledger.release_notice(key)
+                raise
+            self.out("%s: %s!%s: labels not taken off, and not tried again: GitLab answers %d (the project or its MR "
+                     "is gone, or the bridge's account may not see it)" % (rid, row["project"], row["iid"], e.status))
+        except BaseException:
+            self.ledger.release_notice(key)
+            raise
+        self.ledger.notice_told(key)
 
 
 def build(cfg_path, transport=None):

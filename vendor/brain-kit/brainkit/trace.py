@@ -27,7 +27,8 @@ how the run was merged (landing, rules M1-M6: merge commit, squash + merge commi
 (M1b), fast-forward, rebase, squash, branch gone), which commits are the run's own (the range, rules C1-C3, and on the
 default branch run_stretch, rules R1-R5), which bridge runs are this branch's (scope_runs, rule H0: a re-run of the
 key on another branch has its own hand-over, answers and acceptance), which `brain handoff` handed it over (handover,
-rules H1-H4: the one the bridge accepted; with a ledger given, only the bridge's records count), and which time is
+rules H1-H5: the one the bridge accepted; with a ledger given, only the bridge's records count; a run the runner
+started itself, run.json origin remote, from its first commit), and which time is
 used (a commit's "at" is its author date; a merge's is the committer date of the commit that landed it). Branch
 copies (local, origin) that are older, ahead or diverged are named in
 src.git.tip_note. The run's own commits are never counted as hotfixes; after the hand-over, a revert or a person's
@@ -899,7 +900,7 @@ def git_history(repo, cfg, rec, ref, key, refs=None, target=None):
                                                                   for f in c["files"]),
                         "merge": len(c["parents"]) > 1, "after_handover": None, "src": "git log " + out["range"]})
     # the hand-over requests (each `brain handoff` commit: run.json asks for a new one) and park.json's versions, in
-    # one read; which request handed the run over is decided with the bridge's records (handover(), rules H1-H4)
+    # one read; which request handed the run over is decided with the bridge's records (handover(), rules H1-H5)
     rps = [c for c in log if rp in c["files"]]
     pps = [c for c in log if pp in c["files"]]
     texts = _blobs(repo, ["%s:%s" % (c["sha"], rp) for c in rps] + ["%s:%s" % (c["sha"], pp) for c in pps])
@@ -941,8 +942,8 @@ def _park_row(raw, src, at, commit=None):
             "question_sha256": _sha(q.encode())[:12] if isinstance(q, str) else None, "src": src}
 
 
-def handover(repo, hist, rec_handoff, led, vouchers) -> dict:
-    """Which `brain handoff` handed the run over (docs/eval.md §2, rules H1-H4). A request is a commit of the run
+def handover(repo, hist, rec_handoff, led, vouchers, origin=None, created_at=None) -> dict:
+    """Which `brain handoff` handed the run over (docs/eval.md §2, rules H1-H5). A request is a commit of the run
     whose run.json asks for a new hand-over (hist["requests"], oldest first); `led` is None when no ledger was read.
     `led` and `vouchers` hold this branch's runs only (rule H0, scope_runs: a re-run of the key on another branch
     has its own hand-over).
@@ -960,6 +961,9 @@ def handover(repo, hist, rec_handoff, led, vouchers) -> dict:
       H4  no ledger given and no hand-over voucher: the last request before the bot's first commit after a request
           (an earlier one did not go through); no bot commit: the last request. Without the run's commits: what
           run.json says.
+      H5  (looked at first) run.json `origin` "remote": the team runner started the run itself (the brain app's
+          从 issue 接活), so it was on the runner from its first commit, the one that wrote run.json; at: that
+          commit's author time, or run.json's created_at without the run's commits. Nobody handed it over.
     -> {"value", "commit", "at", "rule", "how", "bridge_accepted", "requests"}."""
     reqs, log, commits = hist.get("requests") or [], hist.get("_log") or [], hist.get("commits")
     in_log = {c["sha"] for c in log}
@@ -975,6 +979,12 @@ def handover(repo, hist, rec_handoff, led, vouchers) -> dict:
         if r["state"] != RESERVED:
             acc.append((_utc(r["created"]) or "~", str(r["sha"]), "bridge ledger runs (%s)" % r["run_id"]))
     out = {"requests": len(reqs), "bridge_accepted": True if acc else (False if led is not None else None)}
+    if origin == "remote":
+        first = next((c for c in log if hist.get("_rp") in c["files"]), None)
+        return dict(out, value=True, commit=first["sha"] if first else None,
+                    at=first["authored"] if first else _utc(created_at), rule="H5",
+                    how="run.json origin remote: the team runner started the run itself, at %s" % (
+                        first["sha"][:12] if first else "a commit that is not here"))
     if acc:
         at, sha, src = min(acc)
         cands = []
@@ -1974,8 +1984,8 @@ def _build(repo, cfg, key, ref, ledger_path, vouchers_dir, credits, as_of, allow
     # `led` and `vouchers` hold this branch's runs only (run_ids keeps them all; other_runs lists the others)
     led, vouchers, others = scope_runs(repo, rp, branch, led, vouchers)
 
-    # ----- the hand-over (rules H1-H4): which `brain handoff` the runner got, if any -----
-    hand = handover(repo, hist, handoff, led, vouchers)
+    # ----- the hand-over (rules H1-H5): which `brain handoff` the runner got, if any -----
+    hand = handover(repo, hist, handoff, led, vouchers, rec.get("origin"), rec.get("created_at"))
     handed, handoff_at = hand["value"], hand["at"]
     hist["handover_commit"] = hand["commit"]
     if hist["commits"] is not None:

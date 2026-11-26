@@ -90,7 +90,7 @@ brain golden summarize results.json --tasks tasks
 - **R5**：别的（人推的、什么都没点名的）：后面还有 run 的提交，才算 run 的。
 - run 到最后一个 run 的提交为止。
 
-**H0 这个分支的 run**（H1–H4 之前先分）：一个需求可以跑不止一次：第一个 MR 关了，在新分支上重新开工、重新交接（`RUN-<KEY>-2`）。每个分支有自己的交接、问答、验收和 KiroCrew 上的操作，旧 run 的从来不是新 run 的。trace 读的是 run.json 里 `branch` 那个分支；ledger 和凭证里这个需求的每个 run 属于哪个分支，按顺序认：它的交接凭证写的 `branch`；没有的话，桥接受的那个提交（ledger runs 的 sha，或它 handoffs 那一行的 sha）上 `runs/<KEY>/run.json` 写的 `branch`；还认不出，看同一个 MR 的别的 run（一个 MR 只有一个源分支）。没有 run 的 handoffs 行（拒掉的、正在查的）按它的提交上的 run.json，再按 MR 认。认不出分支的 run 算这个分支的。别的分支的 run：它的 ledger 行、凭证、桥上的问答、KiroCrew 传来的手动停止和重启（按 run 号给的）都不算进这个 trace（不算交接、验收、人的介入、提问，也不算"最后一次动静"）；列在顶层的 `other_runs`（`run_id`、`branch`、`state`、`src`）。`run_ids` 还是这个需求的全部 run 号，credits 也算全部 run 的（这个需求一共花了多少）；`outcome.bridge_runs` 只有这个分支的。
+**H0 这个分支的 run**（H1–H5 之前先分）：一个需求可以跑不止一次：第一个 MR 关了，在新分支上重新开工、重新交接（`RUN-<KEY>-2`）。每个分支有自己的交接、问答、验收和 KiroCrew 上的操作，旧 run 的从来不是新 run 的。trace 读的是 run.json 里 `branch` 那个分支；ledger 和凭证里这个需求的每个 run 属于哪个分支，按顺序认：它的交接凭证写的 `branch`；没有的话，桥接受的那个提交（ledger runs 的 sha，或它 handoffs 那一行的 sha）上 `runs/<KEY>/run.json` 写的 `branch`；还认不出，看同一个 MR 的别的 run（一个 MR 只有一个源分支）。没有 run 的 handoffs 行（拒掉的、正在查的）按它的提交上的 run.json，再按 MR 认。认不出分支的 run 算这个分支的。别的分支的 run：它的 ledger 行、凭证、桥上的问答、KiroCrew 传来的手动停止和重启（按 run 号给的）都不算进这个 trace（不算交接、验收、人的介入、提问，也不算"最后一次动静"）；列在顶层的 `other_runs`（`run_id`、`branch`、`state`、`src`）。`run_ids` 还是这个需求的全部 run 号，credits 也算全部 run 的（这个需求一共花了多少）；`outcome.bridge_runs` 只有这个分支的。
 
 **交接是哪一次**（`outcome.handed_over`：`value`、`commit`、`rule`、`how`、`requests`、`requested`、`bridge_accepted`）。一次"交接请求" = run 的一个提交，它的 run.json 里 `handoff` 不为空、又和上一版不一样（每跑一次 `brain handoff` 写一次）。第一次没过（exit 1 没打上标签，或者桥拒了、拒的评论让负责人再跑一次）时，会有好几次请求。下面的"桥的记录"都只看这个分支的 run（H0）。按顺序看：
 
@@ -98,13 +98,14 @@ brain golden summarize results.json --tasks tasks
 - **H2 桥拒了**：没有接受的记录，ledger 里有桥拒掉这个 run 的请求（handoffs 的 rejected；按请求的提交找，拒掉的交接没有 run 那一行）：没有交接（"只在本地做"）。运行机没拿到过它，负责人接着做的都是本地半程。
 - **H3 桥没接受过**：给了 ledger，没有接受的记录（也没有交接凭证），又没找到拒掉的那一行：没有交接。ledger 是桥的账，运行机只从桥那里拿 run，所以给了 ledger 就只认 ledger：没有任何一次请求的记录（`brain handoff` 停在打标签之前，或者桥还没来得及检查）、桥还在查（handoffs 是 checking），或者拒掉的那一行找不到（分支删了、请求的提交读不到，按提交找不到它），都是没有交接。请求之后运行机有提交、ledger 却没有记录时，也不按运行机的提交认交接，`how` 里写明（多半给的不是这个桥的 ledger）。
 - **H4 没有桥的记录**（只在没给 ledger、也没有交接凭证时）：取运行机第一个提交之前的最后一次请求（之前那几次没过）；运行机一个提交都没有时，取最后一次。分支不在了、run 的提交列不出来时，按 run.json 的 `handoff`。
+- **H5 运行机自己开工的**（最先看）：run.json 的 `origin` 是 `remote`：这个 run 是团队运行机自己开的工（Brain 交付 app 的「从 issue 接活」），没有人交接，从写 run.json 的第一个提交起就在运行机上：交接提交就是这个提交，时间是它的作者时间（run 的提交列不出来时用 run.json 的 `created_at`）。不给 ledger、也没有凭证（比如人在自己电脑上跑 `brain eval`）时也一样，自主度照常算，不是"只在本地做"。这之后人推的提交、人在 Lean 和桥上做的事，都算交接后人的介入。和变更说明里的「从开工起就在团队运行机上」是同一个依据。
 - `actions.handovers` 里每次请求一行，`taken` 标出用的是哪一次。
 
 **用哪个时间**：
 
 - 提交的 `at` 是作者时间：提交是什么时候做的，rebase、cherry-pick 都不改它；`committed_at` 是提交时间（进 main、或被 rebase 的时间）。以前用的是提交时间，rebase 合并后每个副本都成了合并那天。park 问题的时间也是带它的提交的作者时间。
 - 合并时间：M1、M6 是合并提交的提交时间；M3、M4 是 main 上 run 最后一个提交的提交时间（squash 提交、rebase 后最后一个副本）；M2、M5 是最后一个 run 提交的提交时间（git 不记 fast-forward 是什么时候做的）。
-- "交接后"的提交：不在交接提交（H1–H4 认出的那次请求）历史里的提交，看提交之间的关系，不看时间。交接的那个提交不在读到的提交里时（看不出关系），才按作者时间和 `handoff.requested_at` 比；连时间都没有的人的提交，`after_handover` 是 null，照样算一次"交接后人的提交"（自主度是"?"），不会被漏掉。Lean、桥、KiroCrew 上人做的事，用它们自己的时间和那次请求的 `handoff.requested_at` 比。没有交接（H2、H3）时，什么都不算交接后。
+- "交接后"的提交：不在交接提交（H1–H5 认出的那次请求）历史里的提交，看提交之间的关系，不看时间。交接的那个提交不在读到的提交里时（看不出关系），才按作者时间和 `handoff.requested_at` 比；连时间都没有的人的提交，`after_handover` 是 null，照样算一次"交接后人的提交"（自主度是"?"），不会被漏掉。Lean、桥、KiroCrew 上人做的事，用它们自己的时间和那次请求的 `handoff.requested_at` 比。没有交接（H2、H3）时，什么都不算交接后。
 - 文件名用 `git log -z --no-renames` 读：带空格、引号、换行的文件名不会被转义成别的样子；改名时新旧两个名字都算"改过"。
 
 **合并后 14 天**（`outcome.reverted_or_hotfixed_within_14d`）：

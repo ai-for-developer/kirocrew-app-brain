@@ -11,10 +11,11 @@ looked at again next round. There is no last try: a message that never landed is
 again, unless what it was for ended (a hand-over KiroCrew did not take for send_give_up_minutes fails its run; an
 answer or a notice whose MR head moved on is dropped, see decisions.py). A message KiroCrew would not let the bridge
 send (it refused to set the session to trust, before the send) is 'held': not sent, sent again each round without
-reading the slot (not a try), and the MR hears what to do (TRUST_ADVICE) once per outage: until a message to the
-run gets through again.
+reading the slot (not a try), and the MR hears what to do once per outage (trust_refusal: the fix for KiroCrew's
+cause, for the app the bridge signs in as): until a message to the run gets through again.
 
-A notice is a message the bridge sends a run on its own: its question was not asked or became void, its CI failed.
+A notice is a message the bridge sends a run on its own: its question was not asked or became void, its CI failed,
+its turn was cut off before it pushed (the watchdog: 会话中断).
 It starts with a fixed word (NOTICE_PREFIXES) and is sent once per key (its sendId is derived from the key). Notices
 are written by the bridge; any text in them that came from elsewhere (a CI log) is quoted line by line, and no line
 reads as an approval or a command (inert()). A notice whose send was cut off is sent again only while it still holds
@@ -32,10 +33,44 @@ from .kirocrew import TrustRefused
 SEND_TRIES = 3            # sends of one message (one sendId) that did not land before the MR is told; sending goes on
 RESEND_FAST, RESEND_SLOW_S = 10, 300   # its first RESEND_FAST sends go one each round, the later ones one per 5 min
 UNKNOWN_KEPT_S = 86400    # a notice whose outcome stays unknown is looked at for this long (a held one: until sent)
-NOTICE_PREFIXES = ("问题没发出：", "问题作废：", "CI 没过：")
-# what to do when KiroCrew will not let the bridge app set its sessions to trust (%s: the app's name)
+NOTICE_PREFIXES = ("问题没发出：", "问题作废：", "CI 没过：", "会话中断：")
+# brain-kit's own KiroCrew app (remote/kirocrew-app/brain-bridge): what to do when KiroCrew gives no cause, or says the
+# installed copy does not declare sessionApproval (%s: the app's name)
+BRIDGE_APP = "brain-bridge"
 TRUST_ADVICE = ("请负责人用 brain-kit 的 remote/kirocrew-app/brain-bridge 重新装这个 app（`kirocrew app install`），再到 "
                 "KiroCrew 网页（dashboard）上启用 %s、同意它要的 sessionApproval 权限：KiroCrew 的命令行给不了这个权限。")
+# why KiroCrew will not set a run's session to trust, and what fixes it, by its cause (kirocrew.TRUST_CAUSES; "": it
+# gave none), for any app the bridge signs in as ({app})
+TRUST_REFUSALS = {
+    "not_declared": ("KiroCrew 里装的 app {app} 没有声明 sessionApproval 权限",
+                     "请负责人把 app {app} 更新到声明了这个权限的版本，再到 KiroCrew 网页（dashboard）上同意它。"),
+    "consent_pending": ("app {app} 要的 sessionApproval 权限还没人同意",
+                        "请负责人打开 KiroCrew 网页的 /apps/detail/{app}，点「Enable and allow chat control」（app 开着的话先关掉"
+                        "再点）：KiroCrew 的命令行给不了这个权限。"),
+    "disabled": ("app {app} 在 KiroCrew 里关着", "请负责人到 KiroCrew 网页（dashboard）上把 app {app} 打开。"),
+    "unavailable": ("KiroCrew 这会儿答不了 app {app} 的 sessionApproval",
+                    "桥每轮自动再试，不用做什么；一直这样的话，请负责人看一下 KiroCrew。"),
+    "": ("桥的 KiroCrew app {app} 没有 sessionApproval 权限",
+         "请负责人到 KiroCrew 网页（dashboard）上同意 app {app} 要的 sessionApproval 权限（/apps/detail/{app}，点「Enable "
+         "and allow chat control」）：KiroCrew 的命令行给不了这个权限。"),
+}
+
+
+def trust_refusal(kc, cause="") -> tuple:
+    """(why, what to do) when KiroCrew will not set a run's session to trust, for its `cause` (TrustRefused.cause),
+    said on the MR for the app the client `kc` signs in as (kc.app). A client may say its own fix: kc.trust_advice, a
+    text or a function of the cause (an app that hosts the bridge knows its own page for it). brain-bridge, without a
+    cause or for not_declared, is installed again from this brain-kit (TRUST_ADVICE)."""
+    app = getattr(kc, "app", None) or BRIDGE_APP
+    why, fix = TRUST_REFUSALS.get(cause or "", TRUST_REFUSALS[""])
+    own = getattr(kc, "trust_advice", None)
+    if callable(own):
+        fix = str(own(cause or ""))
+    elif isinstance(own, str) and own.strip():
+        fix = own
+    elif app == BRIDGE_APP and (cause or "") in ("", "not_declared"):
+        fix = TRUST_ADVICE % app
+    return why.format(app=app), fix.format(app=app)
 
 
 def inert(text) -> str:
@@ -143,7 +178,7 @@ class Delivery:
         except TrustRefused as e:        # refused before the send: it did not land, and sending again is no try
             led.outbox_set(send_id, "sending", "held")
             self.out("send %s to slot %s: not sent, held: %s" % (send_id, slot, e))
-            self._tell_held(send_id)
+            self._tell_held(send_id, getattr(e, "cause", ""))
             return "held"
         except Exception as e:  # noqa: BLE001 - a 5xx, a read timeout, KiroCrew restarting: it may have landed
             led.outbox_set(send_id, "sending", "unknown", tried=True)
@@ -205,8 +240,9 @@ class Delivery:
             % (row["run_id"], row["send_id"], what, int(row["tries"] or 0), row["slot"], RESEND_FAST,
                RESEND_SLOW_S // 60, tail), run_id=row["run_id"])
 
-    def _tell_held(self, send_id):
-        """KiroCrew would not let the bridge send into the run's session: the MR hears once per outage what to do."""
+    def _tell_held(self, send_id, cause=""):
+        """KiroCrew would not let the bridge send into the run's session: the MR hears once per outage what to do (for
+        KiroCrew's `cause`, trust_refusal)."""
         row = self.ledger.outbox(send_id)
         run = self.ledger.run(row["run_id"]) if row is not None else None
         if run is None:
@@ -214,11 +250,11 @@ class Delivery:
         kind, _, what = str(row["what"]).partition(":")
         name = {"answer": "%s 的回答" % what, "handover": "接手消息"}.get(kind, "桥的通知")
         redo = {"answer": "不用重新回答。", "handover": "不用重新交接。"}.get(kind, "不用做别的。")
-        app = getattr(self.kc, "app", None) or "brain-bridge"
+        why, fix = trust_refusal(self.kc, cause)
         self.tell_mr_once("trust:" + row["run_id"], run["project"], run["iid"],
-                          "%s：%s还没送进 KiroCrew 会话 %s：KiroCrew 不让桥把会话设成信任（桥的 KiroCrew app %s 没有 "
-                          "sessionApproval 权限），桥就先不送。" % (row["run_id"], name, row["slot"], app) +
-                          TRUST_ADVICE % app + "装好后桥自动接着送，" + redo, run_id=row["run_id"])
+                          "%s：%s还没送进 KiroCrew 会话 %s：KiroCrew 不让桥把会话设成信任（%s），桥就先不送。"
+                          % (row["run_id"], name, row["slot"], why) + fix + "好了以后桥自动接着送，" + redo,
+                          run_id=row["run_id"])
 
     # ---------- telling ----------
 
@@ -243,10 +279,12 @@ class Delivery:
         row it stopped at). A session KiroCrew answers 404 for during stall_s seconds is gone (KiroCrew restarted: an
         incognito session does not come back): the run is failed (_fail_run), which frees its requirement for a new
         hand-over. A session that cannot be read otherwise for stall_s seconds (KiroCrew down) is told once per
-        stretch of failed reads. The session is never stopped from here. Nothing to do with a KiroCrew client that
-        cannot say what a session does (the brain app's runner mode), or when stall_s is 0 (the watchdog is off)."""
+        stretch of failed reads. The session is never stopped from here. A session that is idle (not running, nothing
+        queued, no click waiting) is the decision loop's (_idle_session): a run it accepted may be done. Nothing to do
+        with a KiroCrew client that cannot say what a session does, and with stall_s 0 (the watchdog is off) nothing
+        but a run that is accepted and not yet told done (_ready_due)."""
         read, stall = getattr(self.kc, "activity", None), getattr(self, "stall_s", 900.0)
-        if read is None or not run_row["slot"] or not stall:
+        if read is None or not run_row["slot"] or not (stall or self._ready_due(run_row)):
             return
         unreadable = "unreadable:" + run_row["run_id"]          # counters: created at the first failed read
         missing = "missing:" + run_row["run_id"]                # ... and at the first 404 in a row
@@ -254,6 +292,8 @@ class Delivery:
             a = read(run_row["slot"])
         except Exception as e:  # noqa: BLE001 - KiroCrew down, or the session gone: looked at again next round
             self.out("%s: watchdog: slot %s cannot be read: %s" % (run_row["run_id"], run_row["slot"], e))
+            if not stall:
+                return
             self.ledger.bump(unreadable, run_row["run_id"])
             if isinstance(e, HttpError) and e.status == 404:
                 self.ledger.bump(missing, run_row["run_id"])
@@ -273,11 +313,14 @@ class Delivery:
             return
         self.ledger.drop_count(unreadable)
         self.ledger.drop_count(missing)
-        waits = bool(a) and a["last_role"] == "permission"
-        if not a or a["last_at"] is None or not (a["running"] or waits):
+        if not a:
             return
-        quiet = (utcnow() - a["last_at"]).total_seconds()
-        if quiet < stall:
+        waits = a["last_role"] == "permission"
+        quiet = (utcnow() - a["last_at"]).total_seconds() if a["last_at"] is not None else None
+        if not (a["running"] or waits or a.get("queued")):
+            self._idle_session(run_row, a, quiet if stall else None)
+            return
+        if not stall or quiet is None or not (a["running"] or waits) or quiet < stall:
             return
         rid, since = run_row["run_id"], a["last_at"].strftime("%H:%M")
         what = ("在等人点批准（从 %s UTC 起）" % since if waits else
@@ -285,6 +328,14 @@ class Delivery:
         self.tell_mr_once("stalled:%s:%s" % (rid, a["last_id"]), run_row["project"], run_row["iid"], (
             "%s 已经 %d 分钟没有动静：KiroCrew 会话 %s %s。请负责人到 KiroCrew 看一下这个会话；桥不会自己停它。")
             % (rid, int(quiet // 60), run_row["slot"], what), run_id=rid)
+
+    def _ready_due(self, run_row) -> bool:
+        """Is the run accepted, with its MR not yet told that it is done? The decision loop knows."""
+        return False
+
+    def _idle_session(self, run_row, activity, quiet):
+        """The run's session is idle (`quiet`: seconds since its newest row, None when unknown or the watchdog is off).
+        The decision loop knows whose move it is."""
 
     def notify_run(self, run_row, key, text, sha=None, count=None) -> str:
         """Send the run a notice once for `key` -> "sent" | "unknown" | "busy" | "dropped" | "no-slot". `sha`: the MR

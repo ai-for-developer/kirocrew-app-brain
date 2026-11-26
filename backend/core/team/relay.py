@@ -52,6 +52,7 @@ from .. import bk, deliveries, family, fastrow, lean_view, mrinfo, snapshot
 from ..constants import KEY_RE
 from ..repo import MAX_FILE, REFLECT_RE, Source, empty_facts, parse_branch, read_facts
 from . import sources
+from . import staging as staging_mod
 from .issues import NEW, REFUSED, UNDER_WAY
 
 FILE, BRANCH = snapshot.FILE, snapshot.BRANCH
@@ -255,15 +256,17 @@ class Deliveries:
         self._merged: dict[str, tuple[str, frozenset[str], bool]] = {}   # project -> (default head, keys merged, cut)
         self.last: dict[str, Read] = {}                     # project -> its last read that worked
 
-    def read(self, project: str, *, deployed: str, roles: Mapping[str, Any], deadline: float | None = None) -> Read:
+    def read(self, project: str, *, deployed: str, roles: Mapping[str, Any], deadline: float | None = None,
+             sessions: Mapping[str, Mapping[str, Any]] | None = None) -> Read:
         """*project*'s rows as GitLab shows them now, read again only where something moved; what GitLab raised, or
         OutOfTime once *deadline* (on clock) is past, else (last keeps it). *deployed*: the commit its staging VERSION
-        names ('': no staging read); *roles*: identities.json's roles. What was read before is kept for the next try
-        when it fails."""
+        names ('': no staging read); *roles*: identities.json's roles; *sessions*: by requirement, the session of the
+        runner's run as the team server sees it (an answer that reached the run says the runner goes on while that
+        works, deliveries.answered_text). What was read before is kept for the next try when it fails."""
         caches = (self._facts, self._claims, self._notes, self._ci, self._deployed, self._branch_mr, self._bots)
         seen: set[tuple] = set()
         try:
-            got = self._project(project, deployed, roles, seen, deadline)
+            got = self._project(project, deployed, roles, seen, deadline, sessions or {})
         except BaseException:
             seen |= {k for c in caches for k in c if k[0] == project}
             raise
@@ -289,7 +292,7 @@ class Deliveries:
                 del c[k]
 
     def _project(self, project: str, deployed: str, roles: Mapping[str, Any], seen: set[tuple],
-                 deadline: float | None) -> Read:
+                 deadline: float | None, sessions: Mapping[str, Mapping[str, Any]]) -> Read:
         kit = self.kit(project)
         pre, runs_dir, now = str(kit.get("branch_prefix") or "ai"), str(kit.get("runs_dir") or "runs"), self.now()
         default = str(kit.get("default_branch") or "main")
@@ -327,8 +330,8 @@ class Deliveries:
         notes += [CUT % folder for folder in sorted(cut)]
         fams = family.families([g.f for g in got.values()], None, me=None, cfg=dict(kit), can_split=False, big=set(),
                                at=None)
-        rows = [self._row(project, g, fams.get(key), kit, key in reflected, bridge_user, deployed, roles, now, seen)
-                for key, g in got.items()]
+        rows = [self._row(project, g, fams.get(key), kit, key in reflected, bridge_user, deployed, roles, now, seen,
+                          sessions.get(key)) for key, g in got.items()]
         return Read(rows, notes, now)
 
     def _mrs(self, project: str, pre: str, now: float) -> dict[str, dict[str, Any]]:
@@ -381,7 +384,7 @@ class Deliveries:
 
     def _row(self, project: str, g: Gathered, fam: dict[str, Any] | None, kit: Mapping[str, Any], reflected: bool,
              bridge_user: str | None, deployed: str, roles: Mapping[str, Any], now: float,
-             seen: set[tuple]) -> dict[str, Any]:
+             seen: set[tuple], session: Mapping[str, Any] | None) -> dict[str, Any]:
         """The row in 交付总览's words: deliveries.classify with no one as "you", then family.classify for a big
         requirement or one of its small ones. A closed one, and a small one merged into its big one, are in no column
         of 需求流动: their state's words stand for the stage. An MR merged into a branch that is not the default one,
@@ -395,7 +398,7 @@ class Deliveries:
         since = deliveries.runner_commits_from(run, info, dict(kit)) if f["where"] == "branch" else None
         deliveries.classify(row, f, mr=info, slot=None, cfg=dict(kit), at_handover=bool(info) and bool(handover)
                             and list(parent) == [handover], me=None, reflected=reflected, now=now, pushed=True,
-                            fast=fast_of(f, kit), answer_wait_s=self.answer_wait_s,
+                            fast=fast_of(f, kit), answer_wait_s=self.answer_wait_s, session=session,
                             bot_commits=self._bot_commits(project, since, g.sha, kit, seen) if since else 0)
         row["family"] = fam
         family.classify(row, fam, f, None)
@@ -551,16 +554,24 @@ class Deliveries:
 
 def content_key(snap: Mapping[str, Any]) -> str:
     """What decides whether a snapshot is new: all of it but what moves without news of its project, round after round:
-    when it was made, the bridge's last round, how many brain-patrol sessions work now (the server's and each work
-    source's, in every project's snapshot), when its rows were read, each staging error's count and when the log last
-    showed it, each patrol MR's updated_at (any note or label on it). Those are written along with a real change, or
-    with the heartbeat."""
+    when it was made, the bridge's last round, when its rows were read, each patrol MR's updated_at (any note or label
+    on it), and a closed or dismissed staging error's count and when the log last showed it (it is fixed, or people
+    left it alone). Those are written along with a real change, or with the heartbeat. An open staging error's are
+    news coarsely (staging_news), and so are the brain-patrol sessions at work: a person's 团队运行机 shows them at
+    most a floor old, and a project is still written at most once a build (FLOOR_S), never once a round."""
     runner = snap["runner"]
-    server = dict(snap["server"], last_round_at=None, working=0, held=None)
-    body = dict(snap, generated_at=0, delivery_at=None, server=server,
-                runner=dict(runner, staging=[dict(e, count=0, last_seen=0.0) for e in runner["staging"]],
+    body = dict(snap, generated_at=0, delivery_at=None, server=dict(snap["server"], last_round_at=None),
+                runner=dict(runner, staging=[staging_news(e) for e in runner["staging"]],
                             patrol=[dict(m, updated_at=None) for m in runner["patrol"]]))
     return hashlib.sha256(snapshot.dump(body).encode("utf-8")).hexdigest()
+
+
+def staging_news(e: Mapping[str, Any]) -> dict[str, Any]:
+    """A staging error as content_key weighs it: an open one's count by its doubling (as the Issue hears of it) and
+    when the log last showed it to FLOOR_S; a closed or dismissed one's neither."""
+    if e["state"] in (staging_mod.CLOSED, staging_mod.DISMISSED):
+        return dict(e, count=0, last_seen=0.0)
+    return dict(e, count=int(e["count"]).bit_length(), last_seen=float(e["last_seen"] // FLOOR_S))
 
 
 WRITE_SAID = {401: "GitLab 不认桥的令牌，状态没写成", 403: "GitLab 不让桥的账号推 brain/status，状态没写成",

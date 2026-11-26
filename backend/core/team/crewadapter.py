@@ -29,7 +29,7 @@ import re
 from typing import Any
 
 from .. import bk
-from ..constants import RUNNER_FOLDER
+from ..constants import RUNNER_FOLDER, TRUST_FIX
 from ..gateway import GatewayError
 from .patrol import Refused
 
@@ -40,33 +40,47 @@ PATROL_SLOT_RE = re.compile(r"^(?:patrol|staging)-[1-9][0-9]{0,11}-[1-9][0-9]{0,
 APPROVAL_REFUSED = (403, "session_approval_not_granted")
 # rows KiroCrew writes after a turn, not part of it: a compaction, the notice that its restart turned trust off
 AFTER_TURN = (("assistant", "compaction"), ("system", "trust_reset_notice"))
+SWITCHED = "🔄 Switched to agent"      # the start of the row KiroCrew writes when a person picks the session's agent
 
 
 def cut_off(rows: list[Any]) -> bool:
     """Did KiroCrew stop the newest turn of these rows (a slot's newest, oldest first) before it ended? KiroCrew ends a
-    turn it finished with a reply that carries the turn's ``meta.turn_stats``, and one someone stopped with a system
-    row ``{"kind": "stop_event"}``. A turn its restart cut off ends on whatever it wrote last (RUN-REQ-2-1: a tool
-    call), one its error ended on that error (role ``error``). Looked past: the rows of AFTER_TURN, and the empty
-    assistant row KiroCrew writes when a turn stops, a stop_event before it or not (its file_changes, no turn_stats).
-    No rows: nothing was cut."""
-    for m in reversed([r for r in rows if isinstance(r, dict)]):
+    turn it finished with a reply that carries the turn's ``meta.turn_stats``, and one someone stopped (in KiroCrew, or
+    in the app) with a system row ``{"kind": "stop_event"}``: a turn with one after its user row was stopped, whatever
+    it still wrote after it (a tool call that came in, the tool call KiroCrew rejected, 「🚫 … (rejected)」). A turn its
+    restart cut off ends on whatever it wrote last (RUN-REQ-2-1: a tool call), one its error ended on that error (role
+    ``error``). Looked past: the rows of AFTER_TURN, the row of a person switching the session's agent (SWITCHED), and
+    the empty assistant row KiroCrew writes when a turn stops (its file_changes, no turn_stats). No rows: nothing was
+    cut."""
+    rows = [r for r in rows if isinstance(r, dict)]
+    since = next((i + 1 for i in range(len(rows) - 1, -1, -1) if rows[i].get("role") == "user"), 0)
+    if any(_stop_event(m) for m in rows[since:]):
+        return False
+    for m in reversed(rows):
         role, meta = m.get("role"), m.get("meta") if isinstance(m.get("meta"), dict) else {}
-        if (role, meta.get("kind")) in AFTER_TURN:
+        text = str(m.get("content") or "")
+        if (role, meta.get("kind")) in AFTER_TURN or (role == "assistant" and text.startswith(SWITCHED)):
             continue
         if role == "assistant":
-            if "turn_stats" not in meta and not str(m.get("content") or "").strip():
+            if "turn_stats" not in meta and not text.strip():
                 continue
             return "turn_stats" not in meta
-        if role == "system":
-            try:
-                return (json.loads(str(m.get("content") or "")) or {}).get("kind") != "stop_event"
-            except (ValueError, AttributeError):
-                return True
         return True
     return False
 
 
+def _stop_event(m: dict) -> bool:
+    if m.get("role") != "system":
+        return False
+    try:
+        return (json.loads(str(m.get("content") or "")) or {}).get("kind") == "stop_event"
+    except (ValueError, AttributeError):
+        return False
+
+
 class KiroCrewAdapter:
+    trust_advice = TRUST_FIX        # what brain-kit's bridge tells the MR when KiroCrew will not set a slot to trust
+
     def __init__(self, loop: asyncio.AbstractEventLoop, mgr: Any, brain_error: type, *, timeout: float = 90.0) -> None:
         self.loop, self.mgr, self.BrainError, self.timeout = loop, mgr, brain_error, timeout
         self.app = getattr(mgr, "app", "brain")

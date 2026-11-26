@@ -14,9 +14,10 @@ whose newest answer the signer refused: it waits for a person. brain-kit's own w
 (BRAINKIT_REQUESTS 49).
 
 A run the product accepted (brain-kit's _accepted) whose session is idle with its records pushed after (turn: DONE)
-is done: the MR hears once that it can be merged and who merges it (the run's owner), and its label is MERGE_LABEL in
-place of kit.json running_label. brain-kit's reconcile marks a run merged or closed and leaves the MR's labels: those
-two are taken off once, within RECENT_S of the run's end. brain-kit has neither (BRAINKIT_REQUESTS 50).
+is done: the MR hears once that it can be merged and who merges it (the run's owner), and its label is kit.json
+accepted_label in place of running_label (none when it is ""). brain-kit's reconcile marks a run merged or closed
+and leaves the MR's labels: those two are taken off once, within RECENT_S of the run's end. brain-kit has neither
+(BRAINKIT_REQUESTS 50) before 769efc7, whose bridge does both with the same ledger keys, so this finds them told.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from datetime import timedelta
 from typing import Any, Callable, Mapping
 
 from .. import bk
-from ..constants import MERGE_LABEL
+from ..constants import accepted_label
 
 RESUMES = 2             # messages to go on at one MR head, before a person is told
 RECENT_S = 14 * 86400   # a run that ended longer ago is not looked at again for its labels
@@ -144,21 +145,22 @@ class RunWatch:
         return n is not None and n["state"] == "told"
 
     def _ready(self, run: dict[str, Any], mr: Mapping[str, Any], acc: Mapping[str, Any], head: str) -> None:
-        """The MR's labels (MERGE_LABEL on, running_label off), then READY on it once. A label GitLab will not let the
-        bridge's account change does not hold up the comment."""
+        """The MR's labels (kit.json accepted_label on, none when it is "", running_label off), then READY on it once.
+        A label GitLab will not let the bridge's account change does not hold up the comment."""
         project, iid, rid = run["project"], int(run["iid"]), run["run_id"]
-        running = str(self.host.kit(project).get("running_label") or "")
+        kit = self.host.kit(project)
+        running, done = str(kit.get("running_label") or ""), accepted_label(kit)
         labels = set(mr.get("labels") or [])
-        add, remove = [MERGE_LABEL] if MERGE_LABEL not in labels else [], [running] if running in labels else []
+        add, remove = [done] if done and done not in labels else [], [running] if running in labels else []
         relabelled = self._labels(project, iid, add, remove) if add or remove else True
         owner = str(run.get("owner") or "")
         who = "@" + owner if bk.m("common").USER_RE.match(owner) else "需求的负责人"
         text = READY % (rid, str(acc["sha"])[:12], acc["id"], acc.get("voucher_id") or "?", head[:12], who)
-        self.host.tell_mr_once(READY_KEY % rid, project, iid, text + (RELABELLED % MERGE_LABEL if relabelled else ""),
+        self.host.tell_mr_once(READY_KEY % rid, project, iid, text + (RELABELLED % done if relabelled and done else ""),
                                run_id=rid)
 
     def _unlabel(self, run: dict[str, Any]) -> None:
-        """A run that ended (merged, closed): running_label and MERGE_LABEL off its MR, once. An MR GitLab does not
+        """A run that ended (merged, closed): running_label and accepted_label off its MR, once. An MR GitLab does not
         show (deleted: 404) or will not let the bridge's account read (403) ends it too, said in the log."""
         project, iid, rid, led = run["project"], int(run["iid"]), run["run_id"], self.host.ledger
         key = UNLABELLED_KEY % rid
@@ -166,7 +168,8 @@ class RunWatch:
             return
         try:
             labels = set((self.host.gl.mr(project, iid) or {}).get("labels") or [])
-            gone = [x for x in (str(self.host.kit(project).get("running_label") or ""), MERGE_LABEL) if x in labels]
+            kit = self.host.kit(project)
+            gone = [x for x in (str(kit.get("running_label") or ""), accepted_label(kit)) if x and x in labels]
             if gone:
                 self._labels(project, iid, [], gone)
         except bk.m("rest").HttpError as exc:

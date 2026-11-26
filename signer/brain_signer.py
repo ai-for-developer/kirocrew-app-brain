@@ -118,13 +118,15 @@ VERDICT = {"none": "MR 上没有可以回答 %s 的人的有效回答", "conflic
            "held": "%s 有能回答的人的回复被改过（或查不到是谁改的），看不出原来写的是什么，算一个不同的回答，不签",
            "stale": "%s 作废：问题发出后分支又有了新推送", "void": "%s 作废：问题没有绑在这次推送和 park.json 上"}
 # what a brain-kit checkout must offer (9935b11: the hand-over commit rule, run reservations, answers bound to their
-# question note; 72b278e: the edit signal, check_answer's edits from DecisionLoop.reply_states and GitLab GraphQL)
+# question note; 72b278e: the edit signal, check_answer's edits from DecisionLoop.reply_states and GitLab GraphQL;
+# 81380eb: Q-<n>; d333ec9: the bridge's CI line in an acceptance question, which check_answer takes, by ci_line)
 NEEDS = (("bridge.decisions", "check_answer"), ("bridge.decisions", "VOUCHER_TIME_FIELDS"), ("sign", "SpoolSigner"),
          ("bridge.ledger", "RESERVED"), ("bridge.ledger", "Ledger.is_reservation_for"),
          ("bridge.handoff", "Bridge.handoff_commit_problems"), ("rest", "GitLab.commit"),
          ("bridge.decisions", "SCHEMA"), ("bridge.decisions", "DecisionLoop.reply_states"),
-         ("bridge.decisions", "edit_state"), ("rest", "GitLab.note_edits"), ("bridge.decisions", "same_question"))
-BRAINKIT_NEEDED = "81380eb"
+         ("bridge.decisions", "edit_state"), ("rest", "GitLab.note_edits"), ("bridge.decisions", "same_question"),
+         ("bridge.decisions", "ci_line"))
+BRAINKIT_NEEDED = "d333ec9"
 ROUTES = ("recheck", "issue")       # a hand-over contract's: brain handoff's MR, or a start from a GitLab issue
 ISSUE_LABEL = "brain"               # kit.json issue_label when it names none, as the app's team/issues.py
 DEVELOPER = 30                      # GitLab's access level: who may start a run from an issue

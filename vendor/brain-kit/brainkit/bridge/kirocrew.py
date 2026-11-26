@@ -26,20 +26,78 @@ from ..rest import HttpError, Rest, gl_time, q
 SEND_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
+# rows KiroCrew writes after a turn, not part of it: a compaction, the notice that its restart turned trust off
+AFTER_TURN = (("assistant", "compaction"), ("system", "trust_reset_notice"))
+ACTIVITY_ROWS = 20          # the newest rows activity() reads: enough to look past the rows written after a turn
+# how a slot's newest turn ended (turn_end)
+TURN_DONE, TURN_STOPPED, TURN_CUT = "done", "stopped", "cut"
+
+
+def turn_end(rows) -> str:
+    """How the newest turn of a slot's rows (oldest first) ended: TURN_DONE (KiroCrew finished it: its reply carries
+    meta.turn_stats), TURN_STOPPED (someone stopped it: a system row {"kind": "stop_event"}), TURN_CUT (KiroCrew wrote
+    no end to it: a restart ends it on whatever it wrote last, RUN-REQ-2-1 a tool call; an error on a row of role
+    error), or "" (no rows). Looked past: the rows of AFTER_TURN, and the empty assistant row KiroCrew writes when a
+    turn stops (its file_changes, no turn_stats)."""
+    for m in reversed([r for r in rows or [] if isinstance(r, dict)]):
+        role, meta = m.get("role"), m.get("meta") if isinstance(m.get("meta"), dict) else {}
+        if (role, meta.get("kind")) in AFTER_TURN:
+            continue
+        if role == "assistant":
+            if "turn_stats" not in meta and not str(m.get("content") or "").strip():
+                continue
+            return TURN_DONE if "turn_stats" in meta else TURN_CUT
+        if role == "system":
+            try:
+                kind = (json.loads(str(m.get("content") or "")) or {}).get("kind")
+            except (ValueError, AttributeError):
+                kind = None
+            return TURN_STOPPED if kind == "stop_event" else TURN_CUT
+        return TURN_CUT
+    return ""
+
+
+def _last_said(rows) -> str:
+    """The last line the newest reply that ended a turn says (at most 200 characters)."""
+    for m in reversed([r for r in rows or [] if isinstance(r, dict)]):
+        meta = m.get("meta") if isinstance(m.get("meta"), dict) else {}
+        if m.get("role") == "assistant" and "turn_stats" in meta:
+            lines = [l.strip() for l in str(m.get("content") or "").splitlines() if l.strip()]
+            return lines[-1][:200] if lines else ""
+    return ""
+
+
 def slot_activity(data):
     """{"running": a turn is in flight, "last_at": when its newest row was written (aware UTC, or None), "last_role"
-    ("permission": a tool call waits for a click), "last_id"} from a slot read, or None when it does not say."""
+    ("permission": a tool call waits for a click), "last_id", "queued": a message waits behind the turn, or a tool call
+    for a click, "end": how its newest turn ended (turn_end; TURN_STOPPED too when the brain app's session runner says
+    a person stopped it, user_stopped), "cut": end is TURN_CUT, "said": the last line of the reply that ended it} from a
+    slot read, or None when it does not say."""
     if not isinstance(data, dict) or not isinstance(data.get("running"), bool):
         return None
     rows = [m for m in data.get("messages") or [] if isinstance(m, dict)]
     last = rows[-1] if rows else {}
     meta = last.get("meta") if isinstance(last.get("meta"), dict) else {}
+    end = TURN_STOPPED if data.get("user_stopped") else turn_end(rows)
     return {"running": data["running"], "last_at": gl_time(last.get("ts")), "last_role": str(last.get("role") or ""),
-            "last_id": str(meta.get("mid") or last.get("ts") or "")}
+            "last_id": str(meta.get("mid") or last.get("ts") or ""),
+            "queued": bool(data.get("queue") or data.get("queue_depth") or data.get("pending_approval")),
+            "end": end, "cut": end == TURN_CUT, "said": _last_said(rows) if end == TURN_DONE else ""}
+
+
+# KiroCrew 0.13's `cause` of 403 session_approval_not_granted (dashboard/chat_api/slot_approval.py): not_declared, the
+# installed app.json lacks permissions.sessionApproval (an update is needed); consent_pending, nobody agreed to it on
+# the dashboard yet; disabled, the app is turned off; unavailable, KiroCrew cannot tell now (try again)
+TRUST_CAUSES = ("not_declared", "consent_pending", "disabled", "unavailable")
 
 
 class TrustRefused(BrainError):
-    """KiroCrew would not set a run's slot to trust: the bridge's app lacks permissions.sessionApproval."""
+    """KiroCrew would not set a run's slot to trust: the bridge's app may not (permissions.sessionApproval). `cause`:
+    KiroCrew's reason, one of TRUST_CAUSES, or "" when it gave none (before 0.13, or a client that does not say)."""
+
+    def __init__(self, msg="", cause=""):
+        super().__init__(msg)
+        self.cause = cause if cause in TRUST_CAUSES else ""
 
 
 class KiroCrew:
@@ -94,9 +152,10 @@ class KiroCrew:
             return self._call("POST", "/api/chat/mode", body={"mode": "trust", "slot": name})
         except HttpError as e:
             if e.status == 403 and "session_approval_not_granted" in str(e):
+                m = re.search(r'"cause"\s*:\s*"([a-z_]+)"', str(e))
+                cause = m.group(1) if m else ""
                 raise TrustRefused("KiroCrew refuses to set slot %s to trust: app %s needs permissions.sessionApproval "
-                                   "(remote/kirocrew-app/brain-bridge), agreed to in KiroCrew's dashboard (its CLI "
-                                   "cannot grant it)" % (name, self.app))
+                                   "(cause: %s)" % (name, self.app, cause or "not given"), cause=cause)
             raise
 
     def send(self, name, message, send_id, idempotency_key=None):
@@ -120,8 +179,8 @@ class KiroCrew:
         return self._call("GET", "/api/chat/slots/%s" % q(name))
 
     def activity(self, name):
-        """What the slot is doing, from its newest row only (?limit=1): see slot_activity."""
-        return slot_activity(self._call("GET", "/api/chat/slots/%s" % q(name), query={"limit": 1}))
+        """What the slot is doing, from its newest rows (?limit=ACTIVITY_ROWS): see slot_activity."""
+        return slot_activity(self._call("GET", "/api/chat/slots/%s" % q(name), query={"limit": ACTIVITY_ROWS}))
 
     def stop(self, name):
         return self._call("POST", "/api/chat/slots/%s/stop" % q(name), body={})

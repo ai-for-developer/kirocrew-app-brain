@@ -17144,6 +17144,10 @@ var Nf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width:
 		label: "已派给会话",
 		tone: "run"
 	},
+	to_merge: {
+		label: "等合并",
+		tone: "wait"
+	},
 	send_unknown: {
 		label: "送没送到不清楚",
 		tone: "warn",
@@ -17195,6 +17199,10 @@ var Nf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width:
 		label: "不知道送到没有",
 		tone: "warn"
 	},
+	held: {
+		label: "KiroCrew 不让送",
+		tone: "bad"
+	},
 	dropped: {
 		label: "不送了",
 		tone: "bad"
@@ -17217,8 +17225,10 @@ var Nf = "\n.tm-st-sig { font-size: .88em; color: var(--text-strong); max-width:
 	outbox_unknown: "warn",
 	outbox_interrupted: "warn",
 	outbox_dropped: "bad",
+	outbox_held: "bad",
 	queued: "idle",
-	stopped: "bad"
+	stopped: "bad",
+	ended: "bad"
 }, qf = (e) => Kf[e] ?? (/^(ci|runnerd)_/.test(e) ? "warn" : "idle"), Jf = {
 	bad: "✕",
 	warn: "!"
@@ -17841,8 +17851,8 @@ function gp({ counts: e }) {
 		counts: e,
 		big: "sent",
 		order: Object.keys(Wf),
-		mark: t("dropped") ? "bad" : n ? "warn" : void 0,
-		note: n ? "桥每轮看会话：看到了就算送到，一直这样要人看一下" : void 0
+		mark: t("dropped") || t("held") ? "bad" : n ? "warn" : void 0,
+		note: t("held") ? "KiroCrew 不让 Brain 交付 app 把会话设成信任：下面那个运行写了要在 KiroCrew 里同意什么" : n ? "桥每轮看会话：看到了就算送到，一直这样要人看一下" : void 0
 	});
 }
 function _p({ signer: e }) {

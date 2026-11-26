@@ -19,6 +19,9 @@ DEFAULTS = {
     "handoff_label": "ai-handoff",
     "running_label": "ai-running",
     "rejected_label": "ai-handoff-rejected",
+    # an accepted run whose session pushed its records: done, waiting for a person to merge it (the bridge puts it on
+    # in place of running_label; reconcile takes both off at the merge or close). "": running_label comes off only
+    "accepted_label": "ai-ready-to-merge",
     "bot_users": ["brain-bot"],
     "bot_emails": ["brain-bot@noreply.invalid"],
     # the GitLab account the bridge posts as (its questions, replies): lets anyone tell its notes from people's.

@@ -6,7 +6,14 @@ import shutil as _shutil
 from pathlib import Path as _Path
 
 APP_NAME = "brain"
-VERSION = "0.5.4"
+VERSION = "0.5.5"
+# what the team runner's owner does when KiroCrew will not let this app set a run's session to trust (its 403
+# session_approval_not_granted): the app's page in KiroCrew's dashboard and its buttons, as KiroCrew 0.14 names them
+# in English and in its zh-CN dashboard (enable_and_allow_chat_control, enable, disable). The MR says it (team/
+# crewadapter.py gives it to brain-kit's bridge as trust_advice), and so does 运行机 under the run (OUTBOX_HELD).
+TRUST_FIX = ("请管运行机的人打开 KiroCrew 网页上 Brain 交付 app 的页面（/apps/detail/%s），点「Enable and allow chat control」"
+             "（中文界面是「启用并允许控制聊天」；页面上只有「Enable」（「启用」）的话就点它）；app 还开着的话，先在这个页面上（或者 "
+             "Library（「库」）里它的菜单上）点「Disable」（「禁用」），再点。KiroCrew 的命令行给不了这个权限。") % APP_NAME
 
 # Sidebar folders of the sessions this app opens (apart from aidlc-team's 「AI-DLC 团队」, so both apps can be installed).
 LOCAL_FOLDER = "Brain 需求"        # brain-dev sessions on this machine: a folder per repo, in it one per requirement
@@ -19,9 +26,15 @@ LOCAL_AGENT = "brain-dev-crew"
 OLD_AGENT = "brain-dev"            # what sessions were opened with before: those keep working
 RUNNER_AGENT = "brain-run"         # ~/.kiro/agents/brain-run.json on the team runner
 # the label of an MR whose run on the team runner the product accepted and whose session is done: a person merges it
-# (team/runwatch.py puts it on in place of kit.json running_label and takes it off at the merge; brain-kit's labels
-# have none for it, BRAINKIT_REQUESTS 50)
+# (brain-kit's bridge, or team/runwatch.py with a brain-kit before 769efc7, puts it on in place of running_label and
+# takes it off at the merge): kit.json accepted_label, this when kit.json (or a brain-kit before it) names none
 MERGE_LABEL = "ai-ready-to-merge"
+
+
+def accepted_label(kit) -> str:
+    """kit.json accepted_label: the label of a run accepted and done; "" when the team wants none (then only
+    running_label comes off, and the bridge's ready note on the MR is what says it waits for its merge)."""
+    return str(kit.get("accepted_label", MERGE_LABEL) or "")
 
 # KiroCrew lets an agent work only under ~/workspace(s) or ~/workplace(s): every requirement's worktree lives here.
 WORK_ROOT = _Path.home() / "workplace" / "brain-app"

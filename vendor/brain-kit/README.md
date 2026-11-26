@@ -176,7 +176,7 @@ brain-kit/bin/brain install <项目目录> --lean <AI-DLC Lean 的 checkout 目�
 
 ## 测过什么
 
-本机 1529 个测试，在 python3.9（pytest）和 python3.12（`python3.12 -W error -m unittest discover -s tests -t .`）上都加 `-W error` 跑：除了 3 个跳过的（真实需求文档的测试，要 `BRAIN_TEST_REAL_DOCS` 指向一个文件夹）和 1 个要 markdown-it-py 的（照 GitLab 的读法渲染 MR 文字，看会不会加载图片；`uv run --python 3.12 --with markdown-it-py python -W error -m unittest discover -s tests -t .` 会跑它），都要通过。加了或删了测试，就改这个数（`tests/test_r1_k2_cli.py` 的 R1-34 核对它）。做过三轮独立的对抗评审：流程部分找出 15 个问题，Brain 部分（条目工具、lint、reflect、usage）又找出 15 个，大需求拆分找出 16 个，都已修掉，每个问题都补了回归测试。
+本机 1579 个测试，在 python3.9（pytest）和 python3.12（`python3.12 -W error -m unittest discover -s tests -t .`）上都加 `-W error` 跑：除了 3 个跳过的（真实需求文档的测试，要 `BRAIN_TEST_REAL_DOCS` 指向一个文件夹）和 1 个要 markdown-it-py 的（照 GitLab 的读法渲染 MR 文字，看会不会加载图片；`uv run --python 3.12 --with markdown-it-py python -W error -m unittest discover -s tests -t .` 会跑它），都要通过。加了或删了测试，就改这个数（`tests/test_r1_k2_cli.py` 的 R1-34 核对它）。做过三轮独立的对抗评审：流程部分找出 15 个问题，Brain 部分（条目工具、lint、reflect、usage）又找出 15 个，大需求拆分找出 16 个，都已修掉，每个问题都补了回归测试。
 
 - **审批单**（`tests/test_review_*.py`）：用真的 Lean 和装进项目的 adapter，按 KiroCrew 和 Kiro CLI 两种 hook 顺序送人的回复：记录的哈希链和快照，只算 Lean 记成人发的那一条；条目号开头的行和 Lean 的批准、驳回行互不相交（用 Lean 自己的正则核对）；第 1 轮和第 2 轮的审批单（每个条目不是列出就是折叠，一屏放得下，没有一行会被读成批准）；两个预审用假的 kiro-cli，失败、超时、答错版本都不挡审批单；`brain review` 和 `brain review log`；reflect、trace、eval 读出退回了但没写 correction 的条目。
 - **认领**：本地和远端都测了；两个 clone 抢同一个号，git 本身就会拒掉后到的那个；钩子按 claim.json 认人。

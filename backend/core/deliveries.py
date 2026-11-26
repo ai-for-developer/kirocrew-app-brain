@@ -12,10 +12,10 @@ from __future__ import annotations
 import inspect
 import re
 import time
-from typing import Any
+from typing import Any, Mapping
 
-from . import bk, deploys_view, fastrow, flowview, lean_view
-from .constants import MERGE_LABEL
+from . import bk, deploys_view, fastrow, flowview, lean_view, mrinfo
+from .constants import TRUST_FIX, accepted_label
 
 # to_merge: the product accepted a run on the team runner and its session is done: a person merges the MR
 STATE_LABEL = {"claimed": "已认领", "local": "本地开发中", "handed_over": "已交接", "rejected": "接手被拒",
@@ -186,14 +186,17 @@ def runner_commits_from(run: dict[str, Any] | None, mr: dict[str, Any] | None, c
 def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | None, slot: dict[str, Any] | None,
              cfg: dict[str, Any], bot_commits: int = 0, at_handover: bool = False, me: str | None = None,
              reflected: bool = False, now: float | None = None, pushed: bool = True,
-             fast: fastrow.FastFacts | None = None, answer_wait_s: float = ANSWER_WAIT_S) -> None:
+             fast: fastrow.FastFacts | None = None, answer_wait_s: float = ANSWER_WAIT_S,
+             session: Mapping[str, Any] | None = None) -> None:
     """Fill in state, state_label and waits (person mode). *at_handover*: the branch tip is the hand-over commit
     `brain handoff` made (its parent is run.json's handoff.local_head). *me*: who this machine's person is (None: not
     known); someone else's requirement waits for them, not for "you".
     *reflected*: its Brain proposals were written back already (a brain/<KEY>-reflect-<n> branch). *pushed*: the
     branch tip is on the remote (False: a hand-over committed here whose push failed, so nothing was handed over; a
     repo done only on this machine has nothing to push to). *fast*: the run has no Lean intent (a fast run): its
-    own facts, and fastrow says its step."""
+    own facts, and fastrow says its step. *session*: the team runner's session of a run it has, as the team server
+    sees it (busy, last_activity): an answer that reached the run says the runner goes on while that works
+    (answered_text); None where it is not known (a person's machine)."""
     run, park, claim = f.get("run"), f.get("park"), f.get("claim") or {}
     pending = [a for a in f.get("approvals") or [] if a["state"] == "pending" and a.get("line")]
     owner = f.get("owner") or claim.get("owner")
@@ -284,7 +287,7 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
         got = [q for q in qs if h and q.get("park") == h and q.get("state") in ANSWERED_TEXT]
         if got:
             q = got[-1]
-            who, text = answered_text(q["state"], lean_view.epoch(q.get("delivered_at")), now, answer_wait_s)
+            who, text = answered_text(q["state"], lean_view.epoch(q.get("delivered_at")), now, answer_wait_s, session)
             return put("parked", who, "none", text % q["id"], since=lean_view.epoch(q.get("at")) or f.get("park_at"))
     if park_waiting(park) or open_q:
         q = open_q[-1] if open_q else {}
@@ -299,7 +302,8 @@ def classify(row: dict[str, Any], f: dict[str, Any], *, mr: dict[str, Any] | Non
         lean_req = q.get("lean_request") or (park or {}).get("lean_request")
         return put("parked", who, "answer", mr_ask(who, KIND_LABEL.get(kind, kind), did, approval=bool(lean_req),
                                                    owner=None if mine else owner), where="mr", since=since)
-    if MERGE_LABEL in labels:       # the team runner said on the MR that its run is accepted and done
+    label = accepted_label(cfg)
+    if (label and label in labels) or (note and note["kind"] == "ready"):     # the team runner's run is done
         return put("to_merge", you, "merge", merge_text(them), where="mr", since=f.get("tip_at"))
     if cfg.get("running_label") in labels or bot_commits:
         if note and note["kind"] in RUNNING_NOTES:      # e.g. the acceptance question held until CI is green
@@ -356,11 +360,12 @@ DELIVERED_GOING = ("runner", "%s 的回答送到了，运行机在接着做")
 
 
 def answered_text(state: str, at: float | None, now: float | None, wait_s: float,
-                  session: dict[str, Any] | None = None) -> tuple[str, str]:
-    """ANSWERED_TEXT of *state*; for one delivered (at *at*), DELIVERED_GOING while the run's *session* (slot_stats:
-    busy, last_activity) works, or for *wait_s* (bridge.json stall_minutes) after the answer or its newest row,
-    whichever is later; ANSWERED_TEXT's look in KiroCrew after that, or at once when *wait_s* is 0 (the watchdog off)
-    or nothing says when."""
+                  session: Mapping[str, Any] | None = None) -> tuple[str, str]:
+    """ANSWERED_TEXT of *state*; for one delivered (at *at*), DELIVERED_GOING while the run's *session* (the team
+    server's TeamRuntime.run_sessions: busy, last_activity) works, or for *wait_s* (bridge.json stall_minutes) after
+    the answer or the session's last activity (its newest row, or the newest message the bridge put in it, such as the
+    watchdog's 会话中断), whichever is later; ANSWERED_TEXT's look in KiroCrew after that, or at once when *wait_s* is 0
+    (the watchdog off) or nothing says when."""
     if state != "delivered":
         return ANSWERED_TEXT[state]
     if session and session.get("busy"):
@@ -371,7 +376,7 @@ def answered_text(state: str, at: float | None, now: float | None, wait_s: float
     return ANSWERED_TEXT[state]
 # the run's own MR notes (mrinfo.RUNNER_NOTES) that say why a running run waits, and on whom
 RUNNING_NOTES = {"ci_wait": "runner", "ci_person": "people", "ci_red": "people", "nobody": "people",
-                 "gaveup": "people", "send_unknown": "bridge"}
+                 "gaveup": "people", "send_unknown": "bridge", "stopped": "people", "ended": "people"}
 # ... and why a taken hand-over has not started on the runner yet
 WAITING_NOTES = {"runnerd_silent": "people", "runnerd_retry": "runner", "setup": "people", "queued": "runner",
                  "send_unknown": "bridge", "gaveup": "people"}
@@ -420,12 +425,26 @@ NOTICE_KIND = {
     "gaveup": ("gaveup", "people", "消息送了 3 次都没进会话：桥接着送，一直不行就看一下 KiroCrew"),
     "failed": ("failed", "people", "没能开始：MR 上写了原因，处理好以后重新交接"),
     "nobody": ("nobody", "people", "问题发不出：没人能回答这类决定（要在 brain-kit 设置里配上谁来回答）"),
-    "ready": ("ready", "people", "验收通过了，会话也做完了：MR 上说了可以合并、谁来合并"),       # team/runwatch.py
-    "stopped": ("stopped", "people",                                                           # team/runwatch.py
-                "会话停住了：桥让它接着做，它还是没推送：请负责人到 KiroCrew 看一下这个会话（工作区里可能有它没提交的改动）"),
+    "ready": ("ready", "people", mrinfo.READY_TEXT),                # brain-kit 769efc7's watchdog, team/runwatch.py
+    "stopped": ("stopped", "people", mrinfo.STOPPED_TEXT),          # ... the same
+    "ended": ("ended", "people", mrinfo.ENDED_TEXT),                # brain-kit 769efc7's watchdog
     "edits-down-told": ("held", "bridge", "%s 的回答先等着：GitLab 查不到回复有没有被改过（不用重新回复）"),
 }
 OUTBOX_WHAT = {"handover": "接手消息", "answer": "%s 的回答", "notice": "给运行机的通知"}
+# a message KiroCrew would not let the brain app send: it refused to set the session to trust (brain-kit's TrustRefused,
+# only for its 403 session_approval_not_granted: crewadapter.APPROVAL_REFUSED); the owner's consent in KiroCrew fixes
+# it, TRUST_FIX, which the MR says too (brain-kit 0e0c424's kc.trust_advice)
+OUTBOX_HELD = ("%s还没送进会话：KiroCrew 不让 Brain 交付 app 把会话设成信任，它的 sessionApproval 权限没有得到同意（或者 app 停用"
+               "了）。" + TRUST_FIX + "同意以后桥每轮自动接着送，%s。")
+OUTBOX_REDO = {"answer": "不用重新回答", "handover": "不用重新交接"}
+
+
+def run_state(run: Mapping[str, Any], notes: list[dict[str, Any]]) -> str:
+    """A run's state as 运行机 and a person's 团队运行机 draw its chip: the ledger's (brain-kit's), but to_merge (等合并)
+    for a dispatched run whose MR was told it can be merged (team/runwatch.py's ready notice, among *notes*:
+    notices_by_run's), as its row's 在等 says it."""
+    st = str(run.get("state") or "")
+    return "to_merge" if st == "dispatched" and any(n.get("kind") == "ready" for n in notes) else st
 
 
 def team_note(n: dict[str, Any]) -> dict[str, Any] | None:
@@ -443,10 +462,11 @@ def team_note(n: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def outbox_note(o: dict[str, Any]) -> dict[str, Any] | None:
-    """A message into the run's session that is not known to have landed, or that is not sent any more (brain-kit
-    0d52e97's outbox: sending, interrupted, sent, unknown, dropped), as a TeamNote; None for one that landed."""
+    """A message into the run's session that is not known to have landed, that is not sent any more, or that KiroCrew
+    would not let in (brain-kit 0d52e97's outbox: sending, interrupted, sent, unknown, dropped, held), as a TeamNote;
+    None for one that landed or is being sent."""
     st = str(o.get("state") or "")
-    if st not in ("unknown", "interrupted", "dropped"):
+    if st not in ("unknown", "interrupted", "dropped", "held"):
         return None
     what, _, rest = str(o.get("what") or "").partition(":")
     name = OUTBOX_WHAT.get(what, "消息")
@@ -456,8 +476,10 @@ def outbox_note(o: dict[str, Any]) -> dict[str, Any] | None:
     text = {"unknown": "%s不知道送到会话没有（送过 %d 次）：桥每轮看一下会话，看到了就算送到；一直这样就要人看一下会话" % (name, tries),
             "interrupted": "%s送的时候桥停了：桥每轮看一下会话，看到了就算送到；一直这样就要人看一下会话" % name,
             "dropped": "%s不送了：%s" % (name, "KiroCrew 一直没收下，这次运行算没能开始" if what == "handover"
-                                        else "分支有了新推送，或者运行结束了" if what == "answer" else "已经不适用")}[st]
-    return {"kind": "outbox_" + st, "text": text, "at": lean_view.epoch(o.get("updated") or o.get("created"))}
+                                        else "分支有了新推送，或者运行结束了" if what == "answer" else "已经不适用"),
+            "held": OUTBOX_HELD % (name, OUTBOX_REDO.get(what, "不用做别的"))}[st]
+    since = o.get("created") if st == "held" else o.get("updated") or o.get("created")   # held since its first try
+    return {"kind": "outbox_" + st, "text": text, "at": lean_view.epoch(since)}
 
 
 def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]],
@@ -465,8 +487,8 @@ def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]],
     """{run id: [TeamNote]}: what brain-kit's bridge (0d52e97) holds about a run in its ledger, said plainly
     (team_note): the notices it told the MR or counts (CI holding the acceptance question, runnerd silent, sends that
     keep failing, queued …) and the messages into its session that are not known to have landed. A notice about one
-    MR head (stopped:<run>:<head12>, team/runwatch.py) holds while it is the head the bridge last read of the run
-    (*runs*: the ledger's), dispatched: the next push ends it."""
+    MR head (stopped:<run>:<head12>, team/runwatch.py; ended:<run>:<head12>, brain-kit 769efc7) holds while it is the
+    head the bridge last read of the run (*runs*: the ledger's), dispatched: the next push ends it."""
     out: dict[str, list[dict[str, Any]]] = {}
     heads = {str(r.get("run_id")): str(r.get("last_sha") or "")[:12] for r in runs if r.get("state") == "dispatched"}
     sent = {str(o.get("send_id")) for o in outbox if o.get("state") == "sent"}
@@ -478,7 +500,7 @@ def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]],
             continue        # it landed in the end
         if key.startswith(("ciheld-wait:", "ciheld-person:", "ciheld-red:")) and str(n.get("run_id")) not in holding:
             continue        # the pipeline it was about is green, or another push started another wait
-        if key.startswith("stopped:") and key.rsplit(":", 1)[-1] != heads.get(str(n.get("run_id"))):
+        if key.startswith(("stopped:", "ended:")) and key.rsplit(":", 1)[-1] != heads.get(str(n.get("run_id"))):
             continue        # pushed since, or the run is over
         got = team_note(n)
         if got and n.get("run_id"):
@@ -492,13 +514,15 @@ def notices_by_run(notices: list[dict[str, Any]], outbox: list[dict[str, Any]],
 
 def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[dict[str, Any]],
                   park: Any, notes: list[dict[str, Any]] | None = None, *, now: float | None = None,
-                  stall_s: float = 0.0, session: dict[str, Any] | None = None) -> None:
+                  stall_s: float = 0.0, session: dict[str, Any] | None = None, park_sha: str | None = None) -> None:
     """Team mode: the ledger's run state and its decisions (brain-kit's states). A run id reserved while the signer
     signs its contract (``signing``) is a hand-over not taken yet; a decision whose answer the signer refused, that is
     void, or that could not be asked leaves the run waiting until a person looks. *notes* (team_note, outbox_note):
     what brain-kit 0d52e97's bridge holds about the run, e.g. the acceptance question held until CI is green. *now*,
-    *stall_s* (bridge.json stall_minutes) and *session* (the run's slot_stats): an answer that reached the run says
-    the runner goes on until its session stays idle past stall_s (answered_text)."""
+    *stall_s* (bridge.json stall_minutes) and *session* (TeamRuntime.run_sessions): an answer that reached the run says
+    the runner goes on until its session stays idle past stall_s (answered_text). *park_sha*: the sha256 of the
+    run's park.json (read_facts): an answered question is the row's only while it is the park.json the question was
+    asked from (its park_hash); another one is a new question the bridge has not posted yet."""
     st = run_row.get("state")
     notes = sorted(notes or [], key=lambda x: x.get("at") or 0)
     latest = {x["kind"]: x for x in notes}
@@ -520,6 +544,10 @@ def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[
                    "没能开始（工作区没建成，或者接手消息一直送不进会话）：要人看一下，处理好以后重新交接", where="mr")
     if st == "signing":
         return put("handed_over", "bridge", "none", "签名服务在签接手合同")
+    if "outbox_held" in latest:     # KiroCrew will not let the app send into the session until a person consents
+        held = latest["outbox_held"]
+        return put("handed_over" if st in ("spooled", "ready") else "parked" if park_waiting(park) else "running",
+                   "people", "none", held["text"], since=held.get("at"))
     if st in ("spooled", "ready"):
         for k in ("runnerd_silent", "setup", "runnerd_retry", "queued", "gaveup", "outbox_unknown"):
             if k in latest:
@@ -558,7 +586,7 @@ def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[
             (not run_row.get("last_sha") or not last.get("sha") or last["sha"] == run_row["last_sha"]):
         return put("parked", "people", "answer", STUCK_DECISION[last["state"]] % last["id"], where="mr")
     answered = [d for d in mine if d.get("state") in ("answered", "delivered", "delivery_unknown")]
-    if park_waiting(park) and answered and answered[-1] is last:
+    if park_waiting(park) and answered and answered[-1] is last and asked_from(answered[-1], park_sha):
         # brain-kit 0d52e97's `answered`: the bridge has the answer, park.json still waits
         at = lean_view.epoch(answered[-1].get("updated") or answered[-1].get("created"))
         who, text = answered_text(answered[-1]["state"], at, now, stall_s, session)
@@ -567,12 +595,18 @@ def team_classify(row: dict[str, Any], run_row: dict[str, Any], decisions: list[
         if "nobody" in latest:
             return put("parked", "people", "none", latest["nobody"]["text"], since=latest["nobody"].get("at"))
         return put("parked", "bridge", "none", "运行机停下来问人了：等桥把问题贴到 MR 上")
-    for k in ("stopped", "ci_red", "ci_person", "ci_wait", "gaveup"):
+    for k in ("stopped", "ended", "ci_red", "ci_person", "ci_wait", "gaveup"):
         if k in latest:
             return put("running", NOTICE_KIND.get({"ci_red": "ciheld-red", "ci_person": "ciheld-person",
                                                    "ci_wait": "ciheld"}.get(k, k), ("", "runner", ""))[1], "none",
                        latest[k]["text"], since=latest[k].get("at"))
     return put("running", "runner", "none", "运行机在跑")
+
+
+def asked_from(d: Mapping[str, Any], park_sha: str | None) -> bool:
+    """The bridge asked decision *d* from the park.json whose sha256 is *park_sha* (brain-kit's park_hash); either
+    one unknown: taken as so."""
+    return not park_sha or not d.get("park_hash") or d["park_hash"] == park_sha
 
 
 def runner_takes(f: dict[str, Any] | None, row: dict[str, Any] | None, runner_row: dict[str, Any]) -> bool:

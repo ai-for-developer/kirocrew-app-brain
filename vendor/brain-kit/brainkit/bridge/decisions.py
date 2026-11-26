@@ -19,7 +19,8 @@ What counts is one pure function, check_answer(), which an outside signer can im
                  push, and no other note binds this question id to another run, commit or park.json (an id is never
                  bound twice)
   right person   the GitLab author is allowed for this kind of decision (decision_roles from main, not from the run)
-  right question the reply names this question (by its number: same_question); the decision belongs to this run
+  right question the reply names this question (by its number: same_question; a D-<n> that is one of an acceptance
+                 question's review items names that item: answers); the decision belongs to this run
   as written     the reply says what its author wrote: never edited by anyone else, and not changed since the bridge
                  first read it (the bridge records each reply's text hash then; GitLab GraphQL's lastEditedAt /
                  lastEditedBy tells, at first sight, whether someone edited it before: award emoji and resolving
@@ -47,10 +48,11 @@ import sqlite3
 from datetime import timedelta
 
 from .. import sign
-from ..common import CTRL_RE, SHA_RE, BrainError, iso, load_json, plain, utcnow, write_json
+from ..common import CTRL_RE, SHA_RE, USER_RE, BrainError, iso, load_json, plain, utcnow, write_json
 from ..intake import checks
 from ..rest import HttpError, gl_time, head_pushed_at, q
 from .delivery import Delivery, one_line
+from .kirocrew import TURN_DONE
 
 KINDS = ("clarify", "design", "plan", "acceptance", "action", "other")
 LEAN_KINDS = ("IDEATION", "REQUIREMENTS", "DESIGN", "PLAN", "RELEASE")   # INCEPTION: ask REQUIREMENTS and DESIGN
@@ -117,6 +119,30 @@ ANSWERED_STATES = ("answered", "delivered", "delivery_unknown", "refused")
 # ... of which these are still on their way to the run
 IN_FLIGHT_STATES = ("answered", "delivery_unknown")
 ADDED_COLUMNS = ("qnote_id", "told_id", "sign_told")
+# whose move a dispatched run is at its MR head (whose_move)
+SESSION, DONE, OTHERS = "session", "done", "others"
+# a question at the head that someone other than the session holds: being posted or asked, open, its answer on its
+# way, or refused by the signer
+ASKED_STATES = ("posting", "asking", "open", "answered", "delivery_unknown", "refused")
+# outbox rows of a message on its way to the session (delivery sends it again, or waits for KiroCrew)
+OUTBOX_IN_FLIGHT = ("sending", "interrupted", "unknown", "held")
+# the MR of an accepted run whose session pushed its records (ledger notice READY_KEY): it can be merged
+READY = ("%s 做完了：产品在提交 %s 上验收通过（%s，凭证 %s），运行机把记录也推上来了（提交 %s），以后不再改这个 MR。可以合并了：请 %s "
+         "在 GitLab 上合并（审批和流水线照 GitLab 的规则）。")
+RELABELLED = "标签换成了 %s，合并以后去掉。"
+READY_KEY, UNLABELLED_KEY = "ready:%s", "unlabelled:%s"      # ledger notices, by run id
+# a session whose turn KiroCrew cut off before it pushed is told to go on this often at one MR head; then the MR hears
+RESUMES = 2
+RESUME = ("会话中断：你上一轮没做完就停了（多半是 KiroCrew 重启打断了它）：会话从 %s UTC 起没有新动静，MR 上还是提交 %s，也没有问题在等"
+          "人回答。你做的改动还在工作区里：先 `git status`、`git log --oneline -3` 看做到哪了，再接着做：按 brain-run 的规矩提交并"
+          "推送，然后照常停下（要问人就写 park.json，以 `等待决策，不继续` 结束这一轮；做完了就结束这一轮）。")
+STOPPED = ("%s 的会话停住了：KiroCrew 会话 %s 从 %s UTC 起没在跑，也没有推送（MR 上还是提交 %s），没有问题在等人回答。桥让它接着做了 "
+           "%d 次（多半是 KiroCrew 重启打断了它那一轮），都没有动静。请负责人到 KiroCrew 看一下这个会话：运行机的工作区里可能有它没提交"
+           "的改动。它再推送以后，桥照常接着看。")
+ENDED = ("%s 的会话这一轮结束了，可是没有推送（MR 上还是提交 %s），也没有问题在等人回答：KiroCrew 会话 %s 从 %s UTC 起没有新动静%s。桥不"
+         "会让它接着做：请负责人到 KiroCrew 看一下这个会话（运行机的工作区里可能有它没提交的改动）。它再推送以后，桥照常接着看。")
+# brain-run's lines that end a turn without going on (「…不继续」, 「…等人处理：…」): quoted in ENDED
+STOP_LINE_RE = re.compile(r"(不继续|等人处理：.*)$")
 # fields of a voucher that change from one attempt to the next; the rest says what is signed
 VOUCHER_TIME_FIELDS = ("issued_at", "expires_at", "voucher_id")
 
@@ -125,6 +151,39 @@ VOUCHER_TIME_FIELDS = ("issued_at", "expires_at", "voucher_id")
 # a run's MR.md it carries (render() keeps one to about 120 lines; a bigger one is a bot's, and is cut)
 DESC_TITLE = "**变更说明**"
 DESC_MAX_CHARS = 60000
+
+
+def accepted(decisions):
+    """The run's acceptance among its decision rows: its newest acceptance decision that reached the run, when the
+    product's answer was approve; else None. Lean closes the intent then: the run changes no code."""
+    acc = [d for d in decisions if d["kind"] == "acceptance" and d["state"] == "delivered"]
+    d = max(acc, key=lambda x: str(x["created"] or ""), default=None)
+    return d if d is not None and d["answer"] == "approve" else None
+
+
+def whose_move(run, head, decisions, outbox) -> str:
+    """Whose move a dispatched run is at its MR's `head`, from the bridge's ledger: the run's row (last_sha: the head
+    the bridge last read), its decisions and its outbox rows (state, sha, created). Pure.
+      OTHERS   a message is on its way to the session; a question at the head waits for a person or the bridge; or
+               the newest question's answer was refused by the signer, whatever its head (the run was told it is
+               blocked: a person acts)
+      SESSION  the newest message that reached the session is about this head (the hand-over, an answer, a notice:
+               each asks for a push and none came), or the head is a push of the session's the bridge read, with no
+               question there, and the run is not accepted
+      DONE     the product accepted the run and its records came after (the head the bridge read, no question there)
+      OTHERS   otherwise: the bridge has not read the head yet (an acceptance question waiting for CI, say)"""
+    if any(o["state"] in OUTBOX_IN_FLIGHT for o in outbox):
+        return OTHERS
+    at = [d for d in decisions if d["sha"] == head]
+    newest = max(decisions, key=lambda d: str(d["created"] or ""), default=None)
+    if any(d["state"] in ASKED_STATES for d in at) or (newest is not None and newest["state"] == "refused"):
+        return OTHERS
+    sent = [o for o in outbox if o["state"] == "sent"]
+    if sent and max(sent, key=lambda o: str(o["created"] or ""))["sha"] == head:
+        return SESSION
+    if head != run["last_sha"] or at:
+        return OTHERS
+    return DONE if accepted(decisions) is not None else SESSION
 
 
 def description_note(key, runs_dir, sha, raw, web=None, read=None) -> str:
@@ -240,9 +299,36 @@ def allowed_people(kit, kind, owner, roles) -> set:
     return people
 
 
-def question_text(did, run_id, park, who, kind, sha, park_hash) -> str:
+# An acceptance question's line on the MR head's pipeline, by the bridge (the run's token may not read CI, so what the
+# run writes about it cannot be the last word). It is asked only once that pipeline passed, or on an MR with none.
+CI_PASSED = ("CI：提交 {sha} 的 MR 流水线 #{pid} 通过了（{status}）。桥只在流水线通过以后才发验收问题：run 在上面说它读不到 "
+             "CI 结果的话，以这一行为准。")
+CI_NONE = "CI：这个 MR 没有流水线，桥没有等 CI。"
+
+
+def ci_line(sha, pipeline) -> str:
+    """The CI line of an acceptance question at `sha`: `pipeline` is the head's own pipeline, which passed (GitLab's
+    {id, status}), or None on an MR without any pipeline."""
+    if not pipeline:
+        return CI_NONE
+    return CI_PASSED.format(sha=sha[:12], pid=int(pipeline.get("id") or 0), status=pipeline.get("status"))
+
+
+def _is_ci_line(text, sha) -> bool:
+    """Is `text` a CI line the bridge writes for an acceptance question at `sha` (ci_line)?"""
+    if text == CI_NONE:
+        return True
+    rx = re.escape(CI_PASSED)
+    for field, pattern in (("sha", re.escape(str(sha)[:12])), ("pid", "[1-9][0-9]{0,11}"),
+                           ("status", "(?:%s)" % "|".join(CI_GREEN))):
+        rx = rx.replace(re.escape("{%s}" % field), pattern)
+    return re.fullmatch(rx, text) is not None
+
+
+def question_text(did, run_id, park, who, kind, sha, park_hash, ci=None) -> str:
     """The question note for park.json. The first line binds it: decision id, run, the commit the question was asked
-    at and park.json's sha256 (12 hex each), and who may answer."""
+    at and park.json's sha256 (12 hex each), and who may answer. `ci`: an acceptance question's CI line (ci_line),
+    the paragraph before the last."""
     label = {"requirements": "需求批准", "ideation": "构想批准"}.get(kind, KIND_LABEL.get(kind, kind))
     lines = ["**%s · %s · %s** · 提交 %s · park %s · 需要 %s 回答" % (
         did, label, run_id, sha[:12], park_hash[:12], "、".join("@" + u for u in who))]
@@ -264,8 +350,25 @@ def question_text(did, run_id, park, who, kind, sha, park_hash) -> str:
     if items:
         how = ("`answer %s approve`（全部通过），或 `answer %s reject %s 说明`（只驳回列出的项，驳回的项作为纠正送回 run；"
                "不列项就是整个驳回）" % (did, did, ",".join(i["id"] for i in items[:2])))
+    if ci:
+        lines.append(ci)
     lines.append("回复一行 %s，后面可以加一句说明。只认第一条有效回复；代码有新推送时，这个问题作废。" % how)
     return "\n\n".join(lines)
+
+
+def _posted_as(body, want, kind, sha) -> bool:
+    """Is note text `body` the question `want` (question_text without a CI line) as the bridge posted it? Word for
+    word, but for the boxes of its review checklist (ticked or not) and, on an acceptance question, the CI line the
+    bridge puts before its last paragraph (a bridge before that line posted none)."""
+    b, w = _unticked(body), _unticked(want)
+    if b == w:
+        return True
+    if kind != "acceptance":
+        return False
+    head, _, tail = w.rpartition("\n\n")
+    if len(b) <= len(w) + 2 or not b.startswith(head + "\n\n") or not b.endswith("\n\n" + tail):
+        return False
+    return _is_ci_line(b[len(head) + 2:len(b) - len(tail) - 2], sha)
 
 
 def conflict_text(did, valid, held=None) -> str:
@@ -335,18 +438,43 @@ def _author(note) -> str:
     return str(((note.get("author") or {}).get("username")) or "").lower()
 
 
-def _did_no(did) -> int:
-    try:
-        return int(str(did).split("-", 1)[1])
-    except (IndexError, ValueError):
-        return 0
+def question_number(did) -> int:
+    """The number of question id `did`: 12 for Q-12 and for D-12 (one ledger counts both letters, so a number is one
+    question), 0 for anything that is not a question id."""
+    s = did if isinstance(did, str) else ""
+    return int(s[2:]) if re.fullmatch(DID, s, re.I) else 0
+
+
+_did_no = question_number           # its name before it was public
 
 
 def same_question(named, did) -> bool:
     """Does `answer <named>` (or a question or conflict note of the bridge's) name question `did`? By number: `answer
     D-12`, the way people answered before, answers Q-12, and a D-12 note binds the number Q-12 has. check_answer
-    takes no D-<n> that is one of the question's own review items for it."""
-    return _did_no(did) > 0 and _did_no(named) == _did_no(did)
+    takes no D-<n> that is one of the question's own review items for it (answers)."""
+    return question_number(did) > 0 and question_number(named) == question_number(did)
+
+
+def answers(reply, did, kind, review_items=()) -> bool:
+    """Does `reply` (the first line of a note) answer question `did` of kind `kind`? It is `answer <id> …` naming the
+    question by its number (same_question), except a D-<n> that is one of an acceptance question's `review_items`
+    (their ids: park.json's, or review_items_of its note): that one names a row of the run's decisions.md, and
+    check_answer asks its author to write the question's own id."""
+    m = ANSWER_RE.match(str(reply or ""))
+    if not m or not same_question(m.group(1), did):
+        return False
+    named = m.group(1).upper()
+    return named == str(did).upper() or kind != "acceptance" or named not in review_items
+
+
+# an item of the review checklist question_text writes after the question's text block (ticked on GitLab or not)
+REVIEW_ITEM_RE = re.compile(r"^\s*[-*+] \[[ xX~]\] ([AD]-[1-9][0-9]{0,3}) ", re.M)
+
+
+def review_items_of(question_body) -> list:
+    """The review item ids of a question note as the bridge posted it (question_text), in its order: the checklist
+    after its text block, never a line of the run's text inside the block. [] for a question without review items."""
+    return REVIEW_ITEM_RE.findall(str(question_body or "").rsplit("```", 1)[-1])
 
 
 def _first(note) -> str:
@@ -505,7 +633,7 @@ def check_answer(decision, park_raw, notes, kit, roles, owner, head, pushed_at, 
             return void("%s on the MR is bound to %s @ %s (park %s): a decision id is never bound twice"
                         % (m.group(1), m.group(3), m.group(4), m.group(5)), "elsewhere")
         want = question_text(did, run_id, park, [u[1:] for u in m.group(6).split("、")], kind, sha, ph)
-        if _unticked(n.get("body")) != _unticked(want):
+        if not _posted_as(n.get("body"), want, kind, sha):
             return void("note %d is not the question the bridge posts for park.json at %s (edited?)"
                         % (_nid(n), sha[:12]), "edited")
         asked.append(n)
@@ -538,10 +666,11 @@ def check_answer(decision, park_raw, notes, kit, roles, owner, head, pushed_at, 
         if nid <= start or n.get("system"):
             continue
         last = max(last, nid)
-        m = ANSWER_RE.match(str(n.get("body") or "").split("\n", 1)[0])
+        first = str(n.get("body") or "").split("\n", 1)[0]
+        m = ANSWER_RE.match(first)
         if not m or not same_question(m.group(1), did):
             continue
-        if m.group(1).upper() != did and m.group(1).upper() in review:
+        if not answers(first, did, kind, review):           # it names one of the question's review items
             feedback.append((nid, "%s 是这个问题的待审项（decisions.md 的一行），不是问题号：请回 `answer %s …`，"
                                   "这条回复不算。" % (m.group(1).upper(), did)))
             continue
@@ -741,8 +870,12 @@ class DecisionLoop(Delivery):
             # the team's config, not the run, is missing someone: told once; asked once the config names someone
             self._tell_nobody(row, head, ph, kind)
             return 0
-        if not probs and (kind == "acceptance" or is_acceptance(park)) and self._acceptance_waits_for_ci(row, mr, head):
-            return 0                                   # not seen: looked at again next round
+        ci = None
+        if not probs and (kind == "acceptance" or is_acceptance(park)):
+            pl = self._acceptance_pipeline(row, mr, head)
+            if pl is False:
+                return 0                               # not seen: looked at again next round
+            ci = ci_line(head, pl) if kind == "acceptance" else None
         pushed = None
         if not probs:
             self.check_bridge_user(kit)
@@ -786,7 +919,7 @@ class DecisionLoop(Delivery):
             return 0
         if kind == "acceptance" or is_acceptance(park):
             self.sync_description(row, head, kit=kit, post=True)     # its own comment, before the question
-        text = question_text(did, row["run_id"], park, who, kind, head, ph)
+        text = question_text(did, row["run_id"], park, who, kind, head, ph, ci=ci)
         try:
             # a retry: the post of an earlier round may have reached GitLab although its answer was lost (a read
             # timeout): that note, the bridge's own and word for word this question, is the question
@@ -871,29 +1004,30 @@ class DecisionLoop(Delivery):
             "这要人处理，park.json 不用改：在 Session notes 记 `Status: blocked: 签名服务没签 %s 的回答`，提交、推送，然后用 "
             "`问题没发出，等人处理：签名服务没签 %s 的回答` 结束这一轮。") % (d["id"], row["req"], d["id"], d["id"]), sha=sha)
 
-    def _acceptance_waits_for_ci(self, row, mr, head) -> bool:
+    def _acceptance_pipeline(self, row, mr, head):
         """An acceptance question is asked on a commit whose own pipeline passed (or, on an MR with no pipeline at all,
         that has none: no CI for it). Once the product approves, Lean closes the intent and the run changes no code;
         so the product accepts what CI accepted, and a CI fix never comes after the acceptance. While the head's
         pipeline is not on the MR yet (_waits_for_heads_pipeline), runs, failed or needs a person, the question waits
-        (True; looked at again each round): a failed one goes to the run as a CI notice (it fixes, releases again and
+        (False; looked at again each round): a failed one goes to the run as a CI notice (it fixes, releases again and
         parks again); one that is canceled or waits for a manual job, one that runs longer than
         acceptance_ci_wait_minutes or does not come in that time, and a failure the run can no longer be told about,
-        are told on the MR once."""
+        are told on the MR once. -> the head's pipeline, which passed; None on an MR without any; False: it waits."""
         from .delivery import notice_send_id
         pl = mr.get("head_pipeline")
         if not isinstance(pl, dict):
             pl = self._newest_pipeline(row)
             if pl is None:
-                return False                    # an MR without any pipeline: no CI for it
+                return None                     # an MR without any pipeline: no CI for it
             mr = dict(mr, head_pipeline=pl)
         if str(pl.get("sha") or "") != head:
-            return self._waits_for_heads_pipeline(row, head, pl)
+            self._waits_for_heads_pipeline(row, head, pl)
+            return False
         status = str(pl.get("status") or "")
         held = self._held_key(row, head)
         if status in CI_GREEN:
             self.ledger.drop_count(held)
-            return False
+            return pl
         try:
             pid = int(pl.get("id") or 0)
         except (TypeError, ValueError):
@@ -919,7 +1053,7 @@ class DecisionLoop(Delivery):
                     "%s 的验收问题（提交 %s）在等 MR 的流水线 #%d 跑完（现在是 %s，等了 %d 分钟以上）。通过以后桥自动发出验收问题；"
                     "流水线一直不动的话请看一下。") % (run_id, head[:12], pid, status or "?", wait), run_id=run_id)
         self.out("%s: the acceptance question at %s waits for pipeline #%d (%s)" % (run_id, head[:12], pid, status))
-        return True
+        return False
 
     def _newest_pipeline(self, row):
         """The MR's newest pipeline (GET /projects/:id/merge_requests/:iid/pipelines, newest first), when the MR shows
@@ -1114,11 +1248,91 @@ class DecisionLoop(Delivery):
             (row["run_id"], head) + asking + IN_FLIGHT_STATES).fetchone() is not None
 
     def _accepted(self, row):
-        """The run's acceptance, when the product approved it and the answer reached the run (its newest acceptance
-        decision, delivered, `approve`), else None. Lean closes the intent then: the run changes no code."""
-        d = self.ledger.db.execute("SELECT * FROM decisions WHERE run_id=? AND kind='acceptance' AND state='delivered' "
-                                   "ORDER BY created DESC", (row["run_id"],)).fetchone()
-        return d if d is not None and d["answer"] == "approve" else None
+        """The run's acceptance (accepted): its newest acceptance decision that reached the run, `approve`; else
+        None."""
+        return accepted(self._ddb().execute("SELECT * FROM decisions WHERE run_id=? AND kind='acceptance'",
+                                            (row["run_id"],)).fetchall())
+
+    # ---------- an idle session: whose move it is ----------
+
+    def _told(self, key) -> bool:
+        n = self.ledger.notice(key)
+        return n is not None and n["state"] == "told"
+
+    def _ready_due(self, row) -> bool:
+        return not self._told(READY_KEY % row["run_id"]) and self._accepted(row) is not None
+
+    def _idle_session(self, row, activity, quiet):
+        """The run's session is idle (tell_if_stalled; `quiet`: seconds since its newest row when the watchdog is on).
+        By whose move it is at the MR head (whose_move): DONE, an accepted run whose records came after, is ready to
+        merge (_tell_ready, once). SESSION, quiet for stall_s: a turn KiroCrew cut off (activity "cut", the client's
+        reading of it) is told to go on (_resume); a turn that ended without a push is told on the MR once (ENDED,
+        quoting brain-run's stop line). A turn a person stopped, or one that waits on a person or on the signer
+        (OTHERS), is left alone."""
+        row = self.ledger.run(row["run_id"]) or row            # watch() may have read a new head this round
+        acc = self._accepted(row)
+        due = acc is not None and not self._told(READY_KEY % row["run_id"])
+        cut = bool(activity.get("cut"))
+        ended = not cut and activity.get("end") == TURN_DONE
+        quiet = quiet is not None and quiet >= self.stall_s
+        if not (due or (quiet and (cut or ended))):
+            return
+        mr = self.gl.mr(row["project"], row["iid"]) or {}
+        head = str(mr.get("sha") or "")
+        if mr.get("state") != "opened" or not head:
+            return
+        outbox = self.ledger.db.execute("SELECT what, state, sha, created FROM outbox WHERE run_id=?",
+                                        (row["run_id"],)).fetchall()
+        decisions = self._ddb().execute("SELECT * FROM decisions WHERE run_id=?", (row["run_id"],)).fetchall()
+        move = whose_move(row, head, decisions, outbox)
+        since = activity["last_at"].strftime("%Y-%m-%d %H:%M") if activity.get("last_at") else "?"
+        if move == DONE and due:
+            self._tell_ready(row, acc, head)
+        elif move == SESSION and quiet and cut:
+            self._resume(row, head, since, outbox)
+        elif move == SESSION and quiet and ended:
+            said = str(activity.get("said") or "")
+            self.tell_mr_once("ended:%s:%s" % (row["run_id"], head[:12]), row["project"], row["iid"], ENDED % (
+                row["run_id"], head[:12], row["slot"], since,
+                "，它最后说 %s" % one_line(said, 200) if STOP_LINE_RE.search(said) else ""), run_id=row["run_id"])
+
+    def _resume(self, row, head, since, outbox):
+        """RESUME once more at `head` (a notice about it: settled and sent again as every notice is), or, RESUMES sent
+        there already, the MR told once (STOPPED)."""
+        mark = "notice:resume:%s:" % head[:12]
+        n = sum(1 for o in outbox if str(o["what"]).startswith(mark))
+        if n >= RESUMES:
+            self.tell_mr_once("stopped:%s:%s" % (row["run_id"], head[:12]), row["project"], row["iid"],
+                              STOPPED % (row["run_id"], row["slot"], since, head[:12], n), run_id=row["run_id"])
+            return
+        self.notify_run(row, "resume:%s:%d" % (head[:12], n + 1), RESUME % (since, head[:12]), sha=head)
+
+    def _tell_ready(self, row, acc, head):
+        """An accepted run whose records came after: running_label comes off and accepted_label goes on, then the MR
+        hears once that it can be merged, and who merges it (the run's owner). A label change GitLab does not let the
+        bridge's account make does not hold up the comment."""
+        project, iid, rid = row["project"], int(row["iid"]), row["run_id"]
+        kit = self.kit(project)
+        label = str(kit.get("accepted_label") or "")
+        relabelled = self._edit_labels(project, iid, [label] if label else [], [kit["running_label"]])
+        owner = str(row["owner"] or "")
+        who = "@" + owner if USER_RE.match(owner) else "需求的负责人"
+        self.tell_mr_once(READY_KEY % rid, project, iid, READY % (
+            rid, str(acc["sha"])[:12], acc["id"], acc["voucher_id"] or "?", head[:12], who) + (
+            RELABELLED % label if relabelled and label else ""), run_id=rid)
+
+    def _edit_labels(self, project, iid, add, remove) -> bool:
+        """-> False when GitLab does not let the bridge's account change the MR's labels (403: said once)."""
+        try:
+            self.gl.edit_labels(project, iid, add=add, remove=remove)
+        except HttpError as e:
+            if e.status != 403:
+                raise
+            told = getattr(self, "_no_label_rights", None)
+            if told is not None:
+                told(project)
+            return False
+        return True
 
     def _tell_ci_after_acceptance(self, row, head, pid, d):
         """A pipeline that fails after the product accepted is not the run's to fix (its intent is closed; a code
@@ -1389,7 +1603,8 @@ class DecisionLoop(Delivery):
             if r is not None and (r["state"] in ("open", "posting", "asking") or nid <= int(r["told_id"] or 0)):
                 continue
             if r is None:
-                ours = sorted((x for x in mine if mine[x]["state"] in ("open", "posting", "asking")), key=_did_no)
+                ours = sorted((x for x in mine if mine[x]["state"] in ("open", "posting", "asking")),
+                              key=question_number)
                 text = "@%s：%s 不是这个 MR 上的问题%s，这条回复不算。" % (
                     _author(n), did, "（这个 MR 上等回答的是 %s）" % "、".join(ours) if ours else "")
             else:

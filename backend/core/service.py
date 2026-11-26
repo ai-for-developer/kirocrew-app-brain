@@ -678,13 +678,15 @@ class Service:
         cr = {"runs": {x: {"credits": c} for x in run_ids[-1:]}} if c is not None and run_ids else None
         return (path, sha, main, key, c), (lambda: mrdesc_view.describe(path, cfg, key, sha, cr))
 
-    def _team_rows(self, snap: dict[str, Any]) -> list[tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]]:
-        """(row, facts, decisions) per requirement the team runner has (its latest run, TeamRuntime.runner_rows), with
-        the credits of its sessions here and its 变更说明's first line."""
-        if self.team is None or self.team.host is None:
+    def _team_rows(self, snap: dict[str, Any],
+                   team: Any) -> list[tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]]:
+        """(row, facts, decisions) per requirement the team runner has (its latest run, TeamRuntime.runner_rows, of
+        *team*: self.team as the caller read it once, so a settings save that stops team mode meanwhile leaves it the
+        rows that team mode had), with the credits of its sessions here and its 变更说明's first line."""
+        if team is None:
             return []
         out = []
-        for row, facts, decs, _run in self.team.runner_rows():
+        for row, facts, decs, _run in team.runner_rows():
             counted, cost = self._team_credits(snap, row["key"], row["run_ids"], facts.get("project"))
             row["credits"], row["credits_whole"], row["sessions"] = cost["total"], cost["whole"], len(counted)
             job = self._runner_desc(facts, row["key"], row) if facts.get("run") else None
@@ -697,7 +699,7 @@ class Service:
         """Team mode, one row per requirement: the runner's requirements listed as its own (_team_rows'), each with
         the listed repo of its GitLab project (row ``home``, None when this machine does not list it), and the
         (repo id, key) of this machine's rows (*mine*: repo id, facts, row) they stand for (deliveries.runner_takes)."""
-        team = self._team_rows(snap)
+        team = self._team_rows(snap, self.team)
         rid_of: dict[str, str] = {}
         for rid, repo in self.repos.items():
             if self._gitlab_of(repo)[1]:
@@ -715,7 +717,8 @@ class Service:
         return keep, taken
 
     def _team_on(self) -> bool:
-        return self.team is not None and self.team.host is not None
+        team = self.team        # once: a save that stops team mode sets it to None on the event loop meanwhile
+        return team is not None and team.host is not None
 
     def _runner_desc(self, facts: dict[str, Any], key: str, row: dict[str, Any]):
         path = facts.get("worktree")
@@ -1010,7 +1013,8 @@ class Service:
                 files_stamp(vouchers, runs) if vouchers else (), int(self.now() // 60))
 
     def _team_detail(self, key: str, snap: dict[str, Any], parts: dict[str, Any] | None = None) -> dict[str, Any]:
-        hit = next(((r, f, d) for r, f, d in self._team_rows(snap) if r["key"] == key), None)
+        team = self.team        # once (a worker thread): a save that stops team mode meanwhile leaves it what it read
+        hit = next(((r, f, d) for r, f, d in self._team_rows(snap, team) if r["key"] == key), None)
         if hit is None:
             raise AppError("运行机上没有 %s" % key, "not_found", 404)
         row, f, decs = hit
@@ -1028,8 +1032,8 @@ class Service:
             tl = detail.timeline(path, cfg, key, ref=None, events=f.get("events") or [],
                                  credits={"runs": {x: {"credits": snap["credits"].get(x)} for x in row["run_ids"]
                                                    if snap["credits"].get(x) is not None}} if c else None,
-                                 ledger_path=self.team.cfg.get("ledger"), vouchers_dir=self.team.cfg.get("vouchers_dir"),
-                                 allowed_signers=self.team.allowed_signers or None,
+                                 ledger_path=team.cfg.get("ledger"), vouchers_dir=team.cfg.get("vouchers_dir"),
+                                 allowed_signers=team.allowed_signers or None,
                                  deploys=self.deploys.source(path, cfg))
             deploy = deploys_view.requirement(tl.get("trace"), cfg)
         for rid in row["run_ids"]:
@@ -1877,13 +1881,14 @@ class Service:
     # ---- status, settings ----------------------------------------------------------------------------- #
 
     def _team_status(self) -> dict[str, Any]:
-        if self.team is None:
+        team = self.team
+        if team is None:
             on = bool(self.settings["team"].get("enabled"))
             why = problems.team_start("brain-kit 没装载" if on else "")
             return {"enabled": on, "ok": False, "error": why["text"], "error_todo": why["todo"], "error_raw": why["raw"],
                     "last_loop_at": None, "loop_error": "", "checks": [], "same_user": False,
                     "signer": {"pending": 0, "refused": 0}, "relay": None}
-        return self.team.status()
+        return team.status()
 
     async def status(self) -> dict[str, Any]:
         if self.folders_stuck:   # one folder list: a folder dragged in since, or KiroCrew answering again
@@ -2357,29 +2362,33 @@ class Service:
     # ---- team mode ------------------------------------------------------------------------------------ #
 
     async def team_view(self) -> dict[str, Any]:
-        if self.team is None:
+        """GET /team: the team mode this read started with, whole, though a settings save stops it meanwhile (its reads
+        are awaited off the event loop, where the save runs)."""
+        team = self.team
+        if team is None:
             return {"status": self._team_status(), "ledger": {"runs": {}, "decisions": {}, "handoffs": {}, "outbox": {}},
                     "runs": [], "handovers": [], "signer": {"pending": [], "refused": [], "waiting": []}, "config": [],
                     "hooks": []}
-        led = await asyncio.to_thread(self.team.ledger)
-        signer = await asyncio.to_thread(self.team.signer_view)
-        signer["waiting"] = await asyncio.to_thread(self.team.pending)
+        led = await asyncio.to_thread(team.ledger)
+        signer = await asyncio.to_thread(team.signer_view)
+        signer["waiting"] = await asyncio.to_thread(team.pending)
         # the signer's reasons and a round's errors in short Chinese (problems.reason), their own words beside them
         signer["refused"] = [dict(x, reasons=[problems.reason(r)["text"] for r in x.get("reasons") or []],
                                   raw=[str(r) for r in x.get("reasons") or []]) for x in signer.get("refused") or []]
         handovers = []
-        for h in self.team.handovers():
+        for h in team.handovers():
             row = {k: h[k] for k in ("project", "iid", "sha", "result", "error", "at", "mr_url")}
             got = problems.reason(row["error"]) if row["error"] else None
             row.update(error=got["text"] if got else "", raw=(got["raw"] or "") if got else "")
             handovers.append(row)
         notes = deliveries.notices_by_run(led.get("notices") or [], led.get("outbox") or [], led.get("runs") or [])
-        return {"status": self.team.status(), "ledger": self.team.counts(led),
+        runs = [dict(r, state=deliveries.run_state(r, notes.get(r["run_id"], []))) for r in led["runs"]]
+        return {"status": team.status(), "ledger": team.counts(dict(led, runs=runs)),
                 "runs": [{"run_id": r["run_id"], "req": r["req"], "project": r["project"], "iid": int(r["iid"]),
-                          "state": r["state"], "slot": r.get("slot"), "mr_url": self.team.mr_url(r["project"], r["iid"]),
-                          "updated": r.get("updated"), "notes": notes.get(r["run_id"], [])} for r in led["runs"]],
-                "handovers": handovers, "signer": signer, "config": self.team.config_view(),
-                "hooks": await asyncio.to_thread(self.team.hook_rows)}
+                          "state": r["state"], "slot": r.get("slot"), "mr_url": team.mr_url(r["project"], r["iid"]),
+                          "updated": r.get("updated"), "notes": notes.get(r["run_id"], [])} for r in runs],
+                "handovers": handovers, "signer": signer, "config": team.config_view(),
+                "hooks": await asyncio.to_thread(team.hook_rows)}
 
     async def runner_status(self) -> dict[str, Any]:
         """GET /team/status: each listed repo's team runner as GitLab shows it (runner_view.py), read with this person's

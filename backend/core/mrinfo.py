@@ -19,8 +19,9 @@ whose delivery is not known (「D-n 的回答（凭证 V-…）不知道送到 r
 wordings, and the run's own notes, which start with its run id: runnerd silent, runnerd retrying, the run that could
 not start (it also gets the rejected label), KiroCrew not opening the session, queued, a hand-over send not known,
 sends that keep failing, an acceptance question held until the head pipeline is green (running, red, or waiting for a
-person), a question nobody may answer. The newest such note since the last 「AI 已接手」 is ``runner``: {kind, text in
-short Chinese, raw, at}.
+person), a question nobody may answer, and (769efc7) a run accepted and done that can be merged, a session told to go
+on that still did not push (stopped) and one that ended its turn without a push (ended). The newest such note since
+the last 「AI 已接手」 is ``runner``: {kind, text in short Chinese, raw, at}.
 
 The same refresh reads the MR's newest pipelines (``pipelines``, parse_pipelines): one more GET with the same token, so
 the 运行过程 can say a round happened because CI failed (「CI 没过 #1234」). None when they could not be read (CI off, no
@@ -56,6 +57,12 @@ INVALID_RE = re.compile(r"^(%s) 无法发出" % QUESTION_ID)
 REVIEW_ITEM_RE = re.compile(r"^- \[[ xX]\] ([AD]-[1-9][0-9]{0,3}) ", re.M)
 REJECT_HEAD = "AI 接手被拒"
 RUN = r"(RUN-[A-Z][A-Z0-9]{0,9}-[1-9][0-9]{0,6}-[1-9][0-9]{0,5})"
+# a run accepted and done, a session told to go on that did not push, one that ended its turn without a push: as the
+# run's MR notes say them here and the ledger's notices on the runner (deliveries.NOTICE_KIND)
+READY_TEXT = "验收通过了，会话也做完了：MR 上说了可以合并、谁来合并"
+STOPPED_TEXT = "会话停住了：桥让它接着做，它还是没推送：请负责人到 KiroCrew 看一下这个会话（工作区里可能有它没提交的改动）"
+ENDED_TEXT = ("会话这一轮结束了，可是没有推送，也没有问题在等人回答：桥不会让它接着做，请负责人到 KiroCrew 看一下这个会话"
+              "（工作区里可能有它没提交的改动）")
 # the run's own notes (brain-kit 0d52e97 handoff.py, delivery.py, decisions.py), newest first wins: (rx, kind, text)
 RUNNER_NOTES: list[tuple[re.Pattern, str, Any]] = [(re.compile(rx), kind, text) for rx, kind, text in (
     (r"^%s 还没开始：运行机（brain-runnerd）(?P<m>\d+) 分钟里没有准备好工作区" % RUN, "runnerd_silent",
@@ -76,6 +83,11 @@ RUNNER_NOTES: list[tuple[re.Pattern, str, Any]] = [(re.compile(rx), kind, text) 
      "验收问题没发：流水线 #{p} 没过，运行机已经收到过多次 CI 失败：请负责人看一下"),
     (r"^%s 的问题（提交 \w+ 的 park\.json）现在发不出：没有人被配置为可以回答「(?P<kind>[^」]*)」" % RUN, "nobody",
      "问题发不出：没人能回答「{kind}」类决定（在 brain-kit 设置里配上谁来回答，配好就自动发）"),
+    # brain-kit 769efc7 (team/runwatch.py before it): accepted, its records pushed; kit.json accepted_label may be ""
+    (r"^%s 做完了：产品在提交 \w+ 上验收通过" % RUN, "ready", READY_TEXT),
+    # ... its watchdog: told twice to go on at one head, nothing pushed; a turn that ended without a push
+    (r"^%s 的会话停住了：KiroCrew 会话 " % RUN, "stopped", STOPPED_TEXT),
+    (r"^%s 的会话这一轮结束了，可是没有推送" % RUN, "ended", ENDED_TEXT),
 )]
 LABEL_KIND = {"澄清": "clarify", "设计": "design", "计划": "plan", "验收": "acceptance", "危险动作": "action", "其他": "other",
               "需求批准": "requirements"}
